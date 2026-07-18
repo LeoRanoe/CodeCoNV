@@ -4,6 +4,7 @@ import {
   type DailyCloseoutAnswers,
   type ProjectStartAnswers,
 } from "@/lib/forms/daily-report";
+import type { InternalUserInviteAnswers } from "@/lib/forms/users";
 
 export type WorkspaceBuilding = {
   id: string;
@@ -36,6 +37,35 @@ export type WorkspaceSnapshot = {
   profileName: string;
   organizations: WorkspaceOrganization[];
   projects: WorkspaceProject[];
+  canBootstrapOrganization: boolean;
+  manageableOrganizationIds: string[];
+};
+
+export type InternalRole = {
+  id: string;
+  code: string;
+  name: string;
+  scope: "organization" | "project";
+};
+
+export type InternalMember = {
+  userId: string;
+  email: string;
+  displayName: string | null;
+  membershipStatus: "invited" | "active" | "suspended" | "revoked";
+  accessStatus: "invited" | "active";
+  organizationRoles: Array<{ code: string; name: string }>;
+  projectRoles: Array<{
+    projectId: string;
+    projectName: string;
+    roleCode: string;
+    roleName: string;
+  }>;
+};
+
+export type InternalAccessSnapshot = {
+  roles: InternalRole[];
+  members: InternalMember[];
 };
 
 export type ProjectParty = {
@@ -113,12 +143,16 @@ export function reportDateInSuriname(date = new Date()) {
 
 export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSnapshot> {
   const user = await currentUser(client);
-  const membershipResult = await client
-    .from("organization_memberships")
-    .select("organization_id")
-    .eq("user_id", user.id)
-    .eq("status", "active");
+  const [membershipResult, bootstrapResult] = await Promise.all([
+    client
+      .from("organization_memberships")
+      .select("organization_id")
+      .eq("user_id", user.id)
+      .eq("status", "active"),
+    client.rpc("can_bootstrap_organization"),
+  ]);
   fail(membershipResult.error);
+  fail(bootstrapResult.error);
 
   const organizationIds = Array.from(new Set((membershipResult.data ?? []).map((row) => row.organization_id as string)));
   if (organizationIds.length === 0) {
@@ -127,6 +161,8 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
       profileName: String(user.user_metadata?.display_name ?? user.email?.split("@")[0] ?? "Gebruiker"),
       organizations: [],
       projects: [],
+      canBootstrapOrganization: Boolean(bootstrapResult.data),
+      manageableOrganizationIds: [],
     };
   }
 
@@ -143,6 +179,14 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
   fail(organizationResult.error);
   fail(profileResult.error);
   fail(projectResult.error);
+
+  const manageResults = await Promise.all(
+    organizationIds.map(async (organizationId) => {
+      const result = await client.rpc("can_manage_organization_members", { p_organization_id: organizationId });
+      fail(result.error);
+      return result.data ? organizationId : null;
+    }),
+  );
 
   const projectRows = projectResult.data ?? [];
   const projectIds = projectRows.map((row) => row.id as string);
@@ -214,7 +258,41 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
       slug: String(organization.slug),
     })),
     projects,
+    canBootstrapOrganization: Boolean(bootstrapResult.data),
+    manageableOrganizationIds: manageResults.filter((organizationId): organizationId is string => Boolean(organizationId)),
   };
+}
+
+export async function loadInternalAccess(
+  client: SupabaseClient,
+  organizationId: string,
+): Promise<InternalAccessSnapshot> {
+  const result = await client.rpc("list_internal_access", { p_organization_id: organizationId });
+  fail(result.error);
+  const data = result.data as Partial<InternalAccessSnapshot> | null;
+  return {
+    roles: Array.isArray(data?.roles) ? data.roles : [],
+    members: Array.isArray(data?.members) ? data.members : [],
+  };
+}
+
+export async function inviteInternalUser(
+  client: SupabaseClient,
+  input: InternalUserInviteAnswers,
+) {
+  const session = await getSession(client);
+  if (!session?.access_token) throw new Error("Je sessie is verlopen. Meld je opnieuw aan.");
+  const response = await fetch("/api/admin/users", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${session.access_token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+  const data = await response.json().catch(() => null) as { error?: string; invitation?: unknown } | null;
+  if (!response.ok) throw new Error(data?.error ?? "De uitnodiging kon niet worden verzonden.");
+  return data?.invitation;
 }
 
 export async function loadProjectDay(

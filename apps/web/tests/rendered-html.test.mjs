@@ -35,16 +35,18 @@ test("server-renders the secure CODECO entry point", async () => {
 });
 
 test("keeps the central post-MVP interaction and accessibility hooks in source", async () => {
-  const [app, page, layout, packageJson, dailyReportForm, actionForm, dataLayer, pdfReport, providers] = await Promise.all([
+  const [app, page, layout, packageJson, dailyReportForm, actionForm, userForm, dataLayer, pdfReport, providers, adminRoute] = await Promise.all([
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../lib/forms/daily-report.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/forms/actions.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/forms/users.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/supabase/data.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/reports/daily-report-pdf.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/providers.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/users/route.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(app, /aria-modal="true"/);
@@ -61,6 +63,12 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(app, /zodResolver\(dailyCloseoutSchema\)/);
   assert.match(app, /setEntries/);
   assert.match(app, /signInWithPassword/);
+  assert.doesNotMatch(app, /\.auth\.signUp\(/);
+  assert.doesNotMatch(app, />Account maken</);
+  assert.match(app, /Alleen medewerkers die door een organisatiebeheerder zijn uitgenodigd/);
+  assert.match(app, /Gebruikers en toegang/);
+  assert.match(app, /UserAdminModal/);
+  assert.match(app, /must_set_password/);
   assert.match(app, /bootstrapOrganization/);
   assert.match(app, /createProjectWorkspace/);
   assert.match(app, /Centraal opgeslagen/);
@@ -79,6 +87,7 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(dailyReportForm, /AUTO-HSE-01/);
   assert.match(actionForm, /projectActionSchema/);
   assert.match(actionForm, /actionTransitionSchema/);
+  assert.match(userForm, /internalUserInviteSchema/);
   assert.match(app, /Geen AI|No AI/i);
   assert.match(dataLayer, /saveProjectStart/);
   assert.match(dataLayer, /saveSiteRegistration/);
@@ -87,13 +96,20 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(dataLayer, /submitReportForReview/);
   assert.match(dataLayer, /createProjectAction/);
   assert.match(dataLayer, /transitionProjectAction/);
+  assert.match(dataLayer, /loadInternalAccess/);
+  assert.match(dataLayer, /inviteInternalUser/);
+  assert.match(adminRoute, /inviteUserByEmail/);
+  assert.match(adminRoute, /can_manage_organization_members/);
+  assert.match(adminRoute, /SUPABASE_SECRET_KEY/);
+  assert.match(adminRoute, /cloudflare:workers/);
+  assert.doesNotMatch(adminRoute, /NEXT_PUBLIC_SUPABASE_SECRET_KEY|SERVICE_ROLE/);
   assert.match(pdfReport, /CONSTRUCTIESUPERVISIE/);
   assert.match(pdfReport, /17–19\. Foto's, bijlagen en controle/);
   assert.match(providers, /QueryClientProvider/);
 });
 
 test("keeps the online-first Supabase foundation enforceable", async () => {
-  const [migration, questionnaireMigration, liveFlowMigration, actionMigration, supabaseClient, envExample] = await Promise.all([
+  const [migration, questionnaireMigration, liveFlowMigration, actionMigration, accountMigration, supabaseClient, envExample, supabaseConfig] = await Promise.all([
     readFile(
       new URL("../../../supabase/migrations/202607180001_core_supervision_foundation.sql", import.meta.url),
       "utf8",
@@ -110,8 +126,13 @@ test("keeps the online-first Supabase foundation enforceable", async () => {
       new URL("../../../supabase/migrations/202607180004_action_workflow_realtime.sql", import.meta.url),
       "utf8",
     ),
+    readFile(
+      new URL("../../../supabase/migrations/202607180005_internal_account_administration.sql", import.meta.url),
+      "utf8",
+    ),
     readFile(new URL("../lib/supabase/client.ts", import.meta.url), "utf8"),
     readFile(new URL("../.env.example", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/config.toml", import.meta.url), "utf8"),
   ]);
 
   for (const table of [
@@ -152,6 +173,11 @@ test("keeps the online-first Supabase foundation enforceable", async () => {
   assert.match(actionMigration, /create or replace function public\.create_project_action/);
   assert.match(actionMigration, /create or replace function public\.transition_project_action/);
   assert.match(actionMigration, /alter publication supabase_realtime add table/);
+  assert.match(accountMigration, /create or replace function public\.provision_internal_user/);
+  assert.match(accountMigration, /create or replace function public\.list_internal_access/);
+  assert.match(accountMigration, /Only an organization administrator can create another organization/);
+  assert.match(supabaseConfig, /\[auth\][\s\S]*enable_signup = false/);
+  assert.match(supabaseConfig, /\[auth\.email\][\s\S]*enable_signup = true/);
   const configuredEnvKeys = envExample
     .split("\n")
     .filter((line) => line.trim() && !line.trim().startsWith("#"))

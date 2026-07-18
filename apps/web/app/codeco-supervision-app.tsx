@@ -22,6 +22,7 @@ import {
   History,
   Home,
   Image,
+  KeyRound,
   LayoutDashboard,
   Loader2,
   LogIn,
@@ -38,6 +39,7 @@ import {
   ShieldCheck,
   TimerOff,
   Users,
+  UserPlus,
   Wrench,
   X,
   type LucideIcon,
@@ -58,11 +60,17 @@ import {
 import {
   authSchema,
   organizationSetupSchema,
+  passwordSetupSchema,
   projectSetupSchema,
   type AuthAnswers,
   type OrganizationSetupAnswers,
+  type PasswordSetupAnswers,
   type ProjectSetupAnswers,
 } from "@/lib/forms/workspace";
+import {
+  internalUserInviteSchema,
+  type InternalUserInviteAnswers,
+} from "@/lib/forms/users";
 import {
   actionTransitionSchema,
   projectActionSchema,
@@ -74,6 +82,8 @@ import {
   createProjectAction,
   createProjectWorkspace,
   getSession,
+  inviteInternalUser,
+  loadInternalAccess,
   loadProjectDay,
   loadWorkspace,
   reportDateInSuriname,
@@ -84,6 +94,7 @@ import {
   submitReportForReview,
   transitionProjectAction,
   type ActionUpdate,
+  type InternalAccessSnapshot,
   type ProjectAction,
   type ProjectParty,
   type WorkspaceBuilding,
@@ -91,7 +102,7 @@ import {
 } from "@/lib/supabase/data";
 
 type NavKey = "vandaag" | "project" | "acties" | "rapporten" | "meer";
-type ModalKey = "quick" | "entry" | "action_create" | "action_detail" | "report" | "attendance" | "daily_questions" | null;
+type ModalKey = "quick" | "entry" | "action_create" | "action_detail" | "report" | "attendance" | "daily_questions" | "user_admin" | null;
 type WorkspaceStage = "projects" | "buildings" | "project_start" | "cockpit";
 type EntryKind =
   | "activity"
@@ -324,6 +335,17 @@ export function CodecoSupervisionApp() {
     queryKey: ["workspace", session?.user.id],
     queryFn: () => loadWorkspace(supabase as SupabaseClient),
     enabled: Boolean(supabase && session),
+  });
+
+  const activeOrganizationId = workspaceQuery.data?.organizations[0]?.id;
+  const canManageMembers = Boolean(
+    activeOrganizationId
+    && workspaceQuery.data?.manageableOrganizationIds.includes(activeOrganizationId),
+  );
+  const internalAccessQuery = useQuery({
+    queryKey: ["internal-access", activeOrganizationId],
+    queryFn: () => loadInternalAccess(supabase as SupabaseClient, activeOrganizationId!),
+    enabled: Boolean(supabase && session && activeOrganizationId && canManageMembers && modal === "user_admin"),
   });
 
   const dayQuery = useQuery({
@@ -592,6 +614,23 @@ export function CodecoSupervisionApp() {
     return <AuthScreen client={supabase} />;
   }
 
+  if (session.user.user_metadata?.must_set_password === true) {
+    return (
+      <PasswordSetupScreen
+        email={session.user.email ?? ""}
+        save={async (answers) => {
+          const result = await supabase.auth.updateUser({
+            password: answers.password,
+            data: { must_set_password: false },
+          });
+          if (result.error) throw result.error;
+          setSession((current) => current ? { ...current, user: result.data.user } : current);
+        }}
+        signOut={() => void supabase.auth.signOut()}
+      />
+    );
+  }
+
   if (workspaceQuery.isLoading) {
     return <AppStateScreen title="CODECO-werkruimte laden" copy="Projecten, gebouwen en rechten worden uit Supabase opgehaald." loading />;
   }
@@ -601,6 +640,14 @@ export function CodecoSupervisionApp() {
   }
 
   if (workspaceQuery.data.organizations.length === 0) {
+    if (!workspaceQuery.data.canBootstrapOrganization) {
+      return (
+        <AccessPendingScreen
+          email={session.user.email ?? ""}
+          signOut={() => void supabase.auth.signOut()}
+        />
+      );
+    }
     return (
       <OrganizationSetupScreen
         userEmail={session.user.email ?? ""}
@@ -778,6 +825,8 @@ export function CodecoSupervisionApp() {
               }}
               reportNumber={reportNumber}
               reportStatus={String(dayQuery.data?.report?.status ?? "draft")}
+              canManageMembers={canManageMembers}
+              openUserAdmin={() => setModal("user_admin")}
             />
           )}
         </main>
@@ -980,6 +1029,27 @@ export function CodecoSupervisionApp() {
         />
       ) : null}
 
+      {modal === "user_admin" && activeOrganizationId ? (
+        <UserAdminModal
+          close={() => setModal(null)}
+          organizationId={activeOrganizationId}
+          projects={workspaceQuery.data.projects.filter((project) => project.organizationId === activeOrganizationId)}
+          access={internalAccessQuery.data ?? null}
+          loading={internalAccessQuery.isLoading}
+          loadError={internalAccessQuery.error instanceof Error ? internalAccessQuery.error.message : ""}
+          reload={() => void internalAccessQuery.refetch()}
+          invite={async (answers) => {
+            const saved = await runSynced(
+              () => inviteInternalUser(supabase, answers),
+              `Uitnodiging is verzonden naar ${answers.email}.`,
+            );
+            if (!saved) return false;
+            await internalAccessQuery.refetch();
+            return true;
+          }}
+        />
+      ) : null}
+
       {toast ? <div className="toast" role="status"><CheckCircle2 size={18} /> {toast}</div> : null}
     </div>
   );
@@ -1010,35 +1080,19 @@ function AppStateScreen({
 }
 
 function AuthScreen({ client }: { client: SupabaseClient }) {
-  const [mode, setMode] = useState<"sign_in" | "sign_up">("sign_in");
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const { register, handleSubmit, formState: { errors } } = useForm<AuthAnswers>({
     resolver: zodResolver(authSchema),
-    defaultValues: { displayName: "", email: "", password: "" },
+    defaultValues: { email: "", password: "" },
   });
 
   const submit = async (answers: AuthAnswers) => {
     setBusy(true);
     setError("");
-    setMessage("");
     try {
-      if (mode === "sign_in") {
-        const result = await client.auth.signInWithPassword({ email: answers.email, password: answers.password });
-        if (result.error) throw result.error;
-      } else {
-        const result = await client.auth.signUp({
-          email: answers.email,
-          password: answers.password,
-          options: {
-            emailRedirectTo: window.location.origin,
-            data: { display_name: answers.displayName?.trim() || answers.email.split("@")[0] },
-          },
-        });
-        if (result.error) throw result.error;
-        if (!result.data.session) setMessage("Controleer je e-mail en bevestig je account. Daarna kun je hier aanmelden.");
-      }
+      const result = await client.auth.signInWithPassword({ email: answers.email, password: answers.password });
+      if (result.error) throw result.error;
     } catch (caught) {
       const raw = caught instanceof Error ? caught.message : "Aanmelden is niet gelukt.";
       setError(raw.includes("Invalid login credentials") ? "E-mailadres of wachtwoord is onjuist." : raw);
@@ -1052,23 +1106,74 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
       <section className="access-card auth-card">
         <div className="access-brand"><span className="brand-mark" /><span><strong>CODECO N.V.</strong><small>Constructiesupervisie</small></span></div>
         <div className="auth-heading">
-          <p className="eyebrow">Beveiligde online werkruimte</p>
-          <h1>{mode === "sign_in" ? "Welkom terug" : "Eerste toegang aanmaken"}</h1>
-          <p>Projectgegevens worden centraal onder jouw Supabase-account en projectrechten opgeslagen.</p>
-        </div>
-        <div className="auth-tabs" role="tablist" aria-label="Toegangsactie">
-          <button type="button" className={mode === "sign_in" ? "active" : ""} onClick={() => setMode("sign_in")}>Aanmelden</button>
-          <button type="button" className={mode === "sign_up" ? "active" : ""} onClick={() => setMode("sign_up")}>Account maken</button>
+          <p className="eyebrow">Interne CODECO-werkruimte</p>
+          <h1>Welkom terug</h1>
+          <p>Alleen medewerkers die door een organisatiebeheerder zijn uitgenodigd kunnen aanmelden.</p>
         </div>
         <form className="access-form" onSubmit={handleSubmit(submit)} noValidate>
-          {mode === "sign_up" ? <label className="form-field"><span>Volledige naam</span><input autoComplete="name" {...register("displayName")} /></label> : null}
           <label className="form-field"><span>E-mailadres</span><input type="email" autoComplete="email" {...register("email")} />{errors.email ? <small className="field-error">{errors.email.message}</small> : null}</label>
-          <label className="form-field"><span>Wachtwoord</span><input type="password" autoComplete={mode === "sign_in" ? "current-password" : "new-password"} {...register("password")} />{errors.password ? <small className="field-error">{errors.password.message}</small> : null}</label>
+          <label className="form-field"><span>Wachtwoord</span><input type="password" autoComplete="current-password" {...register("password")} />{errors.password ? <small className="field-error">{errors.password.message}</small> : null}</label>
           {error ? <p className="access-message error" role="alert">{error}</p> : null}
-          {message ? <p className="access-message success" role="status">{message}</p> : null}
-          <button className="primary-button access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <LogIn size={16} />}{mode === "sign_in" ? "Veilig aanmelden" : "Account aanmaken"}</button>
+          <button className="primary-button access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <LogIn size={16} />}Veilig aanmelden</button>
         </form>
-        <p className="security-note"><ShieldCheck size={14} /> Service-role keys en projectbestanden worden nooit in de browser opgeslagen.</p>
+        <p className="security-note"><ShieldCheck size={14} /> Geen account? Vraag je CODECO-beheerder om een persoonlijke uitnodiging.</p>
+      </section>
+    </div>
+  );
+}
+
+function PasswordSetupScreen({
+  email,
+  save,
+  signOut,
+}: {
+  email: string;
+  save: (answers: PasswordSetupAnswers) => Promise<void>;
+  signOut: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const { register, handleSubmit, formState: { errors } } = useForm<PasswordSetupAnswers>({
+    resolver: zodResolver(passwordSetupSchema),
+    defaultValues: { password: "", passwordConfirmation: "" },
+  });
+  const submit = async (answers: PasswordSetupAnswers) => {
+    setBusy(true);
+    setError("");
+    try {
+      await save(answers);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Het wachtwoord kon niet worden opgeslagen.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="access-shell setup-shell">
+      <section className="access-card setup-card">
+        <div className="setup-top"><div className="access-brand"><span className="brand-mark" /><span><strong>CODECO N.V.</strong><small>Interne uitnodiging</small></span></div><button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> Afmelden</button></div>
+        <span className="state-icon"><KeyRound size={26} /></span>
+        <p className="eyebrow">Eerste aanmelding</p><h1>Stel je wachtwoord in</h1><p>De uitnodiging voor <strong>{email}</strong> is geverifieerd. Kies nu een persoonlijk wachtwoord van minimaal 12 tekens.</p>
+        <form className="access-form setup-form" onSubmit={handleSubmit(submit)} noValidate>
+          <label className="form-field"><span>Nieuw wachtwoord</span><input type="password" autoComplete="new-password" {...register("password")} />{errors.password ? <small className="field-error">{errors.password.message}</small> : null}</label>
+          <label className="form-field"><span>Herhaal wachtwoord</span><input type="password" autoComplete="new-password" {...register("passwordConfirmation")} />{errors.passwordConfirmation ? <small className="field-error">{errors.passwordConfirmation.message}</small> : null}</label>
+          {error ? <p className="access-message error" role="alert">{error}</p> : null}
+          <button className="primary-button access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <Check size={16} />}Wachtwoord opslaan</button>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function AccessPendingScreen({ email, signOut }: { email: string; signOut: () => void }) {
+  return (
+    <div className="access-shell">
+      <section className="access-card state-card">
+        <div className="access-brand"><span className="brand-mark" /><span><strong>CODECO N.V.</strong><small>Interne toegang</small></span></div>
+        <span className="state-icon"><ShieldCheck size={26} /></span>
+        <h1>Nog geen projecttoegang</h1>
+        <p>Het account <strong>{email}</strong> is aangemeld, maar heeft geen CODECO-organisatie of project toegewezen. Vraag een organisatiebeheerder om de juiste rol toe te kennen.</p>
+        <button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> Afmelden</button>
       </section>
     </div>
   );
@@ -1605,6 +1710,8 @@ function SecondaryView({
   openAction,
   reportNumber,
   reportStatus,
+  canManageMembers,
+  openUserAdmin,
 }: {
   activeNav: NavKey;
   openQuickAdd: () => void;
@@ -1619,6 +1726,8 @@ function SecondaryView({
   openAction: (action: ProjectAction) => void;
   reportNumber: string;
   reportStatus: string;
+  canManageMembers: boolean;
+  openUserAdmin: () => void;
 }) {
   if (activeNav === "project") {
     const registrationsByKind = (kind: EntryKind) => entries.filter((entry) => entry.kind === kind).length;
@@ -1691,10 +1800,11 @@ function SecondaryView({
   }
 
   const settings = [
-    { title: "Rapporten", copy: "Historie, revisies en distributie", icon: FileText },
+    { title: "Rapporten", copy: "Historie, revisies en distributie", icon: FileText, action: () => navigate("rapporten") },
     { title: "Dashboard", copy: "KPI’s, trends en brongegevens", icon: Gauge },
     { title: "Planning morgen", copy: "Activiteiten, risico’s en inspecties", icon: CalendarDays },
     { title: "Projectinstellingen", copy: "Locaties, partijen en configuratie", icon: Settings },
+    ...(canManageMembers ? [{ title: "Gebruikers en toegang", copy: "Interne accounts uitnodigen en rollen toewijzen", icon: Users, action: openUserAdmin }] : []),
   ];
   return (
     <>
@@ -1703,7 +1813,7 @@ function SecondaryView({
         {settings.map((item) => {
           const Icon = item.icon;
           return (
-            <button className="settings-row" type="button" key={item.title} onClick={() => item.title === "Rapporten" && navigate("rapporten")}>
+            <button className="settings-row" type="button" key={item.title} onClick={item.action}>
               <span className="module-card-icon"><Icon size={18} /></span>
               <span style={{ textAlign: "left" }}><strong>{item.title}</strong><span>{item.copy}</span></span>
               <ChevronRight size={16} color="#718995" />
@@ -1714,6 +1824,110 @@ function SecondaryView({
     </>
   );
 
+}
+
+function UserAdminModal({
+  close,
+  organizationId,
+  projects,
+  access,
+  loading,
+  loadError,
+  reload,
+  invite,
+}: {
+  close: () => void;
+  organizationId: string;
+  projects: WorkspaceProject[];
+  access: InternalAccessSnapshot | null;
+  loading: boolean;
+  loadError: string;
+  reload: () => void;
+  invite: (answers: InternalUserInviteAnswers) => Promise<boolean>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [inviteError, setInviteError] = useState("");
+  const [success, setSuccess] = useState("");
+  const { register, handleSubmit, control, reset, setValue, formState: { errors } } = useForm<InternalUserInviteAnswers>({
+    resolver: zodResolver(internalUserInviteSchema),
+    defaultValues: { organizationId, displayName: "", email: "", roleCode: "", projectId: "" },
+  });
+  const roleCode = useWatch({ control, name: "roleCode" });
+  const selectedRole = access?.roles.find((role) => role.code === roleCode);
+
+  useEffect(() => {
+    if (!roleCode && access?.roles[0]) setValue("roleCode", access.roles[0].code);
+  }, [access, roleCode, setValue]);
+
+  const submit = async (answers: InternalUserInviteAnswers) => {
+    if (selectedRole?.scope === "project" && !answers.projectId) {
+      setInviteError("Kies het project waarop deze medewerker toegang krijgt.");
+      return;
+    }
+    setBusy(true);
+    setInviteError("");
+    setSuccess("");
+    const prepared = {
+      ...answers,
+      projectId: selectedRole?.scope === "organization" ? "" : answers.projectId,
+    };
+    const saved = await invite(prepared);
+    if (saved) {
+      setSuccess(`De persoonlijke uitnodiging voor ${answers.email} is verzonden.`);
+      reset({ organizationId, displayName: "", email: "", roleCode: roleCode || access?.roles[0]?.code || "", projectId: "" });
+    } else {
+      setInviteError("De uitnodiging is niet voltooid. Bekijk de melding en probeer opnieuw.");
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+      <section className="modal user-admin-modal" role="dialog" aria-modal="true" aria-labelledby="user-admin-title">
+        <header className="modal-header">
+          <div><h2 id="user-admin-title">Gebruikers en toegang</h2><p>Alleen organisatiebeheerders kunnen interne accounts uitnodigen.</p></div>
+          <button className="modal-close" type="button" onClick={close} aria-label="Sluiten"><X size={18} /></button>
+        </header>
+        <div className="modal-body user-admin-body">
+          <section className="invite-panel" aria-labelledby="invite-heading">
+            <div className="section-heading"><span className="module-card-icon"><UserPlus size={18} /></span><span><h3 id="invite-heading">Medewerker uitnodigen</h3><p>De medewerker ontvangt een persoonlijke e-maillink en stelt daarna zelf een wachtwoord in.</p></span></div>
+            <form className="form-grid" onSubmit={handleSubmit(submit)} noValidate>
+              <input type="hidden" {...register("organizationId")} />
+              <label className="form-field"><span>Volledige naam *</span><input autoComplete="off" {...register("displayName")} />{errors.displayName ? <small className="field-error">{errors.displayName.message}</small> : null}</label>
+              <label className="form-field"><span>Zakelijk e-mailadres *</span><input type="email" autoComplete="off" {...register("email")} />{errors.email ? <small className="field-error">{errors.email.message}</small> : null}</label>
+              <label className="form-field"><span>Rol *</span><select {...register("roleCode")} disabled={!access?.roles.length}><option value="">Kies een rol</option>{access?.roles.map((role) => <option value={role.code} key={role.id}>{role.name} · {role.scope === "organization" ? "hele organisatie" : "project"}</option>)}</select>{errors.roleCode ? <small className="field-error">{errors.roleCode.message}</small> : null}</label>
+              {selectedRole?.scope === "project" ? <label className="form-field"><span>Project *</span><select {...register("projectId")}><option value="">Kies een project</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.code} · {project.name}</option>)}</select>{errors.projectId ? <small className="field-error">{errors.projectId.message}</small> : null}</label> : <div className="scope-note"><ShieldCheck size={16} /><span><strong>Organisatiebrede toegang</strong><small>Deze rol geldt voor alle huidige projecten binnen de organisatie.</small></span></div>}
+              {inviteError ? <p className="access-message error full" role="alert">{inviteError}</p> : null}
+              {success ? <p className="access-message success full" role="status">{success}</p> : null}
+              <div className="modal-actions full"><span className="form-note"><ShieldCheck size={13} /> Rollen komen uit de centrale rechtenconfiguratie.</span><button className="primary-button" type="submit" disabled={busy || loading || Boolean(loadError)}>{busy ? <Loader2 className="spin" size={15} /> : <UserPlus size={15} />}Uitnodiging versturen</button></div>
+            </form>
+          </section>
+
+          <section className="internal-members" aria-labelledby="members-heading">
+            <div className="member-list-heading"><span><h3 id="members-heading">Interne accounts</h3><p>{access?.members.length ?? 0} account(s) met organisatie- of projecttoegang</p></span>{loadError ? <button className="ghost-button" type="button" onClick={reload}>Opnieuw laden</button> : null}</div>
+            {loading ? <div className="empty-list-state"><Loader2 className="spin" size={22} /><strong>Accounts laden</strong><span>Rollen en projecttoegang worden gecontroleerd.</span></div> : null}
+            {loadError ? <p className="access-message error" role="alert">{loadError}</p> : null}
+            {!loading && !loadError && access?.members.length === 0 ? <div className="empty-list-state"><Users size={22} /><strong>Nog geen accounts</strong><span>Verstuur hierboven de eerste interne uitnodiging.</span></div> : null}
+            <div className="member-list">
+              {access?.members.map((member) => {
+                const roles = [
+                  ...member.organizationRoles.map((role) => role.name),
+                  ...member.projectRoles.map((role) => `${role.roleName} · ${role.projectName}`),
+                ];
+                return (
+                  <article className="member-row" key={member.userId}>
+                    <span className="avatar">{initials(member.displayName || member.email)}</span>
+                    <span className="member-copy"><strong>{member.displayName || member.email}</strong><span>{member.email}</span><small>{roles.join(" · ") || "Nog geen rol"}</small></span>
+                    <span className={`task-status ${member.accessStatus === "active" ? "green" : ""}`}>{member.accessStatus === "active" ? "Actief" : "Uitgenodigd"}</span>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+      </section>
+    </div>
+  );
 }
 
 function QuickAddModal({ close, chooseType }: { close: () => void; chooseType: (type: string) => void }) {

@@ -1,12 +1,21 @@
 import { z } from "zod";
 
 export const authSchema = z.object({
-  displayName: z.string().trim().max(120).optional(),
   email: z.email("Vul een geldig e-mailadres in"),
   password: z.string().min(8, "Gebruik minimaal 8 tekens").max(128),
 });
 
 export type AuthAnswers = z.infer<typeof authSchema>;
+
+export const passwordSetupSchema = z.object({
+  password: z.string().min(12, "Gebruik minimaal 12 tekens").max(128),
+  passwordConfirmation: z.string().min(12, "Herhaal het wachtwoord"),
+}).refine((answers) => answers.password === answers.passwordConfirmation, {
+  message: "De wachtwoorden zijn niet gelijk",
+  path: ["passwordConfirmation"],
+});
+
+export type PasswordSetupAnswers = z.infer<typeof passwordSetupSchema>;
 
 export const organizationSetupSchema = z.object({
   displayName: z.string().trim().min(2, "Vul je naam in").max(120),
