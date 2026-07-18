@@ -129,6 +129,20 @@ export type LocationNode = {
   status: string;
 };
 
+export type ProductionReadinessItem = {
+  id: string;
+  code: string;
+  category: "accounts" | "configuration" | "operations" | "legal" | "acceptance";
+  title: string;
+  description: string;
+  owner_hint: string;
+  blocking: boolean;
+  status: "todo" | "in_progress" | "done" | "not_applicable";
+  evidence: string | null;
+  completed_at: string | null;
+  sort_order: number;
+};
+
 export type OperationSnapshot = {
   templates: ChecklistTemplate[];
   inspections: Inspection[];
@@ -143,6 +157,7 @@ export type OperationSnapshot = {
   backupRuns: BackupRun[];
   settings: ProjectSettings | null;
   locationNodes: LocationNode[];
+  productionReadiness: ProductionReadinessItem[];
 };
 
 function fail(error: { message: string } | null) {
@@ -155,7 +170,7 @@ export async function loadProjectOperations(
   organizationId: string,
   reportId?: string | null,
 ): Promise<OperationSnapshot> {
-  const [templateResult, inspectionResult, findingResult, hseResult, registerResult, fileResult, settingsResult, backupResult, locationResult] = await Promise.all([
+  const [templateResult, inspectionResult, findingResult, hseResult, registerResult, fileResult, settingsResult, backupResult, locationResult, readinessResult] = await Promise.all([
     client.from("checklist_templates").select("id,project_id,module,code,name,description,version_number,status").or(`project_id.is.null,project_id.eq.${projectId}`).order("name"),
     client.from("inspections").select("id,template_id,inspection_number,title,status,planned_at,started_at,completed_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
     client.from("findings").select("id,finding_number,finding_type,title,description,severity,priority,status,responsible_party_id,assigned_user_id,due_at,cause,proposed_correction,final_measure,verified_at,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
@@ -165,8 +180,9 @@ export async function loadProjectOperations(
     client.from("project_settings").select("id,project_id,report_prefix,default_language,max_file_size_mb,notification_lead_hours,retention_days,branding,modules,signing_workflow").eq("project_id", projectId).maybeSingle(),
     client.from("backup_runs").select("id,run_type,status,schema_version,size_bytes,sha256,verified_at,created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(25),
     client.from("location_nodes").select("id,building_id,parent_id,node_type,code,name,description,status").eq("project_id", projectId).order("sort_order").limit(500),
+    client.from("production_readiness_items").select("id,code,category,title,description,owner_hint,blocking,status,evidence,completed_at,sort_order").eq("organization_id", organizationId).order("sort_order"),
   ]);
-  [templateResult, inspectionResult, findingResult, hseResult, registerResult, fileResult, settingsResult, backupResult, locationResult].forEach((result) => fail(result.error));
+  [templateResult, inspectionResult, findingResult, hseResult, registerResult, fileResult, settingsResult, backupResult, locationResult, readinessResult].forEach((result) => fail(result.error));
   const templateRows = (templateResult.data ?? []) as Omit<ChecklistTemplate, "items">[];
   const itemResult = templateRows.length
     ? await client.from("checklist_items").select("id,template_id,section,prompt,response_type,required,sort_order,unit,minimum_value,maximum_value,failure_severity,guidance").in("template_id", templateRows.map((template) => template.id)).order("sort_order")
@@ -197,6 +213,7 @@ export async function loadProjectOperations(
     reportSignatures: (reportFilters[2]?.data ?? []) as ReportSignature[],
     reportDistributions: (reportFilters[3]?.data ?? []) as ReportDistribution[],
     locationNodes: (locationResult.data ?? []) as LocationNode[],
+    productionReadiness: (readinessResult.data ?? []) as ProductionReadinessItem[],
   };
 }
 
@@ -357,6 +374,21 @@ export async function createLocationNode(client: SupabaseClient, input: { organi
     created_by: userResult.data.user.id,
   });
   fail(result.error);
+}
+
+export async function updateProductionReadiness(
+  client: SupabaseClient,
+  itemId: string,
+  status: ProductionReadinessItem["status"],
+  evidence: string,
+) {
+  const result = await client.rpc("update_production_readiness_item", {
+    p_item_id: itemId,
+    p_status: status,
+    p_evidence: evidence,
+  });
+  fail(result.error);
+  return result.data as ProductionReadinessItem;
 }
 
 export async function createProjectParty(client: SupabaseClient, input: { organizationId: string; projectId: string; code: string; name: string; type: string }) {

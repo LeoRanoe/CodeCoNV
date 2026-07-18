@@ -43,10 +43,12 @@ import {
   startInspection,
   startRevision,
   transitionFinding,
+  updateProductionReadiness,
   validateBackupDryRun,
   type Finding,
   type Inspection,
   type OperationSnapshot,
+  type ProductionReadinessItem,
 } from "@/lib/supabase/operations";
 
 type WorkspaceMode = "project" | "reports" | "admin";
@@ -552,7 +554,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
 }
 
 function AdminOperations({ data, client, organizationId, projectId, projectName, buildingId, buildingName, parties, canManageOrganization, openUserAdmin, busy, run }: { data: OperationSnapshot; client: SupabaseClient; organizationId: string; projectId: string; projectName: string; buildingId: string; buildingName: string; parties: ProjectParty[]; canManageOrganization: boolean; openUserAdmin: () => void; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean> }) {
-  const [section, setSection] = useState<"settings" | "structure" | "templates" | "backup">("settings");
+  const [section, setSection] = useState<"readiness" | "settings" | "structure" | "templates" | "backup">("readiness");
   const [template, setTemplate] = useState({ module: "inspection", code: "", name: "", prompts: "" });
   const [settings, setSettings] = useState(() => ({ maxFileSizeMb: data.settings?.max_file_size_mb ?? 25, leadHours: data.settings?.notification_lead_hours ?? 24, retentionDays: data.settings?.retention_days?.toString() ?? "", reportPrefix: data.settings?.report_prefix ?? "DR" }));
   const [location, setLocation] = useState({ type: "zone", code: "", name: "", parentId: "", description: "" });
@@ -566,12 +568,72 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
   return (
     <>
       <header className="secondary-header"><div><p className="eyebrow">Beheer · {projectName}</p><h1>Configuratie en betrouwbaarheid</h1><p>Projectregels, sjablonen, interne toegang en aantoonbare back-ups.</p></div></header>
-      <div className="operation-tabs admin-tabs">{[["settings", "Projectregels"], ["structure", "Locaties & partijen"], ["templates", "Checklists"], ["backup", "Opslag & back-up"]].map(([id, label]) => <button className={section === id ? "active" : ""} type="button" onClick={() => setSection(id as typeof section)} key={id}>{label}</button>)}</div>
+      <div className="operation-tabs admin-tabs">{[["readiness", "Productiegereedheid"], ["settings", "Projectregels"], ["structure", "Locaties & partijen"], ["templates", "Checklists"], ["backup", "Opslag & back-up"]].map(([id, label]) => <button className={section === id ? "active" : ""} type="button" onClick={() => setSection(id as typeof section)} key={id}>{label}</button>)}</div>
+      {section === "readiness" ? <ReadinessChecklist items={data.productionReadiness} editable={canManageOrganization} busy={busy} run={run} client={client} /> : null}
       {section === "settings" ? <section className="operation-panel"><div className="admin-card-grid">{canManageOrganization ? <button className="module-card" type="button" onClick={openUserAdmin}><span className="module-card-icon"><Users size={19} /></span><h2>Gebruikers en toegang</h2><p>Alleen beheerders maken interne accounts en wijzen organisatie- of projectrollen toe.</p></button> : null}<MfaSecurityCard client={client} /><div className="operation-form"><h2>Projectregels</h2><div className="form-grid-2"><label className="form-field"><span>Rapportprefix</span><input value={settings.reportPrefix} onChange={(event) => setSettings({ ...settings, reportPrefix: event.target.value.toUpperCase() })} /></label><label className="form-field"><span>Bestandslimiet (MB)</span><input type="number" min="1" max="100" value={settings.maxFileSizeMb} onChange={(event) => setSettings({ ...settings, maxFileSizeMb: Number(event.target.value) })} /></label><label className="form-field"><span>Herinnering vóór deadline (uur)</span><input type="number" min="1" max="720" value={settings.leadHours} onChange={(event) => setSettings({ ...settings, leadHours: Number(event.target.value) })} /></label><label className="form-field"><span>Bewaartermijn (dagen)</span><input type="number" min="30" value={settings.retentionDays} onChange={(event) => setSettings({ ...settings, retentionDays: event.target.value })} placeholder="Klantbesluit vereist" /></label></div><button className="primary-button" type="button" disabled={busy || !data.settings} onClick={() => data.settings && void run(() => saveProjectSettings(client, data.settings!, { report_prefix: settings.reportPrefix, max_file_size_mb: settings.maxFileSizeMb, notification_lead_hours: settings.leadHours, retention_days: settings.retentionDays ? Number(settings.retentionDays) : null }), "Projectregels centraal opgeslagen en geaudit.")}><Settings size={15} /> Regels opslaan</button></div></div></section> : null}
       {section === "structure" ? <section className="operation-panel"><div className="admin-card-grid"><div className="operation-form"><h2>Locatieboom · {buildingName}</h2><div className="form-grid-2"><label className="form-field"><span>Type</span><select value={location.type} onChange={(event) => setLocation({ ...location, type: event.target.value })}><option value="zone">Zone</option><option value="floor">Verdieping</option><option value="room">Ruimte</option><option value="element">Element</option><option value="work_package">Werkpakket</option></select></label><label className="form-field"><span>Code</span><input value={location.code} onChange={(event) => setLocation({ ...location, code: event.target.value })} /></label></div><label className="form-field"><span>Naam</span><input value={location.name} onChange={(event) => setLocation({ ...location, name: event.target.value })} /></label><label className="form-field"><span>Bovenliggende locatie</span><select value={location.parentId} onChange={(event) => setLocation({ ...location, parentId: event.target.value })}><option value="">Direct onder {buildingName}</option>{data.locationNodes.filter((node) => node.building_id === buildingId).map((node) => <option value={node.id} key={node.id}>{node.code} · {node.name}</option>)}</select></label><label className="form-field"><span>Toelichting</span><input value={location.description} onChange={(event) => setLocation({ ...location, description: event.target.value })} /></label><button className="primary-button" type="button" disabled={busy || location.code.trim().length < 1 || location.name.trim().length < 2} onClick={() => void run(() => createLocationNode(client, { organizationId, projectId, buildingId, parentId: location.parentId, type: location.type, code: location.code, name: location.name, description: location.description }), "Locatie aan de vaste projecthiërarchie toegevoegd.").then((okay) => { if (okay) setLocation({ type: "zone", code: "", name: "", parentId: "", description: "" }); })}><Plus size={15} /> Locatie toevoegen</button><div className="compact-register">{data.locationNodes.filter((node) => node.building_id === buildingId).map((node) => <span key={node.id}><strong>{node.code}</strong> {node.name} · {node.node_type}</span>)}</div></div><div className="operation-form"><h2>Projectpartijen</h2><div className="form-grid-2"><label className="form-field"><span>Type</span><select value={party.type} onChange={(event) => setParty({ ...party, type: event.target.value })}><option value="client">Opdrachtgever</option><option value="supervisor">Supervisor</option><option value="contractor">Aannemer</option><option value="subcontractor">Onderaannemer</option><option value="supplier">Leverancier</option><option value="consultant">Adviseur</option><option value="other">Overig</option></select></label><label className="form-field"><span>Code</span><input value={party.code} onChange={(event) => setParty({ ...party, code: event.target.value })} /></label></div><label className="form-field"><span>Naam</span><input value={party.name} onChange={(event) => setParty({ ...party, name: event.target.value })} /></label><button className="primary-button" type="button" disabled={busy || party.code.trim().length < 1 || party.name.trim().length < 2} onClick={() => void run(() => createProjectParty(client, { organizationId, projectId, code: party.code, name: party.name, type: party.type }), "Projectpartij centraal toegevoegd en beschikbaar voor aanwezigheid en toewijzing.").then((okay) => { if (okay) setParty({ type: "contractor", code: "", name: "" }); })}><Users size={15} /> Partij toevoegen</button><div className="compact-register">{parties.map((item) => <span key={item.id}><strong>{item.name}</strong> {item.type}</span>)}</div></div></div></section> : null}
       {section === "templates" ? <section className="operation-panel"><div className="operation-form"><h2>Nieuwe projectchecklist publiceren</h2><div className="form-grid-2"><label className="form-field"><span>Module</span><select value={template.module} onChange={(event) => setTemplate({ ...template, module: event.target.value })}><option value="inspection">Inspectie</option><option value="hse">HSE</option><option value="delivery">Levering</option><option value="test">Test / meting</option></select></label><label className="form-field"><span>Code</span><input value={template.code} onChange={(event) => setTemplate({ ...template, code: event.target.value })} placeholder="Bijv. BETON-01" /></label></div><label className="form-field"><span>Naam</span><input value={template.name} onChange={(event) => setTemplate({ ...template, name: event.target.value })} /></label><label className="form-field"><span>Controlepunten · één per regel</span><textarea rows={6} value={template.prompts} onChange={(event) => setTemplate({ ...template, prompts: event.target.value })} /></label><button className="primary-button" type="button" disabled={busy} onClick={addTemplate}><Plus size={15} /> Checklist publiceren</button></div><div className="template-grid">{data.templates.map((item) => <article className="template-card" key={item.id}><span>{item.module.toUpperCase()} · {item.code} · v{item.version_number}</span><h3>{item.name}</h3><p>{item.items.length} controlepunten · {item.status}</p></article>)}</div></section> : null}
       {section === "backup" ? <section className="operation-panel"><div className="storage-status-grid"><div className={`storage-status-card ${isStorageGatewayConfigured ? "" : "blocked"}`}><HardDrive size={21} /><div><strong>Google Drive-gateway</strong><span>{isStorageGatewayConfigured ? "Gateway-URL actief · serverconfiguratie wordt bij upload gecontroleerd" : "Niet gekoppeld · dedicated CODECO OAuth-account vereist"}</span></div></div><div className="storage-status-card"><DatabaseBackup size={21} /><div><strong>Handmatige JSON-export</strong><span>Beschikbaar met SHA-256 en bestandsmanifest</span></div></div><div className="storage-status-card"><Archive size={21} /><div><strong>Laatste restore dry run</strong><span>{formatDate(data.backupRuns.find((runItem) => runItem.run_type === "restore_test")?.verified_at ?? null)}</span></div></div></div><div className="backup-actions"><button className="primary-button" type="button" disabled={busy || !canManageOrganization} onClick={() => void run(() => downloadManualBackup(client, organizationId, projectId), "Back-up gedownload en checksum centraal geverifieerd. Bewaar een kopie buiten het gekoppelde Google-account.")}><DatabaseBackup size={15} /> Download geverifieerde projectback-up</button><button className="secondary-button" type="button" disabled={busy || !canManageOrganization} onClick={() => fileInput.current?.click()}><RotateCcw size={15} /> Restore dry run</button><input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void run(() => validateBackupDryRun(client, file), "Restore dry run geslaagd; er zijn geen gegevens overschreven."); event.target.value = ""; }} /></div><div className="operation-alert warning"><AlertTriangle size={18} /><div><strong>Dagelijkse off-account back-up nog geblokkeerd</strong><span>De handmatige export en dry run werken. Automatische dagelijkse upload en binaire dossierback-up vereisen de geactiveerde CODECO OAuth-secrets en een geplande productiejob.</span></div></div><HistoryColumn title="Back-uphistorie" empty="Nog geen back-uprun." rows={data.backupRuns.map((item) => `${item.run_type} · ${item.status} · ${formatDate(item.created_at)}${item.sha256 ? ` · SHA ${item.sha256.slice(0, 12)}…` : ""}`)} /></section> : null}
     </>
+  );
+}
+
+const readinessStatusLabels: Record<ProductionReadinessItem["status"], string> = {
+  todo: "Nog te doen",
+  in_progress: "In uitvoering",
+  done: "Gereed",
+  not_applicable: "Niet van toepassing",
+};
+
+const readinessCategoryLabels: Record<ProductionReadinessItem["category"], string> = {
+  accounts: "Accounts",
+  configuration: "Configuratie",
+  operations: "Beheer",
+  legal: "Besluiten",
+  acceptance: "Acceptatie",
+};
+
+function ReadinessChecklist({ items, editable, busy, run, client }: { items: ProductionReadinessItem[]; editable: boolean; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>; client: SupabaseClient }) {
+  const completed = items.filter((item) => item.status === "done" || item.status === "not_applicable").length;
+  const blockingOpen = items.filter((item) => item.blocking && item.status !== "done" && item.status !== "not_applicable").length;
+  const percentage = items.length ? Math.round((completed / items.length) * 100) : 0;
+
+  return (
+    <section className="operation-panel readiness-panel">
+      <div className={`readiness-summary ${blockingOpen ? "blocked" : "ready"}`}>
+        <div className="readiness-summary-icon">{blockingOpen ? <AlertTriangle size={22} /> : <ShieldCheck size={22} />}</div>
+        <div className="readiness-summary-copy"><span>Productiestatus</span><strong>{blockingOpen ? `${blockingOpen} blokkerende punten open` : "Go-live checklist voltooid"}</strong><p>{completed} van {items.length} punten aantoonbaar afgerond · {percentage}%</p></div>
+        <div className="readiness-progress" aria-label={`${percentage} procent gereed`}><span style={{ width: `${percentage}%` }} /></div>
+      </div>
+      <div className="operation-alert warning"><AlertTriangle size={18} /><div><strong>Bewijsreferenties, nooit geheimen</strong><span>Vul alleen een ticketnummer, datum, verantwoordelijke of documentlocatie in. Plak hier geen wachtwoorden, tokens, OAuth-secrets of herstelcodes.</span></div></div>
+      {!editable ? <div className="operation-alert"><ShieldCheck size={18} /><div><strong>Alleen-lezen</strong><span>Een organisatiebeheerder kan de centrale productiestatus en bewijsreferenties bijwerken.</span></div></div> : null}
+      <div className="readiness-list">
+        {items.map((item) => <ReadinessItem key={`${item.id}:${item.status}:${item.evidence ?? ""}`} item={item} editable={editable} busy={busy} run={run} client={client} />)}
+      </div>
+    </section>
+  );
+}
+
+function ReadinessItem({ item, editable, busy, run, client }: { item: ProductionReadinessItem; editable: boolean; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>; client: SupabaseClient }) {
+  const [status, setStatus] = useState<ProductionReadinessItem["status"]>(item.status);
+  const [evidence, setEvidence] = useState(item.evidence ?? "");
+
+  const requiresEvidence = status === "done" || status === "not_applicable";
+  const unchanged = status === item.status && evidence.trim() === (item.evidence ?? "");
+
+  return (
+    <article className={`readiness-item ${item.status === "done" || item.status === "not_applicable" ? "complete" : ""}`}>
+      <div className="readiness-item-main">
+        <div className="readiness-item-heading"><div><span className="record-number">{readinessCategoryLabels[item.category]} · {item.code}</span><h2>{item.title}</h2></div>{item.blocking ? <span className="readiness-blocker">Blokkerend</span> : <span className="readiness-optional">Niet-blokkerend</span>}</div>
+        <p>{item.description}</p>
+        <span className="readiness-owner">Eigenaar: {item.owner_hint}{item.completed_at ? ` · Afgerond ${formatDate(item.completed_at)}` : ""}</span>
+      </div>
+      <div className="readiness-item-controls">
+        <label className="form-field"><span>Status</span><select value={status} disabled={!editable || busy} onChange={(event) => setStatus(event.target.value as ProductionReadinessItem["status"])}>{Object.entries(readinessStatusLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+        <label className="form-field readiness-evidence"><span>Bewijsreferentie{requiresEvidence ? " · verplicht" : ""}</span><textarea rows={2} maxLength={1000} value={evidence} disabled={!editable || busy} onChange={(event) => setEvidence(event.target.value)} placeholder="Bijv. ticket CODECO-42 · gecontroleerd 18-07-2026 door beheerder" /></label>
+        <button className="primary-button" type="button" disabled={!editable || busy || unchanged || (requiresEvidence && evidence.trim().length < 5)} onClick={() => void run(() => updateProductionReadiness(client, item.id, status, evidence), `${item.code} centraal bijgewerkt en in het auditlog vastgelegd.`)}><ShieldCheck size={15} /> Status opslaan</button>
+      </div>
+    </article>
   );
 }
 

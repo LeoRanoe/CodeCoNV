@@ -12,9 +12,10 @@ Interne, online-first webapp voor dagelijkse constructiesupervisie. Supabase is 
 - formele HSE-registratie met vertrouwelijkheid en kritieke escalatie;
 - in-appmeldingen voor naderende en vervallen acties/bevindingen;
 - dagrapportreview, immutable snapshot+SHA-256, ondertekenverklaringen, distributiespoor en revisiehistorie;
-- projectregels, locaties, partijen, checklists, TOTP en handmatige JSON-back-up/restore-dry-run in beheer.
+- auditbare productiegereedheidschecklist, projectregels, locaties, partijen, checklists, TOTP en handmatige JSON-back-up/restore-dry-run in beheer.
 
 De exacte dekking en open klantbesluiten staan in [`../../docs/product/product-plan-compliance.md`](../../docs/product/product-plan-compliance.md).
+De accounts, externe koppelingen en go-livecontroles die CODECO nog moet afronden staan in [`../../docs/operations/production-readiness-checklist.md`](../../docs/operations/production-readiness-checklist.md) en centraal in **Meer → Beheer → Productiegereedheid**.
 
 ## Lokaal starten
 
@@ -47,4 +48,4 @@ De database bestaat uit versioned migrations onder `../../supabase/migrations`; 
 
 ## Productie
 
-De webapp wordt privé via Sites gepubliceerd. Self-signup blijft uit; alleen een beheerder kan interne accounts uitnodigen. Voor volledige formele ingebruikname moeten de externe blokkades in de compliance-matrix worden gesloten, met name Drive/OAuth, automatische back-up, definitieve klantformulieren, bewaartermijnen en juridisch ondertekenniveau.
+De webapp wordt privé via Sites gepubliceerd. Self-signup blijft uit; alleen een beheerder kan interne accounts uitnodigen. Voor volledige formele ingebruikname moeten alle blokkerende items in de productiegereedheidschecklist met een veilige bewijsreferentie zijn gesloten, met name Drive/OAuth, SMTP, automatische back-up, definitieve klantformulieren, bewaartermijnen, juridisch ondertekenniveau en gebruikersacceptatie.

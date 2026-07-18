@@ -35,8 +35,9 @@ test("server-renders the secure CODECO entry point", async () => {
 });
 
 test("keeps the central post-MVP interaction and accessibility hooks in source", async () => {
-  const [app, page, layout, packageJson, dailyReportForm, actionForm, userForm, dataLayer, pdfReport, providers, adminRoute] = await Promise.all([
+  const [app, operationalWorkspace, page, layout, packageJson, dailyReportForm, actionForm, userForm, dataLayer, pdfReport, providers, adminRoute] = await Promise.all([
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
@@ -68,6 +69,9 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(app, /Alleen medewerkers die door een organisatiebeheerder zijn uitgenodigd/);
   assert.match(app, /Gebruikers en toegang/);
   assert.match(app, /UserAdminModal/);
+  assert.match(operationalWorkspace, /Productiegereedheid/);
+  assert.match(operationalWorkspace, /Bewijsreferenties, nooit geheimen/);
+  assert.match(operationalWorkspace, /updateProductionReadiness/);
   assert.match(app, /must_set_password/);
   assert.match(app, /bootstrapOrganization/);
   assert.match(app, /createProjectWorkspace/);
@@ -109,7 +113,7 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
 });
 
 test("keeps the online-first Supabase foundation enforceable", async () => {
-  const [migration, questionnaireMigration, liveFlowMigration, actionMigration, accountMigration, supabaseClient, envExample, supabaseConfig] = await Promise.all([
+  const [migration, questionnaireMigration, liveFlowMigration, actionMigration, accountMigration, readinessMigration, supabaseClient, envExample, supabaseConfig] = await Promise.all([
     readFile(
       new URL("../../../supabase/migrations/202607180001_core_supervision_foundation.sql", import.meta.url),
       "utf8",
@@ -128,6 +132,10 @@ test("keeps the online-first Supabase foundation enforceable", async () => {
     ),
     readFile(
       new URL("../../../supabase/migrations/202607180005_internal_account_administration.sql", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../../../supabase/migrations/202607180019_production_readiness_checklist.sql", import.meta.url),
       "utf8",
     ),
     readFile(new URL("../lib/supabase/client.ts", import.meta.url), "utf8"),
@@ -176,6 +184,10 @@ test("keeps the online-first Supabase foundation enforceable", async () => {
   assert.match(accountMigration, /create or replace function public\.provision_internal_user/);
   assert.match(accountMigration, /create or replace function public\.list_internal_access/);
   assert.match(accountMigration, /Only an organization administrator can create another organization/);
+  assert.match(readinessMigration, /alter table public\.production_readiness_items enable row level security/);
+  assert.match(readinessMigration, /Missing organization\.manage permission/);
+  assert.match(readinessMigration, /Completion evidence is required/);
+  assert.match(readinessMigration, /revoke all on function public\.update_production_readiness_item/);
   assert.match(supabaseConfig, /\[auth\][\s\S]*enable_signup = false/);
   assert.match(supabaseConfig, /\[auth\.email\][\s\S]*enable_signup = true/);
   const configuredEnvKeys = envExample

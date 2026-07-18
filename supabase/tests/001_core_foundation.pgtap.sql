@@ -1,7 +1,7 @@
 begin;
 set local search_path = extensions, pgtap, public;
 
-select plan(38);
+select plan(40);
 
 select has_table('public', 'organizations', 'organizations table exists');
 select has_table('public', 'projects', 'projects table exists');
@@ -15,6 +15,7 @@ select has_table('public', 'report_versions', 'report_versions table exists');
 select has_table('public', 'audit_events', 'audit_events table exists');
 select has_table('public', 'day_start_checks', 'day_start_checks table exists');
 select has_table('public', 'day_closeouts', 'day_closeouts table exists');
+select has_table('public', 'production_readiness_items', 'production readiness checklist exists');
 
 select has_function('public', 'create_day_report', array['uuid', 'date', 'text'], 'atomic day-report function exists');
 select has_function(
@@ -93,6 +94,12 @@ select policies_are(
   array['day_closeouts_insert', 'day_closeouts_select', 'day_closeouts_update'],
   'daily closeout answers expose only the intended RLS policies'
 );
+select policies_are(
+  'public',
+  'production_readiness_items',
+  array['production_readiness_items_select'],
+  'production readiness exposes read-only browser access and controlled RPC updates'
+);
 
 select has_trigger('public', 'report_versions', 'report_versions_immutable', 'report versions reject mutation');
 select has_trigger('public', 'audit_events', 'audit_events_immutable', 'audit events reject mutation');
@@ -118,11 +125,11 @@ select results_eq(
         'inspection_responses', 'findings', 'finding_updates', 'hse_events',
         'files', 'file_links', 'report_reviews', 'report_signatures',
         'report_distributions', 'notifications', 'project_register_entries',
-        'backup_runs'
+        'backup_runs', 'production_readiness_items'
       ])
       and relation.relrowsecurity
   $$,
-  $$ values (38::bigint) $$,
+  $$ values (39::bigint) $$,
   'RLS is enabled on every browser-reachable table'
 );
 

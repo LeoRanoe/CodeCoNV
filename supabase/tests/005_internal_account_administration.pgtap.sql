@@ -1,7 +1,7 @@
 begin;
 set local search_path = extensions, pgtap, public;
 
-select plan(29);
+select plan(35);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at) values
   ('00000000-0000-0000-0000-0000000000c1', 'authenticated', 'authenticated', 'internal-admin@example.test', now(), now()),
@@ -20,6 +20,32 @@ select ok(
   public.can_manage_organization_members((select id from public.organizations where slug = 'codeco-internal')),
   'the organization administrator can manage accounts'
 );
+select is(
+  (select count(*) from public.production_readiness_items where organization_id = (select id from public.organizations where slug = 'codeco-internal')),
+  14::bigint,
+  'organization bootstrap seeds the complete production readiness checklist'
+);
+select is(
+  (select count(*) from public.production_readiness_items where organization_id = (select id from public.organizations where slug = 'codeco-internal') and blocking),
+  13::bigint,
+  'the checklist distinguishes blocking from optional work'
+);
+select throws_ok(
+  $$select public.update_production_readiness_item((select id from public.production_readiness_items where code = 'ACC-GOOGLE-STORAGE'), 'done', '')$$,
+  '22023',
+  'Completion evidence is required',
+  'a blocking item cannot be completed without evidence'
+);
+select lives_ok(
+  $$select public.update_production_readiness_item((select id from public.production_readiness_items where code = 'ACC-GOOGLE-STORAGE'), 'done', 'Ticket CODECO-42, gecontroleerd door beheerder')$$,
+  'an organization administrator can complete a readiness item with evidence'
+);
+select ok(
+  (select status = 'done' and completed_by = '00000000-0000-0000-0000-0000000000c1'::uuid and completed_at is not null and evidence = 'Ticket CODECO-42, gecontroleerd door beheerder' from public.production_readiness_items where code = 'ACC-GOOGLE-STORAGE'),
+  'completion status, actor, timestamp and evidence are retained together'
+);
+create temporary table readiness_test_item as
+  select id from public.production_readiness_items where code = 'CFG-SMTP';
 
 select lives_ok(
   format(
@@ -90,6 +116,12 @@ select throws_ok(
   '42501',
   'Only an organization administrator can create another organization',
   'a non-admin cannot bypass the internal bootstrap rule'
+);
+select throws_ok(
+  $$select public.update_production_readiness_item((select id from readiness_test_item), 'in_progress', 'SMTP-aanvraag gestart')$$,
+  '42501',
+  'Missing organization.manage permission',
+  'a supervisor cannot change the production readiness checklist'
 );
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000c3","role":"authenticated"}';
