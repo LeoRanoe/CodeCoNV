@@ -1,15 +1,12 @@
 import type { Metadata } from "next";
-import { SkeletonPreview } from "./_sites-preview/SkeletonPreview";
+import { SitezichtApp } from "./sitezicht-app";
 
 export const metadata: Metadata = {
-  title: "Your site is taking shape",
+  title: "Vandaag",
   description:
-    "Your first version will appear here automatically when it’s ready.",
-  other: {
-    "codex-preview": "development",
-  },
+    "Mobiele dagcockpit voor constructiesupervisie, inspecties en rapportage.",
 };
 
 export default function Home() {
-  return <SkeletonPreview />;
+  return <SitezichtApp />;
 }
