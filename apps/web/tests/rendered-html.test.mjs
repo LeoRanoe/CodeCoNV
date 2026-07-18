@@ -37,31 +37,47 @@ test("server-renders the required CODECO project entry point", async () => {
 });
 
 test("keeps the MVP interaction and accessibility hooks in source", async () => {
-  const [app, page, layout, packageJson] = await Promise.all([
+  const [app, page, layout, packageJson, dailyReportForm] = await Promise.all([
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
+    readFile(new URL("../lib/forms/daily-report.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(app, /aria-modal="true"/);
   assert.match(app, /event\.key === "Escape"/);
   assert.match(app, /timeZone: "America\/Paramaribo"/);
   assert.match(app, /WorkspaceStage/);
-  assert.match(app, /Projectstart openen/);
+  assert.match(app, /Projectstart invullen/);
   assert.match(app, /Aanwezigheid vandaag/);
+  assert.match(app, /Hoe is het project vandaag gegaan\?/);
+  assert.match(app, /Wat was het werkelijke weer\?/);
+  assert.match(app, /Geactiveerd door:/);
+  assert.match(app, /Dagvragen bevestigen/);
+  assert.match(app, /useForm<DailyCloseoutAnswers>/);
+  assert.match(app, /zodResolver\(dailyCloseoutSchema\)/);
   assert.match(app, /setEntries/);
   assert.match(app, /Demosessie · niet centraal opgeslagen/);
   assert.doesNotMatch(app, /Alles opgeslagen|centraal opgeslagen met project-/);
   assert.match(page, /CodecoSupervisionApp/);
   assert.match(layout, /<html lang="nl">/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
+  assert.match(packageJson, /react-hook-form/);
+  assert.match(packageJson, /"zod"/);
+  assert.match(dailyReportForm, /clientReportSections/);
+  assert.match(dailyReportForm, /AUTO-HSE-01/);
+  assert.match(app, /Geen AI|No AI/i);
 });
 
 test("keeps the online-first Supabase foundation enforceable", async () => {
-  const [migration, supabaseClient, envExample] = await Promise.all([
+  const [migration, questionnaireMigration, supabaseClient, envExample] = await Promise.all([
     readFile(
       new URL("../../../supabase/migrations/202607180001_core_supervision_foundation.sql", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../../../supabase/migrations/202607180002_daily_questionnaires.sql", import.meta.url),
       "utf8",
     ),
     readFile(new URL("../lib/supabase/client.ts", import.meta.url), "utf8"),
@@ -92,6 +108,11 @@ test("keeps the online-first Supabase foundation enforceable", async () => {
   assert.match(migration, /idempotency_key/);
   assert.match(supabaseClient, /getSupabaseBrowserClient/);
   assert.match(supabaseClient, /if \(!isSupabaseConfigured\) return null/);
+  assert.match(questionnaireMigration, /create table public\.day_start_checks/);
+  assert.match(questionnaireMigration, /create table public\.day_closeouts/);
+  assert.match(questionnaireMigration, /automation_rules_snapshot/);
+  assert.match(questionnaireMigration, /alter table public\.day_start_checks enable row level security/);
+  assert.match(questionnaireMigration, /alter table public\.day_closeouts enable row level security/);
   const configuredEnvKeys = envExample
     .split("\n")
     .filter((line) => line.trim() && !line.trim().startsWith("#"))
@@ -112,6 +133,9 @@ test("tracks product-plan and CODECO compliance explicitly", async () => {
   assert.match(compliance, /WF-01/);
   assert.match(compliance, /MVP-01/);
   assert.match(compliance, /TA-01/);
+  assert.match(compliance, /TA-05/);
+  assert.match(compliance, /CDR-01/);
+  assert.match(compliance, /CDR-19/);
   assert.match(compliance, /Open klantbesluiten/);
   assert.match(clientProfile, /Kwaliteit/);
   assert.match(clientProfile, /Transparantie/);

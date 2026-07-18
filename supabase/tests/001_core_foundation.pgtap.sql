@@ -1,7 +1,7 @@
 begin;
 set local search_path = extensions, public;
 
-select plan(25);
+select plan(31);
 
 select has_table('public', 'organizations', 'organizations table exists');
 select has_table('public', 'projects', 'projects table exists');
@@ -12,6 +12,8 @@ select has_table('public', 'site_registrations', 'site_registrations table exist
 select has_table('public', 'actions', 'actions table exists');
 select has_table('public', 'report_versions', 'report_versions table exists');
 select has_table('public', 'audit_events', 'audit_events table exists');
+select has_table('public', 'day_start_checks', 'day_start_checks table exists');
+select has_table('public', 'day_closeouts', 'day_closeouts table exists');
 
 select has_function('public', 'create_day_report', array['uuid', 'date', 'text'], 'atomic day-report function exists');
 select has_function(
@@ -49,11 +51,25 @@ select policies_are(
   array['report_versions_insert', 'report_versions_select'],
   'report versions expose no update or delete policy'
 );
+select policies_are(
+  'public',
+  'day_start_checks',
+  array['day_start_checks_insert', 'day_start_checks_select', 'day_start_checks_update'],
+  'project-start answers expose only the intended RLS policies'
+);
+select policies_are(
+  'public',
+  'day_closeouts',
+  array['day_closeouts_insert', 'day_closeouts_select', 'day_closeouts_update'],
+  'daily closeout answers expose only the intended RLS policies'
+);
 
 select has_trigger('public', 'report_versions', 'report_versions_immutable', 'report versions reject mutation');
 select has_trigger('public', 'audit_events', 'audit_events_immutable', 'audit events reject mutation');
 select has_trigger('public', 'day_reports', 'day_reports_status_guard', 'report status transitions are database-enforced');
 select has_trigger('public', 'actions', 'actions_status_guard', 'action verification is database-enforced');
+select has_trigger('public', 'day_start_checks', 'day_start_checks_audit', 'project-start answers are audited');
+select has_trigger('public', 'day_closeouts', 'day_closeouts_audit', 'daily closeout answers are audited');
 
 select results_eq(
   $$
@@ -66,11 +82,11 @@ select results_eq(
         'organization_memberships', 'organization_member_roles', 'projects',
         'project_memberships', 'project_member_roles', 'buildings', 'parties',
         'day_reports', 'attendance_entries', 'site_registrations', 'actions',
-        'report_versions', 'audit_events'
+        'report_versions', 'audit_events', 'day_start_checks', 'day_closeouts'
       ])
       and relation.relrowsecurity
   $$,
-  $$ values (18::bigint) $$,
+  $$ values (20::bigint) $$,
   'RLS is enabled on every browser-reachable table'
 );
 

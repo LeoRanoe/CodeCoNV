@@ -1,5 +1,6 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -40,11 +41,20 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
+import {
+  clientReportSections,
+  dailyCloseoutSchema,
+  getProjectStartAutomation,
+  projectStartSchema,
+  type DailyCloseoutAnswers,
+  type ProjectStartAnswers,
+} from "@/lib/forms/daily-report";
 
 type NavKey = "vandaag" | "project" | "acties" | "rapporten" | "meer";
-type ModalKey = "quick" | "entry" | "report" | "attendance" | null;
-type WorkspaceStage = "projects" | "buildings" | "cockpit";
+type ModalKey = "quick" | "entry" | "report" | "attendance" | "daily_questions" | null;
+type WorkspaceStage = "projects" | "buildings" | "project_start" | "cockpit";
 type EntryKind =
   | "activity"
   | "inspection"
@@ -223,6 +233,14 @@ const entryTitles: Record<string, string> = {
   delay: "Vertraging",
 };
 
+const weatherLabels: Record<ProjectStartAnswers["weatherCondition"], string> = {
+  sunny: "Zonnig",
+  partly_cloudy: "Licht bewolkt",
+  cloudy: "Bewolkt",
+  rain: "Regen",
+  heavy_rain: "Zware regen",
+};
+
 function currentTime() {
   return new Intl.DateTimeFormat("nl-NL", {
     hour: "2-digit",
@@ -245,6 +263,8 @@ export function CodecoSupervisionApp() {
   const [entries, setEntries] = useState<TimelineEntry[]>(initialTimeline);
   const [attendance, setAttendance] = useState<AttendanceRow[]>(initialAttendance);
   const [completedTodos, setCompletedTodos] = useState<number[]>([1]);
+  const [projectStartAnswers, setProjectStartAnswers] = useState<ProjectStartAnswers | null>(null);
+  const [dailyCloseoutAnswers, setDailyCloseoutAnswers] = useState<DailyCloseoutAnswers | null>(null);
   const [toast, setToast] = useState("");
   const storageStatus = isSupabaseConfigured
     ? "Supabase geconfigureerd · demo-invoer nog niet gekoppeld"
@@ -265,9 +285,9 @@ export function CodecoSupervisionApp() {
   }, [toast]);
 
   const completeness = useMemo(() => {
-    const complete = 4 + Math.min(completedTodos.length, 2);
-    return Math.round((complete / 8) * 100);
-  }, [completedTodos]);
+    const complete = 4 + Math.min(completedTodos.length, 3) + (projectStartAnswers ? 1 : 0) + (dailyCloseoutAnswers ? 1 : 0);
+    return Math.round((complete / 9) * 100);
+  }, [completedTodos, dailyCloseoutAnswers, projectStartAnswers]);
 
   const attendanceTotal = useMemo(
     () => attendance.reduce((total, row) => total + row.count, 0),
@@ -323,8 +343,14 @@ export function CodecoSupervisionApp() {
     setWorkspaceStage("buildings");
   };
 
-  const startProject = () => {
+  const openProjectStart = () => {
     if (!selectedProject || !selectedBuilding) return;
+    setWorkspaceStage("project_start");
+  };
+
+  const startProject = (answers: ProjectStartAnswers) => {
+    if (!selectedProject || !selectedBuilding) return;
+    setProjectStartAnswers(answers);
     setWorkspaceStage("cockpit");
     setActiveNav("vandaag");
     window.scrollTo({ top: 0 });
@@ -344,11 +370,13 @@ export function CodecoSupervisionApp() {
         selectedBuilding={selectedBuilding}
         chooseProject={chooseProject}
         chooseBuilding={setSelectedBuilding}
+        openProjectStart={openProjectStart}
         startProject={startProject}
         goBack={() => {
           setSelectedBuilding(null);
           setWorkspaceStage("projects");
         }}
+        goBackToBuilding={() => setWorkspaceStage("buildings")}
       />
     );
   }
@@ -437,6 +465,9 @@ export function CodecoSupervisionApp() {
               projectName={projectName}
               buildingName={buildingName}
               attendanceTotal={attendanceTotal}
+              projectStartAnswers={projectStartAnswers}
+              dailyCloseoutAnswers={dailyCloseoutAnswers}
+              openDailyQuestions={() => setModal("daily_questions")}
               showCritical={() => {
                 navigate("acties");
                 setToast("Kritieke bevinding Q-2026-018 geopend.");
@@ -505,9 +536,37 @@ export function CodecoSupervisionApp() {
           entries={entries}
           attendanceTotal={attendanceTotal}
           projectName={projectName}
+          dailyCloseoutAnswers={dailyCloseoutAnswers}
           onSubmit={() => {
             setModal(null);
             setToast("Dagrapport is gereed voor review gezet.");
+          }}
+        />
+      ) : null}
+      {modal === "daily_questions" ? (
+        <DailyQuestionsModal
+          close={() => setModal(null)}
+          initialAnswers={dailyCloseoutAnswers}
+          projectStartAnswers={projectStartAnswers}
+          save={(answers) => {
+            setDailyCloseoutAnswers(answers);
+            setCompletedTodos((current) => Array.from(new Set([...current, 2, 3])));
+            setEntries((current) => [
+              {
+                id: 900001,
+                time: currentTime(),
+                kind: "note",
+                title: "Dagvragen bijgewerkt",
+                detail: "Verloop, kwaliteit/HSE, logistiek en morgenplanning zijn in de demosessie bevestigd.",
+                location: `${buildingName} · projectbreed`,
+                person: "Jennifer G.",
+                badge: "Bevestigd",
+                badgeTone: "green",
+              },
+              ...current.filter((entry) => entry.id !== 900001),
+            ]);
+            setModal(null);
+            setToast("Dagvragen zijn alleen in deze demosessie verwerkt in de rapportcontrole.");
           }}
         />
       ) : null}
@@ -544,18 +603,23 @@ function ContextSelection({
   selectedBuilding,
   chooseProject,
   chooseBuilding,
+  openProjectStart,
   startProject,
   goBack,
+  goBackToBuilding,
 }: {
   stage: WorkspaceStage;
   selectedProject: ProjectContext | null;
   selectedBuilding: BuildingContext | null;
   chooseProject: (project: ProjectContext) => void;
   chooseBuilding: (building: BuildingContext) => void;
-  startProject: () => void;
+  openProjectStart: () => void;
+  startProject: (answers: ProjectStartAnswers) => void;
   goBack: () => void;
+  goBackToBuilding: () => void;
 }) {
   const showBuildings = stage === "buildings" && selectedProject;
+  const showProjectStart = stage === "project_start" && Boolean(selectedProject && selectedBuilding);
   return (
     <div className="context-shell">
       <header className="context-topbar">
@@ -572,14 +636,21 @@ function ContextSelection({
           <span><strong>Demosessie</strong> Wijzigingen worden nog niet centraal bewaard. Supabase is voorbereid, maar nog niet aan deze interface gekoppeld.</span>
         </div>
         <div className="context-steps" aria-label="Werkcontext kiezen">
-          <span className="active"><strong>1</strong> Project</span>
+          <span className={stage === "projects" ? "active" : "done"}><strong>1</strong> Project</span>
           <ChevronRight size={14} />
-          <span className={showBuildings ? "active" : ""}><strong>2</strong> Gebouw</span>
+          <span className={showBuildings ? "active" : showProjectStart ? "done" : ""}><strong>2</strong> Gebouw</span>
           <ChevronRight size={14} />
-          <span><strong>3</strong> Projectstart</span>
+          <span className={showProjectStart ? "active" : ""}><strong>3</strong> Projectstart</span>
         </div>
 
-        {!showBuildings ? (
+        {showProjectStart ? (
+          <ProjectStartForm
+            project={selectedProject!}
+            building={selectedBuilding!}
+            goBack={goBackToBuilding}
+            startProject={startProject}
+          />
+        ) : !showBuildings ? (
           <>
             <section className="context-heading">
               <div><p className="eyebrow">Mijn projecten</p><h1>Waar ga je vandaag werken?</h1><p>Kies eerst het project. Je gebouw en dagrapport volgen in de volgende stap.</p></div>
@@ -621,12 +692,122 @@ function ContextSelection({
             </section>
             <div className="project-start-bar">
               <span><strong>{selectedBuilding ? selectedBuilding.name : "Nog geen gebouw gekozen"}</strong><small>{selectedBuilding ? "Je werkcontext is compleet." : "Kies een gebouw om door te gaan."}</small></span>
-              <button className="primary-button" type="button" disabled={!selectedBuilding} onClick={startProject}>Projectstart openen <ArrowRight size={15} /></button>
+              <button className="primary-button" type="button" disabled={!selectedBuilding} onClick={openProjectStart}>Projectstart invullen <ArrowRight size={15} /></button>
             </div>
           </>
         )}
       </main>
     </div>
+  );
+}
+
+function ProjectStartForm({
+  project,
+  building,
+  goBack,
+  startProject,
+}: {
+  project: ProjectContext;
+  building: BuildingContext;
+  goBack: () => void;
+  startProject: (answers: ProjectStartAnswers) => void;
+}) {
+  const {
+    register,
+    handleSubmit,
+    control,
+    formState: { errors },
+  } = useForm<ProjectStartAnswers>({
+    resolver: zodResolver(projectStartSchema),
+    mode: "onBlur",
+    defaultValues: {
+      weatherCondition: "partly_cloudy",
+      temperatureC: 31,
+      windCondition: "moderate",
+      shiftStart: "07:00",
+      shiftEnd: "16:00",
+      plannedWork: "Bekisting kernwand en wapeningscontrole vloer V3",
+      expectedWorkers: 42,
+      inspectionPlanned: "yes",
+      highRiskWork: "no",
+      concreteWork: "yes",
+      workPermit: "not_required",
+      drawingStatus: "approved",
+      drawingIssueReported: false,
+      riskNotes: "Levering betonstaal rond 10:00 controleren.",
+    },
+  });
+  const answers = useWatch({ control });
+  const automation = getProjectStartAutomation(answers);
+
+  return (
+    <>
+      <button className="back-button context-back" type="button" onClick={goBack}><ArrowLeft size={15} /> Terug naar gebouwen</button>
+      <section className="context-heading project-start-heading">
+        <div>
+          <p className="eyebrow">{project.code} · {building.name}</p>
+          <h1>Start de werkdag met de juiste vragen</h1>
+          <p>Bevestig alleen wat niet betrouwbaar uit het project kan worden afgeleid. De regels rechts tonen direct wat de app daarna klaarzet.</p>
+        </div>
+        <span className="context-project-pill"><CalendarDays size={15} /> Zaterdag 18 juli 2026</span>
+      </section>
+
+      <div className="project-start-layout">
+        <form className="project-start-form" onSubmit={handleSubmit(startProject)} noValidate>
+          <section className="form-section-card">
+            <header><span className="form-section-number">1</span><span><strong>Weer en werktijden</strong><small>Handmatig waargenomen op de bouwplaats</small></span></header>
+            <div className="form-grid three-columns">
+              <label className="form-field"><span>Wat is het weer?</span><select {...register("weatherCondition")}><option value="sunny">Zonnig</option><option value="partly_cloudy">Licht bewolkt</option><option value="cloudy">Bewolkt</option><option value="rain">Regen</option><option value="heavy_rain">Zware regen</option></select></label>
+              <label className="form-field"><span>Temperatuur</span><span className="input-with-unit"><input type="number" {...register("temperatureC", { valueAsNumber: true })} /><em>°C</em></span>{errors.temperatureC ? <small className="field-error">{errors.temperatureC.message}</small> : null}</label>
+              <label className="form-field"><span>Wind</span><select {...register("windCondition")}><option value="calm">Kalm</option><option value="moderate">Matig</option><option value="strong">Sterk</option></select></label>
+              <label className="form-field"><span>Start werktijd</span><input type="time" {...register("shiftStart")} />{errors.shiftStart ? <small className="field-error">{errors.shiftStart.message}</small> : null}</label>
+              <label className="form-field"><span>Einde werktijd</span><input type="time" {...register("shiftEnd")} />{errors.shiftEnd ? <small className="field-error">{errors.shiftEnd.message}</small> : null}</label>
+              <label className="form-field"><span>Verwachte bezetting</span><span className="input-with-unit"><input type="number" {...register("expectedWorkers", { valueAsNumber: true })} /><em>personen</em></span></label>
+            </div>
+          </section>
+
+          <section className="form-section-card">
+            <header><span className="form-section-number">2</span><span><strong>Wat staat vandaag gepland?</strong><small>Dit voedt het dagplan en de voorgestelde modules</small></span></header>
+            <div className="form-grid two-columns">
+              <label className="form-field wide"><span>Geplande werkzaamheden *</span><textarea rows={3} {...register("plannedWork")} />{errors.plannedWork ? <small className="field-error">{errors.plannedWork.message}</small> : null}</label>
+              <label className="form-field"><span>Inspectie gepland?</span><select {...register("inspectionPlanned")}><option value="yes">Ja</option><option value="no">Nee</option></select></label>
+              <label className="form-field"><span>Betonwerk gepland?</span><select {...register("concreteWork")}><option value="yes">Ja</option><option value="no">Nee</option></select></label>
+              <label className="form-field"><span>Hoog-risicowerk?</span><select {...register("highRiskWork")}><option value="no">Nee</option><option value="yes">Ja</option></select></label>
+              <label className="form-field"><span>Werkvergunning</span><select {...register("workPermit")}><option value="available">Aanwezig</option><option value="not_required">Niet vereist</option><option value="missing">Ontbreekt</option></select></label>
+            </div>
+          </section>
+
+          <section className="form-section-card">
+            <header><span className="form-section-number">3</span><span><strong>Documenten en verwachte risico’s</strong><small>De app waarschuwt; de supervisor blijft beslissen</small></span></header>
+            <div className="form-grid two-columns">
+              <label className="form-field"><span>Goedgekeurde werktekening</span><select {...register("drawingStatus")}><option value="approved">Actuele revisie aanwezig</option><option value="not_required">Niet vereist</option><option value="missing">Ontbreekt / onzeker</option></select></label>
+              <label className="form-field wide"><span>Welke risico’s verwacht je vandaag?</span><textarea rows={3} placeholder="Bijvoorbeeld hijswerk, regen, levering of grondwater" {...register("riskNotes")} /></label>
+              {answers.drawingStatus === "missing" ? (
+                <label className="confirmation-check wide"><input type="checkbox" {...register("drawingIssueReported")} /><span><strong>Ontbrekende tekening is gemeld</strong><small>Menselijke bevestiging vereist voordat de werkdag wordt geopend.</small>{errors.drawingIssueReported ? <em className="field-error">{errors.drawingIssueReported.message}</em> : null}</span></label>
+              ) : null}
+            </div>
+          </section>
+
+          <div className="project-start-submit">
+            <span><ShieldCheck size={15} /> Antwoorden blijven in deze demo alleen in de geopende sessie.</span>
+            <button className="primary-button" type="submit">Dagrapport starten <ArrowRight size={15} /></button>
+          </div>
+        </form>
+
+        <aside className="automation-panel">
+          <header><span className="automation-panel-icon"><Settings size={19} /></span><span><strong>Zichtbare automatisering</strong><small>{automation.length} vaste regels actief</small></span></header>
+          <p className="automation-intro">Geen AI: iedere actie komt uit een vaste projectregel en blijft door de supervisor controleerbaar.</p>
+          <div className="automation-rule-list">
+            {automation.map((rule) => (
+              <article className={`automation-rule ${rule.tone}`} key={rule.id}>
+                <span className="automation-rule-state">{rule.tone === "critical" ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}</span>
+                <span><strong>{rule.title}</strong><p>{rule.action}</p><small>Geactiveerd door: {rule.source} · {rule.id}</small></span>
+              </article>
+            ))}
+          </div>
+        </aside>
+      </div>
+    </>
   );
 }
 
@@ -640,6 +821,9 @@ function TodayView({
   projectName,
   buildingName,
   attendanceTotal,
+  projectStartAnswers,
+  dailyCloseoutAnswers,
+  openDailyQuestions,
 }: {
   entries: TimelineEntry[];
   completeness: number;
@@ -650,12 +834,19 @@ function TodayView({
   projectName: string;
   buildingName: string;
   attendanceTotal: number;
+  projectStartAnswers: ProjectStartAnswers | null;
+  dailyCloseoutAnswers: DailyCloseoutAnswers | null;
+  openDailyQuestions: () => void;
 }) {
   const todos = [
     { id: 1, title: "Weer en werktijden bevestigen", detail: "Vastgelegd om 07:02", flag: "" },
     { id: 2, title: "HSE-dagcheck afronden", detail: "Nog 3 controlepunten", flag: "red" },
     { id: 3, title: "Planning voor morgen invullen", detail: "Voor dagafsluiting", flag: "" },
   ];
+  const automation = projectStartAnswers ? getProjectStartAutomation(projectStartAnswers) : [];
+  const weatherLabel = projectStartAnswers
+    ? `${projectStartAnswers.temperatureC}°C · ${weatherLabels[projectStartAnswers.weatherCondition]}`
+    : "Weer nog niet bevestigd";
 
   return (
     <>
@@ -665,13 +856,16 @@ function TodayView({
           <h1>Goedemorgen, Jennifer.</h1>
           <p>Dit vraagt vandaag je aandacht bij {projectName} · {buildingName}.</p>
         </div>
-        <div className="weather-chip">
-          <span className="weather-icon"><CloudSun size={20} /></span>
-          <span className="weather-copy">
-            <strong>31°C · Licht bewolkt</strong>
-            <span>Handmatig vastgelegd · 07:02</span>
-          </span>
-          <ChevronRight size={15} color="#718995" />
+        <div className="page-intro-actions">
+          <div className="weather-chip">
+            <span className="weather-icon"><CloudSun size={20} /></span>
+            <span className="weather-copy">
+              <strong>{weatherLabel}</strong>
+              <span>Handmatig bevestigd bij Projectstart</span>
+            </span>
+            <ChevronRight size={15} color="#718995" />
+          </div>
+          <button className="primary-button day-questions-button" type="button" onClick={openDailyQuestions}><ClipboardCheck size={15} /> Dagvragen invullen</button>
         </div>
       </section>
 
@@ -701,6 +895,22 @@ function TodayView({
           </div>
           <button className="text-link" type="button" onClick={showCritical}>Open bevinding Q-2026-018 <ArrowRight size={13} /></button>
         </article>
+      </section>
+
+      <section className={`questionnaire-strip ${dailyCloseoutAnswers ? "complete" : ""}`} aria-label="Dagvragen en automatisering">
+        <div className="questionnaire-main">
+          <span className="questionnaire-icon"><FileCheck2 size={21} /></span>
+          <span className="questionnaire-copy">
+            <span className="status-kicker">Klantformat · {clientReportSections.length} rapportonderdelen</span>
+            <strong>{dailyCloseoutAnswers ? "Dagvragen bevestigd" : "Hoe is het project vandaag gegaan?"}</strong>
+            <p>Vier korte vraaggroepen vullen de juiste modules: verloop, kwaliteit/HSE, logistiek en planning morgen.</p>
+          </span>
+        </div>
+        <div className="questionnaire-automation">
+          {automation.slice(0, 3).map((rule) => <span className={`rule-chip ${rule.tone}`} title={`Geactiveerd door: ${rule.source}`} key={rule.id}>{rule.title}</span>)}
+        </div>
+        <div className="questionnaire-progress"><strong>{dailyCloseoutAnswers ? "4/4" : "1/4"}</strong><span>vraaggroepen</span></div>
+        <button className={dailyCloseoutAnswers ? "ghost-button" : "primary-button"} type="button" onClick={openDailyQuestions}>{dailyCloseoutAnswers ? "Antwoorden bekijken" : "Vragen starten"} <ArrowRight size={14} /></button>
       </section>
 
       <section className="dashboard-grid">
@@ -1062,12 +1272,153 @@ function AttendanceModal({
   );
 }
 
+function DailyQuestionsModal({
+  close,
+  initialAnswers,
+  projectStartAnswers,
+  save,
+}: {
+  close: () => void;
+  initialAnswers: DailyCloseoutAnswers | null;
+  projectStartAnswers: ProjectStartAnswers | null;
+  save: (answers: DailyCloseoutAnswers) => void;
+}) {
+  const [step, setStep] = useState(0);
+  const {
+    register,
+    handleSubmit,
+    control,
+    trigger,
+    formState: { errors },
+  } = useForm<DailyCloseoutAnswers>({
+    resolver: zodResolver(dailyCloseoutSchema),
+    mode: "onBlur",
+    defaultValues: initialAnswers ?? {
+      daySummary: "",
+      weatherSummary: projectStartAnswers
+        ? `${weatherLabels[projectStartAnswers.weatherCondition]}, ${projectStartAnswers.temperatureC}°C, wind ${projectStartAnswers.windCondition === "strong" ? "sterk" : projectStartAnswers.windCondition === "moderate" ? "matig" : "kalm"}`
+        : "",
+      workPerformed: "",
+      progressPercent: 67,
+      inspectionResult: "none",
+      qualityIssues: "no",
+      qualityDetails: "",
+      hseEvent: "none",
+      hseDetails: "",
+      equipmentStatus: "",
+      deliveries: "",
+      testsMeasurements: "",
+      variationWork: "none",
+      delayCause: "none",
+      delayHours: 0,
+      communication: "",
+      risks: projectStartAnswers?.riskNotes ?? "",
+      tomorrowPlan: "",
+      photoCount: 0,
+      attachmentsConfirmed: false,
+    },
+  });
+  const [qualityIssues, hseEvent, delayCause] = useWatch({
+    control,
+    name: ["qualityIssues", "hseEvent", "delayCause"],
+  });
+  const stepFields: Array<Array<keyof DailyCloseoutAnswers>> = [
+    ["daySummary", "weatherSummary", "workPerformed", "progressPercent"],
+    ["inspectionResult", "qualityIssues", "qualityDetails", "hseEvent", "hseDetails"],
+    ["equipmentStatus", "deliveries", "testsMeasurements", "variationWork", "delayCause", "delayHours"],
+    ["communication", "risks", "tomorrowPlan", "photoCount", "attachmentsConfirmed"],
+  ];
+  const stepTitles = ["Verloop & werk", "Kwaliteit & HSE", "Logistiek & vertraging", "Afspraken & morgen"];
+  const nextStep = async () => {
+    const valid = await trigger(stepFields[step]);
+    if (valid) setStep((current) => Math.min(3, current + 1));
+  };
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+      <section className="modal daily-questions-modal" role="dialog" aria-modal="true" aria-labelledby="daily-questions-title">
+        <header className="modal-header">
+          <div><h2 id="daily-questions-title">Dagvragen voor het rapport</h2><p>{clientReportSections.length} klantonderdelen · modulair hergebruikt · stap {step + 1} van 4</p></div>
+          <button className="modal-close" type="button" onClick={close} aria-label="Sluiten"><X size={18} /></button>
+        </header>
+        <form className="modal-body daily-questions-body" onSubmit={handleSubmit(save)} noValidate>
+          <div className="question-stepper" aria-label="Voortgang dagvragen">
+            {stepTitles.map((title, index) => <span className={index === step ? "active" : index < step ? "done" : ""} key={title}><b>{index < step ? <Check size={12} /> : index + 1}</b>{title}</span>)}
+          </div>
+
+          {step === 0 ? (
+            <section className="question-group">
+              <header><span className="question-group-icon"><Gauge size={18} /></span><span><h3>Hoe is het project vandaag gegaan?</h3><p>Deze antwoorden voeden samenvatting, werkzaamheden en voortgang; de onderliggende modules blijven de bron.</p></span></header>
+              <div className="form-grid two-columns">
+                <label className="form-field wide"><span>Samenvatting van de dag *</span><textarea rows={4} placeholder="Vat in maximaal vijf regels samen wat er is gebeurd." {...register("daySummary")} />{errors.daySummary ? <small className="field-error">{errors.daySummary.message}</small> : null}</label>
+                <label className="form-field"><span>Wat was het werkelijke weer? *</span><input type="text" {...register("weatherSummary")} />{errors.weatherSummary ? <small className="field-error">{errors.weatherSummary.message}</small> : null}</label>
+                <label className="form-field"><span>Voortgang project</span><span className="input-with-unit"><input type="number" min="0" max="100" {...register("progressPercent", { valueAsNumber: true })} /><em>%</em></span>{errors.progressPercent ? <small className="field-error">{errors.progressPercent.message}</small> : null}</label>
+                <label className="form-field wide"><span>Welke werkzaamheden zijn uitgevoerd? *</span><textarea rows={4} placeholder="Activiteit, locatie en percentage gereed." {...register("workPerformed")} />{errors.workPerformed ? <small className="field-error">{errors.workPerformed.message}</small> : null}</label>
+              </div>
+            </section>
+          ) : null}
+
+          {step === 1 ? (
+            <section className="question-group">
+              <header><span className="question-group-icon"><ShieldCheck size={18} /></span><span><h3>Wat is gecontroleerd en waren er afwijkingen?</h3><p>Niet-akkoord antwoorden worden alleen als conceptbevinding of HSE-melding voorgesteld; de supervisor bevestigt ernst en vervolg.</p></span></header>
+              <div className="form-grid two-columns">
+                <label className="form-field"><span>Inspecties uitgevoerd</span><select {...register("inspectionResult")}><option value="none">Geen inspectie</option><option value="all_ok">Uitgevoerd · alles akkoord</option><option value="issues">Uitgevoerd · afwijking gevonden</option></select></label>
+                <label className="form-field"><span>Kwaliteitsbevindingen?</span><select {...register("qualityIssues")}><option value="no">Nee</option><option value="yes">Ja</option></select></label>
+                {qualityIssues === "yes" ? <label className="form-field wide"><span>Omschrijf locatie, bevinding en verantwoordelijke *</span><textarea rows={4} {...register("qualityDetails")} />{errors.qualityDetails ? <small className="field-error">{errors.qualityDetails.message}</small> : null}</label> : null}
+                <label className="form-field"><span>Veiligheidsgebeurtenis?</span><select {...register("hseEvent")}><option value="none">Geen incident / near miss</option><option value="near_miss">Near miss</option><option value="incident">Incident</option></select></label>
+                {hseEvent !== "none" ? <label className="form-field wide"><span>Omschrijf gebeurtenis en directe maatregel *</span><textarea rows={4} {...register("hseDetails")} />{errors.hseDetails ? <small className="field-error">{errors.hseDetails.message}</small> : null}</label> : null}
+              </div>
+              <div className="question-module-note"><AlertTriangle size={14} /><span>De app sluit nooit autonoom een incident, NCR of herstel. Dit blijft een menselijke handeling.</span></div>
+            </section>
+          ) : null}
+
+          {step === 2 ? (
+            <section className="question-group">
+              <header><span className="question-group-icon"><PackageCheck size={18} /></span><span><h3>Welke logistiek, testen of vertraging speelden mee?</h3><p>Antwoorden worden gekoppeld aan materieel, leveringen, metingen, meer-/minderwerk en vertraging.</p></span></header>
+              <div className="form-grid two-columns">
+                <label className="form-field"><span>Materieel en status</span><textarea rows={3} placeholder="Bijv. betonpomp operationeel; trilplaat buiten gebruik" {...register("equipmentStatus")} /></label>
+                <label className="form-field"><span>Materialen geleverd</span><textarea rows={3} placeholder="Materiaal, hoeveelheid en leverancier" {...register("deliveries")} /></label>
+                <label className="form-field wide"><span>Testen en meetwaarden</span><textarea rows={3} placeholder="Bijv. slump 90 mm; betondekking 45 mm" {...register("testsMeasurements")} /></label>
+                <label className="form-field"><span>Meer- of minderwerk</span><select {...register("variationWork")}><option value="none">Niet van toepassing</option><option value="pending">In behandeling</option><option value="approved">Goedgekeurd</option><option value="rejected">Afgewezen</option></select></label>
+                <label className="form-field"><span>Was er vertraging?</span><select {...register("delayCause")}><option value="none">Geen vertraging</option><option value="weather">Weer</option><option value="delivery">Levering te laat</option><option value="material">Materiaaltekort</option><option value="equipment">Materieelstoring</option><option value="other">Andere oorzaak</option></select></label>
+                {delayCause !== "none" ? <label className="form-field"><span>Tijdverlies</span><span className="input-with-unit"><input type="number" min="0" max="24" step="0.25" {...register("delayHours", { valueAsNumber: true })} /><em>uur</em></span>{errors.delayHours ? <small className="field-error">{errors.delayHours.message}</small> : null}</label> : null}
+              </div>
+            </section>
+          ) : null}
+
+          {step === 3 ? (
+            <section className="question-group">
+              <header><span className="question-group-icon"><CalendarDays size={18} /></span><span><h3>Wat is afgesproken en wat staat morgen gepland?</h3><p>Afspraken, risico’s en planning blijven gestructureerd en worden meegenomen naar de volgende dag.</p></span></header>
+              <div className="form-grid two-columns">
+                <label className="form-field"><span>Communicatie en gemaakte afspraken</span><textarea rows={4} placeholder="Met wie is wat afgesproken en wanneer?" {...register("communication")} /></label>
+                <label className="form-field"><span>Open risico’s</span><textarea rows={4} placeholder="Weer, levering, grondwater, hijswerk..." {...register("risks")} /></label>
+                <label className="form-field wide"><span>Welke werkzaamheden staan morgen gepland? *</span><textarea rows={4} {...register("tomorrowPlan")} />{errors.tomorrowPlan ? <small className="field-error">{errors.tomorrowPlan.message}</small> : null}</label>
+                <label className="form-field"><span>Aantal foto’s vandaag</span><input type="number" min="0" {...register("photoCount", { valueAsNumber: true })} /></label>
+                <label className="confirmation-check wide"><input type="checkbox" {...register("attachmentsConfirmed")} /><span><strong>Bijlagen gecontroleerd</strong><small>Inspectieformulieren, certificaten, bonnen, tekeningen, NCR’s en meetrapporten zijn bekeken; ontbrekende stukken blijven zichtbaar.</small></span></label>
+              </div>
+            </section>
+          ) : null}
+
+          <div className="modal-actions daily-question-actions">
+            <span className="form-note"><CheckCircle2 size={13} /> Antwoorden worden in de demo direct hergebruikt in cockpit en rapportcontrole.</span>
+            <div>
+              {step > 0 ? <button className="ghost-button" type="button" onClick={() => setStep((current) => current - 1)}><ArrowLeft size={14} /> Vorige</button> : null}
+              {step < 3 ? <button className="primary-button" type="button" onClick={nextStep}>Volgende vragen <ArrowRight size={14} /></button> : <button className="primary-button" type="submit">Dagvragen bevestigen <Check size={14} /></button>}
+            </div>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 function ReportModal({
   close,
   completedTodos,
   entries,
   attendanceTotal,
   projectName,
+  dailyCloseoutAnswers,
   onSubmit,
 }: {
   close: () => void;
@@ -1075,14 +1426,16 @@ function ReportModal({
   entries: TimelineEntry[];
   attendanceTotal: number;
   projectName: string;
+  dailyCloseoutAnswers: DailyCloseoutAnswers | null;
   onSubmit: () => void;
 }) {
-  const hseComplete = completedTodos.includes(2);
-  const tomorrowComplete = completedTodos.includes(3);
+  const hseComplete = completedTodos.includes(2) || Boolean(dailyCloseoutAnswers);
+  const tomorrowComplete = completedTodos.includes(3) || Boolean(dailyCloseoutAnswers?.tomorrowPlan);
   const checks = [
     { title: "Project- en rapportgegevens", detail: "Nummer, datum, dienst en gebouwen", complete: true },
     { title: "Aanwezigheid en activiteiten", detail: `${attendanceTotal} personen en 3 actieve werkpakketten`, complete: true },
     { title: "Inspecties en bevindingen", detail: "3 inspecties · 1 kritieke bevinding open", complete: true },
+    { title: "Dagvragen volgens klantformat", detail: dailyCloseoutAnswers ? "Verloop, weer, logistiek, risico's en morgen bevestigd" : "Vier begeleide vraaggroepen nog invullen", complete: Boolean(dailyCloseoutAnswers) },
     { title: "HSE-dagcheck", detail: hseComplete ? "Alle controlepunten ingevuld" : "Nog 3 controlepunten ontbreken", complete: hseComplete },
     { title: "Planning voor morgen", detail: tomorrowComplete ? "Planning is bevestigd" : "Nog niet ingevuld", complete: tomorrowComplete },
   ];
@@ -1106,7 +1459,8 @@ function ReportModal({
           </div>
           <div className="report-summary-box">
             <label htmlFor="summary">Voorgestelde dagsamenvatting</label>
-            <textarea id="summary" defaultValue={`Op 18 juli 2026 waren ${attendanceTotal} personen aanwezig op project ${projectName}. Er zijn ${entries.length} registraties vastgelegd. De werkzaamheden aan de bekisting van de kernwand en de wapening van vloer V3 zijn voortgezet. Bij kolom C-14 is een kritieke afwijking in de betondekking vastgesteld en toegewezen voor herstel.`} />
+            <textarea id="summary" defaultValue={dailyCloseoutAnswers?.daySummary ?? `Op 18 juli 2026 waren ${attendanceTotal} personen aanwezig op project ${projectName}. Er zijn ${entries.length} registraties vastgelegd. De werkzaamheden aan de bekisting van de kernwand en de wapening van vloer V3 zijn voortgezet. Bij kolom C-14 is een kritieke afwijking in de betondekking vastgesteld en toegewezen voor herstel.`} />
+            <small className="summary-source">Vaste samenvatting op basis van bevestigde dagvragen en modulegegevens; supervisor controleert de tekst.</small>
           </div>
           <div className="modal-actions">
             <span style={{ color: missing ? "var(--yellow)" : "var(--green)", fontSize: 10, fontWeight: 680 }}>{missing ? `${missing} onderdeel${missing > 1 ? "en" : ""} nog aanvullen` : "Alle controles geslaagd"}</span>
