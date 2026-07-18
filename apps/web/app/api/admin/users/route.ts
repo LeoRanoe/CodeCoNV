@@ -11,14 +11,9 @@ function json(body: unknown, status = 200) {
 }
 
 export async function POST(request: Request) {
-  const { env } = await import("cloudflare:workers");
-  const runtimeEnv = env as Partial<Record<
-    "NEXT_PUBLIC_SUPABASE_URL" | "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" | "SUPABASE_SECRET_KEY",
-    string
-  >>;
-  const supabaseUrl = runtimeEnv.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const publishableKey = runtimeEnv.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim();
-  const secretKey = runtimeEnv.SUPABASE_SECRET_KEY?.trim();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim();
+  const secretKey = process.env.SUPABASE_SECRET_KEY?.trim();
   if (!supabaseUrl || !publishableKey || !secretKey) {
     return json({ error: "De beveiligde uitnodigingsservice is niet geconfigureerd." }, 503);
   }

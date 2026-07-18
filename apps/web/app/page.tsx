@@ -3,9 +3,9 @@ import { CodecoSupervisionApp } from "./codeco-supervision-app";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Vandaag",
+  title: "Today | CODECO Supervisie",
   description:
-    "CODECO-werkruimte voor constructiesupervisie, inspecties en rapportage.",
+    "CODECO workspace for construction supervision, visual evidence, inspections and reporting.",
 };
 
 export default function Home() {

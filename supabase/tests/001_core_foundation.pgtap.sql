@@ -1,7 +1,7 @@
 begin;
 set local search_path = extensions, pgtap, public;
 
-select plan(40);
+select plan(45);
 
 select has_table('public', 'organizations', 'organizations table exists');
 select has_table('public', 'projects', 'projects table exists');
@@ -16,6 +16,8 @@ select has_table('public', 'audit_events', 'audit_events table exists');
 select has_table('public', 'day_start_checks', 'day_start_checks table exists');
 select has_table('public', 'day_closeouts', 'day_closeouts table exists');
 select has_table('public', 'production_readiness_items', 'production readiness checklist exists');
+select has_table('public', 'visual_captures', 'visual evidence capture records exist');
+select has_table('public', 'visual_annotations', 'visual issue marker records exist');
 
 select has_function('public', 'create_day_report', array['uuid', 'date', 'text'], 'atomic day-report function exists');
 select has_function(
@@ -100,6 +102,23 @@ select policies_are(
   array['production_readiness_items_select'],
   'production readiness exposes read-only browser access and controlled RPC updates'
 );
+select policies_are(
+  'public',
+  'visual_captures',
+  array['visual_captures_select'],
+  'visual capture mutations are restricted to guarded RPCs'
+);
+select policies_are(
+  'public',
+  'visual_annotations',
+  array['visual_annotations_select'],
+  'visual marker mutations are restricted to guarded RPCs'
+);
+select is(
+  (select count(*) from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename in ('visual_captures','visual_annotations')),
+  2::bigint,
+  'visual evidence tables publish authorized realtime changes'
+);
 
 select has_trigger('public', 'report_versions', 'report_versions_immutable', 'report versions reject mutation');
 select has_trigger('public', 'audit_events', 'audit_events_immutable', 'audit events reject mutation');
@@ -125,11 +144,12 @@ select results_eq(
         'inspection_responses', 'findings', 'finding_updates', 'hse_events',
         'files', 'file_links', 'report_reviews', 'report_signatures',
         'report_distributions', 'notifications', 'project_register_entries',
-        'backup_runs', 'production_readiness_items'
+        'backup_runs', 'production_readiness_items', 'visual_captures',
+        'visual_annotations'
       ])
       and relation.relrowsecurity
   $$,
-  $$ values (39::bigint) $$,
+  $$ values (41::bigint) $$,
   'RLS is enabled on every browser-reachable table'
 );
 

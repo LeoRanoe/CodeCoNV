@@ -6,7 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
   "vars": {
-    "APP_ORIGIN": "https://sitezicht-constructiesupervisie.agencynextx.chatgpt.site",
+    "APP_ORIGIN": "https://replace-with-codeco-vercel-domain.invalid",
     "MAX_FILE_SIZE_MB": "25"
   }
 }

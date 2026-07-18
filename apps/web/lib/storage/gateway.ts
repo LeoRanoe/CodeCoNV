@@ -85,3 +85,15 @@ export async function downloadProjectFile(client: SupabaseClient, fileId: string
   anchor.click();
   URL.revokeObjectURL(url);
 }
+
+export async function loadProjectFileObjectUrl(client: SupabaseClient, fileId: string) {
+  if (!isStorageGatewayConfigured) throw new Error("The private Google Drive gateway is not configured.");
+  const token = await accessToken(client);
+  const response = await fetch(`${storageGatewayUrl}/v1/files/${encodeURIComponent(fileId)}/content`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error(await gatewayError(response));
+  const blob = await response.blob();
+  if (!blob.type.startsWith("image/")) throw new Error("The selected file is not a supported image.");
+  return URL.createObjectURL(blob);
+}

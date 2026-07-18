@@ -21,6 +21,11 @@ Gebruik deze lijst vóór formele ingebruikname. Dezelfde items staan centraal i
   - primaire en back-upbeheerder;
   - MFA actief;
   - Worker- en domeintoegang niet afhankelijk maken van een persoonlijk ontwikkelaarsaccount.
+- [ ] **CODECO Vercel-team voor de webapp**
+  - importeer de Git-repository in een CODECO-beheerd team;
+  - wijs een primaire en back-upbeheerder aan;
+  - activeer MFA en leg facturatie- en herstelcontact vast;
+  - laat productie niet afhankelijk zijn van een persoonlijk ontwikkelaarsaccount.
 - [ ] **Dedicated CODECO Google-opslagaccount**
   - uitsluitend voor applicatiebestanden en back-ups;
   - niet het persoonlijke account van een medewerker;
@@ -45,6 +50,10 @@ Gebruik deze lijst vóór formele ingebruikname. Dezelfde items staan centraal i
 
 ## 2. Secrets en koppelingen — door ontwikkelaar en CODECO IT
 
+- [ ] Vercel gebruikt `apps/web` als Root Directory en Node.js 22.x (minimaal 22.13.0).
+- [ ] Alle waarden uit `apps/web/.env.example` staan per Vercel Environment ingesteld; `SUPABASE_SECRET_KEY` is alleen server-side beschikbaar.
+- [ ] Het definitieve Vercel-domein staat in Supabase als Site URL en toegestane redirect-URL.
+- [ ] De Drive-gateway accepteert uitsluitend het definitieve productie-origin van de Vercel-webapp.
 - [ ] Supabase URL, publishable key en serversecret staan alleen in de juiste serveromgeving.
 - [ ] Google client-ID, clientsecret en refresh token staan uitsluitend als Worker secrets.
 - [ ] Een willekeurig uploadsessie-secret van minimaal 32 bytes staat uitsluitend in de Worker.

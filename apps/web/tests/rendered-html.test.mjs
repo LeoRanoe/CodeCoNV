@@ -1,36 +1,57 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import test from "node:test";
+import { fileURLToPath } from "node:url";
+import test, { after, before } from "node:test";
+
+const port = 3187;
+const baseUrl = `http://127.0.0.1:${port}`;
+let server;
+
+before(async () => {
+  const nextBin = fileURLToPath(new URL("../node_modules/next/dist/bin/next", import.meta.url));
+  server = spawn(process.execPath, [nextBin, "start", "-p", String(port)], {
+    cwd: fileURLToPath(new URL("..", import.meta.url)),
+    env: { ...process.env, NODE_ENV: "production" },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const output = [];
+  server.stdout.on("data", (chunk) => output.push(String(chunk)));
+  server.stderr.on("data", (chunk) => output.push(String(chunk)));
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    if (server.exitCode !== null) throw new Error(`Next.js exited before the smoke test:\n${output.join("")}`);
+    try {
+      const response = await fetch(baseUrl);
+      if (response.ok) return;
+    } catch {
+      // The server socket is not ready yet.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 125));
+  }
+  throw new Error(`Next.js did not become ready:\n${output.join("")}`);
+});
+
+after(() => {
+  server?.kill();
+});
 
 async function render() {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
-
-  return worker.fetch(
-    new Request("http://localhost/", { headers: { accept: "text/html" } }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
-  );
+  return fetch(baseUrl, { headers: { accept: "text/html" } });
 }
 
 test("server-renders the secure CODECO entry point", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
+  assert.match(response.headers.get("content-security-policy") ?? "", /frame-ancestors 'none'/);
+  assert.match(response.headers.get("strict-transport-security") ?? "", /max-age=63072000/);
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
 
   const html = await response.text();
-  assert.match(html, /<title>Vandaag \| CODECO Supervisie<\/title>/i);
+  assert.match(html, /<title>Today \| CODECO Supervisie<\/title>/i);
   assert.match(html, /CODECO N\.V\./);
-  assert.match(html, /Veilige werkruimte openen/);
-  assert.match(html, /sessie en projecttoegang/i);
+  assert.match(html, /Opening secure workspace/);
+  assert.match(html, /session and project access/i);
   assert.doesNotMatch(html, /Sitezicht|codex-preview|Building your site|react-loading-skeleton/i);
 });
 
@@ -58,10 +79,10 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(app, /Aanwezigheid vandaag/);
   assert.match(app, /Hoe is het project vandaag gegaan\?/);
   assert.match(app, /Wat was het werkelijke weer\?/);
-  assert.match(app, /Geactiveerd door:/);
+  assert.match(app, /Triggered by|Geactiveerd door/);
   assert.match(app, /Dagvragen bevestigen/);
   assert.match(app, /useForm<DailyCloseoutAnswers>/);
-  assert.match(app, /zodResolver\(dailyCloseoutSchema\)/);
+  assert.match(app, /zodResolver\(localizedDailyCloseoutSchema\)/);
   assert.match(app, /setEntries/);
   assert.match(app, /signInWithPassword/);
   assert.doesNotMatch(app, /\.auth\.signUp\(/);
@@ -81,7 +102,7 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.doesNotMatch(app, /Demosessie|Kwattaweg Residence|Commewijne Port Facility/);
   assert.match(page, /CodecoSupervisionApp/);
   assert.match(page, /Providers/);
-  assert.match(layout, /<html lang="nl">/);
+  assert.match(layout, /<html lang="en">/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.match(packageJson, /react-hook-form/);
   assert.match(packageJson, /"zod"/);
@@ -105,11 +126,39 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(adminRoute, /inviteUserByEmail/);
   assert.match(adminRoute, /can_manage_organization_members/);
   assert.match(adminRoute, /SUPABASE_SECRET_KEY/);
-  assert.match(adminRoute, /cloudflare:workers/);
+  assert.match(adminRoute, /process\.env/);
+  assert.doesNotMatch(adminRoute, /cloudflare:workers/);
   assert.doesNotMatch(adminRoute, /NEXT_PUBLIC_SUPABASE_SECRET_KEY|SERVICE_ROLE/);
   assert.match(pdfReport, /CONSTRUCTIESUPERVISIE/);
   assert.match(pdfReport, /17–19\. Foto's, bijlagen en controle/);
   assert.match(providers, /QueryClientProvider/);
+});
+
+test("keeps standard photo and optional 360 annotation production paths", async () => {
+  const [workspace, app, operations, migration, i18n, vercel] = await Promise.all([
+    readFile(new URL("../app/visual-evidence-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202607180020_visual_evidence_and_annotations.sql", import.meta.url), "utf8"),
+    readFile(new URL("../lib/i18n.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../vercel.json", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(workspace, /Standard photo/);
+  assert.match(workspace, /360° panorama/);
+  assert.match(workspace, /EquirectangularAdapter/);
+  assert.match(workspace, /xRatio/);
+  assert.match(workspace, /yaw/);
+  assert.match(workspace, /createVisualAnnotationFinding/);
+  assert.match(app, /type === "photo"/);
+  assert.match(app, /setInitialProjectTab\("visual"\)/);
+  assert.match(operations, /create_visual_annotation_finding/);
+  assert.match(migration, /create table public\.visual_captures/);
+  assert.match(migration, /create table public\.visual_annotations/);
+  assert.match(migration, /'annotation'/);
+  assert.match(i18n, /codeco-language/);
+  assert.match(i18n, /language === "en"/);
+  assert.match(vercel, /"framework": "nextjs"/);
 });
 
 test("keeps the online-first Supabase foundation enforceable", async () => {

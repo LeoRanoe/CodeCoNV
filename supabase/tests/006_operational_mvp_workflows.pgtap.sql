@@ -1,7 +1,7 @@
 begin;
 set local search_path = extensions, pgtap, public;
 
-select plan(36);
+select plan(54);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at)
 values (
@@ -146,14 +146,108 @@ select lives_ok(
 );
 select is((select register_type::text from public.project_register_entries), 'delivery', 'delivery register classification is persisted');
 
+reset role;
+set local request.jwt.claims = '{"role":"service_role"}';
+select lives_ok(
+  format(
+    $query$
+      insert into public.files (
+        organization_id, project_id, building_id, drive_file_id, original_name,
+        mime_type, size_bytes, sha256, status, category, created_by
+      ) values
+        (%1$L::uuid, %2$L::uuid, %3$L::uuid, 'drive-photo-1', 'room-1-wall.jpg', 'image/jpeg', 1200000, repeat('a', 64), 'available', 'photo', '00000000-0000-0000-0000-0000000000d1'::uuid),
+        (%1$L::uuid, %2$L::uuid, %3$L::uuid, 'drive-panorama-1', 'room-1-360.jpg', 'image/jpeg', 4200000, repeat('b', 64), 'available', 'photo', '00000000-0000-0000-0000-0000000000d1'::uuid)
+    $query$,
+    (select id from public.organizations where slug = 'codeco-operations'),
+    (select id from public.projects where code = 'OPS-001'),
+    (select id from public.buildings where project_id = (select id from public.projects where code = 'OPS-001'))
+  ),
+  'private image metadata can be prepared for visual evidence tests'
+);
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000d1","role":"authenticated"}';
+
+select lives_ok(
+  format(
+    $query$select public.create_visual_capture(%L::uuid,%L::uuid,null,%L::uuid,%L::uuid,'photo','Kamer 1 noordwand','Controle pleisterwerk','Kamer 1 · noordwand',null,null,now())$query$,
+    (select id from public.projects where code = 'OPS-001'),
+    (select id from public.buildings where project_id = (select id from public.projects where code = 'OPS-001')),
+    (select id from public.day_reports where project_id = (select id from public.projects where code = 'OPS-001')),
+    (select id from public.files where drive_file_id = 'drive-photo-1')
+  ),
+  'a standard project photo is registered as the default visual type'
+);
+
+select lives_ok(
+  format(
+    $query$select public.create_visual_capture(%L::uuid,%L::uuid,null,%L::uuid,%L::uuid,'panorama','Kamer 1 rondgang','Equirectangulair 360 beeld','Kamer 1','Begane grond tour',1,now())$query$,
+    (select id from public.projects where code = 'OPS-001'),
+    (select id from public.buildings where project_id = (select id from public.projects where code = 'OPS-001')),
+    (select id from public.day_reports where project_id = (select id from public.projects where code = 'OPS-001')),
+    (select id from public.files where drive_file_id = 'drive-panorama-1')
+  ),
+  'an optional 360 panorama is registered in an ordered tour'
+);
+select is((select count(*) from public.visual_captures), 2::bigint, 'standard and 360 visual records coexist');
+select ok(position('created_by' in (select qual from pg_policies where schemaname = 'public' and tablename = 'files' and policyname = 'files_select')) = 0, 'file reads never survive revoked project access through creator ownership');
+select ok(position('created_by' in (select qual from pg_policies where schemaname = 'public' and tablename = 'visual_captures' and policyname = 'visual_captures_select')) = 0, 'visual capture reads always follow current project permissions');
+select ok(position('created_by' in (select qual from pg_policies where schemaname = 'public' and tablename = 'visual_annotations' and policyname = 'visual_annotations_select')) = 0, 'visual annotation reads always follow current project permissions');
+select ok((select capture_type = 'panorama' and tour_name = 'Begane grond tour' and tour_order = 1 from public.visual_captures where title = 'Kamer 1 rondgang'), 'panorama tour identity and order are retained');
+select throws_ok(
+  format(
+    $query$select public.create_visual_capture(%L::uuid,%L::uuid,null,%L::uuid,%L::uuid,'photo','Ongeldige tourfoto',null,'Kamer 1','Tour',2,now())$query$,
+    (select id from public.projects where code = 'OPS-001'),
+    (select id from public.buildings where project_id = (select id from public.projects where code = 'OPS-001')),
+    (select id from public.day_reports where project_id = (select id from public.projects where code = 'OPS-001')),
+    (select id from public.files where drive_file_id = 'drive-photo-1')
+  ),
+  '22023',
+  'Only panoramas can be assigned to a tour',
+  'ordinary photos cannot be mislabeled as tour scenes'
+);
+
+select lives_ok(
+  format(
+    $query$select public.create_visual_annotation_finding(%L::uuid,'photo',0.42,0.31,null,null,'deficiency','Beschadigd pleisterwerk','Scheur en afbrokkeling zichtbaar op de noordwand.','medium',%L::uuid,'visual-photo-issue-1')$query$,
+    (select id from public.visual_captures where capture_type = 'photo'),
+    (select id from public.parties where project_id = (select id from public.projects where code = 'OPS-001') and party_type = 'contractor')
+  ),
+  'clicking a standard photo creates an exact marker and finding atomically'
+);
+select is((select count(*) from public.visual_annotations), 1::bigint, 'the first photo issue has one marker');
+select is((select count(*) from public.file_links where relationship = 'annotation'), 1::bigint, 'the original image is linked to the formal finding');
+select throws_ok(
+  format(
+    $query$select public.create_visual_annotation_finding(%L::uuid,'photo',0.5,0.5,null,null,'observation','Verkeerde coördinaten','Mag niet op panorama worden geplaatst.','low',null,'visual-wrong-mode-1')$query$,
+    (select id from public.visual_captures where capture_type = 'panorama')
+  ),
+  '22023',
+  'Annotation coordinates do not match the visual type',
+  'a panorama rejects ordinary photo coordinates'
+);
+select lives_ok(
+  format(
+    $query$select public.create_visual_annotation_finding(%L::uuid,'spherical',null,null,0.55,0.12,'deviation','Beschadiging in 360 beeld','Beschadiging exact op de westwand gemarkeerd.','high',null,'visual-panorama-issue-1')$query$,
+    (select id from public.visual_captures where capture_type = 'panorama')
+  ),
+  'a panorama click stores spherical coordinates with a formal finding'
+);
+select is((select count(*) from public.visual_annotations), 2::bigint, 'photo and panorama issue markers are both retained');
+select lives_ok(
+  format($query$select public.void_visual_annotation(%L::uuid,'Marker was placed on the wrong surface.')$query$, (select id from public.visual_annotations where idempotency_key = 'visual-photo-issue-1')),
+  'an authorized manager can void an incorrectly placed marker with a reason'
+);
+select ok((select status = 'void' and void_reason = 'Marker was placed on the wrong surface.' from public.visual_annotations where idempotency_key = 'visual-photo-issue-1'), 'void status and reason remain auditable');
+
 select ok(
   (select (public.create_manual_backup_export(
     (select id from public.organizations where slug = 'codeco-operations'),
     (select id from public.projects where code = 'OPS-001'),
     'ops-backup-idempotency'
-  ) ->> 'schema_version') = '202607180008'),
+  ) ->> 'schema_version') = '202607180020'),
   'manual export contains the current schema version'
 );
+select ok((select (record_counts ->> 'visual_captures')::integer = 2 and (record_counts ->> 'visual_annotations')::integer = 2 from public.backup_runs where run_type = 'manual'), 'manual backup includes visual captures and annotations');
 select is((select status::text from public.backup_runs where run_type = 'manual'), 'exporting', 'backup remains exporting until the browser checksum is confirmed');
 
 reset role;

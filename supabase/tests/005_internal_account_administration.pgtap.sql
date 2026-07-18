@@ -22,12 +22,12 @@ select ok(
 );
 select is(
   (select count(*) from public.production_readiness_items where organization_id = (select id from public.organizations where slug = 'codeco-internal')),
-  14::bigint,
+  16::bigint,
   'organization bootstrap seeds the complete production readiness checklist'
 );
 select is(
   (select count(*) from public.production_readiness_items where organization_id = (select id from public.organizations where slug = 'codeco-internal') and blocking),
-  13::bigint,
+  15::bigint,
   'the checklist distinguishes blocking from optional work'
 );
 select throws_ok(

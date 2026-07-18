@@ -1,11 +1,13 @@
 # CODECO Constructiesupervisie
 
-Interne, online-first webapp voor dagelijkse constructiesupervisie. Supabase is de centrale bron voor identiteit, rollen, projectdata, rapporten en audit; de private Sites-app bevat geen openbare accountregistratie.
+Interne, online-first Next.js-webapp voor dagelijkse constructiesupervisie. Supabase is de centrale bron voor identiteit, rollen, projectdata, rapporten en audit; de Vercel-webapp bevat geen openbare accountregistratie.
 
 ## Functionele scope
 
 - organisatiebeheerder nodigt interne gebruikers uit en wijst organisatie-/projectrollen toe;
 - project → gebouw → projectstart met dagelijkse vragen over verloop, weer, planning, bezetting, kwaliteit, HSE en voortgang;
+- Engels als standaardinterface met een persistente Nederlandse taalkeuze;
+- gewone foto's als standaard visueel bewijs, optionele 360°-panorama's/tours en exacte probleemmarkers die traceerbaar aan formele bevindingen zijn gekoppeld;
 - aanwezigheid, werkzaamheden, acties en zestien projectspecifieke registers;
 - configureerbare inspectie- en HSE-checklists met automatische bevinding bij afkeur;
 - bevinding/NCR → herstel → gereed voor verificatie → onafhankelijke sluiting;
@@ -19,7 +21,7 @@ De accounts, externe koppelingen en go-livecontroles die CODECO nog moet afronde
 
 ## Lokaal starten
 
-Vereisten: Node.js 22+, Docker Desktop en de Supabase CLI.
+Vereisten: Node.js 22.13 of nieuwer, Docker Desktop en de Supabase CLI.
 
 ```bash
 npm install
@@ -48,4 +50,4 @@ De database bestaat uit versioned migrations onder `../../supabase/migrations`; 
 
 ## Productie
 
-De webapp wordt privé via Sites gepubliceerd. Self-signup blijft uit; alleen een beheerder kan interne accounts uitnodigen. Voor volledige formele ingebruikname moeten alle blokkerende items in de productiegereedheidschecklist met een veilige bewijsreferentie zijn gesloten, met name Drive/OAuth, SMTP, automatische back-up, definitieve klantformulieren, bewaartermijnen, juridisch ondertekenniveau en gebruikersacceptatie.
+De webapp wordt als native Next.js-app via Vercel gepubliceerd met `apps/web` als Root Directory. Self-signup blijft uit; alleen een beheerder kan interne accounts uitnodigen. Volg [de Vercel deploymentchecklist](../../docs/operations/vercel-deployment-checklist.md). Voor formele ingebruikname moeten alle blokkerende items in de productiegereedheidschecklist met een veilige bewijsreferentie zijn gesloten, met name het CODECO Vercel-team/domein, Drive/OAuth, SMTP, automatische back-up, definitieve klantformulieren, bewaartermijnen, juridisch ondertekenniveau en gebruikersacceptatie.

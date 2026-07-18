@@ -1511,3 +1511,31 @@ Wanneer 80% van Supabase Database of Google Drive langdurig wordt overschreden, 
 4. of bewust voor betaalde capaciteit kiezen.
 
 De applicatie voert nooit automatisch een betaalde upgrade uit en bevat geen code die onverwacht usage-based kosten activeert.
+
+## 22. Vastgelegde klantbesluiten na het basisplan
+
+Onderstaande besluiten zijn later rechtstreeks door de klant toegevoegd en hebben bij strijdigheid voorrang op de eerdere technische of functionele aanname in dit plan.
+
+### 22.1 Vercel als webhosting
+
+- De webapp wordt als native Next.js-app op Vercel gepubliceerd; de eerdere keuze voor Cloudflare Pages/Sites en vinext vervalt voor de webapp.
+- `apps/web` is de Vercel Root Directory en een schone `npm ci` plus `npm run build` is de releasebasis.
+- De Cloudflare Worker blijft uitsluitend de beveiligde Google Drive-opslaggateway; Google OAuth-secrets en tokens blijven daar server-side.
+- Vercel-team, domein, environmentvariabelen, Supabase Auth-redirects en het toegestane gateway-origin zijn blokkerende productiechecklistitems.
+
+### 22.2 Engels en Nederlands
+
+- Engels is de standaardinterfacetaal en standaard projecttaal.
+- Nederlands is direct via de interface kiesbaar; de persoonlijke voorkeur blijft lokaal op het apparaat behouden en bevat geen project- of persoonsgegevens.
+- Aanmelden, eerste inrichting, projectkeuze, projectstart, dagcockpit, dagvragen en visueel bewijs moeten minimaal volledig in beide talen bruikbaar zijn.
+- Gebruikersinvoer, projectnamen en formele bronrecords worden nooit automatisch vertaald of door AI herschreven.
+
+### 22.3 Gewone foto's en optionele 360°-beelden
+
+- Een gewone foto is de standaardvorm van visueel bewijs en moet zonder 360°-bron bruikbaar blijven.
+- Op een gewone foto kan de gebruiker een exact genormaliseerd 2D-punt aanwijzen en daar een probleem registreren.
+- Een equirectangulair 360°-panorama is optioneel en blijft als experimentele functie herkenbaar. De upload controleert dat de bronafbeelding leesbaar is en circa 2:1 is; de gebruiker kan rondkijken en een exact sferisch punt aanwijzen.
+- Meerdere 360°-panorama's kunnen met een tournaam en vaste volgorde als eenvoudige ruimtetour worden doorlopen.
+- Iedere probleemmarker maakt in één databasetransactie een formele bevinding/NCR en een traceerbare koppeling met het originele private beeld. Een marker mag nooit alleen visuele decoratie zijn.
+- De supervisor bepaalt type, ernst, omschrijving en verantwoordelijke partij. Er is geen autonome AI-detectie, -classificatie of -afsluiting.
+- Beeldbytes blijven uitsluitend in de private Google Drive-opslag achter de JWT/RLS-gecontroleerde gateway; Postgres bewaart metadata, coördinaten, relaties en auditgegevens.

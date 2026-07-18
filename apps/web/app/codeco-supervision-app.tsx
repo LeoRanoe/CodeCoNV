@@ -49,27 +49,28 @@ import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { OperationalWorkspace } from "@/app/operational-workspace";
+import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   clientReportSections,
-  dailyCloseoutSchema,
+  createDailyCloseoutSchema,
+  createProjectStartSchema,
   getProjectStartAutomation,
-  projectStartSchema,
   type DailyCloseoutAnswers,
   type ProjectStartAnswers,
 } from "@/lib/forms/daily-report";
 import {
-  authSchema,
-  organizationSetupSchema,
-  passwordSetupSchema,
-  projectSetupSchema,
+  createAuthSchema,
+  createOrganizationSetupSchema,
+  createPasswordSetupSchema,
+  createProjectSetupSchema,
   type AuthAnswers,
   type OrganizationSetupAnswers,
   type PasswordSetupAnswers,
   type ProjectSetupAnswers,
 } from "@/lib/forms/workspace";
 import {
-  internalUserInviteSchema,
+  createInternalUserInviteSchema,
   type InternalUserInviteAnswers,
 } from "@/lib/forms/users";
 import {
@@ -169,6 +170,18 @@ const quickTypes: QuickType[] = [
   { id: "delay", title: "Vertraging", description: "Leg oorzaak en tijdblok vast", icon: TimerOff },
 ];
 
+const quickTypesEnglish: QuickType[] = [
+  { id: "photo", title: "Photo", description: "Capture evidence with context", icon: Camera },
+  { id: "finding", title: "Finding", description: "Record a quality issue or deviation", icon: AlertTriangle },
+  { id: "activity", title: "Activity", description: "Record work and progress", icon: Wrench },
+  { id: "inspection", title: "Inspection", description: "Start an inspection checklist", icon: ClipboardCheck },
+  { id: "hse", title: "HSE", description: "Observation, near miss or incident", icon: ShieldCheck },
+  { id: "action", title: "Action", description: "Assign follow-up immediately", icon: CheckCircle2 },
+  { id: "delivery", title: "Delivery", description: "Record a material delivery", icon: PackageCheck },
+  { id: "test", title: "Test / measurement", description: "Record a value and tolerance", icon: Ruler },
+  { id: "delay", title: "Delay", description: "Record the cause and time lost", icon: TimerOff },
+];
+
 const entryIcons: Record<EntryKind, LucideIcon> = {
   activity: Wrench,
   inspection: ClipboardCheck,
@@ -191,12 +204,17 @@ const entryTitles: Record<string, string> = {
   delay: "Vertraging",
 };
 
-const weatherLabels: Record<ProjectStartAnswers["weatherCondition"], string> = {
-  sunny: "Zonnig",
-  partly_cloudy: "Licht bewolkt",
-  cloudy: "Bewolkt",
-  rain: "Regen",
-  heavy_rain: "Zware regen",
+const entryTitlesEnglish: Record<string, string> = {
+  activity: "Activity",
+  inspection: "Inspection",
+  finding: "Finding",
+  photo: "Photo",
+  action: "Action",
+  note: "Note",
+  hse: "HSE record",
+  delivery: "Delivery",
+  test: "Test / measurement",
+  delay: "Delay",
 };
 
 const actionStatusLabels: Record<ProjectAction["status"], string> = {
@@ -206,6 +224,15 @@ const actionStatusLabels: Record<ProjectAction["status"], string> = {
   ready_for_verification: "Gereed voor verificatie",
   verified: "Geverifieerd",
   cancelled: "Geannuleerd",
+};
+
+const actionStatusLabelsEnglish: Record<ProjectAction["status"], string> = {
+  open: "Open",
+  accepted: "Accepted",
+  in_progress: "In progress",
+  ready_for_verification: "Ready for verification",
+  verified: "Verified",
+  cancelled: "Cancelled",
 };
 
 const nextActionStatus: Partial<Record<ProjectAction["status"], ProjectAction["status"]>> = {
@@ -223,8 +250,8 @@ function defaultActionDeadline() {
   return local.toISOString().slice(0, 16);
 }
 
-function currentTime() {
-  return new Intl.DateTimeFormat("nl-NL", {
+function currentTime(locale = "en-US") {
+  return new Intl.DateTimeFormat(locale, {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -232,8 +259,8 @@ function currentTime() {
   }).format(new Date());
 }
 
-function currentDateLabel() {
-  const value = new Intl.DateTimeFormat("nl-NL", {
+function currentDateLabel(locale = "en-US") {
+  const value = new Intl.DateTimeFormat(locale, {
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -312,6 +339,7 @@ function disciplineForParty(type: string) {
 }
 
 export function CodecoSupervisionApp() {
+  const { locale, text } = useLanguage();
   const supabase = getSupabaseBrowserClient();
   const queryClient = useQueryClient();
   const [session, setSession] = useState<Session | null>(null);
@@ -324,9 +352,10 @@ export function CodecoSupervisionApp() {
   const [activeNav, setActiveNav] = useState<NavKey>("vandaag");
   const [modal, setModal] = useState<ModalKey>(null);
   const [selectedType, setSelectedType] = useState<string>("activity");
+  const [initialProjectTab, setInitialProjectTab] = useState<"inspections" | "visual">("inspections");
   const [description, setDescription] = useState("");
-  const [location, setLocation] = useState("Verdieping 3 · Zone oost");
-  const [priority, setPriority] = useState("Normaal");
+  const [location, setLocation] = useState("Floor 3 · East zone");
+  const [priority, setPriority] = useState("normal");
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
   const [completedTodos, setCompletedTodos] = useState<number[]>([]);
@@ -368,16 +397,20 @@ export function CodecoSupervisionApp() {
   const unreadNotificationCount = (notificationQuery.data ?? []).filter((notification) => !notification.read_at).length;
 
   const currentUserName = workspaceQuery.data?.profileName
-    ?? String(session?.user.user_metadata?.display_name ?? session?.user.email?.split("@")[0] ?? "CODECO-gebruiker");
+    ?? String(session?.user.user_metadata?.display_name ?? session?.user.email?.split("@")[0] ?? text("CODECO user", "CODECO-gebruiker"));
   const storageStatus = !isOnline
-    ? "Geen verbinding · nog niet opgeslagen"
+    ? text("No connection · not saved", "Geen verbinding · nog niet opgeslagen")
     : syncState === "saving"
-      ? "Opslaan in Supabase…"
+      ? text("Saving to Supabase…", "Opslaan in Supabase…")
       : syncState === "error"
-        ? "Opslaan mislukt · probeer opnieuw"
+        ? text("Save failed · try again", "Opslaan mislukt · probeer opnieuw")
         : syncState === "saved"
-          ? "Centraal opgeslagen · Supabase"
-          : "Live database · Supabase Realtime";
+          ? text("Saved centrally · Supabase", "Centraal opgeslagen · Supabase")
+          : text("Live database · Supabase Realtime", "Live database · Supabase Realtime");
+  const localizedNavigation = navigation.map((item) => ({
+    ...item,
+    label: ({ vandaag: text("Today", "Vandaag"), project: text("Project", "Project"), acties: text("Actions", "Acties"), rapporten: text("Reports", "Rapporten"), meer: text("More", "Meer") } satisfies Record<NavKey, string>)[item.id],
+  }));
 
   useEffect(() => {
     if (!supabase) return;
@@ -443,8 +476,8 @@ export function CodecoSupervisionApp() {
       setEntries(day.registrations.map((row) => {
       const type = String(row.registration_type);
       const occurredAt = new Date(String(row.occurred_at));
-      const time = new Intl.DateTimeFormat("nl-NL", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Paramaribo" }).format(occurredAt);
-      const priorityLabel = String(row.priority) === "critical" ? "Kritiek" : String(row.priority) === "high" ? "Hoog" : "Opgeslagen";
+      const time = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Paramaribo" }).format(occurredAt);
+      const priorityLabel = String(row.priority) === "critical" ? text("Critical", "Kritiek") : String(row.priority) === "high" ? text("High", "Hoog") : text("Saved", "Opgeslagen");
       return {
         id: String(row.id),
         time,
@@ -465,7 +498,7 @@ export function CodecoSupervisionApp() {
         return {
           id: String(row.id),
           partyId: String(row.party_id),
-          party: party?.name ?? "Onbekende partij",
+          party: party?.name ?? text("Unknown party", "Onbekende partij"),
           discipline: String(row.discipline),
           count: Number(row.headcount),
           shiftStart: String(row.shift_start).slice(0, 5),
@@ -485,7 +518,7 @@ export function CodecoSupervisionApp() {
       }
     }, 0);
     return () => window.clearTimeout(hydration);
-  }, [currentUserName, dayQuery.data, selectedBuilding]);
+  }, [currentUserName, dayQuery.data, locale, selectedBuilding, text]);
 
   useEffect(() => {
     if (!supabase || !session || !selectedProject) return;
@@ -504,6 +537,8 @@ export function CodecoSupervisionApp() {
       .on("postgres_changes", { event: "*", schema: "public", table: "inspections", filter: `project_id=eq.${selectedProject.id}` }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "findings", filter: `project_id=eq.${selectedProject.id}` }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "hse_events", filter: `project_id=eq.${selectedProject.id}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "visual_captures", filter: `project_id=eq.${selectedProject.id}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "visual_annotations", filter: `project_id=eq.${selectedProject.id}` }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "notifications", filter: `project_id=eq.${selectedProject.id}` }, refresh)
       .subscribe();
     return () => {
@@ -526,7 +561,7 @@ export function CodecoSupervisionApp() {
   const runSynced = async <T,>(operation: () => Promise<T>, successMessage: string): Promise<T | null> => {
     if (!isOnline) {
       setSyncState("error");
-      setToast("Geen verbinding. Je invoer blijft in het geopende formulier; probeer opnieuw zodra je online bent.");
+      setToast(text("No connection. Your input remains in the open form; try again when you are online.", "Geen verbinding. Je invoer blijft in het geopende formulier; probeer opnieuw zodra je online bent."));
       return null;
     }
     setSyncState("saving");
@@ -537,7 +572,7 @@ export function CodecoSupervisionApp() {
       return result;
     } catch (error) {
       setSyncState("error");
-      setToast(error instanceof Error ? `Opslaan mislukt: ${error.message}` : "Opslaan mislukt. Probeer opnieuw.");
+      setToast(error instanceof Error ? `${text("Save failed", "Opslaan mislukt")}: ${error.message}` : text("Save failed. Try again.", "Opslaan mislukt. Probeer opnieuw."));
       return null;
     }
   };
@@ -548,13 +583,19 @@ export function CodecoSupervisionApp() {
   };
 
   const chooseType = (type: string) => {
+    if (type === "photo") {
+      setInitialProjectTab("visual");
+      setActiveNav("project");
+      setModal(null);
+      return;
+    }
     setSelectedType(type);
     setModal(type === "action" ? "action_create" : "entry");
   };
 
   const saveEntry = async () => {
     if (!description.trim() || !supabase || !selectedProject || !selectedBuilding) return;
-    const priorityMap: Record<string, string> = { Laag: "low", Normaal: "normal", Hoog: "high", Kritiek: "critical" };
+    const priorityMap: Record<string, string> = { low: "low", normal: "normal", high: "high", critical: "critical" };
     const saved = await runSynced(
       () => saveSiteRegistration(supabase, {
         projectId: selectedProject.id,
@@ -564,7 +605,7 @@ export function CodecoSupervisionApp() {
         description: `${location} · ${description.trim()}`,
         priority: priorityMap[priority] ?? "normal",
       }),
-      `${entryTitles[selectedType]} is centraal opgeslagen en aan het dagrapport gekoppeld.`,
+      text(`${entryTitles[selectedType]} was saved centrally and linked to the daily report.`, `${entryTitles[selectedType]} is centraal opgeslagen en aan het dagrapport gekoppeld.`),
     );
     if (!saved) return;
     setModal(null);
@@ -602,7 +643,7 @@ export function CodecoSupervisionApp() {
         answers,
         reportDate,
       }),
-      "Projectstart en het conceptdagrapport zijn centraal opgeslagen.",
+      text("Project start and the draft daily report were saved centrally.", "Projectstart en het conceptdagrapport zijn centraal opgeslagen."),
     );
     if (!saved) return;
     setProjectStartAnswers(answers);
@@ -622,11 +663,11 @@ export function CodecoSupervisionApp() {
   };
 
   if (!isSupabaseConfigured || !supabase) {
-    return <AppStateScreen title="Supabase-configuratie ontbreekt" copy="De applicatie start pas wanneer de publieke project-URL en publishable key beschikbaar zijn. Een service-role key hoort nooit in de browserapp." />;
+    return <AppStateScreen title={text("Supabase configuration is missing", "Supabase-configuratie ontbreekt")} copy={text("The application starts after the public project URL and publishable key are configured. A secret key never belongs in the browser app.", "De applicatie start pas wanneer de publieke project-URL en publishable key beschikbaar zijn. Een secret key hoort nooit in de browserapp.")} />;
   }
 
   if (!authReady) {
-    return <AppStateScreen title="Veilige werkruimte openen" copy="Je sessie en projecttoegang worden gecontroleerd." loading />;
+    return <AppStateScreen title={text("Opening secure workspace", "Veilige werkruimte openen")} copy={text("Your session and project access are being checked.", "Je sessie en projecttoegang worden gecontroleerd.")} loading />;
   }
 
   if (!session) {
@@ -651,11 +692,11 @@ export function CodecoSupervisionApp() {
   }
 
   if (workspaceQuery.isLoading) {
-    return <AppStateScreen title="CODECO-werkruimte laden" copy="Projecten, gebouwen en rechten worden uit Supabase opgehaald." loading />;
+    return <AppStateScreen title={text("Loading CODECO workspace", "CODECO-werkruimte laden")} copy={text("Projects, buildings and permissions are being loaded from Supabase.", "Projecten, gebouwen en rechten worden uit Supabase opgehaald.")} loading />;
   }
 
   if (workspaceQuery.isError || !workspaceQuery.data) {
-    return <AppStateScreen title="Werkruimte niet beschikbaar" copy={workspaceQuery.error instanceof Error ? workspaceQuery.error.message : "De centrale gegevens konden niet worden geladen."} action={() => void workspaceQuery.refetch()} />;
+    return <AppStateScreen title={text("Workspace unavailable", "Werkruimte niet beschikbaar")} copy={workspaceQuery.error instanceof Error ? workspaceQuery.error.message : text("The central data could not be loaded.", "De centrale gegevens konden niet worden geladen.")} action={() => void workspaceQuery.refetch()} />;
   }
 
   if (workspaceQuery.data.organizations.length === 0) {
@@ -732,17 +773,17 @@ export function CodecoSupervisionApp() {
   }
 
   const projectName = selectedProject?.name ?? "Project";
-  const buildingName = selectedBuilding?.name ?? "Gebouw";
+  const buildingName = selectedBuilding?.name ?? text("Building", "Gebouw");
 
   return (
     <div className="app-shell">
-      <aside className="sidebar" aria-label="Hoofdnavigatie">
+      <aside className="sidebar" aria-label={text("Main navigation", "Hoofdnavigatie")}>
         <div className="brand">
           <span className="brand-mark" aria-hidden="true" />
           <span className="brand-copy"><strong>CODECO N.V.</strong><small>Supervisie</small></span>
         </div>
 
-        <button className="project-context-card" type="button" aria-label="Project en gebouw wijzigen" onClick={() => setWorkspaceStage("projects")}>
+        <button className="project-context-card" type="button" aria-label={text("Change project and building", "Project en gebouw wijzigen")} onClick={() => setWorkspaceStage("projects")}>
           <span className="project-context-icon"><Building2 size={17} /></span>
           <span className="project-context-copy">
             <strong>{projectName}</strong>
@@ -752,8 +793,8 @@ export function CodecoSupervisionApp() {
         </button>
 
         <nav className="side-nav">
-          <span className="nav-label">Werkruimte</span>
-          {navigation.map((item) => {
+          <span className="nav-label">{text("Workspace", "Werkruimte")}</span>
+          {localizedNavigation.map((item) => {
             const Icon = item.icon;
             return (
               <button
@@ -773,13 +814,13 @@ export function CodecoSupervisionApp() {
         <div className="sidebar-spacer" />
         <button className="quick-add-side" type="button" onClick={openQuickAdd}>
           <Plus size={18} strokeWidth={2.4} />
-          Snel toevoegen
+          {text("Quick add", "Snel toevoegen")}
         </button>
-        <button className="user-card" type="button" onClick={() => void supabase.auth.signOut()} title="Afmelden">
+        <button className="user-card" type="button" onClick={() => void supabase.auth.signOut()} title={text("Sign out", "Afmelden")}>
           <span className="avatar">{initials(currentUserName)}</span>
           <span className="user-copy">
             <strong>{currentUserName}</strong>
-            <small>CODECO-gebruiker</small>
+            <small>{text("CODECO user", "CODECO-gebruiker")}</small>
           </span>
           <LogOut size={16} color="#7893a1" />
         </button>
@@ -787,17 +828,18 @@ export function CodecoSupervisionApp() {
 
       <div className="main-shell">
         <header className="topbar">
-          <div className="breadcrumb" aria-label="Huidige werkcontext">
-            <span>Mijn projecten</span>
+          <div className="breadcrumb" aria-label={text("Current work context", "Huidige werkcontext")}>
+            <span>{text("My projects", "Mijn projecten")}</span>
             <ChevronRight size={13} />
             <span>{projectName}</span>
             <ChevronRight size={13} />
             <strong>{buildingName}</strong>
           </div>
           <div className="top-actions">
+            <LanguageSwitcher compact />
             <span className={`storage-state ${syncState}`} title={storageStatus}>{syncState === "error" || !isOnline ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />} <span>{storageStatus}</span></span>
-            <button className="icon-button" type="button" aria-label="Zoeken"><Search size={17} /></button>
-            <button className="icon-button" type="button" aria-label={`Meldingen${unreadNotificationCount ? `, ${unreadNotificationCount} ongelezen` : ""}`} onClick={() => setModal("notifications")}>
+            <button className="icon-button" type="button" aria-label={text("Search", "Zoeken")}><Search size={17} /></button>
+            <button className="icon-button" type="button" aria-label={`${text("Notifications", "Meldingen")}${unreadNotificationCount ? `, ${unreadNotificationCount} ${text("unread", "ongelezen")}` : ""}`} onClick={() => setModal("notifications")}>
               <Bell size={17} />
               {unreadNotificationCount ? <span className="notification-dot" /> : null}
             </button>
@@ -842,6 +884,7 @@ export function CodecoSupervisionApp() {
               parties={dayQuery.data?.parties ?? []}
               canManageOrganization={canManageMembers}
               openUserAdmin={() => setModal("user_admin")}
+              initialProjectTab={initialProjectTab}
             />
           ) : (
             <SecondaryView
@@ -868,8 +911,8 @@ export function CodecoSupervisionApp() {
         </main>
       </div>
 
-      <nav className="mobile-bottom-nav" aria-label="Mobiele hoofdnavigatie">
-        {navigation.filter((item) => item.id !== "rapporten").slice(0, 2).map((item) => {
+      <nav className="mobile-bottom-nav" aria-label={text("Mobile main navigation", "Mobiele hoofdnavigatie")}>
+        {localizedNavigation.filter((item) => item.id !== "rapporten").slice(0, 2).map((item) => {
           const Icon = item.icon;
           return (
             <button className={`mobile-nav-button ${activeNav === item.id ? "active" : ""}`} type="button" onClick={() => navigate(item.id)} key={item.id}>
@@ -878,11 +921,11 @@ export function CodecoSupervisionApp() {
             </button>
           );
         })}
-        <button className="mobile-nav-button quick" type="button" onClick={openQuickAdd} aria-label="Snel toevoegen">
+        <button className="mobile-nav-button quick" type="button" onClick={openQuickAdd} aria-label={text("Quick add", "Snel toevoegen")}>
           <span className="mobile-plus"><Plus size={25} /></span>
-          Toevoegen
+          {text("Add", "Toevoegen")}
         </button>
-        {navigation.filter((item) => item.id === "acties" || item.id === "meer").map((item) => {
+        {localizedNavigation.filter((item) => item.id === "acties" || item.id === "meer").map((item) => {
           const Icon = item.icon;
           return (
             <button className={`mobile-nav-button ${activeNav === item.id ? "active" : ""}`} type="button" onClick={() => navigate(item.id)} key={item.id}>
@@ -1127,24 +1170,27 @@ function AppStateScreen({
   loading?: boolean;
   action?: () => void;
 }) {
+  const { text } = useLanguage();
   return (
     <div className="access-shell">
       <section className="access-card state-card">
-        <div className="access-brand"><span className="brand-mark" /><span><strong>CODECO N.V.</strong><small>Constructiesupervisie</small></span></div>
+        <div className="setup-top"><div className="access-brand"><span className="brand-mark" /><span><strong>CODECO N.V.</strong><small>{text("Construction supervision", "Constructiesupervisie")}</small></span></div><LanguageSwitcher /></div>
         <span className="state-icon">{loading ? <Loader2 className="spin" size={26} /> : <AlertTriangle size={26} />}</span>
         <h1>{title}</h1>
         <p>{copy}</p>
-        {action ? <button className="primary-button" type="button" onClick={action}>Opnieuw proberen</button> : null}
+        {action ? <button className="primary-button" type="button" onClick={action}>{text("Try again", "Opnieuw proberen")}</button> : null}
       </section>
     </div>
   );
 }
 
 function AuthScreen({ client }: { client: SupabaseClient }) {
+  const { language, text } = useLanguage();
+  const localizedAuthSchema = useMemo(() => createAuthSchema(language), [language]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const { register, handleSubmit, formState: { errors } } = useForm<AuthAnswers>({
-    resolver: zodResolver(authSchema),
+    resolver: zodResolver(localizedAuthSchema),
     defaultValues: { email: "", password: "" },
   });
 
@@ -1155,8 +1201,8 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
       const result = await client.auth.signInWithPassword({ email: answers.email, password: answers.password });
       if (result.error) throw result.error;
     } catch (caught) {
-      const raw = caught instanceof Error ? caught.message : "Aanmelden is niet gelukt.";
-      setError(raw.includes("Invalid login credentials") ? "E-mailadres of wachtwoord is onjuist." : raw);
+      const raw = caught instanceof Error ? caught.message : text("Sign-in failed.", "Aanmelden is niet gelukt.");
+      setError(raw.includes("Invalid login credentials") ? text("The email address or password is incorrect.", "E-mailadres of wachtwoord is onjuist.") : raw);
     } finally {
       setBusy(false);
     }
@@ -1165,19 +1211,19 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
   return (
     <div className="access-shell">
       <section className="access-card auth-card">
-        <div className="access-brand"><span className="brand-mark" /><span><strong>CODECO N.V.</strong><small>Constructiesupervisie</small></span></div>
+        <div className="setup-top"><div className="access-brand"><span className="brand-mark" /><span><strong>CODECO N.V.</strong><small>{text("Construction supervision", "Constructiesupervisie")}</small></span></div><LanguageSwitcher /></div>
         <div className="auth-heading">
-          <p className="eyebrow">Interne CODECO-werkruimte</p>
-          <h1>Welkom terug</h1>
-          <p>Alleen medewerkers die door een organisatiebeheerder zijn uitgenodigd kunnen aanmelden.</p>
+          <p className="eyebrow">{text("Internal CODECO workspace", "Interne CODECO-werkruimte")}</p>
+          <h1>{text("Welcome back", "Welkom terug")}</h1>
+          <p>{text("Only employees invited by an organization administrator can sign in.", "Alleen medewerkers die door een organisatiebeheerder zijn uitgenodigd kunnen aanmelden.")}</p>
         </div>
         <form className="access-form" onSubmit={handleSubmit(submit)} noValidate>
-          <label className="form-field"><span>E-mailadres</span><input type="email" autoComplete="email" {...register("email")} />{errors.email ? <small className="field-error">{errors.email.message}</small> : null}</label>
-          <label className="form-field"><span>Wachtwoord</span><input type="password" autoComplete="current-password" {...register("password")} />{errors.password ? <small className="field-error">{errors.password.message}</small> : null}</label>
+          <label className="form-field"><span>{text("Email address", "E-mailadres")}</span><input type="email" autoComplete="email" {...register("email")} />{errors.email ? <small className="field-error">{errors.email.message}</small> : null}</label>
+          <label className="form-field"><span>{text("Password", "Wachtwoord")}</span><input type="password" autoComplete="current-password" {...register("password")} />{errors.password ? <small className="field-error">{errors.password.message}</small> : null}</label>
           {error ? <p className="access-message error" role="alert">{error}</p> : null}
-          <button className="primary-button access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <LogIn size={16} />}Veilig aanmelden</button>
+          <button className="primary-button access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <LogIn size={16} />}{text("Sign in securely", "Veilig aanmelden")}</button>
         </form>
-        <p className="security-note"><ShieldCheck size={14} /> Geen account? Vraag je CODECO-beheerder om een persoonlijke uitnodiging.</p>
+        <p className="security-note"><ShieldCheck size={14} /> {text("No account? Ask your CODECO administrator for a personal invitation.", "Geen account? Vraag je CODECO-beheerder om een persoonlijke uitnodiging.")}</p>
       </section>
     </div>
   );
@@ -1192,10 +1238,12 @@ function PasswordSetupScreen({
   save: (answers: PasswordSetupAnswers) => Promise<void>;
   signOut: () => void;
 }) {
+  const { language, text } = useLanguage();
+  const localizedPasswordSetupSchema = useMemo(() => createPasswordSetupSchema(language), [language]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const { register, handleSubmit, formState: { errors } } = useForm<PasswordSetupAnswers>({
-    resolver: zodResolver(passwordSetupSchema),
+    resolver: zodResolver(localizedPasswordSetupSchema),
     defaultValues: { password: "", passwordConfirmation: "" },
   });
   const submit = async (answers: PasswordSetupAnswers) => {
@@ -1204,7 +1252,7 @@ function PasswordSetupScreen({
     try {
       await save(answers);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Het wachtwoord kon niet worden opgeslagen.");
+      setError(caught instanceof Error ? caught.message : text("The password could not be saved.", "Het wachtwoord kon niet worden opgeslagen."));
     } finally {
       setBusy(false);
     }
@@ -1212,14 +1260,14 @@ function PasswordSetupScreen({
   return (
     <div className="access-shell setup-shell">
       <section className="access-card setup-card">
-        <div className="setup-top"><div className="access-brand"><span className="brand-mark" /><span><strong>CODECO N.V.</strong><small>Interne uitnodiging</small></span></div><button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> Afmelden</button></div>
+        <div className="setup-top"><div className="access-brand"><span className="brand-mark" /><span><strong>CODECO N.V.</strong><small>{text("Internal invitation", "Interne uitnodiging")}</small></span></div><LanguageSwitcher /><button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button></div>
         <span className="state-icon"><KeyRound size={26} /></span>
-        <p className="eyebrow">Eerste aanmelding</p><h1>Stel je wachtwoord in</h1><p>De uitnodiging voor <strong>{email}</strong> is geverifieerd. Kies nu een persoonlijk wachtwoord van minimaal 12 tekens.</p>
+        <p className="eyebrow">{text("First sign-in", "Eerste aanmelding")}</p><h1>{text("Set your password", "Stel je wachtwoord in")}</h1><p>{text("The invitation for", "De uitnodiging voor")} <strong>{email}</strong> {text("has been verified. Choose a personal password of at least 12 characters.", "is geverifieerd. Kies nu een persoonlijk wachtwoord van minimaal 12 tekens.")}</p>
         <form className="access-form setup-form" onSubmit={handleSubmit(submit)} noValidate>
-          <label className="form-field"><span>Nieuw wachtwoord</span><input type="password" autoComplete="new-password" {...register("password")} />{errors.password ? <small className="field-error">{errors.password.message}</small> : null}</label>
-          <label className="form-field"><span>Herhaal wachtwoord</span><input type="password" autoComplete="new-password" {...register("passwordConfirmation")} />{errors.passwordConfirmation ? <small className="field-error">{errors.passwordConfirmation.message}</small> : null}</label>
+          <label className="form-field"><span>{text("New password", "Nieuw wachtwoord")}</span><input type="password" autoComplete="new-password" {...register("password")} />{errors.password ? <small className="field-error">{errors.password.message}</small> : null}</label>
+          <label className="form-field"><span>{text("Repeat password", "Herhaal wachtwoord")}</span><input type="password" autoComplete="new-password" {...register("passwordConfirmation")} />{errors.passwordConfirmation ? <small className="field-error">{errors.passwordConfirmation.message}</small> : null}</label>
           {error ? <p className="access-message error" role="alert">{error}</p> : null}
-          <button className="primary-button access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <Check size={16} />}Wachtwoord opslaan</button>
+          <button className="primary-button access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <Check size={16} />}{text("Save password", "Wachtwoord opslaan")}</button>
         </form>
       </section>
     </div>
@@ -1227,14 +1275,15 @@ function PasswordSetupScreen({
 }
 
 function AccessPendingScreen({ email, signOut }: { email: string; signOut: () => void }) {
+  const { text } = useLanguage();
   return (
     <div className="access-shell">
       <section className="access-card state-card">
-        <div className="access-brand"><span className="brand-mark" /><span><strong>CODECO N.V.</strong><small>Interne toegang</small></span></div>
+        <div className="setup-top"><div className="access-brand"><span className="brand-mark" /><span><strong>CODECO N.V.</strong><small>{text("Internal access", "Interne toegang")}</small></span></div><LanguageSwitcher /></div>
         <span className="state-icon"><ShieldCheck size={26} /></span>
-        <h1>Nog geen projecttoegang</h1>
-        <p>Het account <strong>{email}</strong> is aangemeld, maar heeft geen CODECO-organisatie of project toegewezen. Vraag een organisatiebeheerder om de juiste rol toe te kennen.</p>
-        <button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> Afmelden</button>
+        <h1>{text("No project access yet", "Nog geen projecttoegang")}</h1>
+        <p>{text("The signed-in account", "Het account")} <strong>{email}</strong> {text("has no CODECO organization or project assigned. Ask an organization administrator to assign the appropriate role.", "is aangemeld, maar heeft geen CODECO-organisatie of project toegewezen. Vraag een organisatiebeheerder om de juiste rol toe te kennen.")}</p>
+        <button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button>
       </section>
     </div>
   );
@@ -1251,30 +1300,32 @@ function OrganizationSetupScreen({
   save: (answers: OrganizationSetupAnswers) => Promise<boolean>;
   signOut: () => void;
 }) {
+  const { language, text } = useLanguage();
+  const localizedOrganizationSetupSchema = useMemo(() => createOrganizationSetupSchema(language), [language]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const { register, handleSubmit, formState: { errors } } = useForm<OrganizationSetupAnswers>({
-    resolver: zodResolver(organizationSetupSchema),
+    resolver: zodResolver(localizedOrganizationSetupSchema),
     defaultValues: { displayName: defaultDisplayName, organizationName: "CODECO N.V.", organizationSlug: "codeco-nv" },
   });
   const submit = async (answers: OrganizationSetupAnswers) => {
     setBusy(true);
     setError("");
     const ok = await save(answers);
-    if (!ok) setError("De organisatie kon niet worden aangemaakt. Controleer of de slug al bestaat.");
+    if (!ok) setError(text("The organization could not be created. Check whether the slug already exists.", "De organisatie kon niet worden aangemaakt. Controleer of de slug al bestaat."));
     setBusy(false);
   };
   return (
     <div className="access-shell setup-shell">
       <section className="access-card setup-card">
-        <div className="setup-top"><div className="access-brand"><span className="brand-mark" /><span><strong>CODECO N.V.</strong><small>Eerste inrichting</small></span></div><button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> Afmelden</button></div>
-        <p className="eyebrow">Stap 1 van 2</p><h1>Organisatie veilig instellen</h1><p>Dit maakt de centrale rollen- en rechtenstructuur. Je account <strong>{userEmail}</strong> wordt de eerste organisatiebeheerder.</p>
+        <div className="setup-top"><div className="access-brand"><span className="brand-mark" /><span><strong>CODECO N.V.</strong><small>{text("Initial setup", "Eerste inrichting")}</small></span></div><LanguageSwitcher /><button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button></div>
+        <p className="eyebrow">{text("Step 1 of 2", "Stap 1 van 2")}</p><h1>{text("Set up the organization securely", "Organisatie veilig instellen")}</h1><p>{text("This creates the central role and permission structure. Your account", "Dit maakt de centrale rollen- en rechtenstructuur. Je account")} <strong>{userEmail}</strong> {text("becomes the first organization administrator.", "wordt de eerste organisatiebeheerder.")}</p>
         <form className="access-form setup-form" onSubmit={handleSubmit(submit)} noValidate>
-          <label className="form-field"><span>Jouw naam</span><input {...register("displayName")} />{errors.displayName ? <small className="field-error">{errors.displayName.message}</small> : null}</label>
-          <label className="form-field"><span>Bedrijfsnaam</span><input {...register("organizationName")} /></label>
-          <label className="form-field"><span>Technische organisatieslug</span><input {...register("organizationSlug")} />{errors.organizationSlug ? <small className="field-error">{errors.organizationSlug.message}</small> : null}</label>
+          <label className="form-field"><span>{text("Your name", "Jouw naam")}</span><input {...register("displayName")} />{errors.displayName ? <small className="field-error">{errors.displayName.message}</small> : null}</label>
+          <label className="form-field"><span>{text("Company name", "Bedrijfsnaam")}</span><input {...register("organizationName")} /></label>
+          <label className="form-field"><span>{text("Technical organization slug", "Technische organisatieslug")}</span><input {...register("organizationSlug")} />{errors.organizationSlug ? <small className="field-error">{errors.organizationSlug.message}</small> : null}</label>
           {error ? <p className="access-message error" role="alert">{error}</p> : null}
-          <button className="primary-button access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <ArrowRight size={16} />}Organisatie instellen</button>
+          <button className="primary-button access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <ArrowRight size={16} />}{text("Set up organization", "Organisatie instellen")}</button>
         </form>
       </section>
     </div>
@@ -1290,42 +1341,44 @@ function ProjectSetupScreen({
   save: (answers: ProjectSetupAnswers) => Promise<boolean>;
   signOut: () => void;
 }) {
+  const { text } = useLanguage();
+  const localizedProjectSetupSchema = useMemo(() => createProjectSetupSchema(), []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const { register, handleSubmit, formState: { errors } } = useForm<ProjectSetupAnswers>({
-    resolver: zodResolver(projectSetupSchema),
+    resolver: zodResolver(localizedProjectSetupSchema),
     defaultValues: {
       code: "COD-2026-001",
-      name: "Eerste constructieproject",
+      name: "First construction project",
       location: "Paramaribo, Suriname",
-      clientName: "Opdrachtgever",
+      clientName: "Client",
       buildingCode: "HOOFD",
-      buildingName: "Hoofdgebouw",
-      contractorName: "Hoofdaannemer",
+      buildingName: "Main building",
+      contractorName: "Main contractor",
     },
   });
   const submit = async (answers: ProjectSetupAnswers) => {
     setBusy(true);
     setError("");
     const ok = await save(answers);
-    if (!ok) setError("Het project kon niet worden aangemaakt. Controleer de projectcode en probeer opnieuw.");
+    if (!ok) setError(text("The project could not be created. Check the project code and try again.", "Het project kon niet worden aangemaakt. Controleer de projectcode en probeer opnieuw."));
     setBusy(false);
   };
   return (
     <div className="access-shell setup-shell">
       <section className="access-card setup-card project-setup-card">
-        <div className="setup-top"><div className="access-brand"><span className="brand-mark" /><span><strong>{organizationName}</strong><small>Eerste inrichting</small></span></div><button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> Afmelden</button></div>
-        <p className="eyebrow">Stap 2 van 2</p><h1>Eerste project en gebouw</h1><p>De applicatie maakt atomair het project, gebouw, jouw projecttoegang en drie standaardpartijen aan.</p>
+        <div className="setup-top"><div className="access-brand"><span className="brand-mark" /><span><strong>{organizationName}</strong><small>{text("Initial setup", "Eerste inrichting")}</small></span></div><LanguageSwitcher /><button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button></div>
+        <p className="eyebrow">{text("Step 2 of 2", "Stap 2 van 2")}</p><h1>{text("First project and building", "Eerste project en gebouw")}</h1><p>{text("The application atomically creates the project, building, your project access and three standard parties.", "De applicatie maakt atomair het project, gebouw, jouw projecttoegang en drie standaardpartijen aan.")}</p>
         <form className="access-form setup-form two-columns" onSubmit={handleSubmit(submit)} noValidate>
-          <label className="form-field"><span>Projectcode</span><input {...register("code")} />{errors.code ? <small className="field-error">{errors.code.message}</small> : null}</label>
-          <label className="form-field"><span>Projectnaam</span><input {...register("name")} /></label>
-          <label className="form-field"><span>Locatie</span><input {...register("location")} /></label>
-          <label className="form-field"><span>Opdrachtgever</span><input {...register("clientName")} /></label>
-          <label className="form-field"><span>Gebouwcode</span><input {...register("buildingCode")} /></label>
-          <label className="form-field"><span>Gebouwnaam</span><input {...register("buildingName")} /></label>
-          <label className="form-field wide"><span>Hoofdaannemer</span><input {...register("contractorName")} /></label>
+          <label className="form-field"><span>{text("Project code", "Projectcode")}</span><input {...register("code")} />{errors.code ? <small className="field-error">{errors.code.message}</small> : null}</label>
+          <label className="form-field"><span>{text("Project name", "Projectnaam")}</span><input {...register("name")} /></label>
+          <label className="form-field"><span>{text("Location", "Locatie")}</span><input {...register("location")} /></label>
+          <label className="form-field"><span>{text("Client", "Opdrachtgever")}</span><input {...register("clientName")} /></label>
+          <label className="form-field"><span>{text("Building code", "Gebouwcode")}</span><input {...register("buildingCode")} /></label>
+          <label className="form-field"><span>{text("Building name", "Gebouwnaam")}</span><input {...register("buildingName")} /></label>
+          <label className="form-field wide"><span>{text("Main contractor", "Hoofdaannemer")}</span><input {...register("contractorName")} /></label>
           {error ? <p className="access-message error wide" role="alert">{error}</p> : null}
-          <button className="primary-button access-submit wide" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <ArrowRight size={16} />}Projectwerkruimte aanmaken</button>
+          <button className="primary-button access-submit wide" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <ArrowRight size={16} />}{text("Create project workspace", "Projectwerkruimte aanmaken")}</button>
         </form>
       </section>
     </div>
@@ -1361,6 +1414,7 @@ function ContextSelection({
   storageStatus: string;
   initialProjectStart: ProjectStartAnswers | null;
 }) {
+  const { text } = useLanguage();
   const showBuildings = stage === "buildings" && selectedProject;
   const showProjectStart = stage === "project_start" && Boolean(selectedProject && selectedBuilding);
   return (
@@ -1370,20 +1424,20 @@ function ContextSelection({
           <span className="brand-mark" aria-hidden="true" />
           <span className="brand-copy"><strong>CODECO N.V.</strong><small>Supervisie</small></span>
         </div>
-        <div className="context-user"><span className="avatar">{initials(currentUserName)}</span><span><strong>{currentUserName}</strong><small>CODECO-gebruiker</small></span></div>
+        <div className="context-user"><LanguageSwitcher compact /><span className="avatar">{initials(currentUserName)}</span><span><strong>{currentUserName}</strong><small>{text("CODECO user", "CODECO-gebruiker")}</small></span></div>
       </header>
 
       <main className="context-content">
         <div className="data-mode-notice connected" role="status">
           <CheckCircle2 size={17} />
-          <span><strong>Online werkruimte</strong> {storageStatus}. Alleen door Supabase bevestigde wijzigingen krijgen de status opgeslagen.</span>
+          <span><strong>{text("Online workspace", "Online werkruimte")}</strong> {storageStatus}. {text("Only changes confirmed by Supabase receive the saved status.", "Alleen door Supabase bevestigde wijzigingen krijgen de status opgeslagen.")}</span>
         </div>
-        <div className="context-steps" aria-label="Werkcontext kiezen">
+        <div className="context-steps" aria-label={text("Select work context", "Werkcontext kiezen")}>
           <span className={stage === "projects" ? "active" : "done"}><strong>1</strong> Project</span>
           <ChevronRight size={14} />
-          <span className={showBuildings ? "active" : showProjectStart ? "done" : ""}><strong>2</strong> Gebouw</span>
+          <span className={showBuildings ? "active" : showProjectStart ? "done" : ""}><strong>2</strong> {text("Building", "Gebouw")}</span>
           <ChevronRight size={14} />
-          <span className={showProjectStart ? "active" : ""}><strong>3</strong> Projectstart</span>
+          <span className={showProjectStart ? "active" : ""}><strong>3</strong> {text("Project start", "Projectstart")}</span>
         </div>
 
         {showProjectStart ? (
@@ -1397,8 +1451,8 @@ function ContextSelection({
         ) : !showBuildings ? (
           <>
             <section className="context-heading">
-              <div><p className="eyebrow">Mijn projecten</p><h1>Waar ga je vandaag werken?</h1><p>Kies eerst het project. Je gebouw en dagrapport volgen in de volgende stap.</p></div>
-              <button className="ghost-button" type="button"><Search size={14} /> Project zoeken</button>
+              <div><p className="eyebrow">{text("My projects", "Mijn projecten")}</p><h1>{text("Where will you work today?", "Waar ga je vandaag werken?")}</h1><p>{text("Select the project first. Your building and daily report follow in the next step.", "Kies eerst het project. Je gebouw en dagrapport volgen in de volgende stap.")}</p></div>
+              <button className="ghost-button" type="button"><Search size={14} /> {text("Search project", "Project zoeken")}</button>
             </section>
             <section className="project-selection-grid">
               {projects.map((project) => (
@@ -1408,18 +1462,18 @@ function ContextSelection({
                     <span className="project-code">{project.code}</span>
                   </span>
                   <span className="selection-copy"><strong>{project.name}</strong><small><MapPin size={12} /> {project.location}</small></span>
-                  <span className="selection-meta"><span>{project.buildings.length} gebouwen</span><span>{project.openIssues} open punten</span></span>
-                  <span className="selection-progress"><span style={{ width: `${project.progress}%` }} /><em>{project.progress}% voortgang</em></span>
-                  <span className="selection-action">Gebouwen bekijken <ArrowRight size={14} /></span>
+                  <span className="selection-meta"><span>{project.buildings.length} {text("buildings", "gebouwen")}</span><span>{project.openIssues} {text("open issues", "open punten")}</span></span>
+                  <span className="selection-progress"><span style={{ width: `${project.progress}%` }} /><em>{project.progress}% {text("progress", "voortgang")}</em></span>
+                  <span className="selection-action">{text("View buildings", "Gebouwen bekijken")} <ArrowRight size={14} /></span>
                 </button>
               ))}
             </section>
           </>
         ) : (
           <>
-            <button className="back-button context-back" type="button" onClick={goBack}><ArrowLeft size={15} /> Terug naar projecten</button>
+            <button className="back-button context-back" type="button" onClick={goBack}><ArrowLeft size={15} /> {text("Back to projects", "Terug naar projecten")}</button>
             <section className="context-heading">
-              <div><p className="eyebrow">{showBuildings.code} · {showBuildings.location}</p><h1>Kies een gebouw</h1><p>Fysieke registraties worden verplicht aan dit gebouw gekoppeld.</p></div>
+              <div><p className="eyebrow">{showBuildings.code} · {showBuildings.location}</p><h1>{text("Select a building", "Kies een gebouw")}</h1><p>{text("Physical records are always linked to this building.", "Fysieke registraties worden verplicht aan dit gebouw gekoppeld.")}</p></div>
               <span className="context-project-pill"><Building2 size={15} /> {showBuildings.name}</span>
             </section>
             <section className="building-selection-grid">
@@ -1429,14 +1483,14 @@ function ContextSelection({
                   <button className={`building-selection-card ${active ? "selected" : ""}`} type="button" onClick={() => chooseBuilding(building)} key={building.id}>
                     <span className="building-radio">{active ? <Check size={14} /> : null}</span>
                     <span className="building-selection-copy"><strong>{building.name}</strong><small>{building.description}</small></span>
-                    <span className="building-stats"><span><b>{building.progress}%</b> voortgang</span><span><b>{building.openIssues}</b> open punten</span></span>
+                    <span className="building-stats"><span><b>{building.progress}%</b> {text("progress", "voortgang")}</span><span><b>{building.openIssues}</b> {text("open issues", "open punten")}</span></span>
                   </button>
                 );
               })}
             </section>
             <div className="project-start-bar">
-              <span><strong>{selectedBuilding ? selectedBuilding.name : "Nog geen gebouw gekozen"}</strong><small>{selectedBuilding ? "Je werkcontext is compleet." : "Kies een gebouw om door te gaan."}</small></span>
-              <button className="primary-button" type="button" disabled={!selectedBuilding} onClick={openProjectStart}>Projectstart invullen <ArrowRight size={15} /></button>
+              <span><strong>{selectedBuilding ? selectedBuilding.name : text("No building selected", "Nog geen gebouw gekozen")}</strong><small>{selectedBuilding ? text("Your work context is complete.", "Je werkcontext is compleet.") : text("Select a building to continue.", "Kies een gebouw om door te gaan.")}</small></span>
+              <button className="primary-button" type="button" disabled={!selectedBuilding} onClick={openProjectStart}>{text("Complete project start", "Projectstart invullen")} <ArrowRight size={15} /></button>
             </div>
           </>
         )}
@@ -1458,13 +1512,15 @@ function ProjectStartForm({
   startProject: (answers: ProjectStartAnswers) => void | Promise<void>;
   initialAnswers: ProjectStartAnswers | null;
 }) {
+  const { language, locale, text } = useLanguage();
+  const localizedProjectStartSchema = useMemo(() => createProjectStartSchema(language), [language]);
   const {
     register,
     handleSubmit,
     control,
     formState: { errors },
   } = useForm<ProjectStartAnswers>({
-    resolver: zodResolver(projectStartSchema),
+    resolver: zodResolver(localizedProjectStartSchema),
     mode: "onBlur",
     defaultValues: initialAnswers ?? {
       weatherCondition: "partly_cloudy",
@@ -1472,7 +1528,7 @@ function ProjectStartForm({
       windCondition: "moderate",
       shiftStart: "07:00",
       shiftEnd: "16:00",
-      plannedWork: "Bekisting kernwand en wapeningscontrole vloer V3",
+      plannedWork: "Core wall formwork and floor reinforcement inspection",
       expectedWorkers: 42,
       inspectionPlanned: "yes",
       highRiskWork: "no",
@@ -1480,74 +1536,74 @@ function ProjectStartForm({
       workPermit: "not_required",
       drawingStatus: "approved",
       drawingIssueReported: false,
-      riskNotes: "Levering betonstaal rond 10:00 controleren.",
+      riskNotes: "Check the reinforcement steel delivery around 10:00.",
     },
   });
   const answers = useWatch({ control });
-  const automation = getProjectStartAutomation(answers);
+  const automation = getProjectStartAutomation(answers, 41, language);
 
   return (
     <>
-      <button className="back-button context-back" type="button" onClick={goBack}><ArrowLeft size={15} /> Terug naar gebouwen</button>
+      <button className="back-button context-back" type="button" onClick={goBack}><ArrowLeft size={15} /> {text("Back to buildings", "Terug naar gebouwen")}</button>
       <section className="context-heading project-start-heading">
         <div>
           <p className="eyebrow">{project.code} · {building.name}</p>
-          <h1>Start de werkdag met de juiste vragen</h1>
-          <p>Bevestig alleen wat niet betrouwbaar uit het project kan worden afgeleid. De regels rechts tonen direct wat de app daarna klaarzet.</p>
+          <h1>{text("Start the workday with the right questions", "Start de werkdag met de juiste vragen")}</h1>
+          <p>{text("Confirm only what cannot be reliably derived from the project. The rules show exactly what the app prepares next.", "Bevestig alleen wat niet betrouwbaar uit het project kan worden afgeleid. De regels rechts tonen direct wat de app daarna klaarzet.")}</p>
         </div>
-        <span className="context-project-pill"><CalendarDays size={15} /> {currentDateLabel()}</span>
+        <span className="context-project-pill"><CalendarDays size={15} /> {currentDateLabel(locale)}</span>
       </section>
 
       <div className="project-start-layout">
         <form className="project-start-form" onSubmit={handleSubmit(startProject)} noValidate>
           <section className="form-section-card">
-            <header><span className="form-section-number">1</span><span><strong>Weer en werktijden</strong><small>Handmatig waargenomen op de bouwplaats</small></span></header>
+            <header><span className="form-section-number">1</span><span><strong>{text("Weather and working hours", "Weer en werktijden")}</strong><small>{text("Observed manually on site", "Handmatig waargenomen op de bouwplaats")}</small></span></header>
             <div className="form-grid three-columns">
-              <label className="form-field"><span>Wat is het weer?</span><select {...register("weatherCondition")}><option value="sunny">Zonnig</option><option value="partly_cloudy">Licht bewolkt</option><option value="cloudy">Bewolkt</option><option value="rain">Regen</option><option value="heavy_rain">Zware regen</option></select></label>
-              <label className="form-field"><span>Temperatuur</span><span className="input-with-unit"><input type="number" {...register("temperatureC", { valueAsNumber: true })} /><em>°C</em></span>{errors.temperatureC ? <small className="field-error">{errors.temperatureC.message}</small> : null}</label>
-              <label className="form-field"><span>Wind</span><select {...register("windCondition")}><option value="calm">Kalm</option><option value="moderate">Matig</option><option value="strong">Sterk</option></select></label>
-              <label className="form-field"><span>Start werktijd</span><input type="time" {...register("shiftStart")} />{errors.shiftStart ? <small className="field-error">{errors.shiftStart.message}</small> : null}</label>
-              <label className="form-field"><span>Einde werktijd</span><input type="time" {...register("shiftEnd")} />{errors.shiftEnd ? <small className="field-error">{errors.shiftEnd.message}</small> : null}</label>
-              <label className="form-field"><span>Verwachte bezetting</span><span className="input-with-unit"><input type="number" {...register("expectedWorkers", { valueAsNumber: true })} /><em>personen</em></span></label>
+              <label className="form-field"><span>{text("What is the weather?", "Wat is het weer?")}</span><select {...register("weatherCondition")}><option value="sunny">{text("Sunny", "Zonnig")}</option><option value="partly_cloudy">{text("Partly cloudy", "Licht bewolkt")}</option><option value="cloudy">{text("Cloudy", "Bewolkt")}</option><option value="rain">{text("Rain", "Regen")}</option><option value="heavy_rain">{text("Heavy rain", "Zware regen")}</option></select></label>
+              <label className="form-field"><span>{text("Temperature", "Temperatuur")}</span><span className="input-with-unit"><input type="number" {...register("temperatureC", { valueAsNumber: true })} /><em>°C</em></span>{errors.temperatureC ? <small className="field-error">{errors.temperatureC.message}</small> : null}</label>
+              <label className="form-field"><span>{text("Wind", "Wind")}</span><select {...register("windCondition")}><option value="calm">{text("Calm", "Kalm")}</option><option value="moderate">{text("Moderate", "Matig")}</option><option value="strong">{text("Strong", "Sterk")}</option></select></label>
+              <label className="form-field"><span>{text("Shift start", "Start werktijd")}</span><input type="time" {...register("shiftStart")} />{errors.shiftStart ? <small className="field-error">{errors.shiftStart.message}</small> : null}</label>
+              <label className="form-field"><span>{text("Shift end", "Einde werktijd")}</span><input type="time" {...register("shiftEnd")} />{errors.shiftEnd ? <small className="field-error">{errors.shiftEnd.message}</small> : null}</label>
+              <label className="form-field"><span>{text("Expected workforce", "Verwachte bezetting")}</span><span className="input-with-unit"><input type="number" {...register("expectedWorkers", { valueAsNumber: true })} /><em>{text("people", "personen")}</em></span></label>
             </div>
           </section>
 
           <section className="form-section-card">
-            <header><span className="form-section-number">2</span><span><strong>Wat staat vandaag gepland?</strong><small>Dit voedt het dagplan en de voorgestelde modules</small></span></header>
+            <header><span className="form-section-number">2</span><span><strong>{text("What is planned today?", "Wat staat vandaag gepland?")}</strong><small>{text("This feeds the day plan and suggested modules", "Dit voedt het dagplan en de voorgestelde modules")}</small></span></header>
             <div className="form-grid two-columns">
-              <label className="form-field wide"><span>Geplande werkzaamheden *</span><textarea rows={3} {...register("plannedWork")} />{errors.plannedWork ? <small className="field-error">{errors.plannedWork.message}</small> : null}</label>
-              <label className="form-field"><span>Inspectie gepland?</span><select {...register("inspectionPlanned")}><option value="yes">Ja</option><option value="no">Nee</option></select></label>
-              <label className="form-field"><span>Betonwerk gepland?</span><select {...register("concreteWork")}><option value="yes">Ja</option><option value="no">Nee</option></select></label>
-              <label className="form-field"><span>Hoog-risicowerk?</span><select {...register("highRiskWork")}><option value="no">Nee</option><option value="yes">Ja</option></select></label>
-              <label className="form-field"><span>Werkvergunning</span><select {...register("workPermit")}><option value="available">Aanwezig</option><option value="not_required">Niet vereist</option><option value="missing">Ontbreekt</option></select></label>
+              <label className="form-field wide"><span>{text("Planned work *", "Geplande werkzaamheden *")}</span><textarea rows={3} {...register("plannedWork")} />{errors.plannedWork ? <small className="field-error">{errors.plannedWork.message}</small> : null}</label>
+              <label className="form-field"><span>{text("Inspection planned?", "Inspectie gepland?")}</span><select {...register("inspectionPlanned")}><option value="yes">{text("Yes", "Ja")}</option><option value="no">{text("No", "Nee")}</option></select></label>
+              <label className="form-field"><span>{text("Concrete work planned?", "Betonwerk gepland?")}</span><select {...register("concreteWork")}><option value="yes">{text("Yes", "Ja")}</option><option value="no">{text("No", "Nee")}</option></select></label>
+              <label className="form-field"><span>{text("High-risk work?", "Hoog-risicowerk?")}</span><select {...register("highRiskWork")}><option value="no">{text("No", "Nee")}</option><option value="yes">{text("Yes", "Ja")}</option></select></label>
+              <label className="form-field"><span>{text("Work permit", "Werkvergunning")}</span><select {...register("workPermit")}><option value="available">{text("Available", "Aanwezig")}</option><option value="not_required">{text("Not required", "Niet vereist")}</option><option value="missing">{text("Missing", "Ontbreekt")}</option></select></label>
             </div>
           </section>
 
           <section className="form-section-card">
-            <header><span className="form-section-number">3</span><span><strong>Documenten en verwachte risico’s</strong><small>De app waarschuwt; de supervisor blijft beslissen</small></span></header>
+            <header><span className="form-section-number">3</span><span><strong>{text("Documents and expected risks", "Documenten en verwachte risico’s")}</strong><small>{text("The app warns; the supervisor remains the decision maker", "De app waarschuwt; de supervisor blijft beslissen")}</small></span></header>
             <div className="form-grid two-columns">
-              <label className="form-field"><span>Goedgekeurde werktekening</span><select {...register("drawingStatus")}><option value="approved">Actuele revisie aanwezig</option><option value="not_required">Niet vereist</option><option value="missing">Ontbreekt / onzeker</option></select></label>
-              <label className="form-field wide"><span>Welke risico’s verwacht je vandaag?</span><textarea rows={3} placeholder="Bijvoorbeeld hijswerk, regen, levering of grondwater" {...register("riskNotes")} /></label>
+              <label className="form-field"><span>{text("Approved working drawing", "Goedgekeurde werktekening")}</span><select {...register("drawingStatus")}><option value="approved">{text("Current revision available", "Actuele revisie aanwezig")}</option><option value="not_required">{text("Not required", "Niet vereist")}</option><option value="missing">{text("Missing / uncertain", "Ontbreekt / onzeker")}</option></select></label>
+              <label className="form-field wide"><span>{text("Which risks do you expect today?", "Welke risico’s verwacht je vandaag?")}</span><textarea rows={3} placeholder={text("For example lifting, rain, delivery or groundwater", "Bijvoorbeeld hijswerk, regen, levering of grondwater")} {...register("riskNotes")} /></label>
               {answers.drawingStatus === "missing" ? (
-                <label className="confirmation-check wide"><input type="checkbox" {...register("drawingIssueReported")} /><span><strong>Ontbrekende tekening is gemeld</strong><small>Menselijke bevestiging vereist voordat de werkdag wordt geopend.</small>{errors.drawingIssueReported ? <em className="field-error">{errors.drawingIssueReported.message}</em> : null}</span></label>
+                <label className="confirmation-check wide"><input type="checkbox" {...register("drawingIssueReported")} /><span><strong>{text("Missing drawing was reported", "Ontbrekende tekening is gemeld")}</strong><small>{text("Human confirmation is required before the workday opens.", "Menselijke bevestiging vereist voordat de werkdag wordt geopend.")}</small>{errors.drawingIssueReported ? <em className="field-error">{errors.drawingIssueReported.message}</em> : null}</span></label>
               ) : null}
             </div>
           </section>
 
           <div className="project-start-submit">
-            <span><ShieldCheck size={15} /> Opslaan is pas voltooid na bevestiging door Supabase.</span>
-            <button className="primary-button" type="submit">Dagrapport centraal starten <ArrowRight size={15} /></button>
+            <span><ShieldCheck size={15} /> {text("Saving completes only after confirmation by Supabase.", "Opslaan is pas voltooid na bevestiging door Supabase.")}</span>
+            <button className="primary-button" type="submit">{text("Start daily report centrally", "Dagrapport centraal starten")} <ArrowRight size={15} /></button>
           </div>
         </form>
 
         <aside className="automation-panel">
-          <header><span className="automation-panel-icon"><Settings size={19} /></span><span><strong>Zichtbare automatisering</strong><small>{automation.length} vaste regels actief</small></span></header>
-          <p className="automation-intro">Geen AI: iedere actie komt uit een vaste projectregel en blijft door de supervisor controleerbaar.</p>
+          <header><span className="automation-panel-icon"><Settings size={19} /></span><span><strong>{text("Visible automation", "Zichtbare automatisering")}</strong><small>{automation.length} {text("fixed rules active", "vaste regels actief")}</small></span></header>
+          <p className="automation-intro">{text("No AI: every action comes from a fixed project rule and remains under supervisor control.", "Geen AI: iedere actie komt uit een vaste projectregel en blijft door de supervisor controleerbaar.")}</p>
           <div className="automation-rule-list">
             {automation.map((rule) => (
               <article className={`automation-rule ${rule.tone}`} key={rule.id}>
                 <span className="automation-rule-state">{rule.tone === "critical" ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}</span>
-                <span><strong>{rule.title}</strong><p>{rule.action}</p><small>Geactiveerd door: {rule.source} · {rule.id}</small></span>
+                <span><strong>{rule.title}</strong><p>{rule.action}</p><small>{text("Triggered by", "Geactiveerd door")}: {rule.source} · {rule.id}</small></span>
               </article>
             ))}
           </div>
@@ -1590,53 +1646,54 @@ function TodayView({
   reportNumber: string;
   actions: ProjectAction[];
 }) {
+  const { language, locale, text } = useLanguage();
   const todos = [
-    { id: 1, title: "Weer en werktijden bevestigen", detail: projectStartAnswers ? "Centraal vastgelegd" : "Projectstart vereist", flag: "" },
-    { id: 2, title: "Kwaliteit en HSE bevestigen", detail: dailyCloseoutAnswers ? "Centraal vastgelegd" : "Dagvragen vereist", flag: "red" },
-    { id: 3, title: "Planning voor morgen invullen", detail: dailyCloseoutAnswers ? "Centraal vastgelegd" : "Voor dagafsluiting", flag: "" },
+    { id: 1, title: text("Confirm weather and working hours", "Weer en werktijden bevestigen"), detail: projectStartAnswers ? text("Recorded centrally", "Centraal vastgelegd") : text("Project start required", "Projectstart vereist"), flag: "" },
+    { id: 2, title: text("Confirm quality and HSE", "Kwaliteit en HSE bevestigen"), detail: dailyCloseoutAnswers ? text("Recorded centrally", "Centraal vastgelegd") : text("Daily questions required", "Dagvragen vereist"), flag: "red" },
+    { id: 3, title: text("Complete tomorrow's plan", "Planning voor morgen invullen"), detail: dailyCloseoutAnswers ? text("Recorded centrally", "Centraal vastgelegd") : text("Before daily closeout", "Voor dagafsluiting"), flag: "" },
   ];
-  const automation = projectStartAnswers ? getProjectStartAutomation(projectStartAnswers) : [];
+  const automation = projectStartAnswers ? getProjectStartAutomation(projectStartAnswers, 41, language) : [];
   const criticalEntry = entries.find((entry) => entry.badgeTone === "red");
   const inspectionCount = entries.filter((entry) => entry.kind === "inspection").length;
   const progress = dailyCloseoutAnswers?.progressPercent ?? 0;
   const openTodoCount = todos.filter((todo) => !completedTodos.includes(todo.id)).length;
   const weatherLabel = projectStartAnswers
-    ? `${projectStartAnswers.temperatureC}°C · ${weatherLabels[projectStartAnswers.weatherCondition]}`
-    : "Weer nog niet bevestigd";
+    ? `${projectStartAnswers.temperatureC}°C · ${({ sunny: text("Sunny", "Zonnig"), partly_cloudy: text("Partly cloudy", "Licht bewolkt"), cloudy: text("Cloudy", "Bewolkt"), rain: text("Rain", "Regen"), heavy_rain: text("Heavy rain", "Zware regen") })[projectStartAnswers.weatherCondition]}`
+    : text("Weather not confirmed", "Weer nog niet bevestigd");
 
   return (
     <>
       <section className="page-intro">
         <div>
-          <p className="eyebrow">{currentDateLabel()}</p>
-          <h1>Goedemorgen, {currentUserName}.</h1>
-          <p>Dit vraagt vandaag je aandacht bij {projectName} · {buildingName}.</p>
+          <p className="eyebrow">{currentDateLabel(locale)}</p>
+          <h1>{text("Good morning", "Goedemorgen")}, {currentUserName}.</h1>
+          <p>{text("This requires your attention today at", "Dit vraagt vandaag je aandacht bij")} {projectName} · {buildingName}.</p>
         </div>
         <div className="page-intro-actions">
           <div className="weather-chip">
             <span className="weather-icon"><CloudSun size={20} /></span>
             <span className="weather-copy">
               <strong>{weatherLabel}</strong>
-              <span>Handmatig bevestigd bij Projectstart</span>
+              <span>{text("Confirmed manually at Project start", "Handmatig bevestigd bij Projectstart")}</span>
             </span>
             <ChevronRight size={15} color="#718995" />
           </div>
-          <button className="primary-button day-questions-button" type="button" onClick={openDailyQuestions}><ClipboardCheck size={15} /> Dagvragen invullen</button>
+          <button className="primary-button day-questions-button" type="button" onClick={openDailyQuestions}><ClipboardCheck size={15} /> {text("Complete daily questions", "Dagvragen invullen")}</button>
         </div>
       </section>
 
-      <section className="day-hero" aria-label="Status van vandaag">
+      <section className="day-hero" aria-label={text("Today's status", "Status van vandaag")}>
         <article className="report-card">
           <div className="report-copy">
-            <div className="status-kicker"><span className="live-dot" /> Rapport in uitvoering</div>
-            <h2>Dagrapport {reportNumber}</h2>
-            <p>Gegevens uit alle gebouwen worden automatisch in dit projectrapport samengebracht.</p>
+            <div className="status-kicker"><span className="live-dot" /> {text("Report in progress", "Rapport in uitvoering")}</div>
+            <h2>{text("Daily report", "Dagrapport")} {reportNumber}</h2>
+            <p>{text("Data from all buildings is automatically brought together in this project report.", "Gegevens uit alle gebouwen worden automatisch in dit projectrapport samengebracht.")}</p>
             <button className="inline-button" type="button" onClick={openReport}>
-              Rapportstatus bekijken <ArrowRight size={14} />
+              {text("View report status", "Rapportstatus bekijken")} <ArrowRight size={14} />
             </button>
           </div>
           <div className="progress-ring" style={{ background: `conic-gradient(var(--signal) 0 ${completeness}%, rgba(255,255,255,.11) ${completeness}% 100%)` }}>
-            <span className="progress-value"><strong>{completeness}%</strong><span>compleet</span></span>
+            <span className="progress-value"><strong>{completeness}%</strong><span>{text("complete", "compleet")}</span></span>
           </div>
         </article>
 
@@ -1644,39 +1701,39 @@ function TodayView({
           <div>
             <div className="critical-top">
               <span className="critical-icon">{criticalEntry ? <AlertTriangle size={20} /> : <CheckCircle2 size={20} />}</span>
-              <span className="critical-badge">{criticalEntry ? "Kritiek" : "Geen kritieke registratie"}</span>
+              <span className="critical-badge">{criticalEntry ? text("Critical", "Kritiek") : text("No critical record", "Geen kritieke registratie")}</span>
             </div>
-            <h3>{criticalEntry?.title ?? "Geen directe blokkade geregistreerd"}</h3>
-            <p>{criticalEntry?.detail ?? "Nieuwe kritieke registraties worden hier direct zichtbaar."}</p>
+            <h3>{criticalEntry?.title ?? text("No immediate blocker recorded", "Geen directe blokkade geregistreerd")}</h3>
+            <p>{criticalEntry?.detail ?? text("New critical records appear here immediately.", "Nieuwe kritieke registraties worden hier direct zichtbaar.")}</p>
           </div>
-          <button className="text-link" type="button" onClick={showCritical}>Open centrale actielijst <ArrowRight size={13} /></button>
+          <button className="text-link" type="button" onClick={showCritical}>{text("Open central action list", "Open centrale actielijst")} <ArrowRight size={13} /></button>
         </article>
       </section>
 
-      <section className={`questionnaire-strip ${dailyCloseoutAnswers ? "complete" : ""}`} aria-label="Dagvragen en automatisering">
+      <section className={`questionnaire-strip ${dailyCloseoutAnswers ? "complete" : ""}`} aria-label={text("Daily questions and automation", "Dagvragen en automatisering")}>
         <div className="questionnaire-main">
           <span className="questionnaire-icon"><FileCheck2 size={21} /></span>
           <span className="questionnaire-copy">
-            <span className="status-kicker">Klantformat · {clientReportSections.length} rapportonderdelen</span>
-            <strong>{dailyCloseoutAnswers ? "Dagvragen bevestigd" : "Hoe is het project vandaag gegaan?"}</strong>
-            <p>Vier korte vraaggroepen vullen de juiste modules: verloop, kwaliteit/HSE, logistiek en planning morgen.</p>
+            <span className="status-kicker">{text("Client format", "Klantformat")} · {clientReportSections.length} {text("report sections", "rapportonderdelen")}</span>
+            <strong>{dailyCloseoutAnswers ? text("Daily questions confirmed", "Dagvragen bevestigd") : text("How did the project go today?", "Hoe is het project vandaag gegaan?")}</strong>
+            <p>{text("Four short question groups feed the right modules: progress, quality/HSE, logistics and tomorrow's plan.", "Vier korte vraaggroepen vullen de juiste modules: verloop, kwaliteit/HSE, logistiek en planning morgen.")}</p>
           </span>
         </div>
         <div className="questionnaire-automation">
-          {automation.slice(0, 3).map((rule) => <span className={`rule-chip ${rule.tone}`} title={`Geactiveerd door: ${rule.source}`} key={rule.id}>{rule.title}</span>)}
+          {automation.slice(0, 3).map((rule) => <span className={`rule-chip ${rule.tone}`} title={`${text("Triggered by", "Geactiveerd door")}: ${rule.source}`} key={rule.id}>{rule.title}</span>)}
         </div>
-        <div className="questionnaire-progress"><strong>{dailyCloseoutAnswers ? "4/4" : "1/4"}</strong><span>vraaggroepen</span></div>
-        <button className={dailyCloseoutAnswers ? "ghost-button" : "primary-button"} type="button" onClick={openDailyQuestions}>{dailyCloseoutAnswers ? "Antwoorden bekijken" : "Vragen starten"} <ArrowRight size={14} /></button>
+        <div className="questionnaire-progress"><strong>{dailyCloseoutAnswers ? "4/4" : "1/4"}</strong><span>{text("question groups", "vraaggroepen")}</span></div>
+        <button className={dailyCloseoutAnswers ? "ghost-button" : "primary-button"} type="button" onClick={openDailyQuestions}>{dailyCloseoutAnswers ? text("View answers", "Antwoorden bekijken") : text("Start questions", "Vragen starten")} <ArrowRight size={14} /></button>
       </section>
 
       <section className="dashboard-grid">
         <article className="panel">
           <header className="panel-header">
             <div className="section-heading">
-              <h2>Tijdlijn vandaag</h2>
-              <p>{entries.length} registraties · realtime bijgewerkt</p>
+              <h2>{text("Today's timeline", "Tijdlijn vandaag")}</h2>
+              <p>{entries.length} {text("records · updated in real time", "registraties · realtime bijgewerkt")}</p>
             </div>
-            <button className="ghost-button" type="button"><History size={13} /> Alles bekijken</button>
+            <button className="ghost-button" type="button"><History size={13} /> {text("View all", "Alles bekijken")}</button>
           </header>
           <div className="timeline">
             {entries.map((entry) => {
@@ -1703,30 +1760,30 @@ function TodayView({
         <aside className="right-column">
           <article className="panel">
             <header className="panel-header">
-              <div className="section-heading"><h2>In één oogopslag</h2><p>Centraal bijgewerkt</p></div>
+              <div className="section-heading"><h2>{text("At a glance", "In één oogopslag")}</h2><p>{text("Updated centrally", "Centraal bijgewerkt")}</p></div>
             </header>
             <div className="metrics-grid">
-              <Metric icon={Users} value={String(attendanceTotal)} label="mensen aanwezig" suffix="" />
-              <Metric icon={Gauge} value={String(progress)} label="projectvoortgang" suffix="%" />
-              <Metric icon={ClipboardCheck} value={String(inspectionCount)} label="inspecties vandaag" suffix="" />
-              <Metric icon={CheckCircle2} value={String(actions.length)} label="acties" suffix="" />
+              <Metric icon={Users} value={String(attendanceTotal)} label={text("people present", "mensen aanwezig")} suffix="" />
+              <Metric icon={Gauge} value={String(progress)} label={text("project progress", "projectvoortgang")} suffix="%" />
+              <Metric icon={ClipboardCheck} value={String(inspectionCount)} label={text("inspections today", "inspecties vandaag")} suffix="" />
+              <Metric icon={CheckCircle2} value={String(actions.length)} label={text("actions", "acties")} suffix="" />
             </div>
           </article>
 
           <article className="panel">
             <header className="panel-header">
-              <div className="section-heading"><h2>Nog te doen</h2><p>Voor je het rapport afrondt</p></div>
-              <span className="status-badge" style={{ padding: "5px 8px", background: "var(--yellow-soft)", color: "var(--yellow)" }}>{openTodoCount} open</span>
+              <div className="section-heading"><h2>{text("Still to do", "Nog te doen")}</h2><p>{text("Before finalizing the report", "Voor je het rapport afrondt")}</p></div>
+              <span className="status-badge" style={{ padding: "5px 8px", background: "var(--yellow-soft)", color: "var(--yellow)" }}>{openTodoCount} {text("open", "open")}</span>
             </header>
             <div className="todo-list">
               {todos.map((todo) => {
                 const done = completedTodos.includes(todo.id);
                 return (
                   <div className="todo-row" key={todo.id}>
-                    <button className={`todo-check ${done ? "done" : ""}`} type="button" onClick={() => toggleTodo(todo.id)} aria-label={`${todo.title} ${done ? "heropenen" : "afronden"}`}>
+                    <button className={`todo-check ${done ? "done" : ""}`} type="button" onClick={() => toggleTodo(todo.id)} aria-label={`${todo.title} ${done ? text("reopen", "heropenen") : text("complete", "afronden")}`}>
                       <Check size={14} />
                     </button>
-                    <span className="todo-copy"><strong>{todo.title}</strong><span>{done ? "Afgerond" : todo.detail}</span></span>
+                    <span className="todo-copy"><strong>{todo.title}</strong><span>{done ? text("Completed", "Afgerond") : todo.detail}</span></span>
                     {!done ? <span className={`todo-flag ${todo.flag}`} /> : null}
                   </div>
                 );
@@ -1739,9 +1796,9 @@ function TodayView({
       <section className="report-control-bar">
         <div className="report-control-copy">
           <span className="report-control-icon"><FileCheck2 size={19} /></span>
-          <span><strong>Klaar voor de eindcontrole?</strong><span>De app controleert verplichte gegevens en stelt de samenvatting samen.</span></span>
+          <span><strong>{text("Ready for the final check?", "Klaar voor de eindcontrole?")}</strong><span>{text("The app checks required data and compiles the summary.", "De app controleert verplichte gegevens en stelt de samenvatting samen.")}</span></span>
         </div>
-        <button className="primary-button" type="button" onClick={openReport}>Rapport controleren <ArrowRight size={14} /></button>
+        <button className="primary-button" type="button" onClick={openReport}>{text("Check report", "Rapport controleren")} <ArrowRight size={14} /></button>
       </section>
     </>
   );
@@ -1790,21 +1847,23 @@ function SecondaryView({
   canManageMembers: boolean;
   openUserAdmin: () => void;
 }) {
+  const { language, locale, text } = useLanguage();
+  const statusLabels = language === "en" ? actionStatusLabelsEnglish : actionStatusLabels;
   if (activeNav === "project") {
     const registrationsByKind = (kind: EntryKind) => entries.filter((entry) => entry.kind === kind).length;
     const modules = [
-      { title: "Aanwezigheid", copy: "Partijen, disciplines, aantallen en diensten", icon: Users, count: `${attendanceTotal} vandaag`, action: openAttendance },
-      { title: "Activiteiten", copy: "Werkpakketten, planning en voortgang", icon: Wrench, count: `${registrationsByKind("activity")} vandaag`, action: openQuickAdd },
-      { title: "Inspecties", copy: "Gepland, uitgevoerd en herinspecties", icon: ClipboardCheck, count: `${registrationsByKind("inspection")} vandaag`, action: openQuickAdd },
-      { title: "Bevindingen", copy: "Kwaliteit, NCR en herstelverificatie", icon: AlertTriangle, count: `${registrationsByKind("finding")} vandaag`, action: () => navigate("acties") },
-      { title: "Acties", copy: "Toewijzing, deadlines en verificatie", icon: ShieldCheck, count: `${actions.length} centraal`, action: () => navigate("acties") },
-      { title: "Foto’s", copy: "Bewijs, locaties en koppelingen", icon: Image, count: `${registrationsByKind("photo")} vandaag`, action: openQuickAdd },
+      { title: text("Attendance", "Aanwezigheid"), copy: text("Parties, disciplines, headcounts and shifts", "Partijen, disciplines, aantallen en diensten"), icon: Users, count: `${attendanceTotal} ${text("today", "vandaag")}`, action: openAttendance },
+      { title: text("Activities", "Activiteiten"), copy: text("Work packages, planning and progress", "Werkpakketten, planning en voortgang"), icon: Wrench, count: `${registrationsByKind("activity")} ${text("today", "vandaag")}`, action: openQuickAdd },
+      { title: text("Inspections", "Inspecties"), copy: text("Planned, completed and re-inspections", "Gepland, uitgevoerd en herinspecties"), icon: ClipboardCheck, count: `${registrationsByKind("inspection")} ${text("today", "vandaag")}`, action: openQuickAdd },
+      { title: text("Findings", "Bevindingen"), copy: text("Quality, NCR and repair verification", "Kwaliteit, NCR en herstelverificatie"), icon: AlertTriangle, count: `${registrationsByKind("finding")} ${text("today", "vandaag")}`, action: () => navigate("acties") },
+      { title: text("Actions", "Acties"), copy: text("Assignment, deadlines and verification", "Toewijzing, deadlines en verificatie"), icon: ShieldCheck, count: `${actions.length} ${text("central", "centraal")}`, action: () => navigate("acties") },
+      { title: text("Photos", "Foto’s"), copy: text("Evidence, locations and links", "Bewijs, locaties en koppelingen"), icon: Image, count: `${registrationsByKind("photo")} ${text("today", "vandaag")}`, action: openQuickAdd },
     ];
     return (
       <>
         <header className="secondary-header">
-          <div><p className="eyebrow">{projectName}</p><h1>Projectoverzicht</h1><p>Registers en operationele modules voor {buildingName}.</p></div>
-          <button className="primary-button" type="button" onClick={openQuickAdd}><Plus size={15} /> Nieuwe registratie</button>
+          <div><p className="eyebrow">{projectName}</p><h1>{text("Project overview", "Projectoverzicht")}</h1><p>{text("Registers and operational modules for", "Registers en operationele modules voor")} {buildingName}.</p></div>
+          <button className="primary-button" type="button" onClick={openQuickAdd}><Plus size={15} /> {text("New record", "Nieuwe registratie")}</button>
         </header>
         <section className="secondary-grid">
           {modules.map((item) => {
@@ -1825,19 +1884,19 @@ function SecondaryView({
     return (
       <>
         <header className="secondary-header">
-          <div><p className="eyebrow">{actions.length} centraal geregistreerd</p><h1>Acties</h1><p>Persoonlijke en toegewezen opvolging in één lijst.</p></div>
-          <button className="primary-button" type="button" onClick={openQuickAdd}><Plus size={15} /> Actie toevoegen</button>
+          <div><p className="eyebrow">{actions.length} {text("centrally recorded", "centraal geregistreerd")}</p><h1>{text("Actions", "Acties")}</h1><p>{text("Personal and assigned follow-up in one list.", "Persoonlijke en toegewezen opvolging in één lijst.")}</p></div>
+          <button className="primary-button" type="button" onClick={openQuickAdd}><Plus size={15} /> {text("Add action", "Actie toevoegen")}</button>
         </header>
         <section className="actions-list">
-          {actions.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>Nog geen acties</strong><span>Acties die in Supabase worden vastgelegd verschijnen hier.</span></div> : null}
+          {actions.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No actions yet", "Nog geen acties")}</strong><span>{text("Actions recorded in Supabase appear here.", "Acties die in Supabase worden vastgelegd verschijnen hier.")}</span></div> : null}
           {actions.map((action) => {
-            const dueAt = action.due_at ? new Intl.DateTimeFormat("nl-NL", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(action.due_at)) : "Geen deadline";
+            const dueAt = action.due_at ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(action.due_at)) : text("No deadline", "Geen deadline");
             const latestUpdate = actionUpdates.find((update) => update.action_id === action.id);
             return (
             <button className="action-row" type="button" key={action.id} onClick={() => openAction(action)} style={{ textAlign: "left", cursor: "pointer" }}>
               <span className="action-icon"><CheckCircle2 size={18} /></span>
               <span className="action-copy"><strong>{action.title}</strong><span>{dueAt} · {action.action_number}{latestUpdate ? ` · ${latestUpdate.message}` : ""}</span></span>
-              <span className={`task-status ${action.priority === "critical" ? "red" : action.status === "verified" ? "green" : ""}`}>{actionStatusLabels[action.status]}</span>
+              <span className={`task-status ${action.priority === "critical" ? "red" : action.status === "verified" ? "green" : ""}`}>{statusLabels[action.status]}</span>
             </button>
           );})}
         </section>
@@ -1848,11 +1907,11 @@ function SecondaryView({
   if (activeNav === "rapporten") {
     return (
       <>
-        <header className="secondary-header"><div><p className="eyebrow">Dagrapporten</p><h1>Rapporthistorie</h1><p>Concepten, versies, reviews en verzendhistorie.</p></div></header>
+        <header className="secondary-header"><div><p className="eyebrow">{text("Daily reports", "Dagrapporten")}</p><h1>{text("Report history", "Rapporthistorie")}</h1><p>{text("Drafts, versions, reviews and distribution history.", "Concepten, versies, reviews en verzendhistorie.")}</p></div></header>
         <section className="actions-list">
           <button className="action-row" type="button" style={{ textAlign: "left", cursor: "pointer" }}>
               <span className="action-icon" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}><FileText size={18} /></span>
-              <span className="action-copy"><strong>{reportNumber} · Vandaag</strong><span>{projectName} · alle gebouwen</span></span>
+              <span className="action-copy"><strong>{reportNumber} · {text("Today", "Vandaag")}</strong><span>{projectName} · {text("all buildings", "alle gebouwen")}</span></span>
               <span className={`task-status ${reportStatus === "approved" ? "green" : ""}`}>{reportStatus.replaceAll("_", " ")}</span>
           </button>
         </section>
@@ -1861,15 +1920,15 @@ function SecondaryView({
   }
 
   const settings = [
-    { title: "Rapporten", copy: "Historie, revisies en distributie", icon: FileText, action: () => navigate("rapporten") },
-    { title: "Dashboard", copy: "KPI’s, trends en brongegevens", icon: Gauge },
-    { title: "Planning morgen", copy: "Activiteiten, risico’s en inspecties", icon: CalendarDays },
-    { title: "Projectinstellingen", copy: "Locaties, partijen en configuratie", icon: Settings },
-    ...(canManageMembers ? [{ title: "Gebruikers en toegang", copy: "Interne accounts uitnodigen en rollen toewijzen", icon: Users, action: openUserAdmin }] : []),
+    { title: text("Reports", "Rapporten"), copy: text("History, revisions and distribution", "Historie, revisies en distributie"), icon: FileText, action: () => navigate("rapporten") },
+    { title: "Dashboard", copy: text("KPIs, trends and source data", "KPI’s, trends en brongegevens"), icon: Gauge },
+    { title: text("Tomorrow's plan", "Planning morgen"), copy: text("Activities, risks and inspections", "Activiteiten, risico’s en inspecties"), icon: CalendarDays },
+    { title: text("Project settings", "Projectinstellingen"), copy: text("Locations, parties and configuration", "Locaties, partijen en configuratie"), icon: Settings },
+    ...(canManageMembers ? [{ title: text("Users and access", "Gebruikers en toegang"), copy: text("Invite internal accounts and assign roles", "Interne accounts uitnodigen en rollen toewijzen"), icon: Users, action: openUserAdmin }] : []),
   ];
   return (
     <>
-      <header className="secondary-header"><div><p className="eyebrow">Werkruimte</p><h1>Meer</h1><p>Rapportage, planning en projectbeheer.</p></div></header>
+      <header className="secondary-header"><div><p className="eyebrow">{text("Workspace", "Werkruimte")}</p><h1>{text("More", "Meer")}</h1><p>{text("Reporting, planning and project management.", "Rapportage, planning en projectbeheer.")}</p></div></header>
       <section className="settings-list">
         {settings.map((item) => {
           const Icon = item.icon;
@@ -1888,18 +1947,19 @@ function SecondaryView({
 }
 
 function NotificationsModal({ notifications, loading, close, markRead }: { notifications: ProjectNotification[]; loading: boolean; close: () => void; markRead: (notificationId: string) => Promise<void> }) {
+  const { locale, text } = useLanguage();
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal notifications-modal" role="dialog" aria-modal="true" aria-labelledby="notifications-title">
-        <header className="modal-header"><div><h2 id="notifications-title">Meldingen en deadlines</h2><p>In-app herinneringen uit centrale acties, bevindingen en rapportreviews.</p></div><button className="modal-close" type="button" onClick={close} aria-label="Sluiten"><X size={18} /></button></header>
+        <header className="modal-header"><div><h2 id="notifications-title">{text("Notifications and deadlines", "Meldingen en deadlines")}</h2><p>{text("In-app reminders from central actions, findings and report reviews.", "In-app herinneringen uit centrale acties, bevindingen en rapportreviews.")}</p></div><button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button></header>
         <div className="modal-body notification-list">
-          {loading ? <div className="empty-list-state"><Loader2 className="spin" size={22} /><strong>Meldingen laden</strong><span>Deadlines worden regelgestuurd gecontroleerd.</span></div> : null}
-          {!loading && notifications.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>Geen meldingen</strong><span>Er zijn geen openstaande persoonlijke herinneringen.</span></div> : null}
+          {loading ? <div className="empty-list-state"><Loader2 className="spin" size={22} /><strong>{text("Loading notifications", "Meldingen laden")}</strong><span>{text("Deadlines are checked using fixed rules.", "Deadlines worden regelgestuurd gecontroleerd.")}</span></div> : null}
+          {!loading && notifications.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No notifications", "Geen meldingen")}</strong><span>{text("There are no open personal reminders.", "Er zijn geen openstaande persoonlijke herinneringen.")}</span></div> : null}
           {notifications.map((notification) => (
             <button className={`notification-row ${notification.read_at ? "read" : ""}`} type="button" key={notification.id} onClick={() => void markRead(notification.id)}>
               <span className="notification-row-icon">{notification.notification_type.includes("overdue") || notification.notification_type.includes("critical") ? <AlertTriangle size={17} /> : <Bell size={17} />}</span>
-              <span><strong>{notification.title}</strong><span>{notification.body}</span><small>{notification.due_at ? `Deadline ${new Intl.DateTimeFormat("nl-NL", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(notification.due_at))}` : "Directe opvolging"}</small></span>
-              {!notification.read_at ? <i aria-label="Ongelezen" /> : null}
+              <span><strong>{notification.title}</strong><span>{notification.body}</span><small>{notification.due_at ? `${text("Deadline", "Deadline")} ${new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(notification.due_at))}` : text("Immediate follow-up", "Directe opvolging")}</small></span>
+              {!notification.read_at ? <i aria-label={text("Unread", "Ongelezen")} /> : null}
             </button>
           ))}
         </div>
@@ -1931,13 +1991,15 @@ function UserAdminModal({
   currentUserId: string;
   changeStatus: (userId: string, nextStatus: "active" | "suspended" | "revoked", reason: string) => Promise<boolean>;
 }) {
+  const { language, text } = useLanguage();
+  const localizedInternalUserInviteSchema = useMemo(() => createInternalUserInviteSchema(language), [language]);
   const [busy, setBusy] = useState(false);
   const [inviteError, setInviteError] = useState("");
   const [success, setSuccess] = useState("");
   const [memberError, setMemberError] = useState("");
   const [memberAction, setMemberAction] = useState<{ userId: string; nextStatus: "active" | "suspended" | "revoked"; reason: string } | null>(null);
   const { register, handleSubmit, control, reset, setValue, formState: { errors } } = useForm<InternalUserInviteAnswers>({
-    resolver: zodResolver(internalUserInviteSchema),
+    resolver: zodResolver(localizedInternalUserInviteSchema),
     defaultValues: { organizationId, displayName: "", email: "", roleCode: "", projectId: "" },
   });
   const roleCode = useWatch({ control, name: "roleCode" });
@@ -1949,7 +2011,7 @@ function UserAdminModal({
 
   const submit = async (answers: InternalUserInviteAnswers) => {
     if (selectedRole?.scope === "project" && !answers.projectId) {
-      setInviteError("Kies het project waarop deze medewerker toegang krijgt.");
+      setInviteError(text("Choose the project this employee may access.", "Kies het project waarop deze medewerker toegang krijgt."));
       return;
     }
     setBusy(true);
@@ -1961,10 +2023,10 @@ function UserAdminModal({
     };
     const saved = await invite(prepared);
     if (saved) {
-      setSuccess(`De persoonlijke uitnodiging voor ${answers.email} is verzonden.`);
+      setSuccess(text(`The personal invitation for ${answers.email} was sent.`, `De persoonlijke uitnodiging voor ${answers.email} is verzonden.`));
       reset({ organizationId, displayName: "", email: "", roleCode: roleCode || access?.roles[0]?.code || "", projectId: "" });
     } else {
-      setInviteError("De uitnodiging is niet voltooid. Bekijk de melding en probeer opnieuw.");
+      setInviteError(text("The invitation was not completed. Review the message and try again.", "De uitnodiging is niet voltooid. Bekijk de melding en probeer opnieuw."));
     }
     setBusy(false);
   };
@@ -1976,9 +2038,9 @@ function UserAdminModal({
     const saved = await changeStatus(memberAction.userId, memberAction.nextStatus, memberAction.reason.trim());
     if (saved) {
       setMemberAction(null);
-      setSuccess("De toegangsstatus en reden zijn centraal opgeslagen en geaudit.");
+      setSuccess(text("The access status and reason were stored centrally and audited.", "De toegangsstatus en reden zijn centraal opgeslagen en geaudit."));
     } else {
-      setMemberError("De toegangsstatus kon niet worden gewijzigd.");
+      setMemberError(text("The access status could not be changed.", "De toegangsstatus kon niet worden gewijzigd."));
     }
     setBusy(false);
   };
@@ -1987,44 +2049,44 @@ function UserAdminModal({
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal user-admin-modal" role="dialog" aria-modal="true" aria-labelledby="user-admin-title">
         <header className="modal-header">
-          <div><h2 id="user-admin-title">Gebruikers en toegang</h2><p>Alleen organisatiebeheerders kunnen interne accounts uitnodigen.</p></div>
-          <button className="modal-close" type="button" onClick={close} aria-label="Sluiten"><X size={18} /></button>
+          <div><h2 id="user-admin-title">{text("Users and access", "Gebruikers en toegang")}</h2><p>{text("Only organization administrators can invite internal accounts.", "Alleen organisatiebeheerders kunnen interne accounts uitnodigen.")}</p></div>
+          <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <div className="modal-body user-admin-body">
           <section className="invite-panel" aria-labelledby="invite-heading">
-            <div className="section-heading"><span className="module-card-icon"><UserPlus size={18} /></span><span><h3 id="invite-heading">Medewerker uitnodigen</h3><p>De medewerker ontvangt een persoonlijke e-maillink en stelt daarna zelf een wachtwoord in.</p></span></div>
+            <div className="section-heading"><span className="module-card-icon"><UserPlus size={18} /></span><span><h3 id="invite-heading">{text("Invite employee", "Medewerker uitnodigen")}</h3><p>{text("The employee receives a personal email link and then sets a password.", "De medewerker ontvangt een persoonlijke e-maillink en stelt daarna zelf een wachtwoord in.")}</p></span></div>
             <form className="form-grid" onSubmit={handleSubmit(submit)} noValidate>
               <input type="hidden" {...register("organizationId")} />
-              <label className="form-field"><span>Volledige naam *</span><input autoComplete="off" {...register("displayName")} />{errors.displayName ? <small className="field-error">{errors.displayName.message}</small> : null}</label>
-              <label className="form-field"><span>Zakelijk e-mailadres *</span><input type="email" autoComplete="off" {...register("email")} />{errors.email ? <small className="field-error">{errors.email.message}</small> : null}</label>
-              <label className="form-field"><span>Rol *</span><select {...register("roleCode")} disabled={!access?.roles.length}><option value="">Kies een rol</option>{access?.roles.map((role) => <option value={role.code} key={role.id}>{role.name} · {role.scope === "organization" ? "hele organisatie" : "project"}</option>)}</select>{errors.roleCode ? <small className="field-error">{errors.roleCode.message}</small> : null}</label>
-              {selectedRole?.scope === "project" ? <label className="form-field"><span>Project *</span><select {...register("projectId")}><option value="">Kies een project</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.code} · {project.name}</option>)}</select>{errors.projectId ? <small className="field-error">{errors.projectId.message}</small> : null}</label> : <div className="scope-note"><ShieldCheck size={16} /><span><strong>Organisatiebrede toegang</strong><small>Deze rol geldt voor alle huidige projecten binnen de organisatie.</small></span></div>}
+              <label className="form-field"><span>{text("Full name *", "Volledige naam *")}</span><input autoComplete="off" {...register("displayName")} />{errors.displayName ? <small className="field-error">{errors.displayName.message}</small> : null}</label>
+              <label className="form-field"><span>{text("Business email address *", "Zakelijk e-mailadres *")}</span><input type="email" autoComplete="off" {...register("email")} />{errors.email ? <small className="field-error">{errors.email.message}</small> : null}</label>
+              <label className="form-field"><span>{text("Role *", "Rol *")}</span><select {...register("roleCode")} disabled={!access?.roles.length}><option value="">{text("Choose a role", "Kies een rol")}</option>{access?.roles.map((role) => <option value={role.code} key={role.id}>{role.name} · {role.scope === "organization" ? text("entire organization", "hele organisatie") : text("project", "project")}</option>)}</select>{errors.roleCode ? <small className="field-error">{errors.roleCode.message}</small> : null}</label>
+              {selectedRole?.scope === "project" ? <label className="form-field"><span>Project *</span><select {...register("projectId")}><option value="">{text("Choose a project", "Kies een project")}</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.code} · {project.name}</option>)}</select>{errors.projectId ? <small className="field-error">{errors.projectId.message}</small> : null}</label> : <div className="scope-note"><ShieldCheck size={16} /><span><strong>{text("Organization-wide access", "Organisatiebrede toegang")}</strong><small>{text("This role applies to all current projects in the organization.", "Deze rol geldt voor alle huidige projecten binnen de organisatie.")}</small></span></div>}
               {inviteError ? <p className="access-message error full" role="alert">{inviteError}</p> : null}
               {success ? <p className="access-message success full" role="status">{success}</p> : null}
-              <div className="modal-actions full"><span className="form-note"><ShieldCheck size={13} /> Rollen komen uit de centrale rechtenconfiguratie.</span><button className="primary-button" type="submit" disabled={busy || loading || Boolean(loadError)}>{busy ? <Loader2 className="spin" size={15} /> : <UserPlus size={15} />}Uitnodiging versturen</button></div>
+              <div className="modal-actions full"><span className="form-note"><ShieldCheck size={13} /> {text("Roles come from the central permission configuration.", "Rollen komen uit de centrale rechtenconfiguratie.")}</span><button className="primary-button" type="submit" disabled={busy || loading || Boolean(loadError)}>{busy ? <Loader2 className="spin" size={15} /> : <UserPlus size={15} />}{text("Send invitation", "Uitnodiging versturen")}</button></div>
             </form>
           </section>
 
           <section className="internal-members" aria-labelledby="members-heading">
-            <div className="member-list-heading"><span><h3 id="members-heading">Interne accounts</h3><p>{access?.members.length ?? 0} account(s) met organisatie- of projecttoegang</p></span>{loadError ? <button className="ghost-button" type="button" onClick={reload}>Opnieuw laden</button> : null}</div>
-            {loading ? <div className="empty-list-state"><Loader2 className="spin" size={22} /><strong>Accounts laden</strong><span>Rollen en projecttoegang worden gecontroleerd.</span></div> : null}
+            <div className="member-list-heading"><span><h3 id="members-heading">{text("Internal accounts", "Interne accounts")}</h3><p>{access?.members.length ?? 0} {text("account(s) with organization or project access", "account(s) met organisatie- of projecttoegang")}</p></span>{loadError ? <button className="ghost-button" type="button" onClick={reload}>{text("Reload", "Opnieuw laden")}</button> : null}</div>
+            {loading ? <div className="empty-list-state"><Loader2 className="spin" size={22} /><strong>{text("Loading accounts", "Accounts laden")}</strong><span>{text("Roles and project access are being verified.", "Rollen en projecttoegang worden gecontroleerd.")}</span></div> : null}
             {loadError ? <p className="access-message error" role="alert">{loadError}</p> : null}
             {memberError ? <p className="access-message error" role="alert">{memberError}</p> : null}
-            {!loading && !loadError && access?.members.length === 0 ? <div className="empty-list-state"><Users size={22} /><strong>Nog geen accounts</strong><span>Verstuur hierboven de eerste interne uitnodiging.</span></div> : null}
+            {!loading && !loadError && access?.members.length === 0 ? <div className="empty-list-state"><Users size={22} /><strong>{text("No accounts yet", "Nog geen accounts")}</strong><span>{text("Send the first internal invitation above.", "Verstuur hierboven de eerste interne uitnodiging.")}</span></div> : null}
             <div className="member-list">
               {access?.members.map((member) => {
                 const roles = [
                   ...member.organizationRoles.map((role) => role.name),
                   ...member.projectRoles.map((role) => `${role.roleName} · ${role.projectName}`),
                 ];
-                const statusLabel = member.membershipStatus === "suspended" ? "Opgeschort" : member.membershipStatus === "revoked" ? "Ingetrokken" : member.accessStatus === "active" ? "Actief" : "Uitgenodigd";
+                const statusLabel = member.membershipStatus === "suspended" ? text("Suspended", "Opgeschort") : member.membershipStatus === "revoked" ? text("Revoked", "Ingetrokken") : member.accessStatus === "active" ? text("Active", "Actief") : text("Invited", "Uitgenodigd");
                 return <div className="member-access-card" key={member.userId}>
                   <article className="member-row">
                     <span className="avatar">{initials(member.displayName || member.email)}</span>
-                    <span className="member-copy"><strong>{member.displayName || member.email}</strong><span>{member.email}</span><small>{roles.join(" · ") || "Nog geen rol"}</small></span>
-                    <span className="member-access-controls"><span className={`task-status ${member.membershipStatus === "active" && member.accessStatus === "active" ? "green" : ""}`}>{statusLabel}</span>{member.userId === currentUserId ? <small>Eigen account</small> : member.membershipStatus !== "revoked" ? <span>{member.membershipStatus === "suspended" ? <button className="ghost-button" type="button" disabled={busy} onClick={() => setMemberAction({ userId: member.userId, nextStatus: "active", reason: "" })}>Heractiveren</button> : <button className="ghost-button" type="button" disabled={busy} onClick={() => setMemberAction({ userId: member.userId, nextStatus: "suspended", reason: "" })}>Opschorten</button>}<button className="ghost-button danger" type="button" disabled={busy} onClick={() => setMemberAction({ userId: member.userId, nextStatus: "revoked", reason: "" })}>Intrekken</button></span> : null}</span>
+                    <span className="member-copy"><strong>{member.displayName || member.email}</strong><span>{member.email}</span><small>{roles.join(" · ") || text("No role yet", "Nog geen rol")}</small></span>
+                    <span className="member-access-controls"><span className={`task-status ${member.membershipStatus === "active" && member.accessStatus === "active" ? "green" : ""}`}>{statusLabel}</span>{member.userId === currentUserId ? <small>{text("Own account", "Eigen account")}</small> : member.membershipStatus !== "revoked" ? <span>{member.membershipStatus === "suspended" ? <button className="ghost-button" type="button" disabled={busy} onClick={() => setMemberAction({ userId: member.userId, nextStatus: "active", reason: "" })}>{text("Reactivate", "Heractiveren")}</button> : <button className="ghost-button" type="button" disabled={busy} onClick={() => setMemberAction({ userId: member.userId, nextStatus: "suspended", reason: "" })}>{text("Suspend", "Opschorten")}</button>}<button className="ghost-button danger" type="button" disabled={busy} onClick={() => setMemberAction({ userId: member.userId, nextStatus: "revoked", reason: "" })}>{text("Revoke", "Intrekken")}</button></span> : null}</span>
                   </article>
-                  {memberAction?.userId === member.userId ? <div className="member-status-form"><label className="form-field"><span>Reden voor {memberAction.nextStatus === "active" ? "heractivering" : memberAction.nextStatus === "suspended" ? "opschorting" : "definitieve intrekking"} *</span><textarea rows={2} value={memberAction.reason} onChange={(event) => setMemberAction({ ...memberAction, reason: event.target.value })} placeholder="Minimaal 5 tekens; wordt in de audittrail bewaard" /></label><div className="button-row"><button className="ghost-button" type="button" onClick={() => setMemberAction(null)}>Annuleren</button><button className="primary-button" type="button" disabled={busy || memberAction.reason.trim().length < 5} onClick={() => void confirmMemberAction()}>{busy ? <Loader2 className="spin" size={14} /> : <ShieldCheck size={14} />} Status bevestigen</button></div></div> : null}
+                  {memberAction?.userId === member.userId ? <div className="member-status-form"><label className="form-field"><span>{text("Reason for", "Reden voor")} {memberAction.nextStatus === "active" ? text("reactivation", "heractivering") : memberAction.nextStatus === "suspended" ? text("suspension", "opschorting") : text("permanent revocation", "definitieve intrekking")} *</span><textarea rows={2} value={memberAction.reason} onChange={(event) => setMemberAction({ ...memberAction, reason: event.target.value })} placeholder={text("At least 5 characters; stored in the audit trail", "Minimaal 5 tekens; wordt in de audittrail bewaard")} /></label><div className="button-row"><button className="ghost-button" type="button" onClick={() => setMemberAction(null)}>{text("Cancel", "Annuleren")}</button><button className="primary-button" type="button" disabled={busy || memberAction.reason.trim().length < 5} onClick={() => void confirmMemberAction()}>{busy ? <Loader2 className="spin" size={14} /> : <ShieldCheck size={14} />} {text("Confirm status", "Status bevestigen")}</button></div></div> : null}
                 </div>;
               })}
             </div>
@@ -2036,16 +2098,18 @@ function UserAdminModal({
 }
 
 function QuickAddModal({ close, chooseType }: { close: () => void; chooseType: (type: string) => void }) {
+  const { language, text } = useLanguage();
+  const availableTypes = language === "en" ? quickTypesEnglish : quickTypes;
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal" role="dialog" aria-modal="true" aria-labelledby="quick-title">
         <header className="modal-header">
-          <div><h2 id="quick-title">Snel toevoegen</h2><p>Project en gebouw worden automatisch gekoppeld.</p></div>
-          <button className="modal-close" type="button" onClick={close} aria-label="Sluiten"><X size={18} /></button>
+          <div><h2 id="quick-title">{text("Quick add", "Snel toevoegen")}</h2><p>{text("The project and building are linked automatically.", "Project en gebouw worden automatisch gekoppeld.")}</p></div>
+          <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <div className="modal-body">
           <div className="quick-grid">
-            {quickTypes.map((type) => {
+            {availableTypes.map((type) => {
               const Icon = type.icon;
               return (
                 <button className="quick-tile" type="button" onClick={() => chooseType(type.id)} key={type.id}>
@@ -2088,52 +2152,53 @@ function EntryModal({
   projectName: string;
   buildingName: string;
 }) {
-  const title = entryTitles[selectedType] ?? "Registratie";
+  const { language, locale, text } = useLanguage();
+  const title = (language === "en" ? entryTitlesEnglish : entryTitles)[selectedType] ?? text("Record", "Registratie");
   const needsPriority = selectedType === "finding" || selectedType === "hse" || selectedType === "action";
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal" role="dialog" aria-modal="true" aria-labelledby="entry-title">
         <header className="modal-header">
-          <div><h2 id="entry-title">{title} vastleggen</h2><p>{projectName} · {buildingName} · {currentTime()}</p></div>
-          <button className="modal-close" type="button" onClick={close} aria-label="Sluiten"><X size={18} /></button>
+          <div><h2 id="entry-title">{text(`Record ${title.toLowerCase()}`, `${title} vastleggen`)}</h2><p>{projectName} · {buildingName} · {currentTime(locale)}</p></div>
+          <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <div className="modal-body">
           <div className="form-grid">
             <div className="form-field full">
-              <label htmlFor="description">Korte omschrijving *</label>
-              <textarea id="description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder={`Wat wil je over deze ${title.toLowerCase()} vastleggen?`} autoFocus />
+              <label htmlFor="description">{text("Short description *", "Korte omschrijving *")}</label>
+              <textarea id="description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder={text(`What do you want to record about this ${title.toLowerCase()}?`, `Wat wil je over deze ${title.toLowerCase()} vastleggen?`)} autoFocus />
             </div>
             <div className="form-field">
-              <label htmlFor="location">Locatie *</label>
+              <label htmlFor="location">{text("Location *", "Locatie *")}</label>
               <select id="location" value={location} onChange={(event) => setLocation(event.target.value)}>
-                <option>Verdieping 3 · Zone oost</option>
-                <option>Verdieping 3 · Zone west</option>
-                <option>Verdieping 2 · Kern</option>
-                <option>Buitenterrein · Noord</option>
+                <option>{text("Floor 3 · East zone", "Verdieping 3 · Zone oost")}</option>
+                <option>{text("Floor 3 · West zone", "Verdieping 3 · Zone west")}</option>
+                <option>{text("Floor 2 · Core", "Verdieping 2 · Kern")}</option>
+                <option>{text("Outdoor area · North", "Buitenterrein · Noord")}</option>
               </select>
             </div>
             {needsPriority ? (
               <div className="form-field">
-                <label htmlFor="priority">Prioriteit</label>
+                <label htmlFor="priority">{text("Priority", "Prioriteit")}</label>
                 <select id="priority" value={priority} onChange={(event) => setPriority(event.target.value)}>
-                  <option>Laag</option><option>Normaal</option><option>Hoog</option><option>Kritiek</option>
+                  <option>{text("Low", "Laag")}</option><option>{text("Normal", "Normaal")}</option><option>{text("High", "Hoog")}</option><option>{text("Critical", "Kritiek")}</option>
                 </select>
               </div>
             ) : (
               <div className="form-field">
-                <label htmlFor="work-package">Werkpakket</label>
-                <select id="work-package"><option>Ruwbouw</option><option>Installaties</option><option>Afwerking</option></select>
+                <label htmlFor="work-package">{text("Work package", "Werkpakket")}</label>
+                <select id="work-package"><option>{text("Structural work", "Ruwbouw")}</option><option>{text("Installations", "Installaties")}</option><option>{text("Finishing", "Afwerking")}</option></select>
               </div>
             )}
             <div className="form-field full">
-              <label>Bewijs toevoegen</label>
-              <button className="ghost-button" type="button" style={{ justifyContent: "center", minHeight: 50 }}><Camera size={16} /> Foto of bijlage kiezen</button>
-              <span className="form-note"><CheckCircle2 size={12} /> Tijd, maker, project en gebouw worden automatisch vastgelegd.</span>
+              <label>{text("Add evidence", "Bewijs toevoegen")}</label>
+              <button className="ghost-button" type="button" style={{ justifyContent: "center", minHeight: 50 }}><Camera size={16} /> {text("Choose photo or attachment", "Foto of bijlage kiezen")}</button>
+              <span className="form-note"><CheckCircle2 size={12} /> {text("Time, author, project and building are recorded automatically.", "Tijd, maker, project en gebouw worden automatisch vastgelegd.")}</span>
             </div>
           </div>
           <div className="modal-actions">
-            <button className="back-button" type="button" onClick={goBack}><ArrowLeft size={14} /> Terug</button>
-            <button className="primary-button" type="button" onClick={save} disabled={!description.trim()}>Opslaan en opnemen <Check size={14} /></button>
+            <button className="back-button" type="button" onClick={goBack}><ArrowLeft size={14} /> {text("Back", "Terug")}</button>
+            <button className="primary-button" type="button" onClick={save} disabled={!description.trim()}>{text("Save and include", "Opslaan en opnemen")} <Check size={14} /></button>
           </div>
         </div>
       </section>
@@ -2156,6 +2221,7 @@ function ActionCreateModal({
   goBack: () => void;
   save: (answers: ProjectActionAnswers) => Promise<boolean>;
 }) {
+  const { text } = useLanguage();
   const [busy, setBusy] = useState(false);
   const defaultParty = parties.find((party) => party.type === "contractor")?.id ?? parties[0]?.id ?? "";
   const { register, handleSubmit, formState: { errors } } = useForm<ProjectActionAnswers>({
@@ -2177,21 +2243,21 @@ function ActionCreateModal({
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal action-modal" role="dialog" aria-modal="true" aria-labelledby="action-create-title">
         <header className="modal-header">
-          <div><h2 id="action-create-title">Actie centraal aanmaken</h2><p>{projectName} · {buildingName}</p></div>
-          <button className="modal-close" type="button" onClick={close} aria-label="Sluiten"><X size={18} /></button>
+          <div><h2 id="action-create-title">{text("Create central action", "Actie centraal aanmaken")}</h2><p>{projectName} · {buildingName}</p></div>
+          <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <form className="modal-body" onSubmit={handleSubmit(submit)} noValidate>
           <div className="form-grid two-columns">
-            <label className="form-field full"><span>Actie *</span><input autoFocus placeholder="Wat moet aantoonbaar worden uitgevoerd?" {...register("title")} />{errors.title ? <small className="field-error">{errors.title.message}</small> : null}</label>
-            <label className="form-field full"><span>Context en acceptatiecriterium *</span><textarea rows={4} placeholder="Beschrijf locatie, gewenste maatregel en wanneer de actie gereed is." {...register("description")} />{errors.description ? <small className="field-error">{errors.description.message}</small> : null}</label>
-            <label className="form-field"><span>Verantwoordelijke partij *</span><select {...register("ownerPartyId")} disabled={parties.length === 0}><option value="">Kies partij</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select>{errors.ownerPartyId ? <small className="field-error">{errors.ownerPartyId.message}</small> : null}</label>
+            <label className="form-field full"><span>{text("Action *", "Actie *")}</span><input autoFocus placeholder={text("What must demonstrably be completed?", "Wat moet aantoonbaar worden uitgevoerd?")} {...register("title")} />{errors.title ? <small className="field-error">{errors.title.message}</small> : null}</label>
+            <label className="form-field full"><span>{text("Context and acceptance criterion *", "Context en acceptatiecriterium *")}</span><textarea rows={4} placeholder={text("Describe the location, required measure and completion criterion.", "Beschrijf locatie, gewenste maatregel en wanneer de actie gereed is.")} {...register("description")} />{errors.description ? <small className="field-error">{errors.description.message}</small> : null}</label>
+            <label className="form-field"><span>{text("Responsible party *", "Verantwoordelijke partij *")}</span><select {...register("ownerPartyId")} disabled={parties.length === 0}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select>{errors.ownerPartyId ? <small className="field-error">{errors.ownerPartyId.message}</small> : null}</label>
             <label className="form-field"><span>Deadline *</span><input type="datetime-local" {...register("dueAt")} />{errors.dueAt ? <small className="field-error">{errors.dueAt.message}</small> : null}</label>
-            <label className="form-field"><span>Prioriteit</span><select {...register("priority")}><option value="low">Laag</option><option value="normal">Normaal</option><option value="high">Hoog</option><option value="critical">Kritiek</option></select></label>
-            <div className="action-rule-note"><ShieldCheck size={16} /><span><strong>Vaste opvolgflow</strong><small>Open → geaccepteerd → in uitvoering → verificatie → gesloten.</small></span></div>
+            <label className="form-field"><span>{text("Priority", "Prioriteit")}</span><select {...register("priority")}><option value="low">{text("Low", "Laag")}</option><option value="normal">{text("Normal", "Normaal")}</option><option value="high">{text("High", "Hoog")}</option><option value="critical">{text("Critical", "Kritiek")}</option></select></label>
+            <div className="action-rule-note"><ShieldCheck size={16} /><span><strong>{text("Controlled follow-up flow", "Vaste opvolgflow")}</strong><small>{text("Open → accepted → in progress → verification → closed.", "Open → geaccepteerd → in uitvoering → verificatie → gesloten.")}</small></span></div>
           </div>
           <div className="modal-actions">
-            <button className="back-button" type="button" onClick={goBack}><ArrowLeft size={14} /> Terug</button>
-            <button className="primary-button" type="submit" disabled={busy || parties.length === 0}>{busy ? <Loader2 className="spin" size={14} /> : <Check size={14} />} Centraal opslaan</button>
+            <button className="back-button" type="button" onClick={goBack}><ArrowLeft size={14} /> {text("Back", "Terug")}</button>
+            <button className="primary-button" type="submit" disabled={busy || parties.length === 0}>{busy ? <Loader2 className="spin" size={14} /> : <Check size={14} />} {text("Save centrally", "Centraal opslaan")}</button>
           </div>
         </form>
       </section>
@@ -2212,6 +2278,8 @@ function ActionDetailModal({
   close: () => void;
   transition: (nextStatus: ProjectAction["status"], note: string) => Promise<boolean>;
 }) {
+  const { language, locale, text } = useLanguage();
+  const statusLabels = language === "en" ? actionStatusLabelsEnglish : actionStatusLabels;
   const [busy, setBusy] = useState(false);
   const nextStatus = nextActionStatus[action.status];
   const { register, handleSubmit, reset, formState: { errors } } = useForm<ActionTransitionAnswers>({
@@ -2226,40 +2294,40 @@ function ActionDetailModal({
     setBusy(false);
   };
   const dueAt = action.due_at
-    ? new Intl.DateTimeFormat("nl-NL", { dateStyle: "long", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(action.due_at))
-    : "Geen deadline";
+    ? new Intl.DateTimeFormat(locale, { dateStyle: "long", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(action.due_at))
+    : text("No deadline", "Geen deadline");
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal action-detail-modal" role="dialog" aria-modal="true" aria-labelledby="action-detail-title">
         <header className="modal-header">
-          <div><p className="eyebrow">{action.action_number}</p><h2 id="action-detail-title">{action.title}</h2><p>{partyName} · deadline {dueAt}</p></div>
-          <button className="modal-close" type="button" onClick={close} aria-label="Sluiten"><X size={18} /></button>
+          <div><p className="eyebrow">{action.action_number}</p><h2 id="action-detail-title">{action.title}</h2><p>{partyName} · {text("deadline", "deadline")} {dueAt}</p></div>
+          <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <div className="modal-body action-detail-body">
           <div className="action-detail-summary">
             <span className={`task-status ${action.priority === "critical" ? "red" : ""}`}>{action.priority}</span>
-            <span className={`task-status ${action.status === "verified" ? "green" : ""}`}>{actionStatusLabels[action.status]}</span>
+            <span className={`task-status ${action.status === "verified" ? "green" : ""}`}>{statusLabels[action.status]}</span>
             <p>{action.description}</p>
           </div>
-          <div className="action-status-flow" aria-label="Actiestatus">
+          <div className="action-status-flow" aria-label={text("Action status", "Actiestatus")}>
             {(["open", "accepted", "in_progress", "ready_for_verification", "verified"] as ProjectAction["status"][]).map((status) => {
               const order = ["open", "accepted", "in_progress", "ready_for_verification", "verified"];
               const reached = order.indexOf(status) <= order.indexOf(action.status);
-              return <span className={reached ? "reached" : ""} key={status}><i />{actionStatusLabels[status]}</span>;
+              return <span className={reached ? "reached" : ""} key={status}><i />{statusLabels[status]}</span>;
             })}
           </div>
           <section className="action-history">
-            <h3>Onveranderbare historie</h3>
-            {updates.length === 0 ? <p>Nog geen historie geladen.</p> : updates.map((update) => (
-              <article key={update.id}><span className="timeline-dot" /><div><strong>{update.update_type === "status" && update.to_status ? actionStatusLabels[update.to_status as ProjectAction["status"]] : "Aangemaakt"}</strong><p>{update.message}</p><time>{new Intl.DateTimeFormat("nl-NL", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(update.created_at))}</time></div></article>
+            <h3>{text("Immutable history", "Onveranderbare historie")}</h3>
+            {updates.length === 0 ? <p>{text("No history loaded yet.", "Nog geen historie geladen.")}</p> : updates.map((update) => (
+              <article key={update.id}><span className="timeline-dot" /><div><strong>{update.update_type === "status" && update.to_status ? statusLabels[update.to_status as ProjectAction["status"]] : text("Created", "Aangemaakt")}</strong><p>{update.message}</p><time>{new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(update.created_at))}</time></div></article>
             ))}
           </section>
           {nextStatus ? (
             <form className="action-transition-form" onSubmit={handleSubmit(submit)} noValidate>
-              <label className="form-field"><span>{nextStatus === "verified" ? "Verificatienotitie *" : "Uitvoeringsnotitie *"}</span><textarea rows={3} placeholder="Leg vast wat is uitgevoerd, gecontroleerd of nog nodig is." {...register("note")} />{errors.note ? <small className="field-error">{errors.note.message}</small> : null}</label>
-              <button className="primary-button" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={14} /> : <ArrowRight size={14} />} Naar {actionStatusLabels[nextStatus].toLowerCase()}</button>
+              <label className="form-field"><span>{nextStatus === "verified" ? text("Verification note *", "Verificatienotitie *") : text("Execution note *", "Uitvoeringsnotitie *")}</span><textarea rows={3} placeholder={text("Record what was completed, checked or is still required.", "Leg vast wat is uitgevoerd, gecontroleerd of nog nodig is.")} {...register("note")} />{errors.note ? <small className="field-error">{errors.note.message}</small> : null}</label>
+              <button className="primary-button" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={14} /> : <ArrowRight size={14} />} {text("Move to", "Naar")} {statusLabels[nextStatus].toLowerCase()}</button>
             </form>
-          ) : <p className="action-complete-note"><CheckCircle2 size={16} /> {action.status === "verified" ? "Deze actie is formeel geverifieerd en gesloten." : "Deze actie is geannuleerd en blijft in de historie zichtbaar."}</p>}
+          ) : <p className="action-complete-note"><CheckCircle2 size={16} /> {action.status === "verified" ? text("This action has been formally verified and closed.", "Deze actie is formeel geverifieerd en gesloten.") : text("This action was cancelled and remains visible in the history.", "Deze actie is geannuleerd en blijft in de historie zichtbaar.")}</p>}
         </div>
       </section>
     </div>
@@ -2281,33 +2349,34 @@ function AttendanceModal({
   close: () => void;
   save: () => void;
 }) {
+  const { text } = useLanguage();
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal report-modal" role="dialog" aria-modal="true" aria-labelledby="attendance-title">
         <header className="modal-header">
-          <div><h2 id="attendance-title">Aanwezigheid vandaag</h2><p>Partijen, disciplines en werktijden · {total} personen</p></div>
-          <button className="modal-close" type="button" onClick={close} aria-label="Sluiten"><X size={18} /></button>
+          <div><h2 id="attendance-title">{text("Today's attendance", "Aanwezigheid vandaag")}</h2><p>{text("Parties, disciplines and shifts", "Partijen, disciplines en werktijden")} · {total} {text("people", "personen")}</p></div>
+          <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <div className="modal-body">
           <div className="attendance-toolbar">
-            <span><Users size={16} /><strong>{total}</strong> aanwezigen in totaal</span>
-            <button className="ghost-button" type="button" onClick={copyPreviousDay}><Copy size={13} /> Vorige werkdag overnemen</button>
+            <span><Users size={16} /><strong>{total}</strong> {text("people present in total", "aanwezigen in totaal")}</span>
+            <button className="ghost-button" type="button" onClick={copyPreviousDay}><Copy size={13} /> {text("Copy previous workday", "Vorige werkdag overnemen")}</button>
           </div>
           <div className="attendance-list">
             {rows.map((row) => (
               <div className="attendance-row" key={row.id}>
                 <span className="attendance-party"><strong>{row.party}</strong><small>{row.discipline} · {row.shiftStart}–{row.shiftEnd}</small></span>
                 <span className="counter-control">
-                  <button type="button" onClick={() => changeCount(row.id, -1)} aria-label={`Eén persoon minder bij ${row.party}`}><Minus size={14} /></button>
+                  <button type="button" onClick={() => changeCount(row.id, -1)} aria-label={text(`One fewer person at ${row.party}`, `Eén persoon minder bij ${row.party}`)}><Minus size={14} /></button>
                   <strong>{row.count}</strong>
-                  <button type="button" onClick={() => changeCount(row.id, 1)} aria-label={`Eén persoon meer bij ${row.party}`}><Plus size={14} /></button>
+                  <button type="button" onClick={() => changeCount(row.id, 1)} aria-label={text(`One more person at ${row.party}`, `Eén persoon meer bij ${row.party}`)}><Plus size={14} /></button>
                 </span>
               </div>
             ))}
           </div>
           <div className="modal-actions">
-            <span className="form-note"><CheckCircle2 size={13} /> Totalen worden in het dagrapport hergebruikt.</span>
-            <button className="primary-button" type="button" onClick={save}>Aanwezigheid bevestigen <Check size={14} /></button>
+            <span className="form-note"><CheckCircle2 size={13} /> {text("Totals are reused in the daily report.", "Totalen worden in het dagrapport hergebruikt.")}</span>
+            <button className="primary-button" type="button" onClick={save}>{text("Confirm attendance", "Aanwezigheid bevestigen")} <Check size={14} /></button>
           </div>
         </div>
       </section>
@@ -2326,6 +2395,8 @@ function DailyQuestionsModal({
   projectStartAnswers: ProjectStartAnswers | null;
   save: (answers: DailyCloseoutAnswers) => void | Promise<void>;
 }) {
+  const { language, text } = useLanguage();
+  const localizedDailyCloseoutSchema = useMemo(() => createDailyCloseoutSchema(language), [language]);
   const [step, setStep] = useState(0);
   const {
     register,
@@ -2334,12 +2405,12 @@ function DailyQuestionsModal({
     trigger,
     formState: { errors },
   } = useForm<DailyCloseoutAnswers>({
-    resolver: zodResolver(dailyCloseoutSchema),
+    resolver: zodResolver(localizedDailyCloseoutSchema),
     mode: "onBlur",
     defaultValues: initialAnswers ?? {
       daySummary: "",
       weatherSummary: projectStartAnswers
-        ? `${weatherLabels[projectStartAnswers.weatherCondition]}, ${projectStartAnswers.temperatureC}°C, wind ${projectStartAnswers.windCondition === "strong" ? "sterk" : projectStartAnswers.windCondition === "moderate" ? "matig" : "kalm"}`
+        ? `${({ sunny: text("Sunny", "Zonnig"), partly_cloudy: text("Partly cloudy", "Licht bewolkt"), cloudy: text("Cloudy", "Bewolkt"), rain: text("Rain", "Regen"), heavy_rain: text("Heavy rain", "Zware regen") })[projectStartAnswers.weatherCondition]}, ${projectStartAnswers.temperatureC}°C, ${text("wind", "wind")} ${projectStartAnswers.windCondition === "strong" ? text("strong", "sterk") : projectStartAnswers.windCondition === "moderate" ? text("moderate", "matig") : text("calm", "kalm")}`
         : "",
       workPerformed: "",
       progressPercent: 67,
@@ -2371,7 +2442,7 @@ function DailyQuestionsModal({
     ["equipmentStatus", "deliveries", "testsMeasurements", "variationWork", "delayCause", "delayHours"],
     ["communication", "risks", "tomorrowPlan", "photoCount", "attachmentsConfirmed"],
   ];
-  const stepTitles = ["Verloop & werk", "Kwaliteit & HSE", "Logistiek & vertraging", "Afspraken & morgen"];
+  const stepTitles = [text("Progress & work", "Verloop & werk"), text("Quality & HSE", "Kwaliteit & HSE"), text("Logistics & delay", "Logistiek & vertraging"), text("Agreements & tomorrow", "Afspraken & morgen")];
   const nextStep = async () => {
     const valid = await trigger(stepFields[step]);
     if (valid) setStep((current) => Math.min(3, current + 1));
@@ -2381,72 +2452,72 @@ function DailyQuestionsModal({
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal daily-questions-modal" role="dialog" aria-modal="true" aria-labelledby="daily-questions-title">
         <header className="modal-header">
-          <div><h2 id="daily-questions-title">Dagvragen voor het rapport</h2><p>{clientReportSections.length} klantonderdelen · modulair hergebruikt · stap {step + 1} van 4</p></div>
-          <button className="modal-close" type="button" onClick={close} aria-label="Sluiten"><X size={18} /></button>
+          <div><h2 id="daily-questions-title">{text("Daily questions for the report", "Dagvragen voor het rapport")}</h2><p>{clientReportSections.length} {text("client sections · reused across modules · step", "klantonderdelen · modulair hergebruikt · stap")} {step + 1} {text("of", "van")} 4</p></div>
+          <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <form className="modal-body daily-questions-body" onSubmit={handleSubmit(save)} noValidate>
-          <div className="question-stepper" aria-label="Voortgang dagvragen">
+          <div className="question-stepper" aria-label={text("Daily questions progress", "Voortgang dagvragen")}>
             {stepTitles.map((title, index) => <span className={index === step ? "active" : index < step ? "done" : ""} key={title}><b>{index < step ? <Check size={12} /> : index + 1}</b>{title}</span>)}
           </div>
 
           {step === 0 ? (
             <section className="question-group">
-              <header><span className="question-group-icon"><Gauge size={18} /></span><span><h3>Hoe is het project vandaag gegaan?</h3><p>Deze antwoorden voeden samenvatting, werkzaamheden en voortgang; de onderliggende modules blijven de bron.</p></span></header>
+              <header><span className="question-group-icon"><Gauge size={18} /></span><span><h3>{text("How did the project go today?", "Hoe is het project vandaag gegaan?")}</h3><p>{text("These answers feed the summary, work performed and progress; the underlying modules remain the source.", "Deze antwoorden voeden samenvatting, werkzaamheden en voortgang; de onderliggende modules blijven de bron.")}</p></span></header>
               <div className="form-grid two-columns">
-                <label className="form-field wide"><span>Samenvatting van de dag *</span><textarea rows={4} placeholder="Vat in maximaal vijf regels samen wat er is gebeurd." {...register("daySummary")} />{errors.daySummary ? <small className="field-error">{errors.daySummary.message}</small> : null}</label>
-                <label className="form-field"><span>Wat was het werkelijke weer? *</span><input type="text" {...register("weatherSummary")} />{errors.weatherSummary ? <small className="field-error">{errors.weatherSummary.message}</small> : null}</label>
-                <label className="form-field"><span>Voortgang project</span><span className="input-with-unit"><input type="number" min="0" max="100" {...register("progressPercent", { valueAsNumber: true })} /><em>%</em></span>{errors.progressPercent ? <small className="field-error">{errors.progressPercent.message}</small> : null}</label>
-                <label className="form-field wide"><span>Welke werkzaamheden zijn uitgevoerd? *</span><textarea rows={4} placeholder="Activiteit, locatie en percentage gereed." {...register("workPerformed")} />{errors.workPerformed ? <small className="field-error">{errors.workPerformed.message}</small> : null}</label>
+                <label className="form-field wide"><span>{text("Daily summary *", "Samenvatting van de dag *")}</span><textarea rows={4} placeholder={text("Summarize what happened in no more than five lines.", "Vat in maximaal vijf regels samen wat er is gebeurd.")} {...register("daySummary")} />{errors.daySummary ? <small className="field-error">{errors.daySummary.message}</small> : null}</label>
+                <label className="form-field"><span>{text("What was the actual weather? *", "Wat was het werkelijke weer? *")}</span><input type="text" {...register("weatherSummary")} />{errors.weatherSummary ? <small className="field-error">{errors.weatherSummary.message}</small> : null}</label>
+                <label className="form-field"><span>{text("Project progress", "Voortgang project")}</span><span className="input-with-unit"><input type="number" min="0" max="100" {...register("progressPercent", { valueAsNumber: true })} /><em>%</em></span>{errors.progressPercent ? <small className="field-error">{errors.progressPercent.message}</small> : null}</label>
+                <label className="form-field wide"><span>{text("Which work was performed? *", "Welke werkzaamheden zijn uitgevoerd? *")}</span><textarea rows={4} placeholder={text("Activity, location and percentage complete.", "Activiteit, locatie en percentage gereed.")} {...register("workPerformed")} />{errors.workPerformed ? <small className="field-error">{errors.workPerformed.message}</small> : null}</label>
               </div>
             </section>
           ) : null}
 
           {step === 1 ? (
             <section className="question-group">
-              <header><span className="question-group-icon"><ShieldCheck size={18} /></span><span><h3>Wat is gecontroleerd en waren er afwijkingen?</h3><p>Niet-akkoord antwoorden worden alleen als conceptbevinding of HSE-melding voorgesteld; de supervisor bevestigt ernst en vervolg.</p></span></header>
+              <header><span className="question-group-icon"><ShieldCheck size={18} /></span><span><h3>{text("What was checked and were there deviations?", "Wat is gecontroleerd en waren er afwijkingen?")}</h3><p>{text("Failed answers are only proposed as a draft finding or HSE record; the supervisor confirms severity and follow-up.", "Niet-akkoord antwoorden worden alleen als conceptbevinding of HSE-melding voorgesteld; de supervisor bevestigt ernst en vervolg.")}</p></span></header>
               <div className="form-grid two-columns">
-                <label className="form-field"><span>Inspecties uitgevoerd</span><select {...register("inspectionResult")}><option value="none">Geen inspectie</option><option value="all_ok">Uitgevoerd · alles akkoord</option><option value="issues">Uitgevoerd · afwijking gevonden</option></select></label>
-                <label className="form-field"><span>Kwaliteitsbevindingen?</span><select {...register("qualityIssues")}><option value="no">Nee</option><option value="yes">Ja</option></select></label>
-                {qualityIssues === "yes" ? <label className="form-field wide"><span>Omschrijf locatie, bevinding en verantwoordelijke *</span><textarea rows={4} {...register("qualityDetails")} />{errors.qualityDetails ? <small className="field-error">{errors.qualityDetails.message}</small> : null}</label> : null}
-                <label className="form-field"><span>Veiligheidsgebeurtenis?</span><select {...register("hseEvent")}><option value="none">Geen incident / near miss</option><option value="near_miss">Near miss</option><option value="incident">Incident</option></select></label>
-                {hseEvent !== "none" ? <label className="form-field wide"><span>Omschrijf gebeurtenis en directe maatregel *</span><textarea rows={4} {...register("hseDetails")} />{errors.hseDetails ? <small className="field-error">{errors.hseDetails.message}</small> : null}</label> : null}
+                <label className="form-field"><span>{text("Inspections performed", "Inspecties uitgevoerd")}</span><select {...register("inspectionResult")}><option value="none">{text("No inspection", "Geen inspectie")}</option><option value="all_ok">{text("Performed · all passed", "Uitgevoerd · alles akkoord")}</option><option value="issues">{text("Performed · deviation found", "Uitgevoerd · afwijking gevonden")}</option></select></label>
+                <label className="form-field"><span>{text("Quality findings?", "Kwaliteitsbevindingen?")}</span><select {...register("qualityIssues")}><option value="no">{text("No", "Nee")}</option><option value="yes">{text("Yes", "Ja")}</option></select></label>
+                {qualityIssues === "yes" ? <label className="form-field wide"><span>{text("Describe location, finding and responsible party *", "Omschrijf locatie, bevinding en verantwoordelijke *")}</span><textarea rows={4} {...register("qualityDetails")} />{errors.qualityDetails ? <small className="field-error">{errors.qualityDetails.message}</small> : null}</label> : null}
+                <label className="form-field"><span>{text("Safety event?", "Veiligheidsgebeurtenis?")}</span><select {...register("hseEvent")}><option value="none">{text("No incident / near miss", "Geen incident / near miss")}</option><option value="near_miss">Near miss</option><option value="incident">Incident</option></select></label>
+                {hseEvent !== "none" ? <label className="form-field wide"><span>{text("Describe the event and immediate measure *", "Omschrijf gebeurtenis en directe maatregel *")}</span><textarea rows={4} {...register("hseDetails")} />{errors.hseDetails ? <small className="field-error">{errors.hseDetails.message}</small> : null}</label> : null}
               </div>
-              <div className="question-module-note"><AlertTriangle size={14} /><span>De app sluit nooit autonoom een incident, NCR of herstel. Dit blijft een menselijke handeling.</span></div>
+              <div className="question-module-note"><AlertTriangle size={14} /><span>{text("The app never closes an incident, NCR or repair autonomously. This remains a human action.", "De app sluit nooit autonoom een incident, NCR of herstel. Dit blijft een menselijke handeling.")}</span></div>
             </section>
           ) : null}
 
           {step === 2 ? (
             <section className="question-group">
-              <header><span className="question-group-icon"><PackageCheck size={18} /></span><span><h3>Welke logistiek, testen of vertraging speelden mee?</h3><p>Antwoorden worden gekoppeld aan materieel, leveringen, metingen, meer-/minderwerk en vertraging.</p></span></header>
+              <header><span className="question-group-icon"><PackageCheck size={18} /></span><span><h3>{text("Which logistics, tests or delays affected the day?", "Welke logistiek, testen of vertraging speelden mee?")}</h3><p>{text("Answers are linked to equipment, deliveries, measurements, variation work and delay.", "Antwoorden worden gekoppeld aan materieel, leveringen, metingen, meer-/minderwerk en vertraging.")}</p></span></header>
               <div className="form-grid two-columns">
-                <label className="form-field"><span>Materieel en status</span><textarea rows={3} placeholder="Bijv. betonpomp operationeel; trilplaat buiten gebruik" {...register("equipmentStatus")} /></label>
-                <label className="form-field"><span>Materialen geleverd</span><textarea rows={3} placeholder="Materiaal, hoeveelheid en leverancier" {...register("deliveries")} /></label>
-                <label className="form-field wide"><span>Testen en meetwaarden</span><textarea rows={3} placeholder="Bijv. slump 90 mm; betondekking 45 mm" {...register("testsMeasurements")} /></label>
-                <label className="form-field"><span>Meer- of minderwerk</span><select {...register("variationWork")}><option value="none">Niet van toepassing</option><option value="pending">In behandeling</option><option value="approved">Goedgekeurd</option><option value="rejected">Afgewezen</option></select></label>
-                <label className="form-field"><span>Was er vertraging?</span><select {...register("delayCause")}><option value="none">Geen vertraging</option><option value="weather">Weer</option><option value="delivery">Levering te laat</option><option value="material">Materiaaltekort</option><option value="equipment">Materieelstoring</option><option value="other">Andere oorzaak</option></select></label>
-                {delayCause !== "none" ? <label className="form-field"><span>Tijdverlies</span><span className="input-with-unit"><input type="number" min="0" max="24" step="0.25" {...register("delayHours", { valueAsNumber: true })} /><em>uur</em></span>{errors.delayHours ? <small className="field-error">{errors.delayHours.message}</small> : null}</label> : null}
+                <label className="form-field"><span>{text("Equipment and status", "Materieel en status")}</span><textarea rows={3} placeholder={text("For example concrete pump operational; plate compactor out of service", "Bijv. betonpomp operationeel; trilplaat buiten gebruik")} {...register("equipmentStatus")} /></label>
+                <label className="form-field"><span>{text("Materials delivered", "Materialen geleverd")}</span><textarea rows={3} placeholder={text("Material, quantity and supplier", "Materiaal, hoeveelheid en leverancier")} {...register("deliveries")} /></label>
+                <label className="form-field wide"><span>{text("Tests and measurements", "Testen en meetwaarden")}</span><textarea rows={3} placeholder={text("For example slump 90 mm; concrete cover 45 mm", "Bijv. slump 90 mm; betondekking 45 mm")} {...register("testsMeasurements")} /></label>
+                <label className="form-field"><span>{text("Variation work", "Meer- of minderwerk")}</span><select {...register("variationWork")}><option value="none">{text("Not applicable", "Niet van toepassing")}</option><option value="pending">{text("Pending", "In behandeling")}</option><option value="approved">{text("Approved", "Goedgekeurd")}</option><option value="rejected">{text("Rejected", "Afgewezen")}</option></select></label>
+                <label className="form-field"><span>{text("Was there a delay?", "Was er vertraging?")}</span><select {...register("delayCause")}><option value="none">{text("No delay", "Geen vertraging")}</option><option value="weather">{text("Weather", "Weer")}</option><option value="delivery">{text("Late delivery", "Levering te laat")}</option><option value="material">{text("Material shortage", "Materiaaltekort")}</option><option value="equipment">{text("Equipment failure", "Materieelstoring")}</option><option value="other">{text("Other cause", "Andere oorzaak")}</option></select></label>
+                {delayCause !== "none" ? <label className="form-field"><span>{text("Time lost", "Tijdverlies")}</span><span className="input-with-unit"><input type="number" min="0" max="24" step="0.25" {...register("delayHours", { valueAsNumber: true })} /><em>{text("hours", "uur")}</em></span>{errors.delayHours ? <small className="field-error">{errors.delayHours.message}</small> : null}</label> : null}
               </div>
             </section>
           ) : null}
 
           {step === 3 ? (
             <section className="question-group">
-              <header><span className="question-group-icon"><CalendarDays size={18} /></span><span><h3>Wat is afgesproken en wat staat morgen gepland?</h3><p>Afspraken, risico’s en planning blijven gestructureerd en worden meegenomen naar de volgende dag.</p></span></header>
+              <header><span className="question-group-icon"><CalendarDays size={18} /></span><span><h3>{text("What was agreed and what is planned for tomorrow?", "Wat is afgesproken en wat staat morgen gepland?")}</h3><p>{text("Agreements, risks and planning remain structured and carry over to the next day.", "Afspraken, risico’s en planning blijven gestructureerd en worden meegenomen naar de volgende dag.")}</p></span></header>
               <div className="form-grid two-columns">
-                <label className="form-field"><span>Communicatie en gemaakte afspraken</span><textarea rows={4} placeholder="Met wie is wat afgesproken en wanneer?" {...register("communication")} /></label>
-                <label className="form-field"><span>Open risico’s</span><textarea rows={4} placeholder="Weer, levering, grondwater, hijswerk..." {...register("risks")} /></label>
-                <label className="form-field wide"><span>Welke werkzaamheden staan morgen gepland? *</span><textarea rows={4} {...register("tomorrowPlan")} />{errors.tomorrowPlan ? <small className="field-error">{errors.tomorrowPlan.message}</small> : null}</label>
-                <label className="form-field"><span>Aantal foto’s vandaag</span><input type="number" min="0" {...register("photoCount", { valueAsNumber: true })} /></label>
-                <label className="confirmation-check wide"><input type="checkbox" {...register("attachmentsConfirmed")} /><span><strong>Bijlagen gecontroleerd</strong><small>Inspectieformulieren, certificaten, bonnen, tekeningen, NCR’s en meetrapporten zijn bekeken; ontbrekende stukken blijven zichtbaar.</small>{errors.attachmentsConfirmed ? <em className="field-error">{errors.attachmentsConfirmed.message}</em> : null}</span></label>
+                <label className="form-field"><span>{text("Communication and agreements", "Communicatie en gemaakte afspraken")}</span><textarea rows={4} placeholder={text("Who agreed what, and when?", "Met wie is wat afgesproken en wanneer?")} {...register("communication")} /></label>
+                <label className="form-field"><span>{text("Open risks", "Open risico’s")}</span><textarea rows={4} placeholder={text("Weather, delivery, groundwater, lifting...", "Weer, levering, grondwater, hijswerk...")} {...register("risks")} /></label>
+                <label className="form-field wide"><span>{text("Which work is planned for tomorrow? *", "Welke werkzaamheden staan morgen gepland? *")}</span><textarea rows={4} {...register("tomorrowPlan")} />{errors.tomorrowPlan ? <small className="field-error">{errors.tomorrowPlan.message}</small> : null}</label>
+                <label className="form-field"><span>{text("Number of photos today", "Aantal foto’s vandaag")}</span><input type="number" min="0" {...register("photoCount", { valueAsNumber: true })} /></label>
+                <label className="confirmation-check wide"><input type="checkbox" {...register("attachmentsConfirmed")} /><span><strong>{text("Attachments checked", "Bijlagen gecontroleerd")}</strong><small>{text("Inspection forms, certificates, tickets, drawings, NCRs and measurement reports were checked; missing items remain visible.", "Inspectieformulieren, certificaten, bonnen, tekeningen, NCR’s en meetrapporten zijn bekeken; ontbrekende stukken blijven zichtbaar.")}</small>{errors.attachmentsConfirmed ? <em className="field-error">{errors.attachmentsConfirmed.message}</em> : null}</span></label>
               </div>
             </section>
           ) : null}
 
           <div className="modal-actions daily-question-actions">
-            <span className="form-note"><CheckCircle2 size={13} /> Na serverbevestiging worden antwoorden centraal hergebruikt in cockpit en rapportcontrole.</span>
+            <span className="form-note"><CheckCircle2 size={13} /> {text("After server confirmation, answers are reused centrally in the cockpit and report review.", "Na serverbevestiging worden antwoorden centraal hergebruikt in cockpit en rapportcontrole.")}</span>
             <div>
-              {step > 0 ? <button className="ghost-button" type="button" onClick={() => setStep((current) => current - 1)}><ArrowLeft size={14} /> Vorige</button> : null}
-              {step < 3 ? <button className="primary-button" type="button" onClick={nextStep}>Volgende vragen <ArrowRight size={14} /></button> : <button className="primary-button" type="submit">Dagvragen bevestigen <Check size={14} /></button>}
+              {step > 0 ? <button className="ghost-button" type="button" onClick={() => setStep((current) => current - 1)}><ArrowLeft size={14} /> {text("Previous", "Vorige")}</button> : null}
+              {step < 3 ? <button className="primary-button" type="button" onClick={nextStep}>{text("Next questions", "Volgende vragen")} <ArrowRight size={14} /></button> : <button className="primary-button" type="submit">{text("Confirm daily questions", "Dagvragen bevestigen")} <Check size={14} /></button>}
             </div>
           </div>
         </form>
@@ -2478,15 +2549,16 @@ function ReportModal({
   onDownload: () => void | Promise<void>;
   onSubmit: () => void | Promise<void>;
 }) {
+  const { text } = useLanguage();
   const hseComplete = completedTodos.includes(2) || Boolean(dailyCloseoutAnswers);
   const tomorrowComplete = completedTodos.includes(3) || Boolean(dailyCloseoutAnswers?.tomorrowPlan);
   const checks = [
-    { title: "Project- en rapportgegevens", detail: "Nummer, datum, dienst en gebouwen", complete: true },
-    { title: "Aanwezigheid en activiteiten", detail: `${attendanceTotal} personen en ${entries.length} dagregistraties`, complete: true },
-    { title: "Inspecties en bevindingen", detail: `${entries.filter((entry) => entry.kind === "inspection").length} inspecties · ${entries.filter((entry) => entry.badgeTone === "red").length} kritieke registratie(s)`, complete: true },
-    { title: "Dagvragen volgens klantformat", detail: dailyCloseoutAnswers ? "Verloop, weer, logistiek, risico's en morgen bevestigd" : "Vier begeleide vraaggroepen nog invullen", complete: Boolean(dailyCloseoutAnswers) },
-    { title: "HSE-dagcheck", detail: hseComplete ? "Alle controlepunten ingevuld" : "Nog 3 controlepunten ontbreken", complete: hseComplete },
-    { title: "Planning voor morgen", detail: tomorrowComplete ? "Planning is bevestigd" : "Nog niet ingevuld", complete: tomorrowComplete },
+    { title: text("Project and report details", "Project- en rapportgegevens"), detail: text("Number, date, shift and buildings", "Nummer, datum, dienst en gebouwen"), complete: true },
+    { title: text("Attendance and activities", "Aanwezigheid en activiteiten"), detail: text(`${attendanceTotal} people and ${entries.length} daily records`, `${attendanceTotal} personen en ${entries.length} dagregistraties`), complete: true },
+    { title: text("Inspections and findings", "Inspecties en bevindingen"), detail: text(`${entries.filter((entry) => entry.kind === "inspection").length} inspections · ${entries.filter((entry) => entry.badgeTone === "red").length} critical record(s)`, `${entries.filter((entry) => entry.kind === "inspection").length} inspecties · ${entries.filter((entry) => entry.badgeTone === "red").length} kritieke registratie(s)`), complete: true },
+    { title: text("Daily questions in the client format", "Dagvragen volgens klantformat"), detail: dailyCloseoutAnswers ? text("Progress, weather, logistics, risks and tomorrow confirmed", "Verloop, weer, logistiek, risico's en morgen bevestigd") : text("Four guided question groups still need completion", "Vier begeleide vraaggroepen nog invullen"), complete: Boolean(dailyCloseoutAnswers) },
+    { title: text("Daily HSE check", "HSE-dagcheck"), detail: hseComplete ? text("All checkpoints completed", "Alle controlepunten ingevuld") : text("3 checkpoints are still missing", "Nog 3 controlepunten ontbreken"), complete: hseComplete },
+    { title: text("Tomorrow's plan", "Planning voor morgen"), detail: tomorrowComplete ? text("The plan is confirmed", "Planning is bevestigd") : text("Not completed yet", "Nog niet ingevuld"), complete: tomorrowComplete },
   ];
   const missing = checks.filter((check) => !check.complete).length;
   const submitted = ["ready_for_review", "in_review", "approved"].includes(reportStatus);
@@ -2494,8 +2566,8 @@ function ReportModal({
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal report-modal" role="dialog" aria-modal="true" aria-labelledby="report-title">
         <header className="modal-header">
-          <div><h2 id="report-title">Rapport controleren</h2><p>{reportNumber} · {submitted ? "ingediend" : "conceptversie"}</p></div>
-          <button className="modal-close" type="button" onClick={close} aria-label="Sluiten"><X size={18} /></button>
+          <div><h2 id="report-title">{text("Review report", "Rapport controleren")}</h2><p>{reportNumber} · {submitted ? text("submitted", "ingediend") : text("draft version", "conceptversie")}</p></div>
+          <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <div className="modal-body">
           <div className="report-check-list">
@@ -2503,20 +2575,20 @@ function ReportModal({
               <div className="report-check-row" key={check.title}>
                 <span className={`report-check-state ${check.complete ? "complete" : "missing"}`}>{check.complete ? <Check size={15} /> : <AlertTriangle size={15} />}</span>
                 <span className="report-check-copy"><strong>{check.title}</strong><span>{check.detail}</span></span>
-                <span className="report-check-label">{check.complete ? "Compleet" : "Aanvullen"}</span>
+                <span className="report-check-label">{check.complete ? text("Complete", "Compleet") : text("Complete item", "Aanvullen")}</span>
               </div>
             ))}
           </div>
           <div className="report-summary-box">
-            <label htmlFor="summary">Voorgestelde dagsamenvatting</label>
-            <textarea id="summary" defaultValue={dailyCloseoutAnswers?.daySummary ?? `Er waren ${attendanceTotal} personen aanwezig op project ${projectName}. Er zijn ${entries.length} centrale dagregistraties vastgelegd.`} />
-            <small className="summary-source">Vaste samenvatting op basis van bevestigde dagvragen en modulegegevens; supervisor controleert de tekst.</small>
+            <label htmlFor="summary">{text("Proposed daily summary", "Voorgestelde dagsamenvatting")}</label>
+            <textarea id="summary" defaultValue={dailyCloseoutAnswers?.daySummary ?? text(`${attendanceTotal} people were present at project ${projectName}. ${entries.length} central daily records were captured.`, `Er waren ${attendanceTotal} personen aanwezig op project ${projectName}. Er zijn ${entries.length} centrale dagregistraties vastgelegd.`)} />
+            <small className="summary-source">{text("Fixed summary based on confirmed daily questions and module data; the supervisor reviews the text.", "Vaste samenvatting op basis van bevestigde dagvragen en modulegegevens; supervisor controleert de tekst.")}</small>
           </div>
           <div className="modal-actions">
-            <span style={{ color: missing ? "var(--yellow)" : "var(--green)", fontSize: 10, fontWeight: 680 }}>{missing ? `${missing} onderdeel${missing > 1 ? "en" : ""} nog aanvullen` : "Alle controles geslaagd"}</span>
+            <span style={{ color: missing ? "var(--yellow)" : "var(--green)", fontSize: 10, fontWeight: 680 }}>{missing ? text(`${missing} item(s) still need completion`, `${missing} onderdeel${missing > 1 ? "en" : ""} nog aanvullen`) : text("All checks passed", "Alle controles geslaagd")}</span>
             <div className="report-action-buttons">
-              <button className="ghost-button" type="button" disabled={missing > 0} onClick={onDownload}><FileText size={14} /> Concept-PDF</button>
-              <button className="primary-button" type="button" disabled={missing > 0 || submitted} onClick={onSubmit}>{submitted ? "Ingediend" : "Gereed voor review"} <ArrowRight size={14} /></button>
+              <button className="ghost-button" type="button" disabled={missing > 0} onClick={onDownload}><FileText size={14} /> {text("Draft PDF", "Concept-PDF")}</button>
+              <button className="primary-button" type="button" disabled={missing > 0 || submitted} onClick={onSubmit}>{submitted ? text("Submitted", "Ingediend") : text("Ready for review", "Gereed voor review")} <ArrowRight size={14} /></button>
             </div>
           </div>
         </div>

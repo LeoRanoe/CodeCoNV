@@ -143,6 +143,38 @@ export type ProductionReadinessItem = {
   sort_order: number;
 };
 
+export type VisualCapture = {
+  id: string;
+  file_id: string;
+  location_node_id: string | null;
+  day_report_id: string | null;
+  capture_type: "photo" | "panorama";
+  title: string;
+  description: string | null;
+  location_label: string;
+  tour_name: string | null;
+  tour_order: number | null;
+  captured_at: string;
+  status: "active" | "archived";
+  created_at: string;
+};
+
+export type VisualAnnotation = {
+  id: string;
+  capture_id: string;
+  finding_id: string;
+  coordinate_mode: "photo" | "spherical";
+  x_ratio: number | null;
+  y_ratio: number | null;
+  yaw: number | null;
+  pitch: number | null;
+  title: string;
+  description: string;
+  severity: "low" | "medium" | "high" | "critical";
+  status: "active" | "void";
+  created_at: string;
+};
+
 export type OperationSnapshot = {
   templates: ChecklistTemplate[];
   inspections: Inspection[];
@@ -158,6 +190,8 @@ export type OperationSnapshot = {
   settings: ProjectSettings | null;
   locationNodes: LocationNode[];
   productionReadiness: ProductionReadinessItem[];
+  visualCaptures: VisualCapture[];
+  visualAnnotations: VisualAnnotation[];
 };
 
 function fail(error: { message: string } | null) {
@@ -170,7 +204,7 @@ export async function loadProjectOperations(
   organizationId: string,
   reportId?: string | null,
 ): Promise<OperationSnapshot> {
-  const [templateResult, inspectionResult, findingResult, hseResult, registerResult, fileResult, settingsResult, backupResult, locationResult, readinessResult] = await Promise.all([
+  const [templateResult, inspectionResult, findingResult, hseResult, registerResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult] = await Promise.all([
     client.from("checklist_templates").select("id,project_id,module,code,name,description,version_number,status").or(`project_id.is.null,project_id.eq.${projectId}`).order("name"),
     client.from("inspections").select("id,template_id,inspection_number,title,status,planned_at,started_at,completed_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
     client.from("findings").select("id,finding_number,finding_type,title,description,severity,priority,status,responsible_party_id,assigned_user_id,due_at,cause,proposed_correction,final_measure,verified_at,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
@@ -181,8 +215,10 @@ export async function loadProjectOperations(
     client.from("backup_runs").select("id,run_type,status,schema_version,size_bytes,sha256,verified_at,created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(25),
     client.from("location_nodes").select("id,building_id,parent_id,node_type,code,name,description,status").eq("project_id", projectId).order("sort_order").limit(500),
     client.from("production_readiness_items").select("id,code,category,title,description,owner_hint,blocking,status,evidence,completed_at,sort_order").eq("organization_id", organizationId).order("sort_order"),
+    client.from("visual_captures").select("id,file_id,location_node_id,day_report_id,capture_type,title,description,location_label,tour_name,tour_order,captured_at,status,created_at").eq("project_id", projectId).order("captured_at", { ascending: false }).limit(250),
+    client.from("visual_annotations").select("id,capture_id,finding_id,coordinate_mode,x_ratio,y_ratio,yaw,pitch,title,description,severity,status,created_at").eq("project_id", projectId).order("created_at").limit(1000),
   ]);
-  [templateResult, inspectionResult, findingResult, hseResult, registerResult, fileResult, settingsResult, backupResult, locationResult, readinessResult].forEach((result) => fail(result.error));
+  [templateResult, inspectionResult, findingResult, hseResult, registerResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult].forEach((result) => fail(result.error));
   const templateRows = (templateResult.data ?? []) as Omit<ChecklistTemplate, "items">[];
   const itemResult = templateRows.length
     ? await client.from("checklist_items").select("id,template_id,section,prompt,response_type,required,sort_order,unit,minimum_value,maximum_value,failure_severity,guidance").in("template_id", templateRows.map((template) => template.id)).order("sort_order")
@@ -214,6 +250,8 @@ export async function loadProjectOperations(
     reportDistributions: (reportFilters[3]?.data ?? []) as ReportDistribution[],
     locationNodes: (locationResult.data ?? []) as LocationNode[],
     productionReadiness: (readinessResult.data ?? []) as ProductionReadinessItem[],
+    visualCaptures: (visualCaptureResult.data ?? []) as VisualCapture[],
+    visualAnnotations: (visualAnnotationResult.data ?? []) as VisualAnnotation[],
   };
 }
 
@@ -389,6 +427,69 @@ export async function updateProductionReadiness(
   });
   fail(result.error);
   return result.data as ProductionReadinessItem;
+}
+
+export async function createVisualCapture(client: SupabaseClient, input: {
+  projectId: string;
+  buildingId: string;
+  locationNodeId?: string;
+  dayReportId?: string | null;
+  fileId: string;
+  captureType: VisualCapture["capture_type"];
+  title: string;
+  description?: string;
+  locationLabel: string;
+  tourName?: string;
+  tourOrder?: number | null;
+  capturedAt?: string;
+}) {
+  const result = await client.rpc("create_visual_capture", {
+    p_project_id: input.projectId,
+    p_building_id: input.buildingId,
+    p_location_node_id: input.locationNodeId || null,
+    p_day_report_id: input.dayReportId || null,
+    p_file_id: input.fileId,
+    p_capture_type: input.captureType,
+    p_title: input.title,
+    p_description: input.description || null,
+    p_location_label: input.locationLabel,
+    p_tour_name: input.tourName || null,
+    p_tour_order: input.tourOrder ?? null,
+    p_captured_at: input.capturedAt || new Date().toISOString(),
+  });
+  fail(result.error);
+  return result.data as VisualCapture;
+}
+
+export async function createVisualAnnotationFinding(client: SupabaseClient, input: {
+  captureId: string;
+  coordinateMode: VisualAnnotation["coordinate_mode"];
+  xRatio?: number | null;
+  yRatio?: number | null;
+  yaw?: number | null;
+  pitch?: number | null;
+  findingType: Finding["finding_type"];
+  title: string;
+  description: string;
+  severity: Finding["severity"];
+  responsiblePartyId?: string;
+}) {
+  const result = await client.rpc("create_visual_annotation_finding", {
+    p_capture_id: input.captureId,
+    p_coordinate_mode: input.coordinateMode,
+    p_x_ratio: input.xRatio ?? null,
+    p_y_ratio: input.yRatio ?? null,
+    p_yaw: input.yaw ?? null,
+    p_pitch: input.pitch ?? null,
+    p_finding_type: input.findingType,
+    p_title: input.title,
+    p_description: input.description,
+    p_severity: input.severity,
+    p_responsible_party_id: input.responsiblePartyId || null,
+    p_idempotency_key: `visual-annotation:${crypto.randomUUID()}`,
+  });
+  fail(result.error);
+  return result.data as VisualAnnotation;
 }
 
 export async function createProjectParty(client: SupabaseClient, input: { organizationId: string; projectId: string; code: string; name: string; type: string }) {

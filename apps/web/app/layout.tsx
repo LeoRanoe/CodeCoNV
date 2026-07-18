@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 const description =
-  "De centrale CODECO-werkplek voor dagelijkse constructiesupervisie, inspecties, acties en rapportage.";
+  "CODECO's secure workspace for daily construction supervision, visual evidence, inspections, actions and reporting.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -33,14 +33,15 @@ export async function generateMetadata(): Promise<Metadata> {
     description,
     openGraph: {
       type: "website",
-      locale: "nl_SR",
-      title: "CODECO Supervisie | Van waarneming naar dagrapport",
+      locale: "en_US",
+      alternateLocale: ["nl_SR"],
+      title: "CODECO Supervisie | From site observation to daily report",
       description,
       images: [{ url: imageUrl, width: 1200, height: 630, alt: "CODECO constructiesupervisie" }],
     },
     twitter: {
       card: "summary_large_image",
-      title: "CODECO Supervisie | Van waarneming naar dagrapport",
+      title: "CODECO Supervisie | From site observation to daily report",
       description,
       images: [imageUrl],
     },
@@ -53,7 +54,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="nl">
+    <html lang="en">
       <body className={`${hind.variable} ${geistMono.variable}`}>
         {children}
       </body>
