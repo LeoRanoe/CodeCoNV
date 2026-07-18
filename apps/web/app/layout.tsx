@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Hind } from "next/font/google";
 import { headers } from "next/headers";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const hind = Hind({
+  variable: "--font-hind",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
 const geistMono = Geist_Mono({
@@ -14,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 const description =
-  "Eén centrale werkplek voor dagelijkse constructiesupervisie, inspecties, acties en rapportage.";
+  "De centrale CODECO-werkplek voor dagelijkse constructiesupervisie, inspecties, acties en rapportage.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -26,20 +27,20 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     metadataBase: baseUrl,
     title: {
-      default: "Sitezicht | Constructiesupervisie",
-      template: "%s | Sitezicht",
+      default: "CODECO Supervisie",
+      template: "%s | CODECO Supervisie",
     },
     description,
     openGraph: {
       type: "website",
       locale: "nl_SR",
-      title: "Sitezicht | Van waarneming naar dagrapport",
+      title: "CODECO Supervisie | Van waarneming naar dagrapport",
       description,
-      images: [{ url: imageUrl, width: 1200, height: 630, alt: "Sitezicht constructiesupervisie" }],
+      images: [{ url: imageUrl, width: 1200, height: 630, alt: "CODECO constructiesupervisie" }],
     },
     twitter: {
       card: "summary_large_image",
-      title: "Sitezicht | Van waarneming naar dagrapport",
+      title: "CODECO Supervisie | Van waarneming naar dagrapport",
       description,
       images: [imageUrl],
     },
@@ -53,7 +54,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="nl">
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>
+      <body className={`${hind.variable} ${geistMono.variable}`}>
         {children}
       </body>
     </html>

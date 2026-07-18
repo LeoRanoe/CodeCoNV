@@ -14,6 +14,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   CloudSun,
+  Copy,
   FileCheck2,
   FileText,
   Gauge,
@@ -24,6 +25,7 @@ import {
   MapPin,
   Menu,
   MessageSquareText,
+  Minus,
   MoreHorizontal,
   PackageCheck,
   Plus,
@@ -40,7 +42,8 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 type NavKey = "vandaag" | "project" | "acties" | "rapporten" | "meer";
-type ModalKey = "quick" | "entry" | "report" | null;
+type ModalKey = "quick" | "entry" | "report" | "attendance" | null;
+type WorkspaceStage = "projects" | "buildings" | "cockpit";
 type EntryKind =
   | "activity"
   | "inspection"
@@ -68,6 +71,33 @@ type QuickType = {
   icon: LucideIcon;
 };
 
+type ProjectContext = {
+  id: string;
+  name: string;
+  code: string;
+  location: string;
+  client: string;
+  progress: number;
+  openIssues: number;
+  buildings: BuildingContext[];
+};
+
+type BuildingContext = {
+  id: string;
+  name: string;
+  description: string;
+  progress: number;
+  openIssues: number;
+};
+
+type AttendanceRow = {
+  id: number;
+  party: string;
+  discipline: string;
+  count: number;
+  shift: string;
+};
+
 const navigation: { id: NavKey; label: string; icon: LucideIcon; badge?: string }[] = [
   { id: "vandaag", label: "Vandaag", icon: Home },
   { id: "project", label: "Project", icon: LayoutDashboard },
@@ -88,6 +118,42 @@ const quickTypes: QuickType[] = [
   { id: "delay", title: "Vertraging", description: "Leg oorzaak en tijdblok vast", icon: TimerOff },
 ];
 
+const projects: ProjectContext[] = [
+  {
+    id: "kwattaweg-residence",
+    name: "Kwattaweg Residence",
+    code: "COD-2026-014",
+    location: "Paramaribo",
+    client: "Particuliere opdrachtgever",
+    progress: 67,
+    openIssues: 7,
+    buildings: [
+      { id: "hoofdgebouw", name: "Hoofdgebouw", description: "Woongebouw · ruwbouw", progress: 67, openIssues: 5 },
+      { id: "terrein", name: "Terrein & voorzieningen", description: "Fundering, drainage en buitenwerk", progress: 24, openIssues: 2 },
+    ],
+  },
+  {
+    id: "commewijne-port",
+    name: "Commewijne Port Facility",
+    code: "COD-2026-009",
+    location: "Nieuw Amsterdam, Commewijne",
+    client: "Commewijne Port Facilities",
+    progress: 42,
+    openIssues: 4,
+    buildings: [
+      { id: "quay", name: "Kadeconstructie", description: "Betonwerk en aanlegvoorzieningen", progress: 42, openIssues: 3 },
+      { id: "yard", name: "Opslagterrein", description: "Terreinwerk en infrastructuur", progress: 31, openIssues: 1 },
+    ],
+  },
+];
+
+const initialAttendance: AttendanceRow[] = [
+  { id: 1, party: "Bouwbedrijf N.V.", discipline: "Ruwbouw", count: 21, shift: "07:00–16:00" },
+  { id: 2, party: "ElectroWorks", discipline: "Elektro", count: 12, shift: "07:30–16:30" },
+  { id: 3, party: "Aqua Install", discipline: "Werktuigbouw", count: 6, shift: "08:00–16:00" },
+  { id: 4, party: "CODECO N.V.", discipline: "Supervisie", count: 3, shift: "07:00–17:00" },
+];
+
 const initialTimeline: TimelineEntry[] = [
   {
     id: 1,
@@ -95,7 +161,7 @@ const initialTimeline: TimelineEntry[] = [
     kind: "finding",
     title: "Onvoldoende betondekking bij kolom C-14",
     detail: "Gemeten dekking 18 mm; vereist minimaal 25 mm. Uitvoerder is geïnformeerd.",
-    location: "Toren A · Verdieping 3",
+    location: "Hoofdgebouw · Verdieping 3",
     person: "Jennifer G.",
     badge: "Kritiek",
     badgeTone: "red",
@@ -106,7 +172,7 @@ const initialTimeline: TimelineEntry[] = [
     kind: "inspection",
     title: "Wapeningsinspectie vloer V3 afgerond",
     detail: "14 van 15 controlepunten akkoord. Eén bevinding automatisch aangemaakt.",
-    location: "Toren A · Verdieping 3",
+    location: "Hoofdgebouw · Verdieping 3",
     person: "Jennifer G.",
     badge: "Afgerond",
     badgeTone: "green",
@@ -117,7 +183,7 @@ const initialTimeline: TimelineEntry[] = [
     kind: "photo",
     title: "4 voortgangsfoto’s toegevoegd",
     detail: "Bekisting kernwand oostzijde, werkpakket ruwbouw.",
-    location: "Toren A · Verdieping 3",
+    location: "Hoofdgebouw · Verdieping 3",
     person: "Jennifer G.",
     badge: "Foto",
   },
@@ -127,7 +193,7 @@ const initialTimeline: TimelineEntry[] = [
     kind: "activity",
     title: "Bekisting kernwand gestart",
     detail: "Ploeg van Bouwbedrijf N.V. gestart met 8 personen. Voortgang op 35% gezet.",
-    location: "Toren A · Verdieping 3",
+    location: "Hoofdgebouw · Verdieping 3",
     person: "Jennifer G.",
     badge: "Actief",
     badgeTone: "green",
@@ -165,7 +231,10 @@ function currentTime() {
   }).format(new Date());
 }
 
-export function SitezichtApp() {
+export function CodecoSupervisionApp() {
+  const [workspaceStage, setWorkspaceStage] = useState<WorkspaceStage>("projects");
+  const [selectedProject, setSelectedProject] = useState<ProjectContext | null>(null);
+  const [selectedBuilding, setSelectedBuilding] = useState<BuildingContext | null>(null);
   const [activeNav, setActiveNav] = useState<NavKey>("vandaag");
   const [modal, setModal] = useState<ModalKey>(null);
   const [selectedType, setSelectedType] = useState<string>("activity");
@@ -173,6 +242,7 @@ export function SitezichtApp() {
   const [location, setLocation] = useState("Verdieping 3 · Zone oost");
   const [priority, setPriority] = useState("Normaal");
   const [entries, setEntries] = useState<TimelineEntry[]>(initialTimeline);
+  const [attendance, setAttendance] = useState<AttendanceRow[]>(initialAttendance);
   const [completedTodos, setCompletedTodos] = useState<number[]>([1]);
   const [toast, setToast] = useState("");
 
@@ -194,6 +264,11 @@ export function SitezichtApp() {
     const complete = 4 + Math.min(completedTodos.length, 2);
     return Math.round((complete / 8) * 100);
   }, [completedTodos]);
+
+  const attendanceTotal = useMemo(
+    () => attendance.reduce((total, row) => total + row.count, 0),
+    [attendance],
+  );
 
   const openQuickAdd = () => {
     setDescription("");
@@ -217,7 +292,7 @@ export function SitezichtApp() {
       kind: safeKind,
       title: description.trim(),
       detail: `${entryTitles[selectedType]} centraal opgeslagen met project-, gebouw- en tijdcontext.`,
-      location: `Toren A · ${location}`,
+      location: `${selectedBuilding?.name ?? "Gebouw"} · ${location}`,
       person: "Jennifer G.",
       badge: isFinding ? priority : "Opgeslagen",
       badgeTone: isFinding && priority === "Kritiek" ? "red" : "green",
@@ -238,19 +313,58 @@ export function SitezichtApp() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const chooseProject = (project: ProjectContext) => {
+    setSelectedProject(project);
+    setSelectedBuilding(null);
+    setWorkspaceStage("buildings");
+  };
+
+  const startProject = () => {
+    if (!selectedProject || !selectedBuilding) return;
+    setWorkspaceStage("cockpit");
+    setActiveNav("vandaag");
+    window.scrollTo({ top: 0 });
+  };
+
+  const changeAttendance = (id: number, delta: number) => {
+    setAttendance((current) =>
+      current.map((row) => row.id === id ? { ...row, count: Math.max(0, row.count + delta) } : row),
+    );
+  };
+
+  if (workspaceStage !== "cockpit") {
+    return (
+      <ContextSelection
+        stage={workspaceStage}
+        selectedProject={selectedProject}
+        selectedBuilding={selectedBuilding}
+        chooseProject={chooseProject}
+        chooseBuilding={setSelectedBuilding}
+        startProject={startProject}
+        goBack={() => {
+          setSelectedBuilding(null);
+          setWorkspaceStage("projects");
+        }}
+      />
+    );
+  }
+
+  const projectName = selectedProject?.name ?? "Project";
+  const buildingName = selectedBuilding?.name ?? "Gebouw";
+
   return (
     <div className="app-shell">
       <aside className="sidebar" aria-label="Hoofdnavigatie">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true" />
-          Sitezicht
+          <span className="brand-copy"><strong>CODECO N.V.</strong><small>Supervisie</small></span>
         </div>
 
-        <button className="project-context-card" type="button" aria-label="Project en gebouw wijzigen">
+        <button className="project-context-card" type="button" aria-label="Project en gebouw wijzigen" onClick={() => setWorkspaceStage("projects")}>
           <span className="project-context-icon"><Building2 size={17} /></span>
           <span className="project-context-copy">
-            <strong>Waterkant Residences</strong>
-            <small>Toren A · Paramaribo</small>
+            <strong>{projectName}</strong>
+            <small>{buildingName} · {selectedProject?.location}</small>
           </span>
           <ChevronDown size={15} />
         </button>
@@ -294,9 +408,9 @@ export function SitezichtApp() {
           <div className="breadcrumb" aria-label="Huidige werkcontext">
             <span>Mijn projecten</span>
             <ChevronRight size={13} />
-            <span>Waterkant Residences</span>
+            <span>{projectName}</span>
             <ChevronRight size={13} />
-            <strong>Toren A</strong>
+            <strong>{buildingName}</strong>
           </div>
           <div className="top-actions">
             <span className="online-state"><span className="online-dot" /> <span>Alles opgeslagen</span></span>
@@ -316,13 +430,24 @@ export function SitezichtApp() {
               completedTodos={completedTodos}
               toggleTodo={toggleTodo}
               openReport={() => setModal("report")}
+              projectName={projectName}
+              buildingName={buildingName}
+              attendanceTotal={attendanceTotal}
               showCritical={() => {
                 navigate("acties");
                 setToast("Kritieke bevinding Q-2026-018 geopend.");
               }}
             />
           ) : (
-            <SecondaryView activeNav={activeNav} openQuickAdd={openQuickAdd} navigate={navigate} />
+            <SecondaryView
+              activeNav={activeNav}
+              openQuickAdd={openQuickAdd}
+              navigate={navigate}
+              projectName={projectName}
+              buildingName={buildingName}
+              attendanceTotal={attendanceTotal}
+              openAttendance={() => setModal("attendance")}
+            />
           )}
         </main>
       </div>
@@ -365,6 +490,8 @@ export function SitezichtApp() {
           goBack={() => setModal("quick")}
           close={() => setModal(null)}
           save={saveEntry}
+          projectName={projectName}
+          buildingName={buildingName}
         />
       ) : null}
       {modal === "report" ? (
@@ -372,14 +499,125 @@ export function SitezichtApp() {
           close={() => setModal(null)}
           completedTodos={completedTodos}
           entries={entries}
+          attendanceTotal={attendanceTotal}
+          projectName={projectName}
           onSubmit={() => {
             setModal(null);
             setToast("Dagrapport is gereed voor review gezet.");
           }}
         />
       ) : null}
+      {modal === "attendance" ? (
+        <AttendanceModal
+          rows={attendance}
+          total={attendanceTotal}
+          changeCount={changeAttendance}
+          copyPreviousDay={() => {
+            setAttendance([
+              { id: 1, party: "Bouwbedrijf N.V.", discipline: "Ruwbouw", count: 20, shift: "07:00–16:00" },
+              { id: 2, party: "ElectroWorks", discipline: "Elektro", count: 12, shift: "07:30–16:30" },
+              { id: 3, party: "Aqua Install", discipline: "Werktuigbouw", count: 6, shift: "08:00–16:00" },
+              { id: 4, party: "CODECO N.V.", discipline: "Supervisie", count: 3, shift: "07:00–17:00" },
+            ]);
+            setToast("Aanwezigheid van de vorige werkdag is als voorstel overgenomen.");
+          }}
+          close={() => setModal(null)}
+          save={() => {
+            setModal(null);
+            setToast(`${attendanceTotal} aanwezigen zijn opgenomen in het dagrapport.`);
+          }}
+        />
+      ) : null}
 
       {toast ? <div className="toast" role="status"><CheckCircle2 size={18} /> {toast}</div> : null}
+    </div>
+  );
+}
+
+function ContextSelection({
+  stage,
+  selectedProject,
+  selectedBuilding,
+  chooseProject,
+  chooseBuilding,
+  startProject,
+  goBack,
+}: {
+  stage: WorkspaceStage;
+  selectedProject: ProjectContext | null;
+  selectedBuilding: BuildingContext | null;
+  chooseProject: (project: ProjectContext) => void;
+  chooseBuilding: (building: BuildingContext) => void;
+  startProject: () => void;
+  goBack: () => void;
+}) {
+  const showBuildings = stage === "buildings" && selectedProject;
+  return (
+    <div className="context-shell">
+      <header className="context-topbar">
+        <div className="context-brand">
+          <span className="brand-mark" aria-hidden="true" />
+          <span className="brand-copy"><strong>CODECO N.V.</strong><small>Supervisie</small></span>
+        </div>
+        <div className="context-user"><span className="avatar">JG</span><span><strong>Jennifer G.</strong><small>Supervisor</small></span></div>
+      </header>
+
+      <main className="context-content">
+        <div className="context-steps" aria-label="Werkcontext kiezen">
+          <span className="active"><strong>1</strong> Project</span>
+          <ChevronRight size={14} />
+          <span className={showBuildings ? "active" : ""}><strong>2</strong> Gebouw</span>
+          <ChevronRight size={14} />
+          <span><strong>3</strong> Projectstart</span>
+        </div>
+
+        {!showBuildings ? (
+          <>
+            <section className="context-heading">
+              <div><p className="eyebrow">Mijn projecten</p><h1>Waar ga je vandaag werken?</h1><p>Kies eerst het project. Je gebouw en dagrapport volgen in de volgende stap.</p></div>
+              <button className="ghost-button" type="button"><Search size={14} /> Project zoeken</button>
+            </section>
+            <section className="project-selection-grid">
+              {projects.map((project) => (
+                <button className="project-selection-card" type="button" onClick={() => chooseProject(project)} key={project.id}>
+                  <span className="selection-card-top">
+                    <span className="selection-icon"><Building2 size={21} /></span>
+                    <span className="project-code">{project.code}</span>
+                  </span>
+                  <span className="selection-copy"><strong>{project.name}</strong><small><MapPin size={12} /> {project.location}</small></span>
+                  <span className="selection-meta"><span>{project.buildings.length} gebouwen</span><span>{project.openIssues} open punten</span></span>
+                  <span className="selection-progress"><span style={{ width: `${project.progress}%` }} /><em>{project.progress}% voortgang</em></span>
+                  <span className="selection-action">Gebouwen bekijken <ArrowRight size={14} /></span>
+                </button>
+              ))}
+            </section>
+          </>
+        ) : (
+          <>
+            <button className="back-button context-back" type="button" onClick={goBack}><ArrowLeft size={15} /> Terug naar projecten</button>
+            <section className="context-heading">
+              <div><p className="eyebrow">{showBuildings.code} · {showBuildings.location}</p><h1>Kies een gebouw</h1><p>Fysieke registraties worden verplicht aan dit gebouw gekoppeld.</p></div>
+              <span className="context-project-pill"><Building2 size={15} /> {showBuildings.name}</span>
+            </section>
+            <section className="building-selection-grid">
+              {showBuildings.buildings.map((building) => {
+                const active = selectedBuilding?.id === building.id;
+                return (
+                  <button className={`building-selection-card ${active ? "selected" : ""}`} type="button" onClick={() => chooseBuilding(building)} key={building.id}>
+                    <span className="building-radio">{active ? <Check size={14} /> : null}</span>
+                    <span className="building-selection-copy"><strong>{building.name}</strong><small>{building.description}</small></span>
+                    <span className="building-stats"><span><b>{building.progress}%</b> voortgang</span><span><b>{building.openIssues}</b> open punten</span></span>
+                  </button>
+                );
+              })}
+            </section>
+            <div className="project-start-bar">
+              <span><strong>{selectedBuilding ? selectedBuilding.name : "Nog geen gebouw gekozen"}</strong><small>{selectedBuilding ? "Je werkcontext is compleet." : "Kies een gebouw om door te gaan."}</small></span>
+              <button className="primary-button" type="button" disabled={!selectedBuilding} onClick={startProject}>Projectstart openen <ArrowRight size={15} /></button>
+            </div>
+          </>
+        )}
+      </main>
     </div>
   );
 }
@@ -391,6 +629,9 @@ function TodayView({
   toggleTodo,
   openReport,
   showCritical,
+  projectName,
+  buildingName,
+  attendanceTotal,
 }: {
   entries: TimelineEntry[];
   completeness: number;
@@ -398,6 +639,9 @@ function TodayView({
   toggleTodo: (id: number) => void;
   openReport: () => void;
   showCritical: () => void;
+  projectName: string;
+  buildingName: string;
+  attendanceTotal: number;
 }) {
   const todos = [
     { id: 1, title: "Weer en werktijden bevestigen", detail: "Vastgelegd om 07:02", flag: "" },
@@ -411,7 +655,7 @@ function TodayView({
         <div>
           <p className="eyebrow">Zaterdag 18 juli 2026</p>
           <h1>Goedemorgen, Jennifer.</h1>
-          <p>Dit vraagt vandaag je aandacht op Toren A.</p>
+          <p>Dit vraagt vandaag je aandacht bij {projectName} · {buildingName}.</p>
         </div>
         <div className="weather-chip">
           <span className="weather-icon"><CloudSun size={20} /></span>
@@ -488,7 +732,7 @@ function TodayView({
               <div className="section-heading"><h2>In één oogopslag</h2><p>Stand om 11:30</p></div>
             </header>
             <div className="metrics-grid">
-              <Metric icon={Users} value="42" label="mensen aanwezig" suffix="" />
+              <Metric icon={Users} value={String(attendanceTotal)} label="mensen aanwezig" suffix="" />
               <Metric icon={Gauge} value="67" label="projectvoortgang" suffix="%" />
               <Metric icon={ClipboardCheck} value="2/3" label="inspecties gereed" suffix="" />
               <Metric icon={CheckCircle2} value="5" label="open acties" suffix="" />
@@ -539,27 +783,43 @@ function Metric({ icon: Icon, value, suffix, label }: { icon: LucideIcon; value:
   );
 }
 
-function SecondaryView({ activeNav, openQuickAdd, navigate }: { activeNav: NavKey; openQuickAdd: () => void; navigate: (next: NavKey) => void }) {
+function SecondaryView({
+  activeNav,
+  openQuickAdd,
+  navigate,
+  projectName,
+  buildingName,
+  attendanceTotal,
+  openAttendance,
+}: {
+  activeNav: NavKey;
+  openQuickAdd: () => void;
+  navigate: (next: NavKey) => void;
+  projectName: string;
+  buildingName: string;
+  attendanceTotal: number;
+  openAttendance: () => void;
+}) {
   if (activeNav === "project") {
     const modules = [
-      { title: "Activiteiten", copy: "Werkpakketten, planning en voortgang", icon: Wrench, count: "8 actief" },
-      { title: "Inspecties", copy: "Gepland, uitgevoerd en herinspecties", icon: ClipboardCheck, count: "3 vandaag" },
-      { title: "Bevindingen", copy: "Kwaliteit, NCR en herstelverificatie", icon: AlertTriangle, count: "7 open" },
-      { title: "HSE", copy: "Dagcheck, observaties en incidenten", icon: ShieldCheck, count: "1 open" },
-      { title: "Foto’s", copy: "Bewijs, locaties en koppelingen", icon: Image, count: "128" },
-      { title: "Documenten", copy: "Tekeningen, normen en actuele revisies", icon: FileText, count: "42" },
+      { title: "Aanwezigheid", copy: "Partijen, disciplines, aantallen en diensten", icon: Users, count: `${attendanceTotal} vandaag`, action: openAttendance },
+      { title: "Activiteiten", copy: "Werkpakketten, planning en voortgang", icon: Wrench, count: "8 actief", action: openQuickAdd },
+      { title: "Inspecties", copy: "Gepland, uitgevoerd en herinspecties", icon: ClipboardCheck, count: "3 vandaag", action: openQuickAdd },
+      { title: "Bevindingen", copy: "Kwaliteit, NCR en herstelverificatie", icon: AlertTriangle, count: "7 open", action: () => navigate("acties") },
+      { title: "HSE", copy: "Dagcheck, observaties en incidenten", icon: ShieldCheck, count: "1 open", action: openQuickAdd },
+      { title: "Foto’s", copy: "Bewijs, locaties en koppelingen", icon: Image, count: "128", action: openQuickAdd },
     ];
     return (
       <>
         <header className="secondary-header">
-          <div><p className="eyebrow">Waterkant Residences</p><h1>Projectoverzicht</h1><p>Registers en operationele modules voor Toren A.</p></div>
+          <div><p className="eyebrow">{projectName}</p><h1>Projectoverzicht</h1><p>Registers en operationele modules voor {buildingName}.</p></div>
           <button className="primary-button" type="button" onClick={openQuickAdd}><Plus size={15} /> Nieuwe registratie</button>
         </header>
         <section className="secondary-grid">
           {modules.map((item) => {
             const Icon = item.icon;
             return (
-              <button className="module-card" type="button" key={item.title} style={{ textAlign: "left", cursor: "pointer" }}>
+              <button className="module-card" type="button" key={item.title} onClick={item.action} style={{ textAlign: "left", cursor: "pointer" }}>
                 <span className="module-card-top"><span className="module-card-icon"><Icon size={19} /></span><span className="module-count">{item.count}</span></span>
                 <h2>{item.title}</h2><p>{item.copy}</p>
               </button>
@@ -604,7 +864,7 @@ function SecondaryView({ activeNav, openQuickAdd, navigate }: { activeNav: NavKe
           {["DR-2026-0718 · Vandaag", "DR-2026-0717 · Vrijdag", "DR-2026-0716 · Donderdag"].map((report, index) => (
             <button className="action-row" type="button" key={report} style={{ textAlign: "left", cursor: "pointer" }}>
               <span className="action-icon" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}><FileText size={18} /></span>
-              <span className="action-copy"><strong>{report}</strong><span>Waterkant Residences · alle gebouwen</span></span>
+              <span className="action-copy"><strong>{report}</strong><span>{projectName} · alle gebouwen</span></span>
               <span className={`task-status ${index === 0 ? "" : "green"}`}>{index === 0 ? "In uitvoering" : "Goedgekeurd"}</span>
             </button>
           ))}
@@ -676,6 +936,8 @@ function EntryModal({
   goBack,
   close,
   save,
+  projectName,
+  buildingName,
 }: {
   selectedType: string;
   description: string;
@@ -687,6 +949,8 @@ function EntryModal({
   goBack: () => void;
   close: () => void;
   save: () => void;
+  projectName: string;
+  buildingName: string;
 }) {
   const title = entryTitles[selectedType] ?? "Registratie";
   const needsPriority = selectedType === "finding" || selectedType === "hse" || selectedType === "action";
@@ -694,7 +958,7 @@ function EntryModal({
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal" role="dialog" aria-modal="true" aria-labelledby="entry-title">
         <header className="modal-header">
-          <div><h2 id="entry-title">{title} vastleggen</h2><p>Waterkant Residences · Toren A · {currentTime()}</p></div>
+          <div><h2 id="entry-title">{title} vastleggen</h2><p>{projectName} · {buildingName} · {currentTime()}</p></div>
           <button className="modal-close" type="button" onClick={close} aria-label="Sluiten"><X size={18} /></button>
         </header>
         <div className="modal-body">
@@ -741,12 +1005,75 @@ function EntryModal({
   );
 }
 
-function ReportModal({ close, completedTodos, entries, onSubmit }: { close: () => void; completedTodos: number[]; entries: TimelineEntry[]; onSubmit: () => void }) {
+function AttendanceModal({
+  rows,
+  total,
+  changeCount,
+  copyPreviousDay,
+  close,
+  save,
+}: {
+  rows: AttendanceRow[];
+  total: number;
+  changeCount: (id: number, delta: number) => void;
+  copyPreviousDay: () => void;
+  close: () => void;
+  save: () => void;
+}) {
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+      <section className="modal report-modal" role="dialog" aria-modal="true" aria-labelledby="attendance-title">
+        <header className="modal-header">
+          <div><h2 id="attendance-title">Aanwezigheid vandaag</h2><p>Partijen, disciplines en werktijden · {total} personen</p></div>
+          <button className="modal-close" type="button" onClick={close} aria-label="Sluiten"><X size={18} /></button>
+        </header>
+        <div className="modal-body">
+          <div className="attendance-toolbar">
+            <span><Users size={16} /><strong>{total}</strong> aanwezigen in totaal</span>
+            <button className="ghost-button" type="button" onClick={copyPreviousDay}><Copy size={13} /> Vorige werkdag overnemen</button>
+          </div>
+          <div className="attendance-list">
+            {rows.map((row) => (
+              <div className="attendance-row" key={row.id}>
+                <span className="attendance-party"><strong>{row.party}</strong><small>{row.discipline} · {row.shift}</small></span>
+                <span className="counter-control">
+                  <button type="button" onClick={() => changeCount(row.id, -1)} aria-label={`Eén persoon minder bij ${row.party}`}><Minus size={14} /></button>
+                  <strong>{row.count}</strong>
+                  <button type="button" onClick={() => changeCount(row.id, 1)} aria-label={`Eén persoon meer bij ${row.party}`}><Plus size={14} /></button>
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="modal-actions">
+            <span className="form-note"><CheckCircle2 size={13} /> Totalen worden in het dagrapport hergebruikt.</span>
+            <button className="primary-button" type="button" onClick={save}>Aanwezigheid bevestigen <Check size={14} /></button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ReportModal({
+  close,
+  completedTodos,
+  entries,
+  attendanceTotal,
+  projectName,
+  onSubmit,
+}: {
+  close: () => void;
+  completedTodos: number[];
+  entries: TimelineEntry[];
+  attendanceTotal: number;
+  projectName: string;
+  onSubmit: () => void;
+}) {
   const hseComplete = completedTodos.includes(2);
   const tomorrowComplete = completedTodos.includes(3);
   const checks = [
     { title: "Project- en rapportgegevens", detail: "Nummer, datum, dienst en gebouwen", complete: true },
-    { title: "Aanwezigheid en activiteiten", detail: "42 personen en 3 actieve werkpakketten", complete: true },
+    { title: "Aanwezigheid en activiteiten", detail: `${attendanceTotal} personen en 3 actieve werkpakketten`, complete: true },
     { title: "Inspecties en bevindingen", detail: "3 inspecties · 1 kritieke bevinding open", complete: true },
     { title: "HSE-dagcheck", detail: hseComplete ? "Alle controlepunten ingevuld" : "Nog 3 controlepunten ontbreken", complete: hseComplete },
     { title: "Planning voor morgen", detail: tomorrowComplete ? "Planning is bevestigd" : "Nog niet ingevuld", complete: tomorrowComplete },
@@ -771,7 +1098,7 @@ function ReportModal({ close, completedTodos, entries, onSubmit }: { close: () =
           </div>
           <div className="report-summary-box">
             <label htmlFor="summary">Voorgestelde dagsamenvatting</label>
-            <textarea id="summary" defaultValue={`Op 18 juli 2026 waren 42 personen aanwezig op project Waterkant Residences. Er zijn ${entries.length} registraties vastgelegd. De werkzaamheden aan de bekisting van de kernwand en de wapening van vloer V3 zijn voortgezet. Bij kolom C-14 is een kritieke afwijking in de betondekking vastgesteld en toegewezen voor herstel.`} />
+            <textarea id="summary" defaultValue={`Op 18 juli 2026 waren ${attendanceTotal} personen aanwezig op project ${projectName}. Er zijn ${entries.length} registraties vastgelegd. De werkzaamheden aan de bekisting van de kernwand en de wapening van vloer V3 zijn voortgezet. Bij kolom C-14 is een kritieke afwijking in de betondekking vastgesteld en toegewezen voor herstel.`} />
           </div>
           <div className="modal-actions">
             <span style={{ color: missing ? "var(--yellow)" : "var(--green)", fontSize: 10, fontWeight: 680 }}>{missing ? `${missing} onderdeel${missing > 1 ? "en" : ""} nog aanvullen` : "Alle controles geslaagd"}</span>
