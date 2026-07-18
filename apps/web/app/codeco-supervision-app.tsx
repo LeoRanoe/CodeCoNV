@@ -64,7 +64,14 @@ import {
   type ProjectSetupAnswers,
 } from "@/lib/forms/workspace";
 import {
+  actionTransitionSchema,
+  projectActionSchema,
+  type ActionTransitionAnswers,
+  type ProjectActionAnswers,
+} from "@/lib/forms/actions";
+import {
   bootstrapOrganization,
+  createProjectAction,
   createProjectWorkspace,
   getSession,
   loadProjectDay,
@@ -75,12 +82,16 @@ import {
   saveProjectStart,
   saveSiteRegistration,
   submitReportForReview,
+  transitionProjectAction,
+  type ActionUpdate,
+  type ProjectAction,
+  type ProjectParty,
   type WorkspaceBuilding,
   type WorkspaceProject,
 } from "@/lib/supabase/data";
 
 type NavKey = "vandaag" | "project" | "acties" | "rapporten" | "meer";
-type ModalKey = "quick" | "entry" | "report" | "attendance" | "daily_questions" | null;
+type ModalKey = "quick" | "entry" | "action_create" | "action_detail" | "report" | "attendance" | "daily_questions" | null;
 type WorkspaceStage = "projects" | "buildings" | "project_start" | "cockpit";
 type EntryKind =
   | "activity"
@@ -171,6 +182,30 @@ const weatherLabels: Record<ProjectStartAnswers["weatherCondition"], string> = {
   rain: "Regen",
   heavy_rain: "Zware regen",
 };
+
+const actionStatusLabels: Record<ProjectAction["status"], string> = {
+  open: "Open",
+  accepted: "Geaccepteerd",
+  in_progress: "In uitvoering",
+  ready_for_verification: "Gereed voor verificatie",
+  verified: "Geverifieerd",
+  cancelled: "Geannuleerd",
+};
+
+const nextActionStatus: Partial<Record<ProjectAction["status"], ProjectAction["status"]>> = {
+  open: "accepted",
+  accepted: "in_progress",
+  in_progress: "ready_for_verification",
+  ready_for_verification: "verified",
+};
+
+function defaultActionDeadline() {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  date.setHours(16, 0, 0, 0);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
 
 function currentTime() {
   return new Intl.DateTimeFormat("nl-NL", {
@@ -281,6 +316,7 @@ export function CodecoSupervisionApp() {
   const [completedTodos, setCompletedTodos] = useState<number[]>([]);
   const [projectStartAnswers, setProjectStartAnswers] = useState<ProjectStartAnswers | null>(null);
   const [dailyCloseoutAnswers, setDailyCloseoutAnswers] = useState<DailyCloseoutAnswers | null>(null);
+  const [selectedAction, setSelectedAction] = useState<ProjectAction | null>(null);
   const [toast, setToast] = useState("");
   const reportDate = reportDateInSuriname();
 
@@ -306,7 +342,7 @@ export function CodecoSupervisionApp() {
         ? "Opslaan mislukt · probeer opnieuw"
         : syncState === "saved"
           ? "Centraal opgeslagen · Supabase"
-          : "Online · Supabase verbonden";
+          : "Live database · Supabase Realtime";
 
   useEffect(() => {
     if (!supabase) return;
@@ -416,6 +452,24 @@ export function CodecoSupervisionApp() {
     return () => window.clearTimeout(hydration);
   }, [currentUserName, dayQuery.data, selectedBuilding]);
 
+  useEffect(() => {
+    if (!supabase || !session || !selectedProject) return;
+    const refresh = () => {
+      void queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] });
+      void queryClient.invalidateQueries({ queryKey: ["workspace", session.user.id] });
+    };
+    const channel = supabase
+      .channel(`project-live:${selectedProject.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "actions", filter: `project_id=eq.${selectedProject.id}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "action_updates", filter: `project_id=eq.${selectedProject.id}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "site_registrations", filter: `project_id=eq.${selectedProject.id}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "day_reports", filter: `project_id=eq.${selectedProject.id}` }, refresh)
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [queryClient, reportDate, selectedProject, session, supabase]);
+
   const completeness = useMemo(() => {
     const complete = 4 + Math.min(completedTodos.length, 3) + (projectStartAnswers ? 1 : 0) + (dailyCloseoutAnswers ? 1 : 0);
     return Math.round((complete / 9) * 100);
@@ -454,7 +508,7 @@ export function CodecoSupervisionApp() {
 
   const chooseType = (type: string) => {
     setSelectedType(type);
-    setModal("entry");
+    setModal(type === "action" ? "action_create" : "entry");
   };
 
   const saveEntry = async () => {
@@ -717,6 +771,11 @@ export function CodecoSupervisionApp() {
               openAttendance={() => setModal("attendance")}
               entries={entries}
               actions={dayActions}
+              actionUpdates={dayQuery.data?.actionUpdates ?? []}
+              openAction={(action) => {
+                setSelectedAction(action);
+                setModal("action_detail");
+              }}
               reportNumber={reportNumber}
               reportStatus={String(dayQuery.data?.report?.status ?? "draft")}
             />
@@ -764,6 +823,51 @@ export function CodecoSupervisionApp() {
           save={saveEntry}
           projectName={projectName}
           buildingName={buildingName}
+        />
+      ) : null}
+      {modal === "action_create" && selectedProject && selectedBuilding ? (
+        <ActionCreateModal
+          parties={dayQuery.data?.parties ?? []}
+          projectName={projectName}
+          buildingName={buildingName}
+          close={() => setModal(null)}
+          goBack={() => setModal("quick")}
+          save={async (answers) => {
+            const saved = await runSynced(
+              () => createProjectAction(supabase, {
+                projectId: selectedProject.id,
+                buildingId: selectedBuilding.id,
+                ...answers,
+              }),
+              "Actie is met deadline en verantwoordelijke centraal aangemaakt.",
+            );
+            if (!saved) return false;
+            setModal(null);
+            setActiveNav("acties");
+            await queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] });
+            return true;
+          }}
+        />
+      ) : null}
+      {modal === "action_detail" && selectedAction ? (
+        <ActionDetailModal
+          action={selectedAction}
+          partyName={dayQuery.data?.parties.find((party) => party.id === selectedAction.owner_party_id)?.name ?? "Niet toegewezen"}
+          updates={(dayQuery.data?.actionUpdates ?? []).filter((update) => update.action_id === selectedAction.id)}
+          close={() => {
+            setSelectedAction(null);
+            setModal(null);
+          }}
+          transition={async (nextStatus, note) => {
+            const saved = await runSynced(
+              () => transitionProjectAction(supabase, { actionId: selectedAction.id, nextStatus, note }),
+              `Actie is centraal bijgewerkt naar ${actionStatusLabels[nextStatus].toLowerCase()}.`,
+            );
+            if (!saved) return false;
+            setSelectedAction(saved);
+            await queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject?.id, reportDate] });
+            return true;
+          }}
         />
       ) : null}
       {modal === "report" ? (
@@ -1318,7 +1422,7 @@ function TodayView({
   openDailyQuestions: () => void;
   currentUserName: string;
   reportNumber: string;
-  actions: Array<Record<string, unknown>>;
+  actions: ProjectAction[];
 }) {
   const todos = [
     { id: 1, title: "Weer en werktijden bevestigen", detail: projectStartAnswers ? "Centraal vastgelegd" : "Projectstart vereist", flag: "" },
@@ -1497,6 +1601,8 @@ function SecondaryView({
   openAttendance,
   entries,
   actions,
+  actionUpdates,
+  openAction,
   reportNumber,
   reportStatus,
 }: {
@@ -1508,7 +1614,9 @@ function SecondaryView({
   attendanceTotal: number;
   openAttendance: () => void;
   entries: TimelineEntry[];
-  actions: Array<Record<string, unknown>>;
+  actions: ProjectAction[];
+  actionUpdates: ActionUpdate[];
+  openAction: (action: ProjectAction) => void;
   reportNumber: string;
   reportStatus: string;
 }) {
@@ -1553,12 +1661,13 @@ function SecondaryView({
         <section className="actions-list">
           {actions.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>Nog geen acties</strong><span>Acties die in Supabase worden vastgelegd verschijnen hier.</span></div> : null}
           {actions.map((action) => {
-            const dueAt = action.due_at ? new Intl.DateTimeFormat("nl-NL", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(String(action.due_at))) : "Geen deadline";
+            const dueAt = action.due_at ? new Intl.DateTimeFormat("nl-NL", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(action.due_at)) : "Geen deadline";
+            const latestUpdate = actionUpdates.find((update) => update.action_id === action.id);
             return (
-            <button className="action-row" type="button" key={String(action.id)} style={{ textAlign: "left", cursor: "pointer" }}>
+            <button className="action-row" type="button" key={action.id} onClick={() => openAction(action)} style={{ textAlign: "left", cursor: "pointer" }}>
               <span className="action-icon"><CheckCircle2 size={18} /></span>
-              <span className="action-copy"><strong>{String(action.title)}</strong><span>{dueAt} · {String(action.action_number)}</span></span>
-              <span className={`task-status ${String(action.priority) === "critical" ? "red" : ""}`}>{String(action.status).replaceAll("_", " ")}</span>
+              <span className="action-copy"><strong>{action.title}</strong><span>{dueAt} · {action.action_number}{latestUpdate ? ` · ${latestUpdate.message}` : ""}</span></span>
+              <span className={`task-status ${action.priority === "critical" ? "red" : action.status === "verified" ? "green" : ""}`}>{actionStatusLabels[action.status]}</span>
             </button>
           );})}
         </section>
@@ -1707,6 +1816,131 @@ function EntryModal({
             <button className="back-button" type="button" onClick={goBack}><ArrowLeft size={14} /> Terug</button>
             <button className="primary-button" type="button" onClick={save} disabled={!description.trim()}>Opslaan en opnemen <Check size={14} /></button>
           </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ActionCreateModal({
+  parties,
+  projectName,
+  buildingName,
+  close,
+  goBack,
+  save,
+}: {
+  parties: ProjectParty[];
+  projectName: string;
+  buildingName: string;
+  close: () => void;
+  goBack: () => void;
+  save: (answers: ProjectActionAnswers) => Promise<boolean>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const defaultParty = parties.find((party) => party.type === "contractor")?.id ?? parties[0]?.id ?? "";
+  const { register, handleSubmit, formState: { errors } } = useForm<ProjectActionAnswers>({
+    resolver: zodResolver(projectActionSchema),
+    defaultValues: {
+      title: "",
+      description: "",
+      ownerPartyId: defaultParty,
+      dueAt: defaultActionDeadline(),
+      priority: "normal",
+    },
+  });
+  const submit = async (answers: ProjectActionAnswers) => {
+    setBusy(true);
+    await save(answers);
+    setBusy(false);
+  };
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+      <section className="modal action-modal" role="dialog" aria-modal="true" aria-labelledby="action-create-title">
+        <header className="modal-header">
+          <div><h2 id="action-create-title">Actie centraal aanmaken</h2><p>{projectName} · {buildingName}</p></div>
+          <button className="modal-close" type="button" onClick={close} aria-label="Sluiten"><X size={18} /></button>
+        </header>
+        <form className="modal-body" onSubmit={handleSubmit(submit)} noValidate>
+          <div className="form-grid two-columns">
+            <label className="form-field full"><span>Actie *</span><input autoFocus placeholder="Wat moet aantoonbaar worden uitgevoerd?" {...register("title")} />{errors.title ? <small className="field-error">{errors.title.message}</small> : null}</label>
+            <label className="form-field full"><span>Context en acceptatiecriterium *</span><textarea rows={4} placeholder="Beschrijf locatie, gewenste maatregel en wanneer de actie gereed is." {...register("description")} />{errors.description ? <small className="field-error">{errors.description.message}</small> : null}</label>
+            <label className="form-field"><span>Verantwoordelijke partij *</span><select {...register("ownerPartyId")} disabled={parties.length === 0}><option value="">Kies partij</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select>{errors.ownerPartyId ? <small className="field-error">{errors.ownerPartyId.message}</small> : null}</label>
+            <label className="form-field"><span>Deadline *</span><input type="datetime-local" {...register("dueAt")} />{errors.dueAt ? <small className="field-error">{errors.dueAt.message}</small> : null}</label>
+            <label className="form-field"><span>Prioriteit</span><select {...register("priority")}><option value="low">Laag</option><option value="normal">Normaal</option><option value="high">Hoog</option><option value="critical">Kritiek</option></select></label>
+            <div className="action-rule-note"><ShieldCheck size={16} /><span><strong>Vaste opvolgflow</strong><small>Open → geaccepteerd → in uitvoering → verificatie → gesloten.</small></span></div>
+          </div>
+          <div className="modal-actions">
+            <button className="back-button" type="button" onClick={goBack}><ArrowLeft size={14} /> Terug</button>
+            <button className="primary-button" type="submit" disabled={busy || parties.length === 0}>{busy ? <Loader2 className="spin" size={14} /> : <Check size={14} />} Centraal opslaan</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function ActionDetailModal({
+  action,
+  partyName,
+  updates,
+  close,
+  transition,
+}: {
+  action: ProjectAction;
+  partyName: string;
+  updates: ActionUpdate[];
+  close: () => void;
+  transition: (nextStatus: ProjectAction["status"], note: string) => Promise<boolean>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const nextStatus = nextActionStatus[action.status];
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<ActionTransitionAnswers>({
+    resolver: zodResolver(actionTransitionSchema),
+    defaultValues: { note: "" },
+  });
+  const submit = async ({ note }: ActionTransitionAnswers) => {
+    if (!nextStatus) return;
+    setBusy(true);
+    const saved = await transition(nextStatus, note);
+    if (saved) reset();
+    setBusy(false);
+  };
+  const dueAt = action.due_at
+    ? new Intl.DateTimeFormat("nl-NL", { dateStyle: "long", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(action.due_at))
+    : "Geen deadline";
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+      <section className="modal action-detail-modal" role="dialog" aria-modal="true" aria-labelledby="action-detail-title">
+        <header className="modal-header">
+          <div><p className="eyebrow">{action.action_number}</p><h2 id="action-detail-title">{action.title}</h2><p>{partyName} · deadline {dueAt}</p></div>
+          <button className="modal-close" type="button" onClick={close} aria-label="Sluiten"><X size={18} /></button>
+        </header>
+        <div className="modal-body action-detail-body">
+          <div className="action-detail-summary">
+            <span className={`task-status ${action.priority === "critical" ? "red" : ""}`}>{action.priority}</span>
+            <span className={`task-status ${action.status === "verified" ? "green" : ""}`}>{actionStatusLabels[action.status]}</span>
+            <p>{action.description}</p>
+          </div>
+          <div className="action-status-flow" aria-label="Actiestatus">
+            {(["open", "accepted", "in_progress", "ready_for_verification", "verified"] as ProjectAction["status"][]).map((status) => {
+              const order = ["open", "accepted", "in_progress", "ready_for_verification", "verified"];
+              const reached = order.indexOf(status) <= order.indexOf(action.status);
+              return <span className={reached ? "reached" : ""} key={status}><i />{actionStatusLabels[status]}</span>;
+            })}
+          </div>
+          <section className="action-history">
+            <h3>Onveranderbare historie</h3>
+            {updates.length === 0 ? <p>Nog geen historie geladen.</p> : updates.map((update) => (
+              <article key={update.id}><span className="timeline-dot" /><div><strong>{update.update_type === "status" && update.to_status ? actionStatusLabels[update.to_status as ProjectAction["status"]] : "Aangemaakt"}</strong><p>{update.message}</p><time>{new Intl.DateTimeFormat("nl-NL", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(update.created_at))}</time></div></article>
+            ))}
+          </section>
+          {nextStatus ? (
+            <form className="action-transition-form" onSubmit={handleSubmit(submit)} noValidate>
+              <label className="form-field"><span>{nextStatus === "verified" ? "Verificatienotitie *" : "Uitvoeringsnotitie *"}</span><textarea rows={3} placeholder="Leg vast wat is uitgevoerd, gecontroleerd of nog nodig is." {...register("note")} />{errors.note ? <small className="field-error">{errors.note.message}</small> : null}</label>
+              <button className="primary-button" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={14} /> : <ArrowRight size={14} />} Naar {actionStatusLabels[nextStatus].toLowerCase()}</button>
+            </form>
+          ) : <p className="action-complete-note"><CheckCircle2 size={16} /> {action.status === "verified" ? "Deze actie is formeel geverifieerd en gesloten." : "Deze actie is geannuleerd en blijft in de historie zichtbaar."}</p>}
         </div>
       </section>
     </div>

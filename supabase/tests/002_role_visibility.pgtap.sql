@@ -1,7 +1,7 @@
 begin;
 set local search_path = extensions, public;
 
-select plan(49);
+select plan(58);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at) values
   ('00000000-0000-0000-0000-0000000000a1', 'authenticated', 'authenticated', 'admin@example.test', now(), now()),
@@ -110,6 +110,9 @@ values ('70000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-0000000
 insert into public.actions (id, organization_id, project_id, building_id, action_number, title, source_type, owner_user_id, status, idempotency_key, created_by)
 values ('80000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', 'ACT-001', 'Herstel testpunt', 'manual', '00000000-0000-0000-0000-0000000000a3', 'open', 'test-action', '00000000-0000-0000-0000-0000000000a1');
 
+insert into public.action_updates (id, organization_id, project_id, action_id, update_type, message, created_by)
+values ('81000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000001', 'created', 'Testactie centraal aangemaakt.', '00000000-0000-0000-0000-0000000000a1');
+
 insert into public.day_start_checks (
   id, organization_id, project_id, building_id, day_report_id, weather_condition,
   temperature_c, wind_condition, shift_start, shift_end, planned_work,
@@ -147,6 +150,7 @@ select is((select count(*) from public.site_registrations), 1::bigint, 'organiza
 select cmp_ok((select count(*) from public.audit_events), '>', 0::bigint, 'organization admin sees the audit trail');
 select is((select count(*) from public.day_start_checks), 1::bigint, 'organization admin sees the project-start answers');
 select is((select count(*) from public.day_closeouts), 1::bigint, 'organization admin sees the daily closeout');
+select is((select count(*) from public.action_updates), 1::bigint, 'organization admin sees action history');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a2","role":"authenticated"}';
 select is((select count(*) from public.site_registrations), 1::bigint, 'supervisor sees internal registrations');
@@ -155,6 +159,7 @@ select is((select count(*) from public.day_reports), 2::bigint, 'supervisor sees
 select is((select count(*) from public.actions), 1::bigint, 'supervisor sees project actions');
 select is((select count(*) from public.day_start_checks), 1::bigint, 'supervisor sees the project-start answers');
 select is((select count(*) from public.day_closeouts), 1::bigint, 'supervisor sees the daily closeout');
+select is((select count(*) from public.action_updates), 1::bigint, 'supervisor sees action history');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a3","role":"authenticated"}';
 select is((select count(*) from public.site_registrations), 0::bigint, 'contractor cannot see internal registrations');
@@ -163,6 +168,7 @@ select is((select count(*) from public.day_reports), 0::bigint, 'contractor cann
 select is((select count(*) from public.actions), 1::bigint, 'contractor sees its assigned action');
 select is((select count(*) from public.day_start_checks), 0::bigint, 'contractor cannot see internal project-start answers');
 select is((select count(*) from public.day_closeouts), 0::bigint, 'contractor cannot see the internal daily closeout');
+select is((select count(*) from public.action_updates), 1::bigint, 'assigned contractor sees action history');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a4","role":"authenticated"}';
 select is((select count(*) from public.site_registrations), 0::bigint, 'client cannot see internal registrations');
@@ -171,6 +177,7 @@ select is((select count(*) from public.report_versions), 1::bigint, 'client sees
 select is((select count(*) from public.audit_events), 0::bigint, 'client cannot see the internal audit trail');
 select is((select count(*) from public.day_start_checks), 0::bigint, 'client cannot see internal project-start answers');
 select is((select count(*) from public.day_closeouts), 0::bigint, 'client cannot see the editable daily closeout');
+select is((select count(*) from public.action_updates), 0::bigint, 'client cannot see internal action history');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a6","role":"authenticated"}';
 select is((select count(*) from public.site_registrations), 1::bigint, 'lead supervisor sees internal registrations');
@@ -178,6 +185,7 @@ select is((select count(*) from public.day_reports), 2::bigint, 'lead supervisor
 select cmp_ok((select count(*) from public.audit_events), '>', 0::bigint, 'lead supervisor sees the audit trail');
 select is((select count(*) from public.day_start_checks), 1::bigint, 'lead supervisor sees the project-start answers');
 select is((select count(*) from public.day_closeouts), 1::bigint, 'lead supervisor sees the daily closeout');
+select is((select count(*) from public.action_updates), 1::bigint, 'lead supervisor sees action history');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a7","role":"authenticated"}';
 select is((select count(*) from public.site_registrations), 1::bigint, 'project manager sees internal registrations');
@@ -185,6 +193,7 @@ select is((select count(*) from public.actions), 1::bigint, 'project manager see
 select is((select count(*) from public.day_reports), 2::bigint, 'project manager sees all reports');
 select is((select count(*) from public.day_start_checks), 1::bigint, 'project manager sees the project-start answers');
 select is((select count(*) from public.day_closeouts), 1::bigint, 'project manager sees the daily closeout');
+select is((select count(*) from public.action_updates), 1::bigint, 'project manager sees action history');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a8","role":"authenticated"}';
 select is((select count(*) from public.site_registrations), 1::bigint, 'quality and HSE manager sees internal registrations');
@@ -192,6 +201,7 @@ select is((select count(*) from public.attendance_entries), 1::bigint, 'quality 
 select cmp_ok((select count(*) from public.audit_events), '>', 0::bigint, 'quality and HSE manager sees the audit trail');
 select is((select count(*) from public.day_start_checks), 1::bigint, 'quality and HSE manager sees project-start answers');
 select is((select count(*) from public.day_closeouts), 1::bigint, 'quality and HSE manager sees the daily closeout');
+select is((select count(*) from public.action_updates), 1::bigint, 'quality and HSE manager sees action history');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a9","role":"authenticated"}';
 select is((select count(*) from public.projects), 1::bigint, 'explicitly invited guest sees the project shell');
@@ -200,6 +210,7 @@ select is((select count(*) from public.actions), 0::bigint, 'guest sees no unsha
 select is((select count(*) from public.day_reports), 0::bigint, 'guest sees no unshared reports');
 select is((select count(*) from public.day_start_checks), 0::bigint, 'guest sees no unshared project-start answers');
 select is((select count(*) from public.day_closeouts), 0::bigint, 'guest sees no unshared daily closeout');
+select is((select count(*) from public.action_updates), 0::bigint, 'guest sees no unshared action history');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a5","role":"authenticated"}';
 select is((select count(*) from public.projects), 0::bigint, 'outsider sees no projects');
@@ -207,6 +218,7 @@ select is((select count(*) from public.actions), 0::bigint, 'outsider sees no ac
 select is((select count(*) from public.day_reports), 0::bigint, 'outsider sees no approved reports');
 select is((select count(*) from public.day_start_checks), 0::bigint, 'outsider sees no project-start answers');
 select is((select count(*) from public.day_closeouts), 0::bigint, 'outsider sees no daily closeout');
+select is((select count(*) from public.action_updates), 0::bigint, 'outsider sees no action history');
 
 reset role;
 select * from finish();

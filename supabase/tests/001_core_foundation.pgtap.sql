@@ -1,7 +1,7 @@
 begin;
 set local search_path = extensions, public;
 
-select plan(34);
+select plan(38);
 
 select has_table('public', 'organizations', 'organizations table exists');
 select has_table('public', 'projects', 'projects table exists');
@@ -10,6 +10,7 @@ select has_table('public', 'day_reports', 'day_reports table exists');
 select has_table('public', 'attendance_entries', 'attendance_entries table exists');
 select has_table('public', 'site_registrations', 'site_registrations table exists');
 select has_table('public', 'actions', 'actions table exists');
+select has_table('public', 'action_updates', 'append-only action history table exists');
 select has_table('public', 'report_versions', 'report_versions table exists');
 select has_table('public', 'audit_events', 'audit_events table exists');
 select has_table('public', 'day_start_checks', 'day_start_checks table exists');
@@ -40,6 +41,19 @@ select has_function(
   array['uuid'],
   'validated report submission function exists'
 );
+select has_function(
+  'public',
+  'create_project_action',
+  array['uuid', 'uuid', 'uuid', 'text', 'text', 'timestamp with time zone', 'text', 'text'],
+  'atomic action creation function exists'
+);
+select has_function(
+  'public',
+  'transition_project_action',
+  array['uuid', 'text', 'text'],
+  'controlled action transition function exists'
+);
+select has_trigger('public', 'action_updates', 'action_updates_immutable', 'action history is immutable');
 select is_definer('app_private', 'has_project_permission', array['uuid', 'text'], 'project permission helper is security definer');
 
 select has_index('public', 'day_reports', 'day_reports_project_date_idx', 'day report lookup is indexed');
@@ -94,11 +108,12 @@ select results_eq(
         'organization_memberships', 'organization_member_roles', 'projects',
         'project_memberships', 'project_member_roles', 'buildings', 'parties',
         'day_reports', 'attendance_entries', 'site_registrations', 'actions',
-        'report_versions', 'audit_events', 'day_start_checks', 'day_closeouts'
+        'report_versions', 'audit_events', 'day_start_checks', 'day_closeouts',
+        'action_updates'
       ])
       and relation.relrowsecurity
   $$,
-  $$ values (20::bigint) $$,
+  $$ values (21::bigint) $$,
   'RLS is enabled on every browser-reachable table'
 );
 
@@ -139,7 +154,7 @@ select is(
       and grant_record.privilege_type = 'DELETE'
       and grant_record.table_name in (
         'projects', 'buildings', 'parties', 'day_reports', 'attendance_entries',
-        'site_registrations', 'actions', 'report_versions', 'audit_events'
+        'site_registrations', 'actions', 'action_updates', 'report_versions', 'audit_events'
       )
   ),
   0::bigint,

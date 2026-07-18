@@ -34,13 +34,14 @@ test("server-renders the secure CODECO entry point", async () => {
   assert.doesNotMatch(html, /Sitezicht|codex-preview|Building your site|react-loading-skeleton/i);
 });
 
-test("keeps the central MVP interaction and accessibility hooks in source", async () => {
-  const [app, page, layout, packageJson, dailyReportForm, dataLayer, pdfReport, providers] = await Promise.all([
+test("keeps the central post-MVP interaction and accessibility hooks in source", async () => {
+  const [app, page, layout, packageJson, dailyReportForm, actionForm, dataLayer, pdfReport, providers] = await Promise.all([
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../lib/forms/daily-report.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/forms/actions.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/supabase/data.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/reports/daily-report-pdf.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/providers.tsx", import.meta.url), "utf8"),
@@ -63,6 +64,8 @@ test("keeps the central MVP interaction and accessibility hooks in source", asyn
   assert.match(app, /bootstrapOrganization/);
   assert.match(app, /createProjectWorkspace/);
   assert.match(app, /Centraal opgeslagen/);
+  assert.match(app, /Supabase Realtime/);
+  assert.match(app, /postgres_changes/);
   assert.doesNotMatch(app, /Demosessie|Kwattaweg Residence|Commewijne Port Facility/);
   assert.match(page, /CodecoSupervisionApp/);
   assert.match(page, /Providers/);
@@ -74,19 +77,23 @@ test("keeps the central MVP interaction and accessibility hooks in source", asyn
   assert.match(packageJson, /@react-pdf\/renderer/);
   assert.match(dailyReportForm, /clientReportSections/);
   assert.match(dailyReportForm, /AUTO-HSE-01/);
+  assert.match(actionForm, /projectActionSchema/);
+  assert.match(actionForm, /actionTransitionSchema/);
   assert.match(app, /Geen AI|No AI/i);
   assert.match(dataLayer, /saveProjectStart/);
   assert.match(dataLayer, /saveSiteRegistration/);
   assert.match(dataLayer, /saveAttendance/);
   assert.match(dataLayer, /saveDailyCloseout/);
   assert.match(dataLayer, /submitReportForReview/);
+  assert.match(dataLayer, /createProjectAction/);
+  assert.match(dataLayer, /transitionProjectAction/);
   assert.match(pdfReport, /CONSTRUCTIESUPERVISIE/);
   assert.match(pdfReport, /17–19\. Foto's, bijlagen en controle/);
   assert.match(providers, /QueryClientProvider/);
 });
 
 test("keeps the online-first Supabase foundation enforceable", async () => {
-  const [migration, questionnaireMigration, liveFlowMigration, supabaseClient, envExample] = await Promise.all([
+  const [migration, questionnaireMigration, liveFlowMigration, actionMigration, supabaseClient, envExample] = await Promise.all([
     readFile(
       new URL("../../../supabase/migrations/202607180001_core_supervision_foundation.sql", import.meta.url),
       "utf8",
@@ -97,6 +104,10 @@ test("keeps the online-first Supabase foundation enforceable", async () => {
     ),
     readFile(
       new URL("../../../supabase/migrations/202607180003_live_workspace_flow.sql", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../../../supabase/migrations/202607180004_action_workflow_realtime.sql", import.meta.url),
       "utf8",
     ),
     readFile(new URL("../lib/supabase/client.ts", import.meta.url), "utf8"),
@@ -137,6 +148,10 @@ test("keeps the online-first Supabase foundation enforceable", async () => {
   assert.match(liveFlowMigration, /create or replace function public\.create_project_workspace/);
   assert.match(liveFlowMigration, /create or replace function public\.submit_day_report_for_review/);
   assert.match(liveFlowMigration, /attendance_entries_report_party_discipline_key/);
+  assert.match(actionMigration, /create table public\.action_updates/);
+  assert.match(actionMigration, /create or replace function public\.create_project_action/);
+  assert.match(actionMigration, /create or replace function public\.transition_project_action/);
+  assert.match(actionMigration, /alter publication supabase_realtime add table/);
   const configuredEnvKeys = envExample
     .split("\n")
     .filter((line) => line.trim() && !line.trim().startsWith("#"))

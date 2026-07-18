@@ -44,6 +44,32 @@ export type ProjectParty = {
   type: string;
 };
 
+export type ProjectAction = {
+  id: string;
+  action_number: string;
+  title: string;
+  description: string | null;
+  due_at: string | null;
+  priority: "low" | "normal" | "high" | "critical";
+  status: "open" | "accepted" | "in_progress" | "ready_for_verification" | "verified" | "cancelled";
+  building_id: string | null;
+  owner_party_id: string | null;
+  closure_reason: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ActionUpdate = {
+  id: string;
+  action_id: string;
+  update_type: "created" | "status" | "comment" | "evidence";
+  message: string;
+  from_status: string | null;
+  to_status: string | null;
+  created_by: string;
+  created_at: string;
+};
+
 export type ProjectDaySnapshot = {
   report: Record<string, unknown> | null;
   startCheck: Record<string, unknown> | null;
@@ -51,7 +77,8 @@ export type ProjectDaySnapshot = {
   registrations: Array<Record<string, unknown>>;
   attendance: Array<Record<string, unknown>>;
   parties: ProjectParty[];
-  actions: Array<Record<string, unknown>>;
+  actions: ProjectAction[];
+  actionUpdates: ActionUpdate[];
 };
 
 export type AttendanceInput = {
@@ -205,7 +232,7 @@ export async function loadProjectDay(
     client.from("parties").select("id,name,party_type").eq("project_id", projectId).eq("active", true).order("name"),
     client
       .from("actions")
-      .select("id,action_number,title,description,due_at,priority,status,building_id")
+      .select("id,action_number,title,description,due_at,priority,status,building_id,owner_party_id,closure_reason,created_at,updated_at")
       .eq("project_id", projectId)
       .order("due_at", { ascending: true, nullsFirst: false })
       .limit(50),
@@ -213,6 +240,17 @@ export async function loadProjectDay(
   fail(reportResult.error);
   fail(partyResult.error);
   fail(actionResult.error);
+  const actionRows = (actionResult.data ?? []) as ProjectAction[];
+  const actionIds = actionRows.map((action) => action.id);
+  const actionUpdateResult = actionIds.length
+    ? await client
+        .from("action_updates")
+        .select("id,action_id,update_type,message,from_status,to_status,created_by,created_at")
+        .in("action_id", actionIds)
+        .order("created_at", { ascending: false })
+        .limit(250)
+    : { data: [], error: null };
+  fail(actionUpdateResult.error);
 
   const report = reportResult.data as Record<string, unknown> | null;
   if (!report) {
@@ -223,7 +261,8 @@ export async function loadProjectDay(
       registrations: [],
       attendance: [],
       parties: (partyResult.data ?? []).map((party) => ({ id: party.id as string, name: String(party.name), type: String(party.party_type) })),
-      actions: (actionResult.data ?? []) as Array<Record<string, unknown>>,
+      actions: actionRows,
+      actionUpdates: (actionUpdateResult.data ?? []) as ActionUpdate[],
     };
   }
 
@@ -255,7 +294,8 @@ export async function loadProjectDay(
     registrations: (registrationResult.data ?? []) as Array<Record<string, unknown>>,
     attendance: (attendanceResult.data ?? []) as Array<Record<string, unknown>>,
     parties: (partyResult.data ?? []).map((party) => ({ id: party.id as string, name: String(party.name), type: String(party.party_type) })),
-    actions: (actionResult.data ?? []) as Array<Record<string, unknown>>,
+    actions: actionRows,
+    actionUpdates: (actionUpdateResult.data ?? []) as ActionUpdate[],
   };
 }
 
@@ -500,6 +540,45 @@ export async function submitReportForReview(client: SupabaseClient, reportId: st
   const result = await client.rpc("submit_day_report_for_review", { p_day_report_id: reportId });
   fail(result.error);
   return result.data as Record<string, unknown>;
+}
+
+export async function createProjectAction(
+  client: SupabaseClient,
+  input: {
+    projectId: string;
+    buildingId: string;
+    ownerPartyId: string;
+    title: string;
+    description: string;
+    dueAt: string;
+    priority: ProjectAction["priority"];
+  },
+) {
+  const result = await client.rpc("create_project_action", {
+    p_project_id: input.projectId,
+    p_building_id: input.buildingId,
+    p_owner_party_id: input.ownerPartyId,
+    p_title: input.title,
+    p_description: input.description,
+    p_due_at: new Date(input.dueAt).toISOString(),
+    p_priority: input.priority,
+    p_idempotency_key: `action:${crypto.randomUUID()}`,
+  });
+  fail(result.error);
+  return result.data as ProjectAction;
+}
+
+export async function transitionProjectAction(
+  client: SupabaseClient,
+  input: { actionId: string; nextStatus: ProjectAction["status"]; note: string },
+) {
+  const result = await client.rpc("transition_project_action", {
+    p_action_id: input.actionId,
+    p_next_status: input.nextStatus,
+    p_note: input.note,
+  });
+  fail(result.error);
+  return result.data as ProjectAction;
 }
 
 export async function getSession(client: SupabaseClient): Promise<Session | null> {
