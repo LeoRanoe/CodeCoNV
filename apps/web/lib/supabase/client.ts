@@ -1,9 +1,12 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? "";
+const supabasePublishableKey = (
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+  ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+)?.trim() ?? "";
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabasePublishableKey);
 
 let browserClient: SupabaseClient | null = null;
 
@@ -15,7 +18,7 @@ let browserClient: SupabaseClient | null = null;
 export function getSupabaseBrowserClient(): SupabaseClient | null {
   if (!isSupabaseConfigured) return null;
 
-  browserClient ??= createClient(supabaseUrl, supabaseAnonKey, {
+  browserClient ??= createClient(supabaseUrl, supabasePublishableKey, {
     auth: {
       autoRefreshToken: true,
       detectSessionInUrl: true,

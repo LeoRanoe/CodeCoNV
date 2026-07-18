@@ -71,6 +71,9 @@ export const dailyCloseoutSchema = z
     if (answers.delayCause !== "none" && answers.delayHours <= 0) {
       context.addIssue({ code: "custom", path: ["delayHours"], message: "Vul het tijdverlies in" });
     }
+    if (!answers.attachmentsConfirmed) {
+      context.addIssue({ code: "custom", path: ["attachmentsConfirmed"], message: "Bevestig dat de bijlagen zijn gecontroleerd" });
+    }
   });
 
 export type DailyCloseoutAnswers = z.infer<typeof dailyCloseoutSchema>;

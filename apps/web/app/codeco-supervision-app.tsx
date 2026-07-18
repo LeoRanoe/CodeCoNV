@@ -23,11 +23,13 @@ import {
   Home,
   Image,
   LayoutDashboard,
+  Loader2,
+  LogIn,
+  LogOut,
   MapPin,
   Menu,
   MessageSquareText,
   Minus,
-  MoreHorizontal,
   PackageCheck,
   Plus,
   Ruler,
@@ -40,9 +42,11 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
-import { isSupabaseConfigured } from "@/lib/supabase/client";
+import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   clientReportSections,
   dailyCloseoutSchema,
@@ -51,6 +55,29 @@ import {
   type DailyCloseoutAnswers,
   type ProjectStartAnswers,
 } from "@/lib/forms/daily-report";
+import {
+  authSchema,
+  organizationSetupSchema,
+  projectSetupSchema,
+  type AuthAnswers,
+  type OrganizationSetupAnswers,
+  type ProjectSetupAnswers,
+} from "@/lib/forms/workspace";
+import {
+  bootstrapOrganization,
+  createProjectWorkspace,
+  getSession,
+  loadProjectDay,
+  loadWorkspace,
+  reportDateInSuriname,
+  saveAttendance,
+  saveDailyCloseout,
+  saveProjectStart,
+  saveSiteRegistration,
+  submitReportForReview,
+  type WorkspaceBuilding,
+  type WorkspaceProject,
+} from "@/lib/supabase/data";
 
 type NavKey = "vandaag" | "project" | "acties" | "rapporten" | "meer";
 type ModalKey = "quick" | "entry" | "report" | "attendance" | "daily_questions" | null;
@@ -64,7 +91,7 @@ type EntryKind =
   | "note";
 
 type TimelineEntry = {
-  id: number;
+  id: string;
   time: string;
   kind: EntryKind;
   title: string;
@@ -82,37 +109,23 @@ type QuickType = {
   icon: LucideIcon;
 };
 
-type ProjectContext = {
-  id: string;
-  name: string;
-  code: string;
-  location: string;
-  client: string;
-  progress: number;
-  openIssues: number;
-  buildings: BuildingContext[];
-};
-
-type BuildingContext = {
-  id: string;
-  name: string;
-  description: string;
-  progress: number;
-  openIssues: number;
-};
+type ProjectContext = WorkspaceProject;
+type BuildingContext = WorkspaceBuilding;
 
 type AttendanceRow = {
-  id: number;
+  id: string;
+  partyId: string;
   party: string;
   discipline: string;
   count: number;
-  shift: string;
+  shiftStart: string;
+  shiftEnd: string;
 };
 
 const navigation: { id: NavKey; label: string; icon: LucideIcon; badge?: string }[] = [
   { id: "vandaag", label: "Vandaag", icon: Home },
   { id: "project", label: "Project", icon: LayoutDashboard },
-  { id: "acties", label: "Acties", icon: ClipboardCheck, badge: "5" },
+  { id: "acties", label: "Acties", icon: ClipboardCheck },
   { id: "rapporten", label: "Rapporten", icon: FileText },
   { id: "meer", label: "Meer", icon: Menu },
 ];
@@ -127,88 +140,6 @@ const quickTypes: QuickType[] = [
   { id: "delivery", title: "Levering", description: "Registreer materiaalontvangst", icon: PackageCheck },
   { id: "test", title: "Test / meting", description: "Noteer waarde en tolerantie", icon: Ruler },
   { id: "delay", title: "Vertraging", description: "Leg oorzaak en tijdblok vast", icon: TimerOff },
-];
-
-const projects: ProjectContext[] = [
-  {
-    id: "kwattaweg-residence",
-    name: "Kwattaweg Residence",
-    code: "COD-2026-014",
-    location: "Paramaribo",
-    client: "Particuliere opdrachtgever",
-    progress: 67,
-    openIssues: 7,
-    buildings: [
-      { id: "hoofdgebouw", name: "Hoofdgebouw", description: "Woongebouw · ruwbouw", progress: 67, openIssues: 5 },
-      { id: "terrein", name: "Terrein & voorzieningen", description: "Fundering, drainage en buitenwerk", progress: 24, openIssues: 2 },
-    ],
-  },
-  {
-    id: "commewijne-port",
-    name: "Commewijne Port Facility",
-    code: "COD-2026-009",
-    location: "Nieuw Amsterdam, Commewijne",
-    client: "Commewijne Port Facilities",
-    progress: 42,
-    openIssues: 4,
-    buildings: [
-      { id: "quay", name: "Kadeconstructie", description: "Betonwerk en aanlegvoorzieningen", progress: 42, openIssues: 3 },
-      { id: "yard", name: "Opslagterrein", description: "Terreinwerk en infrastructuur", progress: 31, openIssues: 1 },
-    ],
-  },
-];
-
-const initialAttendance: AttendanceRow[] = [
-  { id: 1, party: "Bouwbedrijf N.V.", discipline: "Ruwbouw", count: 21, shift: "07:00–16:00" },
-  { id: 2, party: "ElectroWorks", discipline: "Elektro", count: 12, shift: "07:30–16:30" },
-  { id: 3, party: "Aqua Install", discipline: "Werktuigbouw", count: 6, shift: "08:00–16:00" },
-  { id: 4, party: "CODECO N.V.", discipline: "Supervisie", count: 3, shift: "07:00–17:00" },
-];
-
-const initialTimeline: TimelineEntry[] = [
-  {
-    id: 1,
-    time: "11:18",
-    kind: "finding",
-    title: "Onvoldoende betondekking bij kolom C-14",
-    detail: "Gemeten dekking 18 mm; vereist minimaal 25 mm. Uitvoerder is geïnformeerd.",
-    location: "Hoofdgebouw · Verdieping 3",
-    person: "Jennifer G.",
-    badge: "Kritiek",
-    badgeTone: "red",
-  },
-  {
-    id: 2,
-    time: "10:42",
-    kind: "inspection",
-    title: "Wapeningsinspectie vloer V3 afgerond",
-    detail: "14 van 15 controlepunten akkoord. Eén bevinding automatisch aangemaakt.",
-    location: "Hoofdgebouw · Verdieping 3",
-    person: "Jennifer G.",
-    badge: "Afgerond",
-    badgeTone: "green",
-  },
-  {
-    id: 3,
-    time: "09:25",
-    kind: "photo",
-    title: "4 voortgangsfoto’s toegevoegd",
-    detail: "Bekisting kernwand oostzijde, werkpakket ruwbouw.",
-    location: "Hoofdgebouw · Verdieping 3",
-    person: "Jennifer G.",
-    badge: "Foto",
-  },
-  {
-    id: 4,
-    time: "08:10",
-    kind: "activity",
-    title: "Bekisting kernwand gestart",
-    detail: "Ploeg van Bouwbedrijf N.V. gestart met 8 personen. Voortgang op 35% gezet.",
-    location: "Hoofdgebouw · Verdieping 3",
-    person: "Jennifer G.",
-    badge: "Actief",
-    badgeTone: "green",
-  },
 ];
 
 const entryIcons: Record<EntryKind, LucideIcon> = {
@@ -250,7 +181,92 @@ function currentTime() {
   }).format(new Date());
 }
 
+function currentDateLabel() {
+  const value = new Intl.DateTimeFormat("nl-NL", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "America/Paramaribo",
+  }).format(new Date());
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function initials(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "CO";
+}
+
+function projectStartFromRow(row: Record<string, unknown> | null): ProjectStartAnswers | null {
+  if (!row) return null;
+  return {
+    weatherCondition: row.weather_condition as ProjectStartAnswers["weatherCondition"],
+    temperatureC: Number(row.temperature_c),
+    windCondition: row.wind_condition as ProjectStartAnswers["windCondition"],
+    shiftStart: String(row.shift_start).slice(0, 5),
+    shiftEnd: String(row.shift_end).slice(0, 5),
+    plannedWork: String(row.planned_work),
+    expectedWorkers: Number(row.expected_workers),
+    inspectionPlanned: row.inspection_planned ? "yes" : "no",
+    highRiskWork: row.high_risk_work ? "yes" : "no",
+    concreteWork: row.concrete_work ? "yes" : "no",
+    workPermit: row.work_permit_status as ProjectStartAnswers["workPermit"],
+    drawingStatus: row.drawing_status as ProjectStartAnswers["drawingStatus"],
+    drawingIssueReported: Boolean(row.drawing_issue_reported),
+    riskNotes: String(row.risk_notes ?? ""),
+  };
+}
+
+function closeoutFromRow(row: Record<string, unknown> | null): DailyCloseoutAnswers | null {
+  if (!row) return null;
+  return {
+    daySummary: String(row.day_summary),
+    weatherSummary: String(row.weather_summary),
+    workPerformed: String(row.work_performed),
+    progressPercent: Number(row.progress_percent),
+    inspectionResult: row.inspection_result as DailyCloseoutAnswers["inspectionResult"],
+    qualityIssues: row.quality_issues ? "yes" : "no",
+    qualityDetails: String(row.quality_details ?? ""),
+    hseEvent: row.hse_event as DailyCloseoutAnswers["hseEvent"],
+    hseDetails: String(row.hse_details ?? ""),
+    equipmentStatus: String(row.equipment_status ?? ""),
+    deliveries: String(row.deliveries ?? ""),
+    testsMeasurements: String(row.tests_measurements ?? ""),
+    variationWork: row.variation_work_status as DailyCloseoutAnswers["variationWork"],
+    delayCause: row.delay_cause as DailyCloseoutAnswers["delayCause"],
+    delayHours: Number(row.delay_hours),
+    communication: String(row.communication ?? ""),
+    risks: String(row.risks ?? ""),
+    tomorrowPlan: String(row.tomorrow_plan),
+    photoCount: Number(row.photo_count),
+    attachmentsConfirmed: Boolean(row.attachments_confirmed),
+  };
+}
+
+function timelineKind(type: string): EntryKind {
+  if (type === "activity" || type === "inspection" || type === "finding" || type === "photo" || type === "action" || type === "note") return type;
+  if (type === "hse") return "finding";
+  return "note";
+}
+
+function disciplineForParty(type: string) {
+  const labels: Record<string, string> = {
+    supervisor: "Supervisie",
+    client: "Opdrachtgever",
+    contractor: "Uitvoering",
+    subcontractor: "Onderaannemer",
+    supplier: "Leverancier",
+    consultant: "Advies",
+  };
+  return labels[type] ?? "Algemeen";
+}
+
 export function CodecoSupervisionApp() {
+  const supabase = getSupabaseBrowserClient();
+  const queryClient = useQueryClient();
+  const [session, setSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(!isSupabaseConfigured);
+  const [syncState, setSyncState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [isOnline, setIsOnline] = useState(true);
   const [workspaceStage, setWorkspaceStage] = useState<WorkspaceStage>("projects");
   const [selectedProject, setSelectedProject] = useState<ProjectContext | null>(null);
   const [selectedBuilding, setSelectedBuilding] = useState<BuildingContext | null>(null);
@@ -260,15 +276,74 @@ export function CodecoSupervisionApp() {
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("Verdieping 3 · Zone oost");
   const [priority, setPriority] = useState("Normaal");
-  const [entries, setEntries] = useState<TimelineEntry[]>(initialTimeline);
-  const [attendance, setAttendance] = useState<AttendanceRow[]>(initialAttendance);
-  const [completedTodos, setCompletedTodos] = useState<number[]>([1]);
+  const [entries, setEntries] = useState<TimelineEntry[]>([]);
+  const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
+  const [completedTodos, setCompletedTodos] = useState<number[]>([]);
   const [projectStartAnswers, setProjectStartAnswers] = useState<ProjectStartAnswers | null>(null);
   const [dailyCloseoutAnswers, setDailyCloseoutAnswers] = useState<DailyCloseoutAnswers | null>(null);
   const [toast, setToast] = useState("");
-  const storageStatus = isSupabaseConfigured
-    ? "Supabase geconfigureerd · demo-invoer nog niet gekoppeld"
-    : "Demosessie · niet centraal opgeslagen";
+  const reportDate = reportDateInSuriname();
+
+  const workspaceQuery = useQuery({
+    queryKey: ["workspace", session?.user.id],
+    queryFn: () => loadWorkspace(supabase as SupabaseClient),
+    enabled: Boolean(supabase && session),
+  });
+
+  const dayQuery = useQuery({
+    queryKey: ["project-day", selectedProject?.id, reportDate],
+    queryFn: () => loadProjectDay(supabase as SupabaseClient, selectedProject!.id, reportDate),
+    enabled: Boolean(supabase && session && selectedProject),
+  });
+
+  const currentUserName = workspaceQuery.data?.profileName
+    ?? String(session?.user.user_metadata?.display_name ?? session?.user.email?.split("@")[0] ?? "CODECO-gebruiker");
+  const storageStatus = !isOnline
+    ? "Geen verbinding · nog niet opgeslagen"
+    : syncState === "saving"
+      ? "Opslaan in Supabase…"
+      : syncState === "error"
+        ? "Opslaan mislukt · probeer opnieuw"
+        : syncState === "saved"
+          ? "Centraal opgeslagen · Supabase"
+          : "Online · Supabase verbonden";
+
+  useEffect(() => {
+    if (!supabase) return;
+    let active = true;
+    void getSession(supabase).then((nextSession) => {
+      if (active) {
+        setSession(nextSession);
+        setAuthReady(true);
+      }
+    }).catch(() => {
+      if (active) setAuthReady(true);
+    });
+    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setAuthReady(true);
+      if (!nextSession) {
+        setSelectedProject(null);
+        setSelectedBuilding(null);
+        setWorkspaceStage("projects");
+      }
+    });
+    return () => {
+      active = false;
+      data.subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  useEffect(() => {
+    const online = () => setIsOnline(true);
+    const offline = () => setIsOnline(false);
+    window.addEventListener("online", online);
+    window.addEventListener("offline", offline);
+    return () => {
+      window.removeEventListener("online", online);
+      window.removeEventListener("offline", offline);
+    };
+  }, []);
 
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
@@ -284,6 +359,63 @@ export function CodecoSupervisionApp() {
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
+  useEffect(() => {
+    const day = dayQuery.data;
+    if (!day || !selectedBuilding) return;
+    const hydration = window.setTimeout(() => {
+      const start = projectStartFromRow(day.startCheck);
+      const closeout = closeoutFromRow(day.closeout);
+      setProjectStartAnswers(start);
+      setDailyCloseoutAnswers(closeout);
+      setCompletedTodos([...(start ? [1] : []), ...(closeout ? [2, 3] : [])]);
+
+      setEntries(day.registrations.map((row) => {
+      const type = String(row.registration_type);
+      const occurredAt = new Date(String(row.occurred_at));
+      const time = new Intl.DateTimeFormat("nl-NL", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Paramaribo" }).format(occurredAt);
+      const priorityLabel = String(row.priority) === "critical" ? "Kritiek" : String(row.priority) === "high" ? "Hoog" : "Opgeslagen";
+      return {
+        id: String(row.id),
+        time,
+        kind: timelineKind(type),
+        title: String(row.title),
+        detail: String(row.description ?? `${entryTitles[type] ?? "Registratie"} centraal opgeslagen.`),
+        location: selectedBuilding.name,
+        person: currentUserName,
+        badge: priorityLabel,
+        badgeTone: String(row.priority) === "critical" ? "red" : "green",
+      };
+      }));
+
+      const partyById = new Map(day.parties.map((party) => [party.id, party]));
+      if (day.attendance.length) {
+        setAttendance(day.attendance.map((row) => {
+        const party = partyById.get(String(row.party_id));
+        return {
+          id: String(row.id),
+          partyId: String(row.party_id),
+          party: party?.name ?? "Onbekende partij",
+          discipline: String(row.discipline),
+          count: Number(row.headcount),
+          shiftStart: String(row.shift_start).slice(0, 5),
+          shiftEnd: String(row.shift_end).slice(0, 5),
+        };
+        }));
+      } else {
+        setAttendance(day.parties.map((party) => ({
+        id: `party:${party.id}`,
+        partyId: party.id,
+        party: party.name,
+        discipline: disciplineForParty(party.type),
+        count: 0,
+        shiftStart: "07:00",
+        shiftEnd: "16:00",
+        })));
+      }
+    }, 0);
+    return () => window.clearTimeout(hydration);
+  }, [currentUserName, dayQuery.data, selectedBuilding]);
+
   const completeness = useMemo(() => {
     const complete = 4 + Math.min(completedTodos.length, 3) + (projectStartAnswers ? 1 : 0) + (dailyCloseoutAnswers ? 1 : 0);
     return Math.round((complete / 9) * 100);
@@ -293,6 +425,27 @@ export function CodecoSupervisionApp() {
     () => attendance.reduce((total, row) => total + row.count, 0),
     [attendance],
   );
+  const reportNumber = String(dayQuery.data?.report?.report_number ?? `DR-${reportDate.replaceAll("-", "")}`);
+  const dayActions = dayQuery.data?.actions ?? [];
+
+  const runSynced = async <T,>(operation: () => Promise<T>, successMessage: string): Promise<T | null> => {
+    if (!isOnline) {
+      setSyncState("error");
+      setToast("Geen verbinding. Je invoer blijft in het geopende formulier; probeer opnieuw zodra je online bent.");
+      return null;
+    }
+    setSyncState("saving");
+    try {
+      const result = await operation();
+      setSyncState("saved");
+      setToast(successMessage);
+      return result;
+    } catch (error) {
+      setSyncState("error");
+      setToast(error instanceof Error ? `Opslaan mislukt: ${error.message}` : "Opslaan mislukt. Probeer opnieuw.");
+      return null;
+    }
+  };
 
   const openQuickAdd = () => {
     setDescription("");
@@ -304,26 +457,23 @@ export function CodecoSupervisionApp() {
     setModal("entry");
   };
 
-  const saveEntry = () => {
-    if (!description.trim()) return;
-    const safeKind: EntryKind = ["activity", "inspection", "finding", "photo", "action", "note"].includes(selectedType)
-      ? (selectedType as EntryKind)
-      : "note";
-    const isFinding = selectedType === "finding" || selectedType === "hse";
-    const newEntry: TimelineEntry = {
-      id: Date.now(),
-      time: currentTime(),
-      kind: safeKind,
-      title: description.trim(),
-      detail: `${entryTitles[selectedType]} in deze demosessie toegevoegd met project-, gebouw- en tijdcontext.`,
-      location: `${selectedBuilding?.name ?? "Gebouw"} · ${location}`,
-      person: "Jennifer G.",
-      badge: isFinding ? priority : "Opgeslagen",
-      badgeTone: isFinding && priority === "Kritiek" ? "red" : "green",
-    };
-    setEntries((current) => [newEntry, ...current]);
+  const saveEntry = async () => {
+    if (!description.trim() || !supabase || !selectedProject || !selectedBuilding) return;
+    const priorityMap: Record<string, string> = { Laag: "low", Normaal: "normal", Hoog: "high", Kritiek: "critical" };
+    const saved = await runSynced(
+      () => saveSiteRegistration(supabase, {
+        projectId: selectedProject.id,
+        buildingId: selectedBuilding.id,
+        type: selectedType,
+        title: description.trim(),
+        description: `${location} · ${description.trim()}`,
+        priority: priorityMap[priority] ?? "normal",
+      }),
+      `${entryTitles[selectedType]} is centraal opgeslagen en aan het dagrapport gekoppeld.`,
+    );
+    if (!saved) return;
     setModal(null);
-    setToast(`${entryTitles[selectedType]} is alleen in deze demosessie aan het dagrapport toegevoegd.`);
+    await queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] });
   };
 
   const toggleTodo = (id: number) => {
@@ -345,26 +495,103 @@ export function CodecoSupervisionApp() {
 
   const openProjectStart = () => {
     if (!selectedProject || !selectedBuilding) return;
-    setWorkspaceStage("project_start");
+    setWorkspaceStage(projectStartAnswers ? "cockpit" : "project_start");
   };
 
-  const startProject = (answers: ProjectStartAnswers) => {
-    if (!selectedProject || !selectedBuilding) return;
+  const startProject = async (answers: ProjectStartAnswers) => {
+    if (!supabase || !selectedProject || !selectedBuilding) return;
+    const saved = await runSynced(
+      () => saveProjectStart(supabase, {
+        projectId: selectedProject.id,
+        buildingId: selectedBuilding.id,
+        answers,
+        reportDate,
+      }),
+      "Projectstart en het conceptdagrapport zijn centraal opgeslagen.",
+    );
+    if (!saved) return;
     setProjectStartAnswers(answers);
     setWorkspaceStage("cockpit");
     setActiveNav("vandaag");
     window.scrollTo({ top: 0 });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] }),
+      queryClient.invalidateQueries({ queryKey: ["workspace", session?.user.id] }),
+    ]);
   };
 
-  const changeAttendance = (id: number, delta: number) => {
+  const changeAttendance = (id: string, delta: number) => {
     setAttendance((current) =>
       current.map((row) => row.id === id ? { ...row, count: Math.max(0, row.count + delta) } : row),
     );
   };
 
+  if (!isSupabaseConfigured || !supabase) {
+    return <AppStateScreen title="Supabase-configuratie ontbreekt" copy="De applicatie start pas wanneer de publieke project-URL en publishable key beschikbaar zijn. Een service-role key hoort nooit in de browserapp." />;
+  }
+
+  if (!authReady) {
+    return <AppStateScreen title="Veilige werkruimte openen" copy="Je sessie en projecttoegang worden gecontroleerd." loading />;
+  }
+
+  if (!session) {
+    return <AuthScreen client={supabase} />;
+  }
+
+  if (workspaceQuery.isLoading) {
+    return <AppStateScreen title="CODECO-werkruimte laden" copy="Projecten, gebouwen en rechten worden uit Supabase opgehaald." loading />;
+  }
+
+  if (workspaceQuery.isError || !workspaceQuery.data) {
+    return <AppStateScreen title="Werkruimte niet beschikbaar" copy={workspaceQuery.error instanceof Error ? workspaceQuery.error.message : "De centrale gegevens konden niet worden geladen."} action={() => void workspaceQuery.refetch()} />;
+  }
+
+  if (workspaceQuery.data.organizations.length === 0) {
+    return (
+      <OrganizationSetupScreen
+        userEmail={session.user.email ?? ""}
+        defaultDisplayName={currentUserName}
+        save={async (answers) => {
+          const saved = await runSynced(
+            () => bootstrapOrganization(supabase, {
+              name: answers.organizationName,
+              slug: answers.organizationSlug,
+              displayName: answers.displayName,
+            }),
+            "CODECO-werkruimte is centraal aangemaakt.",
+          );
+          if (saved) await queryClient.invalidateQueries({ queryKey: ["workspace", session.user.id] });
+          return Boolean(saved);
+        }}
+        signOut={() => void supabase.auth.signOut()}
+      />
+    );
+  }
+
+  if (workspaceQuery.data.projects.length === 0) {
+    return (
+      <ProjectSetupScreen
+        organizationName={workspaceQuery.data.organizations[0].name}
+        save={async (answers) => {
+          const saved = await runSynced(
+            () => createProjectWorkspace(supabase, {
+              organizationId: workspaceQuery.data.organizations[0].id,
+              ...answers,
+            }),
+            "Project, gebouw en standaardpartijen zijn centraal aangemaakt.",
+          );
+          if (saved) await queryClient.invalidateQueries({ queryKey: ["workspace", session.user.id] });
+          return Boolean(saved);
+        }}
+        signOut={() => void supabase.auth.signOut()}
+      />
+    );
+  }
+
   if (workspaceStage !== "cockpit") {
     return (
       <ContextSelection
+        projects={workspaceQuery.data.projects}
         stage={workspaceStage}
         selectedProject={selectedProject}
         selectedBuilding={selectedBuilding}
@@ -372,6 +599,9 @@ export function CodecoSupervisionApp() {
         chooseBuilding={setSelectedBuilding}
         openProjectStart={openProjectStart}
         startProject={startProject}
+        currentUserName={currentUserName}
+        storageStatus={storageStatus}
+        initialProjectStart={projectStartAnswers}
         goBack={() => {
           setSelectedBuilding(null);
           setWorkspaceStage("projects");
@@ -425,14 +655,14 @@ export function CodecoSupervisionApp() {
           <Plus size={18} strokeWidth={2.4} />
           Snel toevoegen
         </button>
-        <div className="user-card">
-          <span className="avatar">JG</span>
+        <button className="user-card" type="button" onClick={() => void supabase.auth.signOut()} title="Afmelden">
+          <span className="avatar">{initials(currentUserName)}</span>
           <span className="user-copy">
-            <strong>Jennifer G.</strong>
-            <small>Supervisor</small>
+            <strong>{currentUserName}</strong>
+            <small>CODECO-gebruiker</small>
           </span>
-          <MoreHorizontal size={16} color="#7893a1" />
-        </div>
+          <LogOut size={16} color="#7893a1" />
+        </button>
       </aside>
 
       <div className="main-shell">
@@ -445,7 +675,7 @@ export function CodecoSupervisionApp() {
             <strong>{buildingName}</strong>
           </div>
           <div className="top-actions">
-            <span className="storage-state" title={storageStatus}><AlertTriangle size={14} /> <span>{storageStatus}</span></span>
+            <span className={`storage-state ${syncState}`} title={storageStatus}>{syncState === "error" || !isOnline ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />} <span>{storageStatus}</span></span>
             <button className="icon-button" type="button" aria-label="Zoeken"><Search size={17} /></button>
             <button className="icon-button" type="button" aria-label="Meldingen">
               <Bell size={17} />
@@ -468,9 +698,12 @@ export function CodecoSupervisionApp() {
               projectStartAnswers={projectStartAnswers}
               dailyCloseoutAnswers={dailyCloseoutAnswers}
               openDailyQuestions={() => setModal("daily_questions")}
+              currentUserName={currentUserName}
+              reportNumber={reportNumber}
+              actions={dayActions}
               showCritical={() => {
                 navigate("acties");
-                setToast("Kritieke bevinding Q-2026-018 geopend.");
+                setToast("De centrale actielijst is geopend.");
               }}
             />
           ) : (
@@ -482,6 +715,10 @@ export function CodecoSupervisionApp() {
               buildingName={buildingName}
               attendanceTotal={attendanceTotal}
               openAttendance={() => setModal("attendance")}
+              entries={entries}
+              actions={dayActions}
+              reportNumber={reportNumber}
+              reportStatus={String(dayQuery.data?.report?.status ?? "draft")}
             />
           )}
         </main>
@@ -536,10 +773,40 @@ export function CodecoSupervisionApp() {
           entries={entries}
           attendanceTotal={attendanceTotal}
           projectName={projectName}
+          reportNumber={reportNumber}
+          reportStatus={String(dayQuery.data?.report?.status ?? "draft")}
           dailyCloseoutAnswers={dailyCloseoutAnswers}
-          onSubmit={() => {
+          onDownload={async () => {
+            if (!selectedProject || !selectedBuilding || !projectStartAnswers || !dailyCloseoutAnswers) return;
+            const { downloadDailyReportPdf } = await import("@/lib/reports/daily-report-pdf");
+            await downloadDailyReportPdf({
+              reportNumber: String(dayQuery.data?.report?.report_number ?? `DR-${reportDate.replaceAll("-", "")}`),
+              reportDate,
+              projectName,
+              projectCode: selectedProject.code,
+              buildingName,
+              location: selectedProject.location,
+              supervisorName: currentUserName,
+              attendanceTotal,
+              registrationCount: entries.length,
+              projectStart: projectStartAnswers,
+              closeout: dailyCloseoutAnswers,
+            });
+            setToast("De concept-PDF is gegenereerd uit de centraal opgeslagen rapportgegevens.");
+          }}
+          onSubmit={async () => {
+            const reportId = dayQuery.data?.report?.id;
+            if (!reportId) {
+              setToast("Start eerst het dagrapport voordat je het indient.");
+              return;
+            }
+            const saved = await runSynced(
+              () => submitReportForReview(supabase, String(reportId)),
+              "Dagrapport is centraal gereed voor review gezet.",
+            );
+            if (!saved) return;
             setModal(null);
-            setToast("Dagrapport is gereed voor review gezet.");
+            await queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject?.id, reportDate] });
           }}
         />
       ) : null}
@@ -548,25 +815,28 @@ export function CodecoSupervisionApp() {
           close={() => setModal(null)}
           initialAnswers={dailyCloseoutAnswers}
           projectStartAnswers={projectStartAnswers}
-          save={(answers) => {
+          save={async (answers) => {
+            if (!selectedProject || !selectedBuilding || !dayQuery.data?.report) {
+              setToast("Start eerst het centrale dagrapport.");
+              return;
+            }
+            const saved = await runSynced(
+              () => saveDailyCloseout(supabase, {
+                report: dayQuery.data.report!,
+                projectId: selectedProject.id,
+                buildingId: selectedBuilding.id,
+                answers,
+              }),
+              "Dagvragen zijn centraal opgeslagen en in de rapportcontrole verwerkt.",
+            );
+            if (!saved) return;
             setDailyCloseoutAnswers(answers);
             setCompletedTodos((current) => Array.from(new Set([...current, 2, 3])));
-            setEntries((current) => [
-              {
-                id: 900001,
-                time: currentTime(),
-                kind: "note",
-                title: "Dagvragen bijgewerkt",
-                detail: "Verloop, kwaliteit/HSE, logistiek en morgenplanning zijn in de demosessie bevestigd.",
-                location: `${buildingName} · projectbreed`,
-                person: "Jennifer G.",
-                badge: "Bevestigd",
-                badgeTone: "green",
-              },
-              ...current.filter((entry) => entry.id !== 900001),
-            ]);
             setModal(null);
-            setToast("Dagvragen zijn alleen in deze demosessie verwerkt in de rapportcontrole.");
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] }),
+              queryClient.invalidateQueries({ queryKey: ["workspace", session.user.id] }),
+            ]);
           }}
         />
       ) : null}
@@ -576,18 +846,32 @@ export function CodecoSupervisionApp() {
           total={attendanceTotal}
           changeCount={changeAttendance}
           copyPreviousDay={() => {
-            setAttendance([
-              { id: 1, party: "Bouwbedrijf N.V.", discipline: "Ruwbouw", count: 20, shift: "07:00–16:00" },
-              { id: 2, party: "ElectroWorks", discipline: "Elektro", count: 12, shift: "07:30–16:30" },
-              { id: 3, party: "Aqua Install", discipline: "Werktuigbouw", count: 6, shift: "08:00–16:00" },
-              { id: 4, party: "CODECO N.V.", discipline: "Supervisie", count: 3, shift: "07:00–17:00" },
-            ]);
-            setToast("Aanwezigheid van de vorige werkdag is als voorstel overgenomen.");
+            setToast("Er is nog geen eerdere centrale werkdag met aanwezigheid om over te nemen.");
           }}
           close={() => setModal(null)}
-          save={() => {
+          save={async () => {
+            if (!selectedProject || !selectedBuilding || !dayQuery.data?.report) {
+              setToast("Start eerst het centrale dagrapport.");
+              return;
+            }
+            const saved = await runSynced(
+              () => saveAttendance(supabase, {
+                report: dayQuery.data.report!,
+                projectId: selectedProject.id,
+                buildingId: selectedBuilding.id,
+                rows: attendance.map((row) => ({
+                  partyId: row.partyId,
+                  discipline: row.discipline,
+                  count: row.count,
+                  shiftStart: row.shiftStart,
+                  shiftEnd: row.shiftEnd,
+                })),
+              }),
+              `${attendanceTotal} aanwezigen zijn centraal aan het dagrapport gekoppeld.`,
+            );
+            if (!saved) return;
             setModal(null);
-            setToast(`${attendanceTotal} aanwezigen zijn alleen in deze demosessie aan het dagrapport toegevoegd.`);
+            await queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] });
           }}
         />
       ) : null}
@@ -597,7 +881,189 @@ export function CodecoSupervisionApp() {
   );
 }
 
+function AppStateScreen({
+  title,
+  copy,
+  loading = false,
+  action,
+}: {
+  title: string;
+  copy: string;
+  loading?: boolean;
+  action?: () => void;
+}) {
+  return (
+    <div className="access-shell">
+      <section className="access-card state-card">
+        <div className="access-brand"><span className="brand-mark" /><span><strong>CODECO N.V.</strong><small>Constructiesupervisie</small></span></div>
+        <span className="state-icon">{loading ? <Loader2 className="spin" size={26} /> : <AlertTriangle size={26} />}</span>
+        <h1>{title}</h1>
+        <p>{copy}</p>
+        {action ? <button className="primary-button" type="button" onClick={action}>Opnieuw proberen</button> : null}
+      </section>
+    </div>
+  );
+}
+
+function AuthScreen({ client }: { client: SupabaseClient }) {
+  const [mode, setMode] = useState<"sign_in" | "sign_up">("sign_in");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const { register, handleSubmit, formState: { errors } } = useForm<AuthAnswers>({
+    resolver: zodResolver(authSchema),
+    defaultValues: { displayName: "", email: "", password: "" },
+  });
+
+  const submit = async (answers: AuthAnswers) => {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      if (mode === "sign_in") {
+        const result = await client.auth.signInWithPassword({ email: answers.email, password: answers.password });
+        if (result.error) throw result.error;
+      } else {
+        const result = await client.auth.signUp({
+          email: answers.email,
+          password: answers.password,
+          options: {
+            emailRedirectTo: window.location.origin,
+            data: { display_name: answers.displayName?.trim() || answers.email.split("@")[0] },
+          },
+        });
+        if (result.error) throw result.error;
+        if (!result.data.session) setMessage("Controleer je e-mail en bevestig je account. Daarna kun je hier aanmelden.");
+      }
+    } catch (caught) {
+      const raw = caught instanceof Error ? caught.message : "Aanmelden is niet gelukt.";
+      setError(raw.includes("Invalid login credentials") ? "E-mailadres of wachtwoord is onjuist." : raw);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="access-shell">
+      <section className="access-card auth-card">
+        <div className="access-brand"><span className="brand-mark" /><span><strong>CODECO N.V.</strong><small>Constructiesupervisie</small></span></div>
+        <div className="auth-heading">
+          <p className="eyebrow">Beveiligde online werkruimte</p>
+          <h1>{mode === "sign_in" ? "Welkom terug" : "Eerste toegang aanmaken"}</h1>
+          <p>Projectgegevens worden centraal onder jouw Supabase-account en projectrechten opgeslagen.</p>
+        </div>
+        <div className="auth-tabs" role="tablist" aria-label="Toegangsactie">
+          <button type="button" className={mode === "sign_in" ? "active" : ""} onClick={() => setMode("sign_in")}>Aanmelden</button>
+          <button type="button" className={mode === "sign_up" ? "active" : ""} onClick={() => setMode("sign_up")}>Account maken</button>
+        </div>
+        <form className="access-form" onSubmit={handleSubmit(submit)} noValidate>
+          {mode === "sign_up" ? <label className="form-field"><span>Volledige naam</span><input autoComplete="name" {...register("displayName")} /></label> : null}
+          <label className="form-field"><span>E-mailadres</span><input type="email" autoComplete="email" {...register("email")} />{errors.email ? <small className="field-error">{errors.email.message}</small> : null}</label>
+          <label className="form-field"><span>Wachtwoord</span><input type="password" autoComplete={mode === "sign_in" ? "current-password" : "new-password"} {...register("password")} />{errors.password ? <small className="field-error">{errors.password.message}</small> : null}</label>
+          {error ? <p className="access-message error" role="alert">{error}</p> : null}
+          {message ? <p className="access-message success" role="status">{message}</p> : null}
+          <button className="primary-button access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <LogIn size={16} />}{mode === "sign_in" ? "Veilig aanmelden" : "Account aanmaken"}</button>
+        </form>
+        <p className="security-note"><ShieldCheck size={14} /> Service-role keys en projectbestanden worden nooit in de browser opgeslagen.</p>
+      </section>
+    </div>
+  );
+}
+
+function OrganizationSetupScreen({
+  userEmail,
+  defaultDisplayName,
+  save,
+  signOut,
+}: {
+  userEmail: string;
+  defaultDisplayName: string;
+  save: (answers: OrganizationSetupAnswers) => Promise<boolean>;
+  signOut: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const { register, handleSubmit, formState: { errors } } = useForm<OrganizationSetupAnswers>({
+    resolver: zodResolver(organizationSetupSchema),
+    defaultValues: { displayName: defaultDisplayName, organizationName: "CODECO N.V.", organizationSlug: "codeco-nv" },
+  });
+  const submit = async (answers: OrganizationSetupAnswers) => {
+    setBusy(true);
+    setError("");
+    const ok = await save(answers);
+    if (!ok) setError("De organisatie kon niet worden aangemaakt. Controleer of de slug al bestaat.");
+    setBusy(false);
+  };
+  return (
+    <div className="access-shell setup-shell">
+      <section className="access-card setup-card">
+        <div className="setup-top"><div className="access-brand"><span className="brand-mark" /><span><strong>CODECO N.V.</strong><small>Eerste inrichting</small></span></div><button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> Afmelden</button></div>
+        <p className="eyebrow">Stap 1 van 2</p><h1>Organisatie veilig instellen</h1><p>Dit maakt de centrale rollen- en rechtenstructuur. Je account <strong>{userEmail}</strong> wordt de eerste organisatiebeheerder.</p>
+        <form className="access-form setup-form" onSubmit={handleSubmit(submit)} noValidate>
+          <label className="form-field"><span>Jouw naam</span><input {...register("displayName")} />{errors.displayName ? <small className="field-error">{errors.displayName.message}</small> : null}</label>
+          <label className="form-field"><span>Bedrijfsnaam</span><input {...register("organizationName")} /></label>
+          <label className="form-field"><span>Technische organisatieslug</span><input {...register("organizationSlug")} />{errors.organizationSlug ? <small className="field-error">{errors.organizationSlug.message}</small> : null}</label>
+          {error ? <p className="access-message error" role="alert">{error}</p> : null}
+          <button className="primary-button access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <ArrowRight size={16} />}Organisatie instellen</button>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function ProjectSetupScreen({
+  organizationName,
+  save,
+  signOut,
+}: {
+  organizationName: string;
+  save: (answers: ProjectSetupAnswers) => Promise<boolean>;
+  signOut: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const { register, handleSubmit, formState: { errors } } = useForm<ProjectSetupAnswers>({
+    resolver: zodResolver(projectSetupSchema),
+    defaultValues: {
+      code: "COD-2026-001",
+      name: "Eerste constructieproject",
+      location: "Paramaribo, Suriname",
+      clientName: "Opdrachtgever",
+      buildingCode: "HOOFD",
+      buildingName: "Hoofdgebouw",
+      contractorName: "Hoofdaannemer",
+    },
+  });
+  const submit = async (answers: ProjectSetupAnswers) => {
+    setBusy(true);
+    setError("");
+    const ok = await save(answers);
+    if (!ok) setError("Het project kon niet worden aangemaakt. Controleer de projectcode en probeer opnieuw.");
+    setBusy(false);
+  };
+  return (
+    <div className="access-shell setup-shell">
+      <section className="access-card setup-card project-setup-card">
+        <div className="setup-top"><div className="access-brand"><span className="brand-mark" /><span><strong>{organizationName}</strong><small>Eerste inrichting</small></span></div><button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> Afmelden</button></div>
+        <p className="eyebrow">Stap 2 van 2</p><h1>Eerste project en gebouw</h1><p>De applicatie maakt atomair het project, gebouw, jouw projecttoegang en drie standaardpartijen aan.</p>
+        <form className="access-form setup-form two-columns" onSubmit={handleSubmit(submit)} noValidate>
+          <label className="form-field"><span>Projectcode</span><input {...register("code")} />{errors.code ? <small className="field-error">{errors.code.message}</small> : null}</label>
+          <label className="form-field"><span>Projectnaam</span><input {...register("name")} /></label>
+          <label className="form-field"><span>Locatie</span><input {...register("location")} /></label>
+          <label className="form-field"><span>Opdrachtgever</span><input {...register("clientName")} /></label>
+          <label className="form-field"><span>Gebouwcode</span><input {...register("buildingCode")} /></label>
+          <label className="form-field"><span>Gebouwnaam</span><input {...register("buildingName")} /></label>
+          <label className="form-field wide"><span>Hoofdaannemer</span><input {...register("contractorName")} /></label>
+          {error ? <p className="access-message error wide" role="alert">{error}</p> : null}
+          <button className="primary-button access-submit wide" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <ArrowRight size={16} />}Projectwerkruimte aanmaken</button>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 function ContextSelection({
+  projects,
   stage,
   selectedProject,
   selectedBuilding,
@@ -607,16 +1073,23 @@ function ContextSelection({
   startProject,
   goBack,
   goBackToBuilding,
+  currentUserName,
+  storageStatus,
+  initialProjectStart,
 }: {
+  projects: ProjectContext[];
   stage: WorkspaceStage;
   selectedProject: ProjectContext | null;
   selectedBuilding: BuildingContext | null;
   chooseProject: (project: ProjectContext) => void;
   chooseBuilding: (building: BuildingContext) => void;
   openProjectStart: () => void;
-  startProject: (answers: ProjectStartAnswers) => void;
+  startProject: (answers: ProjectStartAnswers) => void | Promise<void>;
   goBack: () => void;
   goBackToBuilding: () => void;
+  currentUserName: string;
+  storageStatus: string;
+  initialProjectStart: ProjectStartAnswers | null;
 }) {
   const showBuildings = stage === "buildings" && selectedProject;
   const showProjectStart = stage === "project_start" && Boolean(selectedProject && selectedBuilding);
@@ -627,13 +1100,13 @@ function ContextSelection({
           <span className="brand-mark" aria-hidden="true" />
           <span className="brand-copy"><strong>CODECO N.V.</strong><small>Supervisie</small></span>
         </div>
-        <div className="context-user"><span className="avatar">JG</span><span><strong>Jennifer G.</strong><small>Supervisor</small></span></div>
+        <div className="context-user"><span className="avatar">{initials(currentUserName)}</span><span><strong>{currentUserName}</strong><small>CODECO-gebruiker</small></span></div>
       </header>
 
       <main className="context-content">
-        <div className="data-mode-notice" role="status">
-          <AlertTriangle size={17} />
-          <span><strong>Demosessie</strong> Wijzigingen worden nog niet centraal bewaard. Supabase is voorbereid, maar nog niet aan deze interface gekoppeld.</span>
+        <div className="data-mode-notice connected" role="status">
+          <CheckCircle2 size={17} />
+          <span><strong>Online werkruimte</strong> {storageStatus}. Alleen door Supabase bevestigde wijzigingen krijgen de status opgeslagen.</span>
         </div>
         <div className="context-steps" aria-label="Werkcontext kiezen">
           <span className={stage === "projects" ? "active" : "done"}><strong>1</strong> Project</span>
@@ -649,6 +1122,7 @@ function ContextSelection({
             building={selectedBuilding!}
             goBack={goBackToBuilding}
             startProject={startProject}
+            initialAnswers={initialProjectStart}
           />
         ) : !showBuildings ? (
           <>
@@ -706,11 +1180,13 @@ function ProjectStartForm({
   building,
   goBack,
   startProject,
+  initialAnswers,
 }: {
   project: ProjectContext;
   building: BuildingContext;
   goBack: () => void;
-  startProject: (answers: ProjectStartAnswers) => void;
+  startProject: (answers: ProjectStartAnswers) => void | Promise<void>;
+  initialAnswers: ProjectStartAnswers | null;
 }) {
   const {
     register,
@@ -720,7 +1196,7 @@ function ProjectStartForm({
   } = useForm<ProjectStartAnswers>({
     resolver: zodResolver(projectStartSchema),
     mode: "onBlur",
-    defaultValues: {
+    defaultValues: initialAnswers ?? {
       weatherCondition: "partly_cloudy",
       temperatureC: 31,
       windCondition: "moderate",
@@ -749,7 +1225,7 @@ function ProjectStartForm({
           <h1>Start de werkdag met de juiste vragen</h1>
           <p>Bevestig alleen wat niet betrouwbaar uit het project kan worden afgeleid. De regels rechts tonen direct wat de app daarna klaarzet.</p>
         </div>
-        <span className="context-project-pill"><CalendarDays size={15} /> Zaterdag 18 juli 2026</span>
+        <span className="context-project-pill"><CalendarDays size={15} /> {currentDateLabel()}</span>
       </section>
 
       <div className="project-start-layout">
@@ -789,8 +1265,8 @@ function ProjectStartForm({
           </section>
 
           <div className="project-start-submit">
-            <span><ShieldCheck size={15} /> Antwoorden blijven in deze demo alleen in de geopende sessie.</span>
-            <button className="primary-button" type="submit">Dagrapport starten <ArrowRight size={15} /></button>
+            <span><ShieldCheck size={15} /> Opslaan is pas voltooid na bevestiging door Supabase.</span>
+            <button className="primary-button" type="submit">Dagrapport centraal starten <ArrowRight size={15} /></button>
           </div>
         </form>
 
@@ -824,6 +1300,9 @@ function TodayView({
   projectStartAnswers,
   dailyCloseoutAnswers,
   openDailyQuestions,
+  currentUserName,
+  reportNumber,
+  actions,
 }: {
   entries: TimelineEntry[];
   completeness: number;
@@ -837,13 +1316,20 @@ function TodayView({
   projectStartAnswers: ProjectStartAnswers | null;
   dailyCloseoutAnswers: DailyCloseoutAnswers | null;
   openDailyQuestions: () => void;
+  currentUserName: string;
+  reportNumber: string;
+  actions: Array<Record<string, unknown>>;
 }) {
   const todos = [
-    { id: 1, title: "Weer en werktijden bevestigen", detail: "Vastgelegd om 07:02", flag: "" },
-    { id: 2, title: "HSE-dagcheck afronden", detail: "Nog 3 controlepunten", flag: "red" },
-    { id: 3, title: "Planning voor morgen invullen", detail: "Voor dagafsluiting", flag: "" },
+    { id: 1, title: "Weer en werktijden bevestigen", detail: projectStartAnswers ? "Centraal vastgelegd" : "Projectstart vereist", flag: "" },
+    { id: 2, title: "Kwaliteit en HSE bevestigen", detail: dailyCloseoutAnswers ? "Centraal vastgelegd" : "Dagvragen vereist", flag: "red" },
+    { id: 3, title: "Planning voor morgen invullen", detail: dailyCloseoutAnswers ? "Centraal vastgelegd" : "Voor dagafsluiting", flag: "" },
   ];
   const automation = projectStartAnswers ? getProjectStartAutomation(projectStartAnswers) : [];
+  const criticalEntry = entries.find((entry) => entry.badgeTone === "red");
+  const inspectionCount = entries.filter((entry) => entry.kind === "inspection").length;
+  const progress = dailyCloseoutAnswers?.progressPercent ?? 0;
+  const openTodoCount = todos.filter((todo) => !completedTodos.includes(todo.id)).length;
   const weatherLabel = projectStartAnswers
     ? `${projectStartAnswers.temperatureC}°C · ${weatherLabels[projectStartAnswers.weatherCondition]}`
     : "Weer nog niet bevestigd";
@@ -852,8 +1338,8 @@ function TodayView({
     <>
       <section className="page-intro">
         <div>
-          <p className="eyebrow">Zaterdag 18 juli 2026</p>
-          <h1>Goedemorgen, Jennifer.</h1>
+          <p className="eyebrow">{currentDateLabel()}</p>
+          <h1>Goedemorgen, {currentUserName}.</h1>
           <p>Dit vraagt vandaag je aandacht bij {projectName} · {buildingName}.</p>
         </div>
         <div className="page-intro-actions">
@@ -873,7 +1359,7 @@ function TodayView({
         <article className="report-card">
           <div className="report-copy">
             <div className="status-kicker"><span className="live-dot" /> Rapport in uitvoering</div>
-            <h2>Dagrapport DR-2026-0718</h2>
+            <h2>Dagrapport {reportNumber}</h2>
             <p>Gegevens uit alle gebouwen worden automatisch in dit projectrapport samengebracht.</p>
             <button className="inline-button" type="button" onClick={openReport}>
               Rapportstatus bekijken <ArrowRight size={14} />
@@ -884,16 +1370,16 @@ function TodayView({
           </div>
         </article>
 
-        <article className="critical-card">
+        <article className={`critical-card ${criticalEntry ? "" : "clear"}`}>
           <div>
             <div className="critical-top">
-              <span className="critical-icon"><AlertTriangle size={20} /></span>
-              <span className="critical-badge">1 kritiek</span>
+              <span className="critical-icon">{criticalEntry ? <AlertTriangle size={20} /> : <CheckCircle2 size={20} />}</span>
+              <span className="critical-badge">{criticalEntry ? "Kritiek" : "Geen kritieke registratie"}</span>
             </div>
-            <h3>Betondekking onder norm</h3>
-            <p>Kolom C-14 · Verdieping 3 · Deadline vandaag 16:00</p>
+            <h3>{criticalEntry?.title ?? "Geen directe blokkade geregistreerd"}</h3>
+            <p>{criticalEntry?.detail ?? "Nieuwe kritieke registraties worden hier direct zichtbaar."}</p>
           </div>
-          <button className="text-link" type="button" onClick={showCritical}>Open bevinding Q-2026-018 <ArrowRight size={13} /></button>
+          <button className="text-link" type="button" onClick={showCritical}>Open centrale actielijst <ArrowRight size={13} /></button>
         </article>
       </section>
 
@@ -947,20 +1433,20 @@ function TodayView({
         <aside className="right-column">
           <article className="panel">
             <header className="panel-header">
-              <div className="section-heading"><h2>In één oogopslag</h2><p>Stand om 11:30</p></div>
+              <div className="section-heading"><h2>In één oogopslag</h2><p>Centraal bijgewerkt</p></div>
             </header>
             <div className="metrics-grid">
               <Metric icon={Users} value={String(attendanceTotal)} label="mensen aanwezig" suffix="" />
-              <Metric icon={Gauge} value="67" label="projectvoortgang" suffix="%" />
-              <Metric icon={ClipboardCheck} value="2/3" label="inspecties gereed" suffix="" />
-              <Metric icon={CheckCircle2} value="5" label="open acties" suffix="" />
+              <Metric icon={Gauge} value={String(progress)} label="projectvoortgang" suffix="%" />
+              <Metric icon={ClipboardCheck} value={String(inspectionCount)} label="inspecties vandaag" suffix="" />
+              <Metric icon={CheckCircle2} value={String(actions.length)} label="acties" suffix="" />
             </div>
           </article>
 
           <article className="panel">
             <header className="panel-header">
               <div className="section-heading"><h2>Nog te doen</h2><p>Voor je het rapport afrondt</p></div>
-              <span className="status-badge" style={{ padding: "5px 8px", background: "var(--yellow-soft)", color: "var(--yellow)" }}>2 open</span>
+              <span className="status-badge" style={{ padding: "5px 8px", background: "var(--yellow-soft)", color: "var(--yellow)" }}>{openTodoCount} open</span>
             </header>
             <div className="todo-list">
               {todos.map((todo) => {
@@ -1009,6 +1495,10 @@ function SecondaryView({
   buildingName,
   attendanceTotal,
   openAttendance,
+  entries,
+  actions,
+  reportNumber,
+  reportStatus,
 }: {
   activeNav: NavKey;
   openQuickAdd: () => void;
@@ -1017,15 +1507,20 @@ function SecondaryView({
   buildingName: string;
   attendanceTotal: number;
   openAttendance: () => void;
+  entries: TimelineEntry[];
+  actions: Array<Record<string, unknown>>;
+  reportNumber: string;
+  reportStatus: string;
 }) {
   if (activeNav === "project") {
+    const registrationsByKind = (kind: EntryKind) => entries.filter((entry) => entry.kind === kind).length;
     const modules = [
       { title: "Aanwezigheid", copy: "Partijen, disciplines, aantallen en diensten", icon: Users, count: `${attendanceTotal} vandaag`, action: openAttendance },
-      { title: "Activiteiten", copy: "Werkpakketten, planning en voortgang", icon: Wrench, count: "8 actief", action: openQuickAdd },
-      { title: "Inspecties", copy: "Gepland, uitgevoerd en herinspecties", icon: ClipboardCheck, count: "3 vandaag", action: openQuickAdd },
-      { title: "Bevindingen", copy: "Kwaliteit, NCR en herstelverificatie", icon: AlertTriangle, count: "7 open", action: () => navigate("acties") },
-      { title: "HSE", copy: "Dagcheck, observaties en incidenten", icon: ShieldCheck, count: "1 open", action: openQuickAdd },
-      { title: "Foto’s", copy: "Bewijs, locaties en koppelingen", icon: Image, count: "128", action: openQuickAdd },
+      { title: "Activiteiten", copy: "Werkpakketten, planning en voortgang", icon: Wrench, count: `${registrationsByKind("activity")} vandaag`, action: openQuickAdd },
+      { title: "Inspecties", copy: "Gepland, uitgevoerd en herinspecties", icon: ClipboardCheck, count: `${registrationsByKind("inspection")} vandaag`, action: openQuickAdd },
+      { title: "Bevindingen", copy: "Kwaliteit, NCR en herstelverificatie", icon: AlertTriangle, count: `${registrationsByKind("finding")} vandaag`, action: () => navigate("acties") },
+      { title: "Acties", copy: "Toewijzing, deadlines en verificatie", icon: ShieldCheck, count: `${actions.length} centraal`, action: () => navigate("acties") },
+      { title: "Foto’s", copy: "Bewijs, locaties en koppelingen", icon: Image, count: `${registrationsByKind("photo")} vandaag`, action: openQuickAdd },
     ];
     return (
       <>
@@ -1049,26 +1544,23 @@ function SecondaryView({
   }
 
   if (activeNav === "acties") {
-    const actions = [
-      { title: "Herstel betondekking kolom C-14", meta: "Bouwbedrijf N.V. · Vandaag 16:00", status: "Kritiek", tone: "red" },
-      { title: "Certificaat betonlevering toevoegen", meta: "R. Pinas · Vandaag 15:00", status: "Vandaag", tone: "" },
-      { title: "Herinspectie wapening vloer V3", meta: "Jennifer G. · Morgen 08:00", status: "Gepland", tone: "green" },
-      { title: "Werkplan hijszone laten goedkeuren", meta: "Projectleider · 20-07-2026", status: "Open", tone: "" },
-    ];
     return (
       <>
         <header className="secondary-header">
-          <div><p className="eyebrow">5 open · 1 kritiek</p><h1>Acties</h1><p>Persoonlijke en toegewezen opvolging in één lijst.</p></div>
+          <div><p className="eyebrow">{actions.length} centraal geregistreerd</p><h1>Acties</h1><p>Persoonlijke en toegewezen opvolging in één lijst.</p></div>
           <button className="primary-button" type="button" onClick={openQuickAdd}><Plus size={15} /> Actie toevoegen</button>
         </header>
         <section className="actions-list">
-          {actions.map((action) => (
-            <button className="action-row" type="button" key={action.title} style={{ textAlign: "left", cursor: "pointer" }}>
+          {actions.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>Nog geen acties</strong><span>Acties die in Supabase worden vastgelegd verschijnen hier.</span></div> : null}
+          {actions.map((action) => {
+            const dueAt = action.due_at ? new Intl.DateTimeFormat("nl-NL", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(String(action.due_at))) : "Geen deadline";
+            return (
+            <button className="action-row" type="button" key={String(action.id)} style={{ textAlign: "left", cursor: "pointer" }}>
               <span className="action-icon"><CheckCircle2 size={18} /></span>
-              <span className="action-copy"><strong>{action.title}</strong><span>{action.meta}</span></span>
-              <span className={`task-status ${action.tone}`}>{action.status}</span>
+              <span className="action-copy"><strong>{String(action.title)}</strong><span>{dueAt} · {String(action.action_number)}</span></span>
+              <span className={`task-status ${String(action.priority) === "critical" ? "red" : ""}`}>{String(action.status).replaceAll("_", " ")}</span>
             </button>
-          ))}
+          );})}
         </section>
       </>
     );
@@ -1079,13 +1571,11 @@ function SecondaryView({
       <>
         <header className="secondary-header"><div><p className="eyebrow">Dagrapporten</p><h1>Rapporthistorie</h1><p>Concepten, versies, reviews en verzendhistorie.</p></div></header>
         <section className="actions-list">
-          {["DR-2026-0718 · Vandaag", "DR-2026-0717 · Vrijdag", "DR-2026-0716 · Donderdag"].map((report, index) => (
-            <button className="action-row" type="button" key={report} style={{ textAlign: "left", cursor: "pointer" }}>
+          <button className="action-row" type="button" style={{ textAlign: "left", cursor: "pointer" }}>
               <span className="action-icon" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}><FileText size={18} /></span>
-              <span className="action-copy"><strong>{report}</strong><span>{projectName} · alle gebouwen</span></span>
-              <span className={`task-status ${index === 0 ? "" : "green"}`}>{index === 0 ? "In uitvoering" : "Goedgekeurd"}</span>
-            </button>
-          ))}
+              <span className="action-copy"><strong>{reportNumber} · Vandaag</strong><span>{projectName} · alle gebouwen</span></span>
+              <span className={`task-status ${reportStatus === "approved" ? "green" : ""}`}>{reportStatus.replaceAll("_", " ")}</span>
+          </button>
         </section>
       </>
     );
@@ -1233,7 +1723,7 @@ function AttendanceModal({
 }: {
   rows: AttendanceRow[];
   total: number;
-  changeCount: (id: number, delta: number) => void;
+  changeCount: (id: string, delta: number) => void;
   copyPreviousDay: () => void;
   close: () => void;
   save: () => void;
@@ -1253,7 +1743,7 @@ function AttendanceModal({
           <div className="attendance-list">
             {rows.map((row) => (
               <div className="attendance-row" key={row.id}>
-                <span className="attendance-party"><strong>{row.party}</strong><small>{row.discipline} · {row.shift}</small></span>
+                <span className="attendance-party"><strong>{row.party}</strong><small>{row.discipline} · {row.shiftStart}–{row.shiftEnd}</small></span>
                 <span className="counter-control">
                   <button type="button" onClick={() => changeCount(row.id, -1)} aria-label={`Eén persoon minder bij ${row.party}`}><Minus size={14} /></button>
                   <strong>{row.count}</strong>
@@ -1281,7 +1771,7 @@ function DailyQuestionsModal({
   close: () => void;
   initialAnswers: DailyCloseoutAnswers | null;
   projectStartAnswers: ProjectStartAnswers | null;
-  save: (answers: DailyCloseoutAnswers) => void;
+  save: (answers: DailyCloseoutAnswers) => void | Promise<void>;
 }) {
   const [step, setStep] = useState(0);
   const {
@@ -1394,13 +1884,13 @@ function DailyQuestionsModal({
                 <label className="form-field"><span>Open risico’s</span><textarea rows={4} placeholder="Weer, levering, grondwater, hijswerk..." {...register("risks")} /></label>
                 <label className="form-field wide"><span>Welke werkzaamheden staan morgen gepland? *</span><textarea rows={4} {...register("tomorrowPlan")} />{errors.tomorrowPlan ? <small className="field-error">{errors.tomorrowPlan.message}</small> : null}</label>
                 <label className="form-field"><span>Aantal foto’s vandaag</span><input type="number" min="0" {...register("photoCount", { valueAsNumber: true })} /></label>
-                <label className="confirmation-check wide"><input type="checkbox" {...register("attachmentsConfirmed")} /><span><strong>Bijlagen gecontroleerd</strong><small>Inspectieformulieren, certificaten, bonnen, tekeningen, NCR’s en meetrapporten zijn bekeken; ontbrekende stukken blijven zichtbaar.</small></span></label>
+                <label className="confirmation-check wide"><input type="checkbox" {...register("attachmentsConfirmed")} /><span><strong>Bijlagen gecontroleerd</strong><small>Inspectieformulieren, certificaten, bonnen, tekeningen, NCR’s en meetrapporten zijn bekeken; ontbrekende stukken blijven zichtbaar.</small>{errors.attachmentsConfirmed ? <em className="field-error">{errors.attachmentsConfirmed.message}</em> : null}</span></label>
               </div>
             </section>
           ) : null}
 
           <div className="modal-actions daily-question-actions">
-            <span className="form-note"><CheckCircle2 size={13} /> Antwoorden worden in de demo direct hergebruikt in cockpit en rapportcontrole.</span>
+            <span className="form-note"><CheckCircle2 size={13} /> Na serverbevestiging worden antwoorden centraal hergebruikt in cockpit en rapportcontrole.</span>
             <div>
               {step > 0 ? <button className="ghost-button" type="button" onClick={() => setStep((current) => current - 1)}><ArrowLeft size={14} /> Vorige</button> : null}
               {step < 3 ? <button className="primary-button" type="button" onClick={nextStep}>Volgende vragen <ArrowRight size={14} /></button> : <button className="primary-button" type="submit">Dagvragen bevestigen <Check size={14} /></button>}
@@ -1418,7 +1908,10 @@ function ReportModal({
   entries,
   attendanceTotal,
   projectName,
+  reportNumber,
+  reportStatus,
   dailyCloseoutAnswers,
+  onDownload,
   onSubmit,
 }: {
   close: () => void;
@@ -1426,25 +1919,29 @@ function ReportModal({
   entries: TimelineEntry[];
   attendanceTotal: number;
   projectName: string;
+  reportNumber: string;
+  reportStatus: string;
   dailyCloseoutAnswers: DailyCloseoutAnswers | null;
-  onSubmit: () => void;
+  onDownload: () => void | Promise<void>;
+  onSubmit: () => void | Promise<void>;
 }) {
   const hseComplete = completedTodos.includes(2) || Boolean(dailyCloseoutAnswers);
   const tomorrowComplete = completedTodos.includes(3) || Boolean(dailyCloseoutAnswers?.tomorrowPlan);
   const checks = [
     { title: "Project- en rapportgegevens", detail: "Nummer, datum, dienst en gebouwen", complete: true },
-    { title: "Aanwezigheid en activiteiten", detail: `${attendanceTotal} personen en 3 actieve werkpakketten`, complete: true },
-    { title: "Inspecties en bevindingen", detail: "3 inspecties · 1 kritieke bevinding open", complete: true },
+    { title: "Aanwezigheid en activiteiten", detail: `${attendanceTotal} personen en ${entries.length} dagregistraties`, complete: true },
+    { title: "Inspecties en bevindingen", detail: `${entries.filter((entry) => entry.kind === "inspection").length} inspecties · ${entries.filter((entry) => entry.badgeTone === "red").length} kritieke registratie(s)`, complete: true },
     { title: "Dagvragen volgens klantformat", detail: dailyCloseoutAnswers ? "Verloop, weer, logistiek, risico's en morgen bevestigd" : "Vier begeleide vraaggroepen nog invullen", complete: Boolean(dailyCloseoutAnswers) },
     { title: "HSE-dagcheck", detail: hseComplete ? "Alle controlepunten ingevuld" : "Nog 3 controlepunten ontbreken", complete: hseComplete },
     { title: "Planning voor morgen", detail: tomorrowComplete ? "Planning is bevestigd" : "Nog niet ingevuld", complete: tomorrowComplete },
   ];
   const missing = checks.filter((check) => !check.complete).length;
+  const submitted = ["ready_for_review", "in_review", "approved"].includes(reportStatus);
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal report-modal" role="dialog" aria-modal="true" aria-labelledby="report-title">
         <header className="modal-header">
-          <div><h2 id="report-title">Rapport controleren</h2><p>DR-2026-0718 · conceptversie</p></div>
+          <div><h2 id="report-title">Rapport controleren</h2><p>{reportNumber} · {submitted ? "ingediend" : "conceptversie"}</p></div>
           <button className="modal-close" type="button" onClick={close} aria-label="Sluiten"><X size={18} /></button>
         </header>
         <div className="modal-body">
@@ -1459,12 +1956,15 @@ function ReportModal({
           </div>
           <div className="report-summary-box">
             <label htmlFor="summary">Voorgestelde dagsamenvatting</label>
-            <textarea id="summary" defaultValue={dailyCloseoutAnswers?.daySummary ?? `Op 18 juli 2026 waren ${attendanceTotal} personen aanwezig op project ${projectName}. Er zijn ${entries.length} registraties vastgelegd. De werkzaamheden aan de bekisting van de kernwand en de wapening van vloer V3 zijn voortgezet. Bij kolom C-14 is een kritieke afwijking in de betondekking vastgesteld en toegewezen voor herstel.`} />
+            <textarea id="summary" defaultValue={dailyCloseoutAnswers?.daySummary ?? `Er waren ${attendanceTotal} personen aanwezig op project ${projectName}. Er zijn ${entries.length} centrale dagregistraties vastgelegd.`} />
             <small className="summary-source">Vaste samenvatting op basis van bevestigde dagvragen en modulegegevens; supervisor controleert de tekst.</small>
           </div>
           <div className="modal-actions">
             <span style={{ color: missing ? "var(--yellow)" : "var(--green)", fontSize: 10, fontWeight: 680 }}>{missing ? `${missing} onderdeel${missing > 1 ? "en" : ""} nog aanvullen` : "Alle controles geslaagd"}</span>
-            <button className="primary-button" type="button" disabled={missing > 0} onClick={onSubmit}>Gereed voor review <ArrowRight size={14} /></button>
+            <div className="report-action-buttons">
+              <button className="ghost-button" type="button" disabled={missing > 0} onClick={onDownload}><FileText size={14} /> Concept-PDF</button>
+              <button className="primary-button" type="button" disabled={missing > 0 || submitted} onClick={onSubmit}>{submitted ? "Ingediend" : "Gereed voor review"} <ArrowRight size={14} /></button>
+            </div>
           </div>
         </div>
       </section>

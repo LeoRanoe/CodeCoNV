@@ -1,7 +1,7 @@
 begin;
 set local search_path = extensions, public;
 
-select plan(31);
+select plan(34);
 
 select has_table('public', 'organizations', 'organizations table exists');
 select has_table('public', 'projects', 'projects table exists');
@@ -27,6 +27,18 @@ select has_function(
   'freeze_report_version',
   array['uuid', 'text', 'jsonb', 'text', 'jsonb', 'text'],
   'immutable report-snapshot function exists'
+);
+select has_function(
+  'public',
+  'create_project_workspace',
+  array['uuid', 'text', 'text', 'text', 'text', 'text', 'text', 'text'],
+  'atomic project workspace function exists'
+);
+select has_function(
+  'public',
+  'submit_day_report_for_review',
+  array['uuid'],
+  'validated report submission function exists'
 );
 select is_definer('app_private', 'has_project_permission', array['uuid', 'text'], 'project permission helper is security definer');
 
@@ -102,6 +114,20 @@ select ok(
       and pg_get_constraintdef(constraint_record.oid) = 'UNIQUE (project_id, report_date)'
   ),
   'a project can have only one report per date'
+);
+
+select ok(
+  exists (
+    select 1
+    from pg_constraint constraint_record
+    join pg_class relation on relation.oid = constraint_record.conrelid
+    join pg_namespace namespace on namespace.oid = relation.relnamespace
+    where namespace.nspname = 'public'
+      and relation.relname = 'attendance_entries'
+      and constraint_record.contype = 'u'
+      and pg_get_constraintdef(constraint_record.oid) = 'UNIQUE (day_report_id, party_id, discipline)'
+  ),
+  'attendance can be safely retried per report, party and discipline'
 );
 
 select is(

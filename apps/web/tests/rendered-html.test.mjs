@@ -21,7 +21,7 @@ async function render() {
   );
 }
 
-test("server-renders the required CODECO project entry point", async () => {
+test("server-renders the secure CODECO entry point", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
@@ -29,20 +29,21 @@ test("server-renders the required CODECO project entry point", async () => {
   const html = await response.text();
   assert.match(html, /<title>Vandaag \| CODECO Supervisie<\/title>/i);
   assert.match(html, /CODECO N\.V\./);
-  assert.match(html, /Mijn projecten/);
-  assert.match(html, /Waar ga je vandaag werken\?/);
-  assert.match(html, /Kwattaweg Residence/);
-  assert.match(html, /Commewijne Port Facility/);
+  assert.match(html, /Veilige werkruimte openen/);
+  assert.match(html, /sessie en projecttoegang/i);
   assert.doesNotMatch(html, /Sitezicht|codex-preview|Building your site|react-loading-skeleton/i);
 });
 
-test("keeps the MVP interaction and accessibility hooks in source", async () => {
-  const [app, page, layout, packageJson, dailyReportForm] = await Promise.all([
+test("keeps the central MVP interaction and accessibility hooks in source", async () => {
+  const [app, page, layout, packageJson, dailyReportForm, dataLayer, pdfReport, providers] = await Promise.all([
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../lib/forms/daily-report.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/data.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/daily-report-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/providers.tsx", import.meta.url), "utf8"),
   ]);
 
   assert.match(app, /aria-modal="true"/);
@@ -58,26 +59,44 @@ test("keeps the MVP interaction and accessibility hooks in source", async () => 
   assert.match(app, /useForm<DailyCloseoutAnswers>/);
   assert.match(app, /zodResolver\(dailyCloseoutSchema\)/);
   assert.match(app, /setEntries/);
-  assert.match(app, /Demosessie · niet centraal opgeslagen/);
-  assert.doesNotMatch(app, /Alles opgeslagen|centraal opgeslagen met project-/);
+  assert.match(app, /signInWithPassword/);
+  assert.match(app, /bootstrapOrganization/);
+  assert.match(app, /createProjectWorkspace/);
+  assert.match(app, /Centraal opgeslagen/);
+  assert.doesNotMatch(app, /Demosessie|Kwattaweg Residence|Commewijne Port Facility/);
   assert.match(page, /CodecoSupervisionApp/);
+  assert.match(page, /Providers/);
   assert.match(layout, /<html lang="nl">/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.match(packageJson, /react-hook-form/);
   assert.match(packageJson, /"zod"/);
+  assert.match(packageJson, /@tanstack\/react-query/);
+  assert.match(packageJson, /@react-pdf\/renderer/);
   assert.match(dailyReportForm, /clientReportSections/);
   assert.match(dailyReportForm, /AUTO-HSE-01/);
   assert.match(app, /Geen AI|No AI/i);
+  assert.match(dataLayer, /saveProjectStart/);
+  assert.match(dataLayer, /saveSiteRegistration/);
+  assert.match(dataLayer, /saveAttendance/);
+  assert.match(dataLayer, /saveDailyCloseout/);
+  assert.match(dataLayer, /submitReportForReview/);
+  assert.match(pdfReport, /CONSTRUCTIESUPERVISIE/);
+  assert.match(pdfReport, /17–19\. Foto's, bijlagen en controle/);
+  assert.match(providers, /QueryClientProvider/);
 });
 
 test("keeps the online-first Supabase foundation enforceable", async () => {
-  const [migration, questionnaireMigration, supabaseClient, envExample] = await Promise.all([
+  const [migration, questionnaireMigration, liveFlowMigration, supabaseClient, envExample] = await Promise.all([
     readFile(
       new URL("../../../supabase/migrations/202607180001_core_supervision_foundation.sql", import.meta.url),
       "utf8",
     ),
     readFile(
       new URL("../../../supabase/migrations/202607180002_daily_questionnaires.sql", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../../../supabase/migrations/202607180003_live_workspace_flow.sql", import.meta.url),
       "utf8",
     ),
     readFile(new URL("../lib/supabase/client.ts", import.meta.url), "utf8"),
@@ -108,11 +127,16 @@ test("keeps the online-first Supabase foundation enforceable", async () => {
   assert.match(migration, /idempotency_key/);
   assert.match(supabaseClient, /getSupabaseBrowserClient/);
   assert.match(supabaseClient, /if \(!isSupabaseConfigured\) return null/);
+  assert.match(supabaseClient, /NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY/);
+  assert.doesNotMatch(supabaseClient, /SERVICE_ROLE/);
   assert.match(questionnaireMigration, /create table public\.day_start_checks/);
   assert.match(questionnaireMigration, /create table public\.day_closeouts/);
   assert.match(questionnaireMigration, /automation_rules_snapshot/);
   assert.match(questionnaireMigration, /alter table public\.day_start_checks enable row level security/);
   assert.match(questionnaireMigration, /alter table public\.day_closeouts enable row level security/);
+  assert.match(liveFlowMigration, /create or replace function public\.create_project_workspace/);
+  assert.match(liveFlowMigration, /create or replace function public\.submit_day_report_for_review/);
+  assert.match(liveFlowMigration, /attendance_entries_report_party_discipline_key/);
   const configuredEnvKeys = envExample
     .split("\n")
     .filter((line) => line.trim() && !line.trim().startsWith("#"))

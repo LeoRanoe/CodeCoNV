@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CodecoSupervisionApp } from "./codeco-supervision-app";
+import { Providers } from "./providers";
 
 export const metadata: Metadata = {
   title: "Vandaag",
@@ -8,5 +9,5 @@ export const metadata: Metadata = {
 };
 
 export default function Home() {
-  return <CodecoSupervisionApp />;
+  return <Providers><CodecoSupervisionApp /></Providers>;
 }

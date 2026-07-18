@@ -1,0 +1,509 @@
+import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
+import {
+  getProjectStartAutomation,
+  type DailyCloseoutAnswers,
+  type ProjectStartAnswers,
+} from "@/lib/forms/daily-report";
+
+export type WorkspaceBuilding = {
+  id: string;
+  name: string;
+  description: string;
+  progress: number;
+  openIssues: number;
+};
+
+export type WorkspaceProject = {
+  id: string;
+  organizationId: string;
+  name: string;
+  code: string;
+  location: string;
+  client: string;
+  progress: number;
+  openIssues: number;
+  buildings: WorkspaceBuilding[];
+};
+
+export type WorkspaceOrganization = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
+export type WorkspaceSnapshot = {
+  user: User;
+  profileName: string;
+  organizations: WorkspaceOrganization[];
+  projects: WorkspaceProject[];
+};
+
+export type ProjectParty = {
+  id: string;
+  name: string;
+  type: string;
+};
+
+export type ProjectDaySnapshot = {
+  report: Record<string, unknown> | null;
+  startCheck: Record<string, unknown> | null;
+  closeout: Record<string, unknown> | null;
+  registrations: Array<Record<string, unknown>>;
+  attendance: Array<Record<string, unknown>>;
+  parties: ProjectParty[];
+  actions: Array<Record<string, unknown>>;
+};
+
+export type AttendanceInput = {
+  partyId: string;
+  discipline: string;
+  count: number;
+  shiftStart: string;
+  shiftEnd: string;
+};
+
+function fail(error: { message: string } | null) {
+  if (error) throw new Error(error.message);
+}
+
+async function currentUser(client: SupabaseClient) {
+  const { data, error } = await client.auth.getUser();
+  fail(error);
+  if (!data.user) throw new Error("Je sessie is verlopen. Meld je opnieuw aan.");
+  return data.user;
+}
+
+export function reportDateInSuriname(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "America/Paramaribo",
+  }).formatToParts(date);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSnapshot> {
+  const user = await currentUser(client);
+  const membershipResult = await client
+    .from("organization_memberships")
+    .select("organization_id")
+    .eq("user_id", user.id)
+    .eq("status", "active");
+  fail(membershipResult.error);
+
+  const organizationIds = Array.from(new Set((membershipResult.data ?? []).map((row) => row.organization_id as string)));
+  if (organizationIds.length === 0) {
+    return {
+      user,
+      profileName: String(user.user_metadata?.display_name ?? user.email?.split("@")[0] ?? "Gebruiker"),
+      organizations: [],
+      projects: [],
+    };
+  }
+
+  const [organizationResult, profileResult, projectResult] = await Promise.all([
+    client.from("organizations").select("id,name,slug").in("id", organizationIds).order("name"),
+    client.from("profiles").select("display_name").eq("id", user.id).maybeSingle(),
+    client
+      .from("projects")
+      .select("id,organization_id,code,name,location,client_name,status")
+      .in("organization_id", organizationIds)
+      .in("status", ["draft", "active", "on_hold"])
+      .order("name"),
+  ]);
+  fail(organizationResult.error);
+  fail(profileResult.error);
+  fail(projectResult.error);
+
+  const projectRows = projectResult.data ?? [];
+  const projectIds = projectRows.map((row) => row.id as string);
+  const [buildingResult, actionResult, progressResult] = projectIds.length
+    ? await Promise.all([
+        client
+          .from("buildings")
+          .select("id,project_id,name,description,status")
+          .in("project_id", projectIds)
+          .eq("status", "active")
+          .order("name"),
+        client
+          .from("actions")
+          .select("project_id,status")
+          .in("project_id", projectIds)
+          .in("status", ["open", "accepted", "in_progress", "ready_for_verification"]),
+        client
+          .from("day_closeouts")
+          .select("project_id,progress_percent,created_at")
+          .in("project_id", projectIds)
+          .order("created_at", { ascending: false }),
+      ])
+    : [
+        { data: [], error: null },
+        { data: [], error: null },
+        { data: [], error: null },
+      ];
+  fail(buildingResult.error);
+  fail(actionResult.error);
+  fail(progressResult.error);
+
+  const progressByProject = new Map<string, number>();
+  for (const row of progressResult.data ?? []) {
+    const projectId = row.project_id as string;
+    if (!progressByProject.has(projectId)) progressByProject.set(projectId, Number(row.progress_percent));
+  }
+
+  const projects: WorkspaceProject[] = projectRows.map((project) => {
+    const projectId = project.id as string;
+    const progress = progressByProject.get(projectId) ?? 0;
+    const openIssues = (actionResult.data ?? []).filter((row) => row.project_id === projectId).length;
+    return {
+      id: projectId,
+      organizationId: project.organization_id as string,
+      name: String(project.name),
+      code: String(project.code),
+      location: String(project.location),
+      client: String(project.client_name ?? "Niet ingesteld"),
+      progress,
+      openIssues,
+      buildings: (buildingResult.data ?? [])
+        .filter((building) => building.project_id === projectId)
+        .map((building) => ({
+          id: building.id as string,
+          name: String(building.name),
+          description: String(building.description ?? "Projectgebouw"),
+          progress,
+          openIssues,
+        })),
+    };
+  });
+
+  return {
+    user,
+    profileName: String(profileResult.data?.display_name ?? user.user_metadata?.display_name ?? user.email?.split("@")[0] ?? "Gebruiker"),
+    organizations: (organizationResult.data ?? []).map((organization) => ({
+      id: organization.id as string,
+      name: String(organization.name),
+      slug: String(organization.slug),
+    })),
+    projects,
+  };
+}
+
+export async function loadProjectDay(
+  client: SupabaseClient,
+  projectId: string,
+  reportDate = reportDateInSuriname(),
+): Promise<ProjectDaySnapshot> {
+  const [reportResult, partyResult, actionResult] = await Promise.all([
+    client
+      .from("day_reports")
+      .select("id,organization_id,project_id,report_date,report_number,status,completeness_percent,created_at,updated_at")
+      .eq("project_id", projectId)
+      .eq("report_date", reportDate)
+      .maybeSingle(),
+    client.from("parties").select("id,name,party_type").eq("project_id", projectId).eq("active", true).order("name"),
+    client
+      .from("actions")
+      .select("id,action_number,title,description,due_at,priority,status,building_id")
+      .eq("project_id", projectId)
+      .order("due_at", { ascending: true, nullsFirst: false })
+      .limit(50),
+  ]);
+  fail(reportResult.error);
+  fail(partyResult.error);
+  fail(actionResult.error);
+
+  const report = reportResult.data as Record<string, unknown> | null;
+  if (!report) {
+    return {
+      report: null,
+      startCheck: null,
+      closeout: null,
+      registrations: [],
+      attendance: [],
+      parties: (partyResult.data ?? []).map((party) => ({ id: party.id as string, name: String(party.name), type: String(party.party_type) })),
+      actions: (actionResult.data ?? []) as Array<Record<string, unknown>>,
+    };
+  }
+
+  const reportId = report.id as string;
+  const [startResult, closeoutResult, registrationResult, attendanceResult] = await Promise.all([
+    client.from("day_start_checks").select("*").eq("day_report_id", reportId).maybeSingle(),
+    client.from("day_closeouts").select("*").eq("day_report_id", reportId).maybeSingle(),
+    client
+      .from("site_registrations")
+      .select("id,registration_type,title,description,priority,occurred_at,status,building_id,created_by")
+      .eq("day_report_id", reportId)
+      .order("occurred_at", { ascending: false })
+      .limit(100),
+    client
+      .from("attendance_entries")
+      .select("id,party_id,discipline,shift_start,shift_end,headcount")
+      .eq("day_report_id", reportId)
+      .order("created_at"),
+  ]);
+  fail(startResult.error);
+  fail(closeoutResult.error);
+  fail(registrationResult.error);
+  fail(attendanceResult.error);
+
+  return {
+    report,
+    startCheck: startResult.data as Record<string, unknown> | null,
+    closeout: closeoutResult.data as Record<string, unknown> | null,
+    registrations: (registrationResult.data ?? []) as Array<Record<string, unknown>>,
+    attendance: (attendanceResult.data ?? []) as Array<Record<string, unknown>>,
+    parties: (partyResult.data ?? []).map((party) => ({ id: party.id as string, name: String(party.name), type: String(party.party_type) })),
+    actions: (actionResult.data ?? []) as Array<Record<string, unknown>>,
+  };
+}
+
+export async function bootstrapOrganization(
+  client: SupabaseClient,
+  input: { name: string; slug: string; displayName: string },
+) {
+  const result = await client.rpc("bootstrap_organization", {
+    p_name: input.name,
+    p_slug: input.slug,
+    p_display_name: input.displayName,
+  });
+  fail(result.error);
+  return result.data;
+}
+
+export async function createProjectWorkspace(
+  client: SupabaseClient,
+  input: {
+    organizationId: string;
+    code: string;
+    name: string;
+    location: string;
+    clientName: string;
+    buildingCode: string;
+    buildingName: string;
+    contractorName: string;
+  },
+) {
+  const result = await client.rpc("create_project_workspace", {
+    p_organization_id: input.organizationId,
+    p_code: input.code,
+    p_name: input.name,
+    p_location: input.location,
+    p_client_name: input.clientName,
+    p_building_code: input.buildingCode,
+    p_building_name: input.buildingName,
+    p_contractor_name: input.contractorName,
+  });
+  fail(result.error);
+  return result.data;
+}
+
+async function createOrGetReport(client: SupabaseClient, projectId: string, reportDate: string) {
+  const result = await client.rpc("create_day_report", {
+    p_project_id: projectId,
+    p_report_date: reportDate,
+    p_idempotency_key: `report:${projectId}:${reportDate}`,
+  });
+  fail(result.error);
+  return result.data as Record<string, unknown>;
+}
+
+export async function saveProjectStart(
+  client: SupabaseClient,
+  input: {
+    projectId: string;
+    buildingId: string;
+    answers: ProjectStartAnswers;
+    reportDate?: string;
+  },
+) {
+  const user = await currentUser(client);
+  const reportDate = input.reportDate ?? reportDateInSuriname();
+  let report = await createOrGetReport(client, input.projectId, reportDate);
+  const reportId = report.id as string;
+  const payload = {
+    organization_id: report.organization_id,
+    project_id: input.projectId,
+    building_id: input.buildingId,
+    day_report_id: reportId,
+    weather_condition: input.answers.weatherCondition,
+    temperature_c: input.answers.temperatureC,
+    wind_condition: input.answers.windCondition,
+    shift_start: input.answers.shiftStart,
+    shift_end: input.answers.shiftEnd,
+    planned_work: input.answers.plannedWork,
+    expected_workers: input.answers.expectedWorkers,
+    inspection_planned: input.answers.inspectionPlanned === "yes",
+    high_risk_work: input.answers.highRiskWork === "yes",
+    concrete_work: input.answers.concreteWork === "yes",
+    work_permit_status: input.answers.workPermit,
+    drawing_status: input.answers.drawingStatus,
+    drawing_issue_reported: input.answers.drawingIssueReported,
+    risk_notes: input.answers.riskNotes || null,
+    automation_rules_snapshot: getProjectStartAutomation(input.answers),
+  };
+  const existing = await client.from("day_start_checks").select("id").eq("day_report_id", reportId).maybeSingle();
+  fail(existing.error);
+  if (existing.data) {
+    const update = await client.from("day_start_checks").update(payload).eq("id", existing.data.id);
+    fail(update.error);
+  } else {
+    const insert = await client.from("day_start_checks").insert({
+      ...payload,
+      idempotency_key: `start:${reportId}`,
+      created_by: user.id,
+    });
+    fail(insert.error);
+  }
+
+  if (report.status === "draft" || report.status === "returned") {
+    const update = await client
+      .from("day_reports")
+      .update({ status: "in_progress", completeness_percent: 35 })
+      .eq("id", reportId)
+      .select("id,organization_id,project_id,report_number,status,completeness_percent")
+      .single();
+    fail(update.error);
+    report = update.data as Record<string, unknown>;
+  }
+  return report;
+}
+
+export async function saveDailyCloseout(
+  client: SupabaseClient,
+  input: {
+    report: Record<string, unknown>;
+    projectId: string;
+    buildingId: string;
+    answers: DailyCloseoutAnswers;
+  },
+) {
+  const user = await currentUser(client);
+  const reportId = input.report.id as string;
+  const payload = {
+    organization_id: input.report.organization_id,
+    project_id: input.projectId,
+    building_id: input.buildingId,
+    day_report_id: reportId,
+    day_summary: input.answers.daySummary,
+    weather_summary: input.answers.weatherSummary,
+    work_performed: input.answers.workPerformed,
+    progress_percent: input.answers.progressPercent,
+    inspection_result: input.answers.inspectionResult,
+    quality_issues: input.answers.qualityIssues === "yes",
+    quality_details: input.answers.qualityDetails || null,
+    hse_event: input.answers.hseEvent,
+    hse_details: input.answers.hseDetails || null,
+    equipment_status: input.answers.equipmentStatus || null,
+    deliveries: input.answers.deliveries || null,
+    tests_measurements: input.answers.testsMeasurements || null,
+    variation_work_status: input.answers.variationWork,
+    delay_cause: input.answers.delayCause,
+    delay_hours: input.answers.delayHours,
+    communication: input.answers.communication || null,
+    risks: input.answers.risks || null,
+    tomorrow_plan: input.answers.tomorrowPlan,
+    photo_count: input.answers.photoCount,
+    attachments_confirmed: input.answers.attachmentsConfirmed,
+  };
+  const existing = await client.from("day_closeouts").select("id").eq("day_report_id", reportId).maybeSingle();
+  fail(existing.error);
+  if (existing.data) {
+    const update = await client.from("day_closeouts").update(payload).eq("id", existing.data.id);
+    fail(update.error);
+  } else {
+    const insert = await client.from("day_closeouts").insert({
+      ...payload,
+      idempotency_key: `closeout:${reportId}`,
+      created_by: user.id,
+    });
+    fail(insert.error);
+  }
+  const reportUpdate = await client.from("day_reports").update({ completeness_percent: 90 }).eq("id", reportId);
+  fail(reportUpdate.error);
+}
+
+export async function saveSiteRegistration(
+  client: SupabaseClient,
+  input: {
+    projectId: string;
+    buildingId: string;
+    type: string;
+    title: string;
+    description: string;
+    priority: string;
+  },
+) {
+  const result = await client.rpc("create_site_registration", {
+    p_project_id: input.projectId,
+    p_building_id: input.buildingId,
+    p_report_date: reportDateInSuriname(),
+    p_registration_type: input.type,
+    p_title: input.title,
+    p_description: input.description,
+    p_priority: input.priority,
+    p_occurred_at: new Date().toISOString(),
+    p_idempotency_key: `registration:${crypto.randomUUID()}`,
+  });
+  fail(result.error);
+  return result.data;
+}
+
+export async function saveAttendance(
+  client: SupabaseClient,
+  input: {
+    report: Record<string, unknown>;
+    projectId: string;
+    buildingId: string;
+    rows: AttendanceInput[];
+  },
+) {
+  const user = await currentUser(client);
+  const reportId = input.report.id as string;
+  const existingResult = await client
+    .from("attendance_entries")
+    .select("id,party_id,discipline")
+    .eq("day_report_id", reportId);
+  fail(existingResult.error);
+  const existing = new Map((existingResult.data ?? []).map((row) => [`${row.party_id}:${row.discipline}`, row.id as string]));
+
+  for (const row of input.rows) {
+    const key = `${row.partyId}:${row.discipline}`;
+    const payload = {
+      organization_id: input.report.organization_id,
+      project_id: input.projectId,
+      building_id: input.buildingId,
+      day_report_id: reportId,
+      party_id: row.partyId,
+      discipline: row.discipline,
+      shift_start: row.shiftStart,
+      shift_end: row.shiftEnd,
+      headcount: row.count,
+    };
+    const existingId = existing.get(key);
+    if (existingId) {
+      const update = await client.from("attendance_entries").update(payload).eq("id", existingId);
+      fail(update.error);
+    } else {
+      const insert = await client.from("attendance_entries").insert({
+        ...payload,
+        idempotency_key: `attendance:${reportId}:${row.partyId}:${row.discipline}`.slice(0, 200),
+        created_by: user.id,
+      });
+      fail(insert.error);
+    }
+  }
+}
+
+export async function submitReportForReview(client: SupabaseClient, reportId: string) {
+  const result = await client.rpc("submit_day_report_for_review", { p_day_report_id: reportId });
+  fail(result.error);
+  return result.data as Record<string, unknown>;
+}
+
+export async function getSession(client: SupabaseClient): Promise<Session | null> {
+  const { data, error } = await client.auth.getSession();
+  fail(error);
+  return data.session;
+}
