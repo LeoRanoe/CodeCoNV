@@ -12,8 +12,8 @@ let browserClient: SupabaseClient | null = null;
 
 /**
  * Returns the browser client only when both public Supabase values are present.
- * Project data is never written to localStorage; without central confirmation the
- * UI must continue to describe changes as session-only demo data.
+ * Project data is never written to localStorage. Without these central values the
+ * application remains read-only and blocks login and operational mutations.
  */
 export function getSupabaseBrowserClient(): SupabaseClient | null {
   if (!isSupabaseConfigured) return null;

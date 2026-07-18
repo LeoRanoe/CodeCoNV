@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "codeco-storage-gateway",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-18",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "vars": {
+    "APP_ORIGIN": "https://sitezicht-constructiesupervisie.agencynextx.chatgpt.site",
+    "MAX_FILE_SIZE_MB": "25"
+  }
+}

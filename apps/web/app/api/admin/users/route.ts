@@ -49,6 +49,21 @@ export async function POST(request: Request) {
     return json({ error: "Alleen een organisatiebeheerder kan accounts uitnodigen." }, 403);
   }
 
+  const rateLimitResult = await userClient.rpc("consume_security_rate_limit", {
+    p_action_code: "admin_invite",
+    p_max_requests: 10,
+    p_window_minutes: 60,
+  });
+  if (rateLimitResult.error) {
+    return json({ error: "De beveiligde uitnodigingslimiet kon niet worden gecontroleerd." }, 503);
+  }
+  if (rateLimitResult.data !== true) {
+    return Response.json(
+      { error: "Er zijn te veel uitnodigingen verstuurd. Probeer het over een uur opnieuw." },
+      { status: 429, headers: { "cache-control": "no-store", "retry-after": "3600" } },
+    );
+  }
+
   const roleResult = await userClient
     .from("roles")
     .select("scope")

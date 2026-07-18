@@ -1,5 +1,5 @@
 begin;
-set local search_path = extensions, public;
+set local search_path = extensions, pgtap, public;
 
 select plan(38);
 
@@ -62,7 +62,11 @@ select has_index('public', 'audit_events', 'audit_events_project_time_idx', 'aud
 select policies_are(
   'public',
   'day_reports',
-  array['day_reports_insert', 'day_reports_review', 'day_reports_select', 'day_reports_update'],
+  array[
+    'day_reports_distribute', 'day_reports_insert', 'day_reports_revise',
+    'day_reports_review', 'day_reports_select', 'day_reports_sign',
+    'day_reports_update'
+  ],
   'day reports expose only the intended RLS policies'
 );
 select policies_are(
@@ -109,11 +113,16 @@ select results_eq(
         'project_memberships', 'project_member_roles', 'buildings', 'parties',
         'day_reports', 'attendance_entries', 'site_registrations', 'actions',
         'report_versions', 'audit_events', 'day_start_checks', 'day_closeouts',
-        'action_updates'
+        'action_updates', 'project_settings', 'location_nodes',
+        'checklist_templates', 'checklist_items', 'inspections',
+        'inspection_responses', 'findings', 'finding_updates', 'hse_events',
+        'files', 'file_links', 'report_reviews', 'report_signatures',
+        'report_distributions', 'notifications', 'project_register_entries',
+        'backup_runs'
       ])
       and relation.relrowsecurity
   $$,
-  $$ values (21::bigint) $$,
+  $$ values (38::bigint) $$,
   'RLS is enabled on every browser-reachable table'
 );
 

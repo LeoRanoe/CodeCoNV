@@ -1,7 +1,7 @@
 begin;
-set local search_path = extensions, public;
+set local search_path = extensions, pgtap, public;
 
-select plan(19);
+select plan(29);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at) values
   ('00000000-0000-0000-0000-0000000000c1', 'authenticated', 'authenticated', 'internal-admin@example.test', now(), now()),
@@ -43,6 +43,30 @@ select is((select count(*) from public.project_memberships where user_id = '0000
 select is((select count(*) from public.project_member_roles where membership_id = (select id from public.project_memberships where user_id = '00000000-0000-0000-0000-0000000000c2')), 1::bigint, 'provisioning assigns the selected project role');
 select is(jsonb_array_length(public.list_internal_access((select id from public.organizations where slug = 'codeco-internal')) -> 'members'), 2, 'the administrator can list internal accounts');
 select is(jsonb_array_length(public.list_internal_access((select id from public.organizations where slug = 'codeco-internal')) -> 'roles'), 8, 'the account list includes data-driven roles');
+select lives_ok(
+  format($query$select public.set_internal_user_access_status(%L::uuid, '00000000-0000-0000-0000-0000000000c2'::uuid, 'suspended', 'Tijdelijk geen projecttoegang tijdens verlof.')$query$, (select id from public.organizations where slug = 'codeco-internal')),
+  'an administrator can suspend another internal account with a reason'
+);
+select is((select status::text from public.organization_memberships where user_id = '00000000-0000-0000-0000-0000000000c2'), 'suspended', 'organization access is suspended');
+select is((select status::text from public.project_memberships where user_id = '00000000-0000-0000-0000-0000000000c2'), 'suspended', 'project access is suspended in the same transaction');
+select is((select status_change_reason from public.organization_memberships where user_id = '00000000-0000-0000-0000-0000000000c2'), 'Tijdelijk geen projecttoegang tijdens verlof.', 'the human reason is retained in audited membership data');
+select lives_ok(
+  format($query$select public.set_internal_user_access_status(%L::uuid, '00000000-0000-0000-0000-0000000000c2'::uuid, 'active', 'Werktoegang opnieuw vrijgegeven door beheerder.')$query$, (select id from public.organizations where slug = 'codeco-internal')),
+  'a suspended internal account can be reactivated'
+);
+select is((select status::text from public.project_memberships where user_id = '00000000-0000-0000-0000-0000000000c2'), 'active', 'reactivation restores suspended project access');
+select throws_ok(
+  format($query$select public.set_internal_user_access_status(%L::uuid, '00000000-0000-0000-0000-0000000000c1'::uuid, 'suspended', 'Poging om eigen beheeraccount te blokkeren.')$query$, (select id from public.organizations where slug = 'codeco-internal')),
+  '23514',
+  'Administrators cannot change their own access status',
+  'an administrator cannot lock their own account'
+);
+select lives_ok(
+  format($query$select public.set_internal_user_access_status(%L::uuid, '00000000-0000-0000-0000-0000000000c2'::uuid, 'revoked', 'Dienstverband en alle projecttoegang beëindigd.')$query$, (select id from public.organizations where slug = 'codeco-internal')),
+  'an administrator can permanently revoke another account'
+);
+select is((select status::text from public.organization_memberships where user_id = '00000000-0000-0000-0000-0000000000c2'), 'revoked', 'organization access is revoked');
+select is((select status::text from public.project_memberships where user_id = '00000000-0000-0000-0000-0000000000c2'), 'revoked', 'all project access is revoked atomically');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000c2","role":"authenticated"}';
 select is(public.can_bootstrap_organization(), false, 'a project member cannot create another organization');

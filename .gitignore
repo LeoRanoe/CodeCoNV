@@ -1,3 +1,13 @@
 # Generated deployment and branding scratch files
 /tmp/*-build.tar.gz
 /tmp/codeco-logo*.png
+
+# Local dependencies, builds and secrets
+**/node_modules/
+**/dist/
+**/.vinext/
+**/.next/
+**/.wrangler/
+**/.dev.vars
+**/.env*
+!**/.env.example

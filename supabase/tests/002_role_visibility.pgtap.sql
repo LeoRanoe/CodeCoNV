@@ -1,5 +1,5 @@
 begin;
-set local search_path = extensions, public;
+set local search_path = extensions, pgtap, public;
 
 select plan(58);
 
@@ -98,8 +98,14 @@ insert into public.day_reports (id, organization_id, project_id, report_date, re
   ('50000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '2026-07-17', 'DR-20260717', 'draft', 'test-draft-report', '00000000-0000-0000-0000-0000000000a1'),
   ('50000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '2026-07-18', 'DR-20260718', 'approved', 'test-approved-report', '00000000-0000-0000-0000-0000000000a1');
 
+with frozen as (
+  select public.build_day_report_snapshot('50000000-0000-0000-0000-000000000002') as snapshot
+)
 insert into public.report_versions (id, organization_id, project_id, day_report_id, revision, template_version, snapshot, sha256, idempotency_key, created_by)
-values ('90000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000002', 0, 'test-v1', '{}'::jsonb, repeat('a', 64), 'test-report-version', '00000000-0000-0000-0000-0000000000a1');
+select '90000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000002', 0, 'test-v1', snapshot,
+  encode(extensions.digest(convert_to(snapshot::text, 'UTF8'), 'sha256'), 'hex'),
+  'test-report-version', '00000000-0000-0000-0000-0000000000a1'
+from frozen;
 
 insert into public.site_registrations (id, organization_id, project_id, building_id, day_report_id, registration_type, title, occurred_at, idempotency_key, created_by)
 values ('60000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', 'inspection', 'Testinspectie', now(), 'test-registration', '00000000-0000-0000-0000-0000000000a1');

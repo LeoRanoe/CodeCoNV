@@ -8,7 +8,12 @@ export const authSchema = z.object({
 export type AuthAnswers = z.infer<typeof authSchema>;
 
 export const passwordSetupSchema = z.object({
-  password: z.string().min(12, "Gebruik minimaal 12 tekens").max(128),
+  password: z.string()
+    .min(12, "Gebruik minimaal 12 tekens")
+    .max(128)
+    .regex(/[a-z]/, "Gebruik minimaal één kleine letter")
+    .regex(/[A-Z]/, "Gebruik minimaal één hoofdletter")
+    .regex(/[0-9]/, "Gebruik minimaal één cijfer"),
   passwordConfirmation: z.string().min(12, "Herhaal het wachtwoord"),
 }).refine((answers) => answers.password === answers.passwordConfirmation, {
   message: "De wachtwoorden zijn niet gelijk",

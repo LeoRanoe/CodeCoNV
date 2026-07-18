@@ -13,6 +13,19 @@ export type DailyReportPdfSnapshot = {
   registrationCount: number;
   projectStart: ProjectStartAnswers;
   closeout: DailyCloseoutAnswers;
+  formal?: { revision: number; sha256: string; frozenAt: string };
+};
+
+export type FormalReportSnapshot = {
+  frozen_at?: string;
+  report?: Record<string, unknown>;
+  project?: Record<string, unknown>;
+  building?: Record<string, unknown>;
+  created_by_profile?: Record<string, unknown>;
+  start_check?: Record<string, unknown>;
+  closeout?: Record<string, unknown>;
+  attendance?: Array<Record<string, unknown>>;
+  registrations?: Array<Record<string, unknown>>;
 };
 
 const styles = StyleSheet.create({
@@ -61,7 +74,7 @@ function DailyReportDocument({ snapshot }: { snapshot: DailyReportPdfSnapshot })
         <View style={styles.header}>
           <Text style={styles.brand}>CODECO N.V. · CONSTRUCTIESUPERVISIE</Text>
           <Text style={styles.title}>Dagrapport</Text>
-          <Text style={styles.subtitle}>Vaste, controleerbare samenvatting uit bevestigde projectregistraties</Text>
+          <Text style={styles.subtitle}>{snapshot.formal ? `Formele immutable revisie ${snapshot.formal.revision}` : "Vaste, controleerbare samenvatting uit bevestigde projectregistraties"}</Text>
         </View>
 
         <View style={styles.metadata}>
@@ -72,6 +85,7 @@ function DailyReportDocument({ snapshot }: { snapshot: DailyReportPdfSnapshot })
             ["Gebouw", snapshot.buildingName],
             ["Locatie", snapshot.location],
             ["Supervisor", snapshot.supervisorName],
+            ...(snapshot.formal ? [["Snapshot SHA-256", `${snapshot.formal.sha256.slice(0, 16)}…`]] : []),
           ].map(([label, value]) => (
             <View style={styles.metaCard} key={label}>
               <Text style={styles.metaLabel}>{label}</Text>
@@ -112,7 +126,7 @@ function DailyReportDocument({ snapshot }: { snapshot: DailyReportPdfSnapshot })
         <Section title="17–19. Foto's, bijlagen en controle">
           <Row label="Foto's" value={closeout.photoCount} />
           <Row label="Bijlagen" value={closeout.attachmentsConfirmed ? "Door supervisor gecontroleerd" : "Nog niet bevestigd"} />
-          <Text style={styles.confirmation}>Concept-PDF. Formele ondertekening en distributie vereisen de ingestelde review- en vrijgaveflow.</Text>
+          <Text style={styles.confirmation}>{snapshot.formal ? `Deze PDF is uitsluitend opgebouwd uit de immutable snapshot van ${snapshot.formal.frozenAt}. Volledige SHA-256: ${snapshot.formal.sha256}` : "Werk-PDF uit bevestigde dagregistraties. Formele status en verklaringen staan in de rapporthistorie."}</Text>
         </Section>
 
         <View style={styles.footer} fixed>
@@ -126,10 +140,88 @@ function DailyReportDocument({ snapshot }: { snapshot: DailyReportPdfSnapshot })
 
 export async function downloadDailyReportPdf(snapshot: DailyReportPdfSnapshot) {
   const blob = await pdf(<DailyReportDocument snapshot={snapshot} />).toBlob();
+  downloadBlob(blob, `${snapshot.reportNumber}.pdf`);
+}
+
+function value(record: Record<string, unknown> | undefined, key: string, fallback = ""): string {
+  const result = record?.[key];
+  return result === null || result === undefined ? fallback : String(result);
+}
+
+function truth(valueToCheck: unknown): "yes" | "no" {
+  return valueToCheck === true ? "yes" : "no";
+}
+
+function immutableDailySnapshot(snapshot: FormalReportSnapshot, revision: number, sha256: string): DailyReportPdfSnapshot {
+  const report = snapshot.report;
+  const project = snapshot.project;
+  const building = snapshot.building;
+  const profile = snapshot.created_by_profile;
+  const start = snapshot.start_check;
+  const closeout = snapshot.closeout;
+  return {
+    reportNumber: value(report, "report_number", `Dagrapport-revisie-${revision}`),
+    reportDate: value(report, "report_date"),
+    projectName: value(project, "name", "Onbekend project"),
+    projectCode: value(project, "code", "—"),
+    buildingName: value(building, "name", value(report, "building_id", "—")),
+    location: value(project, "location", "—"),
+    supervisorName: value(profile, "display_name", value(report, "created_by", "Geauthenticeerde gebruiker")),
+    attendanceTotal: (snapshot.attendance ?? []).reduce((total, entry) => total + Number(entry.headcount ?? 0), 0),
+    registrationCount: snapshot.registrations?.length ?? 0,
+    projectStart: {
+      weatherCondition: value(start, "weather_condition", "cloudy") as ProjectStartAnswers["weatherCondition"],
+      temperatureC: Number(start?.temperature_c ?? 0),
+      windCondition: value(start, "wind_condition", "calm") as ProjectStartAnswers["windCondition"],
+      shiftStart: value(start, "shift_start", "00:00").slice(0, 5),
+      shiftEnd: value(start, "shift_end", "00:00").slice(0, 5),
+      plannedWork: value(start, "planned_work", "Niet geregistreerd"),
+      expectedWorkers: Number(start?.expected_workers ?? 0),
+      inspectionPlanned: truth(start?.inspection_planned),
+      highRiskWork: truth(start?.high_risk_work),
+      concreteWork: truth(start?.concrete_work),
+      workPermit: value(start, "work_permit_status", "not_required") as ProjectStartAnswers["workPermit"],
+      drawingStatus: value(start, "drawing_status", "not_required") as ProjectStartAnswers["drawingStatus"],
+      drawingIssueReported: start?.drawing_issue_reported === true,
+      riskNotes: value(start, "risk_notes"),
+    },
+    closeout: {
+      daySummary: value(closeout, "day_summary", "Geen dagsamenvatting in deze vastgezette versie."),
+      weatherSummary: value(closeout, "weather_summary", "Niet geregistreerd"),
+      workPerformed: value(closeout, "work_performed", "Niet geregistreerd"),
+      progressPercent: Number(closeout?.progress_percent ?? 0),
+      inspectionResult: value(closeout, "inspection_result", "none") as DailyCloseoutAnswers["inspectionResult"],
+      qualityIssues: truth(closeout?.quality_issues),
+      qualityDetails: value(closeout, "quality_details"),
+      hseEvent: value(closeout, "hse_event", "none") as DailyCloseoutAnswers["hseEvent"],
+      hseDetails: value(closeout, "hse_details"),
+      equipmentStatus: value(closeout, "equipment_status"),
+      deliveries: value(closeout, "deliveries"),
+      testsMeasurements: value(closeout, "tests_measurements"),
+      variationWork: value(closeout, "variation_work_status", "none") as DailyCloseoutAnswers["variationWork"],
+      delayCause: value(closeout, "delay_cause", "none") as DailyCloseoutAnswers["delayCause"],
+      delayHours: Number(closeout?.delay_hours ?? 0),
+      communication: value(closeout, "communication"),
+      risks: value(closeout, "risks"),
+      tomorrowPlan: value(closeout, "tomorrow_plan", "Niet geregistreerd"),
+      photoCount: Number(closeout?.photo_count ?? 0),
+      attachmentsConfirmed: closeout?.attachments_confirmed === true,
+    },
+    formal: { revision, sha256, frozenAt: snapshot.frozen_at ?? "onbekend tijdstip" },
+  };
+}
+
+export async function downloadFormalReportPdf(snapshot: FormalReportSnapshot, revision: number, sha256: string) {
+  const normalized = immutableDailySnapshot(snapshot, revision, sha256);
+  const blob = await pdf(<DailyReportDocument snapshot={normalized} />).toBlob();
+  downloadBlob(blob, `${normalized.reportNumber}-revisie-${revision}.pdf`);
+}
+
+function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${snapshot.reportNumber}.pdf`;
+  link.download = filename;
   link.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

@@ -48,6 +48,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
+import { OperationalWorkspace } from "@/app/operational-workspace";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   clientReportSections,
@@ -84,25 +85,29 @@ import {
   getSession,
   inviteInternalUser,
   loadInternalAccess,
+  loadProjectNotifications,
   loadProjectDay,
   loadWorkspace,
+  markNotificationRead,
   reportDateInSuriname,
   saveAttendance,
   saveDailyCloseout,
   saveProjectStart,
   saveSiteRegistration,
+  setInternalUserAccessStatus,
   submitReportForReview,
   transitionProjectAction,
   type ActionUpdate,
   type InternalAccessSnapshot,
   type ProjectAction,
   type ProjectParty,
+  type ProjectNotification,
   type WorkspaceBuilding,
   type WorkspaceProject,
 } from "@/lib/supabase/data";
 
 type NavKey = "vandaag" | "project" | "acties" | "rapporten" | "meer";
-type ModalKey = "quick" | "entry" | "action_create" | "action_detail" | "report" | "attendance" | "daily_questions" | "user_admin" | null;
+type ModalKey = "quick" | "entry" | "action_create" | "action_detail" | "report" | "attendance" | "daily_questions" | "user_admin" | "notifications" | null;
 type WorkspaceStage = "projects" | "buildings" | "project_start" | "cockpit";
 type EntryKind =
   | "activity"
@@ -354,6 +359,14 @@ export function CodecoSupervisionApp() {
     enabled: Boolean(supabase && session && selectedProject),
   });
 
+  const notificationQuery = useQuery({
+    queryKey: ["project-notifications", selectedProject?.id],
+    queryFn: () => loadProjectNotifications(supabase as SupabaseClient, selectedProject!.id),
+    enabled: Boolean(supabase && session && selectedProject),
+    staleTime: 60_000,
+  });
+  const unreadNotificationCount = (notificationQuery.data ?? []).filter((notification) => !notification.read_at).length;
+
   const currentUserName = workspaceQuery.data?.profileName
     ?? String(session?.user.user_metadata?.display_name ?? session?.user.email?.split("@")[0] ?? "CODECO-gebruiker");
   const storageStatus = !isOnline
@@ -479,6 +492,8 @@ export function CodecoSupervisionApp() {
     const refresh = () => {
       void queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] });
       void queryClient.invalidateQueries({ queryKey: ["workspace", session.user.id] });
+      void queryClient.invalidateQueries({ queryKey: ["project-operations", selectedProject.id] });
+      void queryClient.invalidateQueries({ queryKey: ["project-notifications", selectedProject.id] });
     };
     const channel = supabase
       .channel(`project-live:${selectedProject.id}`)
@@ -486,6 +501,10 @@ export function CodecoSupervisionApp() {
       .on("postgres_changes", { event: "*", schema: "public", table: "action_updates", filter: `project_id=eq.${selectedProject.id}` }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "site_registrations", filter: `project_id=eq.${selectedProject.id}` }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "day_reports", filter: `project_id=eq.${selectedProject.id}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "inspections", filter: `project_id=eq.${selectedProject.id}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "findings", filter: `project_id=eq.${selectedProject.id}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "hse_events", filter: `project_id=eq.${selectedProject.id}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "notifications", filter: `project_id=eq.${selectedProject.id}` }, refresh)
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
@@ -778,9 +797,9 @@ export function CodecoSupervisionApp() {
           <div className="top-actions">
             <span className={`storage-state ${syncState}`} title={storageStatus}>{syncState === "error" || !isOnline ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />} <span>{storageStatus}</span></span>
             <button className="icon-button" type="button" aria-label="Zoeken"><Search size={17} /></button>
-            <button className="icon-button" type="button" aria-label="Meldingen">
+            <button className="icon-button" type="button" aria-label={`Meldingen${unreadNotificationCount ? `, ${unreadNotificationCount} ongelezen` : ""}`} onClick={() => setModal("notifications")}>
               <Bell size={17} />
-              <span className="notification-dot" />
+              {unreadNotificationCount ? <span className="notification-dot" /> : null}
             </button>
           </div>
         </header>
@@ -806,6 +825,23 @@ export function CodecoSupervisionApp() {
                 navigate("acties");
                 setToast("De centrale actielijst is geopend.");
               }}
+            />
+          ) : activeNav === "project" || activeNav === "rapporten" || activeNav === "meer" ? (
+            <OperationalWorkspace
+              mode={activeNav === "project" ? "project" : activeNav === "rapporten" ? "reports" : "admin"}
+              client={supabase}
+              organizationId={activeOrganizationId!}
+              projectId={selectedProject!.id}
+              projectName={projectName}
+              buildingId={selectedBuilding!.id}
+              buildingName={buildingName}
+              reportId={dayQuery.data?.report?.id ? String(dayQuery.data.report.id) : null}
+              reportNumber={reportNumber}
+              reportStatus={String(dayQuery.data?.report?.status ?? "draft")}
+              currentUserName={currentUserName}
+              parties={dayQuery.data?.parties ?? []}
+              canManageOrganization={canManageMembers}
+              openUserAdmin={() => setModal("user_admin")}
             />
           ) : (
             <SecondaryView
@@ -1038,6 +1074,7 @@ export function CodecoSupervisionApp() {
           loading={internalAccessQuery.isLoading}
           loadError={internalAccessQuery.error instanceof Error ? internalAccessQuery.error.message : ""}
           reload={() => void internalAccessQuery.refetch()}
+          currentUserId={session.user.id}
           invite={async (answers) => {
             const saved = await runSynced(
               () => inviteInternalUser(supabase, answers),
@@ -1046,6 +1083,30 @@ export function CodecoSupervisionApp() {
             if (!saved) return false;
             await internalAccessQuery.refetch();
             return true;
+          }}
+          changeStatus={async (userId, nextStatus, reason) => {
+            const saved = await runSynced(
+              () => setInternalUserAccessStatus(supabase, activeOrganizationId, userId, nextStatus, reason),
+              nextStatus === "active" ? "Interne toegang opnieuw geactiveerd." : nextStatus === "suspended" ? "Interne toegang tijdelijk opgeschort." : "Interne toegang definitief ingetrokken.",
+            );
+            if (!saved) return false;
+            await internalAccessQuery.refetch();
+            return true;
+          }}
+        />
+      ) : null}
+
+      {modal === "notifications" ? (
+        <NotificationsModal
+          notifications={notificationQuery.data ?? []}
+          loading={notificationQuery.isLoading}
+          close={() => setModal(null)}
+          markRead={async (notificationId) => {
+            const saved = await runSynced(
+              () => markNotificationRead(supabase, notificationId),
+              "Melding als gelezen gemarkeerd.",
+            );
+            if (saved) await queryClient.invalidateQueries({ queryKey: ["project-notifications", selectedProject?.id] });
           }}
         />
       ) : null}
@@ -1826,6 +1887,27 @@ function SecondaryView({
 
 }
 
+function NotificationsModal({ notifications, loading, close, markRead }: { notifications: ProjectNotification[]; loading: boolean; close: () => void; markRead: (notificationId: string) => Promise<void> }) {
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+      <section className="modal notifications-modal" role="dialog" aria-modal="true" aria-labelledby="notifications-title">
+        <header className="modal-header"><div><h2 id="notifications-title">Meldingen en deadlines</h2><p>In-app herinneringen uit centrale acties, bevindingen en rapportreviews.</p></div><button className="modal-close" type="button" onClick={close} aria-label="Sluiten"><X size={18} /></button></header>
+        <div className="modal-body notification-list">
+          {loading ? <div className="empty-list-state"><Loader2 className="spin" size={22} /><strong>Meldingen laden</strong><span>Deadlines worden regelgestuurd gecontroleerd.</span></div> : null}
+          {!loading && notifications.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>Geen meldingen</strong><span>Er zijn geen openstaande persoonlijke herinneringen.</span></div> : null}
+          {notifications.map((notification) => (
+            <button className={`notification-row ${notification.read_at ? "read" : ""}`} type="button" key={notification.id} onClick={() => void markRead(notification.id)}>
+              <span className="notification-row-icon">{notification.notification_type.includes("overdue") || notification.notification_type.includes("critical") ? <AlertTriangle size={17} /> : <Bell size={17} />}</span>
+              <span><strong>{notification.title}</strong><span>{notification.body}</span><small>{notification.due_at ? `Deadline ${new Intl.DateTimeFormat("nl-NL", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(notification.due_at))}` : "Directe opvolging"}</small></span>
+              {!notification.read_at ? <i aria-label="Ongelezen" /> : null}
+            </button>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function UserAdminModal({
   close,
   organizationId,
@@ -1835,6 +1917,8 @@ function UserAdminModal({
   loadError,
   reload,
   invite,
+  currentUserId,
+  changeStatus,
 }: {
   close: () => void;
   organizationId: string;
@@ -1844,10 +1928,14 @@ function UserAdminModal({
   loadError: string;
   reload: () => void;
   invite: (answers: InternalUserInviteAnswers) => Promise<boolean>;
+  currentUserId: string;
+  changeStatus: (userId: string, nextStatus: "active" | "suspended" | "revoked", reason: string) => Promise<boolean>;
 }) {
   const [busy, setBusy] = useState(false);
   const [inviteError, setInviteError] = useState("");
   const [success, setSuccess] = useState("");
+  const [memberError, setMemberError] = useState("");
+  const [memberAction, setMemberAction] = useState<{ userId: string; nextStatus: "active" | "suspended" | "revoked"; reason: string } | null>(null);
   const { register, handleSubmit, control, reset, setValue, formState: { errors } } = useForm<InternalUserInviteAnswers>({
     resolver: zodResolver(internalUserInviteSchema),
     defaultValues: { organizationId, displayName: "", email: "", roleCode: "", projectId: "" },
@@ -1881,6 +1969,20 @@ function UserAdminModal({
     setBusy(false);
   };
 
+  const confirmMemberAction = async () => {
+    if (!memberAction || memberAction.reason.trim().length < 5) return;
+    setBusy(true);
+    setMemberError("");
+    const saved = await changeStatus(memberAction.userId, memberAction.nextStatus, memberAction.reason.trim());
+    if (saved) {
+      setMemberAction(null);
+      setSuccess("De toegangsstatus en reden zijn centraal opgeslagen en geaudit.");
+    } else {
+      setMemberError("De toegangsstatus kon niet worden gewijzigd.");
+    }
+    setBusy(false);
+  };
+
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal user-admin-modal" role="dialog" aria-modal="true" aria-labelledby="user-admin-title">
@@ -1907,6 +2009,7 @@ function UserAdminModal({
             <div className="member-list-heading"><span><h3 id="members-heading">Interne accounts</h3><p>{access?.members.length ?? 0} account(s) met organisatie- of projecttoegang</p></span>{loadError ? <button className="ghost-button" type="button" onClick={reload}>Opnieuw laden</button> : null}</div>
             {loading ? <div className="empty-list-state"><Loader2 className="spin" size={22} /><strong>Accounts laden</strong><span>Rollen en projecttoegang worden gecontroleerd.</span></div> : null}
             {loadError ? <p className="access-message error" role="alert">{loadError}</p> : null}
+            {memberError ? <p className="access-message error" role="alert">{memberError}</p> : null}
             {!loading && !loadError && access?.members.length === 0 ? <div className="empty-list-state"><Users size={22} /><strong>Nog geen accounts</strong><span>Verstuur hierboven de eerste interne uitnodiging.</span></div> : null}
             <div className="member-list">
               {access?.members.map((member) => {
@@ -1914,13 +2017,15 @@ function UserAdminModal({
                   ...member.organizationRoles.map((role) => role.name),
                   ...member.projectRoles.map((role) => `${role.roleName} · ${role.projectName}`),
                 ];
-                return (
-                  <article className="member-row" key={member.userId}>
+                const statusLabel = member.membershipStatus === "suspended" ? "Opgeschort" : member.membershipStatus === "revoked" ? "Ingetrokken" : member.accessStatus === "active" ? "Actief" : "Uitgenodigd";
+                return <div className="member-access-card" key={member.userId}>
+                  <article className="member-row">
                     <span className="avatar">{initials(member.displayName || member.email)}</span>
                     <span className="member-copy"><strong>{member.displayName || member.email}</strong><span>{member.email}</span><small>{roles.join(" · ") || "Nog geen rol"}</small></span>
-                    <span className={`task-status ${member.accessStatus === "active" ? "green" : ""}`}>{member.accessStatus === "active" ? "Actief" : "Uitgenodigd"}</span>
+                    <span className="member-access-controls"><span className={`task-status ${member.membershipStatus === "active" && member.accessStatus === "active" ? "green" : ""}`}>{statusLabel}</span>{member.userId === currentUserId ? <small>Eigen account</small> : member.membershipStatus !== "revoked" ? <span>{member.membershipStatus === "suspended" ? <button className="ghost-button" type="button" disabled={busy} onClick={() => setMemberAction({ userId: member.userId, nextStatus: "active", reason: "" })}>Heractiveren</button> : <button className="ghost-button" type="button" disabled={busy} onClick={() => setMemberAction({ userId: member.userId, nextStatus: "suspended", reason: "" })}>Opschorten</button>}<button className="ghost-button danger" type="button" disabled={busy} onClick={() => setMemberAction({ userId: member.userId, nextStatus: "revoked", reason: "" })}>Intrekken</button></span> : null}</span>
                   </article>
-                );
+                  {memberAction?.userId === member.userId ? <div className="member-status-form"><label className="form-field"><span>Reden voor {memberAction.nextStatus === "active" ? "heractivering" : memberAction.nextStatus === "suspended" ? "opschorting" : "definitieve intrekking"} *</span><textarea rows={2} value={memberAction.reason} onChange={(event) => setMemberAction({ ...memberAction, reason: event.target.value })} placeholder="Minimaal 5 tekens; wordt in de audittrail bewaard" /></label><div className="button-row"><button className="ghost-button" type="button" onClick={() => setMemberAction(null)}>Annuleren</button><button className="primary-button" type="button" disabled={busy || memberAction.reason.trim().length < 5} onClick={() => void confirmMemberAction()}>{busy ? <Loader2 className="spin" size={14} /> : <ShieldCheck size={14} />} Status bevestigen</button></div></div> : null}
+                </div>;
               })}
             </div>
           </section>

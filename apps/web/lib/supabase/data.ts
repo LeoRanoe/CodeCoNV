@@ -100,6 +100,18 @@ export type ActionUpdate = {
   created_at: string;
 };
 
+export type ProjectNotification = {
+  id: string;
+  notification_type: string;
+  title: string;
+  body: string;
+  source_type: string | null;
+  source_id: string | null;
+  due_at: string | null;
+  read_at: string | null;
+  created_at: string;
+};
+
 export type ProjectDaySnapshot = {
   report: Record<string, unknown> | null;
   startCheck: Record<string, unknown> | null;
@@ -274,6 +286,23 @@ export async function loadInternalAccess(
     roles: Array.isArray(data?.roles) ? data.roles : [],
     members: Array.isArray(data?.members) ? data.members : [],
   };
+}
+
+export async function setInternalUserAccessStatus(
+  client: SupabaseClient,
+  organizationId: string,
+  userId: string,
+  nextStatus: "active" | "suspended" | "revoked",
+  reason: string,
+) {
+  const result = await client.rpc("set_internal_user_access_status", {
+    p_organization_id: organizationId,
+    p_user_id: userId,
+    p_next_status: nextStatus,
+    p_reason: reason,
+  });
+  fail(result.error);
+  return result.data;
 }
 
 export async function inviteInternalUser(
@@ -657,6 +686,24 @@ export async function transitionProjectAction(
   });
   fail(result.error);
   return result.data as ProjectAction;
+}
+
+export async function loadProjectNotifications(client: SupabaseClient, projectId: string) {
+  const refresh = await client.rpc("refresh_project_notifications", { p_project_id: projectId });
+  fail(refresh.error);
+  const result = await client
+    .from("notifications")
+    .select("id,notification_type,title,body,source_type,source_id,due_at,read_at,created_at")
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  fail(result.error);
+  return (result.data ?? []) as ProjectNotification[];
+}
+
+export async function markNotificationRead(client: SupabaseClient, notificationId: string) {
+  const result = await client.from("notifications").update({ read_at: new Date().toISOString() }).eq("id", notificationId);
+  fail(result.error);
 }
 
 export async function getSession(client: SupabaseClient): Promise<Session | null> {

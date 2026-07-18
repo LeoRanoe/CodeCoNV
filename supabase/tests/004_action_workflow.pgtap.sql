@@ -1,5 +1,5 @@
 begin;
-set local search_path = extensions, public;
+set local search_path = extensions, pgtap, public;
 
 select plan(18);
 
