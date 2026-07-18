@@ -1,0 +1,3 @@
+-- Development seed data is intentionally empty.
+-- Use authenticated bootstrap calls and synthetic test fixtures so production
+-- identities, tokens and client data never enter version control.

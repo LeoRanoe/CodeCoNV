@@ -40,6 +40,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
 
 type NavKey = "vandaag" | "project" | "acties" | "rapporten" | "meer";
 type ModalKey = "quick" | "entry" | "report" | "attendance" | null;
@@ -245,6 +246,9 @@ export function CodecoSupervisionApp() {
   const [attendance, setAttendance] = useState<AttendanceRow[]>(initialAttendance);
   const [completedTodos, setCompletedTodos] = useState<number[]>([1]);
   const [toast, setToast] = useState("");
+  const storageStatus = isSupabaseConfigured
+    ? "Supabase geconfigureerd · demo-invoer nog niet gekoppeld"
+    : "Demosessie · niet centraal opgeslagen";
 
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
@@ -291,7 +295,7 @@ export function CodecoSupervisionApp() {
       time: currentTime(),
       kind: safeKind,
       title: description.trim(),
-      detail: `${entryTitles[selectedType]} centraal opgeslagen met project-, gebouw- en tijdcontext.`,
+      detail: `${entryTitles[selectedType]} in deze demosessie toegevoegd met project-, gebouw- en tijdcontext.`,
       location: `${selectedBuilding?.name ?? "Gebouw"} · ${location}`,
       person: "Jennifer G.",
       badge: isFinding ? priority : "Opgeslagen",
@@ -299,7 +303,7 @@ export function CodecoSupervisionApp() {
     };
     setEntries((current) => [newEntry, ...current]);
     setModal(null);
-    setToast(`${entryTitles[selectedType]} is opgeslagen en in het dagrapport opgenomen.`);
+    setToast(`${entryTitles[selectedType]} is alleen in deze demosessie aan het dagrapport toegevoegd.`);
   };
 
   const toggleTodo = (id: number) => {
@@ -413,7 +417,7 @@ export function CodecoSupervisionApp() {
             <strong>{buildingName}</strong>
           </div>
           <div className="top-actions">
-            <span className="online-state"><span className="online-dot" /> <span>Alles opgeslagen</span></span>
+            <span className="storage-state" title={storageStatus}><AlertTriangle size={14} /> <span>{storageStatus}</span></span>
             <button className="icon-button" type="button" aria-label="Zoeken"><Search size={17} /></button>
             <button className="icon-button" type="button" aria-label="Meldingen">
               <Bell size={17} />
@@ -524,7 +528,7 @@ export function CodecoSupervisionApp() {
           close={() => setModal(null)}
           save={() => {
             setModal(null);
-            setToast(`${attendanceTotal} aanwezigen zijn opgenomen in het dagrapport.`);
+            setToast(`${attendanceTotal} aanwezigen zijn alleen in deze demosessie aan het dagrapport toegevoegd.`);
           }}
         />
       ) : null}
@@ -563,6 +567,10 @@ function ContextSelection({
       </header>
 
       <main className="context-content">
+        <div className="data-mode-notice" role="status">
+          <AlertTriangle size={17} />
+          <span><strong>Demosessie</strong> Wijzigingen worden nog niet centraal bewaard. Supabase is voorbereid, maar nog niet aan deze interface gekoppeld.</span>
+        </div>
         <div className="context-steps" aria-label="Werkcontext kiezen">
           <span className="active"><strong>1</strong> Project</span>
           <ChevronRight size={14} />

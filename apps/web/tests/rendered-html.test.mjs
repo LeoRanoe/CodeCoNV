@@ -51,9 +51,52 @@ test("keeps the MVP interaction and accessibility hooks in source", async () => 
   assert.match(app, /Projectstart openen/);
   assert.match(app, /Aanwezigheid vandaag/);
   assert.match(app, /setEntries/);
+  assert.match(app, /Demosessie · niet centraal opgeslagen/);
+  assert.doesNotMatch(app, /Alles opgeslagen|centraal opgeslagen met project-/);
   assert.match(page, /CodecoSupervisionApp/);
   assert.match(layout, /<html lang="nl">/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
+});
+
+test("keeps the online-first Supabase foundation enforceable", async () => {
+  const [migration, supabaseClient, envExample] = await Promise.all([
+    readFile(
+      new URL("../../../supabase/migrations/202607180001_core_supervision_foundation.sql", import.meta.url),
+      "utf8",
+    ),
+    readFile(new URL("../lib/supabase/client.ts", import.meta.url), "utf8"),
+    readFile(new URL("../.env.example", import.meta.url), "utf8"),
+  ]);
+
+  for (const table of [
+    "organizations",
+    "projects",
+    "buildings",
+    "day_reports",
+    "attendance_entries",
+    "site_registrations",
+    "actions",
+    "report_versions",
+    "audit_events",
+  ]) {
+    assert.match(migration, new RegExp(`alter table public\\.${table} enable row level security;`));
+  }
+
+  assert.match(migration, /unique \(project_id, report_date\)/);
+  assert.match(migration, /check \(not is_physical or building_id is not null\)/);
+  assert.match(migration, /\(select auth\.uid\(\)\)/);
+  assert.match(migration, /create trigger audit_events_immutable/);
+  assert.match(migration, /create trigger report_versions_immutable/);
+  assert.match(migration, /create trigger day_reports_status_guard/);
+  assert.match(migration, /create trigger actions_status_guard/);
+  assert.match(migration, /idempotency_key/);
+  assert.match(supabaseClient, /getSupabaseBrowserClient/);
+  assert.match(supabaseClient, /if \(!isSupabaseConfigured\) return null/);
+  const configuredEnvKeys = envExample
+    .split("\n")
+    .filter((line) => line.trim() && !line.trim().startsWith("#"))
+    .join("\n");
+  assert.doesNotMatch(configuredEnvKeys, /SERVICE_ROLE|GOOGLE.*TOKEN/i);
 });
 
 test("tracks product-plan and CODECO compliance explicitly", async () => {
