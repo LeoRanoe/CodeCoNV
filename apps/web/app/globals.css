@@ -2689,6 +2689,12 @@ textarea:focus-visible {
   animation: toast-in 180ms ease-out;
 }
 
+.toast.error {
+  border-color: #efb7b0;
+  background: var(--red-soft);
+  color: #8f2e25;
+}
+
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -3464,6 +3470,37 @@ textarea:focus-visible {
   margin-top: 4px;
 }
 
+.auth-help-button {
+  justify-self: center;
+  padding: 3px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.auth-help-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.system-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.system-actions .primary-button,
+.system-actions .ghost-button {
+  margin: 0;
+}
+
 .access-message {
   margin: 0;
   padding: 10px 12px;
@@ -3594,6 +3631,12 @@ textarea:focus-visible {
   border-color: #ead7ab;
   background: #fff9eb;
   color: #76551a;
+}
+
+.operation-alert.success {
+  border-color: #b8dfd2;
+  background: #effaf6;
+  color: #176d67;
 }
 
 .operation-tabs {

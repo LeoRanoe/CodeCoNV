@@ -1541,3 +1541,13 @@ Onderstaande besluiten zijn later rechtstreeks door de klant toegevoegd en hebbe
 - Iedere probleemmarker maakt in één databasetransactie een formele bevinding/NCR en een traceerbare koppeling met het originele private beeld. Een marker mag nooit alleen visuele decoratie zijn.
 - De supervisor bepaalt type, ernst, omschrijving en verantwoordelijke partij. Er is geen autonome AI-detectie, -classificatie of -afsluiting.
 - Beeldbytes blijven uitsluitend in de private Google Drive-opslag achter de JWT/RLS-gecontroleerde gateway; Postgres bewaart metadata, coördinaten, relaties en auditgegevens.
+
+### 22.4 Private Vercel Blob-opslag en dagelijkse back-up
+
+- Dit besluit van 19-07-2026 vervangt alle eerdere uitvoeringskeuzes voor Google Drive en de Cloudflare Worker, inclusief de laatste bullet van paragraaf 22.3.
+- Bestandsbytes en gecomprimeerde JSON-back-ups staan uitsluitend in een private Vercel Blob-store. Postgres blijft de centrale bron voor metadata, relaties, rechten en auditgegevens.
+- Uploads gebruiken een kort geldige, pad- en bestandstypegebonden URL. Download en voltooiingscontrole lopen via dezelfde Next.js-app en controleren steeds het actuele Supabase-token en de projectrechten.
+- Een Vercel Cron-taak start dagelijks om 07:00 UTC, gelijk aan 03:00 in Suriname, een idempotente organisatieback-up en ververst in-appmeldingen voor deadlines en rapportreviews.
+- Iedere back-up wordt gecomprimeerd, na opslag volledig teruggelezen, met SHA-256 gecontroleerd en inhoudelijk gevalideerd aan de hand van schema-, organisatie-, run- en recordaantallen.
+- De automatische retentie bewaart 7 dagelijkse, 4 wekelijkse en 3 maandelijkse herstelpunten. Minimaal maandelijks wordt een restore-integriteitscontrole geregistreerd.
+- Een extra kopie buiten hetzelfde Vercel-account en een volledige herstelproef in een tijdelijke database blijven afzonderlijke operationele beheertaken; de applicatie claimt deze niet automatisch te hebben uitgevoerd.

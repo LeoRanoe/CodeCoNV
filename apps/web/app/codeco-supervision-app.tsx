@@ -361,6 +361,9 @@ export function CodecoSupervisionApp() {
   const supabase = getSupabaseBrowserClient();
   const queryClient = useQueryClient();
   const [session, setSession] = useState<Session | null>(null);
+  const [passwordRecovery, setPasswordRecovery] = useState(
+    () => typeof window !== "undefined" && window.location.hash.includes("type=recovery"),
+  );
   const [authReady, setAuthReady] = useState(!isSupabaseConfigured);
   const [syncState, setSyncState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [isOnline, setIsOnline] = useState(true);
@@ -441,10 +444,12 @@ export function CodecoSupervisionApp() {
     }).catch(() => {
       if (active) setAuthReady(true);
     });
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === "PASSWORD_RECOVERY") setPasswordRecovery(true);
       setSession(nextSession);
       setAuthReady(true);
       if (!nextSession) {
+        setPasswordRecovery(false);
         setSelectedProject(null);
         setSelectedBuilding(null);
         setWorkspaceStage("projects");
@@ -474,6 +479,45 @@ export function CodecoSupervisionApp() {
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
   }, []);
+
+  useEffect(() => {
+    if (!modal) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
+    const focusableSelector = 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const focusDialog = window.requestAnimationFrame(() => {
+      if (!dialog || dialog.contains(document.activeElement)) return;
+      dialog.querySelector<HTMLElement>(focusableSelector)?.focus();
+    });
+    const keepFocusInside = (event: KeyboardEvent) => {
+      if (event.key !== "Tab" || !dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector))
+        .filter((element) => element.offsetParent !== null);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", keepFocusInside);
+    return () => {
+      window.cancelAnimationFrame(focusDialog);
+      document.removeEventListener("keydown", keepFocusInside);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus();
+    };
+  }, [modal]);
 
   useEffect(() => {
     if (!toast) return;
@@ -692,9 +736,10 @@ export function CodecoSupervisionApp() {
     return <AuthScreen client={supabase} />;
   }
 
-  if (session.user.user_metadata?.must_set_password === true) {
+  if (passwordRecovery || session.user.user_metadata?.must_set_password === true) {
     return (
       <PasswordSetupScreen
+        mode={passwordRecovery ? "recovery" : "invitation"}
         email={session.user.email ?? ""}
         save={async (answers) => {
           const result = await supabase.auth.updateUser({
@@ -702,6 +747,8 @@ export function CodecoSupervisionApp() {
             data: { must_set_password: false },
           });
           if (result.error) throw result.error;
+          setPasswordRecovery(false);
+          window.history.replaceState(null, "", window.location.pathname);
           setSession((current) => current ? { ...current, user: result.data.user } : current);
         }}
         signOut={() => void supabase.auth.signOut()}
@@ -1171,7 +1218,7 @@ export function CodecoSupervisionApp() {
         />
       ) : null}
 
-      {toast ? <div className="toast" role="status"><CheckCircle2 size={18} /> {toast}</div> : null}
+      {toast ? <div className={`toast ${syncState === "error" ? "error" : ""}`} role={syncState === "error" ? "alert" : "status"} aria-live={syncState === "error" ? "assertive" : "polite"}>{syncState === "error" ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />} {toast}</div> : null}
     </div>
   );
 }
@@ -1206,7 +1253,8 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
   const localizedAuthSchema = useMemo(() => createAuthSchema(language), [language]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const { register, handleSubmit, formState: { errors } } = useForm<AuthAnswers>({
+  const [resetSent, setResetSent] = useState(false);
+  const { register, handleSubmit, getValues, formState: { errors } } = useForm<AuthAnswers>({
     resolver: zodResolver(localizedAuthSchema),
     defaultValues: { email: "", password: "" },
   });
@@ -1225,6 +1273,29 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
     }
   };
 
+  const sendPasswordReset = async () => {
+    const email = getValues("email").trim();
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      setError(text("Enter your email address first.", "Vul eerst je e-mailadres in."));
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setResetSent(false);
+    try {
+      const result = await client.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+      if (result.error) throw result.error;
+      setResetSent(true);
+    } catch (caught) {
+      const raw = caught instanceof Error ? caught.message : "";
+      setError(/rate limit/i.test(raw)
+        ? text("Too many recovery emails were requested. Try again later.", "Er zijn te veel herstelmails aangevraagd. Probeer het later opnieuw.")
+        : text("The recovery email could not be sent. Try again.", "De herstelmail kon niet worden verzonden. Probeer opnieuw."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="access-shell">
       <section className="access-card auth-card">
@@ -1238,7 +1309,9 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
           <label className="form-field"><span>{text("Email address", "E-mailadres")}</span><input type="email" autoComplete="email" {...register("email")} />{errors.email ? <small className="field-error">{errors.email.message}</small> : null}</label>
           <label className="form-field"><span>{text("Password", "Wachtwoord")}</span><input type="password" autoComplete="current-password" {...register("password")} />{errors.password ? <small className="field-error">{errors.password.message}</small> : null}</label>
           {error ? <p className="access-message error" role="alert">{error}</p> : null}
+          {resetSent ? <p className="access-message success" role="status">{text("If this account exists, a secure recovery link has been sent. Check your inbox and spam folder.", "Als dit account bestaat, is een beveiligde herstellink verstuurd. Controleer je inbox en spammap.")}</p> : null}
           <button className="primary-button access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <LogIn size={16} />}{text("Sign in securely", "Veilig aanmelden")}</button>
+          <button className="auth-help-button" type="button" disabled={busy} onClick={() => void sendPasswordReset()}>{text("Forgot your password?", "Wachtwoord vergeten?")}</button>
         </form>
         <p className="security-note"><ShieldCheck size={14} /> {text("No account? Ask your CODECO administrator for a personal invitation.", "Geen account? Vraag je CODECO-beheerder om een persoonlijke uitnodiging.")}</p>
       </section>
@@ -1247,10 +1320,12 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
 }
 
 function PasswordSetupScreen({
+  mode,
   email,
   save,
   signOut,
 }: {
+  mode: "invitation" | "recovery";
   email: string;
   save: (answers: PasswordSetupAnswers) => Promise<void>;
   signOut: () => void;
@@ -1277,9 +1352,9 @@ function PasswordSetupScreen({
   return (
     <div className="access-shell setup-shell">
       <section className="access-card setup-card">
-        <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={text("Internal invitation", "Interne uitnodiging")} /></div><LanguageSwitcher /><button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button></div>
+        <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={mode === "recovery" ? text("Account recovery", "Accountherstel") : text("Internal invitation", "Interne uitnodiging")} /></div><LanguageSwitcher /><button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button></div>
         <span className="state-icon"><KeyRound size={26} /></span>
-        <p className="eyebrow">{text("First sign-in", "Eerste aanmelding")}</p><h1>{text("Set your password", "Stel je wachtwoord in")}</h1><p>{text("The invitation for", "De uitnodiging voor")} <strong>{email}</strong> {text("has been verified. Choose a personal password of at least 12 characters.", "is geverifieerd. Kies nu een persoonlijk wachtwoord van minimaal 12 tekens.")}</p>
+        <p className="eyebrow">{mode === "recovery" ? text("Secure recovery", "Veilig herstel") : text("First sign-in", "Eerste aanmelding")}</p><h1>{mode === "recovery" ? text("Choose a new password", "Kies een nieuw wachtwoord") : text("Set your password", "Stel je wachtwoord in")}</h1><p>{mode === "recovery" ? <>{text("The recovery link for", "De herstellink voor")} <strong>{email}</strong> {text("has been verified. Choose a new personal password of at least 12 characters.", "is geverifieerd. Kies een nieuw persoonlijk wachtwoord van minimaal 12 tekens.")}</> : <>{text("The invitation for", "De uitnodiging voor")} <strong>{email}</strong> {text("has been verified. Choose a personal password of at least 12 characters.", "is geverifieerd. Kies nu een persoonlijk wachtwoord van minimaal 12 tekens.")}</>}</p>
         <form className="access-form setup-form" onSubmit={handleSubmit(submit)} noValidate>
           <label className="form-field"><span>{text("New password", "Nieuw wachtwoord")}</span><input type="password" autoComplete="new-password" {...register("password")} />{errors.password ? <small className="field-error">{errors.password.message}</small> : null}</label>
           <label className="form-field"><span>{text("Repeat password", "Herhaal wachtwoord")}</span><input type="password" autoComplete="new-password" {...register("passwordConfirmation")} />{errors.passwordConfirmation ? <small className="field-error">{errors.passwordConfirmation.message}</small> : null}</label>

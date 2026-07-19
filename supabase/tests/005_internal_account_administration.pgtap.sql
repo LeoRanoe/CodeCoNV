@@ -31,17 +31,17 @@ select is(
   'the checklist distinguishes blocking from optional work'
 );
 select throws_ok(
-  $$select public.update_production_readiness_item((select id from public.production_readiness_items where code = 'ACC-GOOGLE-STORAGE'), 'done', '')$$,
+  $$select public.update_production_readiness_item((select id from public.production_readiness_items where code = 'ACC-VERCEL-STORAGE'), 'done', '')$$,
   '22023',
   'Completion evidence is required',
   'a blocking item cannot be completed without evidence'
 );
 select lives_ok(
-  $$select public.update_production_readiness_item((select id from public.production_readiness_items where code = 'ACC-GOOGLE-STORAGE'), 'done', 'Ticket CODECO-42, gecontroleerd door beheerder')$$,
+  $$select public.update_production_readiness_item((select id from public.production_readiness_items where code = 'ACC-VERCEL-STORAGE'), 'done', 'Ticket CODECO-42, gecontroleerd door beheerder')$$,
   'an organization administrator can complete a readiness item with evidence'
 );
 select ok(
-  (select status = 'done' and completed_by = '00000000-0000-0000-0000-0000000000c1'::uuid and completed_at is not null and evidence = 'Ticket CODECO-42, gecontroleerd door beheerder' from public.production_readiness_items where code = 'ACC-GOOGLE-STORAGE'),
+  (select status = 'done' and completed_by = '00000000-0000-0000-0000-0000000000c1'::uuid and completed_at is not null and evidence = 'Ticket CODECO-42, gecontroleerd door beheerder' from public.production_readiness_items where code = 'ACC-VERCEL-STORAGE'),
   'completion status, actor, timestamp and evidence are retained together'
 );
 create temporary table readiness_test_item as

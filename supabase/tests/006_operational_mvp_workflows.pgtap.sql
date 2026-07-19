@@ -244,7 +244,7 @@ select ok(
     (select id from public.organizations where slug = 'codeco-operations'),
     (select id from public.projects where code = 'OPS-001'),
     'ops-backup-idempotency'
-  ) ->> 'schema_version') = '202607180020'),
+  ) ->> 'schema_version') = '202607190003'),
   'manual export contains the current schema version'
 );
 select ok((select (record_counts ->> 'visual_captures')::integer = 2 and (record_counts ->> 'visual_annotations')::integer = 2 from public.backup_runs where run_type = 'manual'), 'manual backup includes visual captures and annotations');

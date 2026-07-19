@@ -31,6 +31,12 @@ export async function generateMetadata(): Promise<Metadata> {
       template: "%s | CODECO Supervisie",
     },
     description,
+    manifest: "/manifest.webmanifest",
+    icons: {
+      icon: [{ url: "/codeco-logo.png", type: "image/png" }],
+      shortcut: "/codeco-logo.png",
+      apple: "/codeco-logo.png",
+    },
     openGraph: {
       type: "website",
       locale: "en_US",

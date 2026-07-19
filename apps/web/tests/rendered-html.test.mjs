@@ -53,7 +53,25 @@ test("server-renders the secure CODECO entry point", async () => {
   assert.match(html, /CODECO Construction Designers &amp; Consultants N\.V\./);
   assert.match(html, /Opening secure workspace/);
   assert.match(html, /session and project access/i);
+  assert.match(html, /manifest\.webmanifest/i);
+  assert.match(html, /rel="icon"[^>]+codeco-logo\.png/i);
   assert.doesNotMatch(html, /Sitezicht|codex-preview|Building your site|react-loading-skeleton/i);
+});
+
+test("serves branded recovery pages and install metadata", async () => {
+  const missing = await fetch(`${baseUrl}/route-die-niet-bestaat-codeco-qa`);
+  assert.equal(missing.status, 404);
+  const missingHtml = await missing.text();
+  assert.match(missingHtml, /Page not found \/ Pagina niet gevonden/i);
+  assert.match(missingHtml, /codeco-logo\.png/i);
+
+  const manifestResponse = await fetch(`${baseUrl}/manifest.webmanifest`);
+  assert.equal(manifestResponse.status, 200);
+  assert.match(manifestResponse.headers.get("content-type") ?? "", /^application\/manifest\+json\b/i);
+  const manifest = await manifestResponse.json();
+  assert.equal(manifest.short_name, "CODECO");
+  assert.equal(manifest.start_url, "/");
+  assert.equal(manifest.icons[0].src, "/codeco-logo.png");
 });
 
 test("keeps the central post-MVP interaction and accessibility hooks in source", async () => {
@@ -78,6 +96,10 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
 
   assert.match(app, /aria-modal="true"/);
   assert.match(app, /event\.key === "Escape"/);
+  assert.match(app, /PASSWORD_RECOVERY/);
+  assert.match(app, /resetPasswordForEmail/);
+  assert.match(app, /keepFocusInside/);
+  assert.match(app, /aria-live=/);
   assert.match(app, /timeZone: "America\/Paramaribo"/);
   assert.match(app, /WorkspaceStage/);
   assert.match(app, /Projectstart invullen/);
@@ -179,8 +201,36 @@ test("keeps standard photo and optional 360 annotation production paths", async 
   assert.match(vercel, /"framework": "nextjs"/);
 });
 
+test("keeps scheduled backups, retention and daily notification automation enforceable", async () => {
+  const [backupServer, cronRoute, migration, vercel, envExample] = await Promise.all([
+    readFile(new URL("../lib/backups/server.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/cron/daily/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202607190003_automated_vercel_blob_backups.sql", import.meta.url), "utf8"),
+    readFile(new URL("../vercel.json", import.meta.url), "utf8"),
+    readFile(new URL("../.env.example", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(backupServer, /access: "private"/);
+  assert.match(backupServer, /await get\(pathname/);
+  assert.match(backupServer, /BACKUP_BLOB_CHECKSUM_MISMATCH/);
+  assert.match(backupServer, /sorted\.slice\(0, 7\)/);
+  assert.match(backupServer, /weeks\.size >= 4/);
+  assert.match(backupServer, /months\.size >= 3/);
+  assert.match(cronRoute, /timingSafeEqual/);
+  assert.match(cronRoute, /runScheduledOrganizationBackup/);
+  assert.match(cronRoute, /refresh_all_project_notifications/);
+  assert.match(cronRoute, /record_scheduled_backup_failure/);
+  assert.match(migration, /build_scheduled_backup_export/);
+  assert.match(migration, /build_organization_backup_manifest/);
+  assert.match(migration, /retention_tier/);
+  assert.match(migration, /service_role/);
+  assert.match(migration, /Automatische back-up mislukt/);
+  assert.match(vercel, /"schedule": "0 7 \* \* \*"/);
+  assert.match(envExample, /^CRON_SECRET=/m);
+});
+
 test("keeps the online-first Supabase foundation enforceable", async () => {
-  const [migration, questionnaireMigration, liveFlowMigration, actionMigration, accountMigration, readinessMigration, blobMigration, supabaseClient, envExample, supabaseConfig] = await Promise.all([
+  const [migration, questionnaireMigration, liveFlowMigration, actionMigration, accountMigration, readinessMigration, blobMigration, blobReadinessMigration, supabaseClient, envExample, supabaseConfig] = await Promise.all([
     readFile(
       new URL("../../../supabase/migrations/202607180001_core_supervision_foundation.sql", import.meta.url),
       "utf8",
@@ -207,6 +257,10 @@ test("keeps the online-first Supabase foundation enforceable", async () => {
     ),
     readFile(
       new URL("../../../supabase/migrations/202607190001_vercel_blob_storage.sql", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../../../supabase/migrations/202607190002_refresh_vercel_blob_readiness.sql", import.meta.url),
       "utf8",
     ),
     readFile(new URL("../lib/supabase/client.ts", import.meta.url), "utf8"),
@@ -263,6 +317,10 @@ test("keeps the online-first Supabase foundation enforceable", async () => {
   assert.match(blobMigration, /can_manage_project_files/);
   assert.match(blobMigration, /vercel_blob/);
   assert.match(blobMigration, /blob_upload/);
+  assert.match(blobReadinessMigration, /create or replace function app_private\.seed_production_readiness_items/);
+  assert.match(blobReadinessMigration, /ACC-VERCEL-STORAGE/);
+  assert.match(blobReadinessMigration, /CFG-BLOB-ROUTES/);
+  assert.match(blobReadinessMigration, /OPS-BLOB-QUOTA/);
   assert.match(supabaseConfig, /\[auth\][\s\S]*enable_signup = false/);
   assert.match(supabaseConfig, /\[auth\.email\][\s\S]*enable_signup = true/);
   const configuredEnvKeys = envExample

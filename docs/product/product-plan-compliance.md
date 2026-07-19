@@ -1,6 +1,6 @@
 # Productplan-compliance — CODECO Supervisie
 
-Laatst bijgewerkt: 18-07-2026  
+Laatst bijgewerkt: 19-07-2026
 Bron: `docs/productplan-constructiesupervisie-webapp.md`  
 Klantverfijning: `docs/product/client-profile-codeco.md`
 Klantbrief dagrapport: `docs/product/client-day-report-brief.md`
@@ -59,15 +59,15 @@ Bij iedere functionele wijziging worden de betrokken regels en de verificatie in
 | MVP-07 | Inspecties met configureerbare checklists | Gedeeltelijk | Beheerders publiceren atomisch projectspecifieke templates; supervisors beantwoorden verplichte items en afronding creëert automatisch bevindingen bij afkeur. Numerieke meetvelden, herinspectie-UI en klantdefinitieve formulieren volgen |
 | MVP-08 | Bevinding → actie → herstel → verificatie | Gedeeltelijk | Gestructureerde NCR/bevindingen hebben nummer, ernst, partij, termijn, herstelmaatregel, bewijsbeschrijving en onafhankelijke verificatie met immutable updates. Herstelbewijs kan in private Vercel Blob worden opgeslagen en centraal worden gekoppeld |
 | MVP-09 | Basis-HSE en incident/near miss | Gedeeltelijk | Incident, near miss, onveilige handeling/conditie en toolbox zijn formeel registreerbaar; vertrouwelijkheid, onmiddellijke maatregel en kritieke escalatiemelding worden afgedwongen. Onderzoek/afsluitflow en definitieve klantchecklist volgen |
-| MVP-10 | Actiepunten en herinneringen | Gedeeltelijk | Acties en bevindingen hebben deadlines, statusflow, realtime updates en gededupliceerde in-appmeldingen voor naderende/vervallen termijnen en kritieke HSE. Geplande externe meldingen en bulkbeheer ontbreken |
-| MVP-11 | Foto's en bijlagen | Conform | Gewone foto's zijn standaard en 360°-panorama's optioneel. Private Blob-upload, geauthenticeerde weergave, exacte 2D-/sferische markers, tours en atomisch gekoppelde formele bevindingen zijn gebouwd; productie vereist alleen een gekoppelde private Blob-store |
+| MVP-10 | Actiepunten en herinneringen | Gedeeltelijk | Acties en bevindingen hebben deadlines, statusflow, realtime updates en gededupliceerde in-appmeldingen. De dagelijkse taak voor deadlines en reviewverzoeken is gebouwd; productie-uitrol van de bijbehorende migratie, externe meldingen en bulkbeheer ontbreken nog |
+| MVP-11 | Foto's en bijlagen | Conform | Gewone foto's zijn standaard en 360°-panorama's optioneel. De productie-Blob-store, private upload/download, exacte 2D-/sferische markers, tours en atomisch gekoppelde formele bevindingen zijn actief |
 | MVP-12 | Vertraging en handmatig weer | Gedeeltelijk | Projectstart en dagafsluiting vragen werkelijk weer; vertraging vraagt oorzaak en uren. Automatische weerbron en tijdblokberekening ontbreken |
 | MVP-13 | Review, PDF, ondertekening en revisies | Gedeeltelijk | Formele review/retour, immutable freeze+checksum, geauthenticeerde append-only ondertekenverklaringen, distributieregistratie en revisies met behoud van origineel werken. Juridisch ondertekenniveau en automatische verzending zijn klantbesluiten; PDF uit frozen snapshot volgt |
 | MVP-14 | Basisdashboard en registers | Gedeeltelijk | KPI's en moduleoverzicht werken; centrale registers zijn beschikbaar voor materieel, levering, proef, wijziging, vertraging, communicatie, risico, documenten, tekeningen, RFI, submittal, instructie, overleg, correspondentie, kosten en declaraties. Uitgebreide filters/trends volgen |
-| MVP-15 | Audit, rechten en back-up | Gedeeltelijk | RLS, append-only audit, formele recordbeveiliging, 260 pgTAP-tests, een centrale productiegereedheidschecklist, handmatige JSON-export inclusief visueel bewijs, SHA-verificatie en restore-dry-run zijn aanwezig. Een dagelijkse offsite back-up naar een afzonderlijke herstelbestemming moet nog worden ingericht |
+| MVP-15 | Audit, rechten en back-up | Gedeeltelijk | RLS, append-only audit, formele recordbeveiliging, 283 pgTAP-tests, productiegereedheidschecklist en handmatige export zijn aanwezig. Dagelijkse gecomprimeerde Blob-back-up, readback, SHA-verificatie, retentie en maandelijkse integriteits-dry-run zijn gebouwd; productie-uitrol en een onafhankelijke off-accountkopie blijven open |
 | MVP-16 | Online verwerking, idempotency en hervatbare uploads | Gedeeltelijk | Online mutaties gebruiken unieke keys en atomische RPC's; uploads gaan rechtstreeks naar Vercel Blob via kort geldige, beperkte upload-URL's met voortgang. Automatisch hervatten na een volledige browser- of netwerkonderbreking is nog niet toegevoegd |
 | MVP-17 | Beheer van secties, checklists, categorieën, deadlines en huisstijl | Gedeeltelijk | Beheer-UI werkt voor de auditbare productiegereedheidschecklist, projectregels, rapportprefix, herinneringstermijnen, bestandslimiet, locatiehiërarchie, partijen en gepubliceerde checklists. Rapportsecties, categorieën en huisstijlbeheer volgen |
-| MVP-18 | Dagelijkse JSON-back-up en hersteltest | Geblokkeerd | Beheerders kunnen een centrale JSON-export maken, SHA-256 verifiëren, downloaden en een restore-dry-run auditen. Dagplanning, retentie en opslag in een afzonderlijke herstelomgeving moeten nog worden ingericht |
+| MVP-18 | Dagelijkse JSON-back-up en hersteltest | Gedeeltelijk | De Vercel Cron-route, volledige organisatie-export, gzip, Blob-readback, SHA-256, inhoudscontrole en 7-dag/4-week/3-maand-retentie zijn gebouwd en getest. De productiemigratie, eerste productieback-up, onafhankelijke kopie en volledige herstelproef in een tijdelijke database zijn nog niet aantoonbaar afgerond |
 
 ## CODECO-specifieke eisen
 
@@ -75,8 +75,8 @@ Bij iedere functionele wijziging worden de betrokken regels en de verificatie in
 | --- | --- | --- | --- |
 | CC-01 | Projectspecifieke checklists | Gedeeltelijk | Beheerbare projectsjablonen en volledige verplichte checklistuitvoering werken, inclusief automatische bevinding bij afkeur; definitieve CODECO-vragen en meettypes moeten nog worden bevestigd |
 | CC-02 | Dagelijkse, wekelijkse en tweewekelijkse rapporten | Gedeeltelijk | Dagrapportprototype volgt nu de 19 klantonderdelen; week/2-weekrapport nog niet |
-| CC-03 | Rapporten met foto's en grafieken | Gedeeltelijk | Professioneel PDF-concept en KPI-presentatie werken; echte Drive-foto's en genereren uit frozen snapshot volgen |
-| CC-04 | Planning en deadlines bewaken | Gedeeltelijk | Actie- en bevindingstermijnen plus in-appescalatie werken; externe planning en geplande notificatiejob ontbreken |
+| CC-03 | Rapporten met foto's en grafieken | Gedeeltelijk | Professionele PDF uit de frozen snapshot en KPI-presentatie werken; private Blob-foto's volledig in de formele PDF opnemen volgt |
+| CC-04 | Planning en deadlines bewaken | Gedeeltelijk | Actie- en bevindingstermijnen plus in-appescalatie werken; de dagelijkse notificatiejob is gebouwd maar wacht op productiemigratie. Een externe planningskoppeling ontbreekt |
 | CC-05 | Kosten en budgetten bewaken | Gedeeltelijk | Kostenrecords kunnen projectspecifiek met gestructureerde details worden geregistreerd; budgettotalen en goedkeuringsflow wachten op CODECO-proceskeuze |
 | CC-06 | Aannemersdeclaraties controleren | Gedeeltelijk | Declaraties hebben een projectspecifiek register; controle-, bewijs- en goedkeuringsflow wachten op CODECO-proceskeuze |
 | CC-07 | Meer-/minderwerk met bewijs en besluit | Gedeeltelijk | Dagafsluiting vraagt wijzigingen/meerwerk; formele bewijs-, prijs-, besluit- en goedkeuringsflow ontbreekt |
@@ -92,10 +92,10 @@ Bij iedere functionele wijziging worden de betrokken regels en de verificatie in
 | CDR-03 | Aanwezigheid en partijen | Gedeeltelijk | Aanwezigheidsmodule slaat partijen, disciplines, diensten en aantallen centraal op en hergebruikt die in het rapport; bezoekersregister ontbreekt |
 | CDR-04 | Werkzaamheden en voortgang | Gedeeltelijk | Gepland en uitgevoerd werk plus voortgangspercentage worden gevraagd; planningkoppeling ontbreekt |
 | CDR-05 | Inspecties en controles | Gedeeltelijk | Volledige gepubliceerde checklistdetails, antwoorden, resultaat en automatische afwijkingen worden centraal opgeslagen; meettypes en PDF-weergave volgen |
-| CDR-06 | Kwaliteitsbevindingen | Gedeeltelijk | Formele NCR/bevinding met ernst, partij, termijn, herstel, bewijsbeschrijving en verificatiestatus werkt; Drive-bewijs is geblokkeerd |
+| CDR-06 | Kwaliteitsbevindingen | Gedeeltelijk | Formele NCR/bevinding met ernst, partij, termijn, herstel, bewijsbeschrijving en verificatiestatus werkt; private Blob-bewijsbestanden en beeldmarkers kunnen traceerbaar worden gekoppeld |
 | CDR-07 | HSE, incidenten en near misses | Gedeeltelijk | Formele HSE-registratie met type, ernst, directe maatregel, vertrouwelijkheid en kritieke escalatie werkt; onderzoek/afsluiting volgt |
 | CDR-08 | Materieel en machines | Gedeeltelijk | Dagvraag en centraal materieelregister zijn beschikbaar; inzeturen, keuring en stilstandhistorie volgen |
-| CDR-09 | Materialen en leveringen | Gedeeltelijk | Dagvraag en centraal leveringsregister zijn beschikbaar; definitieve ontvangstcontrole en Drive-documentkoppeling volgen |
+| CDR-09 | Materialen en leveringen | Gedeeltelijk | Dagvraag en centraal leveringsregister zijn beschikbaar en private Blob-documenten kunnen centraal worden gekoppeld; een gespecialiseerde ontvangstcontrole volgt |
 | CDR-10 | Proeven en metingen | Gedeeltelijk | Dagvraag, proefregister en checklistbasis zijn beschikbaar; gespecialiseerde meetwaarden, toleranties en certificaatkoppeling volgen |
 | CDR-11 | Wijzigingen en meer-/minderwerk | Gedeeltelijk | Dagvraag en centraal wijzigingsregister werken; bewijs-, prijs-, besluit- en goedkeuringsflow volgt |
 | CDR-12 | Vertragingen | Gedeeltelijk | Oorzaak en duur worden conditioneel gevraagd en een centraal vertragingsregister bestaat; gevolg- en claimanalyse ontbreken |
@@ -103,8 +103,8 @@ Bij iedere functionele wijziging worden de betrokken regels en de verificatie in
 | CDR-14 | Openstaande acties | Gedeeltelijk | Acties hebben eigenaar/partij, deadline, status, realtime updates en vervalmeldingen; expliciete dagoverdracht volgt |
 | CDR-15 | Risico's en maatregelen | Gedeeltelijk | Start-/eindvragen en een centraal risicoregister werken; kans×impactmatrix en maatregelworkflow volgen |
 | CDR-16 | Planning volgende werkdag | Gedeeltelijk | “Wat staat morgen gepland?” is verplicht voor rapportreview; centrale planningkoppeling ontbreekt |
-| CDR-17 | Foto-overzicht | Gedeeltelijk | Gewone foto en optioneel equirectangulair 360°-beeld hebben titel, locatie, tourcontext en exacte probleemmarkers die als formele bevinding terugkomen. Live upload/download wacht alleen nog op de externe Drive-gatewaycredentials |
-| CDR-18 | Bijlagen | Geblokkeerd | Bijlagencontrole en documentenregister zijn aanwezig; daadwerkelijke bytes wachten op het dedicated Drive-account |
+| CDR-17 | Foto-overzicht | Gedeeltelijk | Gewone foto's en optionele equirectangulaire 360°-beelden hebben titel, locatie, tourcontext, private Blob-upload/download en exacte probleemmarkers die als formele bevinding terugkomen. Volledige PDF-opname volgt |
+| CDR-18 | Bijlagen | Conform | Bijlagencontrole, centraal documentenregister, private Vercel Blob-bytes, geautoriseerde download en bestandsscope zijn actief |
 | CDR-19 | Controle en ondertekening | Gedeeltelijk | Review/retour, naam/rol, append-only ondertekenverklaring, distributie en revisie werken. Juridisch niveau en vereiste ondertekenrollen moeten CODECO contractueel vaststellen |
 
 ## Technische architectuur
@@ -116,11 +116,11 @@ Bij iedere functionele wijziging worden de betrokken regels en de verificatie in
 | TA-03 | MUI + Emotion en MUI X Community | Niet gestart | Thema en componentwrappers moeten de maatwerkprimitieven vervangen |
 | TA-04 | TanStack Query 5 | Conform | Centrale workspace- en dagdata gebruiken querycaching en gerichte invalidatie na bevestigde mutaties |
 | TA-05 | React Hook Form + Zod 4 | Conform | Projectstart en dagafsluiting gebruiken React Hook Form met Zod 4, schemaresolvers en conditionele validatie |
-| TA-06 | Supabase Auth/Postgres/Realtime met RLS | Conform | Hosted Auth/Postgres, versioned migrations, RLS op 41 browserbereikbare tabellen, atomische RPC's, Realtime-publicatie/invalidering en in-appnotificaties zijn actief; de Blob-migratie volgt dezelfde beheerde uitrolprocedure |
+| TA-06 | Supabase Auth/Postgres/Realtime met RLS | Conform | Hosted Auth/Postgres, 25 uitgerolde versioned migrations, RLS op 41 browserbereikbare tabellen, atomische RPC's, Realtime-publicatie/invalidering en in-appnotificaties zijn actief. Migratie 26 voor de nieuwe geplande jobs wacht op productieprojecttoegang |
 | TA-07 | Google Drive als enige bestandsopslag via Worker-gateway | Klantafwijking | Op uitdrukkelijk klantbesluit gebruikt de applicatie private Vercel Blob. Beveiligde Next.js-routes valideren Supabase JWT/RLS; uploads gebruiken kort geldige, pad- en bestandstypegebonden upload-URL's en downloads blijven server-geautoriseerd |
-| TA-08 | Bun workspaces + Turborepo + Biome | Tijdelijke afwijking | Starter gebruikt npm; monorepo- en toolmigratie vóór CI-inrichting |
+| TA-08 | Bun workspaces + Turborepo + Biome | Tijdelijke afwijking | De gekozen Next.js-app gebruikt npm. GitHub Actions bewaakt inmiddels lint, productiebuild, webtests, dependency-audit, migraties, database-lint en pgTAP; een toolmigratie levert nu geen functioneel voordeel op |
 | TA-09 | Client-side PDF uit immutable snapshot | Conform | Werk-PDF komt uit bevestigde centrale data; iedere formele revisie kan apart worden gedownload en wordt uitsluitend uit haar frozen snapshot opgebouwd, met revisie, frozen tijd en volledige SHA-256 in het document |
-| TA-10 | Productiehosting | Gedeeltelijk | Native Next.js-productiebouw, HTTP-smoketest, Vercel-configuratie en veilige headers slagen. Het CODECO Vercel-team, definitieve domein, environmentvariabelen en origin-/redirectconfiguratie staan als blokkerende checklistitems open |
+| TA-10 | Productiehosting | Conform | De native Next.js-app draait onder het CODECO Vercel-team op `code-co-nv.vercel.app`, met correcte rootdirectory, productie-environmentvariabelen, private Blob-store, veilige headers en geslaagde HTTP-smoketests |
 
 ## Open klantbesluiten
 
@@ -131,7 +131,7 @@ Deze onderwerpen blijven bewust **Geblokkeerd** totdat CODECO ze formeel bevesti
 3. contractuele bewaartermijnen;
 4. vereist juridisch niveau van digitale ondertekening;
 5. definitieve KPI-formules en eventuele contractuele betekenis;
-6. officiële productnaam en aan te leveren logo-/huisstijlbestanden;
+6. definitieve productnaam en aanvullende huisstijlregels; het officiële bedrijfslogo is geleverd en geïntegreerd;
 7. exacte werkwijze voor aannemersdeclaraties en budgetgoedkeuring.
 
 ## Beveiliging en betrouwbaarheid
@@ -140,12 +140,12 @@ Deze onderwerpen blijven bewust **Geblokkeerd** totdat CODECO ze formeel bevesti
 | --- | --- | --- | --- |
 | SEC-01 | RLS op iedere browserbereikbare tabel, geïndexeerd en per rol getest | Conform | RLS staat op alle 41 browserbereikbare tabellen; policykolommen zijn geïndexeerd en de lokale zichtbaarheidsmatrix dekt alle acht productrollen plus een buitenstaander. Visuele records zijn alleen leesbaar met projectrechten en worden uitsluitend via bewaakte RPC's aangemaakt |
 | SEC-02 | Service keys en opslagtokens nooit in de React-app | Conform | De browser ontvangt uitsluitend een kort geldige upload-URL voor één object. `SUPABASE_SECRET_KEY`, Blob OIDC en eventuele Blob read-write fallback blijven uitsluitend in Vercel serverroutes |
-| SEC-03 | Kritieke mutaties atomisch en idempotent | Gedeeltelijk | Dagrapport, aanwezigheid, registratie, inspectie, checklistpublicatie, bevinding, HSE, review/freeze, ondertekening, distributie, revisie en back-upexport hebben databasebescherming. Dagelijkse achtergrondjobs volgen |
+| SEC-03 | Kritieke mutaties atomisch en idempotent | Gedeeltelijk | Dagrapport, aanwezigheid, registratie, inspectie, checklistpublicatie, bevinding, HSE, review/freeze, ondertekening, distributie, revisie en back-upexport hebben databasebescherming. De dagelijkse job heeft een vaste idempotency key; productie-uitrol van migratie 26 volgt |
 | SEC-04 | Append-only audit en immutable formele versies | Conform | Audit/history-tabellen blokkeren wijziging/verwijdering; report snapshots+SHA, reviews, signatures en distributions hebben integriteitstriggers en formele acties lopen uitsluitend via bewaakte RPC's |
 | SEC-05 | Geldige statusovergangen en bevoegde verificatie in de database | Gedeeltelijk | Dagrapport-, actie-, inspectie- en bevindingstransities plus onafhankelijke verificatie zijn database-enforced; gespecialiseerde registers wachten op klantgoedgekeurde matrices |
 | SEC-06 | Dependencycontrole zonder open productierisico's | Conform | De kwetsbare geneste PostCSS-versie is veilig naar 8.5.14 geünificeerd; `npm audit --omit=dev` rapporteert nul productiekwetsbaarheden. Build- en regressietests bevestigen compatibiliteit |
 | SEC-07 | MFA, veilige headers, rate limits en foutmeldingen zonder gevoelige data | Gedeeltelijk | TOTP-inschrijving/verificatie, 12-teken wachtwoordbeleid, e-mailbevestiging, CSP/HSTS/frame/referrer/permissions-headers en database-backed admin-uitnodigingslimiet zijn actief. Verplichte AAL2 per risicorol volgt na CODECO-beleid |
-| SEC-08 | Dagelijkse back-up, checksums en periodieke restoretest | Geblokkeerd | Handmatige JSON-export, SHA-256-verificatie, download en geaudite restore-dry-run werken. Dagelijkse Drive-job, retentie en externe herstelproef vereisen het opslagaccount |
+| SEC-08 | Dagelijkse back-up, checksums en periodieke restoretest | Gedeeltelijk | Dagelijkse private Blob-back-up, volledige readback, SHA-256, inhoudsvalidatie, 7/4/3-retentie en maandelijkse integriteits-dry-run zijn gebouwd. Productiemigratie en eerste run moeten nog slagen; een off-accountkopie en echte tijdelijke database-restore blijven operationele vereisten |
 | SEC-09 | Alleen beheerders maken interne accounts en wijzen rollen toe | Conform | Geen `signUp`-actie of registratiescherm; Supabase self-signup staat uit. De uitnodigingsroute verifieert het gebruikers-JWT, eist `members.manage`, bewaart organisatie-/projectmembership en rol via een beveiligde RPC en zet de serversecret nooit in de browser |
 
 ## Implementatielog
@@ -165,6 +165,8 @@ Deze onderwerpen blijven bewust **Geblokkeerd** totdat CODECO ze formeel bevesti
 | 18-07-2026 | Formele rapportfreeze met SHA-256, review/retour, ondertekenverklaringen, distributiespoor en revisies met behoud van origineel | PP-07, MVP-03, MVP-13, CDR-19, SEC-03 t/m SEC-05 |
 | 18-07-2026 | Beheer voor projectregels, locaties, partijen, checklists, TOTP en geverifieerde handmatige JSON-back-up/restore-dry-run | PP-06, MVP-02, MVP-15, MVP-17, MVP-18, SEC-07, SEC-08 |
 | 19-07-2026 | Google Drive Worker op klantverzoek vervangen door private Vercel Blob met Supabase-geautoriseerde uploadreservering, kort geldige presigned upload, centrale voltooiingscontrole en private downloadstream | MVP-11, MVP-16, TA-07, SEC-02, SEC-03, SEC-08 |
+| 19-07-2026 | Branded fout- en 404-pagina's, PWA-manifest, wachtwoordherstel, modalfocusbeheer en toegankelijke foutmeldingen toegevoegd; build, zeven webtests en dependency-audit slagen | PP-01, MVP-01, TA-10, SEC-06, SEC-07 |
+| 19-07-2026 | Dagelijkse Vercel Cron voor gecomprimeerde organisatieback-up en in-appmeldingen, private Blob-readback/checksum, 7/4/3-retentie, maandelijkse integriteitscontrole en geautomatiseerde GitHub-releasegates gebouwd; productie-uitrol wacht op Supabase-projecttoegang | MVP-10, MVP-15, MVP-18, TA-08, SEC-03, SEC-08 |
 | 18-07-2026 | Interne accountlevenscyclus met auditreden, atomische organisatie-/projectopschorting, heractivering, definitieve intrekking en bescherming tegen eigen lock-out | MVP-01, SEC-03, SEC-09 |
 | 18-07-2026 | Centrale productiegereedheidschecklist met zestien account-, configuratie-, beheer-, besluit- en acceptatiepunten, blokkeringsstatus, veilige bewijsreferentie, beheerrechten en auditspoor | PP-07, PP-09, MVP-15, MVP-17, SEC-01, SEC-04 |
 | 18-07-2026 | Gewone foto's als standaard bewijs, optionele interactieve 360°-panorama's/tours en exacte markers die atomisch een traceerbare bevinding plus bestandskoppeling maken | MVP-08, MVP-11, CDR-06, CDR-17, SEC-03 |
@@ -174,6 +176,6 @@ Deze onderwerpen blijven bewust **Geblokkeerd** totdat CODECO ze formeel bevesti
 
 ## Verificatie van deze slice
 
-De eerste 23 migrations zijn op 18-07-2026 vanaf een lege lokale Supabase/Postgres-database toegepast en staan gelijk in het gekoppelde hosted project. Migratie 24 vervangt de opslagmetadata door Vercel Blob en moet vóór productie via dezelfde schema-lint- en pgTAP-releasegate worden uitgerold. De bestaande zeven pgTAP-bestanden bevatten samen 260 tests, inclusief RLS voor alle acht productrollen plus buitenstaander, directe bestands-/beeldrevocatie na ingetrokken projecttoegang, admin-only provisioning/accountlevenscyclus, permission-gecontroleerde productiegereedheid met verplicht bewijs, gewone foto-/360°-registratie, exacte 2D-/sferische marker→bevindingtransacties, geautoriseerde Realtime-publicatie, inspectie→bevinding, HSE-escalatie, formele rapportintegriteit/PDF-snapshot, atomaire checklistrollback en back-up-dry-run. De beheerde productieverbinding blijft directe testinserts in `auth.users` terecht weigeren; die beveiliging is niet verruimd.
+De eerste 25 migrations staan in het gekoppelde hosted project; migratie 24 activeerde Vercel Blob en migratie 25 actualiseerde de productiegereedheidschecklist. Migratie 26 voor geplande back-ups en meldingen is vanaf een lege lokale database foutloos toegepast, door de schema-linter gecontroleerd en nog niet in productie uitgerold, omdat het momenteel ingelogde Supabase CLI-account geen rechten heeft op productieproject `dljbeheogaeviokpcvca`. De acht pgTAP-bestanden bevatten samen 283 geslaagde tests, inclusief RLS voor alle acht productrollen plus buitenstaander, directe bestands-/beeldrevocatie na ingetrokken projecttoegang, admin-only provisioning/accountlevenscyclus, productiegereedheid, visueel bewijs, geautoriseerde Realtime-publicatie, inspectie→bevinding, HSE-escalatie, rapportintegriteit, checklistrollback, service-only back-upexport, foutmeldingen en restore-dry-run.
 
-Hosted Auth blokkeert self-signup, vereist bevestigde e-mail, minimaal 12 tekens met kleine letter/hoofdletter/cijfer en ondersteunt TOTP. De native Next.js-productiebouw, vijf webtests inclusief live HTTP-smoke, strict TypeScript, ESLint, nul npm-auditkwetsbaarheden en de aparte Worker TypeScript-/Wrangler-dry-run slagen. Regels blijven **Gedeeltelijk** of **Geblokkeerd** waar het CODECO Vercel-team/domein, dedicated Google-account, automatische dagelijkse Drive-back-up, week-/tweeweekrapport, gespecialiseerde kosten/declaratieflows, juridisch ondertekenniveau, definitieve formulieren/retentie/KPI's of officiële huisstijl nog ontbreken.
+Hosted Auth blokkeert self-signup, vereist bevestigde e-mail, minimaal 12 tekens met kleine letter/hoofdletter/cijfer en ondersteunt TOTP. De native Next.js-productiebouw, strict TypeScript, ESLint, zeven webtests en `npm audit --omit=dev` met nul kwetsbaarheden slagen. GitHub Actions herhaalt deze controles en start daarnaast een lege Supabase-stack voor migratie-, schema-lint- en pgTAP-controle. Regels blijven **Gedeeltelijk** of **Geblokkeerd** waar migratie 26/productierun, een onafhankelijke back-upkopie, veld-UAT, SMTP/domeinauthenticatie, week-/tweeweekrapport, hervatbare uploads na browserherstart, gespecialiseerde kosten/declaratieflows, juridisch ondertekenniveau, definitieve formulieren/retentie/KPI's of aanvullende huisstijlbesluiten nog ontbreken.
