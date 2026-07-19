@@ -1283,7 +1283,7 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
     setError("");
     setResetSent(false);
     try {
-      const result = await client.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+      const result = await client.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/supervisie` });
       if (result.error) throw result.error;
       setResetSent(true);
     } catch (caught) {

@@ -2,13 +2,13 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "CODECO Supervisie",
+    name: "CODECO N.V.",
     short_name: "CODECO",
-    description: "Secure CODECO workspace for construction supervision, evidence and reporting.",
+    description: "Engineering, contracting, project management and consulting in Paramaribo, Suriname.",
     start_url: "/",
     display: "standalone",
-    background_color: "#f1f4f3",
-    theme_color: "#14151a",
+    background_color: "#f4f1e9",
+    theme_color: "#11120f",
     icons: [
       {
         src: "/codeco-logo.png",

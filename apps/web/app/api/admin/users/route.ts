@@ -76,7 +76,7 @@ export async function POST(request: Request) {
   const adminClient = createClient(supabaseUrl, secretKey, {
     auth: { autoRefreshToken: false, detectSessionInUrl: false, persistSession: false },
   });
-  const redirectTo = new URL(request.url).origin;
+  const redirectTo = new URL("/supervisie", request.url).toString();
   const inviteResult = await adminClient.auth.admin.inviteUserByEmail(input.data.email.trim().toLowerCase(), {
     redirectTo,
     data: {

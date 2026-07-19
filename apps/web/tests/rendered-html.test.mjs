@@ -39,7 +39,7 @@ async function render() {
   return fetch(baseUrl, { headers: { accept: "text/html" } });
 }
 
-test("server-renders the secure CODECO entry point", async () => {
+test("server-renders the public CODECO landing page", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
@@ -48,11 +48,13 @@ test("server-renders the secure CODECO entry point", async () => {
   assert.equal(response.headers.get("x-content-type-options"), "nosniff");
 
   const html = await response.text();
-  assert.match(html, /<title>Today \| CODECO Supervisie<\/title>/i);
+  assert.match(html, /<title>CODECO N\.V\. \| Engineering, Contracting &amp; Consulting<\/title>/i);
   assert.match(html, /codeco-logo\.png/);
   assert.match(html, /CODECO Construction Designers &amp; Consultants N\.V\./);
-  assert.match(html, /Opening secure workspace/);
-  assert.match(html, /session and project access/i);
+  assert.match(html, /Sound thinking/);
+  assert.match(html, /Start a conversation/i);
+  assert.match(html, /Newmont Recreation Centre/i);
+  assert.doesNotMatch(html, /href="\/supervisie/i);
   assert.match(html, /manifest\.webmanifest/i);
   assert.match(html, /rel="icon"[^>]+codeco-logo\.png/i);
   assert.doesNotMatch(html, /Sitezicht|codex-preview|Building your site|react-loading-skeleton/i);
@@ -75,10 +77,11 @@ test("serves branded recovery pages and install metadata", async () => {
 });
 
 test("keeps the central post-MVP interaction and accessibility hooks in source", async () => {
-  const [app, operationalWorkspace, page, layout, packageJson, dailyReportForm, actionForm, userForm, dataLayer, pdfReport, providers, adminRoute, storageClient, storageUploadRoute, storageCompleteRoute, storageFileRoute] = await Promise.all([
+  const [app, operationalWorkspace, page, supervisionPage, layout, packageJson, dailyReportForm, actionForm, userForm, dataLayer, pdfReport, providers, adminRoute, storageClient, storageUploadRoute, storageCompleteRoute, storageFileRoute] = await Promise.all([
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/supervisie/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../lib/forms/daily-report.ts", import.meta.url), "utf8"),
@@ -127,9 +130,12 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(app, /Supabase Realtime/);
   assert.match(app, /postgres_changes/);
   assert.doesNotMatch(app, /Demosessie|Kwattaweg Residence|Commewijne Port Facility/);
-  assert.match(page, /CodecoSupervisionApp/);
-  assert.match(page, /Providers/);
-  assert.match(layout, /<html lang="en">/);
+  assert.match(page, /Sound thinking/);
+  assert.doesNotMatch(page, /href="\/supervisie/);
+  assert.match(supervisionPage, /CodecoSupervisionApp/);
+  assert.match(supervisionPage, /Providers/);
+  assert.match(supervisionPage, /index: false/);
+  assert.match(layout, /<html lang="en"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.match(packageJson, /react-hook-form/);
   assert.match(packageJson, /"zod"/);

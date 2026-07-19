@@ -17,7 +17,7 @@ export default function NotFound() {
         <span className="state-icon"><SearchX size={26} /></span>
         <p className="eyebrow">404 · Page not found / Pagina niet gevonden</p>
         <h1 id="not-found-title">This page does not exist</h1>
-        <p>Controleer het webadres of ga veilig terug naar de CODECO-werkruimte.</p>
+        <p>Controleer het webadres of ga terug naar de CODECO-homepage.</p>
         <div className="system-actions">
           <Link className="primary-button" href="/"><Home size={15} /> Back to CODECO / Terug naar CODECO</Link>
         </div>

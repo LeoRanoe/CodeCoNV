@@ -1,6 +1,7 @@
 # Generated deployment and branding scratch files
 /tmp/*-build.tar.gz
 /tmp/codeco-logo*.png
+/tmp/codeco_assets/
 
 # Local dependencies, builds and secrets
 **/node_modules/

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist_Mono, Hind } from "next/font/google";
 import { headers } from "next/headers";
 import "./globals.css";
+import "./landing.css";
 
 const hind = Hind({
   variable: "--font-hind",
@@ -15,20 +16,18 @@ const geistMono = Geist_Mono({
 });
 
 const description =
-  "CODECO's secure workspace for daily construction supervision, visual evidence, inspections, actions and reporting.";
+  "CODECO N.V. is a multidisciplinary engineering firm in Paramaribo for civil, structural and construction projects.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
   const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   const baseUrl = new URL(`${protocol}://${host}`);
-  const imageUrl = new URL("/og.png", baseUrl).toString();
-
   return {
     metadataBase: baseUrl,
     title: {
-      default: "CODECO Supervisie",
-      template: "%s | CODECO Supervisie",
+      default: "CODECO N.V. | Engineering, Contracting & Consulting",
+      template: "%s | CODECO N.V.",
     },
     description,
     manifest: "/manifest.webmanifest",
@@ -41,15 +40,15 @@ export async function generateMetadata(): Promise<Metadata> {
       type: "website",
       locale: "en_US",
       alternateLocale: ["nl_SR"],
-      title: "CODECO Supervisie | From site observation to daily report",
+      title: "CODECO N.V. | Sound thinking. Solid structures.",
       description,
-      images: [{ url: imageUrl, width: 1200, height: 630, alt: "CODECO constructiesupervisie" }],
+      images: [{ url: new URL("/landing/hero-residence.jpg", baseUrl).toString(), width: 2560, height: 1440, alt: "Architectural design by CODECO N.V." }],
     },
     twitter: {
       card: "summary_large_image",
-      title: "CODECO Supervisie | From site observation to daily report",
+      title: "CODECO N.V. | Sound thinking. Solid structures.",
       description,
-      images: [imageUrl],
+      images: [new URL("/landing/hero-residence.jpg", baseUrl).toString()],
     },
   };
 }
@@ -60,7 +59,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className="scroll-smooth">
       <body className={`${hind.variable} ${geistMono.variable}`}>
         {children}
       </body>
