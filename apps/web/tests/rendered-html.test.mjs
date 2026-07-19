@@ -78,9 +78,10 @@ test("serves branded recovery pages and install metadata", async () => {
 });
 
 test("keeps the mobile landing experience intentional and touch friendly", async () => {
-  const [page, navigation, landingCss] = await Promise.all([
+  const [page, navigation, motion, landingCss] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/landing-navigation.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/landing-motion.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/landing.css", import.meta.url), "utf8"),
   ]);
 
@@ -91,9 +92,17 @@ test("keeps the mobile landing experience intentional and touch friendly", async
   assert.match(navigation, /aria-expanded=/);
   assert.match(navigation, /event\.key === "Escape"/);
   assert.match(navigation, /studio-mobile-overlay/);
+  assert.match(page, /studio-hero-aperture/);
+  assert.match(page, /studio-hero-line/);
+  assert.match(page, /data-reveal="project"/);
+  assert.match(motion, /IntersectionObserver/);
+  assert.match(motion, /requestAnimationFrame/);
+  assert.match(motion, /prefers-reduced-motion/);
   assert.match(landingCss, /min-height: 100svh/);
   assert.match(landingCss, /scroll-snap-type: x mandatory/);
   assert.match(landingCss, /flex: 0 0 84vw/);
+  assert.match(landingCss, /studio-aperture-line/);
+  assert.match(landingCss, /studio-line-reveal/);
   assert.match(landingCss, /prefers-reduced-motion/);
 });
 

@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { LandingNavigation } from "./landing-navigation";
+import { LandingMotion } from "./landing-motion";
 
 const projects = [
   {
@@ -95,9 +96,11 @@ export default function Home() {
     <main className="studio" id="top">
       <a className="studio-skip-link" href="#main-content">Skip to content</a>
       <LandingNavigation />
+      <LandingMotion />
 
       <div id="main-content">
         <header className="studio-hero" aria-labelledby="hero-title">
+          <div className="studio-hero-aperture" aria-hidden="true"><span /><span /><i /></div>
           <div className="studio-hero-media" aria-hidden="true">
             <Image
               className="studio-hero-frame studio-hero-frame-one"
@@ -121,7 +124,10 @@ export default function Home() {
 
           <div className="studio-wrap studio-hero-content">
             <p className="studio-kicker">Engineering · Contracting · Consulting</p>
-            <h1 id="hero-title">From first line<br /><em>to lasting structure.</em></h1>
+            <h1 id="hero-title">
+              <span className="studio-hero-line"><span>From first line</span></span>
+              <span className="studio-hero-line"><span><em>to lasting structure.</em></span></span>
+            </h1>
             <p className="studio-hero-copy">
               CODECO N.V. brings civil and structural engineering, project direction and technical advice together for work that is clear, buildable and made to last.
             </p>
@@ -135,6 +141,9 @@ export default function Home() {
             <span>Based in</span><strong>Paramaribo, Suriname</strong>
             <span>Established</span><strong>2015</strong>
           </aside>
+          <div className="studio-hero-index" aria-hidden="true">
+            <span>CODECO / SR</span><strong>01</strong><i />
+          </div>
           <a className="studio-scroll-cue" href="#work"><span>Scroll to explore</span><i aria-hidden="true" /></a>
         </header>
 
@@ -152,7 +161,7 @@ export default function Home() {
 
         <section className="studio-section studio-work" id="work" aria-labelledby="work-title">
           <div className="studio-wrap">
-            <div className="studio-section-head">
+            <div className="studio-section-head" data-reveal="rise">
               <div>
                 <p className="studio-label">Selected work</p>
                 <h2 id="work-title">Ideas tested.<br /><strong>Structures resolved.</strong></h2>
@@ -162,7 +171,7 @@ export default function Home() {
 
             <div className="studio-project-grid">
               {projects.map((project) => (
-                <article className={`studio-project ${project.className}`} key={project.number}>
+                <article className={`studio-project ${project.className}`} data-reveal="project" key={project.number}>
                   <div className="studio-project-image">
                     <Image src={project.image} alt={project.title} fill sizes={project.className.includes("wide") ? "100vw" : "(max-width: 760px) 86vw, 50vw"} />
                     <span className="studio-project-number">{project.number} / 06</span>
@@ -182,11 +191,11 @@ export default function Home() {
         <section className="studio-section studio-story" id="about" aria-labelledby="about-title">
           <div className="studio-wrap">
             <div className="studio-story-grid">
-              <div className="studio-story-image">
+              <div className="studio-story-image" data-reveal="image">
                 <Image src="/landing/structural-frame.jpg" alt="Structural frame designed and analysed by CODECO" fill sizes="(max-width: 820px) 100vw, 54vw" />
                 <span>Analysis before execution</span>
               </div>
-              <div className="studio-story-copy">
+              <div className="studio-story-copy" data-reveal="rise">
                 <p className="studio-label">About CODECO</p>
                 <h2 id="about-title">One team for the thinking <strong>behind the build.</strong></h2>
                 <p>
@@ -200,17 +209,17 @@ export default function Home() {
             </div>
 
             <div className="studio-fact-row">
-              <div><strong>2015</strong><span>Established in Suriname</span></div>
-              <div><strong>04</strong><span>Integrated disciplines</span></div>
-              <div><strong>01</strong><span>Accountable project partner</span></div>
-              <div><strong>∞</strong><span>Built around client needs</span></div>
+              <div data-reveal="rise"><strong>2015</strong><span>Established in Suriname</span></div>
+              <div data-reveal="rise"><strong>04</strong><span>Integrated disciplines</span></div>
+              <div data-reveal="rise"><strong>01</strong><span>Accountable project partner</span></div>
+              <div data-reveal="rise"><strong>∞</strong><span>Built around client needs</span></div>
             </div>
           </div>
         </section>
 
         <section className="studio-section studio-services" id="services" aria-labelledby="services-title">
           <div className="studio-wrap">
-            <div className="studio-section-head studio-services-head">
+            <div className="studio-section-head studio-services-head" data-reveal="rise">
               <div>
                 <p className="studio-label">What we do</p>
                 <h2 id="services-title">From early advice<br /><strong>to on-site control.</strong></h2>
@@ -220,7 +229,7 @@ export default function Home() {
 
             <div className="studio-service-list">
               {services.map((service) => (
-                <article className="studio-service" key={service.number}>
+                <article className="studio-service" data-reveal="service" key={service.number}>
                   <span>{service.number}</span>
                   <h3>{service.title}</h3>
                   <p>{service.description}</p>
@@ -236,7 +245,7 @@ export default function Home() {
             <Image src="/landing/consulting-design.jpg" alt="Contemporary building design by CODECO" fill sizes="100vw" />
           </div>
           <div className="studio-values-scrim" />
-          <div className="studio-wrap studio-values-content">
+          <div className="studio-wrap studio-values-content" data-reveal="rise">
             <p className="studio-label">How we work</p>
             <h2 id="values-title">Quality is the standard.<br /><strong>Transparency is the process.</strong></h2>
             <div className="studio-value-list">
@@ -246,7 +255,7 @@ export default function Home() {
         </section>
 
         <section className="studio-clients" aria-labelledby="clients-title">
-          <div className="studio-wrap"><p className="studio-label" id="clients-title">Selected clients</p></div>
+          <div className="studio-wrap" data-reveal="rise"><p className="studio-label" id="clients-title">Selected clients</p></div>
           <div className="studio-client-track">
             {[0, 1].map((copy) => (
               <div aria-hidden={copy === 1} key={copy}>
@@ -257,7 +266,7 @@ export default function Home() {
         </section>
 
         <section className="studio-contact" id="contact" aria-labelledby="contact-title">
-          <div className="studio-wrap studio-contact-grid">
+          <div className="studio-wrap studio-contact-grid" data-reveal="rise">
             <div>
               <p className="studio-label">Start a project</p>
               <h2 id="contact-title">Have a plan in mind?<br /><strong>Let’s make it stand.</strong></h2>
@@ -272,7 +281,7 @@ export default function Home() {
 
       <footer className="studio-footer">
         <div className="studio-wrap">
-          <div className="studio-footer-top">
+          <div className="studio-footer-top" data-reveal="rise">
             <div className="studio-footer-brand">
               <Image src="/codeco-logo.png" alt="CODECO Construction Designers & Consultants N.V." width={738} height={291} />
               <p>Multidisciplinary technical engineering firm for professional, quality-driven civil, structural and construction projects.</p>
