@@ -196,7 +196,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, reportId,
         <button className="primary-button" type="button" disabled={!isStorageGatewayConfigured} onClick={() => setShowUpload((visible) => !visible)}><Plus size={15} /> {text("Add visual", "Beeld toevoegen")}</button>
       </div>
 
-      {!isStorageGatewayConfigured ? <div className="operation-alert warning"><ShieldCheck size={18} /><div><strong>{text("Private image storage must be connected", "Private beeldopslag moet worden gekoppeld")}</strong><span>{text("Metadata, rights and annotations are ready. Upload and viewing remain disabled until CODECO activates the secured Google Drive gateway.", "Metadata, rechten en annotaties zijn gereed. Upload en weergave blijven uit totdat CODECO de beveiligde Google Drive-gateway activeert.")}</span></div></div> : null}
+      {!isStorageGatewayConfigured ? <div className="operation-alert warning"><ShieldCheck size={18} /><div><strong>{text("Private image storage must be connected", "Private beeldopslag moet worden gekoppeld")}</strong><span>{text("Connect a private Vercel Blob store to enable authorized uploads and viewing.", "Koppel een private Vercel Blob-store om geautoriseerde uploads en weergave mogelijk te maken.")}</span></div></div> : null}
 
       {showUpload ? (
         <div className="operation-form wide visual-upload-form">

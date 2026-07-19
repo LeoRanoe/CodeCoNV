@@ -1,5 +1,7 @@
 # Productplan – compleet online constructiesupervisieplatform
 
+> **Actueel klantbesluit — 19-07-2026:** private Vercel Blob vervangt Google Drive en de Cloudflare Worker-gateway voor alle nieuwe bestandsopslag. De historische Drive/Cloudflare-secties hieronder blijven staan als oorspronkelijke productspecificatie; de uitvoeringsstatus en afwijking staan in `docs/product/product-plan-compliance.md`.
+
 ## 1. Productvisie
 
 De applicatie wordt het centrale online werksysteem voor het volledige proces van een constructiesupervisiebedrijf. Het dagrapport is één belangrijke output, maar de gebruiker voert ook inspecties, kwaliteitsopvolging, HSE, documentcontrole, communicatie, planning, acties, goedkeuringen en projectsturing in dezelfde applicatie uit.

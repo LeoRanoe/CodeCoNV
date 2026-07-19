@@ -17,25 +17,12 @@ Gebruik deze lijst vóór formele ingebruikname. Dezelfde items staan centraal i
   - activeer MFA;
   - leg herstelcontact en verantwoordelijk eigenaar vast;
   - bevestig dat self-signup uitgeschakeld blijft.
-- [ ] **CODECO Cloudflare-account voor de opslaggateway**
-  - primaire en back-upbeheerder;
-  - MFA actief;
-  - Worker- en domeintoegang niet afhankelijk maken van een persoonlijk ontwikkelaarsaccount.
 - [ ] **CODECO Vercel-team voor de webapp**
   - importeer de Git-repository in een CODECO-beheerd team;
   - wijs een primaire en back-upbeheerder aan;
   - activeer MFA en leg facturatie- en herstelcontact vast;
-  - laat productie niet afhankelijk zijn van een persoonlijk ontwikkelaarsaccount.
-- [ ] **Dedicated CODECO Google-opslagaccount**
-  - uitsluitend voor applicatiebestanden en back-ups;
-  - niet het persoonlijke account van een medewerker;
-  - MFA, herstelmail en hersteltelefoon ingesteld;
-  - minimaal twee aangewezen herstelbeheerders.
-- [ ] **CODECO Google Cloud-project**
-  - Drive API actief;
-  - OAuth-client voor de Worker-gateway;
-  - beperkte `drive.file`-scope;
-  - consent screen en redirect-URL gecontroleerd.
+  - laat productie niet afhankelijk zijn van een persoonlijk ontwikkelaarsaccount;
+  - maak een private Blob-store en koppel die aan het productieproject.
 - [ ] **Productie-SMTP/afzenderaccount**
   - CODECO-afzenderadres voor uitnodigingen en wachtwoordherstel;
   - SPF, DKIM en DMARC gecontroleerd;
@@ -53,14 +40,11 @@ Gebruik deze lijst vóór formele ingebruikname. Dezelfde items staan centraal i
 - [ ] Vercel gebruikt `apps/web` als Root Directory en Node.js 22.x (minimaal 22.13.0).
 - [ ] Alle waarden uit `apps/web/.env.example` staan per Vercel Environment ingesteld; `SUPABASE_SECRET_KEY` is alleen server-side beschikbaar.
 - [ ] Het definitieve Vercel-domein staat in Supabase als Site URL en toegestane redirect-URL.
-- [ ] De Drive-gateway accepteert uitsluitend het definitieve productie-origin van de Vercel-webapp.
 - [ ] Supabase URL, publishable key en serversecret staan alleen in de juiste serveromgeving.
-- [ ] Google client-ID, clientsecret en refresh token staan uitsluitend als Worker secrets.
-- [ ] Een willekeurig uploadsessie-secret van minimaal 32 bytes staat uitsluitend in de Worker.
-- [ ] De private Google-rootmap is door de applicatie aangemaakt of expliciet voor de applicatie bestemd.
-- [ ] De Drive-gateway is gepubliceerd en de webapp gebruikt de definitieve gateway-URL.
-- [ ] Testupload, hervatten, geautoriseerde download en geweigerde download zijn gecontroleerd.
-- [ ] Drive-quota wordt getoond en bij 80% is een verantwoordelijke aangewezen.
+- [ ] De Blob-store staat op **Private** en is alleen aan de noodzakelijke Vercel-omgevingen gekoppeld.
+- [ ] `BLOB_STORE_ID` en de roterende `VERCEL_OIDC_TOKEN` worden door Vercel aan de productieomgeving geleverd.
+- [ ] Testupload, voortgang, geautoriseerde download en geweigerde download zijn gecontroleerd.
+- [ ] Blob-opslag, dataverkeer en kostenwaarschuwingen hebben een verantwoordelijke.
 - [ ] Productie-SMTP is in Supabase ingesteld; uitnodiging en wachtwoordherstel zijn getest.
 
 ## 3. Beleid en klantbesluiten
@@ -77,12 +61,12 @@ Gebruik deze lijst vóór formele ingebruikname. Dezelfde items staan centraal i
 
 ## 4. Back-up en herstel
 
-- [ ] Dagelijkse JSON-back-up naar de private Drive-map is actief.
+- [ ] Dagelijkse JSON-back-up naar een afzonderlijke herstelbestemming is actief.
 - [ ] SHA-256 van een back-up is geverifieerd.
-- [ ] Eén back-up is buiten het dedicated Google-account gedownload.
+- [ ] Eén back-up is buiten de primaire Vercel-omgeving opgeslagen.
 - [ ] Restore-dry-run is succesvol en vastgelegd.
 - [ ] Maandelijkse hersteltest heeft een eigenaar en agendataak.
-- [ ] Incidentprocedure voor verloren Google-, Supabase- of Cloudflare-toegang is vastgesteld.
+- [ ] Incidentprocedure voor verloren Vercel- of Supabase-toegang is vastgesteld.
 
 ## 5. Gebruikersacceptatie en go-live
 

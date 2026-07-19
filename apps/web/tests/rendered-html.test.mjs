@@ -57,7 +57,7 @@ test("server-renders the secure CODECO entry point", async () => {
 });
 
 test("keeps the central post-MVP interaction and accessibility hooks in source", async () => {
-  const [app, operationalWorkspace, page, layout, packageJson, dailyReportForm, actionForm, userForm, dataLayer, pdfReport, providers, adminRoute] = await Promise.all([
+  const [app, operationalWorkspace, page, layout, packageJson, dailyReportForm, actionForm, userForm, dataLayer, pdfReport, providers, adminRoute, storageClient, storageUploadRoute, storageCompleteRoute, storageFileRoute] = await Promise.all([
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
@@ -70,6 +70,10 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
     readFile(new URL("../lib/reports/daily-report-pdf.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/providers.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/admin/users/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/storage/gateway.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/storage/uploads/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/storage/uploads/complete/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/storage/files/[fileId]/route.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(app, /aria-modal="true"/);
@@ -109,6 +113,7 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(packageJson, /"zod"/);
   assert.match(packageJson, /@tanstack\/react-query/);
   assert.match(packageJson, /@react-pdf\/renderer/);
+  assert.match(packageJson, /@vercel\/blob/);
   assert.match(dailyReportForm, /clientReportSections/);
   assert.match(dailyReportForm, /AUTO-HSE-01/);
   assert.match(actionForm, /projectActionSchema/);
@@ -130,6 +135,18 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(adminRoute, /process\.env/);
   assert.doesNotMatch(adminRoute, /cloudflare:workers/);
   assert.doesNotMatch(adminRoute, /NEXT_PUBLIC_SUPABASE_SECRET_KEY|SERVICE_ROLE/);
+  assert.match(storageClient, /\/api\/storage\/uploads/);
+  assert.match(storageClient, /XMLHttpRequest/);
+  assert.doesNotMatch(storageClient, /NEXT_PUBLIC_STORAGE_GATEWAY_URL|Google Drive/);
+  assert.match(storageUploadRoute, /issueSignedToken/);
+  assert.match(storageUploadRoute, /presignUrl/);
+  assert.match(storageUploadRoute, /authenticateStorageRequest/);
+  assert.match(storageUploadRoute, /blob_upload/);
+  assert.match(storageCompleteRoute, /can_manage_project_files/);
+  assert.match(storageCompleteRoute, /head\(input\.data\.pathname\)/);
+  assert.match(storageCompleteRoute, /blob\.size !== file\.size_bytes/);
+  assert.match(storageFileRoute, /access: "private"/);
+  assert.match(storageFileRoute, /authenticateStorageRequest/);
   assert.match(pdfReport, /CONSTRUCTIESUPERVISIE/);
   assert.match(pdfReport, /17–19\. Foto's, bijlagen en controle/);
   assert.match(providers, /QueryClientProvider/);
@@ -163,7 +180,7 @@ test("keeps standard photo and optional 360 annotation production paths", async 
 });
 
 test("keeps the online-first Supabase foundation enforceable", async () => {
-  const [migration, questionnaireMigration, liveFlowMigration, actionMigration, accountMigration, readinessMigration, supabaseClient, envExample, supabaseConfig] = await Promise.all([
+  const [migration, questionnaireMigration, liveFlowMigration, actionMigration, accountMigration, readinessMigration, blobMigration, supabaseClient, envExample, supabaseConfig] = await Promise.all([
     readFile(
       new URL("../../../supabase/migrations/202607180001_core_supervision_foundation.sql", import.meta.url),
       "utf8",
@@ -186,6 +203,10 @@ test("keeps the online-first Supabase foundation enforceable", async () => {
     ),
     readFile(
       new URL("../../../supabase/migrations/202607180019_production_readiness_checklist.sql", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../../../supabase/migrations/202607190001_vercel_blob_storage.sql", import.meta.url),
       "utf8",
     ),
     readFile(new URL("../lib/supabase/client.ts", import.meta.url), "utf8"),
@@ -238,6 +259,10 @@ test("keeps the online-first Supabase foundation enforceable", async () => {
   assert.match(readinessMigration, /Missing organization\.manage permission/);
   assert.match(readinessMigration, /Completion evidence is required/);
   assert.match(readinessMigration, /revoke all on function public\.update_production_readiness_item/);
+  assert.match(blobMigration, /rename column drive_file_id to storage_object_key/);
+  assert.match(blobMigration, /can_manage_project_files/);
+  assert.match(blobMigration, /vercel_blob/);
+  assert.match(blobMigration, /blob_upload/);
   assert.match(supabaseConfig, /\[auth\][\s\S]*enable_signup = false/);
   assert.match(supabaseConfig, /\[auth\.email\][\s\S]*enable_signup = true/);
   const configuredEnvKeys = envExample

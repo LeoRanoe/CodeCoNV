@@ -44,10 +44,10 @@ npx supabase test db --local --workdir ../..
 
 De database bestaat uit versioned migrations onder `../../supabase/migrations`; wijzigingen worden niet handmatig in productie aangebracht.
 
-## Google Drive-opslag
+## Private Vercel Blob-opslag
 
-`../storage-gateway` bevat de aparte Cloudflare Worker voor JWT/RLS-geautoriseerde Google Drive-uploads en downloads. De webapp toont upload alleen wanneer `NEXT_PUBLIC_STORAGE_GATEWAY_URL` is ingesteld. Live gebruik vereist eerst een dedicated CODECO Google-account, OAuth met `drive.file` en Worker-secrets; tokens of Drive-sessie-URL's komen nooit in de browser.
+Maak in het Vercel-project een **private** Blob-store en koppel die aan Production en de gewenste Preview-omgevingen. De app gebruikt beveiligde, kort geldige upload-URL's voor rechtstreekse browseruploads en serveert downloads uitsluitend via Next.js-routes die de actuele Supabase-sessie en projectrechten controleren. Vercel beheert `BLOB_STORE_ID` en de roterende `VERCEL_OIDC_TOKEN`; voor lokale ontwikkeling kan `vercel env pull` de benodigde waarden ophalen.
 
 ## Productie
 
-De webapp wordt als native Next.js-app via Vercel gepubliceerd met `apps/web` als Root Directory. Self-signup blijft uit; alleen een beheerder kan interne accounts uitnodigen. Volg [de Vercel deploymentchecklist](../../docs/operations/vercel-deployment-checklist.md). Voor formele ingebruikname moeten alle blokkerende items in de productiegereedheidschecklist met een veilige bewijsreferentie zijn gesloten, met name het CODECO Vercel-team/domein, Drive/OAuth, SMTP, automatische back-up, definitieve klantformulieren, bewaartermijnen, juridisch ondertekenniveau en gebruikersacceptatie.
+De webapp wordt als native Next.js-app via Vercel gepubliceerd met `apps/web` als Root Directory. Self-signup blijft uit; alleen een beheerder kan interne accounts uitnodigen. Volg [de Vercel deploymentchecklist](../../docs/operations/vercel-deployment-checklist.md). Voor formele ingebruikname moeten alle blokkerende items in de productiegereedheidschecklist met een veilige bewijsreferentie zijn gesloten, met name het CODECO Vercel-team/domein, private Blob-opslag, SMTP, automatische back-up, definitieve klantformulieren, bewaartermijnen, juridisch ondertekenniveau en gebruikersacceptatie.

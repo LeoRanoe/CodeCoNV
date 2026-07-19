@@ -152,11 +152,11 @@ select lives_ok(
   format(
     $query$
       insert into public.files (
-        organization_id, project_id, building_id, drive_file_id, original_name,
+        organization_id, project_id, building_id, storage_object_key, original_name,
         mime_type, size_bytes, sha256, status, category, created_by
       ) values
-        (%1$L::uuid, %2$L::uuid, %3$L::uuid, 'drive-photo-1', 'room-1-wall.jpg', 'image/jpeg', 1200000, repeat('a', 64), 'available', 'photo', '00000000-0000-0000-0000-0000000000d1'::uuid),
-        (%1$L::uuid, %2$L::uuid, %3$L::uuid, 'drive-panorama-1', 'room-1-360.jpg', 'image/jpeg', 4200000, repeat('b', 64), 'available', 'photo', '00000000-0000-0000-0000-0000000000d1'::uuid)
+        (%1$L::uuid, %2$L::uuid, %3$L::uuid, 'projects/test/photo-1', 'room-1-wall.jpg', 'image/jpeg', 1200000, repeat('a', 64), 'available', 'photo', '00000000-0000-0000-0000-0000000000d1'::uuid),
+        (%1$L::uuid, %2$L::uuid, %3$L::uuid, 'projects/test/panorama-1', 'room-1-360.jpg', 'image/jpeg', 4200000, repeat('b', 64), 'available', 'photo', '00000000-0000-0000-0000-0000000000d1'::uuid)
     $query$,
     (select id from public.organizations where slug = 'codeco-operations'),
     (select id from public.projects where code = 'OPS-001'),
@@ -173,7 +173,7 @@ select lives_ok(
     (select id from public.projects where code = 'OPS-001'),
     (select id from public.buildings where project_id = (select id from public.projects where code = 'OPS-001')),
     (select id from public.day_reports where project_id = (select id from public.projects where code = 'OPS-001')),
-    (select id from public.files where drive_file_id = 'drive-photo-1')
+    (select id from public.files where storage_object_key = 'projects/test/photo-1')
   ),
   'a standard project photo is registered as the default visual type'
 );
@@ -184,7 +184,7 @@ select lives_ok(
     (select id from public.projects where code = 'OPS-001'),
     (select id from public.buildings where project_id = (select id from public.projects where code = 'OPS-001')),
     (select id from public.day_reports where project_id = (select id from public.projects where code = 'OPS-001')),
-    (select id from public.files where drive_file_id = 'drive-panorama-1')
+    (select id from public.files where storage_object_key = 'projects/test/panorama-1')
   ),
   'an optional 360 panorama is registered in an ordered tour'
 );
@@ -199,7 +199,7 @@ select throws_ok(
     (select id from public.projects where code = 'OPS-001'),
     (select id from public.buildings where project_id = (select id from public.projects where code = 'OPS-001')),
     (select id from public.day_reports where project_id = (select id from public.projects where code = 'OPS-001')),
-    (select id from public.files where drive_file_id = 'drive-photo-1')
+    (select id from public.files where storage_object_key = 'projects/test/photo-1')
   ),
   '22023',
   'Only panoramas can be assigned to a tour',

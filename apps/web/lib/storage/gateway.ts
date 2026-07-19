@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export const storageGatewayUrl = process.env.NEXT_PUBLIC_STORAGE_GATEWAY_URL?.trim().replace(/\/$/, "") ?? "";
-export const isStorageGatewayConfigured = Boolean(storageGatewayUrl);
+// Storage routes are part of the same Next.js application. The server route
+// reports a configuration error until a private Vercel Blob store is connected.
+export const isStorageGatewayConfigured = true;
 
 async function accessToken(client: SupabaseClient) {
   const { data, error } = await client.auth.getSession();
@@ -14,9 +15,27 @@ async function sha256Hex(file: File) {
   return Array.from(new Uint8Array(digest)).map((value) => value.toString(16).padStart(2, "0")).join("");
 }
 
-async function gatewayError(response: Response) {
+async function storageError(response: Response) {
   const body = await response.json().catch(() => null) as { error?: string } | null;
-  return body?.error ?? `Opslaggateway gaf status ${response.status}.`;
+  return body?.error ?? `Private opslag gaf status ${response.status}.`;
+}
+
+function uploadToPresignedUrl(url: string, file: File, onProgress?: (percent: number) => void) {
+  return new Promise<void>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("PUT", url);
+    request.setRequestHeader("content-type", file.type || "application/octet-stream");
+    request.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable) onProgress?.(5 + Math.round((event.loaded / event.total) * 90));
+    });
+    request.addEventListener("load", () => {
+      if (request.status >= 200 && request.status < 300) resolve();
+      else reject(new Error(`Vercel Blob weigerde de upload met status ${request.status}.`));
+    });
+    request.addEventListener("error", () => reject(new Error("De verbinding met Vercel Blob is tijdens de upload verbroken.")));
+    request.addEventListener("abort", () => reject(new Error("De upload is afgebroken.")));
+    request.send(file);
+  });
 }
 
 export async function uploadProjectFile(
@@ -29,55 +48,52 @@ export async function uploadProjectFile(
     onProgress?: (percent: number) => void;
   },
 ) {
-  if (!isStorageGatewayConfigured) throw new Error("De private Google Drive-gateway is nog niet gekoppeld.");
   const token = await accessToken(client);
   input.onProgress?.(1);
   const sha256 = await sha256Hex(input.file);
+  const fileId = crypto.randomUUID();
   input.onProgress?.(4);
-  const initiation = await fetch(`${storageGatewayUrl}/v1/uploads/initiate`, {
+
+  const initiation = await fetch("/api/storage/uploads", {
     method: "POST",
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
     body: JSON.stringify({
+      fileId,
       projectId: input.projectId,
-      buildingId: input.buildingId,
-      name: input.file.name,
+      buildingId: input.buildingId || null,
+      category: input.category,
+      originalName: input.file.name,
       mimeType: input.file.type || "application/octet-stream",
       sizeBytes: input.file.size,
       sha256,
-      category: input.category,
     }),
   });
-  if (!initiation.ok) throw new Error(await gatewayError(initiation));
-  const session = await initiation.json() as { fileId: string; uploadToken: string; chunkSize: number };
-  const chunkSize = Math.max(256 * 1024, session.chunkSize);
-  let offset = 0;
-  while (offset < input.file.size) {
-    const endExclusive = Math.min(offset + chunkSize, input.file.size);
-    const chunk = input.file.slice(offset, endExclusive);
-    const response = await fetch(`${storageGatewayUrl}/v1/uploads/chunk`, {
-      method: "PUT",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "x-upload-token": session.uploadToken,
-        "content-type": input.file.type || "application/octet-stream",
-        "content-range": `bytes ${offset}-${endExclusive - 1}/${input.file.size}`,
-      },
-      body: chunk,
-    });
-    if (!response.ok) throw new Error(await gatewayError(response));
-    offset = endExclusive;
-    input.onProgress?.(Math.min(100, 4 + Math.round((offset / input.file.size) * 96)));
-  }
-  return { fileId: session.fileId, sha256 };
+  if (!initiation.ok) throw new Error(await storageError(initiation));
+  const upload = await initiation.json() as { fileId: string; pathname: string; presignedUrl: string };
+  await uploadToPresignedUrl(upload.presignedUrl, input.file, input.onProgress);
+  input.onProgress?.(96);
+
+  const completion = await fetch("/api/storage/uploads/complete", {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ fileId: upload.fileId, pathname: upload.pathname, sha256 }),
+  });
+  if (!completion.ok) throw new Error(await storageError(completion));
+  input.onProgress?.(100);
+  return completion.json() as Promise<{ fileId: string; sha256: string }>;
+}
+
+async function authorizedFileResponse(client: SupabaseClient, fileId: string, download = false) {
+  const token = await accessToken(client);
+  const response = await fetch(`/api/storage/files/${encodeURIComponent(fileId)}${download ? "?download=1" : ""}`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error(await storageError(response));
+  return response;
 }
 
 export async function downloadProjectFile(client: SupabaseClient, fileId: string, filename: string) {
-  if (!isStorageGatewayConfigured) throw new Error("De private Google Drive-gateway is nog niet gekoppeld.");
-  const token = await accessToken(client);
-  const response = await fetch(`${storageGatewayUrl}/v1/files/${encodeURIComponent(fileId)}/content`, {
-    headers: { authorization: `Bearer ${token}` },
-  });
-  if (!response.ok) throw new Error(await gatewayError(response));
+  const response = await authorizedFileResponse(client, fileId, true);
   const url = URL.createObjectURL(await response.blob());
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -87,12 +103,7 @@ export async function downloadProjectFile(client: SupabaseClient, fileId: string
 }
 
 export async function loadProjectFileObjectUrl(client: SupabaseClient, fileId: string) {
-  if (!isStorageGatewayConfigured) throw new Error("The private Google Drive gateway is not configured.");
-  const token = await accessToken(client);
-  const response = await fetch(`${storageGatewayUrl}/v1/files/${encodeURIComponent(fileId)}/content`, {
-    headers: { authorization: `Bearer ${token}` },
-  });
-  if (!response.ok) throw new Error(await gatewayError(response));
+  const response = await authorizedFileResponse(client, fileId);
   const blob = await response.blob();
   if (!blob.type.startsWith("image/")) throw new Error("The selected file is not a supported image.");
   return URL.createObjectURL(blob);

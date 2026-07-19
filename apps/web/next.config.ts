@@ -1,8 +1,14 @@
 import type { NextConfig } from "next";
 
 function allowedConnectSources() {
-  const sources = ["'self'", "https://*.supabase.co", "wss://*.supabase.co"];
-  for (const candidate of [process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_STORAGE_GATEWAY_URL]) {
+  const sources = [
+    "'self'",
+    "https://*.supabase.co",
+    "wss://*.supabase.co",
+    "https://blob.vercel-storage.com",
+    "https://*.blob.vercel-storage.com",
+  ];
+  for (const candidate of [process.env.NEXT_PUBLIC_SUPABASE_URL]) {
     if (!candidate) continue;
     try {
       sources.push(new URL(candidate).origin);

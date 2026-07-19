@@ -2,7 +2,7 @@
 
 Laatst bijgewerkt: 18-07-2026
 
-Deze applicatie wordt als native Next.js-app vanuit `apps/web` op Vercel gebouwd. De aparte Cloudflare Worker blijft uitsluitend de private Google Drive-gateway.
+Deze applicatie wordt als native Next.js-app vanuit `apps/web` op Vercel gebouwd. Bestandsbytes staan in een private Vercel Blob-store die aan hetzelfde project is gekoppeld.
 
 ## Eenmalig door CODECO
 
@@ -18,20 +18,21 @@ Stel deze waarden afzonderlijk in voor Production en, waar nodig, Preview. Kopie
 - [ ] `NEXT_PUBLIC_SUPABASE_URL`
 - [ ] `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 - [ ] `SUPABASE_SECRET_KEY` — uitsluitend server-side, voor beheerdersuitnodigingen
-- [ ] `NEXT_PUBLIC_STORAGE_GATEWAY_URL` — pas nadat de private Drive-gateway is gepubliceerd
+- [ ] `BLOB_STORE_ID` en `VERCEL_OIDC_TOKEN` — automatisch door Vercel na koppeling van de private Blob-store
+- [ ] `BLOB_READ_WRITE_TOKEN` — alleen als lokale fallback; nooit publiek of met `NEXT_PUBLIC_`
 
 ## Origins en redirects
 
 - [ ] Stel het definitieve Vercel-productiedomein in als Supabase Auth Site URL.
 - [ ] Voeg alleen noodzakelijke Vercel-productie- en previewredirects toe aan Supabase Auth.
-- [ ] Zet `APP_ORIGIN` van de Drive-gateway op het definitieve Vercel-productie-origin.
 - [ ] Test uitnodiging, eerste wachtwoord, aanmelden, afmelden en verlopen sessie op het productiedomein.
-- [ ] Test upload en download vanaf het productiedomein; een ander origin moet door de gateway worden geweigerd.
+- [ ] Test upload en download met een bevoegd account; een account zonder projectrecht moet worden geweigerd.
 
 ## Release gate
 
 - [ ] `npm ci`, lint, typecheck, Next.js-productiebouw en tests zijn groen.
 - [ ] Supabase-migraties en pgTAP-tests zijn groen voordat productie wordt gemigreerd.
+- [ ] Een private Blob-store is aan Production en alleen de noodzakelijke Preview-omgevingen gekoppeld.
 - [ ] Een gewone foto kan worden geüpload, exact geannoteerd en als formele bevinding teruggevonden.
 - [ ] Een equirectangulair 360°-beeld kan optioneel worden geopend, geannoteerd en in een tour worden doorlopen.
 - [ ] Engels opent standaard; de taalkeuze Nederlands blijft na herladen behouden.
