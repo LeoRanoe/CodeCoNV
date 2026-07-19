@@ -51,9 +51,10 @@ test("server-renders the public CODECO landing page", async () => {
   assert.match(html, /<title>CODECO N\.V\. \| Engineering, Contracting &amp; Consulting<\/title>/i);
   assert.match(html, /codeco-logo\.png/);
   assert.match(html, /CODECO Construction Designers &amp; Consultants N\.V\./);
-  assert.match(html, /Sound thinking/);
-  assert.match(html, /Start a conversation/i);
+  assert.match(html, /From first line/i);
+  assert.match(html, /Start a project/i);
   assert.match(html, /Newmont Recreation Centre/i);
+  assert.match(html, /Kwattaweg 717E/i);
   assert.doesNotMatch(html, /href="\/supervisie/i);
   assert.match(html, /manifest\.webmanifest/i);
   assert.match(html, /rel="icon"[^>]+codeco-logo\.png/i);
@@ -74,6 +75,26 @@ test("serves branded recovery pages and install metadata", async () => {
   assert.equal(manifest.short_name, "CODECO");
   assert.equal(manifest.start_url, "/");
   assert.equal(manifest.icons[0].src, "/codeco-logo.png");
+});
+
+test("keeps the mobile landing experience intentional and touch friendly", async () => {
+  const [page, navigation, landingCss] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/landing-navigation.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/landing.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(page, /studio-project-grid/);
+  assert.match(page, /studio-footer-top/);
+  assert.match(page, /info@codeconv\.com/);
+  assert.match(page, /Kwattaweg 717E/);
+  assert.match(navigation, /aria-expanded=/);
+  assert.match(navigation, /event\.key === "Escape"/);
+  assert.match(navigation, /studio-mobile-overlay/);
+  assert.match(landingCss, /min-height: 100svh/);
+  assert.match(landingCss, /scroll-snap-type: x mandatory/);
+  assert.match(landingCss, /flex: 0 0 84vw/);
+  assert.match(landingCss, /prefers-reduced-motion/);
 });
 
 test("keeps the central post-MVP interaction and accessibility hooks in source", async () => {
@@ -130,7 +151,8 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(app, /Supabase Realtime/);
   assert.match(app, /postgres_changes/);
   assert.doesNotMatch(app, /Demosessie|Kwattaweg Residence|Commewijne Port Facility/);
-  assert.match(page, /Sound thinking/);
+  assert.match(page, /From first line/);
+  assert.match(page, /Kwattaweg 717E/);
   assert.doesNotMatch(page, /href="\/supervisie/);
   assert.match(supervisionPage, /CodecoSupervisionApp/);
   assert.match(supervisionPage, /Providers/);

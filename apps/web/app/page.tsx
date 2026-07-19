@@ -1,292 +1,307 @@
 import Image from "next/image";
+import { LandingNavigation } from "./landing-navigation";
+
+const projects = [
+  {
+    number: "01",
+    title: "Newmont Recreation Centre",
+    category: "Building · Construction",
+    image: "/landing/newmont-recreation-centre.jpg",
+    className: "studio-project-wide",
+  },
+  {
+    number: "02",
+    title: "Samara Apartment Complex",
+    category: "Building · Construction",
+    image: "/landing/samara-apartment-complex.jpg",
+    className: "",
+  },
+  {
+    number: "03",
+    title: "Kwattaweg Residence",
+    category: "Structural design",
+    image: "/landing/kwattaweg-residence.png",
+    className: "studio-project-technical",
+  },
+  {
+    number: "04",
+    title: "Commewijne Port Facility",
+    category: "Infrastructure · Engineering",
+    image: "/landing/commewijne-port-facility.png",
+    className: "studio-project-wide studio-project-drawing",
+  },
+  {
+    number: "05",
+    title: "Residence Building Lalta",
+    category: "Building · Design",
+    image: "/landing/residence-lalta.jpg",
+    className: "",
+  },
+  {
+    number: "06",
+    title: "Residential Structural Design",
+    category: "Structural engineering",
+    image: "/landing/residential-structural-design.jpg",
+    className: "studio-project-technical",
+  },
+];
 
 const services = [
   {
     number: "01",
     title: "Engineering",
     description:
-      "Architectural concepts, structural analysis, foundations, budgets and infrastructure design—developed to national and international standards.",
-    scope: "Structures · Foundations · Roads & drainage · Bridges",
+      "Architectural designs, structural analysis, foundations, construction budgets and infrastructure—from roads and drainage to bridges and hydraulic works.",
+    detail: "Design · Calculation · Documentation",
   },
   {
     number: "02",
     title: "Contracting",
     description:
-      "Independent tender guidance, technical and financial comparison, and contract support from documentation through contractor selection.",
-    scope: "Tender documents · Objective analysis · Contract formats",
+      "Complete tender guidance, objective technical and financial assessment, and support with contract formats for clients and contractors.",
+    detail: "Tendering · Analysis · Contracts",
   },
   {
     number: "03",
     title: "Project management",
     description:
-      "On-site supervision, quality control, deadline and budget management, backed by clear daily and weekly reporting.",
-    scope: "Supervision · Reporting · Budgets · Deadlines",
+      "Permanent on-site supervision, project-specific quality checks, budget and deadline control, and transparent daily and weekly reporting.",
+    detail: "Supervision · Quality · Reporting",
   },
   {
     number: "04",
     title: "Consulting",
     description:
-      "Independent advice for clients and contractors across design, engineering, budgets, tenders and existing building plans.",
-    scope: "Design advice · Budget review · Plan assessment",
+      "Independent advice across design, engineering and construction, including budget reviews, tender assessments and checks of existing building plans.",
+    detail: "Advice · Review · Assurance",
   },
 ];
 
-const projects = [
-  {
-    title: "Newmont Recreation Centre",
-    type: "Building · Construction",
-    image: "/landing/newmont-recreation-centre.jpg",
-    className: "landing-project-featured",
-  },
-  {
-    title: "Kwattaweg Residence",
-    type: "Building · Structural design",
-    image: "/landing/kwattaweg-residence.png",
-    className: "landing-project-technical",
-  },
-  {
-    title: "Samara Apartment Complex",
-    type: "Building · Construction",
-    image: "/landing/samara-apartment-complex.jpg",
-    className: "landing-project-residential",
-  },
-];
-
-const values = [
-  ["01", "Quality", "Internationally recognised standards are embedded in every project."],
-  ["02", "Transparency", "Clients stay informed and involved at every stage of the work."],
-  ["03", "Customer satisfaction", "Each solution begins with the client’s real needs."],
-  ["04", "Commitment", "We treat every project as our own and see the journey through."],
+const clients = [
+  "Architect.sr",
+  "IDB",
+  "Newmont",
+  "SOL Suriname",
+  "VCB Bank",
+  "Cirkel Group",
+  "Rudisa",
+  "Protrade International",
+  "Superior Tanks & Piping",
+  "North Metal Working",
 ];
 
 export default function Home() {
   return (
-    <main className="landing" id="top">
-      <a className="landing-skip-link" href="#content">Skip to content</a>
+    <main className="studio" id="top">
+      <a className="studio-skip-link" href="#main-content">Skip to content</a>
+      <LandingNavigation />
 
-      <header className="landing-header">
-        <div className="landing-container landing-header-inner">
-          <a className="landing-logo" href="#top" aria-label="CODECO home">
+      <div id="main-content">
+        <header className="studio-hero" aria-labelledby="hero-title">
+          <div className="studio-hero-media" aria-hidden="true">
             <Image
-              src="/codeco-logo.png"
-              alt="CODECO Construction Designers & Consultants N.V."
-              width={738}
-              height={291}
+              className="studio-hero-frame studio-hero-frame-one"
+              src="/landing/hero-residence.jpg"
+              alt=""
+              fill
               priority
+              sizes="100vw"
             />
-          </a>
+            <Image
+              className="studio-hero-frame studio-hero-frame-two"
+              src="/landing/newmont-recreation-centre.jpg"
+              alt=""
+              fill
+              priority
+              sizes="100vw"
+            />
+          </div>
+          <div className="studio-hero-scrim" />
+          <div className="studio-grid-lines" aria-hidden="true"><span /><span /><span /></div>
 
-          <nav className="landing-nav" aria-label="Main navigation">
-            <a href="#expertise">Expertise</a>
-            <a href="#work">Projects</a>
-            <a href="#about">About</a>
-            <a href="#contact">Contact</a>
-          </nav>
-
-          <a className="landing-header-cta" href="mailto:info@codeconv.com">
-            Discuss a project <span aria-hidden="true">↗</span>
-          </a>
-
-          <details className="landing-mobile-menu">
-            <summary aria-label="Open navigation"><span /><span /></summary>
-            <nav aria-label="Mobile navigation">
-              <a href="#expertise">Expertise</a>
-              <a href="#work">Projects</a>
-              <a href="#about">About</a>
-              <a href="#contact">Contact</a>
-            </nav>
-          </details>
-        </div>
-      </header>
-
-      <div id="content">
-        <section className="landing-hero" aria-labelledby="landing-title">
-          <div className="landing-container landing-hero-grid">
-            <div className="landing-hero-copy">
-              <p className="landing-eyebrow">Civil · Structural · Construction</p>
-              <h1 id="landing-title">Sound thinking.<br /><span>Solid structures.</span></h1>
-              <p className="landing-hero-lead">
-                CODECO N.V. is a multidisciplinary technical engineering firm in Paramaribo,
-                delivering professional, quality-driven solutions for civil, structural and construction projects.
-              </p>
-              <div className="landing-hero-actions">
-                <a className="landing-button landing-button-primary" href="mailto:info@codeconv.com">
-                  Start a conversation <span aria-hidden="true">↗</span>
-                </a>
-                <a className="landing-text-link" href="#expertise">Explore our expertise <span aria-hidden="true">↓</span></a>
-              </div>
-              <dl className="landing-facts" aria-label="Company facts">
-                <div><dt>Established</dt><dd>2015</dd></div>
-                <div><dt>Based in</dt><dd>Paramaribo</dd></div>
-                <div><dt>Working to</dt><dd>International standards</dd></div>
-              </dl>
-            </div>
-
-            <div className="landing-hero-visual" aria-label="CODECO architectural and structural design work">
-              <div className="landing-hero-image-main">
-                <Image
-                  src="/landing/hero-residence.jpg"
-                  alt="Modern residence designed by CODECO"
-                  fill
-                  priority
-                  sizes="(max-width: 880px) 100vw, 54vw"
-                />
-                <span className="landing-image-index">01 / Architectural design</span>
-              </div>
-              <div className="landing-hero-image-detail">
-                <Image
-                  src="/landing/structural-analysis.jpg"
-                  alt="CODECO structural displacement analysis model"
-                  fill
-                  priority
-                  sizes="(max-width: 880px) 42vw, 20vw"
-                />
-                <span>Structural analysis</span>
-              </div>
-              <span className="landing-hero-mark" aria-hidden="true">C</span>
+          <div className="studio-wrap studio-hero-content">
+            <p className="studio-kicker">Engineering · Contracting · Consulting</p>
+            <h1 id="hero-title">From first line<br /><em>to lasting structure.</em></h1>
+            <p className="studio-hero-copy">
+              CODECO N.V. brings civil and structural engineering, project direction and technical advice together for work that is clear, buildable and made to last.
+            </p>
+            <div className="studio-actions">
+              <a className="studio-btn studio-btn-light" href="#work">View selected work <span aria-hidden="true">→</span></a>
+              <a className="studio-btn studio-btn-ghost" href="mailto:info@codeconv.com">Start a project</a>
             </div>
           </div>
-        </section>
 
-        <div className="landing-service-band" aria-label="Areas of expertise">
-          <div className="landing-container">
-            <span>Engineering</span><i aria-hidden="true" />
-            <span>Contracting</span><i aria-hidden="true" />
-            <span>Project management</span><i aria-hidden="true" />
-            <span>Consulting</span>
+          <aside className="studio-hero-facts" aria-label="CODECO company facts">
+            <span>Based in</span><strong>Paramaribo, Suriname</strong>
+            <span>Established</span><strong>2015</strong>
+          </aside>
+          <a className="studio-scroll-cue" href="#work"><span>Scroll to explore</span><i aria-hidden="true" /></a>
+        </header>
+
+        <div className="studio-marquee" aria-label="CODECO disciplines">
+          <div className="studio-marquee-track">
+            {[0, 1].map((copy) => (
+              <div aria-hidden={copy === 1} key={copy}>
+                <span>Engineering</span><i>—</i><span>Structural design</span><i>—</i>
+                <span>Project management</span><i>—</i><span>Contracting</span><i>—</i>
+                <span>Consulting</span><i>—</i><span>Infrastructure</span><i>—</i>
+              </div>
+            ))}
           </div>
         </div>
 
-        <section className="landing-section landing-about" id="about" aria-labelledby="about-title">
-          <div className="landing-container landing-about-grid">
-            <div className="landing-section-heading">
-              <p className="landing-eyebrow">About CODECO</p>
-              <h2 id="about-title">Engineering decisions that stand up in the real world.</h2>
-            </div>
-            <div className="landing-about-copy">
-              <p>
-                Our engineers translate complex requirements into efficient, buildable solutions—within budget and schedule.
-                The work ranges from residences and commercial buildings to warehouses, docks and filling sheds for multinational companies.
-              </p>
-              <p>
-                We advise, coordinate, guide, develop and design. Every assignment begins with a careful understanding of the client’s needs
-                and ends with clear, accountable delivery.
-              </p>
-              <a className="landing-inline-link" href="#values">How we work <span aria-hidden="true">→</span></a>
-            </div>
-            <figure className="landing-about-image">
-              <Image
-                src="/landing/consulting-design.jpg"
-                alt="Contemporary commercial building designed by CODECO"
-                fill
-                sizes="(max-width: 760px) 100vw, 58vw"
-              />
-              <figcaption>Design, engineering and construction expertise in one team.</figcaption>
-            </figure>
-            <blockquote>
-              <span aria-hidden="true">“</span>
-              Reliable, professional and cost-effective solutions—locally and internationally.
-            </blockquote>
-          </div>
-        </section>
-
-        <section className="landing-section landing-expertise" id="expertise" aria-labelledby="expertise-title">
-          <div className="landing-container">
-            <div className="landing-section-topline">
+        <section className="studio-section studio-work" id="work" aria-labelledby="work-title">
+          <div className="studio-wrap">
+            <div className="studio-section-head">
               <div>
-                <p className="landing-eyebrow">What we do</p>
-                <h2 id="expertise-title">Four disciplines.<br />One clear standard.</h2>
+                <p className="studio-label">Selected work</p>
+                <h2 id="work-title">Ideas tested.<br /><strong>Structures resolved.</strong></h2>
               </div>
-              <p>From the first sketch to final reporting, CODECO helps clients make informed decisions and keep work on course.</p>
+              <p>Architecture, structural systems and infrastructure developed by CODECO in Suriname.</p>
             </div>
-            <div className="landing-service-list">
+
+            <div className="studio-project-grid">
+              {projects.map((project) => (
+                <article className={`studio-project ${project.className}`} key={project.number}>
+                  <div className="studio-project-image">
+                    <Image src={project.image} alt={project.title} fill sizes={project.className.includes("wide") ? "100vw" : "(max-width: 760px) 86vw, 50vw"} />
+                    <span className="studio-project-number">{project.number} / 06</span>
+                    <div className="studio-project-overlay"><span>CODECO project</span></div>
+                  </div>
+                  <div className="studio-project-copy">
+                    <h3>{project.title}</h3>
+                    <p>{project.category}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <p className="studio-swipe-note">Swipe to explore projects <span aria-hidden="true">→</span></p>
+          </div>
+        </section>
+
+        <section className="studio-section studio-story" id="about" aria-labelledby="about-title">
+          <div className="studio-wrap">
+            <div className="studio-story-grid">
+              <div className="studio-story-image">
+                <Image src="/landing/structural-frame.jpg" alt="Structural frame designed and analysed by CODECO" fill sizes="(max-width: 820px) 100vw, 54vw" />
+                <span>Analysis before execution</span>
+              </div>
+              <div className="studio-story-copy">
+                <p className="studio-label">About CODECO</p>
+                <h2 id="about-title">One team for the thinking <strong>behind the build.</strong></h2>
+                <p>
+                  CODECO is a growing engineering company in Paramaribo specialising in civil and structural engineering and related services. Our engineers shape efficient solutions around each client’s needs, budget and schedule.
+                </p>
+                <p>
+                  From residential buildings to warehouses, docks and filling sheds for multinational companies, every project is approached with technical discipline and practical judgement.
+                </p>
+                <a className="studio-text-link" href="#services">Explore our capabilities <span aria-hidden="true">↓</span></a>
+              </div>
+            </div>
+
+            <div className="studio-fact-row">
+              <div><strong>2015</strong><span>Established in Suriname</span></div>
+              <div><strong>04</strong><span>Integrated disciplines</span></div>
+              <div><strong>01</strong><span>Accountable project partner</span></div>
+              <div><strong>∞</strong><span>Built around client needs</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section className="studio-section studio-services" id="services" aria-labelledby="services-title">
+          <div className="studio-wrap">
+            <div className="studio-section-head studio-services-head">
+              <div>
+                <p className="studio-label">What we do</p>
+                <h2 id="services-title">From early advice<br /><strong>to on-site control.</strong></h2>
+              </div>
+              <p>CODECO supports the full technical journey: design, selection, execution and independent assurance.</p>
+            </div>
+
+            <div className="studio-service-list">
               {services.map((service) => (
-                <article className="landing-service-row" key={service.number}>
-                  <span className="landing-service-number">{service.number}</span>
+                <article className="studio-service" key={service.number}>
+                  <span>{service.number}</span>
                   <h3>{service.title}</h3>
                   <p>{service.description}</p>
-                  <small>{service.scope}</small>
+                  <small>{service.detail}</small>
                 </article>
               ))}
             </div>
           </div>
         </section>
 
-        <section className="landing-section landing-work" id="work" aria-labelledby="work-title">
-          <div className="landing-container">
-            <div className="landing-section-topline landing-work-heading">
-              <div>
-                <p className="landing-eyebrow">Selected work</p>
-                <h2 id="work-title">Built on analysis.<br />Shaped around people.</h2>
+        <section className="studio-values" aria-labelledby="values-title">
+          <div className="studio-values-image">
+            <Image src="/landing/consulting-design.jpg" alt="Contemporary building design by CODECO" fill sizes="100vw" />
+          </div>
+          <div className="studio-values-scrim" />
+          <div className="studio-wrap studio-values-content">
+            <p className="studio-label">How we work</p>
+            <h2 id="values-title">Quality is the standard.<br /><strong>Transparency is the process.</strong></h2>
+            <div className="studio-value-list">
+              <span>Quality</span><span>Transparency</span><span>Customer satisfaction</span><span>Commitment</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="studio-clients" aria-labelledby="clients-title">
+          <div className="studio-wrap"><p className="studio-label" id="clients-title">Selected clients</p></div>
+          <div className="studio-client-track">
+            {[0, 1].map((copy) => (
+              <div aria-hidden={copy === 1} key={copy}>
+                {clients.map((client) => <span key={`${copy}-${client}`}>{client}</span>)}
               </div>
-              <p>Featured engineering and design work from CODECO’s project portfolio.</p>
-            </div>
-            <div className="landing-project-grid">
-              {projects.map((project, index) => (
-                <article className={`landing-project ${project.className}`} key={project.title}>
-                  <div className="landing-project-image">
-                    <Image src={project.image} alt={project.title} fill sizes={index === 0 ? "(max-width: 760px) 100vw, 62vw" : "(max-width: 760px) 100vw, 38vw"} />
-                  </div>
-                  <div className="landing-project-meta">
-                    <div><small>{project.type}</small><h3>{project.title}</h3></div>
-                    <span aria-hidden="true">0{index + 1}</span>
-                  </div>
-                </article>
-              ))}
-            </div>
+            ))}
           </div>
         </section>
 
-        <section className="landing-values" id="values" aria-labelledby="values-title">
-          <div className="landing-container landing-values-grid">
-            <div className="landing-values-intro">
-              <p className="landing-eyebrow">Core values</p>
-              <h2 id="values-title">What the work<br />has to live up to.</h2>
-              <p>Four principles guide the way CODECO works with every client, contractor and project team.</p>
-            </div>
-            <div className="landing-values-list">
-              {values.map(([number, title, description]) => (
-                <article key={number}>
-                  <span>{number}</span>
-                  <div><h3>{title}</h3><p>{description}</p></div>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="landing-clients" aria-labelledby="clients-title">
-          <div className="landing-container">
-            <p className="landing-eyebrow" id="clients-title">Trusted by</p>
-            <div className="landing-client-list">
-              <span>Architect.sr</span><span>IDB</span><span>Newmont</span><span>SOL Suriname</span>
-              <span>VCB Bank</span><span>Cirkel Group</span><span>Rudisa</span><span>Protrade International</span>
-            </div>
-          </div>
-        </section>
-
-        <section className="landing-contact" id="contact" aria-labelledby="contact-title">
-          <div className="landing-container landing-contact-grid">
+        <section className="studio-contact" id="contact" aria-labelledby="contact-title">
+          <div className="studio-wrap studio-contact-grid">
             <div>
-              <p className="landing-eyebrow">Start a project</p>
-              <h2 id="contact-title">Bring us the challenge.<br />We’ll bring the structure.</h2>
+              <p className="studio-label">Start a project</p>
+              <h2 id="contact-title">Have a plan in mind?<br /><strong>Let’s make it stand.</strong></h2>
             </div>
-            <div className="landing-contact-details">
+            <div className="studio-contact-actions">
               <a href="mailto:info@codeconv.com">info@codeconv.com <span aria-hidden="true">↗</span></a>
               <a href="tel:+5978554345">+597 855-4345 <span aria-hidden="true">↗</span></a>
-              <address>Kwattaweg 717E<br />Paramaribo, Suriname</address>
             </div>
           </div>
         </section>
       </div>
 
-      <footer className="landing-footer">
-        <div className="landing-container">
-          <a className="landing-logo landing-footer-logo" href="#top" aria-label="CODECO home">
-            <Image src="/codeco-logo.png" alt="CODECO Construction Designers & Consultants N.V." width={738} height={291} />
-          </a>
-          <p>Engineering · Contracting · Consulting</p>
-          <p>© {new Date().getFullYear()} CODECO N.V.</p>
+      <footer className="studio-footer">
+        <div className="studio-wrap">
+          <div className="studio-footer-top">
+            <div className="studio-footer-brand">
+              <Image src="/codeco-logo.png" alt="CODECO Construction Designers & Consultants N.V." width={738} height={291} />
+              <p>Multidisciplinary technical engineering firm for professional, quality-driven civil, structural and construction projects.</p>
+            </div>
+            <div className="studio-footer-column">
+              <p>Office</p>
+              <address>Kwattaweg 717E<br />Paramaribo, Suriname</address>
+              <a href="tel:+5978554345">+597 855-4345</a>
+              <a href="mailto:info@codeconv.com">info@codeconv.com</a>
+            </div>
+            <div className="studio-footer-column">
+              <p>Expertise</p>
+              <a href="#services">Engineering</a>
+              <a href="#services">Contracting</a>
+              <a href="#services">Project management</a>
+              <a href="#services">Consulting</a>
+            </div>
+            <div className="studio-footer-column">
+              <p>Company</p>
+              <a href="#about">About CODECO</a>
+              <a href="#work">Selected work</a>
+              <a href="#contact">Contact</a>
+              <a href="https://www.facebook.com/codeconv/" target="_blank" rel="noreferrer">Facebook ↗</a>
+            </div>
+          </div>
+          <div className="studio-footer-bottom">
+            <p>© {new Date().getFullYear()} CODECO N.V. · Construction Designers & Consultants N.V.</p>
+            <p>Engineering · Contracting · Consulting</p>
+          </div>
         </div>
       </footer>
     </main>

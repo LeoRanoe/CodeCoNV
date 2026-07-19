@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist_Mono, Hind } from "next/font/google";
+import { Geist_Mono, Hind, Jost } from "next/font/google";
 import { headers } from "next/headers";
 import "./globals.css";
 import "./landing.css";
@@ -13,6 +13,12 @@ const hind = Hind({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+const jost = Jost({
+  variable: "--font-jost",
+  subsets: ["latin"],
+  weight: ["200", "300", "400", "500", "600"],
 });
 
 const description =
@@ -40,13 +46,13 @@ export async function generateMetadata(): Promise<Metadata> {
       type: "website",
       locale: "en_US",
       alternateLocale: ["nl_SR"],
-      title: "CODECO N.V. | Sound thinking. Solid structures.",
+      title: "CODECO N.V. | From first line to lasting structure.",
       description,
       images: [{ url: new URL("/landing/hero-residence.jpg", baseUrl).toString(), width: 2560, height: 1440, alt: "Architectural design by CODECO N.V." }],
     },
     twitter: {
       card: "summary_large_image",
-      title: "CODECO N.V. | Sound thinking. Solid structures.",
+      title: "CODECO N.V. | From first line to lasting structure.",
       description,
       images: [new URL("/landing/hero-residence.jpg", baseUrl).toString()],
     },
@@ -60,7 +66,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="scroll-smooth">
-      <body className={`${hind.variable} ${geistMono.variable}`}>
+      <body className={`${hind.variable} ${geistMono.variable} ${jost.variable}`}>
         {children}
       </body>
     </html>
