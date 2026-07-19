@@ -35,7 +35,7 @@ export function LandingNavigation() {
         <nav className="studio-desktop-nav" aria-label="Main navigation">
           {links.map(([label, href]) => <a href={href} key={href}>{label}</a>)}
         </nav>
-        <a className="studio-nav-cta" href="mailto:info@codeconv.com">Start a project <span aria-hidden="true">↗</span></a>
+        <a className="studio-nav-cta" href="mailto:info@codeconv.com">Start a project <i className="studio-icon-arrow studio-icon-arrow-up" aria-hidden="true" /></a>
         <button
           className="studio-menu-button"
           type="button"
@@ -52,7 +52,7 @@ export function LandingNavigation() {
         <nav aria-label="Mobile navigation">
           {links.map(([label, href], index) => (
             <a href={href} key={href} onClick={() => setOpen(false)}>
-              <span>0{index + 1}</span>{label}<i aria-hidden="true">→</i>
+              <span>0{index + 1}</span>{label}<i className="studio-icon-arrow" aria-hidden="true" />
             </a>
           ))}
         </nav>

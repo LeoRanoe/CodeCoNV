@@ -95,6 +95,8 @@ test("keeps the mobile landing experience intentional and touch friendly", async
   assert.match(page, /studio-hero-aperture/);
   assert.match(page, /studio-hero-line/);
   assert.match(page, /data-reveal="project"/);
+  assert.match(page, /studio-icon-arrow/);
+  assert.doesNotMatch(`${page}${navigation}`, /[→↗↓]/);
   assert.match(motion, /IntersectionObserver/);
   assert.match(motion, /requestAnimationFrame/);
   assert.match(motion, /prefers-reduced-motion/);

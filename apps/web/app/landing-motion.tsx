@@ -28,7 +28,7 @@ export function LandingMotion() {
           observer.unobserve(entry.target);
         });
       },
-      { rootMargin: "0px 0px -12% 0px", threshold: 0.08 },
+      { rootMargin: "0px 0px 18% 0px", threshold: 0.01 },
     );
 
     revealItems.forEach((item) => observer.observe(item));
