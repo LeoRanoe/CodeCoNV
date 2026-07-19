@@ -105,50 +105,31 @@ textarea:focus-visible {
 .brand {
   display: flex;
   align-items: center;
-  gap: 11px;
+  justify-content: center;
   padding: 0 10px 24px;
-  letter-spacing: -0.02em;
 }
 
-.brand-copy,
-.brand-copy strong,
-.brand-copy small {
+.company-lockup {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+}
+
+.company-logo {
   display: block;
+  width: 190px;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
 }
 
-.brand-copy strong {
-  color: inherit;
-  font-size: 17px;
-  font-weight: 760;
-  line-height: 1;
-  letter-spacing: 0.015em;
-}
-
-.brand-copy small {
-  margin-top: 5px;
+.company-logo-context {
   color: #9aacb6;
   font-size: 9px;
   font-weight: 700;
   line-height: 1;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-}
-
-.brand-mark {
-  position: relative;
-  width: 31px;
-  height: 31px;
-  border-radius: 9px;
-  background: var(--signal);
-  box-shadow: inset 0 -4px 0 rgba(10, 28, 42, 0.16);
-}
-
-.brand-mark::before,
-.brand-mark::after {
-  content: "";
-  position: absolute;
-  background: #fff;
-  border-radius: 2px;
 }
 
 .context-shell {
@@ -173,7 +154,10 @@ textarea:focus-visible {
 .context-brand {
   display: flex;
   align-items: center;
-  gap: 11px;
+}
+
+.context-brand .company-logo {
+  width: 158px;
 }
 
 .context-user {
@@ -818,21 +802,6 @@ textarea:focus-visible {
   margin-top: 6px;
   color: var(--ink-400);
   font-size: 8px;
-}
-
-.brand-mark::before {
-  width: 5px;
-  height: 17px;
-  left: 8px;
-  top: 7px;
-}
-
-.brand-mark::after {
-  width: 10px;
-  height: 5px;
-  left: 13px;
-  top: 7px;
-  box-shadow: 0 6px 0 #fff, 0 12px 0 #fff;
 }
 
 .project-context-card {
@@ -3126,6 +3095,10 @@ textarea:focus-visible {
 }
 
 @media (max-width: 620px) {
+  .context-brand .company-logo {
+    width: 140px;
+  }
+
   .context-user > span:last-child,
   .context-steps svg,
   .context-steps span:not(.active) {
@@ -3414,30 +3387,25 @@ textarea:focus-visible {
 }
 
 .access-brand,
-.setup-top,
-.access-brand > span:last-child {
+.setup-top {
   display: flex;
   align-items: center;
 }
 
 .access-brand {
-  gap: 11px;
   margin-bottom: 30px;
 }
 
-.access-brand > span:last-child {
-  align-items: flex-start;
-  flex-direction: column;
+.access-brand .company-lockup {
+  justify-items: start;
 }
 
-.access-brand strong {
-  color: var(--ink-900);
-  font-size: 14px;
+.access-brand .company-logo {
+  width: 190px;
 }
 
-.access-brand small {
+.access-brand .company-logo-context {
   color: #718995;
-  font-size: 10px;
 }
 
 .auth-heading h1,
@@ -3531,6 +3499,10 @@ textarea:focus-visible {
   justify-content: center;
 }
 
+.state-card .company-lockup {
+  justify-items: center;
+}
+
 .state-icon {
   display: grid;
   width: 54px;
@@ -3547,6 +3519,7 @@ textarea:focus-visible {
 }
 
 .setup-top {
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 16px;
 }

@@ -46,6 +46,7 @@ import {
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
+import NextImage from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { OperationalWorkspace } from "@/app/operational-workspace";
@@ -106,6 +107,23 @@ import {
   type WorkspaceBuilding,
   type WorkspaceProject,
 } from "@/lib/supabase/data";
+
+function CompanyLogo({ subtitle }: { subtitle?: string }) {
+  return (
+    <span className="company-lockup">
+      <NextImage
+        className="company-logo"
+        src="/codeco-logo.png"
+        alt="CODECO Construction Designers & Consultants N.V."
+        width={738}
+        height={291}
+        sizes="(max-width: 620px) 150px, 190px"
+        priority
+      />
+      {subtitle ? <small className="company-logo-context">{subtitle}</small> : null}
+    </span>
+  );
+}
 
 type NavKey = "vandaag" | "project" | "acties" | "rapporten" | "meer";
 type ModalKey = "quick" | "entry" | "action_create" | "action_detail" | "report" | "attendance" | "daily_questions" | "user_admin" | "notifications" | null;
@@ -779,8 +797,7 @@ export function CodecoSupervisionApp() {
     <div className="app-shell">
       <aside className="sidebar" aria-label={text("Main navigation", "Hoofdnavigatie")}>
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true" />
-          <span className="brand-copy"><strong>CODECO N.V.</strong><small>Supervisie</small></span>
+          <CompanyLogo subtitle={text("Supervision", "Supervisie")} />
         </div>
 
         <button className="project-context-card" type="button" aria-label={text("Change project and building", "Project en gebouw wijzigen")} onClick={() => setWorkspaceStage("projects")}>
@@ -1174,7 +1191,7 @@ function AppStateScreen({
   return (
     <div className="access-shell">
       <section className="access-card state-card">
-        <div className="setup-top"><div className="access-brand"><span className="brand-mark" /><span><strong>CODECO N.V.</strong><small>{text("Construction supervision", "Constructiesupervisie")}</small></span></div><LanguageSwitcher /></div>
+        <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={text("Construction supervision", "Constructiesupervisie")} /></div><LanguageSwitcher /></div>
         <span className="state-icon">{loading ? <Loader2 className="spin" size={26} /> : <AlertTriangle size={26} />}</span>
         <h1>{title}</h1>
         <p>{copy}</p>
@@ -1211,7 +1228,7 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
   return (
     <div className="access-shell">
       <section className="access-card auth-card">
-        <div className="setup-top"><div className="access-brand"><span className="brand-mark" /><span><strong>CODECO N.V.</strong><small>{text("Construction supervision", "Constructiesupervisie")}</small></span></div><LanguageSwitcher /></div>
+        <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={text("Construction supervision", "Constructiesupervisie")} /></div><LanguageSwitcher /></div>
         <div className="auth-heading">
           <p className="eyebrow">{text("Internal CODECO workspace", "Interne CODECO-werkruimte")}</p>
           <h1>{text("Welcome back", "Welkom terug")}</h1>
@@ -1260,7 +1277,7 @@ function PasswordSetupScreen({
   return (
     <div className="access-shell setup-shell">
       <section className="access-card setup-card">
-        <div className="setup-top"><div className="access-brand"><span className="brand-mark" /><span><strong>CODECO N.V.</strong><small>{text("Internal invitation", "Interne uitnodiging")}</small></span></div><LanguageSwitcher /><button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button></div>
+        <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={text("Internal invitation", "Interne uitnodiging")} /></div><LanguageSwitcher /><button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button></div>
         <span className="state-icon"><KeyRound size={26} /></span>
         <p className="eyebrow">{text("First sign-in", "Eerste aanmelding")}</p><h1>{text("Set your password", "Stel je wachtwoord in")}</h1><p>{text("The invitation for", "De uitnodiging voor")} <strong>{email}</strong> {text("has been verified. Choose a personal password of at least 12 characters.", "is geverifieerd. Kies nu een persoonlijk wachtwoord van minimaal 12 tekens.")}</p>
         <form className="access-form setup-form" onSubmit={handleSubmit(submit)} noValidate>
@@ -1279,7 +1296,7 @@ function AccessPendingScreen({ email, signOut }: { email: string; signOut: () =>
   return (
     <div className="access-shell">
       <section className="access-card state-card">
-        <div className="setup-top"><div className="access-brand"><span className="brand-mark" /><span><strong>CODECO N.V.</strong><small>{text("Internal access", "Interne toegang")}</small></span></div><LanguageSwitcher /></div>
+        <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={text("Internal access", "Interne toegang")} /></div><LanguageSwitcher /></div>
         <span className="state-icon"><ShieldCheck size={26} /></span>
         <h1>{text("No project access yet", "Nog geen projecttoegang")}</h1>
         <p>{text("The signed-in account", "Het account")} <strong>{email}</strong> {text("has no CODECO organization or project assigned. Ask an organization administrator to assign the appropriate role.", "is aangemeld, maar heeft geen CODECO-organisatie of project toegewezen. Vraag een organisatiebeheerder om de juiste rol toe te kennen.")}</p>
@@ -1318,7 +1335,7 @@ function OrganizationSetupScreen({
   return (
     <div className="access-shell setup-shell">
       <section className="access-card setup-card">
-        <div className="setup-top"><div className="access-brand"><span className="brand-mark" /><span><strong>CODECO N.V.</strong><small>{text("Initial setup", "Eerste inrichting")}</small></span></div><LanguageSwitcher /><button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button></div>
+        <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={text("Initial setup", "Eerste inrichting")} /></div><LanguageSwitcher /><button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button></div>
         <p className="eyebrow">{text("Step 1 of 2", "Stap 1 van 2")}</p><h1>{text("Set up the organization securely", "Organisatie veilig instellen")}</h1><p>{text("This creates the central role and permission structure. Your account", "Dit maakt de centrale rollen- en rechtenstructuur. Je account")} <strong>{userEmail}</strong> {text("becomes the first organization administrator.", "wordt de eerste organisatiebeheerder.")}</p>
         <form className="access-form setup-form" onSubmit={handleSubmit(submit)} noValidate>
           <label className="form-field"><span>{text("Your name", "Jouw naam")}</span><input {...register("displayName")} />{errors.displayName ? <small className="field-error">{errors.displayName.message}</small> : null}</label>
@@ -1367,7 +1384,7 @@ function ProjectSetupScreen({
   return (
     <div className="access-shell setup-shell">
       <section className="access-card setup-card project-setup-card">
-        <div className="setup-top"><div className="access-brand"><span className="brand-mark" /><span><strong>{organizationName}</strong><small>{text("Initial setup", "Eerste inrichting")}</small></span></div><LanguageSwitcher /><button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button></div>
+        <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={`${organizationName} · ${text("Initial setup", "Eerste inrichting")}`} /></div><LanguageSwitcher /><button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button></div>
         <p className="eyebrow">{text("Step 2 of 2", "Stap 2 van 2")}</p><h1>{text("First project and building", "Eerste project en gebouw")}</h1><p>{text("The application atomically creates the project, building, your project access and three standard parties.", "De applicatie maakt atomair het project, gebouw, jouw projecttoegang en drie standaardpartijen aan.")}</p>
         <form className="access-form setup-form two-columns" onSubmit={handleSubmit(submit)} noValidate>
           <label className="form-field"><span>{text("Project code", "Projectcode")}</span><input {...register("code")} />{errors.code ? <small className="field-error">{errors.code.message}</small> : null}</label>
@@ -1421,8 +1438,7 @@ function ContextSelection({
     <div className="context-shell">
       <header className="context-topbar">
         <div className="context-brand">
-          <span className="brand-mark" aria-hidden="true" />
-          <span className="brand-copy"><strong>CODECO N.V.</strong><small>Supervisie</small></span>
+          <CompanyLogo subtitle={text("Supervision", "Supervisie")} />
         </div>
         <div className="context-user"><LanguageSwitcher compact /><span className="avatar">{initials(currentUserName)}</span><span><strong>{currentUserName}</strong><small>{text("CODECO user", "CODECO-gebruiker")}</small></span></div>
       </header>

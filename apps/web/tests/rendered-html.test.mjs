@@ -49,7 +49,8 @@ test("server-renders the secure CODECO entry point", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>Today \| CODECO Supervisie<\/title>/i);
-  assert.match(html, /CODECO N\.V\./);
+  assert.match(html, /codeco-logo\.png/);
+  assert.match(html, /CODECO Construction Designers &amp; Consultants N\.V\./);
   assert.match(html, /Opening secure workspace/);
   assert.match(html, /session and project access/i);
   assert.doesNotMatch(html, /Sitezicht|codex-preview|Building your site|react-loading-skeleton/i);
