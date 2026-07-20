@@ -141,8 +141,11 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(app, /keepFocusInside/);
   assert.match(app, /aria-live=/);
   assert.match(app, /timeZone: "America\/Paramaribo"/);
+  assert.match(app, /greetingForSuriname/);
+  assert.match(app, /Good afternoon|Goedemiddag/);
+  assert.match(app, /setInterval\(\(\) => setClock\(new Date\(\)\), 60_000\)/);
   assert.match(app, /WorkspaceStage/);
-  assert.match(app, /Projectstart invullen/);
+  assert.match(app, /Werkdag starten/);
   assert.match(app, /Aanwezigheid vandaag/);
   assert.match(app, /Hoe is het project vandaag gegaan\?/);
   assert.match(app, /Wat was het werkelijke weer\?/);
@@ -157,7 +160,7 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(app, /Alleen medewerkers die door een organisatiebeheerder zijn uitgenodigd/);
   assert.match(app, /Gebruikers en toegang/);
   assert.match(app, /UserAdminModal/);
-  assert.match(operationalWorkspace, /Productiegereedheid/);
+  assert.match(operationalWorkspace, /Managementoverzicht/);
   assert.match(operationalWorkspace, /Bewijsreferenties, nooit geheimen/);
   assert.match(operationalWorkspace, /updateProductionReadiness/);
   assert.match(app, /must_set_password/);
@@ -182,6 +185,7 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(packageJson, /@vercel\/blob/);
   assert.match(dailyReportForm, /clientReportSections/);
   assert.match(dailyReportForm, /AUTO-HSE-01/);
+  assert.doesNotMatch(dailyReportForm, /previousDayWorkers = 41/);
   assert.match(actionForm, /projectActionSchema/);
   assert.match(actionForm, /actionTransitionSchema/);
   assert.match(userForm, /internalUserInviteSchema/);
@@ -193,6 +197,8 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(dataLayer, /submitReportForReview/);
   assert.match(dataLayer, /createProjectAction/);
   assert.match(dataLayer, /transitionProjectAction/);
+  assert.match(dataLayer, /surinameLocalDateTimeToIso/);
+  assert.match(dataLayer, /-03:00/);
   assert.match(dataLayer, /loadInternalAccess/);
   assert.match(dataLayer, /inviteInternalUser/);
   assert.match(adminRoute, /inviteUserByEmail/);

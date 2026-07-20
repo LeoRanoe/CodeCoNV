@@ -153,6 +153,16 @@ export function reportDateInSuriname(date = new Date()) {
   return `${value.year}-${value.month}-${value.day}`;
 }
 
+export function surinameLocalDateTimeToIso(value: string) {
+  const normalized = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(normalized)) {
+    throw new Error("Kies een geldige datum en tijd.");
+  }
+  const parsed = new Date(`${normalized}-03:00`);
+  if (Number.isNaN(parsed.getTime())) throw new Error("Kies een geldige datum en tijd.");
+  return parsed.toISOString();
+}
+
 export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSnapshot> {
   const user = await currentUser(client);
   const [membershipResult, bootstrapResult] = await Promise.all([
@@ -667,7 +677,7 @@ export async function createProjectAction(
     p_owner_party_id: input.ownerPartyId,
     p_title: input.title,
     p_description: input.description,
-    p_due_at: new Date(input.dueAt).toISOString(),
+    p_due_at: surinameLocalDateTimeToIso(input.dueAt),
     p_priority: input.priority,
     p_idempotency_key: `action:${crypto.randomUUID()}`,
   });

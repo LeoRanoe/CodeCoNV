@@ -98,7 +98,7 @@ export type AutomationRule = {
 
 export function getProjectStartAutomation(
   answers: Partial<ProjectStartAnswers>,
-  previousDayWorkers = 41,
+  previousDayWorkers?: number,
   language: "en" | "nl" = "en",
 ): AutomationRule[] {
   const text = (english: string, dutch: string) => language === "en" ? english : dutch;
@@ -179,7 +179,7 @@ export function getProjectStartAutomation(
     });
   }
 
-  if (typeof answers.expectedWorkers === "number" && previousDayWorkers > 0) {
+  if (typeof answers.expectedWorkers === "number" && typeof previousDayWorkers === "number" && previousDayWorkers > 0) {
     const difference = Math.abs(answers.expectedWorkers - previousDayWorkers) / previousDayWorkers;
     if (difference >= 0.2) {
       rules.push({

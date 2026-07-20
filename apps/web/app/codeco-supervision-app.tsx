@@ -260,31 +260,42 @@ const nextActionStatus: Partial<Record<ProjectAction["status"], ProjectAction["s
 };
 
 function defaultActionDeadline() {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
-  date.setHours(16, 0, 0, 0);
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
+  const [year, month, day] = reportDateInSuriname().split("-").map(Number);
+  const tomorrow = new Date(Date.UTC(year, month - 1, day + 1));
+  return `${tomorrow.getUTCFullYear()}-${String(tomorrow.getUTCMonth() + 1).padStart(2, "0")}-${String(tomorrow.getUTCDate()).padStart(2, "0")}T16:00`;
 }
 
-function currentTime(locale = "en-US") {
+function currentTime(locale = "en-US", date = new Date()) {
   return new Intl.DateTimeFormat(locale, {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
     timeZone: "America/Paramaribo",
-  }).format(new Date());
+  }).format(date);
 }
 
-function currentDateLabel(locale = "en-US") {
+function currentDateLabel(locale = "en-US", date = new Date()) {
   const value = new Intl.DateTimeFormat(locale, {
     weekday: "long",
     day: "numeric",
     month: "long",
     year: "numeric",
     timeZone: "America/Paramaribo",
-  }).format(new Date());
+  }).format(date);
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function greetingForSuriname(language: "en" | "nl", date = new Date()) {
+  const hourPart = new Intl.DateTimeFormat("en-US", {
+    hour: "2-digit",
+    hourCycle: "h23",
+    timeZone: "America/Paramaribo",
+  }).formatToParts(date).find((part) => part.type === "hour")?.value;
+  const hour = Number(hourPart ?? 0);
+  if (hour >= 5 && hour < 12) return language === "en" ? "Good morning" : "Goedemorgen";
+  if (hour >= 12 && hour < 18) return language === "en" ? "Good afternoon" : "Goedemiddag";
+  if (hour >= 18 && hour < 23) return language === "en" ? "Good evening" : "Goedenavond";
+  return language === "en" ? "Good night" : "Goedenacht";
 }
 
 function initials(name: string) {
@@ -384,6 +395,7 @@ export function CodecoSupervisionApp() {
   const [dailyCloseoutAnswers, setDailyCloseoutAnswers] = useState<DailyCloseoutAnswers | null>(null);
   const [selectedAction, setSelectedAction] = useState<ProjectAction | null>(null);
   const [toast, setToast] = useState("");
+  const [clock, setClock] = useState(() => new Date());
   const reportDate = reportDateInSuriname();
 
   const workspaceQuery = useQuery({
@@ -432,6 +444,11 @@ export function CodecoSupervisionApp() {
     ...item,
     label: ({ vandaag: text("Overview", "Overzicht"), project: text("Workspace", "Werkruimte"), acties: text("Actions", "Acties"), rapporten: text("Reports", "Rapporten"), meer: canManageMembers ? text("Management", "Management") : text("Settings", "Instellingen") } satisfies Record<NavKey, string>)[item.id],
   }));
+
+  useEffect(() => {
+    const clockTimer = window.setInterval(() => setClock(new Date()), 60_000);
+    return () => window.clearInterval(clockTimer);
+  }, []);
 
   useEffect(() => {
     if (hasEnteredWorkspace || !workspaceQuery.data?.projects.length) return;
@@ -947,6 +964,7 @@ export function CodecoSupervisionApp() {
               openSettings={() => navigate("meer")}
               canManageMembers={canManageMembers}
               currentUserName={currentUserName}
+              now={clock}
               reportNumber={reportNumber}
               actions={dayActions}
               showCritical={() => {
@@ -1657,7 +1675,7 @@ function ProjectStartForm({
     },
   });
   const answers = useWatch({ control });
-  const automation = getProjectStartAutomation(answers, 41, language);
+  const automation = getProjectStartAutomation(answers, undefined, language);
 
   return (
     <>
@@ -1750,6 +1768,7 @@ function TodayView({
   openSettings,
   canManageMembers,
   currentUserName,
+  now,
   reportNumber,
   actions,
 }: {
@@ -1772,6 +1791,7 @@ function TodayView({
   openSettings: () => void;
   canManageMembers: boolean;
   currentUserName: string;
+  now: Date;
   reportNumber: string;
   actions: ProjectAction[];
 }) {
@@ -1781,7 +1801,7 @@ function TodayView({
     { id: 2, title: text("Confirm quality and HSE", "Kwaliteit en HSE bevestigen"), detail: dailyCloseoutAnswers ? text("Recorded centrally", "Centraal vastgelegd") : text("Daily questions required", "Dagvragen vereist"), flag: "red" },
     { id: 3, title: text("Complete tomorrow's plan", "Planning voor morgen invullen"), detail: dailyCloseoutAnswers ? text("Recorded centrally", "Centraal vastgelegd") : text("Before daily closeout", "Voor dagafsluiting"), flag: "" },
   ];
-  const automation = projectStartAnswers ? getProjectStartAutomation(projectStartAnswers, 41, language) : [];
+  const automation = projectStartAnswers ? getProjectStartAutomation(projectStartAnswers, undefined, language) : [];
   const criticalEntry = entries.find((entry) => entry.badgeTone === "red");
   const inspectionCount = entries.filter((entry) => entry.kind === "inspection").length;
   const progress = dailyCloseoutAnswers?.progressPercent ?? 0;
@@ -1794,8 +1814,8 @@ function TodayView({
     <>
       <section className="page-intro">
         <div>
-          <p className="eyebrow">{currentDateLabel(locale)}</p>
-          <h1>{text("Good morning", "Goedemorgen")}, {currentUserName}.</h1>
+          <p className="eyebrow">{currentDateLabel(locale, now)} · {currentTime(locale, now)}</p>
+          <h1>{greetingForSuriname(language, now)}, {currentUserName}.</h1>
           <p>{text("This requires your attention today at", "Dit vraagt vandaag je aandacht bij")} {projectName} · {buildingName}.</p>
         </div>
         <div className="page-intro-actions">
