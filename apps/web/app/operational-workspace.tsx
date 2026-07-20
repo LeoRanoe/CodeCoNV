@@ -591,7 +591,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
 
 function AdminOperations({ data, client, organizationId, projectId, projectName, buildingId, buildingName, parties, canManageOrganization, openUserAdmin, busy, run }: { data: OperationSnapshot; client: SupabaseClient; organizationId: string; projectId: string; projectName: string; buildingId: string; buildingName: string; parties: ProjectParty[]; canManageOrganization: boolean; openUserAdmin: () => void; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean> }) {
   const { text } = useLanguage();
-  const [section, setSection] = useState<"readiness" | "settings" | "structure" | "templates" | "backup">("readiness");
+  const [section, setSection] = useState<"readiness" | "settings" | "structure" | "templates" | "backup">("settings");
   const [template, setTemplate] = useState({ module: "inspection", code: "", name: "", prompts: "" });
   const [settings, setSettings] = useState(() => ({ maxFileSizeMb: data.settings?.max_file_size_mb ?? 25, leadHours: data.settings?.notification_lead_hours ?? 24, retentionDays: data.settings?.retention_days?.toString() ?? "", reportPrefix: data.settings?.report_prefix ?? "DR" }));
   const [location, setLocation] = useState({ type: "zone", code: "", name: "", parentId: "", description: "" });

@@ -28,7 +28,6 @@ import {
   LogIn,
   LogOut,
   MapPin,
-  Menu,
   MessageSquareText,
   Minus,
   PackageCheck,
@@ -169,11 +168,11 @@ type AttendanceRow = {
 };
 
 const navigation: { id: NavKey; label: string; icon: LucideIcon; badge?: string }[] = [
-  { id: "vandaag", label: "Vandaag", icon: Home },
-  { id: "project", label: "Project", icon: LayoutDashboard },
+  { id: "vandaag", label: "Overzicht", icon: Home },
+  { id: "project", label: "Werkruimte", icon: LayoutDashboard },
   { id: "acties", label: "Acties", icon: ClipboardCheck },
   { id: "rapporten", label: "Rapporten", icon: FileText },
-  { id: "meer", label: "Meer", icon: Menu },
+  { id: "meer", label: "Instellingen", icon: Settings },
 ];
 
 const quickTypes: QuickType[] = [
@@ -368,6 +367,7 @@ export function CodecoSupervisionApp() {
   const [syncState, setSyncState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [isOnline, setIsOnline] = useState(true);
   const [workspaceStage, setWorkspaceStage] = useState<WorkspaceStage>("projects");
+  const [hasEnteredWorkspace, setHasEnteredWorkspace] = useState(false);
   const [selectedProject, setSelectedProject] = useState<ProjectContext | null>(null);
   const [selectedBuilding, setSelectedBuilding] = useState<BuildingContext | null>(null);
   const [activeNav, setActiveNav] = useState<NavKey>("vandaag");
@@ -430,8 +430,23 @@ export function CodecoSupervisionApp() {
           : text("Live database · Supabase Realtime", "Live database · Supabase Realtime");
   const localizedNavigation = navigation.map((item) => ({
     ...item,
-    label: ({ vandaag: text("Today", "Vandaag"), project: text("Project", "Project"), acties: text("Actions", "Acties"), rapporten: text("Reports", "Rapporten"), meer: text("More", "Meer") } satisfies Record<NavKey, string>)[item.id],
+    label: ({ vandaag: text("Overview", "Overzicht"), project: text("Workspace", "Werkruimte"), acties: text("Actions", "Acties"), rapporten: text("Reports", "Rapporten"), meer: text("Settings", "Instellingen") } satisfies Record<NavKey, string>)[item.id],
   }));
+
+  useEffect(() => {
+    if (hasEnteredWorkspace || !workspaceQuery.data?.projects.length) return;
+    const firstProject = workspaceQuery.data.projects[0];
+    const firstBuilding = firstProject.buildings[0];
+    if (!firstBuilding) return;
+    const enterWorkspace = window.setTimeout(() => {
+      setSelectedProject(firstProject);
+      setSelectedBuilding(firstBuilding);
+      setWorkspaceStage("cockpit");
+      setActiveNav(canManageMembers ? "meer" : "acties");
+      setHasEnteredWorkspace(true);
+    }, 0);
+    return () => window.clearTimeout(enterWorkspace);
+  }, [canManageMembers, hasEnteredWorkspace, workspaceQuery.data]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -453,6 +468,7 @@ export function CodecoSupervisionApp() {
         setSelectedProject(null);
         setSelectedBuilding(null);
         setWorkspaceStage("projects");
+        setHasEnteredWorkspace(false);
       }
     });
     return () => {
@@ -693,7 +709,7 @@ export function CodecoSupervisionApp() {
 
   const openProjectStart = () => {
     if (!selectedProject || !selectedBuilding) return;
-    setWorkspaceStage(projectStartAnswers ? "cockpit" : "project_start");
+    setWorkspaceStage("cockpit");
   };
 
   const startProject = async (answers: ProjectStartAnswers) => {
@@ -923,6 +939,7 @@ export function CodecoSupervisionApp() {
               attendanceTotal={attendanceTotal}
               projectStartAnswers={projectStartAnswers}
               dailyCloseoutAnswers={dailyCloseoutAnswers}
+              openProjectStart={() => setWorkspaceStage("project_start")}
               openDailyQuestions={() => setModal("daily_questions")}
               currentUserName={currentUserName}
               reportNumber={reportNumber}
@@ -1581,7 +1598,7 @@ function ContextSelection({
             </section>
             <div className="project-start-bar">
               <span><strong>{selectedBuilding ? selectedBuilding.name : text("No building selected", "Nog geen gebouw gekozen")}</strong><small>{selectedBuilding ? text("Your work context is complete.", "Je werkcontext is compleet.") : text("Select a building to continue.", "Kies een gebouw om door te gaan.")}</small></span>
-              <button className="primary-button" type="button" disabled={!selectedBuilding} onClick={openProjectStart}>{text("Complete project start", "Projectstart invullen")} <ArrowRight size={15} /></button>
+              <button className="primary-button" type="button" disabled={!selectedBuilding} onClick={openProjectStart}>{text("Open workspace", "Werkruimte openen")} <ArrowRight size={15} /></button>
             </div>
           </>
         )}
@@ -1716,6 +1733,7 @@ function TodayView({
   attendanceTotal,
   projectStartAnswers,
   dailyCloseoutAnswers,
+  openProjectStart,
   openDailyQuestions,
   currentUserName,
   reportNumber,
@@ -1732,6 +1750,7 @@ function TodayView({
   attendanceTotal: number;
   projectStartAnswers: ProjectStartAnswers | null;
   dailyCloseoutAnswers: DailyCloseoutAnswers | null;
+  openProjectStart: () => void;
   openDailyQuestions: () => void;
   currentUserName: string;
   reportNumber: string;
@@ -1769,7 +1788,7 @@ function TodayView({
             </span>
             <ChevronRight size={15} color="#718995" />
           </div>
-          <button className="primary-button day-questions-button" type="button" onClick={openDailyQuestions}><ClipboardCheck size={15} /> {text("Complete daily questions", "Dagvragen invullen")}</button>
+          {!projectStartAnswers ? <button className="primary-button day-questions-button" type="button" onClick={openProjectStart}><CloudSun size={15} /> {text("Start today", "Werkdag starten")}</button> : <button className="primary-button day-questions-button" type="button" onClick={openDailyQuestions}><ClipboardCheck size={15} /> {text("Complete daily questions", "Dagvragen invullen")}</button>}
         </div>
       </section>
 
@@ -2087,14 +2106,21 @@ function UserAdminModal({
   const [busy, setBusy] = useState(false);
   const [inviteError, setInviteError] = useState("");
   const [success, setSuccess] = useState("");
+  const [activePanel, setActivePanel] = useState<"invite" | "members">("invite");
+  const [inviteStep, setInviteStep] = useState<1 | 2 | 3>(1);
+  const [invitedEmail, setInvitedEmail] = useState("");
   const [memberError, setMemberError] = useState("");
   const [memberAction, setMemberAction] = useState<{ userId: string; nextStatus: "active" | "suspended" | "revoked"; reason: string } | null>(null);
-  const { register, handleSubmit, control, reset, setValue, formState: { errors } } = useForm<InternalUserInviteAnswers>({
+  const { register, handleSubmit, control, reset, setValue, trigger, getValues, formState: { errors } } = useForm<InternalUserInviteAnswers>({
     resolver: zodResolver(localizedInternalUserInviteSchema),
     defaultValues: { organizationId, displayName: "", email: "", roleCode: "", projectId: "" },
   });
   const roleCode = useWatch({ control, name: "roleCode" });
+  const displayName = useWatch({ control, name: "displayName" });
+  const email = useWatch({ control, name: "email" });
+  const projectId = useWatch({ control, name: "projectId" });
   const selectedRole = access?.roles.find((role) => role.code === roleCode);
+  const selectedInviteProject = projects.find((project) => project.id === projectId);
 
   useEffect(() => {
     if (!roleCode && access?.roles[0]) setValue("roleCode", access.roles[0].code);
@@ -2114,12 +2140,32 @@ function UserAdminModal({
     };
     const saved = await invite(prepared);
     if (saved) {
+      setInvitedEmail(answers.email);
       setSuccess(text(`The personal invitation for ${answers.email} was sent.`, `De persoonlijke uitnodiging voor ${answers.email} is verzonden.`));
       reset({ organizationId, displayName: "", email: "", roleCode: roleCode || access?.roles[0]?.code || "", projectId: "" });
     } else {
       setInviteError(text("The invitation was not completed. Review the message and try again.", "De uitnodiging is niet voltooid. Bekijk de melding en probeer opnieuw."));
     }
     setBusy(false);
+  };
+
+  const continueInvite = async () => {
+    setInviteError("");
+    if (inviteStep === 1) {
+      if (await trigger(["displayName", "email"])) setInviteStep(2);
+      return;
+    }
+    if (selectedRole?.scope === "project" && !getValues("projectId")) {
+      setInviteError(text("Choose the project this employee may access.", "Kies het project waarop deze medewerker toegang krijgt."));
+      return;
+    }
+    if (await trigger(["roleCode", "projectId"])) setInviteStep(3);
+  };
+
+  const startAnotherInvite = () => {
+    setSuccess("");
+    setInvitedEmail("");
+    setInviteStep(1);
   };
 
   const confirmMemberAction = async () => {
@@ -2140,25 +2186,31 @@ function UserAdminModal({
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal user-admin-modal" role="dialog" aria-modal="true" aria-labelledby="user-admin-title">
         <header className="modal-header">
-          <div><h2 id="user-admin-title">{text("Users and access", "Gebruikers en toegang")}</h2><p>{text("Only organization administrators can invite internal accounts.", "Alleen organisatiebeheerders kunnen interne accounts uitnodigen.")}</p></div>
+          <div><p className="eyebrow">{text("Team management", "Teambeheer")}</p><h2 id="user-admin-title">{text("Users and access", "Gebruikers en toegang")}</h2><p>{text("Invite colleagues and keep project access clear.", "Nodig collega’s uit en houd projecttoegang overzichtelijk.")}</p></div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <div className="modal-body user-admin-body">
-          <section className="invite-panel" aria-labelledby="invite-heading">
+          <div className="user-admin-tabs" role="tablist" aria-label={text("User management", "Gebruikersbeheer")}>
+            <button role="tab" aria-selected={activePanel === "invite"} className={activePanel === "invite" ? "active" : ""} type="button" onClick={() => setActivePanel("invite")}><UserPlus size={16} /> {text("Invite someone", "Iemand uitnodigen")}</button>
+            <button role="tab" aria-selected={activePanel === "members"} className={activePanel === "members" ? "active" : ""} type="button" onClick={() => setActivePanel("members")}><Users size={16} /> {text("Current access", "Huidige toegang")} <span>{access?.members.length ?? 0}</span></button>
+          </div>
+          {activePanel === "invite" ? <section className="invite-panel" aria-labelledby="invite-heading">
+            <div className="invite-progress" aria-label={text(`Step ${inviteStep} of 3`, `Stap ${inviteStep} van 3`)}>
+              {[text("Colleague", "Collega"), text("Access", "Toegang"), text("Check", "Controleren")].map((label, index) => <span className={inviteStep >= index + 1 ? "active" : ""} key={label}><i>{inviteStep > index + 1 ? <Check size={12} /> : index + 1}</i>{label}</span>)}
+            </div>
             <div className="section-heading"><span className="module-card-icon"><UserPlus size={18} /></span><span><h3 id="invite-heading">{text("Invite employee", "Medewerker uitnodigen")}</h3><p>{text("The employee receives a personal email link and then sets a password.", "De medewerker ontvangt een persoonlijke e-maillink en stelt daarna zelf een wachtwoord in.")}</p></span></div>
-            <form className="form-grid" onSubmit={handleSubmit(submit)} noValidate>
+            {success ? <div className="invite-success" role="status"><span><CheckCircle2 size={24} /></span><div><h3>{text("Invitation is on its way", "Uitnodiging is onderweg")}</h3><p>{text(`${invitedEmail} receives a secure link to set a password. The account remains marked as invited until the first sign-in.`, `${invitedEmail} ontvangt een beveiligde link om een wachtwoord in te stellen. Tot de eerste aanmelding blijft het account als uitgenodigd gemarkeerd.`)}</p><div className="button-row"><button className="primary-button" type="button" onClick={startAnotherInvite}><UserPlus size={15} /> {text("Invite another", "Nog iemand uitnodigen")}</button><button className="ghost-button" type="button" onClick={() => setActivePanel("members")}>{text("View access", "Toegang bekijken")} <ArrowRight size={14} /></button></div></div></div> : <form className={`invite-flow step-${inviteStep}`} onSubmit={handleSubmit(submit)} noValidate>
               <input type="hidden" {...register("organizationId")} />
-              <label className="form-field"><span>{text("Full name *", "Volledige naam *")}</span><input autoComplete="off" {...register("displayName")} />{errors.displayName ? <small className="field-error">{errors.displayName.message}</small> : null}</label>
-              <label className="form-field"><span>{text("Business email address *", "Zakelijk e-mailadres *")}</span><input type="email" autoComplete="off" {...register("email")} />{errors.email ? <small className="field-error">{errors.email.message}</small> : null}</label>
+              {inviteStep === 1 ? <div className="form-grid"><label className="form-field"><span>{text("Full name *", "Volledige naam *")}</span><input autoFocus autoComplete="name" placeholder={text("e.g. Jane Doe", "bijv. Jane Doe")} {...register("displayName")} />{errors.displayName ? <small className="field-error">{errors.displayName.message}</small> : null}</label><label className="form-field"><span>{text("Business email address *", "Zakelijk e-mailadres *")}</span><input type="email" autoComplete="email" placeholder="naam@bedrijf.com" {...register("email")} />{errors.email ? <small className="field-error">{errors.email.message}</small> : null}</label></div> : null}
               <label className="form-field"><span>{text("Role *", "Rol *")}</span><select {...register("roleCode")} disabled={!access?.roles.length}><option value="">{text("Choose a role", "Kies een rol")}</option>{access?.roles.map((role) => <option value={role.code} key={role.id}>{role.name} · {role.scope === "organization" ? text("entire organization", "hele organisatie") : text("project", "project")}</option>)}</select>{errors.roleCode ? <small className="field-error">{errors.roleCode.message}</small> : null}</label>
               {selectedRole?.scope === "project" ? <label className="form-field"><span>Project *</span><select {...register("projectId")}><option value="">{text("Choose a project", "Kies een project")}</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.code} · {project.name}</option>)}</select>{errors.projectId ? <small className="field-error">{errors.projectId.message}</small> : null}</label> : <div className="scope-note"><ShieldCheck size={16} /><span><strong>{text("Organization-wide access", "Organisatiebrede toegang")}</strong><small>{text("This role applies to all current projects in the organization.", "Deze rol geldt voor alle huidige projecten binnen de organisatie.")}</small></span></div>}
+              {inviteStep === 3 ? <><dl className="invite-summary"><div><dt>{text("Colleague", "Collega")}</dt><dd>{displayName}<small>{email}</small></dd></div><div><dt>{text("Role", "Rol")}</dt><dd>{selectedRole?.name}</dd></div><div><dt>{text("Access", "Toegang")}</dt><dd>{selectedRole?.scope === "organization" ? text("All projects in the organization", "Alle projecten in de organisatie") : selectedInviteProject ? `${selectedInviteProject.code} · ${selectedInviteProject.name}` : text("No project selected", "Geen project geselecteerd")}</dd></div></dl><div className="invitation-explainer"><ShieldCheck size={17} /><span><strong>{text("What happens next?", "Wat gebeurt hierna?")}</strong>{text("The colleague opens the personal email link, sets a password and can then access only the scope shown above.", "De collega opent de persoonlijke e-maillink, stelt een wachtwoord in en krijgt daarna alleen toegang tot de scope hierboven.")}</span></div></> : null}
               {inviteError ? <p className="access-message error full" role="alert">{inviteError}</p> : null}
-              {success ? <p className="access-message success full" role="status">{success}</p> : null}
-              <div className="modal-actions full"><span className="form-note"><ShieldCheck size={13} /> {text("Roles come from the central permission configuration.", "Rollen komen uit de centrale rechtenconfiguratie.")}</span><button className="primary-button" type="submit" disabled={busy || loading || Boolean(loadError)}>{busy ? <Loader2 className="spin" size={15} /> : <UserPlus size={15} />}{text("Send invitation", "Uitnodiging versturen")}</button></div>
-            </form>
-          </section>
+              <div className="invite-actions">{inviteStep > 1 ? <button className="ghost-button" type="button" onClick={() => setInviteStep(inviteStep === 3 ? 2 : 1)}><ArrowLeft size={14} /> {text("Back", "Terug")}</button> : <span />}{inviteStep < 3 ? <button className="primary-button" type="button" disabled={loading || Boolean(loadError)} onClick={() => void continueInvite()}>{text("Continue", "Doorgaan")} <ArrowRight size={15} /></button> : <button className="primary-button" type="submit" disabled={busy || loading || Boolean(loadError)}>{busy ? <Loader2 className="spin" size={15} /> : <UserPlus size={15} />}{text("Send invitation", "Uitnodiging versturen")}</button>}</div>
+            </form>}
+          </section> : null}
 
-          <section className="internal-members" aria-labelledby="members-heading">
+          {activePanel === "members" ? <section className="internal-members" aria-labelledby="members-heading">
             <div className="member-list-heading"><span><h3 id="members-heading">{text("Internal accounts", "Interne accounts")}</h3><p>{access?.members.length ?? 0} {text("account(s) with organization or project access", "account(s) met organisatie- of projecttoegang")}</p></span>{loadError ? <button className="ghost-button" type="button" onClick={reload}>{text("Reload", "Opnieuw laden")}</button> : null}</div>
             {loading ? <div className="empty-list-state"><Loader2 className="spin" size={22} /><strong>{text("Loading accounts", "Accounts laden")}</strong><span>{text("Roles and project access are being verified.", "Rollen en projecttoegang worden gecontroleerd.")}</span></div> : null}
             {loadError ? <p className="access-message error" role="alert">{loadError}</p> : null}
@@ -2181,7 +2233,7 @@ function UserAdminModal({
                 </div>;
               })}
             </div>
-          </section>
+          </section> : null}
         </div>
       </section>
     </div>
