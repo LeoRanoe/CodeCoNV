@@ -4342,6 +4342,153 @@ textarea:focus-visible {
   width: 100%;
 }
 
+.management-home-button {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 7px;
+  margin: -8px 0 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--teal);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.management-home-button.active {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+}
+
+.management-overview {
+  display: grid;
+  gap: 16px;
+}
+
+.management-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.management-kpis button {
+  display: grid;
+  gap: 5px;
+  min-height: 112px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: #fff;
+  color: var(--ink-900);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 2px 9px rgba(27, 57, 64, 0.04);
+}
+
+.management-kpis button:hover {
+  border-color: #9bbec0;
+  transform: translateY(-1px);
+}
+
+.management-kpis button.attention {
+  border-color: #ead0ad;
+  background: #fffaf2;
+}
+
+.management-kpis button.healthy {
+  border-color: #b8dfd2;
+  background: #f4fbf8;
+}
+
+.management-kpis span { color: var(--ink-600); font-size: 9px; font-weight: 700; }
+.management-kpis strong { align-self: end; color: var(--ink-900); font-size: 24px; letter-spacing: -0.04em; }
+.management-kpis small { overflow: hidden; color: var(--ink-500); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+
+.management-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
+  gap: 12px;
+}
+
+.management-card {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: #fff;
+}
+
+.management-card > header > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.management-card h2 { margin: 0; font-size: 13px; }
+.management-card header p { margin: 4px 0 0; color: var(--ink-500); font-size: 9px; }
+
+.management-attention-list,
+.management-control-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 15px;
+}
+
+.management-attention-list > div,
+.management-control-list button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 10px 11px;
+  border: 1px solid var(--ink-100);
+  border-radius: 9px;
+  background: var(--paper);
+  color: var(--ink-900);
+  text-align: left;
+}
+
+.management-control-list button { cursor: pointer; }
+.management-control-list button:hover { border-color: #aac9c8; background: var(--teal-soft); }
+.management-control-list button > svg { flex: 0 0 auto; color: var(--teal); }
+.management-attention-list strong,
+.management-control-list strong { display: block; font-size: 10px; }
+.management-attention-list small,
+.management-control-list small { display: block; margin-top: 3px; color: var(--ink-500); font-size: 8px; }
+
+.risk-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 0 4px var(--red-soft);
+}
+
+.management-clear > svg { color: var(--green); }
+
+.management-context {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.management-context > div {
+  display: grid;
+  gap: 5px;
+  padding: 13px 15px;
+  border-right: 1px solid var(--border);
+}
+
+.management-context > div:last-child { border-right: 0; }
+.management-context span { color: var(--ink-500); font-size: 8px; font-weight: 700; }
+.management-context strong { color: var(--ink-900); font-size: 11px; text-transform: capitalize; }
+
 .readiness-panel {
   gap: 14px;
 }
@@ -4678,6 +4825,14 @@ textarea:focus-visible {
 }
 
 @media (max-width: 980px) {
+  .management-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .management-columns {
+    grid-template-columns: 1fr;
+  }
+
   .workflow-grid,
   .storage-status-grid,
   .template-grid {
@@ -4694,6 +4849,19 @@ textarea:focus-visible {
 }
 
 @media (max-width: 620px) {
+  .management-kpis,
+  .management-context {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .management-context > div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .management-context > div:nth-child(-n+2) {
+    border-bottom: 1px solid var(--border);
+  }
+
   .form-grid-2,
   .report-history-grid,
   .admin-card-grid {

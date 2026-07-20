@@ -373,7 +373,7 @@ export function CodecoSupervisionApp() {
   const [activeNav, setActiveNav] = useState<NavKey>("vandaag");
   const [modal, setModal] = useState<ModalKey>(null);
   const [selectedType, setSelectedType] = useState<string>("activity");
-  const [initialProjectTab, setInitialProjectTab] = useState<"inspections" | "visual">("inspections");
+  const [initialProjectTab, setInitialProjectTab] = useState<"inspections" | "findings" | "visual">("inspections");
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("Floor 3 · East zone");
   const [priority, setPriority] = useState("normal");
@@ -430,7 +430,7 @@ export function CodecoSupervisionApp() {
           : text("Live database · Supabase Realtime", "Live database · Supabase Realtime");
   const localizedNavigation = navigation.map((item) => ({
     ...item,
-    label: ({ vandaag: text("Overview", "Overzicht"), project: text("Workspace", "Werkruimte"), acties: text("Actions", "Acties"), rapporten: text("Reports", "Rapporten"), meer: text("Settings", "Instellingen") } satisfies Record<NavKey, string>)[item.id],
+    label: ({ vandaag: text("Overview", "Overzicht"), project: text("Workspace", "Werkruimte"), acties: text("Actions", "Acties"), rapporten: text("Reports", "Rapporten"), meer: canManageMembers ? text("Management", "Management") : text("Settings", "Instellingen") } satisfies Record<NavKey, string>)[item.id],
   }));
 
   useEffect(() => {
@@ -971,6 +971,10 @@ export function CodecoSupervisionApp() {
               canManageOrganization={canManageMembers}
               openUserAdmin={() => setModal("user_admin")}
               initialProjectTab={initialProjectTab}
+              openProjectArea={(tab) => {
+                setInitialProjectTab(tab);
+                setActiveNav("project");
+              }}
             />
           ) : (
             <SecondaryView
