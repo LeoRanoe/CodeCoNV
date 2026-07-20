@@ -1,4 +1,6 @@
+import type { Metadata } from "next";
 import Image from "next/image";
+import { siteConfig } from "../lib/site-config";
 import commewijnePort from "../public/landing/commewijne-port-facility.png";
 import consultingDesign from "../public/landing/consulting-design.jpg";
 import heroResidence from "../public/landing/hero-residence.jpg";
@@ -10,6 +12,102 @@ import samaraApartment from "../public/landing/samara-apartment-complex.jpg";
 import structuralFrame from "../public/landing/structural-frame.jpg";
 import { LandingNavigation } from "./landing-navigation";
 import { LandingMotion } from "./landing-motion";
+
+export const metadata: Metadata = {
+  title: { absolute: siteConfig.title },
+  description: siteConfig.description,
+  alternates: { canonical: "/" },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
+  openGraph: {
+    type: "website",
+    locale: "en_SR",
+    alternateLocale: ["nl_SR"],
+    siteName: siteConfig.name,
+    url: "/",
+    title: siteConfig.title,
+    description: siteConfig.description,
+    images: [{
+      url: "/landing/hero-residence.jpg",
+      width: 2560,
+      height: 1440,
+      alt: "Architectural design and engineering by CODECO N.V. in Suriname",
+    }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: siteConfig.title,
+    description: siteConfig.description,
+    images: ["/landing/hero-residence.jpg"],
+  },
+};
+
+const localBusinessJsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": ["ProfessionalService", "Organization"],
+      "@id": `${siteConfig.url}/#organization`,
+      name: siteConfig.name,
+      legalName: siteConfig.legalName,
+      url: `${siteConfig.url}/`,
+      logo: `${siteConfig.url}/codeco-logo.png`,
+      image: `${siteConfig.url}/landing/hero-residence.jpg`,
+      description: siteConfig.description,
+      foundingDate: "2015",
+      email: siteConfig.email,
+      telephone: siteConfig.telephone,
+      address: {
+        "@type": "PostalAddress",
+        ...siteConfig.address,
+      },
+      areaServed: {
+        "@type": "Country",
+        name: "Suriname",
+      },
+      knowsAbout: [
+        "Architectuur",
+        "Civiele techniek",
+        "Constructieve engineering",
+        "Bouwadvies",
+        "Projectmanagement",
+        "Constructiesupervisie",
+      ],
+      sameAs: [siteConfig.facebook],
+      hasOfferCatalog: {
+        "@type": "OfferCatalog",
+        name: "Engineering- en bouwdiensten",
+        itemListElement: [
+          "Architectural design",
+          "Civil and structural engineering",
+          "Project management and construction supervision",
+          "Tendering and contracting support",
+          "Technical consulting",
+        ].map((name) => ({
+          "@type": "Offer",
+          itemOffered: { "@type": "Service", name },
+        })),
+      },
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${siteConfig.url}/#website`,
+      url: `${siteConfig.url}/`,
+      name: siteConfig.name,
+      inLanguage: "en-SR",
+      publisher: { "@id": `${siteConfig.url}/#organization` },
+    },
+  ],
+};
 
 const projects = [
   {
@@ -103,6 +201,12 @@ const clients = [
 export default function Home() {
   return (
     <main className="studio" id="top">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(localBusinessJsonLd).replace(/</g, "\\u003c"),
+        }}
+      />
       <a className="studio-skip-link" href="#main-content">Skip to content</a>
       <LandingNavigation />
       <LandingMotion />
@@ -136,13 +240,13 @@ export default function Home() {
           <div className="studio-grid-lines" aria-hidden="true"><span /><span /><span /></div>
 
           <div className="studio-wrap studio-hero-content">
-            <p className="studio-kicker">Engineering · Contracting · Consulting</p>
+            <p className="studio-kicker">Architecture · Engineering · Paramaribo, Suriname</p>
             <h1 id="hero-title">
-              <span className="studio-hero-line"><span>From first line</span></span>
-              <span className="studio-hero-line"><span><em>to lasting structure.</em></span></span>
+              <span className="studio-hero-line"><span>Architecture &amp; engineering</span></span>
+              <span className="studio-hero-line"><span><em>built for Suriname.</em></span></span>
             </h1>
             <p className="studio-hero-copy">
-              CODECO N.V. brings civil and structural engineering, project direction and technical advice together for work that is clear, buildable and made to last.
+              CODECO N.V. brings architectural design, civil and structural engineering, project management and technical advice together for work that is clear, buildable and made to last.
             </p>
             <div className="studio-actions">
               <a className="studio-btn studio-btn-light" href="#work">View selected work <i className="studio-icon-arrow" aria-hidden="true" /></a>
@@ -229,7 +333,7 @@ export default function Home() {
                 <p className="studio-label">About CODECO</p>
                 <h2 id="about-title">One team for the thinking <strong>behind the build.</strong></h2>
                 <p>
-                  CODECO is a growing engineering company in Paramaribo specialising in civil and structural engineering and related services. Our engineers shape efficient solutions around each client’s needs, budget and schedule.
+                  CODECO is an architecture and engineering company in Paramaribo, Suriname, specialising in building design, civil and structural engineering and related services. Our engineers shape efficient solutions around each client’s needs, budget and schedule.
                 </p>
                 <p>
                   From residential buildings to warehouses, docks and filling sheds for multinational companies, every project is approached with technical discipline and practical judgement.
@@ -314,7 +418,7 @@ export default function Home() {
           <div className="studio-footer-top" data-reveal="rise">
             <div className="studio-footer-brand">
               <Image src="/codeco-logo.png" alt="CODECO Construction Designers & Consultants N.V." width={738} height={291} />
-              <p>Multidisciplinary technical engineering firm for professional, quality-driven civil, structural and construction projects.</p>
+              <p>Architecture and multidisciplinary engineering in Suriname for professional, quality-driven civil, structural and construction projects.</p>
             </div>
             <div className="studio-footer-column">
               <p>Office</p>

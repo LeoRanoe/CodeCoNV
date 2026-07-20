@@ -1,10 +1,11 @@
 import type { MetadataRoute } from "next";
+import { siteConfig } from "../lib/site-config";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "CODECO N.V.",
     short_name: "CODECO",
-    description: "Engineering, contracting, project management and consulting in Paramaribo, Suriname.",
+    description: siteConfig.description,
     start_url: "/",
     display: "standalone",
     background_color: "#f4f1e9",

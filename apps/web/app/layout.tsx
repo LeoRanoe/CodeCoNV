@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Hind, Jost } from "next/font/google";
-import { headers } from "next/headers";
+import { siteConfig } from "../lib/site-config";
 import "./globals.css";
 import "./landing.css";
 
@@ -21,43 +21,41 @@ const jost = Jost({
   weight: ["200", "300", "400", "500", "600"],
 });
 
-const description =
-  "CODECO N.V. is a multidisciplinary engineering firm in Paramaribo for civil, structural and construction projects.";
-
-export async function generateMetadata(): Promise<Metadata> {
-  const requestHeaders = await headers();
-  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
-  const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  const baseUrl = new URL(`${protocol}://${host}`);
-  return {
-    metadataBase: baseUrl,
-    title: {
-      default: "CODECO N.V. | Engineering, Contracting & Consulting",
-      template: "%s | CODECO N.V.",
-    },
-    description,
-    manifest: "/manifest.webmanifest",
-    icons: {
-      icon: [{ url: "/codeco-logo.png", type: "image/png" }],
-      shortcut: "/codeco-logo.png",
-      apple: "/codeco-logo.png",
-    },
-    openGraph: {
-      type: "website",
-      locale: "en_US",
-      alternateLocale: ["nl_SR"],
-      title: "CODECO N.V. | From first line to lasting structure.",
-      description,
-      images: [{ url: new URL("/landing/hero-residence.jpg", baseUrl).toString(), width: 2560, height: 1440, alt: "Architectural design by CODECO N.V." }],
-    },
-    twitter: {
-      card: "summary_large_image",
-      title: "CODECO N.V. | From first line to lasting structure.",
-      description,
-      images: [new URL("/landing/hero-residence.jpg", baseUrl).toString()],
-    },
-  };
-}
+export const metadata: Metadata = {
+  metadataBase: new URL(siteConfig.url),
+  applicationName: siteConfig.name,
+  title: {
+    default: "CODECO N.V. | Engineering, Contracting & Consulting",
+    template: "%s | CODECO N.V.",
+  },
+  description: siteConfig.description,
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [{ url: "/codeco-logo.png", type: "image/png" }],
+    shortcut: "/codeco-logo.png",
+    apple: "/codeco-logo.png",
+  },
+  openGraph: {
+    type: "website",
+    locale: "en_SR",
+    alternateLocale: ["nl_SR"],
+    siteName: siteConfig.name,
+    title: siteConfig.title,
+    description: siteConfig.description,
+    images: [{
+      url: "/landing/hero-residence.jpg",
+      width: 2560,
+      height: 1440,
+      alt: "Architectural design and engineering by CODECO N.V. in Suriname",
+    }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: siteConfig.title,
+    description: siteConfig.description,
+    images: ["/landing/hero-residence.jpg"],
+  },
+};
 
 export default function RootLayout({
   children,

@@ -48,10 +48,15 @@ test("server-renders the public CODECO landing page", async () => {
   assert.equal(response.headers.get("x-content-type-options"), "nosniff");
 
   const html = await response.text();
-  assert.match(html, /<title>CODECO N\.V\. \| Engineering, Contracting &amp; Consulting<\/title>/i);
+  assert.match(html, /<title>Architecture &amp; Engineering in Suriname \| CODECO N\.V\.<\/title>/i);
+  assert.match(html, /<link rel="canonical" href="https:\/\/www\.codeconv\.com\/?"/i);
+  assert.match(html, /application\/ld\+json/i);
+  assert.match(html, /ProfessionalService/i);
+  assert.match(html, /Architecture &amp; engineering/i);
+  assert.match(html, /Paramaribo, Suriname/i);
   assert.match(html, /codeco-logo\.png/);
   assert.match(html, /CODECO Construction Designers &amp; Consultants N\.V\./);
-  assert.match(html, /From first line/i);
+  assert.match(html, /built for Suriname/i);
   assert.match(html, /Start a project/i);
   assert.match(html, /Newmont Recreation Centre/i);
   assert.match(html, /Kwattaweg 717E/i);
@@ -162,7 +167,7 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(app, /Supabase Realtime/);
   assert.match(app, /postgres_changes/);
   assert.doesNotMatch(app, /Demosessie|Kwattaweg Residence|Commewijne Port Facility/);
-  assert.match(page, /From first line/);
+  assert.match(page, /Architecture &amp; engineering/);
   assert.match(page, /Kwattaweg 717E/);
   assert.doesNotMatch(page, /href="\/supervisie/);
   assert.match(supervisionPage, /CodecoSupervisionApp/);
