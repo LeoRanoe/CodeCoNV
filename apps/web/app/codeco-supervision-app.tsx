@@ -941,6 +941,11 @@ export function CodecoSupervisionApp() {
               dailyCloseoutAnswers={dailyCloseoutAnswers}
               openProjectStart={() => setWorkspaceStage("project_start")}
               openDailyQuestions={() => setModal("daily_questions")}
+              openQuickAdd={openQuickAdd}
+              openActions={() => navigate("acties")}
+              openWorkspace={() => navigate("project")}
+              openSettings={() => navigate("meer")}
+              canManageMembers={canManageMembers}
               currentUserName={currentUserName}
               reportNumber={reportNumber}
               actions={dayActions}
@@ -1735,6 +1740,11 @@ function TodayView({
   dailyCloseoutAnswers,
   openProjectStart,
   openDailyQuestions,
+  openQuickAdd,
+  openActions,
+  openWorkspace,
+  openSettings,
+  canManageMembers,
   currentUserName,
   reportNumber,
   actions,
@@ -1752,6 +1762,11 @@ function TodayView({
   dailyCloseoutAnswers: DailyCloseoutAnswers | null;
   openProjectStart: () => void;
   openDailyQuestions: () => void;
+  openQuickAdd: () => void;
+  openActions: () => void;
+  openWorkspace: () => void;
+  openSettings: () => void;
+  canManageMembers: boolean;
   currentUserName: string;
   reportNumber: string;
   actions: ProjectAction[];
@@ -1790,6 +1805,12 @@ function TodayView({
           </div>
           {!projectStartAnswers ? <button className="primary-button day-questions-button" type="button" onClick={openProjectStart}><CloudSun size={15} /> {text("Start today", "Werkdag starten")}</button> : <button className="primary-button day-questions-button" type="button" onClick={openDailyQuestions}><ClipboardCheck size={15} /> {text("Complete daily questions", "Dagvragen invullen")}</button>}
         </div>
+      </section>
+
+      <section className="overview-shortcuts" aria-label={text("Quick routes", "Directe routes")}>
+        <button className="overview-shortcut primary" type="button" onClick={projectStartAnswers ? openQuickAdd : openProjectStart}><span><Plus size={18} /></span><strong>{projectStartAnswers ? text("Add site record", "Registratie toevoegen") : text("Start the workday", "Werkdag starten")}</strong><small>{projectStartAnswers ? text("Photo, finding, inspection or note", "Foto, bevinding, inspectie of notitie") : text("Confirm weather and working hours", "Bevestig weer en werktijden")}</small><ArrowRight size={16} /></button>
+        <button className="overview-shortcut" type="button" onClick={openActions}><span><ClipboardCheck size={18} /></span><strong>{text("Open actions", "Acties openen")}</strong><small>{text(`${actions.filter((action) => action.status !== "verified" && action.status !== "cancelled").length} require follow-up`, `${actions.filter((action) => action.status !== "verified" && action.status !== "cancelled").length} vragen opvolging`)}</small><ArrowRight size={16} /></button>
+        <button className="overview-shortcut" type="button" onClick={canManageMembers ? openSettings : openWorkspace}><span>{canManageMembers ? <Settings size={18} /> : <LayoutDashboard size={18} />}</span><strong>{canManageMembers ? text("Manage workspace", "Werkruimte beheren") : text("Open project workspace", "Projectwerkruimte openen")}</strong><small>{canManageMembers ? text("Users, rules and project structure", "Gebruikers, regels en projectstructuur") : text("Inspections, findings and files", "Inspecties, bevindingen en bestanden")}</small><ArrowRight size={16} /></button>
       </section>
 
       <section className="day-hero" aria-label={text("Today's status", "Status van vandaag")}>
@@ -1959,6 +1980,7 @@ function SecondaryView({
 }) {
   const { language, locale, text } = useLanguage();
   const statusLabels = language === "en" ? actionStatusLabelsEnglish : actionStatusLabels;
+  const [actionFilter, setActionFilter] = useState<"open" | "urgent" | "completed" | "all">("open");
   if (activeNav === "project") {
     const registrationsByKind = (kind: EntryKind) => entries.filter((entry) => entry.kind === kind).length;
     const modules = [
@@ -1991,15 +2013,20 @@ function SecondaryView({
   }
 
   if (activeNav === "acties") {
+    const openActions = actions.filter((action) => action.status !== "verified" && action.status !== "cancelled");
+    const urgentActions = openActions.filter((action) => action.priority === "high" || action.priority === "critical");
+    const completedActions = actions.filter((action) => action.status === "verified" || action.status === "cancelled");
+    const visibleActions = actionFilter === "urgent" ? urgentActions : actionFilter === "completed" ? completedActions : actionFilter === "all" ? actions : openActions;
     return (
       <>
         <header className="secondary-header">
           <div><p className="eyebrow">{actions.length} {text("centrally recorded", "centraal geregistreerd")}</p><h1>{text("Actions", "Acties")}</h1><p>{text("Personal and assigned follow-up in one list.", "Persoonlijke en toegewezen opvolging in één lijst.")}</p></div>
           <button className="primary-button" type="button" onClick={openQuickAdd}><Plus size={15} /> {text("Add action", "Actie toevoegen")}</button>
         </header>
+        <section className="action-overview" aria-label={text("Action summary", "Actieoverzicht")}><button className={actionFilter === "open" ? "active" : ""} type="button" onClick={() => setActionFilter("open")}><strong>{openActions.length}</strong><span>{text("Open", "Open")}</span></button><button className={actionFilter === "urgent" ? "active urgent" : "urgent"} type="button" onClick={() => setActionFilter("urgent")}><strong>{urgentActions.length}</strong><span>{text("Urgent", "Urgent")}</span></button><button className={actionFilter === "completed" ? "active" : ""} type="button" onClick={() => setActionFilter("completed")}><strong>{completedActions.length}</strong><span>{text("Completed", "Afgerond")}</span></button><button className={actionFilter === "all" ? "active" : ""} type="button" onClick={() => setActionFilter("all")}><strong>{actions.length}</strong><span>{text("All", "Alles")}</span></button></section>
         <section className="actions-list">
-          {actions.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No actions yet", "Nog geen acties")}</strong><span>{text("Actions recorded in Supabase appear here.", "Acties die in Supabase worden vastgelegd verschijnen hier.")}</span></div> : null}
-          {actions.map((action) => {
+          {visibleActions.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{actionFilter === "urgent" ? text("Nothing urgent", "Niets urgent") : actionFilter === "completed" ? text("No completed actions", "Nog geen afgeronde acties") : text("No open actions", "Geen open acties")}</strong><span>{text("Choose another filter or create a new action.", "Kies een ander filter of maak een nieuwe actie aan.")}</span></div> : null}
+          {visibleActions.map((action) => {
             const dueAt = action.due_at ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(action.due_at)) : text("No deadline", "Geen deadline");
             const latestUpdate = actionUpdates.find((update) => update.action_id === action.id);
             return (
