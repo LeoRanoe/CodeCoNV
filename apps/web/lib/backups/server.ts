@@ -10,6 +10,12 @@ const gzip = promisify(gzipCallback);
 const gunzip = promisify(gunzipCallback);
 const BACKUP_SCHEMA_VERSION = "202607190003";
 
+function backupStoreToken() {
+  const token = process.env.BACKUP_BLOB_READ_WRITE_TOKEN?.trim() ?? "";
+  if (!token) throw new Error("BACKUP_STORE_NOT_CONFIGURED");
+  return token;
+}
+
 type BackupManifest = {
   schema_version: string;
   organization_id: string;
@@ -163,6 +169,7 @@ async function reserveBackupRun(admin: SupabaseClient, organizationId: string, k
 }
 
 async function rotateBackups(admin: SupabaseClient, organizationId: string) {
+  const token = backupStoreToken();
   const history = await admin.from("backup_runs")
     .select("id,organization_id,status,storage_object_key,verified_at,created_at")
     .eq("organization_id", organizationId)
@@ -181,7 +188,7 @@ async function rotateBackups(admin: SupabaseClient, organizationId: string) {
 
   const expired = rows.filter((row) => !assignments.has(row.id) && row.storage_object_key);
   if (expired.length === 0) return 0;
-  await del(expired.map((row) => row.storage_object_key!));
+  await del(expired.map((row) => row.storage_object_key!), { token });
   const rotated = await admin.from("backup_runs").update({
     status: "rotated",
     retention_tier: null,
@@ -239,6 +246,7 @@ export async function runScheduledOrganizationBackup(
   now = new Date(),
 ): Promise<ScheduledBackupResult> {
   const day = dateKey(now);
+  const token = backupStoreToken();
   const key = `scheduled:${day}:organization:${organizationId}`;
   const run = await reserveBackupRun(admin, organizationId, key);
   if (run.existing) {
@@ -274,11 +282,12 @@ export async function runScheduledOrganizationBackup(
       allowOverwrite: true,
       contentType: "application/gzip",
       cacheControlMaxAge: 60,
+      token,
     });
 
-    const stored = await head(pathname);
+    const stored = await head(pathname, { token });
     if (stored.pathname !== pathname || stored.size !== compressed.byteLength) throw new Error("BACKUP_BLOB_METADATA_MISMATCH");
-    const downloaded = await get(pathname, { access: "private", useCache: false });
+    const downloaded = await get(pathname, { access: "private", useCache: false, token });
     if (!downloaded || downloaded.statusCode !== 200) throw new Error("BACKUP_BLOB_READBACK_FAILED");
     const readback = await readStream(downloaded.stream);
     if (sha256(readback) !== checksum) throw new Error("BACKUP_BLOB_CHECKSUM_MISMATCH");

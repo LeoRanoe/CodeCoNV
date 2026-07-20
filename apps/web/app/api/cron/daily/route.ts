@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { runScheduledOrganizationBackup } from "@/lib/backups/server";
-import { createStorageAdminClient, isBlobServerConfigured } from "@/lib/storage/server";
+import { createStorageAdminClient, isBackupStoreConfigured } from "@/lib/storage/server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -23,7 +23,7 @@ function authorized(request: Request) {
 export async function GET(request: Request) {
   if (!process.env.CRON_SECRET?.trim()) return json({ error: "De geplande taak is niet geconfigureerd." }, 503);
   if (!authorized(request)) return json({ error: "Ongeldige geplande taak." }, 401);
-  if (!isBlobServerConfigured()) return json({ error: "De private Blob-store is niet geconfigureerd." }, 503);
+  if (!isBackupStoreConfigured()) return json({ error: "De afzonderlijke private back-upstore is niet geconfigureerd." }, 503);
 
   const admin = createStorageAdminClient();
   const organizationResult = await admin.from("organizations").select("id").order("id");

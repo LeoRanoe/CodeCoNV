@@ -277,6 +277,7 @@ test("keeps scheduled backups, retention and daily notification automation enfor
   assert.match(migration, /Automatische back-up mislukt/);
   assert.match(vercel, /"schedule": "0 7 \* \* \*"/);
   assert.match(envExample, /^CRON_SECRET=/m);
+  assert.match(envExample, /^BACKUP_BLOB_READ_WRITE_TOKEN=/m);
 });
 
 test("keeps the online-first Supabase foundation enforceable", async () => {
