@@ -13,7 +13,10 @@ export const dynamic = "force-dynamic";
 const categories = ["photo", "document", "certificate", "drawing", "report", "evidence", "backup", "export"] as const;
 const allowedMimeTypes = new Set([
   "application/octet-stream",
+  "application/acad",
+  "application/dwg",
   "application/pdf",
+  "application/x-acad",
   "application/msword",
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -21,6 +24,7 @@ const allowedMimeTypes = new Set([
   "image/gif",
   "image/jpeg",
   "image/png",
+  "image/vnd.dwg",
   "image/webp",
   "text/csv",
   "text/plain",
@@ -30,6 +34,7 @@ const uploadRequestSchema = z.object({
   fileId: z.uuid(),
   projectId: z.uuid(),
   buildingId: z.uuid().nullable(),
+  folderId: z.uuid().nullable().optional(),
   category: z.enum(categories),
   originalName: z.string().trim().min(1).max(255),
   mimeType: z.string().trim().min(3).max(150),
@@ -85,6 +90,19 @@ export async function POST(request: Request) {
       }
     }
 
+    if (input.data.folderId) {
+      const folderResult = await userClient
+        .from("media_folders")
+        .select("id,building_id,status")
+        .eq("id", input.data.folderId)
+        .eq("project_id", input.data.projectId)
+        .maybeSingle();
+      if (folderResult.error || !folderResult.data || folderResult.data.status !== "active"
+        || (folderResult.data.building_id && folderResult.data.building_id !== input.data.buildingId)) {
+        return storageJson({ error: "De geselecteerde map hoort niet bij dit project of gebouw." }, 400);
+      }
+    }
+
     const settingsResult = await userClient
       .from("project_settings")
       .select("max_file_size_mb")
@@ -101,6 +119,7 @@ export async function POST(request: Request) {
       organization_id: projectResult.data.organization_id,
       project_id: input.data.projectId,
       building_id: input.data.buildingId,
+      folder_id: input.data.folderId || null,
       original_name: input.data.originalName,
       mime_type: input.data.mimeType,
       size_bytes: 0,

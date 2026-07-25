@@ -1,4 +1,5 @@
-import { Document, Page, StyleSheet, Text, View, pdf } from "@react-pdf/renderer";
+/* eslint-disable jsx-a11y/alt-text -- @react-pdf/renderer Image has no HTML alt prop. */
+import { Document, Image, Page, StyleSheet, Text, View, pdf } from "@react-pdf/renderer";
 import type { DailyCloseoutAnswers, ProjectStartAnswers } from "@/lib/forms/daily-report";
 
 export type DailyReportPdfSnapshot = {
@@ -29,11 +30,14 @@ export type FormalReportSnapshot = {
 };
 
 const styles = StyleSheet.create({
-  page: { padding: 36, fontFamily: "Helvetica", fontSize: 9, color: "#183646", lineHeight: 1.45 },
+  page: { paddingBottom: 50, paddingHorizontal: 36, paddingTop: 36, fontFamily: "Helvetica", fontSize: 9, color: "#183646", lineHeight: 1.45 },
   header: { borderBottomWidth: 2, borderBottomColor: "#10a6a0", paddingBottom: 12, marginBottom: 18 },
-  brand: { fontSize: 10, color: "#0d8885", fontWeight: 700, marginBottom: 3 },
-  title: { fontSize: 21, color: "#123747", fontWeight: 700 },
-  subtitle: { marginTop: 4, color: "#5c7480" },
+  brandRow: { alignItems: "center", flexDirection: "row", marginBottom: 6 },
+  logoPlate: { alignItems: "center", backgroundColor: "#ffffff", borderColor: "#d9e5e9", borderWidth: 1, justifyContent: "center", padding: 2, width: 86 },
+  logo: { height: 31, objectFit: "contain", width: 67 },
+  brand: { fontSize: 10, color: "#0d8885", fontWeight: 700, marginLeft: 9 },
+  title: { fontSize: 21, color: "#123747", fontWeight: 700, lineHeight: 1.1 },
+  subtitle: { marginTop: 7, color: "#5c7480" },
   metadata: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 },
   metaCard: { width: "31%", borderWidth: 1, borderColor: "#d9e5e9", borderRadius: 4, padding: 8 },
   metaLabel: { color: "#69828d", fontSize: 7, textTransform: "uppercase", marginBottom: 2 },
@@ -44,7 +48,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", gap: 8, marginBottom: 4 },
   rowLabel: { width: "30%", color: "#69828d" },
   rowValue: { width: "70%", color: "#183646" },
-  footer: { position: "absolute", bottom: 22, left: 36, right: 36, flexDirection: "row", justifyContent: "space-between", color: "#78909a", fontSize: 7 },
+  footer: { position: "absolute", bottom: 22, left: 36, right: 36, color: "#78909a", fontSize: 7, textAlign: "center" },
   confirmation: { marginTop: 10, borderTopWidth: 1, borderTopColor: "#d9e5e9", paddingTop: 8, color: "#526c77" },
 });
 
@@ -66,13 +70,13 @@ function Row({ label, value }: { label: string; value?: string | number | null }
   );
 }
 
-function DailyReportDocument({ snapshot }: { snapshot: DailyReportPdfSnapshot }) {
+export function DailyReportDocument({ snapshot, logoSource = "/codeco-logo-pdf.png" }: { snapshot: DailyReportPdfSnapshot; logoSource?: string }) {
   const { projectStart: start, closeout } = snapshot;
   return (
     <Document title={`${snapshot.reportNumber} - ${snapshot.projectName}`} author="CODECO N.V.">
       <Page size="A4" style={styles.page}>
         <View style={styles.header}>
-          <Text style={styles.brand}>CODECO N.V. · CONSTRUCTIESUPERVISIE</Text>
+          <View style={styles.brandRow}><View style={styles.logoPlate}><Image src={logoSource} style={styles.logo} /></View><Text style={styles.brand}>CONSTRUCTIESUPERVISIE</Text></View>
           <Text style={styles.title}>Dagrapport</Text>
           <Text style={styles.subtitle}>{snapshot.formal ? `Formele immutable revisie ${snapshot.formal.revision}` : "Vaste, controleerbare samenvatting uit bevestigde projectregistraties"}</Text>
         </View>
@@ -105,6 +109,16 @@ function DailyReportDocument({ snapshot }: { snapshot: DailyReportPdfSnapshot })
           <Row label="Werkzaamheden" value={closeout.workPerformed} />
           <Row label="Voortgang" value={`${closeout.progressPercent}%`} />
         </Section>
+        <Text style={styles.footer} fixed>CODECO Supervisie · gegenereerd uit centrale Supabase-data · Pagina 1 van 2</Text>
+      </Page>
+
+      <Page size="A4" style={styles.page}>
+        <View style={styles.header}>
+          <View style={styles.brandRow}><View style={styles.logoPlate}><Image src={logoSource} style={styles.logo} /></View><Text style={styles.brand}>CONSTRUCTIESUPERVISIE</Text></View>
+          <Text style={styles.title}>Dagrapport · vervolg</Text>
+          <Text style={styles.subtitle}>{snapshot.reportNumber} · {snapshot.reportDate} · {snapshot.projectCode} · {snapshot.buildingName}</Text>
+        </View>
+
         <Section title="5–7. Inspecties, kwaliteit en HSE">
           <Row label="Inspecties" value={closeout.inspectionResult} />
           <Row label="Kwaliteit" value={closeout.qualityIssues === "yes" ? closeout.qualityDetails : "Geen afwijking gemeld"} />
@@ -129,10 +143,7 @@ function DailyReportDocument({ snapshot }: { snapshot: DailyReportPdfSnapshot })
           <Text style={styles.confirmation}>{snapshot.formal ? `Deze PDF is uitsluitend opgebouwd uit de immutable snapshot van ${snapshot.formal.frozenAt}. Volledige SHA-256: ${snapshot.formal.sha256}` : "Werk-PDF uit bevestigde dagregistraties. Formele status en verklaringen staan in de rapporthistorie."}</Text>
         </Section>
 
-        <View style={styles.footer} fixed>
-          <Text>CODECO Supervisie · gegenereerd uit centrale Supabase-data</Text>
-          <Text render={({ pageNumber, totalPages }) => `Pagina ${pageNumber} van ${totalPages}`} />
-        </View>
+        <Text style={styles.footer} fixed>CODECO Supervisie · gegenereerd uit centrale Supabase-data · Pagina 2 van 2</Text>
       </Page>
     </Document>
   );

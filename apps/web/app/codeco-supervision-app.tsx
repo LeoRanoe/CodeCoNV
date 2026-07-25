@@ -19,6 +19,7 @@ import {
   FileCheck2,
   FileText,
   Gauge,
+  HardDrive,
   History,
   Home,
   Image,
@@ -29,6 +30,8 @@ import {
   LogOut,
   MapPin,
   MessageSquareText,
+  Mic,
+  MicOff,
   Minus,
   PackageCheck,
   Plus,
@@ -46,10 +49,13 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { OperationalWorkspace } from "@/app/operational-workspace";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
+import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
+import { currentPushState, enablePushNotifications, type PushState } from "@/lib/notifications/push-client";
+import { cacheProjectDay, cacheWorkspace, getCachedProjectDay, getCachedWorkspace } from "@/lib/offline/workspace-cache";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   clientReportSections,
@@ -125,7 +131,7 @@ function CompanyLogo({ subtitle }: { subtitle?: string }) {
 }
 
 type NavKey = "vandaag" | "project" | "acties" | "rapporten" | "meer";
-type ModalKey = "quick" | "entry" | "action_create" | "action_detail" | "report" | "attendance" | "daily_questions" | "user_admin" | "notifications" | null;
+type ModalKey = "quick" | "entry" | "action_create" | "action_detail" | "report" | "attendance" | "one_tap_log" | "daily_questions" | "user_admin" | "notifications" | null;
 type WorkspaceStage = "projects" | "buildings" | "project_start" | "cockpit";
 type EntryKind =
   | "activity"
@@ -157,6 +163,21 @@ type QuickType = {
 type ProjectContext = WorkspaceProject;
 type BuildingContext = WorkspaceBuilding;
 
+const constructionWorkOptions = [
+  { en: "Site preparation", nl: "Bouwplaatsinrichting" },
+  { en: "Excavation and earthwork", nl: "Ontgraving en grondwerk" },
+  { en: "Install formwork", nl: "Bekisting plaatsen" },
+  { en: "Reinforcement inspection", nl: "Wapening controleren" },
+  { en: "Concrete pour", nl: "Beton storten" },
+  { en: "Perform masonry work", nl: "Metselwerk uitvoeren" },
+  { en: "Steel construction", nl: "Staalconstructie" },
+  { en: "Perform roofing work", nl: "Dakwerk uitvoeren" },
+  { en: "Electrical installation", nl: "Elektrotechnische installatie" },
+  { en: "Plumbing installation", nl: "Sanitaire installatie" },
+  { en: "Perform finishing work", nl: "Afwerking uitvoeren" },
+  { en: "Testing and inspection", nl: "Testen en inspecteren" },
+];
+
 type AttendanceRow = {
   id: string;
   partyId: string;
@@ -166,6 +187,41 @@ type AttendanceRow = {
   shiftStart: string;
   shiftEnd: string;
 };
+
+type SpeechRecognitionResultLike = { isFinal: boolean; 0: { transcript: string } };
+type SpeechRecognitionEventLike = { resultIndex: number; results: ArrayLike<SpeechRecognitionResultLike> };
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+};
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+function speechConstructor() {
+  if (typeof window === "undefined") return null;
+  const browser = window as typeof window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor };
+  return browser.SpeechRecognition ?? browser.webkitSpeechRecognition ?? null;
+}
+
+const constructionDisciplines = [
+  "Algemeen",
+  "Timmerlieden",
+  "Elektriciens",
+  "HVAC",
+  "Schilders",
+  "Gevelwerk",
+  "Beton en wapening",
+  "Tegelzetters",
+  "Sanitair",
+  "Grondwerk",
+  "Staalbouw",
+  "Dakwerk",
+] as const;
 
 const navigation: { id: NavKey; label: string; icon: LucideIcon; badge?: string }[] = [
   { id: "vandaag", label: "Overzicht", icon: Home },
@@ -260,9 +316,13 @@ const nextActionStatus: Partial<Record<ProjectAction["status"], ProjectAction["s
 };
 
 function defaultActionDeadline() {
+  return actionDeadlineFromToday(1);
+}
+
+function actionDeadlineFromToday(days: number) {
   const [year, month, day] = reportDateInSuriname().split("-").map(Number);
-  const tomorrow = new Date(Date.UTC(year, month - 1, day + 1));
-  return `${tomorrow.getUTCFullYear()}-${String(tomorrow.getUTCMonth() + 1).padStart(2, "0")}-${String(tomorrow.getUTCDate()).padStart(2, "0")}T16:00`;
+  const deadline = new Date(Date.UTC(year, month - 1, day + days));
+  return `${deadline.getUTCFullYear()}-${String(deadline.getUTCMonth() + 1).padStart(2, "0")}-${String(deadline.getUTCDate()).padStart(2, "0")}T16:00`;
 }
 
 function currentTime(locale = "en-US", date = new Date()) {
@@ -376,9 +436,8 @@ export function CodecoSupervisionApp() {
   );
   const [authReady, setAuthReady] = useState(!isSupabaseConfigured);
   const [syncState, setSyncState] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [isOnline, setIsOnline] = useState(true);
+  const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
   const [workspaceStage, setWorkspaceStage] = useState<WorkspaceStage>("projects");
-  const [hasEnteredWorkspace, setHasEnteredWorkspace] = useState(false);
   const [selectedProject, setSelectedProject] = useState<ProjectContext | null>(null);
   const [selectedBuilding, setSelectedBuilding] = useState<BuildingContext | null>(null);
   const [activeNav, setActiveNav] = useState<NavKey>("vandaag");
@@ -400,7 +459,17 @@ export function CodecoSupervisionApp() {
 
   const workspaceQuery = useQuery({
     queryKey: ["workspace", session?.user.id],
-    queryFn: () => loadWorkspace(supabase as SupabaseClient),
+    queryFn: async () => {
+      try {
+        const data = await loadWorkspace(supabase as SupabaseClient);
+        await cacheWorkspace(session!.user.id, data).catch(() => undefined);
+        return data;
+      } catch (error) {
+        const cached = await getCachedWorkspace(session!.user.id).catch(() => null);
+        if (cached) return cached;
+        throw error;
+      }
+    },
     enabled: Boolean(supabase && session),
   });
 
@@ -417,7 +486,17 @@ export function CodecoSupervisionApp() {
 
   const dayQuery = useQuery({
     queryKey: ["project-day", selectedProject?.id, reportDate],
-    queryFn: () => loadProjectDay(supabase as SupabaseClient, selectedProject!.id, reportDate),
+    queryFn: async () => {
+      try {
+        const data = await loadProjectDay(supabase as SupabaseClient, selectedProject!.id, reportDate);
+        await cacheProjectDay(selectedProject!.id, reportDate, data).catch(() => undefined);
+        return data;
+      } catch (error) {
+        const cached = await getCachedProjectDay(selectedProject!.id, reportDate).catch(() => null);
+        if (cached) return cached;
+        throw error;
+      }
+    },
     enabled: Boolean(supabase && session && selectedProject),
   });
 
@@ -451,21 +530,6 @@ export function CodecoSupervisionApp() {
   }, []);
 
   useEffect(() => {
-    if (hasEnteredWorkspace || !workspaceQuery.data?.projects.length) return;
-    const firstProject = workspaceQuery.data.projects[0];
-    const firstBuilding = firstProject.buildings[0];
-    if (!firstBuilding) return;
-    const enterWorkspace = window.setTimeout(() => {
-      setSelectedProject(firstProject);
-      setSelectedBuilding(firstBuilding);
-      setWorkspaceStage("cockpit");
-      setActiveNav(canManageMembers ? "meer" : "acties");
-      setHasEnteredWorkspace(true);
-    }, 0);
-    return () => window.clearTimeout(enterWorkspace);
-  }, [canManageMembers, hasEnteredWorkspace, workspaceQuery.data]);
-
-  useEffect(() => {
     if (!supabase) return;
     let active = true;
     void getSession(supabase).then((nextSession) => {
@@ -485,7 +549,6 @@ export function CodecoSupervisionApp() {
         setSelectedProject(null);
         setSelectedBuilding(null);
         setWorkspaceStage("projects");
-        setHasEnteredWorkspace(false);
       }
     });
     return () => {
@@ -634,6 +697,8 @@ export function CodecoSupervisionApp() {
       .on("postgres_changes", { event: "*", schema: "public", table: "hse_events", filter: `project_id=eq.${selectedProject.id}` }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "visual_captures", filter: `project_id=eq.${selectedProject.id}` }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "visual_annotations", filter: `project_id=eq.${selectedProject.id}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "drawing_pins", filter: `project_id=eq.${selectedProject.id}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "drawing_markups", filter: `project_id=eq.${selectedProject.id}` }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "notifications", filter: `project_id=eq.${selectedProject.id}` }, refresh)
       .subscribe();
     return () => {
@@ -662,6 +727,7 @@ export function CodecoSupervisionApp() {
     setSyncState("saving");
     try {
       const result = await operation();
+      if (selectedProject && supabase) await requestProjectNotificationDispatch(supabase, selectedProject.id).catch(() => false);
       setSyncState("saved");
       setToast(successMessage);
       return result;
@@ -674,6 +740,7 @@ export function CodecoSupervisionApp() {
 
   const openQuickAdd = () => {
     setDescription("");
+    setLocation(selectedBuilding?.name ?? "");
     setModal("quick");
   };
 
@@ -755,6 +822,10 @@ export function CodecoSupervisionApp() {
     setAttendance((current) =>
       current.map((row) => row.id === id ? { ...row, count: Math.max(0, row.count + delta) } : row),
     );
+  };
+
+  const changeAttendanceDiscipline = (id: string, discipline: string) => {
+    setAttendance((current) => current.map((row) => row.id === id ? { ...row, discipline } : row));
   };
 
   if (!isSupabaseConfigured || !supabase) {
@@ -860,6 +931,8 @@ export function CodecoSupervisionApp() {
         startProject={startProject}
         currentUserName={currentUserName}
         storageStatus={storageStatus}
+        isOnline={isOnline}
+        offlineCached={Boolean(workspaceQuery.data._offlineCached)}
         initialProjectStart={projectStartAnswers}
         goBack={() => {
           setSelectedBuilding(null);
@@ -959,6 +1032,7 @@ export function CodecoSupervisionApp() {
               openProjectStart={() => setWorkspaceStage("project_start")}
               openDailyQuestions={() => setModal("daily_questions")}
               openQuickAdd={openQuickAdd}
+              openOneTapLog={() => projectStartAnswers ? setModal("one_tap_log") : setWorkspaceStage("project_start")}
               openActions={() => navigate("acties")}
               openWorkspace={() => navigate("project")}
               openSettings={() => navigate("meer")}
@@ -979,6 +1053,7 @@ export function CodecoSupervisionApp() {
               organizationId={activeOrganizationId!}
               projectId={selectedProject!.id}
               projectName={projectName}
+              projectCode={selectedProject!.code}
               buildingId={selectedBuilding!.id}
               buildingName={buildingName}
               reportId={dayQuery.data?.report?.id ? String(dayQuery.data.report.id) : null}
@@ -1057,6 +1132,7 @@ export function CodecoSupervisionApp() {
           goBack={() => setModal("quick")}
           close={() => setModal(null)}
           save={saveEntry}
+          openPhoto={() => chooseType("photo")}
           projectName={projectName}
           buildingName={buildingName}
         />
@@ -1185,6 +1261,7 @@ export function CodecoSupervisionApp() {
           rows={attendance}
           total={attendanceTotal}
           changeCount={changeAttendance}
+          changeDiscipline={changeAttendanceDiscipline}
           copyPreviousDay={() => {
             setToast("Er is nog geen eerdere centrale werkdag met aanwezigheid om over te nemen.");
           }}
@@ -1209,6 +1286,50 @@ export function CodecoSupervisionApp() {
               }),
               `${attendanceTotal} aanwezigen zijn centraal aan het dagrapport gekoppeld.`,
             );
+            if (!saved) return;
+            setModal(null);
+            await queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] });
+          }}
+        />
+      ) : null}
+      {modal === "one_tap_log" ? (
+        <OneTapDailyLogModal
+          rows={attendance}
+          total={attendanceTotal}
+          buildingName={buildingName}
+          projectStartAnswers={projectStartAnswers}
+          changeCount={changeAttendance}
+          close={() => setModal(null)}
+          save={async (notes) => {
+            if (!selectedProject || !selectedBuilding || !dayQuery.data?.report) {
+              setToast("Start eerst de werkdag zodat het dagrapport klaarstaat.");
+              return;
+            }
+            const saved = await runSynced(async () => {
+              await saveAttendance(supabase, {
+                report: dayQuery.data.report!,
+                projectId: selectedProject.id,
+                buildingId: selectedBuilding.id,
+                rows: attendance.map((row) => ({
+                  partyId: row.partyId,
+                  discipline: row.discipline,
+                  count: row.count,
+                  shiftStart: row.shiftStart,
+                  shiftEnd: row.shiftEnd,
+                })),
+              });
+              if (notes.trim()) {
+                await saveSiteRegistration(supabase, {
+                  projectId: selectedProject.id,
+                  buildingId: selectedBuilding.id,
+                  type: "note",
+                  title: text("One-tap daily log", "Snel daglog"),
+                  description: notes.trim(),
+                  priority: "normal",
+                });
+              }
+              return true;
+            }, text("Daily log saved: context, headcount and notes are linked automatically.", "Daglog opgeslagen: context, bezetting en notities zijn automatisch gekoppeld."));
             if (!saved) return;
             setModal(null);
             await queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] });
@@ -1249,6 +1370,7 @@ export function CodecoSupervisionApp() {
 
       {modal === "notifications" ? (
         <NotificationsModal
+          client={supabase}
           notifications={notificationQuery.data ?? []}
           loading={notificationQuery.isLoading}
           close={() => setModal(null)}
@@ -1534,6 +1656,8 @@ function ContextSelection({
   goBackToBuilding,
   currentUserName,
   storageStatus,
+  isOnline,
+  offlineCached,
   initialProjectStart,
 }: {
   projects: ProjectContext[];
@@ -1548,11 +1672,21 @@ function ContextSelection({
   goBackToBuilding: () => void;
   currentUserName: string;
   storageStatus: string;
+  isOnline: boolean;
+  offlineCached: boolean;
   initialProjectStart: ProjectStartAnswers | null;
 }) {
   const { text } = useLanguage();
   const showBuildings = stage === "buildings" && selectedProject;
   const showProjectStart = stage === "project_start" && Boolean(selectedProject && selectedBuilding);
+  const portfolio = projects.reduce((total, project) => ({
+    projects: total.projects + 1,
+    actions: total.actions + project.openIssues,
+    issues: total.issues + project.issueCount,
+    ncr: total.ncr + project.ncrCount,
+    inspections: total.inspections + project.inspectionCount,
+    today: total.today + project.buildings.reduce((count, building) => count + building.todayPlannedWork.length, 0),
+  }), { projects: 0, actions: 0, issues: 0, ncr: 0, inspections: 0, today: 0 });
   return (
     <div className="context-shell">
       <header className="context-topbar">
@@ -1563,9 +1697,9 @@ function ContextSelection({
       </header>
 
       <main className="context-content">
-        <div className="data-mode-notice connected" role="status">
-          <CheckCircle2 size={17} />
-          <span><strong>{text("Online workspace", "Online werkruimte")}</strong> {storageStatus}. {text("Only changes confirmed by Supabase receive the saved status.", "Alleen door Supabase bevestigde wijzigingen krijgen de status opgeslagen.")}</span>
+        <div className={`data-mode-notice ${isOnline ? "connected" : "offline"}`} role="status">
+          {isOnline ? <CheckCircle2 size={17} /> : <HardDrive size={17} />}
+          <span><strong>{isOnline ? text("Online workspace", "Online werkruimte") : text("Offline field mode", "Offline veldmodus")}</strong> {storageStatus}. {offlineCached ? text("The last synchronized projects and buildings are available; photos and drawings can be queued locally.", "De laatst gesynchroniseerde projecten en gebouwen zijn beschikbaar; foto’s en tekeningen kunnen lokaal worden klaargezet.") : text("Only changes confirmed by Supabase receive the saved status.", "Alleen door Supabase bevestigde wijzigingen krijgen de status opgeslagen.")}</span>
         </div>
         <div className="context-steps" aria-label={text("Select work context", "Werkcontext kiezen")}>
           <span className={stage === "projects" ? "active" : "done"}><strong>1</strong> Project</span>
@@ -1589,6 +1723,14 @@ function ContextSelection({
               <div><p className="eyebrow">{text("My projects", "Mijn projecten")}</p><h1>{text("Where will you work today?", "Waar ga je vandaag werken?")}</h1><p>{text("Select the project first. Your building and daily report follow in the next step.", "Kies eerst het project. Je gebouw en dagrapport volgen in de volgende stap.")}</p></div>
               <button className="ghost-button" type="button"><Search size={14} /> {text("Search project", "Project zoeken")}</button>
             </section>
+            <section className="portfolio-dashboard" aria-label={text("Portfolio overview", "Portfolio-overzicht")}>
+              <div><span>{text("Active projects", "Actieve projecten")}</span><strong>{portfolio.projects}</strong></div>
+              <div><span>{text("Today's plans", "Planning vandaag")}</span><strong>{portfolio.today}</strong></div>
+              <div><span>{text("Open actions", "Open acties")}</span><strong>{portfolio.actions}</strong></div>
+              <div><span>Issues</span><strong>{portfolio.issues}</strong></div>
+              <div><span>NCR</span><strong>{portfolio.ncr}</strong></div>
+              <div><span>{text("Inspections", "Inspecties")}</span><strong>{portfolio.inspections}</strong></div>
+            </section>
             <section className="project-selection-grid">
               {projects.map((project) => (
                 <button className="project-selection-card" type="button" onClick={() => chooseProject(project)} key={project.id}>
@@ -1597,7 +1739,14 @@ function ContextSelection({
                     <span className="project-code">{project.code}</span>
                   </span>
                   <span className="selection-copy"><strong>{project.name}</strong><small><MapPin size={12} /> {project.location}</small></span>
-                  <span className="selection-meta"><span>{project.buildings.length} {text("buildings", "gebouwen")}</span><span>{project.openIssues} {text("open issues", "open punten")}</span></span>
+                  <span className="selection-meta"><span>{project.buildings.length} {text("buildings", "gebouwen")}</span><span>{project.openIssues} {text("open actions", "open acties")}</span></span>
+                  <span className="project-register-metrics" aria-label={text("Project register totals", "Totalen projectregisters")}>
+                    <span><b>{project.issueCount}</b>{text("Issues", "Issues")}</span>
+                    <span><b>{project.ncrCount}</b>NCR</span>
+                    <span><b>{project.inspectionCount}</b>{text("Inspections", "Inspecties")}</span>
+                    <span><b>{project.technicalInstructionCount}</b>TI</span>
+                    <span><b>{project.changeOrderCount}</b>CO</span>
+                  </span>
                   <span className="selection-progress"><span style={{ width: `${project.progress}%` }} /><em>{project.progress}% {text("progress", "voortgang")}</em></span>
                   <span className="selection-action">{text("View buildings", "Gebouwen bekijken")} <ArrowRight size={14} /></span>
                 </button>
@@ -1619,6 +1768,8 @@ function ContextSelection({
                     <span className="building-radio">{active ? <Check size={14} /> : null}</span>
                     <span className="building-selection-copy"><strong>{building.name}</strong><small>{building.description}</small></span>
                     <span className="building-stats"><span><b>{building.progress}%</b> {text("progress", "voortgang")}</span><span><b>{building.openIssues}</b> {text("open issues", "open punten")}</span></span>
+                    <span className="building-register-metrics"><span><b>{building.issueCount}</b> Issues</span><span><b>{building.ncrCount}</b> NCR</span><span><b>{building.inspectionCount}</b> {text("Inspections", "Inspecties")}</span><span><b>{building.technicalInstructionCount}</b> TI</span><span><b>{building.changeOrderCount}</b> CO</span><span><b>{building.photoCount}</b> {text("Photos", "Foto’s")}</span></span>
+                    <span className="building-today-plan"><strong>{text("Today", "Vandaag")}</strong>{building.todayPlannedWork.length ? building.todayPlannedWork.map((work, index) => <small key={`${building.id}:${index}`}>{work}</small>) : <small>{text("No work plan started yet", "Nog geen dagplanning gestart")}</small>}</span>
                   </button>
                 );
               })}
@@ -1653,6 +1804,7 @@ function ProjectStartForm({
     register,
     handleSubmit,
     control,
+    setValue,
     formState: { errors },
   } = useForm<ProjectStartAnswers>({
     resolver: zodResolver(localizedProjectStartSchema),
@@ -1663,7 +1815,7 @@ function ProjectStartForm({
       windCondition: "moderate",
       shiftStart: "07:00",
       shiftEnd: "16:00",
-      plannedWork: "Core wall formwork and floor reinforcement inspection",
+      plannedWork: "",
       expectedWorkers: 42,
       inspectionPlanned: "yes",
       highRiskWork: "no",
@@ -1671,11 +1823,29 @@ function ProjectStartForm({
       workPermit: "not_required",
       drawingStatus: "approved",
       drawingIssueReported: false,
-      riskNotes: "Check the reinforcement steel delivery around 10:00.",
+      riskNotes: "",
     },
   });
   const answers = useWatch({ control });
   const automation = getProjectStartAutomation(answers, undefined, language);
+  const selectedWork = String(answers.plannedWork ?? "").split("; ").filter(Boolean);
+  const toggleWork = (label: string) => {
+    const next = selectedWork.includes(label) ? selectedWork.filter((item) => item !== label) : [...selectedWork, label];
+    setValue("plannedWork", next.join("; "), { shouldDirty: true, shouldValidate: true });
+  };
+  const riskOptions = [
+    text("Lifting work", "Hijswerk"),
+    text("Work at height", "Werk op hoogte"),
+    text("Rain or thunder", "Regen of onweer"),
+    text("Deliveries and traffic", "Leveringen en verkeer"),
+    text("Excavation or groundwater", "Graafwerk of grondwater"),
+    text("Electrical work", "Elektrisch werk"),
+  ];
+  const selectedRisks = String(answers.riskNotes ?? "").split("; ").filter(Boolean);
+  const toggleRisk = (label: string) => {
+    const next = selectedRisks.includes(label) ? selectedRisks.filter((item) => item !== label) : [...selectedRisks, label];
+    setValue("riskNotes", next.join("; "), { shouldDirty: true, shouldValidate: true });
+  };
 
   return (
     <>
@@ -1699,13 +1869,14 @@ function ProjectStartForm({
               <label className="form-field"><span>{text("Wind", "Wind")}</span><select {...register("windCondition")}><option value="calm">{text("Calm", "Kalm")}</option><option value="moderate">{text("Moderate", "Matig")}</option><option value="strong">{text("Strong", "Sterk")}</option></select></label>
               <label className="form-field"><span>{text("Shift start", "Start werktijd")}</span><input type="time" {...register("shiftStart")} />{errors.shiftStart ? <small className="field-error">{errors.shiftStart.message}</small> : null}</label>
               <label className="form-field"><span>{text("Shift end", "Einde werktijd")}</span><input type="time" {...register("shiftEnd")} />{errors.shiftEnd ? <small className="field-error">{errors.shiftEnd.message}</small> : null}</label>
-              <label className="form-field"><span>{text("Expected workforce", "Verwachte bezetting")}</span><span className="input-with-unit"><input type="number" {...register("expectedWorkers", { valueAsNumber: true })} /><em>{text("people", "personen")}</em></span></label>
+              <div className="form-field"><label htmlFor="expected-workers">{text("Expected workforce", "Verwachte bezetting")}</label><span className="input-with-unit"><input id="expected-workers" type="number" {...register("expectedWorkers", { valueAsNumber: true })} /><em>{text("people", "personen")}</em></span><span className="period-date-presets">{[10, 20, 30, 40, 50].map((count) => <button type="button" onClick={() => setValue("expectedWorkers", count, { shouldDirty: true, shouldValidate: true })} key={count}>{count}</button>)}</span></div>
             </div>
           </section>
 
           <section className="form-section-card">
             <header><span className="form-section-number">2</span><span><strong>{text("What is planned today?", "Wat staat vandaag gepland?")}</strong><small>{text("This feeds the day plan and suggested modules", "Dit voedt het dagplan en de voorgestelde modules")}</small></span></header>
             <div className="form-grid two-columns">
+              <div className="work-option-grid wide" aria-label={text("Choose planned work", "Kies geplande werkzaamheden")}>{constructionWorkOptions.map((option) => { const label = language === "en" ? option.en : option.nl; const active = selectedWork.includes(label); return <button className={active ? "active" : ""} type="button" aria-pressed={active} onClick={() => toggleWork(label)} key={option.en}>{active ? <Check size={14} /> : <Plus size={14} />}{label}</button>; })}</div>
               <label className="form-field wide"><span>{text("Planned work *", "Geplande werkzaamheden *")}</span><textarea rows={3} {...register("plannedWork")} />{errors.plannedWork ? <small className="field-error">{errors.plannedWork.message}</small> : null}</label>
               <label className="form-field"><span>{text("Inspection planned?", "Inspectie gepland?")}</span><select {...register("inspectionPlanned")}><option value="yes">{text("Yes", "Ja")}</option><option value="no">{text("No", "Nee")}</option></select></label>
               <label className="form-field"><span>{text("Concrete work planned?", "Betonwerk gepland?")}</span><select {...register("concreteWork")}><option value="yes">{text("Yes", "Ja")}</option><option value="no">{text("No", "Nee")}</option></select></label>
@@ -1718,7 +1889,8 @@ function ProjectStartForm({
             <header><span className="form-section-number">3</span><span><strong>{text("Documents and expected risks", "Documenten en verwachte risico’s")}</strong><small>{text("The app warns; the supervisor remains the decision maker", "De app waarschuwt; de supervisor blijft beslissen")}</small></span></header>
             <div className="form-grid two-columns">
               <label className="form-field"><span>{text("Approved working drawing", "Goedgekeurde werktekening")}</span><select {...register("drawingStatus")}><option value="approved">{text("Current revision available", "Actuele revisie aanwezig")}</option><option value="not_required">{text("Not required", "Niet vereist")}</option><option value="missing">{text("Missing / uncertain", "Ontbreekt / onzeker")}</option></select></label>
-              <label className="form-field wide"><span>{text("Which risks do you expect today?", "Welke risico’s verwacht je vandaag?")}</span><textarea rows={3} placeholder={text("For example lifting, rain, delivery or groundwater", "Bijvoorbeeld hijswerk, regen, levering of grondwater")} {...register("riskNotes")} /></label>
+              <div className="quick-issue-presets wide" aria-label={text("Choose expected risks", "Kies verwachte risico's")}>{riskOptions.map((option) => <button className={selectedRisks.includes(option) ? "active" : ""} type="button" aria-pressed={selectedRisks.includes(option)} onClick={() => toggleRisk(option)} key={option}>{option}</button>)}</div>
+              <label className="form-field wide"><span>{text("Expected risks · optional detail", "Verwachte risico's · optionele aanvulling")}</span><textarea rows={3} placeholder={text("Choose above; only type an exceptional detail.", "Kies hierboven; typ alleen een uitzonderlijke aanvulling.")} {...register("riskNotes")} /></label>
               {answers.drawingStatus === "missing" ? (
                 <label className="confirmation-check wide"><input type="checkbox" {...register("drawingIssueReported")} /><span><strong>{text("Missing drawing was reported", "Ontbrekende tekening is gemeld")}</strong><small>{text("Human confirmation is required before the workday opens.", "Menselijke bevestiging vereist voordat de werkdag wordt geopend.")}</small>{errors.drawingIssueReported ? <em className="field-error">{errors.drawingIssueReported.message}</em> : null}</span></label>
               ) : null}
@@ -1733,7 +1905,7 @@ function ProjectStartForm({
 
         <aside className="automation-panel">
           <header><span className="automation-panel-icon"><Settings size={19} /></span><span><strong>{text("Visible automation", "Zichtbare automatisering")}</strong><small>{automation.length} {text("fixed rules active", "vaste regels actief")}</small></span></header>
-          <p className="automation-intro">{text("No AI: every action comes from a fixed project rule and remains under supervisor control.", "Geen AI: iedere actie komt uit een vaste projectregel en blijft door de supervisor controleerbaar.")}</p>
+              <p className="automation-intro">{text("Every action comes from a fixed project rule and remains under supervisor control.", "Iedere actie komt uit een vaste projectregel en blijft door de supervisor controleerbaar.")}</p>
           <div className="automation-rule-list">
             {automation.map((rule) => (
               <article className={`automation-rule ${rule.tone}`} key={rule.id}>
@@ -1763,6 +1935,7 @@ function TodayView({
   openProjectStart,
   openDailyQuestions,
   openQuickAdd,
+  openOneTapLog,
   openActions,
   openWorkspace,
   openSettings,
@@ -1786,6 +1959,7 @@ function TodayView({
   openProjectStart: () => void;
   openDailyQuestions: () => void;
   openQuickAdd: () => void;
+  openOneTapLog: () => void;
   openActions: () => void;
   openWorkspace: () => void;
   openSettings: () => void;
@@ -1833,6 +2007,7 @@ function TodayView({
 
       <section className="overview-shortcuts" aria-label={text("Quick routes", "Directe routes")}>
         <button className="overview-shortcut primary" type="button" onClick={projectStartAnswers ? openQuickAdd : openProjectStart}><span><Plus size={18} /></span><strong>{projectStartAnswers ? text("Add site record", "Registratie toevoegen") : text("Start the workday", "Werkdag starten")}</strong><small>{projectStartAnswers ? text("Photo, finding, inspection or note", "Foto, bevinding, inspectie of notitie") : text("Confirm weather and working hours", "Bevestig weer en werktijden")}</small><ArrowRight size={16} /></button>
+        <button className="overview-shortcut" type="button" onClick={openOneTapLog}><span><ClipboardCheck size={18} /></span><strong>{text("One-tap daily log", "Snel daglog")}</strong><small>{text("Location, weather, headcount and dictation", "Locatie, weer, bezetting en dicteren")}</small><ArrowRight size={16} /></button>
         <button className="overview-shortcut" type="button" onClick={openActions}><span><ClipboardCheck size={18} /></span><strong>{text("Open actions", "Acties openen")}</strong><small>{text(`${actions.filter((action) => action.status !== "verified" && action.status !== "cancelled").length} require follow-up`, `${actions.filter((action) => action.status !== "verified" && action.status !== "cancelled").length} vragen opvolging`)}</small><ArrowRight size={16} /></button>
         <button className="overview-shortcut" type="button" onClick={canManageMembers ? openSettings : openWorkspace}><span>{canManageMembers ? <Settings size={18} /> : <LayoutDashboard size={18} />}</span><strong>{canManageMembers ? text("Manage workspace", "Werkruimte beheren") : text("Open project workspace", "Projectwerkruimte openen")}</strong><small>{canManageMembers ? text("Users, rules and project structure", "Gebruikers, regels en projectstructuur") : text("Inspections, findings and files", "Inspecties, bevindingen en bestanden")}</small><ArrowRight size={16} /></button>
       </section>
@@ -2107,19 +2282,38 @@ function SecondaryView({
 
 }
 
-function NotificationsModal({ notifications, loading, close, markRead }: { notifications: ProjectNotification[]; loading: boolean; close: () => void; markRead: (notificationId: string) => Promise<void> }) {
+function NotificationsModal({ client, notifications, loading, close, markRead }: { client: SupabaseClient; notifications: ProjectNotification[]; loading: boolean; close: () => void; markRead: (notificationId: string) => Promise<void> }) {
   const { locale, text } = useLanguage();
+  const [pushState, setPushState] = useState<PushState>("inactive");
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState("");
+  useEffect(() => { void currentPushState().then(setPushState); }, []);
+  const activatePush = async () => {
+    setPushBusy(true);
+    setPushError("");
+    try {
+      await enablePushNotifications(client);
+      setPushState("active");
+    } catch (error) {
+      setPushError(error instanceof Error ? error.message : text("Push activation failed.", "Push activeren is mislukt."));
+      setPushState(await currentPushState());
+    } finally {
+      setPushBusy(false);
+    }
+  };
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal notifications-modal" role="dialog" aria-modal="true" aria-labelledby="notifications-title">
-        <header className="modal-header"><div><h2 id="notifications-title">{text("Notifications and deadlines", "Meldingen en deadlines")}</h2><p>{text("In-app reminders from central actions, findings and report reviews.", "In-app herinneringen uit centrale acties, bevindingen en rapportreviews.")}</p></div><button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button></header>
+        <header className="modal-header"><div><h2 id="notifications-title">{text("Push notifications and deadlines", "Pushmeldingen en deadlines")}</h2><p>{text("Automatic device notifications from actions, findings and report reviews, with an auditable copy in this inbox.", "Automatische apparaatmeldingen uit acties, bevindingen en rapportreviews, met een auditeerbare kopie in deze inbox.")}</p></div><button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button></header>
         <div className="modal-body notification-list">
+          <div className={`push-activation ${pushState}`}><Bell size={19} /><span><strong>{pushState === "active" ? text("Push is active on this device", "Push is actief op dit apparaat") : pushState === "blocked" ? text("Push is blocked in browser settings", "Push is geblokkeerd in de browserinstellingen") : pushState === "unsupported" ? text("This browser does not support push", "Deze browser ondersteunt geen push") : text("Activate push on this device", "Activeer push op dit apparaat")}</strong><small>{text("Deadlines are generated automatically from fixed project rules.", "Deadlines worden automatisch uit vaste projectregels gegenereerd.")}</small></span>{pushState === "inactive" ? <button className="primary-button" type="button" disabled={pushBusy} onClick={() => void activatePush()}>{pushBusy ? <Loader2 className="spin" size={15} /> : <Bell size={15} />}{text("Activate", "Activeren")}</button> : null}</div>
+          {pushError ? <div className="operation-alert error">{pushError}</div> : null}
           {loading ? <div className="empty-list-state"><Loader2 className="spin" size={22} /><strong>{text("Loading notifications", "Meldingen laden")}</strong><span>{text("Deadlines are checked using fixed rules.", "Deadlines worden regelgestuurd gecontroleerd.")}</span></div> : null}
           {!loading && notifications.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No notifications", "Geen meldingen")}</strong><span>{text("There are no open personal reminders.", "Er zijn geen openstaande persoonlijke herinneringen.")}</span></div> : null}
           {notifications.map((notification) => (
             <button className={`notification-row ${notification.read_at ? "read" : ""}`} type="button" key={notification.id} onClick={() => void markRead(notification.id)}>
               <span className="notification-row-icon">{notification.notification_type.includes("overdue") || notification.notification_type.includes("critical") ? <AlertTriangle size={17} /> : <Bell size={17} />}</span>
-              <span><strong>{notification.title}</strong><span>{notification.body}</span><small>{notification.due_at ? `${text("Deadline", "Deadline")} ${new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(notification.due_at))}` : text("Immediate follow-up", "Directe opvolging")}</small></span>
+              <span><strong>{notification.title}</strong><span>{notification.body}</span><small>{notification.due_at ? `${text("Deadline", "Deadline")} ${new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(notification.due_at))}` : text("Immediate follow-up", "Directe opvolging")} · {notification.push_status === "sent" ? text("Push sent", "Push verzonden") : notification.push_status === "failed" ? text("Push retry pending", "Nieuwe pushpoging gepland") : notification.push_status === "skipped" ? text("Activate push on a device", "Activeer push op een apparaat") : text("Push queued", "Push in wachtrij")}</small></span>
               {!notification.read_at ? <i aria-label={text("Unread", "Ongelezen")} /> : null}
             </button>
           ))}
@@ -2330,6 +2524,7 @@ function EntryModal({
   goBack,
   close,
   save,
+  openPhoto,
   projectName,
   buildingName,
 }: {
@@ -2343,12 +2538,23 @@ function EntryModal({
   goBack: () => void;
   close: () => void;
   save: () => void;
+  openPhoto: () => void;
   projectName: string;
   buildingName: string;
 }) {
   const { language, locale, text } = useLanguage();
   const title = (language === "en" ? entryTitlesEnglish : entryTitles)[selectedType] ?? text("Record", "Registratie");
   const needsPriority = selectedType === "finding" || selectedType === "hse" || selectedType === "action";
+  const choices: Record<string, string[]> = {
+    activity: [text("Work started as planned.", "Werk volgens planning gestart."), text("Work completed as planned.", "Werk volgens planning afgerond."), text("Work continues tomorrow.", "Werk wordt morgen voortgezet.")],
+    inspection: [text("Inspection completed; all points passed.", "Inspectie uitgevoerd; alle punten akkoord."), text("Inspection completed; follow-up required.", "Inspectie uitgevoerd; opvolging vereist.")],
+    finding: [text("Work is incomplete.", "Werk is niet volledig uitgevoerd."), text("Finish does not meet the requirement.", "Afwerking voldoet niet aan de eis."), text("Executed dimensions differ from the drawing.", "Uitvoering wijkt af van de tekening.")],
+    hse: [text("Unsafe situation was corrected immediately.", "Onveilige situatie direct gecorrigeerd."), text("Safety point requires follow-up.", "Veiligheidspunt vraagt opvolging."), text("Positive safety observation.", "Positieve veiligheidsobservatie.")],
+    delivery: [text("Delivery received and checked.", "Levering ontvangen en gecontroleerd."), text("Delivery incomplete or damaged.", "Levering onvolledig of beschadigd."), text("Delivery rejected.", "Levering geweigerd.")],
+    test: [text("Test performed; result within tolerance.", "Test uitgevoerd; resultaat binnen tolerantie."), text("Test performed; deviation found.", "Test uitgevoerd; afwijking vastgesteld.")],
+    delay: [text("Delay due to weather.", "Vertraging door weersomstandigheden."), text("Delay due to late delivery.", "Vertraging door te late levering."), text("Delay due to equipment failure.", "Vertraging door materieelstoring.")],
+  };
+  const descriptionChoices = choices[selectedType] ?? [];
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal" role="dialog" aria-modal="true" aria-labelledby="entry-title">
@@ -2358,17 +2564,18 @@ function EntryModal({
         </header>
         <div className="modal-body">
           <div className="form-grid">
+            {descriptionChoices.length ? <div className="quick-issue-presets full" aria-label={text("Choose a standard description", "Kies een standaardomschrijving")}>{descriptionChoices.map((choice) => <button className={description === choice ? "active" : ""} type="button" onClick={() => setDescription(choice)} key={choice}>{choice}</button>)}</div> : null}
             <div className="form-field full">
               <label htmlFor="description">{text("Short description *", "Korte omschrijving *")}</label>
-              <textarea id="description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder={text(`What do you want to record about this ${title.toLowerCase()}?`, `Wat wil je over deze ${title.toLowerCase()} vastleggen?`)} autoFocus />
+              <textarea id="description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder={text("Choose above; only add an exceptional detail.", "Kies hierboven; voeg alleen een uitzonderlijk detail toe.")} />
             </div>
             <div className="form-field">
               <label htmlFor="location">{text("Location *", "Locatie *")}</label>
               <select id="location" value={location} onChange={(event) => setLocation(event.target.value)}>
-                <option>{text("Floor 3 · East zone", "Verdieping 3 · Zone oost")}</option>
-                <option>{text("Floor 3 · West zone", "Verdieping 3 · Zone west")}</option>
-                <option>{text("Floor 2 · Core", "Verdieping 2 · Kern")}</option>
-                <option>{text("Outdoor area · North", "Buitenterrein · Noord")}</option>
+                <option value={buildingName}>{buildingName} · {text("general", "algemeen")}</option>
+                <option value={`${buildingName} · ${text("Ground floor", "Begane grond")}`}>{buildingName} · {text("Ground floor", "Begane grond")}</option>
+                <option value={`${buildingName} · ${text("Upper floor", "Verdieping")}`}>{buildingName} · {text("Upper floor", "Verdieping")}</option>
+                <option value={`${buildingName} · ${text("Outdoor area", "Buitenterrein")}`}>{buildingName} · {text("Outdoor area", "Buitenterrein")}</option>
               </select>
             </div>
             {needsPriority ? (
@@ -2386,7 +2593,7 @@ function EntryModal({
             )}
             <div className="form-field full">
               <label>{text("Add evidence", "Bewijs toevoegen")}</label>
-              <button className="ghost-button" type="button" style={{ justifyContent: "center", minHeight: 50 }}><Camera size={16} /> {text("Choose photo or attachment", "Foto of bijlage kiezen")}</button>
+              <button className="ghost-button" type="button" style={{ justifyContent: "center", minHeight: 50 }} onClick={openPhoto}><Camera size={16} /> {text("Take or choose a photo", "Maak of kies een foto")}</button>
               <span className="form-note"><CheckCircle2 size={12} /> {text("Time, author, project and building are recorded automatically.", "Tijd, maker, project en gebouw worden automatisch vastgelegd.")}</span>
             </div>
           </div>
@@ -2418,7 +2625,7 @@ function ActionCreateModal({
   const { text } = useLanguage();
   const [busy, setBusy] = useState(false);
   const defaultParty = parties.find((party) => party.type === "contractor")?.id ?? parties[0]?.id ?? "";
-  const { register, handleSubmit, formState: { errors } } = useForm<ProjectActionAnswers>({
+  const { register, handleSubmit, setValue, formState: { errors } } = useForm<ProjectActionAnswers>({
     resolver: zodResolver(projectActionSchema),
     defaultValues: {
       title: "",
@@ -2428,6 +2635,18 @@ function ActionCreateModal({
       priority: "normal",
     },
   });
+  const actionTemplates: Array<Pick<ProjectActionAnswers, "title" | "description" | "priority">> = [
+    { title: text("Complete unfinished work", "Onvolledig werk afronden"), description: text("Complete the remaining work and provide visible proof for verification.", "Rond het resterende werk af en lever zichtbaar bewijs voor verificatie."), priority: "normal" },
+    { title: text("Repair visible defect", "Zichtbaar gebrek herstellen"), description: text("Repair the recorded defect and report it ready for CODECO verification.", "Herstel het vastgelegde gebrek en meld het gereed voor CODECO-verificatie."), priority: "high" },
+    { title: text("Submit missing document", "Ontbrekend document aanleveren"), description: text("Submit the missing document or approved revision for project control.", "Lever het ontbrekende document of de goedgekeurde revisie aan voor projectcontrole."), priority: "normal" },
+    { title: text("Correct unsafe condition", "Onveilige situatie corrigeren"), description: text("Correct the unsafe condition immediately and provide evidence of the measure.", "Corrigeer de onveilige situatie direct en lever bewijs van de maatregel."), priority: "critical" },
+    { title: text("Finish and clean work area", "Werkzone afwerken en schoonmaken"), description: text("Finish the work and leave the work area clean and ready for inspection.", "Werk het onderdeel af en laat de werkzone schoon en gereed voor inspectie achter."), priority: "low" },
+  ];
+  const applyTemplate = (template: Pick<ProjectActionAnswers, "title" | "description" | "priority">) => {
+    setValue("title", template.title, { shouldDirty: true, shouldValidate: true });
+    setValue("description", template.description, { shouldDirty: true, shouldValidate: true });
+    setValue("priority", template.priority, { shouldDirty: true, shouldValidate: true });
+  };
   const submit = async (answers: ProjectActionAnswers) => {
     setBusy(true);
     await save(answers);
@@ -2442,10 +2661,11 @@ function ActionCreateModal({
         </header>
         <form className="modal-body" onSubmit={handleSubmit(submit)} noValidate>
           <div className="form-grid two-columns">
+            <div className="quick-issue-presets full" aria-label={text("Choose a standard action", "Kies een standaardactie")}>{actionTemplates.map((template) => <button type="button" onClick={() => applyTemplate(template)} key={template.title}>{template.title}</button>)}</div>
             <label className="form-field full"><span>{text("Action *", "Actie *")}</span><input autoFocus placeholder={text("What must demonstrably be completed?", "Wat moet aantoonbaar worden uitgevoerd?")} {...register("title")} />{errors.title ? <small className="field-error">{errors.title.message}</small> : null}</label>
             <label className="form-field full"><span>{text("Context and acceptance criterion *", "Context en acceptatiecriterium *")}</span><textarea rows={4} placeholder={text("Describe the location, required measure and completion criterion.", "Beschrijf locatie, gewenste maatregel en wanneer de actie gereed is.")} {...register("description")} />{errors.description ? <small className="field-error">{errors.description.message}</small> : null}</label>
             <label className="form-field"><span>{text("Responsible party *", "Verantwoordelijke partij *")}</span><select {...register("ownerPartyId")} disabled={parties.length === 0}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select>{errors.ownerPartyId ? <small className="field-error">{errors.ownerPartyId.message}</small> : null}</label>
-            <label className="form-field"><span>Deadline *</span><input type="datetime-local" {...register("dueAt")} />{errors.dueAt ? <small className="field-error">{errors.dueAt.message}</small> : null}</label>
+            <div className="form-field"><label htmlFor="action-deadline">Deadline *</label><input id="action-deadline" type="datetime-local" {...register("dueAt")} />{errors.dueAt ? <small className="field-error">{errors.dueAt.message}</small> : null}<span className="period-date-presets">{[[0, text("Today", "Vandaag")], [1, text("Tomorrow", "Morgen")], [3, text("3 days", "3 dagen")], [7, text("7 days", "7 dagen")]].map(([days, label]) => <button type="button" onClick={() => setValue("dueAt", actionDeadlineFromToday(Number(days)), { shouldDirty: true, shouldValidate: true })} key={String(label)}>{label}</button>)}</span></div>
             <label className="form-field"><span>{text("Priority", "Prioriteit")}</span><select {...register("priority")}><option value="low">{text("Low", "Laag")}</option><option value="normal">{text("Normal", "Normaal")}</option><option value="high">{text("High", "Hoog")}</option><option value="critical">{text("Critical", "Kritiek")}</option></select></label>
             <div className="action-rule-note"><ShieldCheck size={16} /><span><strong>{text("Controlled follow-up flow", "Vaste opvolgflow")}</strong><small>{text("Open → accepted → in progress → verification → closed.", "Open → geaccepteerd → in uitvoering → verificatie → gesloten.")}</small></span></div>
           </div>
@@ -2476,7 +2696,7 @@ function ActionDetailModal({
   const statusLabels = language === "en" ? actionStatusLabelsEnglish : actionStatusLabels;
   const [busy, setBusy] = useState(false);
   const nextStatus = nextActionStatus[action.status];
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<ActionTransitionAnswers>({
+  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<ActionTransitionAnswers>({
     resolver: zodResolver(actionTransitionSchema),
     defaultValues: { note: "" },
   });
@@ -2490,6 +2710,12 @@ function ActionDetailModal({
   const dueAt = action.due_at
     ? new Intl.DateTimeFormat(locale, { dateStyle: "long", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(action.due_at))
     : text("No deadline", "Geen deadline");
+  const transitionChoices: Partial<Record<ProjectAction["status"], string[]>> = {
+    accepted: [text("Action received and scheduled.", "Actie ontvangen en ingepland."), text("Action accepted; required resources are available.", "Actie geaccepteerd; benodigde middelen zijn beschikbaar.")],
+    in_progress: [text("Execution has started.", "Uitvoering is gestart."), text("Work is in progress according to plan.", "Werk is volgens planning in uitvoering.")],
+    ready_for_verification: [text("Work completed and ready for verification.", "Werk uitgevoerd en gereed voor verificatie."), text("Measure completed; evidence is available.", "Maatregel uitgevoerd; bewijs is beschikbaar.")],
+    verified: [text("Work checked and accepted.", "Werk gecontroleerd en akkoord."), text("Completion verified against the acceptance criterion.", "Uitvoering getoetst aan het acceptatiecriterium en akkoord.")],
+  };
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal action-detail-modal" role="dialog" aria-modal="true" aria-labelledby="action-detail-title">
@@ -2518,6 +2744,7 @@ function ActionDetailModal({
           </section>
           {nextStatus ? (
             <form className="action-transition-form" onSubmit={handleSubmit(submit)} noValidate>
+              <div className="quick-issue-presets" aria-label={text("Choose a standard status note", "Kies een standaard statusnotitie")}>{(transitionChoices[nextStatus] ?? []).map((choice) => <button type="button" onClick={() => setValue("note", choice, { shouldDirty: true, shouldValidate: true })} key={choice}>{choice}</button>)}</div>
               <label className="form-field"><span>{nextStatus === "verified" ? text("Verification note *", "Verificatienotitie *") : text("Execution note *", "Uitvoeringsnotitie *")}</span><textarea rows={3} placeholder={text("Record what was completed, checked or is still required.", "Leg vast wat is uitgevoerd, gecontroleerd of nog nodig is.")} {...register("note")} />{errors.note ? <small className="field-error">{errors.note.message}</small> : null}</label>
               <button className="primary-button" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={14} /> : <ArrowRight size={14} />} {text("Move to", "Naar")} {statusLabels[nextStatus].toLowerCase()}</button>
             </form>
@@ -2532,6 +2759,7 @@ function AttendanceModal({
   rows,
   total,
   changeCount,
+  changeDiscipline,
   copyPreviousDay,
   close,
   save,
@@ -2539,6 +2767,7 @@ function AttendanceModal({
   rows: AttendanceRow[];
   total: number;
   changeCount: (id: string, delta: number) => void;
+  changeDiscipline: (id: string, discipline: string) => void;
   copyPreviousDay: () => void;
   close: () => void;
   save: () => void;
@@ -2559,7 +2788,16 @@ function AttendanceModal({
           <div className="attendance-list">
             {rows.map((row) => (
               <div className="attendance-row" key={row.id}>
-                <span className="attendance-party"><strong>{row.party}</strong><small>{row.discipline} · {row.shiftStart}–{row.shiftEnd}</small></span>
+                <span className="attendance-party">
+                  <strong>{row.party}</strong>
+                  <label>
+                    <span className="sr-only">{text(`Discipline for ${row.party}`, `Discipline voor ${row.party}`)}</span>
+                    <select value={row.discipline} onChange={(event) => changeDiscipline(row.id, event.target.value)}>
+                      {Array.from(new Set([row.discipline, ...constructionDisciplines])).map((discipline) => <option value={discipline} key={discipline}>{discipline}</option>)}
+                    </select>
+                  </label>
+                  <small>{row.shiftStart}–{row.shiftEnd}</small>
+                </span>
                 <span className="counter-control">
                   <button type="button" onClick={() => changeCount(row.id, -1)} aria-label={text(`One fewer person at ${row.party}`, `Eén persoon minder bij ${row.party}`)}><Minus size={14} /></button>
                   <strong>{row.count}</strong>
@@ -2571,6 +2809,121 @@ function AttendanceModal({
           <div className="modal-actions">
             <span className="form-note"><CheckCircle2 size={13} /> {text("Totals are reused in the daily report.", "Totalen worden in het dagrapport hergebruikt.")}</span>
             <button className="primary-button" type="button" onClick={save}>{text("Confirm attendance", "Aanwezigheid bevestigen")} <Check size={14} /></button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function OneTapDailyLogModal({
+  rows,
+  total,
+  buildingName,
+  projectStartAnswers,
+  changeCount,
+  close,
+  save,
+}: {
+  rows: AttendanceRow[];
+  total: number;
+  buildingName: string;
+  projectStartAnswers: ProjectStartAnswers | null;
+  changeCount: (id: string, delta: number) => void;
+  close: () => void;
+  save: (notes: string) => void | Promise<void>;
+}) {
+  const { language, text } = useLanguage();
+  const [notes, setNotes] = useState("");
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const speechAvailable = Boolean(speechConstructor());
+  const noteOptions = [
+    text("Work is proceeding according to plan.", "Werk verloopt volgens planning."),
+    text("All scheduled inspections passed.", "Alle geplande inspecties zijn akkoord."),
+    text("A delivery was received and checked.", "Een levering is ontvangen en gecontroleerd."),
+    text("Work is delayed and requires follow-up.", "Werk loopt vertraging op en vraagt opvolging."),
+    text("A safety point was recorded separately.", "Een veiligheidspunt is apart geregistreerd."),
+  ];
+  const weather = projectStartAnswers
+    ? `${projectStartAnswers.temperatureC}°C · ${({
+      sunny: text("Sunny", "Zonnig"),
+      partly_cloudy: text("Partly cloudy", "Licht bewolkt"),
+      cloudy: text("Cloudy", "Bewolkt"),
+      rain: text("Rain", "Regen"),
+      heavy_rain: text("Heavy rain", "Zware regen"),
+    })[projectStartAnswers.weatherCondition]}`
+    : text("Start the workday to load weather", "Start de werkdag om het weer te laden");
+
+  const toggleSpeech = () => {
+    if (listening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    const Constructor = speechConstructor();
+    if (!Constructor) return;
+    const recognition = new Constructor();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = language === "nl" ? "nl-NL" : "en-US";
+    recognition.onresult = (event) => {
+      let transcript = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        if (event.results[index].isFinal) transcript += `${event.results[index][0].transcript} `;
+      }
+      if (transcript.trim()) setNotes((current) => `${current}${current ? " " : ""}${transcript.trim()}`);
+    };
+    recognition.onerror = () => setListening(false);
+    recognition.onend = () => {
+      setListening(false);
+      recognitionRef.current = null;
+    };
+    recognitionRef.current = recognition;
+    setListening(true);
+    recognition.start();
+  };
+
+  const toggleOption = (option: string) => {
+    setNotes((current) => current.includes(option)
+      ? current.replace(option, "").replace(/\s{2,}/g, " ").trim()
+      : `${current}${current ? " " : ""}${option}`);
+  };
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+      <section className="modal report-modal one-tap-log-modal" role="dialog" aria-modal="true" aria-labelledby="one-tap-log-title">
+        <header className="modal-header">
+          <div><span className="record-number">{text("One-tap daily log", "Snel daglog")}</span><h2 id="one-tap-log-title">{text("Confirm today with as little typing as possible", "Bevestig vandaag met zo min mogelijk typen")}</h2></div>
+          <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
+        </header>
+        <div className="modal-body one-tap-log-body">
+          <div className="one-tap-context">
+            <span><MapPin size={17} /><small>{text("Location", "Locatie")}</small><strong>{buildingName}</strong></span>
+            <span><CloudSun size={17} /><small>{text("Weather", "Weer")}</small><strong>{weather}</strong></span>
+            <span><Users size={17} /><small>{text("Headcount", "Bezetting")}</small><strong>{total}</strong></span>
+          </div>
+          <div className="attendance-list compact">
+            {rows.map((row) => (
+              <div className="attendance-row" key={row.id}>
+                <span className="attendance-party"><strong>{row.discipline}</strong><small>{row.party} · {row.shiftStart}–{row.shiftEnd}</small></span>
+                <span className="counter-control">
+                  <button type="button" onClick={() => changeCount(row.id, -1)} aria-label={text(`One fewer ${row.discipline}`, `Eén ${row.discipline} minder`)}><Minus size={14} /></button>
+                  <strong>{row.count}</strong>
+                  <button type="button" onClick={() => changeCount(row.id, 1)} aria-label={text(`One more ${row.discipline}`, `Eén ${row.discipline} meer`)}><Plus size={14} /></button>
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="one-tap-note">
+            <div className="quick-issue-presets">
+              {noteOptions.map((option) => <button className={notes.includes(option) ? "active" : ""} type="button" onClick={() => toggleOption(option)} key={option}>{option}</button>)}
+            </div>
+            <label className="form-field"><span>{text("Notes · optional", "Notities · optioneel")}</span><textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder={text("Choose an option above or dictate.", "Kies hierboven een optie of dicteer.")} /></label>
+            <button className={`secondary-button ${listening ? "recording" : ""}`} type="button" disabled={!speechAvailable} onClick={toggleSpeech}>{listening ? <MicOff size={15} /> : <Mic size={15} />} {listening ? text("Stop dictation", "Stop dicteren") : text("Dictate notes", "Notities dicteren")}</button>
+          </div>
+          <div className="modal-actions">
+            <span className="form-note"><CheckCircle2 size={13} /> {text("Project, building, date and report are linked automatically.", "Project, gebouw, datum en rapport worden automatisch gekoppeld.")}</span>
+            <button className="primary-button" type="button" onClick={() => void save(notes)}><Check size={15} /> {text("Save daily log", "Daglog opslaan")}</button>
           </div>
         </div>
       </section>
@@ -2597,6 +2950,7 @@ function DailyQuestionsModal({
     handleSubmit,
     control,
     trigger,
+    setValue,
     formState: { errors },
   } = useForm<DailyCloseoutAnswers>({
     resolver: zodResolver(localizedDailyCloseoutSchema),
@@ -2626,10 +2980,32 @@ function DailyQuestionsModal({
       attachmentsConfirmed: false,
     },
   });
-  const [qualityIssues, hseEvent, delayCause] = useWatch({
+  const [qualityIssues, hseEvent, delayCause, workPerformed, tomorrowPlan, daySummary] = useWatch({
     control,
-    name: ["qualityIssues", "hseEvent", "delayCause"],
+    name: ["qualityIssues", "hseEvent", "delayCause", "workPerformed", "tomorrowPlan", "daySummary"],
   });
+  const dailySummaryOptions = [
+    text("Work proceeded according to plan.", "Werk is volgens planning verlopen."),
+    text("Most planned work was completed; remaining work continues tomorrow.", "Het grootste deel van het geplande werk is uitgevoerd; resterend werk gaat morgen verder."),
+    text("Progress was affected by a recorded delay.", "De voortgang is beïnvloed door een geregistreerde vertraging."),
+    text("Work was paused for quality or safety follow-up.", "Werk is onderbroken voor kwaliteits- of veiligheidsopvolging."),
+  ];
+  const qualityDetailOptions = [
+    text("Finish does not meet the approved requirement.", "Afwerking voldoet niet aan de goedgekeurde eis."),
+    text("Executed dimensions differ from the drawing.", "Uitgevoerde maatvoering wijkt af van de tekening."),
+    text("Work is incomplete and requires repair.", "Werk is onvolledig en vraagt herstel."),
+  ];
+  const hseDetailOptions = [
+    text("Unsafe situation was stopped and the work area was secured.", "Onveilige situatie is gestopt en de werkzone is beveiligd."),
+    text("Near miss recorded; workers were instructed immediately.", "Near miss vastgelegd; medewerkers zijn direct geïnstrueerd."),
+    text("Incident recorded; first response and escalation were started.", "Incident vastgelegd; eerste opvang en escalatie zijn gestart."),
+  ];
+  const toggleCloseoutWork = (field: "workPerformed" | "tomorrowPlan", label: string) => {
+    const current = String(field === "workPerformed" ? workPerformed : tomorrowPlan).split("; ").filter(Boolean);
+    const next = current.includes(label) ? current.filter((item) => item !== label) : [...current, label];
+    setValue(field, next.join("; "), { shouldDirty: true, shouldValidate: true });
+    if (field === "workPerformed" && !daySummary && next.length) setValue("daySummary", `${text("Work completed", "Werk uitgevoerd")}: ${next.join(", ")}.`, { shouldDirty: true, shouldValidate: true });
+  };
   const stepFields: Array<Array<keyof DailyCloseoutAnswers>> = [
     ["daySummary", "weatherSummary", "workPerformed", "progressPercent"],
     ["inspectionResult", "qualityIssues", "qualityDetails", "hseEvent", "hseDetails"],
@@ -2658,9 +3034,11 @@ function DailyQuestionsModal({
             <section className="question-group">
               <header><span className="question-group-icon"><Gauge size={18} /></span><span><h3>{text("How did the project go today?", "Hoe is het project vandaag gegaan?")}</h3><p>{text("These answers feed the summary, work performed and progress; the underlying modules remain the source.", "Deze antwoorden voeden samenvatting, werkzaamheden en voortgang; de onderliggende modules blijven de bron.")}</p></span></header>
               <div className="form-grid two-columns">
+                <div className="quick-issue-presets wide" aria-label={text("Choose a daily summary", "Kies een dagsamenvatting")}>{dailySummaryOptions.map((option) => <button className={daySummary === option ? "active" : ""} type="button" onClick={() => setValue("daySummary", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div>
                 <label className="form-field wide"><span>{text("Daily summary *", "Samenvatting van de dag *")}</span><textarea rows={4} placeholder={text("Summarize what happened in no more than five lines.", "Vat in maximaal vijf regels samen wat er is gebeurd.")} {...register("daySummary")} />{errors.daySummary ? <small className="field-error">{errors.daySummary.message}</small> : null}</label>
                 <label className="form-field"><span>{text("What was the actual weather? *", "Wat was het werkelijke weer? *")}</span><input type="text" {...register("weatherSummary")} />{errors.weatherSummary ? <small className="field-error">{errors.weatherSummary.message}</small> : null}</label>
                 <label className="form-field"><span>{text("Project progress", "Voortgang project")}</span><span className="input-with-unit"><input type="number" min="0" max="100" {...register("progressPercent", { valueAsNumber: true })} /><em>%</em></span>{errors.progressPercent ? <small className="field-error">{errors.progressPercent.message}</small> : null}</label>
+                <div className="work-option-grid wide" aria-label={text("Choose completed work", "Kies uitgevoerd werk")}>{constructionWorkOptions.map((option) => { const label = language === "en" ? option.en : option.nl; const active = String(workPerformed).split("; ").includes(label); return <button className={active ? "active" : ""} type="button" aria-pressed={active} onClick={() => toggleCloseoutWork("workPerformed", label)} key={option.en}>{active ? <Check size={14} /> : <Plus size={14} />}{label}</button>; })}</div>
                 <label className="form-field wide"><span>{text("Which work was performed? *", "Welke werkzaamheden zijn uitgevoerd? *")}</span><textarea rows={4} placeholder={text("Activity, location and percentage complete.", "Activiteit, locatie en percentage gereed.")} {...register("workPerformed")} />{errors.workPerformed ? <small className="field-error">{errors.workPerformed.message}</small> : null}</label>
               </div>
             </section>
@@ -2672,9 +3050,9 @@ function DailyQuestionsModal({
               <div className="form-grid two-columns">
                 <label className="form-field"><span>{text("Inspections performed", "Inspecties uitgevoerd")}</span><select {...register("inspectionResult")}><option value="none">{text("No inspection", "Geen inspectie")}</option><option value="all_ok">{text("Performed · all passed", "Uitgevoerd · alles akkoord")}</option><option value="issues">{text("Performed · deviation found", "Uitgevoerd · afwijking gevonden")}</option></select></label>
                 <label className="form-field"><span>{text("Quality findings?", "Kwaliteitsbevindingen?")}</span><select {...register("qualityIssues")}><option value="no">{text("No", "Nee")}</option><option value="yes">{text("Yes", "Ja")}</option></select></label>
-                {qualityIssues === "yes" ? <label className="form-field wide"><span>{text("Describe location, finding and responsible party *", "Omschrijf locatie, bevinding en verantwoordelijke *")}</span><textarea rows={4} {...register("qualityDetails")} />{errors.qualityDetails ? <small className="field-error">{errors.qualityDetails.message}</small> : null}</label> : null}
+                {qualityIssues === "yes" ? <div className="wide"><div className="quick-issue-presets" aria-label={text("Choose a quality finding", "Kies een kwaliteitsbevinding")}>{qualityDetailOptions.map((option) => <button type="button" onClick={() => setValue("qualityDetails", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><label className="form-field"><span>{text("Location, finding and responsible party *", "Locatie, bevinding en verantwoordelijke *")}</span><textarea rows={4} {...register("qualityDetails")} />{errors.qualityDetails ? <small className="field-error">{errors.qualityDetails.message}</small> : null}</label></div> : null}
                 <label className="form-field"><span>{text("Safety event?", "Veiligheidsgebeurtenis?")}</span><select {...register("hseEvent")}><option value="none">{text("No incident / near miss", "Geen incident / near miss")}</option><option value="near_miss">Near miss</option><option value="incident">Incident</option></select></label>
-                {hseEvent !== "none" ? <label className="form-field wide"><span>{text("Describe the event and immediate measure *", "Omschrijf gebeurtenis en directe maatregel *")}</span><textarea rows={4} {...register("hseDetails")} />{errors.hseDetails ? <small className="field-error">{errors.hseDetails.message}</small> : null}</label> : null}
+                {hseEvent !== "none" ? <div className="wide"><div className="quick-issue-presets" aria-label={text("Choose an HSE description", "Kies een HSE-omschrijving")}>{hseDetailOptions.map((option) => <button type="button" onClick={() => setValue("hseDetails", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><label className="form-field"><span>{text("Event and immediate measure *", "Gebeurtenis en directe maatregel *")}</span><textarea rows={4} {...register("hseDetails")} />{errors.hseDetails ? <small className="field-error">{errors.hseDetails.message}</small> : null}</label></div> : null}
               </div>
               <div className="question-module-note"><AlertTriangle size={14} /><span>{text("The app never closes an incident, NCR or repair autonomously. This remains a human action.", "De app sluit nooit autonoom een incident, NCR of herstel. Dit blijft een menselijke handeling.")}</span></div>
             </section>
@@ -2700,6 +3078,7 @@ function DailyQuestionsModal({
               <div className="form-grid two-columns">
                 <label className="form-field"><span>{text("Communication and agreements", "Communicatie en gemaakte afspraken")}</span><textarea rows={4} placeholder={text("Who agreed what, and when?", "Met wie is wat afgesproken en wanneer?")} {...register("communication")} /></label>
                 <label className="form-field"><span>{text("Open risks", "Open risico’s")}</span><textarea rows={4} placeholder={text("Weather, delivery, groundwater, lifting...", "Weer, levering, grondwater, hijswerk...")} {...register("risks")} /></label>
+                <div className="work-option-grid wide" aria-label={text("Choose tomorrow's work", "Kies werkzaamheden voor morgen")}>{constructionWorkOptions.map((option) => { const label = language === "en" ? option.en : option.nl; const active = String(tomorrowPlan).split("; ").includes(label); return <button className={active ? "active" : ""} type="button" aria-pressed={active} onClick={() => toggleCloseoutWork("tomorrowPlan", label)} key={option.en}>{active ? <Check size={14} /> : <Plus size={14} />}{label}</button>; })}</div>
                 <label className="form-field wide"><span>{text("Which work is planned for tomorrow? *", "Welke werkzaamheden staan morgen gepland? *")}</span><textarea rows={4} {...register("tomorrowPlan")} />{errors.tomorrowPlan ? <small className="field-error">{errors.tomorrowPlan.message}</small> : null}</label>
                 <label className="form-field"><span>{text("Number of photos today", "Aantal foto’s vandaag")}</span><input type="number" min="0" {...register("photoCount", { valueAsNumber: true })} /></label>
                 <label className="confirmation-check wide"><input type="checkbox" {...register("attachmentsConfirmed")} /><span><strong>{text("Attachments checked", "Bijlagen gecontroleerd")}</strong><small>{text("Inspection forms, certificates, tickets, drawings, NCRs and measurement reports were checked; missing items remain visible.", "Inspectieformulieren, certificaten, bonnen, tekeningen, NCR’s en meetrapporten zijn bekeken; ontbrekende stukken blijven zichtbaar.")}</small>{errors.attachmentsConfirmed ? <em className="field-error">{errors.attachmentsConfirmed.message}</em> : null}</span></label>

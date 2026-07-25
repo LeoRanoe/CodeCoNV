@@ -12,6 +12,13 @@ export type WorkspaceBuilding = {
   description: string;
   progress: number;
   openIssues: number;
+  issueCount: number;
+  ncrCount: number;
+  inspectionCount: number;
+  technicalInstructionCount: number;
+  changeOrderCount: number;
+  photoCount: number;
+  todayPlannedWork: string[];
 };
 
 export type WorkspaceProject = {
@@ -23,6 +30,11 @@ export type WorkspaceProject = {
   client: string;
   progress: number;
   openIssues: number;
+  issueCount: number;
+  ncrCount: number;
+  inspectionCount: number;
+  technicalInstructionCount: number;
+  changeOrderCount: number;
   buildings: WorkspaceBuilding[];
 };
 
@@ -39,6 +51,8 @@ export type WorkspaceSnapshot = {
   projects: WorkspaceProject[];
   canBootstrapOrganization: boolean;
   manageableOrganizationIds: string[];
+  _offlineCached?: boolean;
+  _offlineSavedAt?: string;
 };
 
 export type InternalRole = {
@@ -109,6 +123,10 @@ export type ProjectNotification = {
   source_id: string | null;
   due_at: string | null;
   read_at: string | null;
+  email_status: "pending" | "sending" | "sent" | "failed" | "skipped";
+  email_sent_at: string | null;
+  push_status: "pending" | "sending" | "sent" | "failed" | "skipped";
+  push_sent_at: string | null;
   created_at: string;
 };
 
@@ -121,6 +139,8 @@ export type ProjectDaySnapshot = {
   parties: ProjectParty[];
   actions: ProjectAction[];
   actionUpdates: ActionUpdate[];
+  _offlineCached?: boolean;
+  _offlineSavedAt?: string;
 };
 
 export type AttendanceInput = {
@@ -212,7 +232,11 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
 
   const projectRows = projectResult.data ?? [];
   const projectIds = projectRows.map((row) => row.id as string);
-  const [buildingResult, actionResult, progressResult] = projectIds.length
+  const today = reportDateInSuriname();
+  const todayStart = new Date(`${today}T00:00:00-03:00`).toISOString();
+  const tomorrow = new Date(`${today}T00:00:00-03:00`);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const [buildingResult, actionResult, progressResult, findingResult, inspectionResult, registerResult, visualResult, dayStartResult] = projectIds.length
     ? await Promise.all([
         client
           .from("buildings")
@@ -222,16 +246,48 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
           .order("name"),
         client
           .from("actions")
-          .select("project_id,status")
+          .select("project_id,building_id,status")
           .in("project_id", projectIds)
           .in("status", ["open", "accepted", "in_progress", "ready_for_verification"]),
         client
           .from("day_closeouts")
-          .select("project_id,progress_percent,created_at")
+          .select("project_id,building_id,progress_percent,created_at")
           .in("project_id", projectIds)
           .order("created_at", { ascending: false }),
+        client
+          .from("findings")
+          .select("project_id,building_id,finding_type,status")
+          .in("project_id", projectIds)
+          .in("status", ["draft", "open", "assigned", "in_progress", "ready_for_verification", "rejected", "reopened"]),
+        client
+          .from("inspections")
+          .select("project_id,building_id,status")
+          .in("project_id", projectIds)
+          .neq("status", "cancelled"),
+        client
+          .from("project_register_entries")
+          .select("project_id,building_id,register_type,status")
+          .in("project_id", projectIds)
+          .in("register_type", ["technical_instruction", "site_instruction", "change_order", "variation"])
+          .neq("status", "cancelled"),
+        client
+          .from("visual_captures")
+          .select("project_id,building_id")
+          .in("project_id", projectIds)
+          .eq("status", "active"),
+        client
+          .from("day_start_checks")
+          .select("project_id,building_id,planned_work,created_at")
+          .in("project_id", projectIds)
+          .gte("created_at", todayStart)
+          .lt("created_at", tomorrow.toISOString()),
       ])
     : [
+        { data: [], error: null },
+        { data: [], error: null },
+        { data: [], error: null },
+        { data: [], error: null },
+        { data: [], error: null },
         { data: [], error: null },
         { data: [], error: null },
         { data: [], error: null },
@@ -239,6 +295,11 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
   fail(buildingResult.error);
   fail(actionResult.error);
   fail(progressResult.error);
+  fail(findingResult.error);
+  fail(inspectionResult.error);
+  fail(registerResult.error);
+  fail(visualResult.error);
+  fail(dayStartResult.error);
 
   const progressByProject = new Map<string, number>();
   for (const row of progressResult.data ?? []) {
@@ -250,6 +311,8 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
     const projectId = project.id as string;
     const progress = progressByProject.get(projectId) ?? 0;
     const openIssues = (actionResult.data ?? []).filter((row) => row.project_id === projectId).length;
+    const findings = (findingResult.data ?? []).filter((row) => row.project_id === projectId);
+    const registers = (registerResult.data ?? []).filter((row) => row.project_id === projectId);
     return {
       id: projectId,
       organizationId: project.organization_id as string,
@@ -259,15 +322,33 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
       client: String(project.client_name ?? "Niet ingesteld"),
       progress,
       openIssues,
+      issueCount: findings.filter((row) => row.finding_type !== "ncr").length,
+      ncrCount: findings.filter((row) => row.finding_type === "ncr").length,
+      inspectionCount: (inspectionResult.data ?? []).filter((row) => row.project_id === projectId).length,
+      technicalInstructionCount: registers.filter((row) => ["technical_instruction", "site_instruction"].includes(String(row.register_type))).length,
+      changeOrderCount: registers.filter((row) => ["change_order", "variation"].includes(String(row.register_type))).length,
       buildings: (buildingResult.data ?? [])
         .filter((building) => building.project_id === projectId)
-        .map((building) => ({
-          id: building.id as string,
-          name: String(building.name),
-          description: String(building.description ?? "Projectgebouw"),
-          progress,
-          openIssues,
-        })),
+        .map((building) => {
+          const buildingId = building.id as string;
+          const buildingFindings = (findingResult.data ?? []).filter((row) => row.building_id === buildingId);
+          const buildingRegisters = (registerResult.data ?? []).filter((row) => row.building_id === buildingId);
+          const latestProgress = (progressResult.data ?? []).find((row) => row.building_id === buildingId);
+          return {
+            id: buildingId,
+            name: String(building.name),
+            description: String(building.description ?? "Projectgebouw"),
+            progress: latestProgress ? Number(latestProgress.progress_percent) : progress,
+            openIssues: (actionResult.data ?? []).filter((row) => row.building_id === buildingId).length,
+            issueCount: buildingFindings.filter((row) => row.finding_type !== "ncr").length,
+            ncrCount: buildingFindings.filter((row) => row.finding_type === "ncr").length,
+            inspectionCount: (inspectionResult.data ?? []).filter((row) => row.building_id === buildingId).length,
+            technicalInstructionCount: buildingRegisters.filter((row) => ["technical_instruction", "site_instruction"].includes(String(row.register_type))).length,
+            changeOrderCount: buildingRegisters.filter((row) => ["change_order", "variation"].includes(String(row.register_type))).length,
+            photoCount: (visualResult.data ?? []).filter((row) => row.building_id === buildingId).length,
+            todayPlannedWork: (dayStartResult.data ?? []).filter((row) => row.building_id === buildingId).map((row) => String(row.planned_work)),
+          };
+        }),
     };
   });
 
@@ -703,7 +784,7 @@ export async function loadProjectNotifications(client: SupabaseClient, projectId
   fail(refresh.error);
   const result = await client
     .from("notifications")
-    .select("id,notification_type,title,body,source_type,source_id,due_at,read_at,created_at")
+    .select("id,notification_type,title,body,source_type,source_id,due_at,read_at,email_status,email_sent_at,push_status,push_sent_at,created_at")
     .eq("project_id", projectId)
     .order("created_at", { ascending: false })
     .limit(100);

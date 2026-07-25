@@ -43,6 +43,7 @@ export async function uploadProjectFile(
   input: {
     projectId: string;
     buildingId: string;
+    folderId?: string | null;
     category: string;
     file: File;
     onProgress?: (percent: number) => void;
@@ -61,6 +62,7 @@ export async function uploadProjectFile(
       fileId,
       projectId: input.projectId,
       buildingId: input.buildingId || null,
+      folderId: input.folderId || null,
       category: input.category,
       originalName: input.file.name,
       mimeType: input.file.type || "application/octet-stream",
@@ -103,8 +105,19 @@ export async function downloadProjectFile(client: SupabaseClient, fileId: string
 }
 
 export async function loadProjectFileObjectUrl(client: SupabaseClient, fileId: string) {
+  const preview = await loadProjectFilePreviewObjectUrl(client, fileId);
+  if (!preview.mimeType.startsWith("image/")) {
+    URL.revokeObjectURL(preview.url);
+    throw new Error("The selected file is not a supported image.");
+  }
+  return preview.url;
+}
+
+export async function loadProjectFilePreviewObjectUrl(client: SupabaseClient, fileId: string) {
   const response = await authorizedFileResponse(client, fileId);
   const blob = await response.blob();
-  if (!blob.type.startsWith("image/")) throw new Error("The selected file is not a supported image.");
-  return URL.createObjectURL(blob);
+  if (!blob.type.startsWith("image/") && blob.type !== "application/pdf") {
+    throw new Error("The selected file is not a supported drawing preview.");
+  }
+  return { url: URL.createObjectURL(blob), mimeType: blob.type };
 }

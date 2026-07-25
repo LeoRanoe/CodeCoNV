@@ -7,12 +7,19 @@ Interne, online-first Next.js-webapp voor dagelijkse constructiesupervisie. Supa
 - organisatiebeheerder nodigt interne gebruikers uit en wijst organisatie-/projectrollen toe;
 - project → gebouw → projectstart met dagelijkse vragen over verloop, weer, planning, bezetting, kwaliteit, HSE en voortgang;
 - Engels als standaardinterface met een persistente Nederlandse taalkeuze;
-- gewone foto's als standaard visueel bewijs, optionele 360°-panorama's/tours en exacte probleemmarkers die traceerbaar aan formele bevindingen zijn gekoppeld;
-- aanwezigheid, werkzaamheden, acties en zestien projectspecifieke registers;
-- configureerbare inspectie- en HSE-checklists met automatische bevinding bij afkeur;
+- gewone foto's als standaard visueel bewijs, gevalideerde exports uit een speciale 360°-camera (zoals Insta360), interactieve 360°-tours en exacte probleemmarkers die traceerbaar aan formele bevindingen zijn gekoppeld;
+- een beveiligde PDF-/tekeningenwerkruimte met genormaliseerde locatiepins naar RFI's, submittals, documenten, observaties/NCR's, inspecties en foto's/360°-camerabeelden;
+- vrije lijnen, revisiewolken, pijlen en tekst als geaudite tekenlaag, terwijl het originele PDF-/DWG-bronbestand ongewijzigd blijft;
+- aanwezigheid per selecteerbare bouwdiscipline, werkzaamheden, acties en alle in de klant-PDF benoemde projectspecifieke registers;
+- exact honderd installeerbare bouw- en HSE-checkliststandaarden, plus configureerbare projectchecklists met automatische bevinding bij afkeur;
+- BOQ-import met hoeveelheid, contractwaarde en voortgang, plus dagelijkse, wekelijkse, maandelijkse en vrij gekozen periode-PDF's;
+- een veldnotitieblok met optioneel dicteren en een bouwcalculator;
 - bevinding/NCR → herstel → gereed voor verificatie → onafhankelijke sluiting;
 - formele HSE-registratie met vertrouwelijkheid en kritieke escalatie;
-- in-appmeldingen voor naderende en vervallen acties/bevindingen;
+- automatische pushmeldingen voor naderende en vervallen acties/bevindingen, met een auditeerbare kopie in de app;
+- offline projectinzage en offline foto-, tekening- en 360°-uploadwachtrij met automatische synchronisatie en databesparing;
+- beeldmappen per gebouw, een portfolio-/gebouwdashbord en rapportkeuze per type en vrije periode;
+- tijdelijke WhatsApp-links voor externe vakpartijen zonder CODECO-account;
 - dagrapportreview, immutable snapshot+SHA-256, ondertekenverklaringen, distributiespoor en revisiehistorie;
 - auditbare productiegereedheidschecklist, projectregels, locaties, partijen, checklists, TOTP en handmatige JSON-back-up/restore-dry-run in beheer.
 
@@ -50,4 +57,4 @@ Maak in het Vercel-project een **private** Blob-store en koppel die aan Producti
 
 ## Productie
 
-De webapp wordt als native Next.js-app via Vercel gepubliceerd met `apps/web` als Root Directory. Self-signup blijft uit; alleen een beheerder kan interne accounts uitnodigen. Volg [de Vercel deploymentchecklist](../../docs/operations/vercel-deployment-checklist.md). Voor formele ingebruikname moeten alle blokkerende items in de productiegereedheidschecklist met een veilige bewijsreferentie zijn gesloten, met name het CODECO Vercel-team/domein, private Blob-opslag, SMTP, automatische back-up, definitieve klantformulieren, bewaartermijnen, juridisch ondertekenniveau en gebruikersacceptatie.
+De webapp wordt als native Next.js-app via Vercel gepubliceerd met `apps/web` als Root Directory. Self-signup blijft uit; alleen een beheerder kan interne accounts uitnodigen. Volg [de Vercel deploymentchecklist](../../docs/operations/vercel-deployment-checklist.md). Voor formele ingebruikname moeten alle blokkerende items in de productiegereedheidschecklist met een veilige bewijsreferentie zijn gesloten, met name het CODECO Vercel-team/domein, private Blob-opslag, Resend-afzender en domeinverificatie, automatische back-up, definitieve klantformulieren, bewaartermijnen, juridisch ondertekenniveau en gebruikersacceptatie.

@@ -1,7 +1,7 @@
 begin;
 set local search_path = extensions, pgtap, public;
 
-select plan(45);
+select plan(69);
 
 select has_table('public', 'organizations', 'organizations table exists');
 select has_table('public', 'projects', 'projects table exists');
@@ -18,6 +18,15 @@ select has_table('public', 'day_closeouts', 'day_closeouts table exists');
 select has_table('public', 'production_readiness_items', 'production readiness checklist exists');
 select has_table('public', 'visual_captures', 'visual evidence capture records exist');
 select has_table('public', 'visual_annotations', 'visual issue marker records exist');
+select has_table('public', 'drawing_pins', 'drawing-to-record pin links exist');
+select has_table('public', 'drawing_markups', 'audited drawing markup overlays exist');
+select has_table('public', 'checklist_library_templates', 'the 100-template checklist library exists');
+select has_table('public', 'push_subscriptions', 'device push subscriptions are stored per user');
+select has_table('public', 'media_folders', 'project media folders exist');
+select has_table('public', 'external_share_links', 'expiring external share links exist');
+select has_column('public', 'project_settings', 'push_notifications_enabled', 'projects can enable automatic push delivery');
+select has_column('public', 'notifications', 'push_status', 'notifications track push delivery');
+select has_column('public', 'files', 'folder_id', 'files can be organized in project folders');
 
 select has_function('public', 'create_day_report', array['uuid', 'date', 'text'], 'atomic day-report function exists');
 select has_function(
@@ -56,6 +65,39 @@ select has_function(
   array['uuid', 'text', 'text'],
   'controlled action transition function exists'
 );
+select has_function(
+  'public',
+  'create_drawing_pin',
+  array['uuid', 'integer', 'numeric', 'numeric', 'text', 'uuid', 'text', 'text'],
+  'guarded drawing pin function exists'
+);
+select has_function(
+  'public',
+  'create_drawing_markup',
+  array['uuid', 'integer', 'text', 'jsonb', 'text', 'numeric', 'text', 'text'],
+  'guarded drawing markup function exists'
+);
+select has_function(
+  'public',
+  'build_period_report_snapshot',
+  array['uuid', 'date', 'date'],
+  'permission-filtered period report snapshot function exists'
+);
+select has_function(
+  'public',
+  'import_project_boq',
+  array['uuid', 'uuid', 'uuid', 'jsonb', 'text'],
+  'atomic BOQ import function exists'
+);
+select has_function(
+  'public',
+  'install_checklist_library_template',
+  array['uuid', 'text'],
+  'versioned checklist library installer exists'
+);
+select has_function('public', 'create_media_folder', array['uuid', 'uuid', 'uuid', 'text', 'text'], 'guarded media folder creation exists');
+select has_function('public', 'create_external_share_link', array['uuid', 'text', 'uuid', 'integer'], 'opaque external link creation exists');
+select has_function('public', 'resolve_external_share_link', array['text'], 'server-only external link resolution exists');
 select has_trigger('public', 'action_updates', 'action_updates_immutable', 'action history is immutable');
 select is_definer('app_private', 'has_project_permission', array['uuid', 'text'], 'project permission helper is security definer');
 
@@ -114,10 +156,28 @@ select policies_are(
   array['visual_annotations_select'],
   'visual marker mutations are restricted to guarded RPCs'
 );
+select policies_are(
+  'public',
+  'drawing_pins',
+  array['drawing_pins_select'],
+  'drawing pin mutations are restricted to guarded RPCs'
+);
+select policies_are(
+  'public',
+  'drawing_markups',
+  array['drawing_markups_select'],
+  'drawing markup mutations are restricted to guarded RPCs'
+);
+select policies_are(
+  'public',
+  'checklist_library_templates',
+  array['checklist_library_templates_select'],
+  'the checklist catalog is authenticated read-only data'
+);
 select is(
-  (select count(*) from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename in ('visual_captures','visual_annotations')),
-  2::bigint,
-  'visual evidence tables publish authorized realtime changes'
+  (select count(*) from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename in ('visual_captures','visual_annotations','drawing_pins','drawing_markups')),
+  4::bigint,
+  'visual evidence, drawing pins and markup publish authorized realtime changes'
 );
 
 select has_trigger('public', 'report_versions', 'report_versions_immutable', 'report versions reject mutation');
@@ -126,6 +186,10 @@ select has_trigger('public', 'day_reports', 'day_reports_status_guard', 'report 
 select has_trigger('public', 'actions', 'actions_status_guard', 'action verification is database-enforced');
 select has_trigger('public', 'day_start_checks', 'day_start_checks_audit', 'project-start answers are audited');
 select has_trigger('public', 'day_closeouts', 'day_closeouts_audit', 'daily closeout answers are audited');
+select has_trigger('public', 'drawing_pins', 'drawing_pins_audit', 'drawing pin links are audited');
+select has_trigger('public', 'drawing_markups', 'drawing_markups_audit', 'drawing markup overlays are audited');
+select has_column('public', 'notifications', 'email_status', 'notifications track their email delivery status');
+select is((select count(*) from public.checklist_library_templates), 100::bigint, 'the client checklist catalog contains exactly 100 standards');
 
 select results_eq(
   $$
@@ -145,11 +209,12 @@ select results_eq(
         'files', 'file_links', 'report_reviews', 'report_signatures',
         'report_distributions', 'notifications', 'project_register_entries',
         'backup_runs', 'production_readiness_items', 'visual_captures',
-        'visual_annotations'
+        'visual_annotations', 'drawing_pins', 'drawing_markups',
+        'checklist_library_templates'
       ])
       and relation.relrowsecurity
   $$,
-  $$ values (41::bigint) $$,
+  $$ values (44::bigint) $$,
   'RLS is enabled on every browser-reachable table'
 );
 

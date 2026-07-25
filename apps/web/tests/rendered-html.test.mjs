@@ -78,7 +78,7 @@ test("serves branded recovery pages and install metadata", async () => {
   assert.match(manifestResponse.headers.get("content-type") ?? "", /^application\/manifest\+json\b/i);
   const manifest = await manifestResponse.json();
   assert.equal(manifest.short_name, "CODECO");
-  assert.equal(manifest.start_url, "/");
+  assert.equal(manifest.start_url, "/supervisie");
   assert.equal(manifest.icons[0].src, "/codeco-logo.png");
 });
 
@@ -189,7 +189,7 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(actionForm, /projectActionSchema/);
   assert.match(actionForm, /actionTransitionSchema/);
   assert.match(userForm, /internalUserInviteSchema/);
-  assert.match(app, /Geen AI|No AI/i);
+  assert.match(app, /vaste projectregel|fixed project rule/i);
   assert.match(dataLayer, /saveProjectStart/);
   assert.match(dataLayer, /saveSiteRegistration/);
   assert.match(dataLayer, /saveAttendance/);
@@ -224,18 +224,24 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(providers, /QueryClientProvider/);
 });
 
-test("keeps standard photo and optional 360 annotation production paths", async () => {
-  const [workspace, app, operations, migration, i18n, vercel] = await Promise.all([
+test("keeps standard photo and validated 360 camera annotation production paths", async () => {
+  const [workspace, app, operations, migration, drawingWorkspace, drawingMigration, i18n, vercel] = await Promise.all([
     readFile(new URL("../app/visual-evidence-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
     readFile(new URL("../../../supabase/migrations/202607180020_visual_evidence_and_annotations.sql", import.meta.url), "utf8"),
+    readFile(new URL("../app/drawing-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202607220001_drawing_pin_workspace.sql", import.meta.url), "utf8"),
     readFile(new URL("../lib/i18n.tsx", import.meta.url), "utf8"),
     readFile(new URL("../vercel.json", import.meta.url), "utf8"),
   ]);
 
   assert.match(workspace, /Standard photo/);
-  assert.match(workspace, /360° panorama/);
+  assert.match(workspace, /360° camera image/);
+  assert.match(workspace, /Insta360 or equivalent/);
+  assert.match(workspace, /3840 × 1920/);
+  assert.match(workspace, /cameraSourceConfirmed/);
+  assert.doesNotMatch(workspace, /Experimental 360°/);
   assert.match(workspace, /EquirectangularAdapter/);
   assert.match(workspace, /xRatio/);
   assert.match(workspace, /yaw/);
@@ -246,9 +252,118 @@ test("keeps standard photo and optional 360 annotation production paths", async 
   assert.match(migration, /create table public\.visual_captures/);
   assert.match(migration, /create table public\.visual_annotations/);
   assert.match(migration, /'annotation'/);
+  assert.match(drawingWorkspace, /Drawings workspace/);
+  assert.match(drawingWorkspace, /Link an RFI/);
+  assert.match(drawingWorkspace, /Link a photo \/ 360° camera image/);
+  assert.match(drawingWorkspace, /pdfjs-dist/);
+  assert.match(drawingWorkspace, /xRatio/);
+  assert.match(drawingMigration, /create table public\.drawing_pins/);
+  assert.match(drawingMigration, /create or replace function public\.create_drawing_pin/);
+  assert.match(drawingMigration, /alter publication supabase_realtime add table public\.drawing_pins/);
+  assert.match(operations, /createDrawingPin/);
   assert.match(i18n, /codeco-language/);
   assert.match(i18n, /language === "en"/);
   assert.match(vercel, /"framework": "nextjs"/);
+});
+
+test("implements the handwritten client PDF as required workflows without AI or SMS", async () => {
+  const [migration, app, dataLayer, fieldTools, drawingWorkspace, periodReport, boqCsv, operations, emailDelivery, dispatchRoute, cronRoute, envExample] = await Promise.all([
+    readFile(new URL("../../../supabase/migrations/202607220002_client_pdf_requirements.sql", import.meta.url), "utf8"),
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/data.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/field-tools.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/drawing-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/period-report-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/boq/csv.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/notifications/email.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/notifications/dispatch/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/cron/daily/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../.env.example", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(migration, /create table public\.drawing_markups/);
+  assert.match(migration, /create table public\.checklist_library_templates/);
+  assert.match(migration, /'LIB-' \|\| lpad\(sort_order::text, 3, '0'\)/);
+  assert.match(migration, /create or replace function public\.build_period_report_snapshot/);
+  assert.match(migration, /create or replace function public\.import_project_boq/);
+  assert.match(migration, /email_notifications_enabled/);
+  assert.match(migration, /'rfa','inspection_request','boq'/);
+  assert.match(app, /project\.technicalInstructionCount/);
+  assert.match(app, /project\.changeOrderCount/);
+  assert.match(app, /Timmerlieden/);
+  assert.match(app, /Beton en wapening/);
+  assert.match(dataLayer, /finding_type !== "ncr"/);
+  assert.match(dataLayer, /"technical_instruction", "site_instruction", "change_order", "variation"/);
+  assert.match(fieldTools, /webkitSpeechRecognition/);
+  assert.match(fieldTools, /Construction calculator/);
+  assert.match(fieldTools, /createRegisterEntry/);
+  assert.doesNotMatch(fieldTools, /\bAI\b|SMS/i);
+  assert.match(drawingWorkspace, /Revision cloud/);
+  assert.match(drawingWorkspace, /createDrawingMarkup/);
+  assert.match(drawingWorkspace, /\.dwg/);
+  assert.match(periodReport, /Dagelijks, wekelijks, maandelijks of vrij gekozen periode/);
+  assert.match(periodReport, /BOQ, voortgang en declaraties/);
+  assert.match(boqCsv, /CODECO-BOQ-importsjabloon\.csv/);
+  assert.match(operations, /installChecklistLibraryTemplate/);
+  assert.match(operations, /buildPeriodReportSnapshot/);
+  assert.match(emailDelivery, /https:\/\/api\.resend\.com\/emails/);
+  assert.match(emailDelivery, /idempotency-key/);
+  assert.match(dispatchRoute, /authenticateStorageRequest/);
+  assert.match(dispatchRoute, /notification_push_dispatch/);
+  assert.match(dispatchRoute, /sendPendingPushNotifications/);
+  assert.match(dispatchRoute, /sendPendingNotificationEmails/);
+  assert.match(cronRoute, /sendPendingNotificationEmails/);
+  assert.match(envExample, /^RESEND_API_KEY=/m);
+  assert.match(envExample, /^NOTIFICATION_FROM_EMAIL=/m);
+  assert.match(envExample, /^NEXT_PUBLIC_VAPID_PUBLIC_KEY=/m);
+  assert.match(envExample, /^VAPID_PRIVATE_KEY=/m);
+  assert.doesNotMatch(`${migration}${emailDelivery}${dispatchRoute}${cronRoute}`, /twilio|\bsms\b/i);
+});
+
+test("implements the late client document set as controlled forms and shared report data", async () => {
+  const [workspace, operations, formModel, documentPdf, ncrPdf, dailyPdf, periodPdf, logo, migration, pgtap] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/forms/controlled-project-documents.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/controlled-document-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/ncr-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/daily-report-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/period-report-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../public/codeco-logo-pdf.png", import.meta.url)),
+    readFile(new URL("../../../supabase/migrations/202607240001_client_controlled_documents.sql", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/tests/010_client_controlled_documents.pgtap.sql", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(formModel, /codeco\.controlled-document\.v1/);
+  assert.match(formModel, /environmental_report/);
+  assert.match(formModel, /issueCatalogPresets/);
+  assert.match(formModel, /Broken curtain wall glass/);
+  assert.match(workspace, /Client B1 issue catalog/);
+  assert.match(workspace, /Record inspection progress/);
+  assert.match(workspace, /Create controlled document/);
+  assert.match(workspace, /Confirm human response/);
+  assert.match(operations, /respond_to_controlled_project_document/);
+  assert.match(operations, /record_finding_progress/);
+  assert.match(operations, /build_client_period_report_snapshot/);
+  assert.match(documentPdf, /REQUEST FOR INFORMATION/);
+  assert.match(documentPdf, /WORK INSPECTION REQUEST/);
+  assert.match(documentPdf, /TECHNICAL INSTRUCTION/);
+  assert.match(documentPdf, /CONTRACTOR ACKNOWLEDGEMENT/);
+  assert.match(ncrPdf, /NON-CONFORMANCE REPORT/);
+  assert.match(ncrPdf, /Issue not resolved/);
+  assert.match(periodPdf, /Document control matrix/);
+  assert.match(periodPdf, /Milieu, social en housekeeping/);
+  assert.match(periodPdf, /GEBOUWVOORTGANG/);
+  for (const report of [documentPdf, ncrPdf, dailyPdf, periodPdf]) {
+    assert.match(report, /codeco-logo-pdf\.png/);
+  }
+  assert.ok(logo.length > 10_000 && logo.length < 200_000);
+  assert.match(migration, /create table public\.finding_progress_updates/);
+  assert.match(migration, /100% complete; independent verification is still required/);
+  assert.match(migration, /'WIR-' \|\| v_project_code/);
+  assert.match(migration, /build_client_period_report_snapshot/);
+  assert.match(pgtap, /100 percent stops at ready for human verification/);
 });
 
 test("keeps scheduled backups, retention and daily notification automation enforceable", async () => {
@@ -269,6 +384,7 @@ test("keeps scheduled backups, retention and daily notification automation enfor
   assert.match(cronRoute, /timingSafeEqual/);
   assert.match(cronRoute, /runScheduledOrganizationBackup/);
   assert.match(cronRoute, /refresh_all_project_notifications/);
+  assert.match(cronRoute, /sendPendingNotificationEmails/);
   assert.match(cronRoute, /record_scheduled_backup_failure/);
   assert.match(migration, /build_scheduled_backup_export/);
   assert.match(migration, /build_organization_backup_manifest/);
@@ -278,6 +394,8 @@ test("keeps scheduled backups, retention and daily notification automation enfor
   assert.match(vercel, /"schedule": "0 7 \* \* \*"/);
   assert.match(envExample, /^CRON_SECRET=/m);
   assert.match(envExample, /^BACKUP_BLOB_READ_WRITE_TOKEN=/m);
+  assert.match(envExample, /^RESEND_API_KEY=/m);
+  assert.match(envExample, /^NOTIFICATION_FROM_EMAIL=/m);
 });
 
 test("keeps the online-first Supabase foundation enforceable", async () => {
@@ -401,4 +519,57 @@ test("tracks product-plan and CODECO compliance explicitly", async () => {
   assert.match(clientProfile, /Kwaliteit/);
   assert.match(clientProfile, /Transparantie/);
   assert.match(clientProfile, /projectspecifieke inspectie- en kwaliteitschecklists/i);
+});
+
+test("implements the customer video workflows without external accounts", async () => {
+  const [app, operations, offlineQueue, sharePage, shareActions, responseRoute, uploadRoute, migration] = await Promise.all([
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/offline/upload-queue.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/share/[token]/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/share/[token]/external-share-actions.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/external-share/[token]/response/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/external-share/[token]/upload/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202607230001_customer_demo_workflows.sql", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(app, /OneTapDailyLogModal/);
+  assert.match(app, /changeCount\(row\.id, 1\)/);
+  assert.match(app, /Dictate notes|Notities dicteren/);
+  assert.match(operations, /Snap & assign|Foto & toewijzen/);
+  assert.match(operations, /findingDraft/);
+  assert.match(offlineQueue, /createFinding/);
+  assert.match(offlineQueue, /relationship: "before"/);
+  assert.match(sharePage, /ExternalShareActions/);
+  assert.match(shareActions, /ready_for_verification/);
+  assert.match(shareActions, /Probleem melden/);
+  assert.match(shareActions, /capture="environment"/);
+  assert.match(responseRoute, /submit_external_share_response/);
+  assert.match(uploadRoute, /submitted_via_share_id/);
+  assert.match(migration, /create table public\.external_share_responses/);
+  assert.match(migration, /external[\s\S]{0,80}completion means "ready for CODECO verification"/);
+  assert.match(migration, /grant execute on function public\.submit_external_share_response[\s\S]*to service_role/);
+  assert.doesNotMatch(`${app}\n${operations}\n${shareActions}`, /\bSMS\b|\bAI\b/i);
+});
+
+test("minimizes repetitive field typing with controlled quick choices", async () => {
+  const [app, operations, visuals, media] = await Promise.all([
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/visual-evidence-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/media-library-workspace.tsx", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(app, /Choose expected risks|Kies verwachte risico/);
+  assert.match(app, /Install formwork|Bekisting plaatsen/);
+  assert.match(app, /Perform roofing work|Dakwerk uitvoeren/);
+  assert.match(app, /Choose a standard action|Kies een standaardactie/);
+  assert.match(app, /actionDeadlineFromToday/);
+  assert.match(app, /Choose a standard status note|Kies een standaard statusnotitie/);
+  assert.match(app, /Choose a daily summary|Kies een dagsamenvatting/);
+  assert.match(operations, /Choose a standard HSE record|Kies een standaard HSE-registratie/);
+  assert.match(operations, /Choose a standard register item|Kies een standaard registeritem/);
+  assert.match(operations, /Choose the completed measure|Kies de uitgevoerde maatregel/);
+  assert.match(visuals, /Choose a common issue|Kies een veelvoorkomend probleem/);
+  assert.match(media, /Create a standard folder|Maak een standaardmap/);
 });

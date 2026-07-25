@@ -1,7 +1,7 @@
 begin;
 set local search_path = extensions, pgtap, public;
 
-select plan(54);
+select plan(80);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at)
 values (
@@ -29,6 +29,18 @@ select is((select count(*) from public.project_settings), 1::bigint, 'project se
 select is((select count(*) from public.checklist_templates where status = 'published'), 2::bigint, 'inspection and HSE templates are published');
 select is((select count(*) from public.checklist_items), 10::bigint, 'default templates contain ten explicit checks');
 select is((select max_file_size_mb from public.project_settings), 25, 'free-pilot file limit defaults to 25 MB');
+select ok(not (select email_notifications_enabled from public.project_settings), 'project email notifications are disabled by default');
+select ok((select push_notifications_enabled from public.project_settings), 'project push notifications are enabled by default');
+
+select lives_ok(
+  format(
+    $query$select public.install_checklist_library_template(%L::uuid, 'LIB-021')$query$,
+    (select id from public.projects where code = 'OPS-001')
+  ),
+  'a standard checklist can be installed from the 100-template client library'
+);
+select is((select count(*) from public.checklist_templates where code = 'LIB-021' and status = 'published'), 1::bigint, 'library installation creates a published project version');
+select is((select count(*) from public.checklist_items item join public.checklist_templates template on template.id = item.template_id where template.code = 'LIB-021'), 5::bigint, 'installed library checklist contains its five mandatory controls');
 
 select lives_ok(
   format(
@@ -146,6 +158,38 @@ select lives_ok(
 );
 select is((select register_type::text from public.project_register_entries), 'delivery', 'delivery register classification is persisted');
 
+select lives_ok(
+  format(
+    $query$select public.import_project_boq(%L::uuid,%L::uuid,%L::uuid,'[{"code":"B001","description":"Betonnen funderingsbalk","quantity":12,"unit":"m3","unit_rate":650,"contract_value":7800,"progress_percent":25},{"code":"B002","description":"Wapening fundering","quantity":1800,"unit":"kg","unit_rate":2.5,"contract_value":4500,"progress_percent":40}]'::jsonb,'ops-boq-import-1')$query$,
+    (select id from public.projects where code = 'OPS-001'),
+    (select id from public.buildings where project_id = (select id from public.projects where code = 'OPS-001')),
+    (select id from public.day_reports where project_id = (select id from public.projects where code = 'OPS-001'))
+  ),
+  'a validated BOQ is imported atomically'
+);
+select is((select count(*) from public.project_register_entries where register_type = 'boq'), 2::bigint, 'every BOQ row becomes a controlled progress record');
+select ok((select (details ->> 'progress_percent')::numeric = 25 and (details ->> 'contract_value')::numeric = 7800 from public.project_register_entries where register_type = 'boq' and details ->> 'code' = 'B001'), 'BOQ quantity, contract value and progress are retained');
+select lives_ok(
+  format(
+    $query$select public.import_project_boq(%L::uuid,%L::uuid,%L::uuid,'[{"code":"B001","description":"Betonnen funderingsbalk","progress_percent":25},{"code":"B002","description":"Wapening fundering","progress_percent":40}]'::jsonb,'ops-boq-import-1')$query$,
+    (select id from public.projects where code = 'OPS-001'),
+    (select id from public.buildings where project_id = (select id from public.projects where code = 'OPS-001')),
+    (select id from public.day_reports where project_id = (select id from public.projects where code = 'OPS-001'))
+  ),
+  'a repeated BOQ import request is idempotent'
+);
+select is((select count(*) from public.project_register_entries where register_type = 'boq'), 2::bigint, 'the repeated BOQ import creates no duplicate rows');
+
+select lives_ok(
+  format(
+    $query$select public.create_project_register_entry(%L::uuid, %L::uuid, %L::uuid, 'rfi', 'Detail aansluiting gevel', now(), null, null, '{"question":"Bevestig het constructieve aansluitdetail."}'::jsonb, 'ops-rfi-idempotency')$query$,
+    (select id from public.projects where code = 'OPS-001'),
+    (select id from public.buildings where project_id = (select id from public.projects where code = 'OPS-001')),
+    (select id from public.day_reports where project_id = (select id from public.projects where code = 'OPS-001'))
+  ),
+  'an RFI exists for the drawing link workflow'
+);
+
 reset role;
 set local request.jwt.claims = '{"role":"service_role"}';
 select lives_ok(
@@ -156,7 +200,8 @@ select lives_ok(
         mime_type, size_bytes, sha256, status, category, created_by
       ) values
         (%1$L::uuid, %2$L::uuid, %3$L::uuid, 'projects/test/photo-1', 'room-1-wall.jpg', 'image/jpeg', 1200000, repeat('a', 64), 'available', 'photo', '00000000-0000-0000-0000-0000000000d1'::uuid),
-        (%1$L::uuid, %2$L::uuid, %3$L::uuid, 'projects/test/panorama-1', 'room-1-360.jpg', 'image/jpeg', 4200000, repeat('b', 64), 'available', 'photo', '00000000-0000-0000-0000-0000000000d1'::uuid)
+        (%1$L::uuid, %2$L::uuid, %3$L::uuid, 'projects/test/panorama-1', 'room-1-360.jpg', 'image/jpeg', 4200000, repeat('b', 64), 'available', 'photo', '00000000-0000-0000-0000-0000000000d1'::uuid),
+        (%1$L::uuid, %2$L::uuid, %3$L::uuid, 'projects/test/drawing-1', 'A112-rev-2.pdf', 'application/pdf', 2100000, repeat('c', 64), 'available', 'drawing', '00000000-0000-0000-0000-0000000000d1'::uuid)
     $query$,
     (select id from public.organizations where slug = 'codeco-operations'),
     (select id from public.projects where code = 'OPS-001'),
@@ -239,6 +284,78 @@ select lives_ok(
 );
 select ok((select status = 'void' and void_reason = 'Marker was placed on the wrong surface.' from public.visual_annotations where idempotency_key = 'visual-photo-issue-1'), 'void status and reason remain auditable');
 
+select lives_ok(
+  format(
+    $query$select public.create_drawing_pin(%L::uuid,2,0.41,0.27,'rfi',%L::uuid,'Pin at the façade connection.','drawing-rfi-pin-1')$query$,
+    (select id from public.files where storage_object_key = 'projects/test/drawing-1'),
+    (select id from public.project_register_entries where register_type = 'rfi')
+  ),
+  'a PDF page location can be linked to an existing RFI'
+);
+select ok(
+  (select page_number = 2 and x_ratio = 0.41 and y_ratio = 0.27 and linked_record_number like 'RFI-%' from public.drawing_pins),
+  'drawing pin retains normalized coordinates, page and RFI identity'
+);
+select lives_ok(
+  format(
+    $query$select public.create_drawing_pin(%L::uuid,2,0.41,0.27,'rfi',%L::uuid,'Repeated client request.','drawing-rfi-pin-1')$query$,
+    (select id from public.files where storage_object_key = 'projects/test/drawing-1'),
+    (select id from public.project_register_entries where register_type = 'rfi')
+  ),
+  'drawing link creation is idempotent for a repeated request'
+);
+select is((select count(*) from public.drawing_pins), 1::bigint, 'idempotent drawing link creates only one pin');
+select throws_ok(
+  format(
+    $query$select public.create_drawing_pin(%L::uuid,1,1.2,0.4,'rfi',%L::uuid,null,'drawing-rfi-invalid-1')$query$,
+    (select id from public.files where storage_object_key = 'projects/test/drawing-1'),
+    (select id from public.project_register_entries where register_type = 'rfi')
+  ),
+  '22023',
+  'Invalid drawing page or pin coordinates',
+  'drawing pins reject coordinates outside the page'
+);
+select ok(position('created_by' in (select qual from pg_policies where schemaname = 'public' and tablename = 'drawing_pins' and policyname = 'drawing_pins_select')) = 0, 'drawing pin reads always follow current project permissions');
+
+select lives_ok(
+  format(
+    $query$select public.create_drawing_markup(%L::uuid,2,'freehand','{"points":[{"x":0.10,"y":0.20},{"x":0.18,"y":0.25},{"x":0.24,"y":0.21}]}'::jsonb,'#D92D20',3,null,'drawing-markup-freehand-1')$query$,
+    (select id from public.files where storage_object_key = 'projects/test/drawing-1')
+  ),
+  'freehand markup is stored on the exact PDF page'
+);
+select ok((select page_number = 2 and markup_type = 'freehand' and jsonb_array_length(geometry -> 'points') = 3 from public.drawing_markups where idempotency_key = 'drawing-markup-freehand-1'), 'freehand normalized geometry and page are retained');
+select lives_ok(
+  format(
+    $query$select public.create_drawing_markup(%L::uuid,2,'text','{"position":{"x":0.33,"y":0.44}}'::jsonb,'#216A99',2,'Controleer sparing','drawing-markup-text-1')$query$,
+    (select id from public.files where storage_object_key = 'projects/test/drawing-1')
+  ),
+  'text markup is stored as a separate audited overlay'
+);
+select throws_ok(
+  format(
+    $query$select public.create_drawing_markup(%L::uuid,2,'arrow','{"start":{"x":0.2,"y":0.2},"end":{"x":1.2,"y":0.4}}'::jsonb,'#D92D20',3,null,'drawing-markup-invalid-1')$query$,
+    (select id from public.files where storage_object_key = 'projects/test/drawing-1')
+  ),
+  '22023',
+  'Invalid normalized markup geometry',
+  'drawing markup rejects geometry outside the page'
+);
+select ok(position('created_by' in (select qual from pg_policies where schemaname = 'public' and tablename = 'drawing_markups' and policyname = 'drawing_markups_select')) = 0, 'drawing markup reads always follow current project permissions');
+
+select lives_ok(
+  format(
+    $query$select public.build_period_report_snapshot(%L::uuid,current_date,current_date)$query$,
+    (select id from public.projects where code = 'OPS-001')
+  ),
+  'a daily, weekly, monthly or free-period snapshot can be built from central records'
+);
+select ok(
+  (select jsonb_array_length(public.build_period_report_snapshot(id,current_date,current_date) -> 'day_reports') = 1 from public.projects where code = 'OPS-001'),
+  'period snapshot contains the report day in the selected range'
+);
+select is((select push_status::text from public.notifications where notification_type = 'hse_critical'), 'pending', 'new deadline and critical notifications enter the push queue');
+
 select ok(
   (select (public.create_manual_backup_export(
     (select id from public.organizations where slug = 'codeco-operations'),
@@ -247,7 +364,8 @@ select ok(
   ) ->> 'schema_version') = '202607190003'),
   'manual export contains the current schema version'
 );
-select ok((select (record_counts ->> 'visual_captures')::integer = 2 and (record_counts ->> 'visual_annotations')::integer = 2 from public.backup_runs where run_type = 'manual'), 'manual backup includes visual captures and annotations');
+select ok((select (record_counts ->> 'visual_captures')::integer = 2 and (record_counts ->> 'visual_annotations')::integer = 2 and (record_counts ->> 'drawing_pins')::integer = 1 from public.backup_runs where run_type = 'manual'), 'manual backup includes visual captures, annotations and drawing pins');
+select is((select (record_counts ->> 'drawing_markups')::integer from public.backup_runs where run_type = 'manual'), 2, 'manual backup includes drawing markup overlays');
 select is((select status::text from public.backup_runs where run_type = 'manual'), 'exporting', 'backup remains exporting until the browser checksum is confirmed');
 
 reset role;

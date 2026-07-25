@@ -1,5 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { runScheduledOrganizationBackup } from "@/lib/backups/server";
+import { isNotificationEmailConfigured, sendPendingNotificationEmails } from "@/lib/notifications/email";
+import { sendPendingPushNotifications } from "@/lib/notifications/push";
 import { createStorageAdminClient, isBackupStoreConfigured } from "@/lib/storage/server";
 
 export const dynamic = "force-dynamic";
@@ -23,15 +25,19 @@ function authorized(request: Request) {
 export async function GET(request: Request) {
   if (!process.env.CRON_SECRET?.trim()) return json({ error: "De geplande taak is niet geconfigureerd." }, 503);
   if (!authorized(request)) return json({ error: "Ongeldige geplande taak." }, 401);
-  if (!isBackupStoreConfigured()) return json({ error: "De afzonderlijke private back-upstore is niet geconfigureerd." }, 503);
-
   const admin = createStorageAdminClient();
+  const backupConfigured = isBackupStoreConfigured();
   const organizationResult = await admin.from("organizations").select("id").order("id");
   if (organizationResult.error) return json({ error: "Organisaties konden niet worden geladen." }, 503);
 
   const results: Array<{ organizationId: string; status: string; backupRunId?: string }> = [];
   let failures = 0;
   for (const organization of organizationResult.data ?? []) {
+    if (!backupConfigured) {
+      failures += 1;
+      results.push({ organizationId: organization.id, status: "backup_store_not_configured" });
+      continue;
+    }
     try {
       const backup = await runScheduledOrganizationBackup(admin, organization.id);
       results.push({ organizationId: organization.id, status: backup.status, backupRunId: backup.backupRunId });
@@ -51,10 +57,29 @@ export async function GET(request: Request) {
 
   const notificationResult = await admin.rpc("refresh_all_project_notifications");
   if (notificationResult.error) failures += 1;
+  let pushResult = null;
+  try {
+    pushResult = await sendPendingPushNotifications(admin);
+    if (!pushResult.configured || pushResult.failed > 0) failures += 1;
+  } catch {
+    failures += 1;
+  }
+  let emailResult = null;
+  try {
+    if (isNotificationEmailConfigured()) {
+      emailResult = await sendPendingNotificationEmails(admin);
+      if (emailResult.failed > 0) failures += 1;
+    }
+  } catch {
+    failures += 1;
+  }
   return json({
     ok: failures === 0,
     backups: results,
     notificationsCreated: notificationResult.error ? null : Number(notificationResult.data ?? 0),
+    notificationPush: pushResult,
+    notificationEmail: emailResult,
+    backupConfigured,
     failures,
   }, failures === 0 ? 200 : 500);
 }

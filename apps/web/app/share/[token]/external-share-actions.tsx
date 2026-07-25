@@ -1,0 +1,134 @@
+"use client";
+
+import { AlertTriangle, Camera, CheckCircle2, Loader2, Send, Upload } from "lucide-react";
+import { useMemo, useState } from "react";
+import { compressFieldPhoto } from "@/lib/offline/upload-queue";
+
+type ResponseType = "ready_for_verification" | "issue";
+
+async function responseError(response: Response) {
+  const body = await response.json().catch(() => null) as { error?: string } | null;
+  return body?.error ?? `De server gaf status ${response.status}.`;
+}
+
+async function sha256Hex(file: File) {
+  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  return Array.from(new Uint8Array(digest)).map((value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+async function uploadEvidence(token: string, selected: File) {
+  const prepared = await compressFieldPhoto(selected, true);
+  const file = new File([prepared.blob], prepared.fileName, { type: prepared.mimeType, lastModified: selected.lastModified });
+  const fileId = crypto.randomUUID();
+  const sha256 = await sha256Hex(file);
+  const initiation = await fetch(`/api/external-share/${token}/upload`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      fileId,
+      originalName: file.name,
+      mimeType: file.type,
+      sizeBytes: file.size,
+      sha256,
+    }),
+  });
+  if (!initiation.ok) throw new Error(await responseError(initiation));
+  const upload = await initiation.json() as { fileId: string; pathname: string; presignedUrl: string };
+  const stored = await fetch(upload.presignedUrl, { method: "PUT", headers: { "content-type": file.type }, body: file });
+  if (!stored.ok) throw new Error("De verbinding werd onderbroken tijdens het uploaden van de foto.");
+  const completion = await fetch(`/api/external-share/${token}/upload/complete`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ fileId: upload.fileId, pathname: upload.pathname, sha256 }),
+  });
+  if (!completion.ok) throw new Error(await responseError(completion));
+  return upload.fileId;
+}
+
+export function ExternalShareActions({ token, sourceType, status }: { token: string; sourceType: string; status: string | null }) {
+  const [responseType, setResponseType] = useState<ResponseType>("ready_for_verification");
+  const [note, setNote] = useState("");
+  const [contactName, setContactName] = useState("");
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState("");
+  const completionAllowed = sourceType === "finding" && !["ready_for_verification", "closed", "cancelled"].includes(status ?? "");
+  const choices = useMemo(() => responseType === "ready_for_verification"
+    ? [
+      "Werk is volledig uitgevoerd en gereed voor controle.",
+      "Herstel is uitgevoerd volgens de instructie.",
+      "Werk is gereed; bewijsfoto is toegevoegd.",
+    ]
+    : [
+      "Werk kan niet volledig worden uitgevoerd.",
+      "Materiaal of informatie ontbreekt.",
+      "De locatie of opdracht klopt niet.",
+      "Er is een nieuw veiligheidsrisico.",
+    ], [responseType]);
+
+  const chooseType = (next: ResponseType) => {
+    setResponseType(next);
+    setNote("");
+    setDone("");
+    setError("");
+  };
+
+  const submit = async () => {
+    if (note.trim().length < 3) return;
+    setBusy(true);
+    setError("");
+    try {
+      const evidenceFileId = photo ? await uploadEvidence(token, photo) : null;
+      const response = await fetch(`/api/external-share/${token}/response`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          responseType,
+          note: note.trim(),
+          contactName: contactName.trim(),
+          evidenceFileId,
+          idempotencyKey: `external:${crypto.randomUUID()}`,
+        }),
+      });
+      if (!response.ok) throw new Error(await responseError(response));
+      setDone(responseType === "ready_for_verification"
+        ? "Gereedmelding ontvangen. CODECO controleert het werk voordat het definitief wordt gesloten."
+        : "Probleem ontvangen. De verantwoordelijke CODECO-gebruiker krijgt direct een melding.");
+      setPhoto(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "De reactie kon niet worden verzonden.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (done) {
+    return <section className="external-response-success" role="status"><CheckCircle2 size={28} /><h2>Bedankt</h2><p>{done}</p></section>;
+  }
+
+  return (
+    <section className="external-response-panel">
+      <div className="external-response-tabs" role="tablist" aria-label="Reactie op werkpunt">
+        <button className={responseType === "ready_for_verification" ? "active" : ""} type="button" disabled={!completionAllowed} onClick={() => chooseType("ready_for_verification")}><CheckCircle2 size={16} /> Gereedmelden</button>
+        <button className={responseType === "issue" ? "active issue" : ""} type="button" onClick={() => chooseType("issue")}><AlertTriangle size={16} /> Probleem melden</button>
+      </div>
+      {!completionAllowed && responseType === "ready_for_verification" ? <p className="external-response-note">Dit werkpunt is al gereedgemeld of gesloten. Je kunt nog wel een probleem terugmelden.</p> : null}
+      <div className="external-choice-grid">
+        {choices.map((choice) => <button className={note === choice ? "active" : ""} type="button" onClick={() => setNote(choice)} key={choice}>{choice}</button>)}
+      </div>
+      <label className="form-field"><span>Toelichting</span><textarea rows={3} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Kies hierboven een optie; aanpassen mag." /></label>
+      <label className="external-photo-input">
+        <Camera size={20} />
+        <span><strong>{photo ? photo.name : "Bewijsfoto toevoegen (optioneel)"}</strong><small>De foto wordt verkleind om mobiele data te besparen.</small></span>
+        <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => setPhoto(event.target.files?.[0] ?? null)} />
+      </label>
+      <label className="form-field"><span>Naam (optioneel)</span><input value={contactName} onChange={(event) => setContactName(event.target.value)} autoComplete="name" /></label>
+      {error ? <p className="field-error" role="alert">{error}</p> : null}
+      <button className={`external-submit ${responseType === "issue" ? "issue" : ""}`} type="button" disabled={busy || note.trim().length < 3 || (responseType === "ready_for_verification" && !completionAllowed)} onClick={() => void submit()}>
+        {busy ? <Loader2 className="spin" size={17} /> : photo ? <Upload size={17} /> : <Send size={17} />}
+        {busy ? "Veilig verzenden…" : responseType === "ready_for_verification" ? "Markeer gereed voor controle" : "Verstuur probleem"}
+      </button>
+    </section>
+  );
+}

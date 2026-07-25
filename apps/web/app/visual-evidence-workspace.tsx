@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
+import { compressFieldPhoto, dataSaverEnabled, queueOfflineUpload } from "@/lib/offline/upload-queue";
 import { isStorageGatewayConfigured, loadProjectFileObjectUrl, uploadProjectFile } from "@/lib/storage/gateway";
 import {
   createVisualAnnotationFinding,
@@ -36,6 +37,7 @@ type VisualEvidenceWorkspaceProps = {
   data: OperationSnapshot;
   projectId: string;
   buildingId: string;
+  buildingName: string;
   reportId: string | null;
   parties: ProjectParty[];
   client: SupabaseClient;
@@ -75,7 +77,7 @@ function imageDimensions(file: File) {
   });
 }
 
-export function VisualEvidenceWorkspace({ data, projectId, buildingId, reportId, parties, client, busy, run }: VisualEvidenceWorkspaceProps) {
+export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingName, reportId, parties, client, busy, run }: VisualEvidenceWorkspaceProps) {
   const { text } = useLanguage();
   const maxFileSizeBytes = (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024;
   const captures = data.visualCaptures.filter((capture) => capture.status === "active");
@@ -86,6 +88,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, reportId,
   const [showUpload, setShowUpload] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState("");
+  const [cameraSourceConfirmed, setCameraSourceConfirmed] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [captureForm, setCaptureForm] = useState({
     type: "photo" as VisualCapture["capture_type"],
@@ -109,16 +112,52 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, reportId,
   const tourIndex = activeCapture ? tour.findIndex((capture) => capture.id === activeCapture.id) : -1;
 
   const uploadCapture = async () => {
-    if (!file || captureForm.title.trim().length < 3 || captureForm.locationLabel.trim().length < 2) return;
+    if (!file || captureForm.title.trim().length < 3 || captureForm.locationLabel.trim().length < 2 || (captureForm.type === "panorama" && !cameraSourceConfirmed)) return;
     setFileError("");
     try {
       const dimensions = await imageDimensions(file);
-      if (captureForm.type === "panorama" && Math.abs((dimensions.width / dimensions.height) - 2) > 0.04) {
-        setFileError(text("A 360° panorama must be a 2:1 equirectangular image.", "Een 360°-panorama moet een equirectangulair beeld met verhouding 2:1 zijn."));
-        return;
+      if (captureForm.type === "panorama") {
+        if (Math.abs((dimensions.width / dimensions.height) - 2) > 0.04) {
+          setFileError(text("A 360° camera image must be a stitched 2:1 equirectangular export.", "Een 360°-camerabeeld moet een gestitchte equirectangulaire export met verhouding 2:1 zijn."));
+          return;
+        }
+        if (dimensions.width < 3840 || dimensions.height < 1920) {
+          setFileError(text("The 360° camera export must be at least 3840 × 1920 pixels so site details remain inspectable.", "De 360°-camera-export moet minimaal 3840 × 1920 pixels zijn zodat terreindetails controleerbaar blijven."));
+          return;
+        }
       }
     } catch {
       setFileError(text("The selected file is not a readable image.", "Het gekozen bestand is geen leesbare afbeelding."));
+      return;
+    }
+    if (!navigator.onLine) {
+      const prepared = captureForm.type === "photo" ? await compressFieldPhoto(file, dataSaverEnabled()) : { blob: file as Blob, fileName: file.name, mimeType: file.type, compressed: false };
+      const okay = await run(() => queueOfflineUpload({
+        projectId,
+        buildingId,
+        reportId,
+        folderId: null,
+        kind: captureForm.type,
+        file: prepared.blob,
+        fileName: prepared.fileName,
+        mimeType: prepared.mimeType,
+        title: captureForm.title.trim(),
+        description: captureForm.description.trim(),
+        locationLabel: captureForm.locationLabel.trim(),
+        locationNodeId: captureForm.locationNodeId || null,
+        tourName: captureForm.tourName || null,
+        tourOrder: captureForm.tourName ? Number(captureForm.tourOrder) : null,
+        capturedAt: new Date(file.lastModified || Date.now()).toISOString(),
+        originalSize: file.size,
+        queuedSize: prepared.blob.size,
+        compressed: prepared.compressed,
+      }), text("Visual stored offline and queued for automatic synchronization.", "Beeld offline opgeslagen en klaargezet voor automatische synchronisatie."));
+      if (okay) {
+        setCaptureForm({ type: "photo", title: "", description: "", locationLabel: "", locationNodeId: "", tourName: "", tourOrder: "" });
+        setFile(null);
+        setCameraSourceConfirmed(false);
+        setShowUpload(false);
+      }
       return;
     }
     let created: VisualCapture | null = null;
@@ -149,6 +188,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, reportId,
       setCaptureForm({ type: "photo", title: "", description: "", locationLabel: "", locationNodeId: "", tourName: "", tourOrder: "" });
       setFile(null);
       setFileError("");
+      setCameraSourceConfirmed(false);
       setUploadProgress(0);
       setShowUpload(false);
     }
@@ -192,7 +232,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, reportId,
   return (
     <section className="visual-evidence-shell">
       <div className="visual-toolbar">
-        <div><span className="record-number">{text("Visual evidence", "Visueel bewijs")}</span><h2>{text("Photos, 360° tours and exact issue locations", "Foto’s, 360°-tours en exacte probleemlocaties")}</h2><p>{text("Standard photos are the default. Use a 360° panorama only when the source image is equirectangular.", "Gewone foto’s zijn standaard. Gebruik 360° alleen voor een equirectangulair bronbeeld.")}</p></div>
+        <div><span className="record-number">{text("Visual evidence", "Visueel bewijs")}</span><h2>{text("Photos, 360° camera tours and exact issue locations", "Foto’s, 360°-cameratours en exacte probleemlocaties")}</h2><p>{text("Standard photos are the default. The interactive 360° mode accepts a stitched export from a dedicated 360° camera such as Insta360, not a flat phone panorama.", "Gewone foto’s zijn standaard. De interactieve 360°-modus accepteert een gestitchte export van een speciale 360°-camera zoals Insta360, geen vlakke telefoonpanorama.")}</p></div>
         <button className="primary-button" type="button" disabled={!isStorageGatewayConfigured} onClick={() => setShowUpload((visible) => !visible)}><Plus size={15} /> {text("Add visual", "Beeld toevoegen")}</button>
       </div>
 
@@ -200,24 +240,24 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, reportId,
 
       {showUpload ? (
         <div className="operation-form wide visual-upload-form">
-          <div className="operation-form-heading"><div><span className="record-number">{text("New visual evidence", "Nieuw visueel bewijs")}</span><h2>{text("Upload an image", "Afbeelding uploaden")}</h2></div><span className="experimental-badge">{captureForm.type === "panorama" ? text("Experimental 360°", "Experimenteel 360°") : text("Standard", "Standaard")}</span></div>
+          <div className="operation-form-heading"><div><span className="record-number">{text("New visual evidence", "Nieuw visueel bewijs")}</span><h2>{text("Upload an image", "Afbeelding uploaden")}</h2></div><span className="experimental-badge">{captureForm.type === "panorama" ? text("360° camera source", "360°-camerabron") : text("Standard", "Standaard")}</span></div>
           <div className="visual-type-picker">
-            <button type="button" className={captureForm.type === "photo" ? "active" : ""} onClick={() => setCaptureForm({ ...captureForm, type: "photo", tourName: "", tourOrder: "" })}><ImageIcon size={20} /><strong>{text("Standard photo", "Gewone foto")}</strong><span>{text("Default · exact 2D issue pins", "Standaard · exacte 2D-probleempunten")}</span></button>
-            <button type="button" className={captureForm.type === "panorama" ? "active" : ""} onClick={() => setCaptureForm({ ...captureForm, type: "panorama" })}><ScanLine size={20} /><strong>{text("360° panorama", "360°-panorama")}</strong><span>{text("Optional · interactive room view", "Optioneel · interactieve ruimteweergave")}</span></button>
+            <button type="button" className={captureForm.type === "photo" ? "active" : ""} onClick={() => { setCaptureForm({ ...captureForm, type: "photo", tourName: "", tourOrder: "" }); setCameraSourceConfirmed(false); }}><ImageIcon size={20} /><strong>{text("Standard photo", "Gewone foto")}</strong><span>{text("Default · exact 2D issue pins", "Standaard · exacte 2D-probleempunten")}</span></button>
+            <button type="button" className={captureForm.type === "panorama" ? "active" : ""} onClick={() => setCaptureForm({ ...captureForm, type: "panorama" })}><ScanLine size={20} /><strong>{text("360° camera image", "360°-camerabeeld")}</strong><span>{text("Insta360 or equivalent · interactive spherical view", "Insta360 of gelijkwaardig · interactieve bolweergave")}</span></button>
           </div>
           <div className="form-grid-2">
             <label className="form-field"><span>{text("Title", "Titel")}</span><input value={captureForm.title} onChange={(event) => setCaptureForm({ ...captureForm, title: event.target.value })} placeholder={text("Room 1 wall inspection", "Inspectie wand kamer 1")} /></label>
             <label className="form-field"><span>{text("Room / location", "Ruimte / locatie")}</span><input value={captureForm.locationLabel} onChange={(event) => setCaptureForm({ ...captureForm, locationLabel: event.target.value })} placeholder={text("Room 1 · north wall", "Kamer 1 · noordwand")} /></label>
             <label className="form-field"><span>{text("Project location node", "Projectlocatie")}</span><select value={captureForm.locationNodeId} onChange={(event) => setCaptureForm({ ...captureForm, locationNodeId: event.target.value })}><option value="">{text("No structured location selected", "Geen gestructureerde locatie gekozen")}</option>{data.locationNodes.filter((node) => node.building_id === buildingId).map((node) => <option value={node.id} key={node.id}>{node.code} · {node.name}</option>)}</select></label>
-            <label className="form-field"><span>{text(`Image · JPEG, PNG or WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`, `Afbeelding · JPEG, PNG of WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`)}</span><input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" onChange={(event) => { setFile(event.target.files?.[0] ?? null); setFileError(""); }} /></label>
+            <label className="form-field"><span>{text(`Image · JPEG, PNG or WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`, `Afbeelding · JPEG, PNG of WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`)}</span><input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" onChange={(event) => { const selected = event.target.files?.[0] ?? null; setFile(selected); setFileError(""); setCameraSourceConfirmed(false); if (selected) setCaptureForm((current) => ({ ...current, title: current.title || selected.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").slice(0, 180), locationLabel: current.locationLabel || buildingName })); }} /></label>
           </div>
           <label className="form-field"><span>{text("Context", "Context")}</span><textarea rows={2} value={captureForm.description} onChange={(event) => setCaptureForm({ ...captureForm, description: event.target.value })} /></label>
           {captureForm.type === "panorama" ? <div className="form-grid-2"><label className="form-field"><span>{text("Tour name · optional", "Tournaam · optioneel")}</span><input value={captureForm.tourName} onChange={(event) => setCaptureForm({ ...captureForm, tourName: event.target.value })} placeholder={text("Ground floor walkthrough", "Rondgang begane grond")} /></label><label className="form-field"><span>{text("Position in tour", "Volgorde in tour")}</span><input type="number" min="1" max="10000" disabled={!captureForm.tourName} value={captureForm.tourOrder} onChange={(event) => setCaptureForm({ ...captureForm, tourOrder: event.target.value })} /></label></div> : null}
-          {captureForm.type === "panorama" ? <div className="operation-alert"><ScanLine size={18} /><div><strong>{text("360° source requirement", "Vereiste voor 360°-bron")}</strong><span>{text("Use a 2:1 equirectangular export from the 360° camera. Ordinary photos belong in Standard photo mode.", "Gebruik een 2:1 equirectangulaire export van de 360°-camera. Gewone foto’s horen in de standaardmodus.")}</span></div></div> : null}
+          {captureForm.type === "panorama" ? <><div className="operation-alert"><ScanLine size={18} /><div><strong>{text("Dedicated 360° camera required", "Speciale 360°-camera vereist")}</strong><span>{text("Use a stitched 2:1 equirectangular export of at least 3840 × 1920 pixels from an Insta360 or equivalent 360° camera. A swept phone panorama is not accepted.", "Gebruik een gestitchte equirectangulaire 2:1-export van minimaal 3840 × 1920 pixels uit een Insta360 of gelijkwaardige 360°-camera. Een geveegde telefoonpanorama wordt niet geaccepteerd.")}</span></div></div><label className="check-field"><input type="checkbox" checked={cameraSourceConfirmed} onChange={(event) => setCameraSourceConfirmed(event.target.checked)} /> {text("I confirm this is an export from a dedicated 360° camera.", "Ik bevestig dat dit een export uit een speciale 360°-camera is.")}</label></> : null}
           {uploadProgress > 0 ? <div className="upload-progress" aria-label={`${text("Upload", "Upload")} ${uploadProgress}%`}><span style={{ width: `${uploadProgress}%` }} /><small>{uploadProgress}%</small></div> : null}
           {file && file.size > maxFileSizeBytes ? <p className="field-error">{text("This image exceeds the project file limit.", "Deze afbeelding is groter dan de bestandslimiet van het project.")}</p> : null}
           {fileError ? <p className="field-error" role="alert">{fileError}</p> : null}
-          <button className="primary-button" type="button" disabled={busy || !file || file.size > maxFileSizeBytes || !["image/jpeg", "image/png", "image/webp"].includes(file.type) || captureForm.title.trim().length < 3 || captureForm.locationLabel.trim().length < 2 || (captureForm.type === "panorama" && Boolean(captureForm.tourName) !== Boolean(captureForm.tourOrder))} onClick={() => void uploadCapture()}>{busy ? <Loader2 className="spin" size={15} /> : <Camera size={15} />} {text("Upload securely", "Veilig uploaden")}</button>
+          <button className="primary-button" type="button" disabled={busy || !file || file.size > maxFileSizeBytes || !["image/jpeg", "image/png", "image/webp"].includes(file.type) || captureForm.title.trim().length < 3 || captureForm.locationLabel.trim().length < 2 || (captureForm.type === "panorama" && (!cameraSourceConfirmed || Boolean(captureForm.tourName) !== Boolean(captureForm.tourOrder)))} onClick={() => void uploadCapture()}>{busy ? <Loader2 className="spin" size={15} /> : <Camera size={15} />} {text("Upload securely", "Veilig uploaden")}</button>
         </div>
       ) : null}
 
@@ -232,9 +272,9 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, reportId,
           <div className="visual-stage-column">
             {activeCapture && activeFile ? (
               <>
-                <div className="visual-stage-header"><div><span className="record-number">{activeCapture.capture_type === "panorama" ? text("Interactive 360°", "Interactief 360°") : text("Annotated photo", "Geannoteerde foto")}</span><h2>{activeCapture.title}</h2><p><MapPin size={13} /> {activeCapture.location_label}{activeCapture.tour_name ? ` · ${activeCapture.tour_name}` : ""}</p></div>{tour.length > 1 ? <div className="tour-controls"><button type="button" aria-label={text("Previous panorama", "Vorig panorama")} onClick={() => chooseTourCapture(-1)}><ChevronLeft size={17} /></button><span>{tourIndex + 1} / {tour.length}</span><button type="button" aria-label={text("Next panorama", "Volgend panorama")} onClick={() => chooseTourCapture(1)}><ChevronRight size={17} /></button></div> : null}</div>
+                <div className="visual-stage-header"><div><span className="record-number">{activeCapture.capture_type === "panorama" ? text("Interactive 360° camera image", "Interactief 360°-camerabeeld") : text("Annotated photo", "Geannoteerde foto")}</span><h2>{activeCapture.title}</h2><p><MapPin size={13} /> {activeCapture.location_label}{activeCapture.tour_name ? ` · ${activeCapture.tour_name}` : ""}</p></div>{tour.length > 1 ? <div className="tour-controls"><button type="button" aria-label={text("Previous 360° camera image", "Vorig 360°-camerabeeld")} onClick={() => chooseTourCapture(-1)}><ChevronLeft size={17} /></button><span>{tourIndex + 1} / {tour.length}</span><button type="button" aria-label={text("Next 360° camera image", "Volgend 360°-camerabeeld")} onClick={() => chooseTourCapture(1)}><ChevronRight size={17} /></button></div> : null}</div>
                 <VisualViewer key={activeCapture.id} capture={activeCapture} file={activeFile} annotations={activeAnnotations} pendingPoint={point} client={client} onPoint={(nextPoint) => { setPoint(nextPoint); setSelectedAnnotationId(null); }} onSelectAnnotation={(annotationId) => { setSelectedAnnotationId(annotationId); setPoint(null); }} />
-                <div className="visual-stage-help"><CircleDot size={15} /><span>{text("Click the exact damaged or non-conforming area to create a marker. Drag to look around a panorama; use the center-marker button for keyboard entry.", "Klik exact op de beschadiging of afwijking om een marker te maken. Sleep om rond te kijken; gebruik de middenmarkerknop voor toetsenbordbediening.")}</span></div>
+                <div className="visual-stage-help"><CircleDot size={15} /><span>{text("Click the exact damaged or non-conforming area to create a marker. Drag to inspect the 360° camera view; use the center-marker button for keyboard entry.", "Klik exact op de beschadiging of afwijking om een marker te maken. Sleep om het 360°-camerabeeld te inspecteren; gebruik de middenmarkerknop voor toetsenbordbediening.")}</span></div>
               </>
             ) : null}
           </div>
@@ -242,7 +282,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, reportId,
             {point && activeCapture ? <IssueForm point={point} capture={activeCapture} issue={issue} setIssue={setIssue} parties={parties} busy={busy} save={() => void saveIssue()} cancel={() => { setPoint(null); setIssue(emptyIssue); }} /> : selectedAnnotation && selectedFinding ? <AnnotationDetails annotation={selectedAnnotation} finding={selectedFinding} /> : <div className="visual-panel-empty"><ScanLine size={24} /><strong>{text("Select or place a marker", "Selecteer of plaats een marker")}</strong><span>{text("The exact image position and the formal finding remain linked.", "De exacte beeldpositie en de formele bevinding blijven gekoppeld.")}</span></div>}
           </aside>
         </div>
-      ) : <div className="empty-list-state visual-empty"><Camera size={24} /><strong>{text("No visual evidence yet", "Nog geen visueel bewijs")}</strong><span>{text("Start with a standard photo, or add an optional 360° panorama for an interactive room tour.", "Start met een gewone foto of voeg optioneel een 360°-panorama toe voor een interactieve ruimtetour.")}</span></div>}
+      ) : <div className="empty-list-state visual-empty"><Camera size={24} /><strong>{text("No visual evidence yet", "Nog geen visueel bewijs")}</strong><span>{text("Start with a standard photo, or add a dedicated 360° camera export for an interactive site tour.", "Start met een gewone foto of voeg een export uit een speciale 360°-camera toe voor een interactieve terreinrondgang.")}</span></div>}
     </section>
   );
 }
@@ -371,7 +411,25 @@ function panoramaMarkers(annotations: VisualAnnotation[], pendingPoint: Extract<
 
 function IssueForm({ point, capture, issue, setIssue, parties, busy, save, cancel }: { point: VisualPoint; capture: VisualCapture; issue: typeof emptyIssue; setIssue: (issue: typeof emptyIssue) => void; parties: ProjectParty[]; busy: boolean; save: () => void; cancel: () => void }) {
   const { text } = useLanguage();
-  return <div className="visual-issue-form"><div><span className="record-number">{text("New issue marker", "Nieuwe probleemmarker")}</span><h2>{capture.location_label}</h2><p>{point.mode === "photo" ? `X ${Math.round(point.xRatio * 100)}% · Y ${Math.round(point.yRatio * 100)}%` : `${text("Yaw", "Draaihoek")} ${degrees(point.yaw)} · ${text("Pitch", "Hoogtehoek")} ${degrees(point.pitch)}`}</p></div><label className="form-field"><span>{text("Issue type", "Probleemtype")}</span><select value={issue.findingType} onChange={(event) => setIssue({ ...issue, findingType: event.target.value as Finding["finding_type"] })}><option value="observation">{text("Observation", "Observatie")}</option><option value="deficiency">{text("Deficiency", "Tekortkoming")}</option><option value="deviation">{text("Deviation", "Afwijking")}</option><option value="ncr">NCR</option><option value="improvement">{text("Improvement opportunity", "Verbeterkans")}</option></select></label><label className="form-field"><span>{text("Severity", "Ernst")}</span><select value={issue.severity} onChange={(event) => setIssue({ ...issue, severity: event.target.value as Finding["severity"] })}><option value="low">{text("Low · 14 days", "Laag · 14 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label><label className="form-field"><span>{text("Title", "Titel")}</span><input value={issue.title} onChange={(event) => setIssue({ ...issue, title: event.target.value })} placeholder={text("Damaged plaster on north wall", "Beschadigd pleisterwerk op noordwand")} /></label><label className="form-field"><span>{text("Factual description", "Feitelijke omschrijving")}</span><textarea rows={3} value={issue.description} onChange={(event) => setIssue({ ...issue, description: event.target.value })} /></label><label className="form-field"><span>{text("Responsible party", "Verantwoordelijke partij")}</span><select value={issue.responsiblePartyId} onChange={(event) => setIssue({ ...issue, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label><div className="button-row"><button className="secondary-button" type="button" onClick={cancel}>{text("Cancel", "Annuleren")}</button><button className="primary-button" type="button" disabled={busy || issue.title.trim().length < 3 || issue.description.trim().length < 3} onClick={save}><AlertTriangle size={15} /> {text("Create finding", "Bevinding maken")}</button></div></div>;
+  const issuePresets: Array<Pick<typeof emptyIssue, "findingType" | "title" | "description" | "severity">> = [
+    { findingType: "deficiency", severity: "medium", title: text("Crack or damage", "Scheur of beschadiging"), description: text("Visible damage at the marked location requires repair and verification.", "Zichtbare beschadiging op de gemarkeerde locatie vraagt herstel en verificatie.") },
+    { findingType: "deficiency", severity: "medium", title: text("Work incomplete", "Werk niet volledig"), description: text("The work at the marked location is not fully completed.", "Het werk op de gemarkeerde locatie is niet volledig uitgevoerd.") },
+    { findingType: "deviation", severity: "high", title: text("Incorrect dimensions", "Verkeerde maatvoering"), description: text("The marked work does not match the approved dimensions.", "Het gemarkeerde werk komt niet overeen met de goedgekeurde maatvoering.") },
+    { findingType: "observation", severity: "high", title: text("Safety risk", "Veiligheidsrisico"), description: text("The marked condition creates an immediate safety risk.", "De gemarkeerde situatie vormt een direct veiligheidsrisico.") },
+    { findingType: "deficiency", severity: "low", title: text("Finish or cleaning", "Afwerking of schoonmaak"), description: text("The marked finish or work area does not meet the required condition.", "De gemarkeerde afwerking of werkzone voldoet niet aan de vereiste staat.") },
+  ];
+  return (
+    <div className="visual-issue-form">
+      <div><span className="record-number">{text("New issue marker", "Nieuwe probleemmarker")}</span><h2>{capture.location_label}</h2><p>{point.mode === "photo" ? `X ${Math.round(point.xRatio * 100)}% · Y ${Math.round(point.yRatio * 100)}%` : `${text("Yaw", "Draaihoek")} ${degrees(point.yaw)} · ${text("Pitch", "Hoogtehoek")} ${degrees(point.pitch)}`}</p></div>
+      <div className="quick-issue-presets" aria-label={text("Choose a common issue", "Kies een veelvoorkomend probleem")}>{issuePresets.map((preset) => <button className={issue.title === preset.title ? "active" : ""} type="button" onClick={() => setIssue({ ...issue, ...preset })} key={preset.title}>{preset.title}</button>)}</div>
+      <label className="form-field"><span>{text("Issue type", "Probleemtype")}</span><select value={issue.findingType} onChange={(event) => setIssue({ ...issue, findingType: event.target.value as Finding["finding_type"] })}><option value="observation">{text("Observation", "Observatie")}</option><option value="deficiency">{text("Deficiency", "Tekortkoming")}</option><option value="deviation">{text("Deviation", "Afwijking")}</option><option value="ncr">NCR</option><option value="improvement">{text("Improvement opportunity", "Verbeterkans")}</option></select></label>
+      <label className="form-field"><span>{text("Severity", "Ernst")}</span><select value={issue.severity} onChange={(event) => setIssue({ ...issue, severity: event.target.value as Finding["severity"] })}><option value="low">{text("Low · 14 days", "Laag · 14 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label>
+      <label className="form-field"><span>{text("Title", "Titel")}</span><input value={issue.title} onChange={(event) => setIssue({ ...issue, title: event.target.value })} placeholder={text("Choose above or type a short title.", "Kies hierboven of typ een korte titel.")} /></label>
+      <label className="form-field"><span>{text("Factual description", "Feitelijke omschrijving")}</span><textarea rows={3} value={issue.description} onChange={(event) => setIssue({ ...issue, description: event.target.value })} /></label>
+      <label className="form-field"><span>{text("Responsible party", "Verantwoordelijke partij")}</span><select value={issue.responsiblePartyId} onChange={(event) => setIssue({ ...issue, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
+      <div className="button-row"><button className="secondary-button" type="button" onClick={cancel}>{text("Cancel", "Annuleren")}</button><button className="primary-button" type="button" disabled={busy || issue.title.trim().length < 3 || issue.description.trim().length < 3} onClick={save}><AlertTriangle size={15} /> {text("Create finding", "Bevinding maken")}</button></div>
+    </div>
+  );
 }
 
 function AnnotationDetails({ annotation, finding }: { annotation: VisualAnnotation; finding: Finding }) {

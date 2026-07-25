@@ -3,20 +3,26 @@
 import {
   AlertTriangle,
   Archive,
+  Camera,
+  CalendarRange,
   CheckCircle2,
   ClipboardCheck,
   DatabaseBackup,
+  Download,
   FileCheck2,
   FileText,
   HardDrive,
   KeyRound,
   Loader2,
+  MessageCircle,
   PackageCheck,
   Plus,
   RotateCcw,
   Settings,
   ShieldCheck,
   Users,
+  Upload,
+  WifiOff,
   Wrench,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -24,21 +30,43 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { VisualEvidenceWorkspace } from "@/app/visual-evidence-workspace";
-import { useLanguage } from "@/lib/i18n";
-import type { FormalReportSnapshot } from "@/lib/reports/daily-report-pdf";
-import type { ProjectParty } from "@/lib/supabase/data";
-import { downloadProjectFile, isStorageGatewayConfigured, uploadProjectFile } from "@/lib/storage/gateway";
+import { DrawingWorkspace } from "@/app/drawing-workspace";
+import { FieldTools } from "@/app/field-tools";
+import { MediaLibraryWorkspace } from "@/app/media-library-workspace";
+import { downloadBoqCsvTemplate, parseBoqCsv, type BoqImportItem } from "@/lib/boq/csv";
 import {
+  createControlledDocumentDetails,
+  emptyControlledDocumentDraft,
+  isControlledDocumentType,
+  issueCatalogPresets,
+  type ControlledDocumentDraft,
+} from "@/lib/forms/controlled-project-documents";
+import { useLanguage } from "@/lib/i18n";
+import { cacheProjectSnapshot, getCachedProjectSnapshot } from "@/lib/offline/project-cache";
+import { compressFieldPhoto, dataSaverEnabled, queueOfflineUpload } from "@/lib/offline/upload-queue";
+import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
+import type { FormalReportSnapshot } from "@/lib/reports/daily-report-pdf";
+import type { PeriodReportSection } from "@/lib/reports/period-report-pdf";
+import type { ProjectParty } from "@/lib/supabase/data";
+import { isStorageGatewayConfigured, uploadProjectFile } from "@/lib/storage/gateway";
+import {
+  buildPeriodReportSnapshot,
   createChecklist,
   createFinding,
   createHseEvent,
   createLocationNode,
   createProjectParty,
   createRegisterEntry,
+  createExternalShareLink,
   downloadManualBackup,
   finishInspection,
+  importProjectBoq,
+  installChecklistLibraryTemplate,
+  linkFileToRecord,
   loadProjectOperations,
   recordDistribution,
+  recordFindingProgress,
+  respondToControlledDocument,
   reviewReport,
   saveProjectSettings,
   signReport,
@@ -54,7 +82,7 @@ import {
 } from "@/lib/supabase/operations";
 
 type WorkspaceMode = "project" | "reports" | "admin";
-type ProjectTab = "inspections" | "findings" | "hse" | "registers" | "visual" | "files";
+type ProjectTab = "inspections" | "findings" | "hse" | "registers" | "visual" | "drawings" | "tools" | "files";
 
 const findingStatusLabels: Record<string, string> = {
   draft: "Concept",
@@ -110,6 +138,17 @@ const registerLabels: Record<string, string> = {
   correspondence: "Correspondentie",
   cost: "Kostenbewaking",
   declaration: "Aannemersdeclaratie",
+  rfa: "RFA - Request for Approval",
+  inspection_request: "IR - Inspectieverzoek",
+  boq: "BOQ / voortgang",
+  punch_list: "Punch list",
+  notepad: "Notitieblok",
+  agreement: "Afspraak",
+  technical_instruction: "Technische instructie (TI)",
+  change_order: "Change order (CO)",
+  contract: "Contract",
+  specification: "Technische specificatie",
+  environmental_report: "Milieurapport (ER)",
 };
 
 const registerLabelsEnglish: Record<string, string> = {
@@ -117,6 +156,10 @@ const registerLabelsEnglish: Record<string, string> = {
   delay: "Delay", communication: "Communication / decision", risk: "Risk", document: "Document",
   drawing: "Drawing", rfi: "RFI", submittal: "Submittal", site_instruction: "Site instruction",
   meeting: "Meeting", correspondence: "Correspondence", cost: "Cost control", declaration: "Contractor payment claim",
+  rfa: "RFA - Request for Approval", inspection_request: "IR - Inspection request", boq: "BOQ / progress",
+  punch_list: "Punch list", notepad: "Notepad", agreement: "Agreement", technical_instruction: "Technical instruction (TI)",
+  change_order: "Change order (CO)", contract: "Contract", specification: "Technical specification",
+  environmental_report: "Environmental report (ER)",
 };
 
 function formatDate(value: string | null, locale = "en-GB") {
@@ -138,6 +181,7 @@ export function OperationalWorkspace({
   organizationId,
   projectId,
   projectName,
+  projectCode,
   buildingId,
   buildingName,
   reportId,
@@ -155,6 +199,7 @@ export function OperationalWorkspace({
   organizationId: string;
   projectId: string;
   projectName: string;
+  projectCode: string;
   buildingId: string;
   buildingName: string;
   reportId: string | null;
@@ -171,7 +216,17 @@ export function OperationalWorkspace({
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["project-operations", projectId, reportId],
-    queryFn: () => loadProjectOperations(client, projectId, organizationId, reportId),
+    queryFn: async () => {
+      try {
+        const snapshot = await loadProjectOperations(client, projectId, organizationId, reportId);
+        await cacheProjectSnapshot(projectId, reportId, snapshot).catch(() => undefined);
+        return snapshot;
+      } catch (error) {
+        const cached = await getCachedProjectSnapshot(projectId, reportId).catch(() => null);
+        if (cached) return cached;
+        throw error;
+      }
+    },
   });
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -191,6 +246,7 @@ export function OperationalWorkspace({
     setNotice("");
     try {
       await operation();
+      await requestProjectNotificationDispatch(client, projectId).catch(() => false);
       setNotice(success);
       await refresh();
       return true;
@@ -211,16 +267,20 @@ export function OperationalWorkspace({
 
   return (
     <>
+      {query.data._offlineCached ? <div className="operation-alert warning"><HardDrive size={17} /><div><strong>{text("Offline project copy", "Offline projectkopie")}</strong><span>{text("You can inspect the last synchronized data and queue photos or drawings. Formal changes synchronize only when the connection returns.", "Je kunt de laatst gesynchroniseerde gegevens bekijken en foto’s of tekeningen klaarzetten. Formele wijzigingen synchroniseren pas zodra de verbinding terug is.")} {query.data._offlineSavedAt ? `${text("Saved", "Opgeslagen")} ${formatDate(query.data._offlineSavedAt)}.` : ""}</span></div></div> : null}
       {error ? <div className="operation-alert error"><AlertTriangle size={17} /> {error}</div> : null}
       {notice ? <div className="operation-alert success"><CheckCircle2 size={17} /> {notice}</div> : null}
       {mode === "project" ? (
         <ProjectOperations
           data={query.data}
+          organizationId={organizationId}
           reportId={reportId}
           projectId={projectId}
           projectName={projectName}
+          projectCode={projectCode}
           buildingId={buildingId}
           buildingName={buildingName}
+          currentUserName={currentUserName}
           parties={parties}
           client={client}
           busy={busy}
@@ -235,6 +295,8 @@ export function OperationalWorkspace({
           reportNumber={reportNumber}
           reportStatus={reportStatus}
           currentUserName={currentUserName}
+          projectId={projectId}
+          projectName={projectName}
           busy={busy}
           run={run}
           client={client}
@@ -264,11 +326,14 @@ export function OperationalWorkspace({
 
 function ProjectOperations({
   data,
+  organizationId,
   reportId,
   projectId,
   projectName,
+  projectCode,
   buildingId,
   buildingName,
+  currentUserName,
   parties,
   client,
   busy,
@@ -276,11 +341,14 @@ function ProjectOperations({
   initialTab,
 }: {
   data: OperationSnapshot;
+  organizationId: string;
   reportId: string | null;
   projectId: string;
   projectName: string;
+  projectCode: string;
   buildingId: string;
   buildingName: string;
+  currentUserName: string;
   parties: ProjectParty[];
   client: SupabaseClient;
   busy: boolean;
@@ -295,14 +363,103 @@ function ProjectOperations({
   const [inspectionTitle, setInspectionTitle] = useState("");
   const [inspectionTemplateId, setInspectionTemplateId] = useState("");
   const [inspectionAnswers, setInspectionAnswers] = useState<Record<string, { result: string; notes: string }>>({});
-  const [findingForm, setFindingForm] = useState({ type: "deficiency", title: "", description: "", severity: "medium", responsiblePartyId: "" });
+  const [findingForm, setFindingForm] = useState({
+    type: "deficiency",
+    title: "",
+    description: "",
+    severity: "medium",
+    responsiblePartyId: "",
+    issueType: "quality",
+    impactSummary: "",
+    actionSteps: "",
+    escalationRequired: false,
+    disposition: "to_be_corrected" as "validated" | "to_be_corrected" | "alternative_solution",
+    expectedResolutionDate: "",
+    sourceCatalogSubject: "",
+  });
+  const [findingPhoto, setFindingPhoto] = useState<File | null>(null);
   const [hseForm, setHseForm] = useState({ type: "unsafe_condition", title: "", description: "", severity: "medium", immediateMeasure: "", confidential: false });
-  const [registerForm, setRegisterForm] = useState({ type: "delivery", title: "", details: "", responsiblePartyId: "" });
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploadCategory, setUploadCategory] = useState("photo");
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [registerForm, setRegisterForm] = useState<ControlledDocumentDraft>({ ...emptyControlledDocumentDraft });
+  const [boqFile, setBoqFile] = useState<File | null>(null);
+  const [boqItems, setBoqItems] = useState<BoqImportItem[]>([]);
+  const [boqError, setBoqError] = useState("");
   const inspectionTemplates = data.templates.filter((template) => template.module === "inspection" && template.status === "published");
   const activeTemplate = data.templates.find((template) => template.id === activeInspection?.template_id);
+  const online = typeof navigator === "undefined" ? true : navigator.onLine;
+  const findingPresets = [
+    { title: text("Crack or damage", "Scheur of beschadiging"), description: text("Visible crack or damage requires repair and verification.", "Zichtbare scheur of beschadiging moet worden hersteld en gecontroleerd.") },
+    { title: text("Work incomplete", "Werk niet volledig"), description: text("The planned work is not fully completed.", "Het geplande werk is niet volledig uitgevoerd.") },
+    { title: text("Incorrect dimensions", "Verkeerde maatvoering"), description: text("The executed dimensions do not match the approved drawing.", "De uitgevoerde maatvoering komt niet overeen met de goedgekeurde tekening.") },
+    { title: text("Safety risk", "Veiligheidsrisico"), description: text("An unsafe condition requires immediate attention.", "Een onveilige situatie vraagt directe opvolging.") },
+    { title: text("Finish or cleaning", "Afwerking of schoonmaak"), description: text("The finish or work area does not meet the required condition.", "De afwerking of werkzone voldoet niet aan de vereiste staat.") },
+  ];
+  const hsePresets = [
+    { type: "positive_observation", severity: "low", title: text("Safe work observed", "Veilig werk waargenomen"), description: text("The work was performed safely and according to the agreed control measures.", "Het werk is veilig en volgens de afgesproken beheersmaatregelen uitgevoerd."), immediateMeasure: text("Positive feedback was given to the team.", "Positieve feedback is aan het team gegeven.") },
+    { type: "unsafe_condition", severity: "high", title: text("Unsafe work area", "Onveilige werkzone"), description: text("The work area was not sufficiently secured or marked.", "De werkzone was onvoldoende afgezet of gemarkeerd."), immediateMeasure: text("Work was paused and the area was secured.", "Werk is gepauzeerd en de zone is beveiligd.") },
+    { type: "unsafe_act", severity: "high", title: text("PPE not used correctly", "PBM niet correct gebruikt"), description: text("Required personal protective equipment was not used correctly.", "Verplichte persoonlijke beschermingsmiddelen werden niet correct gebruikt."), immediateMeasure: text("The worker was instructed and PPE use was corrected.", "De medewerker is geïnstrueerd en het PBM-gebruik is gecorrigeerd.") },
+    { type: "near_miss", severity: "high", title: "Near miss", description: text("An event occurred without injury but with a realistic risk of harm.", "Er vond een gebeurtenis plaats zonder letsel, maar met reëel risico op schade."), immediateMeasure: text("The activity was stopped, the area secured and the supervisor informed.", "De activiteit is gestopt, de zone beveiligd en de supervisor geïnformeerd.") },
+    { type: "stop_work", severity: "critical", title: "Stop work", description: text("Work was stopped because the risk was not adequately controlled.", "Werk is stilgelegd omdat het risico onvoldoende werd beheerst."), immediateMeasure: text("Access was restricted pending approval of corrective measures.", "Toegang is beperkt in afwachting van goedgekeurde herstelmaatregelen.") },
+  ];
+  const registerPresets: Record<string, Array<Partial<ControlledDocumentDraft> & { title: string; details: string }>> = {
+    delivery: [
+      { title: text("Delivery received and checked", "Levering ontvangen en gecontroleerd"), details: text("Quantity, condition and delivery documents were checked.", "Hoeveelheid, staat en leveringsdocumenten zijn gecontroleerd.") },
+      { title: text("Delivery incomplete or damaged", "Levering onvolledig of beschadigd"), details: text("A discrepancy was found during receipt and requires supplier follow-up.", "Bij ontvangst is een afwijking vastgesteld die opvolging door de leverancier vraagt.") },
+    ],
+    equipment: [
+      { title: text("Equipment operational", "Materieel operationeel"), details: text("Equipment was checked and is available for planned work.", "Materieel is gecontroleerd en beschikbaar voor het geplande werk.") },
+      { title: text("Equipment out of service", "Materieel buiten gebruik"), details: text("Equipment is unavailable and requires repair or replacement.", "Materieel is niet beschikbaar en vraagt reparatie of vervanging.") },
+    ],
+    test: [
+      { title: text("Test result accepted", "Testresultaat akkoord"), details: text("The measurement was performed and the result is within tolerance.", "De meting is uitgevoerd en het resultaat valt binnen de tolerantie.") },
+      { title: text("Test deviation", "Afwijking in testresultaat"), details: text("The result is outside tolerance and requires technical follow-up.", "Het resultaat valt buiten de tolerantie en vraagt technische opvolging.") },
+    ],
+    delay: [
+      { title: text("Weather delay", "Vertraging door weer"), details: text("Planned work was delayed by weather conditions.", "Gepland werk is vertraagd door weersomstandigheden.") },
+      { title: text("Delivery delay", "Vertraging door levering"), details: text("Planned work was delayed because materials arrived late or incomplete.", "Gepland werk is vertraagd doordat materiaal te laat of onvolledig aankwam.") },
+    ],
+    rfi: [
+      { title: "Detailed specifications for the server room of B1 second floor", details: "According to change CO-11 for the B1 second-floor PAHO server room, provide the detailed specifications after the change of location.", relatedReference: "CO-11 B1 SF PAHO SERVER ROOM EXCHANGE", revision: "0" },
+      { title: text("Clarification required", "Verduidelijking vereist"), details: text("The approved documents do not provide sufficient information for execution.", "De goedgekeurde documenten geven onvoldoende informatie voor uitvoering.") },
+      { title: text("Drawing conflict", "Tegenstrijdigheid in tekening"), details: text("A conflict was found between drawing, specification or site condition.", "Er is een tegenstrijdigheid vastgesteld tussen tekening, specificatie of situatie op locatie.") },
+    ],
+    rfa: [
+      { title: "Lighting switch layout of Building B1", details: "Request approval of the lighting switch layout of Building B1.", relatedReference: "RFA.SU-L1054.519.4", revision: "4", attachments: "Lighting switch layout of Building B1.zip · 1 page" },
+    ],
+    inspection_request: [
+      { title: "Acceptance of reinforcement for shear wall of Ground Floor, Building B2", details: "Inspect and confirm the reinforcement for the ground-floor shear wall before subsequent work proceeds.", inspectionCategory: "structural", readyTime: "07:30" },
+      { title: text("Work ready for inspection", "Werk gereed voor inspectie"), details: text("The work is completed and available for the requested inspection.", "Het werk is uitgevoerd en beschikbaar voor de aangevraagde inspectie.") },
+    ],
+    punch_list: [
+      { title: text("Finishing point", "Afwerkingspunt"), details: text("A finishing item remains open and must be corrected before handover.", "Een afwerkingspunt staat nog open en moet vóór oplevering worden gecorrigeerd.") },
+      { title: text("Cleaning point", "Schoonmaakpunt"), details: text("The work area requires final cleaning before handover.", "De werkzone vraagt eindschoonmaak vóór oplevering.") },
+    ],
+    agreement: [
+      { title: text("Site agreement", "Afspraak op locatie"), details: text("The parties agreed the described action and deadline.", "Partijen hebben de beschreven actie en deadline afgesproken.") },
+    ],
+    technical_instruction: [
+      { title: "Replacing generator of Central Lab", details: "Move the generator from Central Lab to the new location behind Building B8-4. Use the attached slab detail and DWG of the new generator location.", reason: "Relocation of the existing Central Lab generator.", requiredAction: "proceed", attachments: "Slab detail and DWG · 1 page" },
+      { title: text("Execution instruction", "Uitvoeringsinstructie"), details: text("Execute the described measure according to the approved documents.", "Voer de beschreven maatregel uit volgens de goedgekeurde documenten.") },
+    ],
+    change_order: [
+      { title: "Wall thickness Building 1–8", details: "Adjust the wall thicknesses according to the attached drawings for Buildings 1 through 8.", attachments: "Approved wall-thickness drawings" },
+      { title: text("Change pending approval", "Wijziging wacht op goedkeuring"), details: text("The proposed change must be reviewed before execution.", "De voorgestelde wijziging moet vóór uitvoering worden beoordeeld.") },
+    ],
+    environmental_report: [
+      { title: text("Environmental and housekeeping inspection", "Milieu- en housekeepinginspectie"), details: text("Record construction debris, access roads, waste separation, material stacking and repeated housekeeping observations for the reporting period.", "Leg bouwafval, toegangswegen, afvalscheiding, materiaalstapeling en herhaalde housekeepingobservaties voor de rapportperiode vast.") },
+    ],
+  };
+  const activeRegisterPresets = registerPresets[registerForm.type] ?? [];
+  const controlledRegister = isControlledDocumentType(registerForm.type);
+  const controlledFormReady = !controlledRegister || (
+    registerForm.details.trim().length >= 3
+    && (
+      registerForm.type === "environmental_report"
+        ? Boolean(registerForm.periodStart && registerForm.periodEnd && registerForm.periodEnd >= registerForm.periodStart)
+        : registerForm.requestedTo.trim().length >= 2
+    )
+    && (registerForm.type !== "inspection_request" || Boolean(registerForm.readyDate))
+    && (registerForm.type !== "technical_instruction" || registerForm.reason.trim().length >= 3)
+  );
 
   const switchTab = (next: ProjectTab) => {
     setTab(next);
@@ -341,21 +498,89 @@ function ProjectOperations({
 
   const addFinding = async () => {
     if (!reportId || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3) return;
-    const okay = await run(
-      () => createFinding(client, {
-        projectId,
-        buildingId,
-        reportId,
-        type: findingForm.type,
-        title: findingForm.title,
-        description: findingForm.description,
-        severity: findingForm.severity,
-        responsiblePartyId: findingForm.responsiblePartyId,
-      }),
-      text("Finding numbered, saved centrally and given a rule-driven deadline.", "Bevinding genummerd, centraal opgeslagen en van een regelgestuurde deadline voorzien."),
-    );
+    const draft = {
+      projectId,
+      buildingId,
+      reportId,
+      type: findingForm.type,
+      title: findingForm.title,
+      description: findingForm.description,
+      severity: findingForm.severity,
+      responsiblePartyId: findingForm.responsiblePartyId,
+      issueType: findingForm.issueType,
+      impactSummary: findingForm.impactSummary,
+      actionSteps: findingForm.actionSteps,
+      escalationRequired: findingForm.escalationRequired,
+      disposition: findingForm.disposition,
+      expectedResolutionDate: findingForm.expectedResolutionDate,
+      sourceCatalogSubject: findingForm.sourceCatalogSubject,
+    };
+    const success = !online && findingPhoto
+      ? text("Issue photo and assignment are in the offline sync queue.", "Probleemfoto en toewijzing staan in de offline synchronisatiewachtrij.")
+      : text("Finding numbered, assigned and given a rule-driven deadline.", "Bevinding genummerd, toegewezen en van een regelgestuurde deadline voorzien.");
+    const okay = await run(async () => {
+      if (findingPhoto && !online) {
+        const prepared = await compressFieldPhoto(findingPhoto, dataSaverEnabled());
+        await queueOfflineUpload({
+          projectId,
+          buildingId,
+          reportId,
+          folderId: null,
+          kind: "photo",
+          file: prepared.blob,
+          fileName: prepared.fileName,
+          mimeType: prepared.mimeType,
+          title: findingForm.title,
+          description: findingForm.description,
+          locationLabel: buildingName,
+          capturedAt: new Date(findingPhoto.lastModified || Date.now()).toISOString(),
+          originalSize: findingPhoto.size,
+          queuedSize: prepared.blob.size,
+          compressed: prepared.compressed,
+          findingDraft: {
+            organizationId,
+            type: findingForm.type,
+            title: findingForm.title,
+            description: findingForm.description,
+            severity: findingForm.severity,
+            responsiblePartyId: findingForm.responsiblePartyId,
+            issueType: findingForm.issueType,
+            impactSummary: findingForm.impactSummary,
+            actionSteps: findingForm.actionSteps,
+            escalationRequired: findingForm.escalationRequired,
+            disposition: findingForm.disposition,
+            expectedResolutionDate: findingForm.expectedResolutionDate,
+            sourceCatalogSubject: findingForm.sourceCatalogSubject,
+          },
+        });
+        return;
+      }
+      let fileId = "";
+      if (findingPhoto) {
+        const prepared = await compressFieldPhoto(findingPhoto, dataSaverEnabled());
+        const uploadFile = new File([prepared.blob], prepared.fileName, { type: prepared.mimeType, lastModified: findingPhoto.lastModified });
+        const uploaded = await uploadProjectFile(client, { projectId, buildingId, category: "photo", file: uploadFile });
+        fileId = uploaded.fileId;
+      }
+      const finding = await createFinding(client, draft);
+      if (fileId) {
+        await linkFileToRecord(client, {
+          organizationId,
+          projectId,
+          fileId,
+          recordType: "finding",
+          recordId: finding.id,
+          relationship: "before",
+        });
+      }
+    }, success);
     if (okay) {
-      setFindingForm({ type: "deficiency", title: "", description: "", severity: "medium", responsiblePartyId: "" });
+      setFindingForm({
+        type: "deficiency", title: "", description: "", severity: "medium", responsiblePartyId: "",
+        issueType: "quality", impactSummary: "", actionSteps: "", escalationRequired: false,
+        disposition: "to_be_corrected", expectedResolutionDate: "", sourceCatalogSubject: "",
+      });
+      setFindingPhoto(null);
       setShowForm(false);
     }
   };
@@ -374,6 +599,14 @@ function ProjectOperations({
 
   const addRegisterEntry = async () => {
     if (!reportId || registerForm.title.trim().length < 3) return;
+    const details = controlledRegister
+      ? createControlledDocumentDetails(registerForm, {
+          projectName,
+          projectCode,
+          buildingName,
+          currentUserName,
+        })
+      : { description: registerForm.details };
     const okay = await run(
       () => createRegisterEntry(client, {
         projectId,
@@ -382,13 +615,39 @@ function ProjectOperations({
         type: registerForm.type,
         title: registerForm.title,
         responsiblePartyId: registerForm.responsiblePartyId,
-        details: { description: registerForm.details },
+        dueAt: registerForm.dueDate || null,
+        details,
       }),
       text(`${registerNames[registerForm.type] ?? "Record"} was saved centrally and linked to the daily report.`, `${registerNames[registerForm.type] ?? "Registeritem"} centraal opgeslagen en aan het dagrapport gekoppeld.`),
     );
     if (okay) {
-      setRegisterForm({ type: "delivery", title: "", details: "", responsiblePartyId: "" });
+      setRegisterForm({ ...emptyControlledDocumentDraft });
       setShowForm(false);
+    }
+  };
+
+  const inspectBoqFile = async (file: File | null) => {
+    setBoqFile(file);
+    setBoqItems([]);
+    setBoqError("");
+    if (!file) return;
+    try {
+      setBoqItems(parseBoqCsv(await file.text()));
+    } catch (caught) {
+      setBoqError(messageFrom(caught));
+    }
+  };
+
+  const importBoq = async () => {
+    if (!boqItems.length) return;
+    const okay = await run(
+      () => importProjectBoq(client, { projectId, buildingId, reportId, items: boqItems }),
+      text(`${boqItems.length} BOQ lines imported with quantity, value and progress.`, `${boqItems.length} BOQ-regels geïmporteerd met hoeveelheid, waarde en voortgang.`),
+    );
+    if (okay) {
+      setBoqFile(null);
+      setBoqItems([]);
+      setBoqError("");
     }
   };
 
@@ -396,7 +655,7 @@ function ProjectOperations({
     <>
       <header className="secondary-header">
         <div><p className="eyebrow">{projectName} · {buildingName}</p><h1>{text("Project records", "Projectregisters")}</h1><p>{text("Inspections, quality, safety and evidence from one controlled source.", "Inspecties, kwaliteit, veiligheid en bewijs vanuit één centrale bron.")}</p></div>
-        {tab !== "files" && tab !== "visual" && !activeInspection ? <button className="primary-button" type="button" onClick={() => setShowForm((value) => !value)}><Plus size={15} /> {text("New record", "Nieuwe registratie")}</button> : null}
+        {tab !== "files" && tab !== "visual" && tab !== "drawings" && tab !== "tools" && !activeInspection ? <button className="primary-button" type="button" onClick={() => setShowForm((value) => !value)}><Plus size={15} /> {text("New record", "Nieuwe registratie")}</button> : null}
       </header>
       <div className="operation-tabs" role="tablist" aria-label={text("Project records", "Projectregisters")}>
         {([
@@ -405,7 +664,9 @@ function ProjectOperations({
           ["hse", "HSE", data.hseEvents.length],
           ["registers", text("Other records", "Overige registers"), data.registerEntries.length],
           ["visual", text("Visual evidence", "Visueel bewijs"), data.visualCaptures.length],
-          ["files", text("Files", "Bestanden"), data.files.length],
+          ["drawings", text("Drawings", "Tekeningen"), data.files.filter((file) => file.category === "drawing" && file.status === "available").length],
+          ["tools", text("Field tools", "Veldtools"), data.registerEntries.filter((entry) => ["notepad", "agreement", "technical_instruction"].includes(entry.register_type)).length],
+          ["files", text("Photos & folders", "Foto’s & mappen"), data.files.length],
         ] as Array<[ProjectTab, string, number]>).map(([id, label, count]) => (
           <button className={tab === id ? "active" : ""} type="button" role="tab" aria-selected={tab === id} onClick={() => switchTab(id)} key={id}>{label}<span>{count}</span></button>
         ))}
@@ -460,19 +721,69 @@ function ProjectOperations({
       {tab === "findings" ? (
         <section className="operation-panel">
           {showForm ? (
-            <div className="operation-form">
-              <h2>{text("Record finding / NCR", "Bevinding / NCR registreren")}</h2>
+            <div className="operation-form snap-assign-form">
+              <div className="operation-form-heading"><div><span className="record-number">{text("Snap & assign", "Foto & toewijzen")}</span><h2>{text("Record finding / NCR", "Bevinding / NCR registreren")}</h2></div>{!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}</div>
+              <label className="finding-photo-capture">
+                <Camera size={22} />
+                <span><strong>{findingPhoto ? findingPhoto.name : text("Take or choose an issue photo", "Maak of kies een probleemfoto")}</strong><small>{text("Project, building, date and time are linked automatically.", "Project, gebouw, datum en tijd worden automatisch gekoppeld.")}</small></span>
+                <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => setFindingPhoto(event.target.files?.[0] ?? null)} />
+              </label>
+              <div className="quick-issue-presets" aria-label={text("Common issue choices", "Veelvoorkomende problemen")}>
+                {findingPresets.map((preset) => <button className={findingForm.title === preset.title ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, title: preset.title, description: preset.description, type: preset.title === text("Safety risk", "Veiligheidsrisico") ? "observation" : "deficiency", severity: preset.title === text("Safety risk", "Veiligheidsrisico") ? "high" : findingForm.severity })} key={preset.title}>{preset.title}</button>)}
+              </div>
+              <label className="form-field"><span>{text("Client B1 issue catalog (35 reusable categories)", "Klantcatalogus B1 (35 herbruikbare categorieën)")}</span><select value={findingForm.sourceCatalogSubject} onChange={(event) => {
+                const preset = issueCatalogPresets.find((item) => item.subject === event.target.value);
+                if (!preset) {
+                  setFindingForm({ ...findingForm, sourceCatalogSubject: "" });
+                  return;
+                }
+                setFindingForm({
+                  ...findingForm,
+                  sourceCatalogSubject: preset.subject,
+                  title: preset.subject,
+                  description: preset.description,
+                  actionSteps: preset.action,
+                  disposition: preset.disposition,
+                  type: "deficiency",
+                  issueType: "quality",
+                });
+              }}><option value="">{text("Choose only when applicable", "Kies alleen indien van toepassing")}</option>{issueCatalogPresets.map((preset) => <option value={preset.subject} key={preset.subject}>{preset.subject}</option>)}</select><small>{text("The historic spreadsheet is used as a quick-entry catalog; choosing an item does not mark it as an active project issue until you submit it.", "Het historische spreadsheet is een snelinvoercatalogus; een keuze wordt pas een actief projectpunt nadat je het indient.")}</small></label>
               <div className="form-grid-2">
                 <label className="form-field"><span>{text("Type", "Type")}</span><select value={findingForm.type} onChange={(event) => setFindingForm({ ...findingForm, type: event.target.value })}><option value="observation">{text("Observation", "Observatie")}</option><option value="deficiency">{text("Deficiency", "Tekortkoming")}</option><option value="deviation">{text("Deviation", "Afwijking")}</option><option value="ncr">NCR</option><option value="improvement">{text("Improvement opportunity", "Verbeterkans")}</option></select></label>
                 <label className="form-field"><span>{text("Severity", "Ernst")}</span><select value={findingForm.severity} onChange={(event) => setFindingForm({ ...findingForm, severity: event.target.value })}><option value="low">{text("Low · 14 days", "Laag · 14 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label>
               </div>
               <label className="form-field"><span>{text("Title", "Titel")}</span><input value={findingForm.title} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} /></label>
               <label className="form-field"><span>{text("Factual description", "Feitelijke omschrijving")}</span><textarea value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} rows={3} /></label>
+              <div className="form-grid-2">
+                <label className="form-field"><span>{text("Issue type", "Soort issue")}</span><select value={findingForm.issueType} onChange={(event) => setFindingForm({ ...findingForm, issueType: event.target.value })}><option value="quality">{text("Quality / workmanship", "Kwaliteit / uitvoering")}</option><option value="informational">{text("Informational", "Informatief")}</option><option value="procedural">{text("Procedural", "Procedureel")}</option><option value="system">{text("System / installation", "Systeem / installatie")}</option><option value="other">{text("Other", "Overig")}</option></select></label>
+                <label className="form-field"><span>{text("Disposition", "Beoordeling")}</span><select value={findingForm.disposition} onChange={(event) => setFindingForm({ ...findingForm, disposition: event.target.value as typeof findingForm.disposition })}><option value="validated">{text("Validated", "Gevalideerd")}</option><option value="to_be_corrected">{text("To be corrected", "Te corrigeren")}</option><option value="alternative_solution">{text("Alternative solution required", "Alternatieve oplossing nodig")}</option></select></label>
+              </div>
+              <label className="form-field"><span>{text("Impact summary (schedule, scope, resources, space or milestone)", "Impactsamenvatting (planning, scope, middelen, ruimte of mijlpaal)")}</span><textarea value={findingForm.impactSummary} onChange={(event) => setFindingForm({ ...findingForm, impactSummary: event.target.value })} rows={2} /></label>
+              <label className="form-field"><span>{text("Required action steps", "Vereiste actiestappen")}</span><textarea value={findingForm.actionSteps} onChange={(event) => setFindingForm({ ...findingForm, actionSteps: event.target.value })} rows={2} /></label>
+              <div className="form-grid-2">
+                <label className="form-field"><span>{text("Expected resolution date", "Verwachte oplosdatum")}</span><input type="date" value={findingForm.expectedResolutionDate} onChange={(event) => setFindingForm({ ...findingForm, expectedResolutionDate: event.target.value })} /></label>
+                <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required", "Escalatie vereist")}</label>
+              </div>
               <label className="form-field"><span>{text("Responsible party", "Verantwoordelijke partij")}</span><select value={findingForm.responsiblePartyId} onChange={(event) => setFindingForm({ ...findingForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Nog niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
-              <button className="primary-button" type="button" disabled={busy || !reportId || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {text("Save finding", "Bevinding opslaan")}</button>
+              <button className="primary-button" type="button" disabled={busy || !reportId || (!online && !findingPhoto) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Probleem indienen")}</button>
             </div>
           ) : null}
-          <FindingList findings={data.findings} busy={busy} transition={(finding, nextStatus, note, finalMeasure) => run(() => transitionFinding(client, finding.id, nextStatus, note, finalMeasure), `Bevinding ${finding.finding_number} staat nu op ${findingStatusLabels[nextStatus] ?? nextStatus}.`)} />
+          <FindingList
+            findings={data.findings}
+            progressUpdates={data.findingProgressUpdates}
+            projectName={projectName}
+            projectCode={projectCode}
+            buildingName={buildingName}
+            currentUserName={currentUserName}
+            parties={parties}
+            busy={busy}
+            transition={(finding, nextStatus, note, finalMeasure) => run(() => transitionFinding(client, finding.id, nextStatus, note, finalMeasure), `Bevinding ${finding.finding_number} staat nu op ${findingStatusLabels[nextStatus] ?? nextStatus}.`)}
+            recordProgress={(finding, progressPercent, disposition, note) => run(
+              () => recordFindingProgress(client, { findingId: finding.id, progressPercent, disposition, note }),
+              text(`Progress for ${finding.finding_number} recorded; 100% still requires verification.`, `Voortgang voor ${finding.finding_number} vastgelegd; ook 100% vraagt nog verificatie.`),
+            )}
+            share={async (finding) => run(async () => { const shared = await createExternalShareLink(client, projectId, "finding", finding.id); const link = `${window.location.origin}/share/${shared.token}`; const message = `CODECO ${finding.finding_number} · ${finding.title}\n${link}\nGedeelde link vervalt automatisch.`; window.location.assign(`https://wa.me/?text=${encodeURIComponent(message)}`); }, text("Secure WhatsApp link created.", "Beveiligde WhatsApp-link aangemaakt."))}
+          />
         </section>
       ) : null}
 
@@ -481,6 +792,7 @@ function ProjectOperations({
           {showForm ? (
             <div className="operation-form">
               <h2>{text("HSE observation or incident", "HSE-observatie of incident")}</h2>
+              <div className="quick-issue-presets" aria-label={text("Choose a standard HSE record", "Kies een standaard HSE-registratie")}>{hsePresets.map((preset) => <button className={hseForm.title === preset.title ? "active" : ""} type="button" onClick={() => setHseForm({ ...hseForm, ...preset })} key={preset.title}>{preset.title}</button>)}</div>
               <div className="form-grid-2">
                 <label className="form-field"><span>{text("Type", "Type")}</span><select value={hseForm.type} onChange={(event) => setHseForm({ ...hseForm, type: event.target.value })}><option value="positive_observation">{text("Positive observation", "Positieve observatie")}</option><option value="unsafe_act">{text("Unsafe act", "Onveilige handeling")}</option><option value="unsafe_condition">{text("Unsafe condition", "Onveilige situatie")}</option><option value="near_miss">Near miss</option><option value="incident">Incident</option><option value="stop_work">Stop work</option><option value="toolbox">Toolbox meeting</option></select></label>
                 <label className="form-field"><span>{text("Severity", "Ernst")}</span><select value={hseForm.severity} onChange={(event) => setHseForm({ ...hseForm, severity: event.target.value })}><option value="low">{text("Low", "Laag")}</option><option value="medium">{text("Medium", "Middel")}</option><option value="high">{text("High", "Hoog")}</option><option value="critical">{text("Critical", "Kritiek")}</option></select></label>
@@ -499,58 +811,156 @@ function ProjectOperations({
       {tab === "registers" ? (
         <section className="operation-panel">
           {showForm ? (
-            <div className="operation-form">
-              <h2>{text("Add project register item", "Projectregister aanvullen")}</h2>
-              <label className="form-field"><span>{text("Register", "Register")}</span><select value={registerForm.type} onChange={(event) => setRegisterForm({ ...registerForm, type: event.target.value })}>{Object.entries(registerNames).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+            <div className={`operation-form ${controlledRegister ? "wide controlled-document-form" : ""}`}>
+              <div className="operation-form-heading"><div><span className="record-number">{controlledRegister ? text("Client-controlled form", "Klantgestuurd formulier") : text("Project register", "Projectregister")}</span><h2>{controlledRegister ? registerNames[registerForm.type] : text("Add project register item", "Projectregister aanvullen")}</h2></div>{controlledRegister ? <span className="controlled-document-badge">{projectCode} · {buildingName}</span> : null}</div>
+              <label className="form-field"><span>{text("Register / document format", "Register / documentformaat")}</span><select value={registerForm.type} onChange={(event) => setRegisterForm({ ...emptyControlledDocumentDraft, type: event.target.value })}>{Object.entries(registerNames).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+              {activeRegisterPresets.length ? <div className="quick-issue-presets" aria-label={text("Choose a standard register item", "Kies een standaard registeritem")}>{activeRegisterPresets.map((preset) => <button className={registerForm.title === preset.title ? "active" : ""} type="button" onClick={() => setRegisterForm({ ...registerForm, ...preset })} key={preset.title}>{preset.title}</button>)}</div> : null}
               <label className="form-field"><span>{text("Title / reference", "Titel / referentie")}</span><input value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} /></label>
-              <label className="form-field"><span>{text("Details, quantity, measure or decision", "Details, hoeveelheid, maatregel of besluit")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={3} /></label>
-              <label className="form-field"><span>{text("Involved party", "Betrokken partij")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
-              <button className="primary-button" type="button" disabled={busy || !reportId || registerForm.title.trim().length < 3} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {text("Save register item", "Registeritem opslaan")}</button>
+              <label className="form-field"><span>{controlledRegister ? text("Formal request / instruction / observation", "Formeel verzoek / instructie / observatie") : text("Details, quantity, measure or decision", "Details, hoeveelheid, maatregel of besluit")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={controlledRegister ? 5 : 3} /></label>
+              {controlledRegister ? <>
+                <div className="form-grid-2"><label className="form-field"><span>{text("Revision", "Revisie")}</span><input value={registerForm.revision} onChange={(event) => setRegisterForm({ ...registerForm, revision: event.target.value })} /></label><label className="form-field"><span>{text("Response / information required by", "Antwoord / informatie nodig uiterlijk")}</span><input type="date" value={registerForm.dueDate} onChange={(event) => setRegisterForm({ ...registerForm, dueDate: event.target.value })} /></label></div>
+                <div className="form-grid-2"><label className="form-field"><span>{text("Issued by position", "Functie opsteller")}</span><input value={registerForm.issuerPosition} onChange={(event) => setRegisterForm({ ...registerForm, issuerPosition: event.target.value })} /></label><label className="form-field"><span>{text("Issued by company", "Bedrijf opsteller")}</span><input value={registerForm.issuerCompany} onChange={(event) => setRegisterForm({ ...registerForm, issuerCompany: event.target.value })} /></label></div>
+                <div className="form-grid-2"><label className="form-field"><span>{text("Involved project party", "Betrokken projectpartij")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => { const party = parties.find((item) => item.id === event.target.value); setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value, requestedTo: party?.name ?? "" }); }}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name} · {party.type}</option>)}</select></label><label className="form-field"><span>{text("Requested to / recipient name", "Gericht aan / ontvanger")}</span><input value={registerForm.requestedTo} onChange={(event) => setRegisterForm({ ...registerForm, requestedTo: event.target.value })} /></label></div>
+                <div className="form-grid-2"><label className="form-field"><span>{text("Related RFI / NCR / drawing", "Gerelateerde RFI / NCR / tekening")}</span><input value={registerForm.relatedReference} onChange={(event) => setRegisterForm({ ...registerForm, relatedReference: event.target.value })} /></label><label className="form-field"><span>{text("Reference documents", "Referentiedocumenten")}</span><input value={registerForm.referenceDocuments} onChange={(event) => setRegisterForm({ ...registerForm, referenceDocuments: event.target.value })} /></label></div>
+                <label className="form-field"><span>{text("Attachments and page count", "Bijlagen en aantal pagina's")}</span><input value={registerForm.attachments} onChange={(event) => setRegisterForm({ ...registerForm, attachments: event.target.value })} /></label>
+                {registerForm.type === "inspection_request" ? <div className="form-grid-2"><label className="form-field"><span>{text("Inspection category", "Inspectiecategorie")}</span><select value={registerForm.inspectionCategory} onChange={(event) => setRegisterForm({ ...registerForm, inspectionCategory: event.target.value })}><option value="architectural">Architectural</option><option value="structural">Structural</option><option value="mep">MEP</option><option value="testing">Testing</option><option value="other">Other</option></select></label><div className="form-grid-2"><label className="form-field"><span>{text("Ready date", "Gereeddatum")}</span><input type="date" value={registerForm.readyDate} onChange={(event) => setRegisterForm({ ...registerForm, readyDate: event.target.value })} /></label><label className="form-field"><span>{text("Ready time", "Gereedtijd")}</span><input type="time" value={registerForm.readyTime} onChange={(event) => setRegisterForm({ ...registerForm, readyTime: event.target.value })} /></label></div></div> : null}
+                {registerForm.type === "technical_instruction" ? <><div className="form-grid-2"><label className="form-field"><span>{text("Discipline", "Discipline")}</span><select value={registerForm.discipline} onChange={(event) => setRegisterForm({ ...registerForm, discipline: event.target.value })}><option value="architectural">Architectural</option><option value="structural">Structural</option><option value="electrical">Electrical</option><option value="mechanical">Mechanical</option><option value="civil">Civil</option><option value="hse">HSE</option></select></label><label className="form-field"><span>{text("Priority", "Prioriteit")}</span><select value={registerForm.priority} onChange={(event) => setRegisterForm({ ...registerForm, priority: event.target.value })}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select></label></div><label className="form-field"><span>{text("Reason for instruction", "Reden voor instructie")}</span><textarea rows={2} value={registerForm.reason} onChange={(event) => setRegisterForm({ ...registerForm, reason: event.target.value })} /></label><label className="form-field"><span>{text("Required action", "Vereiste actie")}</span><select value={registerForm.requiredAction} onChange={(event) => setRegisterForm({ ...registerForm, requiredAction: event.target.value })}><option value="proceed">Proceed</option><option value="stop">Stop work</option><option value="revise">Revise</option><option value="submit_revised">Submit revised document</option><option value="inspect">Carry out inspection</option><option value="other">Other</option></select></label></> : null}
+                {registerForm.type === "change_order" || registerForm.type === "technical_instruction" ? <><div className="form-grid-2"><label className="form-field"><span>{text("Schedule impact", "Planningimpact")}</span><select value={registerForm.scheduleImpact} onChange={(event) => setRegisterForm({ ...registerForm, scheduleImpact: event.target.value })}><option value="none">None</option><option value="possible">Possible</option><option value="confirmed">Confirmed</option><option value="unknown">To be assessed</option></select></label><label className="form-field"><span>{text("Cost impact", "Kostenimpact")}</span><select value={registerForm.costImpact} onChange={(event) => setRegisterForm({ ...registerForm, costImpact: event.target.value })}><option value="none">None</option><option value="possible">Possible</option><option value="confirmed">Confirmed</option><option value="unknown">To be assessed</option></select></label></div><label className="form-field"><span>{text("Impact explanation", "Toelichting impact")}</span><textarea rows={2} value={registerForm.impactExplanation} onChange={(event) => setRegisterForm({ ...registerForm, impactExplanation: event.target.value })} /></label></> : null}
+                {registerForm.type === "environmental_report" ? <><div className="form-grid-2"><label className="form-field"><span>{text("Period start", "Periode start")}</span><input type="date" value={registerForm.periodStart} onChange={(event) => setRegisterForm({ ...registerForm, periodStart: event.target.value })} /></label><label className="form-field"><span>{text("Period end", "Periode einde")}</span><input type="date" value={registerForm.periodEnd} onChange={(event) => setRegisterForm({ ...registerForm, periodEnd: event.target.value })} /></label></div><div className="form-grid-2"><label className="form-field"><span>{text("Lost hours", "Verloren uren")}</span><input type="number" min="0" value={registerForm.lostHours} onChange={(event) => setRegisterForm({ ...registerForm, lostHours: event.target.value })} /></label><label className="form-field"><span>{text("Reason for lost hours", "Reden verloren uren")}</span><input value={registerForm.lostHoursReason} onChange={(event) => setRegisterForm({ ...registerForm, lostHoursReason: event.target.value })} /></label></div></> : null}
+                <div className="operation-alert warning"><FileCheck2 size={17} /><div><strong>{text("Numbering and metadata are automatic", "Nummering en metadata zijn automatisch")}</strong><span>{text("Project, building, issue date, author and audit history are filled from the current context. Approval, acknowledgement and signature remain explicit human actions.", "Project, gebouw, uitgiftedatum, opsteller en auditgeschiedenis komen uit de actuele context. Goedkeuring, ontvangst en ondertekening blijven expliciete menselijke acties.")}</span></div></div>
+              </> : <label className="form-field"><span>{text("Involved party", "Betrokken partij")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>}
+              <button className="primary-button" type="button" disabled={busy || !reportId || registerForm.title.trim().length < 3 || !controlledFormReady} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : text("Save register item", "Registeritem opslaan")}</button>
             </div>
           ) : null}
+          <div className="boq-import-card">
+            <div><span className="record-number">{text("BOQ import and progress", "BOQ-import en voortgang")}</span><h2>{text("Import the bill of quantities as a controlled project log", "Importeer de meetstaat als gecontroleerd projectlog")}</h2><p>{text("CSV columns: code, description, quantity, unit, unit rate, contract value and progress percentage. The complete import is atomic: an invalid row stores nothing.", "CSV-kolommen: code, omschrijving, hoeveelheid, eenheid, eenheidsprijs, contractbedrag en voortgangspercentage. De volledige import is atomisch: bij een ongeldige rij wordt niets opgeslagen.")}</p></div>
+            <div className="boq-import-actions"><button className="secondary-button" type="button" onClick={downloadBoqCsvTemplate}><Download size={15} /> {text("Download CSV template", "Download CSV-sjabloon")}</button><label className="secondary-button file-button"><Upload size={15} /> {text("Choose BOQ file", "Kies BOQ-bestand")}<input type="file" accept="text/csv,.csv" hidden onChange={(event) => void inspectBoqFile(event.target.files?.[0] ?? null)} /></label><button className="primary-button" type="button" disabled={busy || !boqItems.length} onClick={() => void importBoq()}><PackageCheck size={15} /> {text("Import BOQ", "Importeer BOQ")}</button></div>
+            {boqFile ? <span className="boq-file-summary"><strong>{boqFile.name}</strong>{boqItems.length ? ` · ${boqItems.length} ${text("validated rows", "gevalideerde regels")}` : ""}</span> : null}
+            {boqError ? <span className="field-error">{boqError}</span> : null}
+            {boqItems.length ? <div className="boq-preview"><span>{text("First validated lines", "Eerste gevalideerde regels")}</span>{boqItems.slice(0, 5).map((item) => <div key={`${item.code}:${item.source_row}`}><strong>{item.code}</strong><span>{item.description}</span><small>{item.quantity ?? "-"} {item.unit} · {item.progress_percent}%</small></div>)}</div> : null}
+          </div>
           <div className="register-summary-grid">{Object.entries(registerNames).map(([type, label]) => <div className="register-summary" key={type}><strong>{data.registerEntries.filter((entry) => entry.register_type === type).length}</strong><span>{label}</span></div>)}</div>
-          <RecordList empty={text("No additional project registers yet.", "Nog geen aanvullende projectregisters.")} rows={data.registerEntries.map((entry) => ({ id: entry.id, icon: Wrench, title: entry.title, meta: `${entry.entry_number} · ${registerNames[entry.register_type] ?? entry.register_type} · ${formatDate(entry.occurred_at, locale)}`, status: entry.status, tone: entry.status === "closed" || entry.status === "approved" ? "green" : "" }))} />
+          <ControlledDocumentList entries={data.registerEntries.filter((entry) => isControlledDocumentType(entry.register_type))} busy={busy} currentUserName={currentUserName} client={client} run={run} />
+          <RecordList empty={text("No additional project registers yet.", "Nog geen aanvullende projectregisters.")} rows={data.registerEntries.filter((entry) => !isControlledDocumentType(entry.register_type)).map((entry) => ({ id: entry.id, icon: Wrench, title: entry.title, meta: `${entry.entry_number} · ${registerNames[entry.register_type] ?? entry.register_type} · ${formatDate(entry.occurred_at, locale)}`, status: entry.status, tone: entry.status === "closed" || entry.status === "approved" ? "green" : "" }))} />
         </section>
       ) : null}
 
-      {tab === "visual" ? <VisualEvidenceWorkspace data={data} projectId={projectId} buildingId={buildingId} reportId={reportId} parties={parties} client={client} busy={busy} run={run} /> : null}
+      {tab === "visual" ? <VisualEvidenceWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} reportId={reportId} parties={parties} client={client} busy={busy} run={run} /> : null}
 
-      {tab === "files" ? (
-        <section className="operation-panel">
-          {!isStorageGatewayConfigured ? <div className="operation-alert warning"><HardDrive size={18} /><div><strong>{text("Private Vercel Blob storage required", "Private Vercel Blob-opslag vereist")}</strong><span>{text("Connect a private Blob store to the Vercel project before uploading files.", "Koppel een private Blob-store aan het Vercel-project voordat bestanden worden geüpload.")}</span></div></div> : (
-            <div className="operation-form">
-              <h2>{text("Upload file to private CODECO storage", "Bestand naar private CODECO-opslag uploaden")}</h2>
-              <div className="form-grid-2"><label className="form-field"><span>{text("Category", "Categorie")}</span><select value={uploadCategory} onChange={(event) => setUploadCategory(event.target.value)}><option value="photo">{text("Photo", "Foto")}</option><option value="document">Document</option><option value="certificate">{text("Certificate", "Certificaat")}</option><option value="drawing">{text("Drawing", "Tekening")}</option><option value="evidence">{text("Repair evidence", "Herstelbewijs")}</option></select></label><label className="form-field"><span>{text("File", "Bestand")} · max. {data.settings?.max_file_size_mb ?? 25} MB</span><input type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv" onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)} /></label></div>
-              {uploadProgress > 0 ? <div className="upload-progress" aria-label={`Upload ${uploadProgress}%`}><span style={{ width: `${uploadProgress}%` }} /><small>{uploadProgress}%</small></div> : null}
-              <button className="primary-button" type="button" disabled={busy || !uploadFile || uploadFile.size > (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024} onClick={() => uploadFile && void run(() => uploadProjectFile(client, { projectId, buildingId, category: uploadCategory, file: uploadFile, onProgress: setUploadProgress }), text("File authorized and stored in private Vercel Blob.", "Bestand geautoriseerd en in private Vercel Blob opgeslagen.")).then((okay) => { if (okay) { setUploadFile(null); setUploadProgress(0); } })}><HardDrive size={15} /> {text("Start secure upload", "Veilige upload starten")}</button>
-            </div>
-          )}
-          {data.files.length === 0 ? <div className="empty-list-state"><FileText size={22} /><strong>{text("No files yet", "Nog geen bestanden")}</strong><span>{text("Photos, drawings, certificates and evidence appear here without public storage links.", "Foto’s, tekeningen, certificaten en bewijs verschijnen hier zonder openbare opslaglinks.")}</span></div> : <div className="record-stack">{data.files.map((file) => <button className="record-row file-record-row" type="button" disabled={file.status !== "available" || !isStorageGatewayConfigured} onClick={() => void run(() => downloadProjectFile(client, file.id, file.original_name), text("Authorized download started.", "Geautoriseerde download gestart."))} key={file.id}><span className="action-icon"><FileText size={18} /></span><div><strong>{file.original_name}</strong><span>{file.category} · {(file.size_bytes / 1_000_000).toFixed(1)} MB · {formatDate(file.created_at, locale)}</span></div><span className={`task-status ${file.status === "available" ? "green" : ""}`}>{file.status}</span></button>)}</div>}
-        </section>
-      ) : null}
+      {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} client={client} busy={busy} run={run} /> : null}
+
+      {tab === "tools" ? <FieldTools data={data} projectId={projectId} buildingId={buildingId} reportId={reportId} client={client} busy={busy} run={run} /> : null}
+
+      {tab === "files" ? <MediaLibraryWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} reportId={reportId} client={client} busy={busy} run={run} /> : null}
     </>
   );
 }
 
-function FindingList({ findings, busy, transition }: { findings: Finding[]; busy: boolean; transition: (finding: Finding, nextStatus: string, note: string, finalMeasure: string) => Promise<boolean> }) {
+function ControlledDocumentList({ entries, busy, currentUserName, client, run }: {
+  entries: OperationSnapshot["registerEntries"];
+  busy: boolean;
+  currentUserName: string;
+  client: SupabaseClient;
+  run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
+}) {
+  const { locale, text } = useLanguage();
+  const [active, setActive] = useState<string | null>(null);
+  const [response, setResponse] = useState({
+    decision: "approved",
+    comments: "",
+    respondentName: currentUserName,
+    respondentPosition: "",
+    respondentCompany: "CODECO N.V.",
+  });
+  const decisions = [
+    ["approved", text("Approved", "Goedgekeurd")],
+    ["conditionally_approved", text("Conditionally approved", "Voorwaardelijk goedgekeurd")],
+    ["approved_with_comments", text("Approved with comments", "Goedgekeurd met opmerkingen")],
+    ["clarification_needed", text("Clarification needed", "Verduidelijking nodig")],
+    ["correct_and_resubmit", text("Correct and resubmit", "Corrigeren en opnieuw indienen")],
+    ["rejected", text("Rejected", "Afgewezen")],
+    ["acknowledged", text("Acknowledged", "Ontvangst bevestigd")],
+    ["completed", text("Completed / closeout", "Voltooid / afsluiting")],
+  ];
+  if (!entries.length) return null;
+  return (
+    <section className="controlled-document-register">
+      <div className="controlled-document-register-heading"><div><span className="record-number">{text("Formal client documents", "Formele klantdocumenten")}</span><h2>RFI · RFA · WIR · TI · CO · ER</h2></div><span>{entries.length} {text("controlled records", "beheerde registraties")}</span></div>
+      <div className="record-stack">
+        {entries.map((entry) => {
+          const details = entry.details ?? {};
+          const responseData = details.response && typeof details.response === "object" && !Array.isArray(details.response) ? details.response as Record<string, unknown> : {};
+          return <article className="controlled-document-card" key={entry.id}>
+            <div className="controlled-document-card-main"><div><span className="record-number">{entry.entry_number} · {entry.register_type.replaceAll("_", " ").toUpperCase()}</span><h3>{entry.title}</h3><p>{String(details.description ?? "")}</p><small>{formatDate(entry.occurred_at, locale)}{entry.due_at ? ` · ${text("due", "uiterlijk")} ${formatDate(entry.due_at, locale)}` : ""}{responseData.decision ? ` · ${String(responseData.decision).replaceAll("_", " ")}` : ""}</small></div><span className={`task-status ${entry.status === "approved" || entry.status === "closed" ? "green" : entry.status === "rejected" ? "red" : ""}`}>{entry.status.replaceAll("_", " ")}</span></div>
+            <div className="finding-actions"><button className="secondary-button" type="button" disabled={busy} onClick={() => void import("@/lib/reports/controlled-document-pdf").then(({ downloadControlledDocumentPdf }) => downloadControlledDocumentPdf(entry))}><Download size={15} /> {text("Download client-format PDF", "Download PDF in klantformaat")}</button>{!["closed", "cancelled"].includes(entry.status) ? <button className="primary-button" type="button" disabled={busy} onClick={() => { setActive(active === entry.id ? null : entry.id); setResponse({ decision: entry.register_type === "technical_instruction" || entry.register_type === "change_order" ? "acknowledged" : "approved", comments: "", respondentName: currentUserName, respondentPosition: "", respondentCompany: "CODECO N.V." }); }}><FileCheck2 size={15} /> {text("Record formal response", "Leg formeel antwoord vast")}</button> : null}</div>
+            {active === entry.id ? <div className="inline-transition controlled-response-form">
+              <div className="form-grid-2"><label className="form-field"><span>{text("Decision / response code", "Besluit / antwoordcode")}</span><select value={response.decision} onChange={(event) => setResponse({ ...response, decision: event.target.value })}>{decisions.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label className="form-field"><span>{text("Respondent name", "Naam respondent")}</span><input value={response.respondentName} onChange={(event) => setResponse({ ...response, respondentName: event.target.value })} /></label></div>
+              <div className="form-grid-2"><label className="form-field"><span>{text("Position", "Functie")}</span><input value={response.respondentPosition} onChange={(event) => setResponse({ ...response, respondentPosition: event.target.value })} /></label><label className="form-field"><span>{text("Company", "Bedrijf")}</span><input value={response.respondentCompany} onChange={(event) => setResponse({ ...response, respondentCompany: event.target.value })} /></label></div>
+              <label className="form-field"><span>{text("Formal comments / remarks", "Formele opmerkingen")}</span><textarea rows={3} value={response.comments} onChange={(event) => setResponse({ ...response, comments: event.target.value })} /></label>
+              <button className="primary-button" type="button" disabled={busy || response.respondentName.trim().length < 2 || response.comments.trim().length < 2} onClick={() => void run(() => respondToControlledDocument(client, entry.id, response), text(`${entry.entry_number} response stored in the audit trail.`, `Antwoord op ${entry.entry_number} in de auditgeschiedenis opgeslagen.`)).then((okay) => { if (okay) setActive(null); })}>{text("Confirm human response", "Bevestig menselijk antwoord")}</button>
+            </div> : null}
+          </article>;
+        })}
+      </div>
+    </section>
+  );
+}
+
+function FindingList({ findings, progressUpdates, projectName, projectCode, buildingName, currentUserName, parties, busy, transition, recordProgress, share }: {
+  findings: Finding[];
+  progressUpdates: OperationSnapshot["findingProgressUpdates"];
+  projectName: string;
+  projectCode: string;
+  buildingName: string;
+  currentUserName: string;
+  parties: ProjectParty[];
+  busy: boolean;
+  transition: (finding: Finding, nextStatus: string, note: string, finalMeasure: string) => Promise<boolean>;
+  recordProgress: (finding: Finding, progressPercent: number, disposition: "validated" | "to_be_corrected" | "alternative_solution", note: string) => Promise<boolean>;
+  share: (finding: Finding) => Promise<boolean>;
+}) {
   const { language, locale, text } = useLanguage();
   const statusLabels = language === "en" ? findingStatusLabelsEnglish : findingStatusLabels;
   const [active, setActive] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [measure, setMeasure] = useState("");
+  const [progressActive, setProgressActive] = useState<string | null>(null);
+  const [progressPercent, setProgressPercent] = useState("0");
+  const [progressDisposition, setProgressDisposition] = useState<"validated" | "to_be_corrected" | "alternative_solution">("to_be_corrected");
+  const [progressNote, setProgressNote] = useState("");
   const next: Record<string, string> = { open: "in_progress", assigned: "in_progress", reopened: "in_progress", in_progress: "ready_for_verification", ready_for_verification: "closed" };
+  const noteChoices: Record<string, string[]> = {
+    in_progress: [text("Follow-up has started.", "Opvolging is gestart."), text("Responsible party has started the repair.", "Verantwoordelijke partij is met herstel gestart.")],
+    ready_for_verification: [text("Repair completed; ready for CODECO verification.", "Herstel uitgevoerd; gereed voor CODECO-verificatie."), text("Required work completed and evidence added.", "Vereist werk uitgevoerd en bewijs toegevoegd.")],
+    closed: [text("Repair inspected and accepted.", "Herstel geïnspecteerd en akkoord."), text("Finding verified against the approved requirement.", "Bevinding getoetst aan de goedgekeurde eis en akkoord.")],
+  };
+  const measureChoices = [
+    text("Defect repaired according to the approved drawing.", "Gebrek hersteld volgens de goedgekeurde tekening."),
+    text("Work completed and the area cleaned.", "Werk afgerond en de werkzone schoongemaakt."),
+    text("Unsafe condition corrected and control measure applied.", "Onveilige situatie gecorrigeerd en beheersmaatregel toegepast."),
+  ];
   return (
     <div className="record-stack">
       {findings.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No findings yet", "Nog geen bevindingen")}</strong><span>{text("Failed inspection points and manual NCRs appear here.", "Afgekeurde inspectiepunten en handmatige NCR’s verschijnen hier.")}</span></div> : null}
       {findings.map((finding) => {
         const nextStatus = next[finding.status];
+        const latestProgress = progressUpdates.find((item) => item.finding_id === finding.id);
+        const issue = finding.issue_management ?? {};
         return (
           <article className="finding-card" key={finding.id}>
-            <div className="finding-card-main"><span className={`record-severity ${finding.severity}`}>{finding.severity}</span><div><span className="record-number">{finding.finding_number} · {finding.finding_type.toUpperCase()}</span><h3>{finding.title}</h3><p>{finding.description}</p><small>Deadline {formatDate(finding.due_at, locale)}{finding.verified_at ? ` · ${text("verified", "geverifieerd")} ${formatDate(finding.verified_at, locale)}` : ""}</small></div><span className={`task-status ${finding.status === "closed" ? "green" : finding.severity === "critical" ? "red" : ""}`}>{statusLabels[finding.status] ?? finding.status}</span></div>
-            {nextStatus ? <div className="finding-actions"><button className="secondary-button" type="button" onClick={() => setActive(active === finding.id ? null : finding.id)}>{nextStatus === "closed" ? text("Verify", "Verifiëren") : nextStatus === "ready_for_verification" ? text("Mark repair ready", "Herstel gereedmelden") : text("Update status", "Status bijwerken")}</button></div> : null}
+            <div className="finding-card-main"><span className={`record-severity ${finding.severity}`}>{finding.severity}</span><div><span className="record-number">{finding.finding_number} · {finding.finding_type.toUpperCase()}</span><h3>{finding.title}</h3><p>{finding.description}</p>{issue.action_steps ? <p className="finding-required-action"><strong>{text("Required action:", "Vereiste actie:")}</strong> {issue.action_steps}</p> : null}<small>Deadline {formatDate(finding.due_at, locale)}{latestProgress ? ` · ${text("progress", "voortgang")} ${latestProgress.progress_percent}% · ${latestProgress.disposition.replaceAll("_", " ")}` : ""}{finding.verified_at ? ` · ${text("verified", "geverifieerd")} ${formatDate(finding.verified_at, locale)}` : ""}</small></div><span className={`task-status ${finding.status === "closed" ? "green" : finding.severity === "critical" ? "red" : ""}`}>{statusLabels[finding.status] ?? finding.status}</span></div>
+            <div className="finding-actions"><button className="whatsapp-button" type="button" disabled={busy} onClick={() => void share(finding)}><MessageCircle size={15} /> WhatsApp-link</button><button className="secondary-button" type="button" disabled={busy} onClick={() => void import("@/lib/reports/ncr-pdf").then(({ downloadNcrPdf }) => downloadNcrPdf(finding, latestProgress, { projectName, projectCode, buildingName, issuerName: currentUserName, responsiblePartyName: parties.find((party) => party.id === finding.responsible_party_id)?.name ?? "" }))}><Download size={15} /> {text("NCR client PDF", "NCR-klant-PDF")}</button>{!["closed", "cancelled", "rejected"].includes(finding.status) ? <button className="secondary-button" type="button" onClick={() => { setProgressActive(progressActive === finding.id ? null : finding.id); setProgressPercent(String(latestProgress?.progress_percent ?? 0)); setProgressDisposition(latestProgress?.disposition ?? issue.disposition ?? "to_be_corrected"); }}>{text("Record inspection progress", "Inspectievoortgang vastleggen")}</button> : null}{nextStatus ? <button className="secondary-button" type="button" onClick={() => setActive(active === finding.id ? null : finding.id)}>{nextStatus === "closed" ? text("Verify", "Verifiëren") : nextStatus === "ready_for_verification" ? text("Mark repair ready", "Herstel gereedmelden") : text("Update status", "Status bijwerken")}</button> : null}</div>
+            {progressActive === finding.id ? (
+              <div className="inline-transition issue-progress-form">
+                <div className="form-grid-2"><label className="form-field"><span>{text("Progress at this inspection", "Voortgang bij deze inspectie")}</span><input type="number" min="0" max="100" step="1" value={progressPercent} onChange={(event) => setProgressPercent(event.target.value)} /></label><label className="form-field"><span>{text("Disposition", "Beoordeling")}</span><select value={progressDisposition} onChange={(event) => setProgressDisposition(event.target.value as typeof progressDisposition)}><option value="validated">{text("Validated", "Gevalideerd")}</option><option value="to_be_corrected">{text("To be corrected", "Te corrigeren")}</option><option value="alternative_solution">{text("Alternative solution", "Alternatieve oplossing")}</option></select></label></div>
+                <label className="form-field"><span>{text("Inspection note", "Inspectienotitie")}</span><textarea rows={2} value={progressNote} onChange={(event) => setProgressNote(event.target.value)} /></label>
+                <button className="primary-button" type="button" disabled={busy || Number(progressPercent) < 0 || Number(progressPercent) > 100 || progressNote.trim().length < 2} onClick={() => void recordProgress(finding, Number(progressPercent), progressDisposition, progressNote).then((okay) => { if (okay) { setProgressActive(null); setProgressNote(""); } })}>{text("Save dated progress point", "Sla gedateerd voortgangspunt op")}</button>
+              </div>
+            ) : null}
             {active === finding.id && nextStatus ? (
               <div className="inline-transition">
-                {nextStatus === "ready_for_verification" ? <label className="form-field"><span>{text("Final measure", "Definitieve maatregel")}</span><textarea rows={2} value={measure} onChange={(event) => setMeasure(event.target.value)} /></label> : null}
+                {nextStatus === "ready_for_verification" ? <><div className="quick-issue-presets" aria-label={text("Choose the completed measure", "Kies de uitgevoerde maatregel")}>{measureChoices.map((choice) => <button className={measure === choice ? "active" : ""} type="button" onClick={() => setMeasure(choice)} key={choice}>{choice}</button>)}</div><label className="form-field"><span>{text("Final measure", "Definitieve maatregel")}</span><textarea rows={2} value={measure} onChange={(event) => setMeasure(event.target.value)} /></label></> : null}
+                <div className="quick-issue-presets" aria-label={text("Choose a status note", "Kies een statusnotitie")}>{(noteChoices[nextStatus] ?? []).map((choice) => <button className={note === choice ? "active" : ""} type="button" onClick={() => setNote(choice)} key={choice}>{choice}</button>)}</div>
                 <label className="form-field"><span>{nextStatus === "closed" ? text("Verification finding", "Verificatiebevinding") : text("Comment", "Toelichting")}</span><textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} /></label>
                 <button className="primary-button" type="button" disabled={busy || note.trim().length < 2 || (nextStatus === "ready_for_verification" && measure.trim().length < 3)} onClick={() => void transition(finding, nextStatus, note, measure).then((okay) => { if (okay) { setActive(null); setNote(""); setMeasure(""); } })}>{text("Confirm human status change", "Bevestig menselijke statuswijziging")}</button>
               </div>
@@ -562,7 +972,7 @@ function FindingList({ findings, busy, transition }: { findings: Finding[]; busy
   );
 }
 
-function ReportOperations({ data, reportId, reportNumber, reportStatus, currentUserName, busy, run, client }: { data: OperationSnapshot; reportId: string | null; reportNumber: string; reportStatus: string; currentUserName: string; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>; client: SupabaseClient }) {
+function ReportOperations({ data, reportId, reportNumber, reportStatus, currentUserName, projectId, projectName, busy, run, client }: { data: OperationSnapshot; reportId: string | null; reportNumber: string; reportStatus: string; currentUserName: string; projectId: string; projectName: string; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>; client: SupabaseClient }) {
   const { language, locale, text } = useLanguage();
   const statusLabels = language === "en" ? reportStatusLabelsEnglish : reportStatusLabels;
   const [reviewComment, setReviewComment] = useState("");
@@ -570,12 +980,40 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
   const [declaration, setDeclaration] = useState(() => text("I declare that I reviewed this fixed report version and confirmed it truthfully.", "Ik verklaar dat ik deze vastgezette rapportversie heb gecontroleerd en naar waarheid heb bevestigd."));
   const [distribution, setDistribution] = useState({ name: "", address: "", channel: "manual" });
   const [revisionReason, setRevisionReason] = useState("");
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(new Date());
+  const [period, setPeriod] = useState({ start: `${today.slice(0, 8)}01`, end: today });
+  const reportChoices: Array<{ id: string; title: string; sections: PeriodReportSection[] }> = [
+    { id: "complete", title: text("Complete project report", "Compleet projectrapport"), sections: ["management", "workforce", "work", "quality", "hse", "actions", "logistics", "instructions", "commercial", "communications", "requests", "boq", "visual", "documents", "environment", "buildings"] },
+    { id: "management", title: text("Management report", "Managementrapport"), sections: ["management", "workforce", "work", "actions", "commercial"] },
+    { id: "execution", title: text("Execution and progress", "Uitvoering & voortgang"), sections: ["management", "workforce", "work", "logistics", "visual"] },
+    { id: "quality", title: text("Quality and HSE", "Kwaliteit & HSE"), sections: ["quality", "hse", "environment", "actions", "visual", "buildings"] },
+    { id: "contract", title: text("Contract and decisions", "Contract & besluiten"), sections: ["management", "instructions", "commercial", "communications", "requests", "documents", "boq"] },
+    { id: "visual", title: text("Visual progress report", "Visueel voortgangsrapport"), sections: ["visual", "work"] },
+  ];
+  const [reportChoice, setReportChoice] = useState("complete");
+  const [periodLabel, setPeriodLabel] = useState(() => text("Monthly supervision report", "Maandelijks supervisierapport"));
+  const selectedReport = reportChoices.find((choice) => choice.id === reportChoice) ?? reportChoices[0];
+  const applyDatePreset = (days: number, label: string) => {
+    const start = new Date(`${today}T12:00:00-03:00`);
+    start.setDate(start.getDate() - Math.max(0, days - 1));
+    setPeriod({ start: new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(start), end: today });
+    setPeriodLabel(label);
+  };
   const canReview = reportStatus === "ready_for_review" || reportStatus === "in_review";
   const canSign = reportStatus === "approved" || reportStatus === "signed";
   const canDistribute = reportStatus === "signed" || reportStatus === "sent";
   return (
     <>
       <header className="secondary-header"><div><p className="eyebrow">{text("Formal report workflow", "Formele rapportworkflow")}</p><h1>{reportNumber}</h1><p>{text("Immutable version, review, declarations, distribution and revision history.", "Immutable versie, review, verklaringen, distributie en revisiehistorie.")}</p></div><span className={`report-state-pill ${reportStatus}`}>{statusLabels[reportStatus] ?? reportStatus}</span></header>
+      <section className="period-report-card">
+        <div className="workflow-icon"><CalendarRange size={20} /></div>
+        <div className="period-report-copy"><span className="record-number">{text("Required client period report", "Verplicht klant-perioderapport")}</span><h2>{text("Daily, weekly, monthly or freely selected period", "Dagelijks, wekelijks, maandelijks of vrij gekozen periode")}</h2><p>{text("The PDF is generated from one permission-filtered server snapshot and includes workforce, progress, inspections, findings/NCR, HSE, deliveries, delays, technical instructions, change orders, agreements, deadlines and visual evidence.", "De PDF komt uit één rechten-gefilterde servermomentopname en bevat bezetting, voortgang, inspecties, bevindingen/NCR, HSE, leveringen, vertragingen, technische instructies, change orders, afspraken, deadlines en visueel bewijs.")}</p></div>
+        <div className="period-report-types" role="radiogroup" aria-label={text("Report type", "Rapporttype")}>{reportChoices.map((choice) => <button className={reportChoice === choice.id ? "active" : ""} type="button" role="radio" aria-checked={reportChoice === choice.id} onClick={() => setReportChoice(choice.id)} key={choice.id}><strong>{choice.title}</strong><span>{choice.sections.length} {text("automatic sections", "automatische onderdelen")}</span></button>)}</div>
+        <div className="period-date-presets"><button type="button" onClick={() => applyDatePreset(1, text("Daily supervision report", "Dagelijks supervisierapport"))}>{text("Daily format", "Dagformaat")}</button><button type="button" onClick={() => applyDatePreset(7, text("Weekly supervision report", "Wekelijks supervisierapport"))}>{text("Weekly format", "Weekformaat")}</button><button type="button" onClick={() => { setPeriod({ start: `${today.slice(0, 8)}01`, end: today }); setPeriodLabel(text("Monthly supervision report", "Maandelijks supervisierapport")); }}>{text("Monthly format", "Maandformaat")}</button></div>
+        <label className="form-field"><span>{text("From", "Van")}</span><input type="date" value={period.start} max={period.end} onChange={(event) => { setPeriod({ ...period, start: event.target.value }); setPeriodLabel(text("Period supervision report", "Supervisierapport over periode")); }} /></label>
+        <label className="form-field"><span>{text("Through", "Tot en met")}</span><input type="date" value={period.end} min={period.start} max={today} onChange={(event) => { setPeriod({ ...period, end: event.target.value }); setPeriodLabel(text("Period supervision report", "Supervisierapport over periode")); }} /></label>
+        <button className="primary-button" type="button" disabled={busy || !period.start || !period.end || period.end < period.start} onClick={() => void run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, period.start, period.end); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { sections: selectedReport.sections, reportTitle: `${periodLabel} · ${selectedReport.title}` }); }, text(`${periodLabel} for ${projectName} downloaded.`, `${periodLabel} voor ${projectName} gedownload.`))}><FileText size={15} /> {text("Create selected report", "Maak gekozen rapport")}</button>
+      </section>
       {!reportId ? <div className="operation-alert warning"><AlertTriangle size={18} /> {text("Start the daily report through Project start first.", "Start eerst het dagrapport via Projectstart.")}</div> : null}
       <section className="workflow-grid">
         <div className="workflow-card"><div className="workflow-icon"><ClipboardCheck size={19} /></div><h2>1. Review</h2><p>{text("An authorized reviewer approves or returns the report with a reason. Approval automatically freezes the complete snapshot with SHA-256.", "Een bevoegde reviewer keurt goed of stuurt gemotiveerd terug. Bij goedkeuring bevriest de database automatisch de volledige momentopname met SHA-256.")}</p><label className="form-field"><span>{text("Review comment", "Reviewcommentaar")}</span><textarea rows={3} value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} /></label><div className="button-row"><button className="secondary-button" type="button" disabled={busy || !reportId || !canReview || reviewComment.trim().length < 2} onClick={() => void run(() => reviewReport(client, reportId!, "returned", reviewComment), text("Report returned for correction with a reason.", "Rapport gemotiveerd teruggestuurd voor correctie."))}>{text("Return", "Terugsturen")}</button><button className="primary-button" type="button" disabled={busy || !reportId || !canReview || reviewComment.trim().length < 2} onClick={() => void run(() => reviewReport(client, reportId!, "approved", reviewComment), text("Report approved and frozen as an immutable version.", "Rapport goedgekeurd en als immutable versie vastgezet."))}><FileCheck2 size={15} /> {text("Approve and freeze", "Goedkeuren & vastzetten")}</button></div></div>
@@ -597,9 +1035,10 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
   const { text } = useLanguage();
   const [section, setSection] = useState<"overview" | "settings" | "structure" | "templates" | "backup">("overview");
   const [template, setTemplate] = useState({ module: "inspection", code: "", name: "", prompts: "" });
-  const [settings, setSettings] = useState(() => ({ maxFileSizeMb: data.settings?.max_file_size_mb ?? 25, leadHours: data.settings?.notification_lead_hours ?? 24, retentionDays: data.settings?.retention_days?.toString() ?? "", reportPrefix: data.settings?.report_prefix ?? "DR" }));
+  const [settings, setSettings] = useState(() => ({ maxFileSizeMb: data.settings?.max_file_size_mb ?? 25, leadHours: data.settings?.notification_lead_hours ?? 24, retentionDays: data.settings?.retention_days?.toString() ?? "", reportPrefix: data.settings?.report_prefix ?? "DR", pushNotificationsEnabled: data.settings?.push_notifications_enabled ?? true }));
   const [location, setLocation] = useState({ type: "zone", code: "", name: "", parentId: "", description: "" });
   const [party, setParty] = useState({ type: "contractor", code: "", name: "" });
+  const [libraryCategory, setLibraryCategory] = useState("all");
   const fileInput = useRef<HTMLInputElement>(null);
   const latestScheduledBackup = data.backupRuns.find((item) => item.run_type === "scheduled" && item.status === "verified");
   const latestRestoreTest = data.backupRuns.find((item) => item.run_type === "restore_test" && item.status === "dry_run_passed");
@@ -628,9 +1067,24 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
         </div>
         <div className="management-context"><div><span>{text("Current report", "Huidig rapport")}</span><strong>{reportStatus.replaceAll("_", " ")}</strong></div><div><span>{text("Project locations", "Projectlocaties")}</span><strong>{data.locationNodes.length}</strong></div><div><span>{text("Published checklists", "Gepubliceerde checklists")}</span><strong>{data.templates.filter((item) => item.status === "published").length}</strong></div><div><span>{text("Controlled files", "Beheerde bestanden")}</span><strong>{data.files.length}</strong></div></div>
       </section> : null}
-      {section === "settings" ? <section className="operation-panel"><div className="admin-card-grid">{canManageOrganization ? <button className="module-card" type="button" onClick={openUserAdmin}><span className="module-card-icon"><Users size={19} /></span><h2>{text("Users and access", "Gebruikers en toegang")}</h2><p>{text("Only administrators create internal accounts and assign organization or project roles.", "Alleen beheerders maken interne accounts en wijzen organisatie- of projectrollen toe.")}</p></button> : null}<MfaSecurityCard client={client} /><div className="operation-form"><h2>{text("Project rules", "Projectregels")}</h2><div className="form-grid-2"><label className="form-field"><span>{text("Report prefix", "Rapportprefix")}</span><input value={settings.reportPrefix} onChange={(event) => setSettings({ ...settings, reportPrefix: event.target.value.toUpperCase() })} /></label><label className="form-field"><span>{text("File limit (MB)", "Bestandslimiet (MB)")}</span><input type="number" min="1" max="100" value={settings.maxFileSizeMb} onChange={(event) => setSettings({ ...settings, maxFileSizeMb: Number(event.target.value) })} /></label><label className="form-field"><span>{text("Reminder before deadline (hours)", "Herinnering vóór deadline (uur)")}</span><input type="number" min="1" max="720" value={settings.leadHours} onChange={(event) => setSettings({ ...settings, leadHours: Number(event.target.value) })} /></label><label className="form-field"><span>{text("Retention period (days)", "Bewaartermijn (dagen)")}</span><input type="number" min="30" value={settings.retentionDays} onChange={(event) => setSettings({ ...settings, retentionDays: event.target.value })} placeholder={text("Client decision required", "Klantbesluit vereist")} /></label></div><button className="primary-button" type="button" disabled={busy || !data.settings} onClick={() => data.settings && void run(() => saveProjectSettings(client, data.settings!, { report_prefix: settings.reportPrefix, max_file_size_mb: settings.maxFileSizeMb, notification_lead_hours: settings.leadHours, retention_days: settings.retentionDays ? Number(settings.retentionDays) : null }), text("Project rules stored centrally and audited.", "Projectregels centraal opgeslagen en geaudit."))}><Settings size={15} /> {text("Save rules", "Regels opslaan")}</button></div></div></section> : null}
+      {section === "settings" ? <section className="operation-panel"><div className="admin-card-grid">{canManageOrganization ? <button className="module-card" type="button" onClick={openUserAdmin}><span className="module-card-icon"><Users size={19} /></span><h2>{text("Users and access", "Gebruikers en toegang")}</h2><p>{text("Only administrators create internal accounts and assign organization or project roles.", "Alleen beheerders maken interne accounts en wijzen organisatie- of projectrollen toe.")}</p></button> : null}<MfaSecurityCard client={client} /><div className="operation-form"><h2>{text("Project rules", "Projectregels")}</h2><div className="form-grid-2"><label className="form-field"><span>{text("Report prefix", "Rapportprefix")}</span><input value={settings.reportPrefix} onChange={(event) => setSettings({ ...settings, reportPrefix: event.target.value.toUpperCase() })} /></label><label className="form-field"><span>{text("File limit (MB)", "Bestandslimiet (MB)")}</span><input type="number" min="1" max="100" value={settings.maxFileSizeMb} onChange={(event) => setSettings({ ...settings, maxFileSizeMb: Number(event.target.value) })} /></label><label className="form-field"><span>{text("Reminder before deadline (hours)", "Herinnering vóór deadline (uur)")}</span><input type="number" min="1" max="720" value={settings.leadHours} onChange={(event) => setSettings({ ...settings, leadHours: Number(event.target.value) })} /></label><label className="form-field"><span>{text("Retention period (days)", "Bewaartermijn (dagen)")}</span><input type="number" min="30" value={settings.retentionDays} onChange={(event) => setSettings({ ...settings, retentionDays: event.target.value })} placeholder={text("Client decision required", "Klantbesluit vereist")} /></label></div><label className="confirmation-check"><input type="checkbox" checked={settings.pushNotificationsEnabled} onChange={(event) => setSettings({ ...settings, pushNotificationsEnabled: event.target.checked })} /><span><strong>{text("Automatic push notifications for deadlines", "Automatische pushmeldingen voor deadlines")}</strong><small>{text("Users activate delivery once per device; the in-app inbox keeps the auditable copy.", "Gebruikers activeren bezorging één keer per apparaat; de inbox bewaart de auditeerbare kopie.")}</small></span></label><button className="primary-button" type="button" disabled={busy || !data.settings} onClick={() => data.settings && void run(() => saveProjectSettings(client, data.settings!, { report_prefix: settings.reportPrefix, max_file_size_mb: settings.maxFileSizeMb, notification_lead_hours: settings.leadHours, push_notifications_enabled: settings.pushNotificationsEnabled, email_notifications_enabled: false, retention_days: settings.retentionDays ? Number(settings.retentionDays) : null }), text("Project rules stored centrally and audited.", "Projectregels centraal opgeslagen en geaudit."))}><Settings size={15} /> {text("Save rules", "Regels opslaan")}</button></div></div></section> : null}
       {section === "structure" ? <section className="operation-panel"><div className="admin-card-grid"><div className="operation-form"><h2>Locatieboom · {buildingName}</h2><div className="form-grid-2"><label className="form-field"><span>Type</span><select value={location.type} onChange={(event) => setLocation({ ...location, type: event.target.value })}><option value="zone">Zone</option><option value="floor">Verdieping</option><option value="room">Ruimte</option><option value="element">Element</option><option value="work_package">Werkpakket</option></select></label><label className="form-field"><span>Code</span><input value={location.code} onChange={(event) => setLocation({ ...location, code: event.target.value })} /></label></div><label className="form-field"><span>Naam</span><input value={location.name} onChange={(event) => setLocation({ ...location, name: event.target.value })} /></label><label className="form-field"><span>Bovenliggende locatie</span><select value={location.parentId} onChange={(event) => setLocation({ ...location, parentId: event.target.value })}><option value="">Direct onder {buildingName}</option>{data.locationNodes.filter((node) => node.building_id === buildingId).map((node) => <option value={node.id} key={node.id}>{node.code} · {node.name}</option>)}</select></label><label className="form-field"><span>Toelichting</span><input value={location.description} onChange={(event) => setLocation({ ...location, description: event.target.value })} /></label><button className="primary-button" type="button" disabled={busy || location.code.trim().length < 1 || location.name.trim().length < 2} onClick={() => void run(() => createLocationNode(client, { organizationId, projectId, buildingId, parentId: location.parentId, type: location.type, code: location.code, name: location.name, description: location.description }), "Locatie aan de vaste projecthiërarchie toegevoegd.").then((okay) => { if (okay) setLocation({ type: "zone", code: "", name: "", parentId: "", description: "" }); })}><Plus size={15} /> Locatie toevoegen</button><div className="compact-register">{data.locationNodes.filter((node) => node.building_id === buildingId).map((node) => <span key={node.id}><strong>{node.code}</strong> {node.name} · {node.node_type}</span>)}</div></div><div className="operation-form"><h2>Projectpartijen</h2><div className="form-grid-2"><label className="form-field"><span>Type</span><select value={party.type} onChange={(event) => setParty({ ...party, type: event.target.value })}><option value="client">Opdrachtgever</option><option value="supervisor">Supervisor</option><option value="contractor">Aannemer</option><option value="subcontractor">Onderaannemer</option><option value="supplier">Leverancier</option><option value="consultant">Adviseur</option><option value="other">Overig</option></select></label><label className="form-field"><span>Code</span><input value={party.code} onChange={(event) => setParty({ ...party, code: event.target.value })} /></label></div><label className="form-field"><span>Naam</span><input value={party.name} onChange={(event) => setParty({ ...party, name: event.target.value })} /></label><button className="primary-button" type="button" disabled={busy || party.code.trim().length < 1 || party.name.trim().length < 2} onClick={() => void run(() => createProjectParty(client, { organizationId, projectId, code: party.code, name: party.name, type: party.type }), "Projectpartij centraal toegevoegd en beschikbaar voor aanwezigheid en toewijzing.").then((okay) => { if (okay) setParty({ type: "contractor", code: "", name: "" }); })}><Users size={15} /> Partij toevoegen</button><div className="compact-register">{parties.map((item) => <span key={item.id}><strong>{item.name}</strong> {item.type}</span>)}</div></div></div></section> : null}
-      {section === "templates" ? <section className="operation-panel"><div className="operation-form"><h2>{text("Publish new project checklist", "Nieuwe projectchecklist publiceren")}</h2><div className="form-grid-2"><label className="form-field"><span>{text("Module", "Module")}</span><select value={template.module} onChange={(event) => setTemplate({ ...template, module: event.target.value })}><option value="inspection">{text("Inspection", "Inspectie")}</option><option value="hse">HSE</option><option value="delivery">{text("Delivery", "Levering")}</option><option value="test">{text("Test / measurement", "Test / meting")}</option></select></label><label className="form-field"><span>Code</span><input value={template.code} onChange={(event) => setTemplate({ ...template, code: event.target.value })} placeholder={text("For example CONC-01", "Bijv. BETON-01")} /></label></div><label className="form-field"><span>{text("Name", "Naam")}</span><input value={template.name} onChange={(event) => setTemplate({ ...template, name: event.target.value })} /></label><label className="form-field"><span>{text("Checkpoints · one per line", "Controlepunten · één per regel")}</span><textarea rows={6} value={template.prompts} onChange={(event) => setTemplate({ ...template, prompts: event.target.value })} /></label><button className="primary-button" type="button" disabled={busy} onClick={addTemplate}><Plus size={15} /> {text("Publish checklist", "Checklist publiceren")}</button></div><div className="template-grid">{data.templates.map((item) => <article className="template-card" key={item.id}><span>{item.module.toUpperCase()} · {item.code} · v{item.version_number}</span><h3>{item.name}</h3><p>{item.items.length} {text("checkpoints", "controlepunten")} · {item.status}</p></article>)}</div></section> : null}
+      {section === "templates" ? (
+        <section className="operation-panel checklist-management">
+          <div className="checklist-library-header">
+            <div><span className="record-number">{text("Client requirement", "Klanteis")}</span><h2>{text("100 ready-to-install construction checklists", "100 direct installeerbare bouwchecklists")}</h2><p>{text("Choose a standard. Installation creates a published, project-specific version with five mandatory checkpoints; completed inspections always keep their original version.", "Kies een standaard. Installatie maakt een gepubliceerde, projectspecifieke versie met vijf verplichte controlepunten; afgeronde inspecties behouden altijd hun oorspronkelijke versie.")}</p></div>
+            <label className="form-field"><span>{text("Category", "Categorie")}</span><select value={libraryCategory} onChange={(event) => setLibraryCategory(event.target.value)}><option value="all">{text("All 100", "Alle 100")}</option>{[...new Set(data.checklistLibrary.map((item) => item.category))].map((category) => <option value={category} key={category}>{category}</option>)}</select></label>
+          </div>
+          <div className="checklist-library-grid">
+            {data.checklistLibrary.filter((item) => libraryCategory === "all" || item.category === libraryCategory).map((item) => {
+              const installed = data.templates.some((templateItem) => templateItem.project_id === projectId && templateItem.code === item.code && templateItem.status === "published");
+              return <article className="checklist-library-card" key={item.code}><span>{item.code} · {item.category}</span><h3>{item.name}</h3><p>{item.description}</p><small>{item.prompts.length} {text("mandatory checkpoints", "verplichte controlepunten")} · {item.module}</small><button className={installed ? "secondary-button" : "primary-button"} type="button" disabled={busy || installed} onClick={() => void run(() => installChecklistLibraryTemplate(client, projectId, item.code), text(`${item.name} installed as a project checklist.`, `${item.name} als projectchecklist geïnstalleerd.`))}>{installed ? <CheckCircle2 size={15} /> : <Plus size={15} />} {installed ? text("Installed", "Geïnstalleerd") : text("Install checklist", "Installeer checklist")}</button></article>;
+            })}
+          </div>
+          <details className="custom-checklist-details"><summary>{text("Create a custom project checklist", "Maak een eigen projectchecklist")}</summary><div className="operation-form"><h2>{text("Publish new project checklist", "Nieuwe projectchecklist publiceren")}</h2><div className="form-grid-2"><label className="form-field"><span>{text("Module", "Module")}</span><select value={template.module} onChange={(event) => setTemplate({ ...template, module: event.target.value })}><option value="inspection">{text("Inspection", "Inspectie")}</option><option value="hse">HSE</option><option value="delivery">{text("Delivery", "Levering")}</option><option value="test">{text("Test / measurement", "Test / meting")}</option></select></label><label className="form-field"><span>Code</span><input value={template.code} onChange={(event) => setTemplate({ ...template, code: event.target.value })} placeholder={text("For example CONC-01", "Bijv. BETON-01")} /></label></div><label className="form-field"><span>{text("Name", "Naam")}</span><input value={template.name} onChange={(event) => setTemplate({ ...template, name: event.target.value })} /></label><label className="form-field"><span>{text("Checkpoints · one per line", "Controlepunten · één per regel")}</span><textarea rows={6} value={template.prompts} onChange={(event) => setTemplate({ ...template, prompts: event.target.value })} /></label><button className="primary-button" type="button" disabled={busy} onClick={addTemplate}><Plus size={15} /> {text("Publish checklist", "Checklist publiceren")}</button></div></details>
+          <div className="template-grid">{data.templates.map((item) => <article className="template-card" key={item.id}><span>{item.module.toUpperCase()} · {item.code} · v{item.version_number}</span><h3>{item.name}</h3><p>{item.items.length} {text("checkpoints", "controlepunten")} · {item.status}</p></article>)}</div>
+        </section>
+      ) : null}
       {section === "backup" ? <section className="operation-panel"><div className="storage-status-grid"><div className={`storage-status-card ${isStorageGatewayConfigured ? "" : "blocked"}`}><HardDrive size={21} /><div><strong>Vercel Blob</strong><span>{isStorageGatewayConfigured ? text("Private same-origin storage routes active", "Private opslagroutes binnen dezelfde app actief") : text("Connect a private Blob store in Vercel", "Koppel een private Blob-store in Vercel")}</span></div></div><div className={`storage-status-card ${latestScheduledBackup ? "" : "blocked"}`}><DatabaseBackup size={21} /><div><strong>{text("Latest automatic backup", "Laatste automatische back-up")}</strong><span>{latestScheduledBackup ? formatDate(latestScheduledBackup.verified_at) : text("Waiting for the first daily run", "Wacht op de eerste dagelijkse run")}</span></div></div><div className={`storage-status-card ${latestRestoreTest ? "" : "blocked"}`}><Archive size={21} /><div><strong>{text("Latest restore integrity test", "Laatste herstel-integriteitstest")}</strong><span>{formatDate(latestRestoreTest?.verified_at ?? null)}</span></div></div></div><div className="backup-actions"><button className="primary-button" type="button" disabled={busy || !canManageOrganization} onClick={() => void run(() => downloadManualBackup(client, organizationId, projectId), text("Backup downloaded and checksum verified centrally. Keep a separate recovery copy.", "Back-up gedownload en checksum centraal geverifieerd. Bewaar een afzonderlijke herstelkopie."))}><DatabaseBackup size={15} /> {text("Download verified project backup", "Download geverifieerde projectback-up")}</button><button className="secondary-button" type="button" disabled={busy || !canManageOrganization} onClick={() => fileInput.current?.click()}><RotateCcw size={15} /> Restore dry run</button><input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void run(() => validateBackupDryRun(client, file), text("Restore dry run passed; no data was overwritten.", "Restore dry run geslaagd; er zijn geen gegevens overschreven.")); event.target.value = ""; }} /></div>{latestScheduledBackup ? <div className="operation-alert success"><DatabaseBackup size={18} /><div><strong>{text("Daily Vercel Blob backup active", "Dagelijkse Vercel Blob-back-up actief")}</strong><span>{text("Every stored backup is read back, checksum-verified and retained as 7 daily, 4 weekly and 3 monthly copies. Keep an additional copy outside this Vercel account for account-level disaster recovery.", "Elke opgeslagen back-up wordt teruggelezen, met SHA-256 gecontroleerd en bewaard als 7 dagelijkse, 4 wekelijkse en 3 maandelijkse kopieën. Bewaar daarnaast een kopie buiten dit Vercel-account voor herstel bij accountverlies.")}</span></div></div> : <div className="operation-alert warning"><AlertTriangle size={18} /><div><strong>{text("First automatic backup pending", "Eerste automatische back-up nog niet uitgevoerd")}</strong><span>{text("The daily job is configured. This status becomes green after its first verified production run.", "De dagelijkse taak is geconfigureerd. Deze status wordt groen na de eerste geverifieerde productierun.")}</span></div></div>}<HistoryColumn title={text("Backup history", "Back-uphistorie")} empty={text("No backup run yet.", "Nog geen back-uprun.")} rows={data.backupRuns.map((item) => `${item.run_type} · ${item.status} · ${formatDate(item.created_at)}${item.sha256 ? ` · SHA ${item.sha256.slice(0, 12)}…` : ""}`)} /></section> : null}
     </>
   );
