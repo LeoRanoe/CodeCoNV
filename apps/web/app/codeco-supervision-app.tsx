@@ -446,7 +446,9 @@ export function CodecoSupervisionApp() {
   const [activeNav, setActiveNav] = useState<NavKey>("vandaag");
   const [modal, setModal] = useState<ModalKey>(null);
   const [selectedType, setSelectedType] = useState<string>("activity");
-  const [initialProjectTab, setInitialProjectTab] = useState<"inspections" | "findings" | "visual">("inspections");
+  const [initialProjectTab, setInitialProjectTab] = useState<"inspections" | "findings" | "visual" | "files">("inspections");
+  const quickCameraInputRef = useRef<HTMLInputElement>(null);
+  const [pendingQuickPhotos, setPendingQuickPhotos] = useState<File[]>([]);
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("Floor 3 · East zone");
   const [priority, setPriority] = useState("normal");
@@ -744,7 +746,16 @@ export function CodecoSupervisionApp() {
   const openQuickAdd = () => {
     setDescription("");
     setLocation(selectedBuilding?.name ?? "");
-    setModal("quick");
+    quickCameraInputRef.current?.click();
+  };
+
+  const receiveQuickCameraPhoto = (files: FileList | null) => {
+    const captured = Array.from(files ?? []).filter((file) => file.type.startsWith("image/"));
+    if (!captured.length) return;
+    setPendingQuickPhotos((current) => [...current, ...captured]);
+    setInitialProjectTab("files");
+    setActiveNav("project");
+    setModal(null);
   };
 
   const chooseType = (type: string) => {
@@ -952,6 +963,17 @@ export function CodecoSupervisionApp() {
   return (
     <div className="app-shell">
       <FieldGuide />
+      <input
+        ref={quickCameraInputRef}
+        className="visually-hidden"
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        capture="environment"
+        onChange={(event) => {
+          receiveQuickCameraPhoto(event.currentTarget.files);
+          event.currentTarget.value = "";
+        }}
+      />
       <aside className="sidebar" aria-label={text("Main navigation", "Hoofdnavigatie")}>
         <div className="brand">
           <CompanyLogo subtitle={text("Supervision", "Supervisie")} />
@@ -987,8 +1009,8 @@ export function CodecoSupervisionApp() {
 
         <div className="sidebar-spacer" />
         <button className="quick-add-side" type="button" onClick={openQuickAdd}>
-          <Plus size={18} strokeWidth={2.4} />
-          {text("Quick add", "Snel toevoegen")}
+          <Camera size={18} strokeWidth={2.4} />
+          {text("Take photo", "Foto maken")}
         </button>
         <button className="user-card" type="button" onClick={() => void supabase.auth.signOut()} title={text("Sign out", "Afmelden")}>
           <span className="avatar">{initials(currentUserName)}</span>
@@ -1069,6 +1091,8 @@ export function CodecoSupervisionApp() {
               canManageOrganization={canManageMembers}
               openUserAdmin={() => setModal("user_admin")}
               initialProjectTab={initialProjectTab}
+              initialCameraFiles={pendingQuickPhotos}
+              onInitialCameraFilesConsumed={() => setPendingQuickPhotos([])}
               openProjectArea={(tab) => {
                 setInitialProjectTab(tab);
                 setActiveNav("project");
@@ -1110,8 +1134,8 @@ export function CodecoSupervisionApp() {
           );
         })}
         <button className="mobile-nav-button quick" type="button" onClick={openQuickAdd} aria-label={text("Quick add", "Snel toevoegen")}>
-          <span className="mobile-plus"><Plus size={25} /></span>
-          {text("Add", "Toevoegen")}
+          <span className="mobile-plus"><Camera size={23} /></span>
+          {text("Photo", "Foto")}
         </button>
         {localizedNavigation.filter((item) => item.id === "acties" || item.id === "meer").map((item) => {
           const Icon = item.icon;
@@ -1928,7 +1952,11 @@ function ProjectStartForm({
             <header><span className="form-section-number">2</span><span><strong>{text("What is planned today?", "Wat staat vandaag gepland?")}</strong><small>{text("This feeds the day plan and suggested modules", "Dit voedt het dagplan en de voorgestelde modules")}</small></span></header>
             <div className="form-grid two-columns">
               <div className="work-option-grid wide" aria-label={text("Choose planned work", "Kies geplande werkzaamheden")}>{constructionWorkOptions.map((option) => { const label = language === "en" ? option.en : option.nl; const active = selectedWork.includes(label); return <button className={active ? "active" : ""} type="button" aria-pressed={active} onClick={() => toggleWork(label)} key={option.en}>{active ? <Check size={14} /> : <Plus size={14} />}{label}</button>; })}</div>
-              <label className="form-field wide"><span>{text("Planned work *", "Geplande werkzaamheden *")}</span><textarea rows={3} {...register("plannedWork")} />{errors.plannedWork ? <small className="field-error">{errors.plannedWork.message}</small> : null}</label>
+              {errors.plannedWork ? <small className="field-error wide">{errors.plannedWork.message}</small> : null}
+              <details className="optional-text-entry wide">
+                <summary>{text("Other planned work · optional", "Andere werkzaamheden · optioneel")}</summary>
+                <label className="form-field"><span>{text("Only add work that is not listed above", "Voeg alleen werk toe dat hierboven niet staat")}</span><textarea rows={3} {...register("plannedWork")} /></label>
+              </details>
               <label className="form-field"><span>{text("Inspection planned?", "Inspectie gepland?")}</span><select {...register("inspectionPlanned")}><option value="yes">{text("Yes", "Ja")}</option><option value="no">{text("No", "Nee")}</option></select></label>
               <label className="form-field"><span>{text("Concrete work planned?", "Betonwerk gepland?")}</span><select {...register("concreteWork")}><option value="yes">{text("Yes", "Ja")}</option><option value="no">{text("No", "Nee")}</option></select></label>
               <label className="form-field"><span>{text("High-risk work?", "Hoog-risicowerk?")}</span><select {...register("highRiskWork")}><option value="no">{text("No", "Nee")}</option><option value="yes">{text("Yes", "Ja")}</option></select></label>
@@ -1941,7 +1969,10 @@ function ProjectStartForm({
             <div className="form-grid two-columns">
               <label className="form-field"><span>{text("Approved working drawing", "Goedgekeurde werktekening")}</span><select {...register("drawingStatus")}><option value="approved">{text("Current revision available", "Actuele revisie aanwezig")}</option><option value="not_required">{text("Not required", "Niet vereist")}</option><option value="missing">{text("Missing / uncertain", "Ontbreekt / onzeker")}</option></select></label>
               <div className="quick-issue-presets wide" aria-label={text("Choose expected risks", "Kies verwachte risico's")}>{riskOptions.map((option) => <button className={selectedRisks.includes(option) ? "active" : ""} type="button" aria-pressed={selectedRisks.includes(option)} onClick={() => toggleRisk(option)} key={option}>{option}</button>)}</div>
-              <label className="form-field wide"><span>{text("Expected risks · optional detail", "Verwachte risico's · optionele aanvulling")}</span><textarea rows={3} placeholder={text("Choose above; only type an exceptional detail.", "Kies hierboven; typ alleen een uitzonderlijke aanvulling.")} {...register("riskNotes")} /></label>
+              <details className="optional-text-entry wide">
+                <summary>{text("Other risk · optional", "Ander risico · optioneel")}</summary>
+                <label className="form-field"><span>{text("Only add an exceptional project-specific risk", "Voeg alleen een uitzonderlijk projectspecifiek risico toe")}</span><textarea rows={3} {...register("riskNotes")} /></label>
+              </details>
               {answers.drawingStatus === "missing" ? (
                 <label className="confirmation-check wide"><input type="checkbox" {...register("drawingIssueReported")} /><span><strong>{text("Missing drawing was reported", "Ontbrekende tekening is gemeld")}</strong><small>{text("Human confirmation is required before the workday opens.", "Menselijke bevestiging vereist voordat de werkdag wordt geopend.")}</small>{errors.drawingIssueReported ? <em className="field-error">{errors.drawingIssueReported.message}</em> : null}</span></label>
               ) : null}
@@ -2676,7 +2707,7 @@ function ActionCreateModal({
   const { text } = useLanguage();
   const [busy, setBusy] = useState(false);
   const defaultParty = parties.find((party) => party.type === "contractor")?.id ?? parties[0]?.id ?? "";
-  const { register, handleSubmit, setValue, formState: { errors } } = useForm<ProjectActionAnswers>({
+  const { register, handleSubmit, setValue, control, formState: { errors } } = useForm<ProjectActionAnswers>({
     resolver: zodResolver(projectActionSchema),
     defaultValues: {
       title: "",
@@ -2693,6 +2724,7 @@ function ActionCreateModal({
     { title: text("Correct unsafe condition", "Onveilige situatie corrigeren"), description: text("Correct the unsafe condition immediately and provide evidence of the measure.", "Corrigeer de onveilige situatie direct en lever bewijs van de maatregel."), priority: "critical" },
     { title: text("Finish and clean work area", "Werkzone afwerken en schoonmaken"), description: text("Finish the work and leave the work area clean and ready for inspection.", "Werk het onderdeel af en laat de werkzone schoon en gereed voor inspectie achter."), priority: "low" },
   ];
+  const selectedActionTitle = useWatch({ control, name: "title" });
   const applyTemplate = (template: Pick<ProjectActionAnswers, "title" | "description" | "priority">) => {
     setValue("title", template.title, { shouldDirty: true, shouldValidate: true });
     setValue("description", template.description, { shouldDirty: true, shouldValidate: true });
@@ -2712,9 +2744,15 @@ function ActionCreateModal({
         </header>
         <form className="modal-body" onSubmit={handleSubmit(submit)} noValidate>
           <div className="form-grid two-columns">
-            <div className="quick-issue-presets full" aria-label={text("Choose a standard action", "Kies een standaardactie")}>{actionTemplates.map((template) => <button type="button" onClick={() => applyTemplate(template)} key={template.title}>{template.title}</button>)}</div>
-            <label className="form-field full"><span>{text("Action *", "Actie *")}</span><input autoFocus placeholder={text("What must demonstrably be completed?", "Wat moet aantoonbaar worden uitgevoerd?")} {...register("title")} />{errors.title ? <small className="field-error">{errors.title.message}</small> : null}</label>
-            <label className="form-field full"><span>{text("Context and acceptance criterion *", "Context en acceptatiecriterium *")}</span><textarea rows={4} placeholder={text("Describe the location, required measure and completion criterion.", "Beschrijf locatie, gewenste maatregel en wanneer de actie gereed is.")} {...register("description")} />{errors.description ? <small className="field-error">{errors.description.message}</small> : null}</label>
+            <div className="quick-issue-presets full" aria-label={text("Choose a standard action", "Kies een standaardactie")}>{actionTemplates.map((template) => <button className={selectedActionTitle === template.title ? "active" : ""} type="button" aria-pressed={selectedActionTitle === template.title} onClick={() => applyTemplate(template)} key={template.title}>{template.title}</button>)}</div>
+            {errors.title || errors.description ? <small className="field-error full">{text("Choose a standard action or open “Different action”.", "Kies een standaardactie of open ‘Andere actie’.")}</small> : null}
+            <details className="optional-text-entry full">
+              <summary>{text("Different action", "Andere actie")}</summary>
+              <div className="form-grid">
+                <label className="form-field"><span>{text("Action *", "Actie *")}</span><input placeholder={text("What must demonstrably be completed?", "Wat moet aantoonbaar worden uitgevoerd?")} {...register("title")} />{errors.title ? <small className="field-error">{errors.title.message}</small> : null}</label>
+                <label className="form-field"><span>{text("Context and acceptance criterion *", "Context en acceptatiecriterium *")}</span><textarea rows={4} placeholder={text("Describe the location, required measure and completion criterion.", "Beschrijf locatie, gewenste maatregel en wanneer de actie gereed is.")} {...register("description")} />{errors.description ? <small className="field-error">{errors.description.message}</small> : null}</label>
+              </div>
+            </details>
             <label className="form-field"><span>{text("Responsible party *", "Verantwoordelijke partij *")}</span><select {...register("ownerPartyId")} disabled={parties.length === 0}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select>{errors.ownerPartyId ? <small className="field-error">{errors.ownerPartyId.message}</small> : null}</label>
             <div className="form-field"><label htmlFor="action-deadline">Deadline *</label><input id="action-deadline" type="datetime-local" {...register("dueAt")} />{errors.dueAt ? <small className="field-error">{errors.dueAt.message}</small> : null}<span className="period-date-presets">{[[0, text("Today", "Vandaag")], [1, text("Tomorrow", "Morgen")], [3, text("3 days", "3 dagen")], [7, text("7 days", "7 dagen")]].map(([days, label]) => <button type="button" onClick={() => setValue("dueAt", actionDeadlineFromToday(Number(days)), { shouldDirty: true, shouldValidate: true })} key={String(label)}>{label}</button>)}</span></div>
             <label className="form-field"><span>{text("Priority", "Prioriteit")}</span><select {...register("priority")}><option value="low">{text("Low", "Laag")}</option><option value="normal">{text("Normal", "Normaal")}</option><option value="high">{text("High", "Hoog")}</option><option value="critical">{text("Critical", "Kritiek")}</option></select></label>
@@ -2796,7 +2834,11 @@ function ActionDetailModal({
           {nextStatus ? (
             <form className="action-transition-form" onSubmit={handleSubmit(submit)} noValidate>
               <div className="quick-issue-presets" aria-label={text("Choose a standard status note", "Kies een standaard statusnotitie")}>{(transitionChoices[nextStatus] ?? []).map((choice) => <button type="button" onClick={() => setValue("note", choice, { shouldDirty: true, shouldValidate: true })} key={choice}>{choice}</button>)}</div>
-              <label className="form-field"><span>{nextStatus === "verified" ? text("Verification note *", "Verificatienotitie *") : text("Execution note *", "Uitvoeringsnotitie *")}</span><textarea rows={3} placeholder={text("Record what was completed, checked or is still required.", "Leg vast wat is uitgevoerd, gecontroleerd of nog nodig is.")} {...register("note")} />{errors.note ? <small className="field-error">{errors.note.message}</small> : null}</label>
+              {errors.note ? <small className="field-error">{text("Choose a standard status note or enter a different note.", "Kies een standaard statusnotitie of voer een andere notitie in.")}</small> : null}
+              <details className="optional-text-entry">
+                <summary>{text("Different status note", "Andere statusnotitie")}</summary>
+                <label className="form-field"><span>{nextStatus === "verified" ? text("Verification note *", "Verificatienotitie *") : text("Execution note *", "Uitvoeringsnotitie *")}</span><textarea rows={3} placeholder={text("Record what was completed, checked or is still required.", "Leg vast wat is uitgevoerd, gecontroleerd of nog nodig is.")} {...register("note")} />{errors.note ? <small className="field-error">{errors.note.message}</small> : null}</label>
+              </details>
               <button className="primary-button" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={14} /> : <ArrowRight size={14} />} {text("Move to", "Naar")} {statusLabels[nextStatus].toLowerCase()}</button>
             </form>
           ) : <p className="action-complete-note"><CheckCircle2 size={16} /> {action.status === "verified" ? text("This action has been formally verified and closed.", "Deze actie is formeel geverifieerd en gesloten.") : text("This action was cancelled and remains visible in the history.", "Deze actie is geannuleerd en blijft in de historie zichtbaar.")}</p>}
@@ -3031,9 +3073,9 @@ function DailyQuestionsModal({
       attachmentsConfirmed: false,
     },
   });
-  const [qualityIssues, hseEvent, delayCause, workPerformed, tomorrowPlan, daySummary] = useWatch({
+  const [qualityIssues, hseEvent, delayCause, workPerformed, tomorrowPlan, daySummary, weatherSummary, equipmentStatus, deliveries, testsMeasurements, communication, risks] = useWatch({
     control,
-    name: ["qualityIssues", "hseEvent", "delayCause", "workPerformed", "tomorrowPlan", "daySummary"],
+    name: ["qualityIssues", "hseEvent", "delayCause", "workPerformed", "tomorrowPlan", "daySummary", "weatherSummary", "equipmentStatus", "deliveries", "testsMeasurements", "communication", "risks"],
   });
   const dailySummaryOptions = [
     text("Work proceeded according to plan.", "Werk is volgens planning verlopen."),
@@ -3050,6 +3092,32 @@ function DailyQuestionsModal({
     text("Unsafe situation was stopped and the work area was secured.", "Onveilige situatie is gestopt en de werkzone is beveiligd."),
     text("Near miss recorded; workers were instructed immediately.", "Near miss vastgelegd; medewerkers zijn direct geïnstrueerd."),
     text("Incident recorded; first response and escalation were started.", "Incident vastgelegd; eerste opvang en escalatie zijn gestart."),
+  ];
+  const equipmentOptions = [
+    text("No equipment issue.", "Geen materieelprobleem."),
+    text("Equipment was operational throughout the shift.", "Materieel was de hele dienst operationeel."),
+    text("Equipment failure was recorded and followed up.", "Materieelstoring is vastgelegd en opgevolgd."),
+  ];
+  const deliveryOptions = [
+    text("No delivery today.", "Vandaag geen levering."),
+    text("Delivery received and checked.", "Levering ontvangen en gecontroleerd."),
+    text("Delivery incomplete or damaged; follow-up recorded.", "Levering onvolledig of beschadigd; opvolging vastgelegd."),
+  ];
+  const testOptions = [
+    text("No test or measurement today.", "Vandaag geen test of meting."),
+    text("Tests and measurements completed and compliant.", "Testen en metingen uitgevoerd en akkoord."),
+    text("A test deviation was recorded for follow-up.", "Een testafwijking is vastgelegd voor opvolging."),
+  ];
+  const communicationOptions = [
+    text("No special agreement today.", "Vandaag geen bijzondere afspraak."),
+    text("Coordination completed; agreements were recorded.", "Afstemming uitgevoerd; afspraken zijn vastgelegd."),
+    text("Site instruction issued and contractor informed.", "Bouwplaatsinstructie gegeven en aannemer geïnformeerd."),
+  ];
+  const openRiskOptions = [
+    text("No new open risks.", "Geen nieuwe open risico’s."),
+    text("Weather risk remains open.", "Weerrisico blijft open."),
+    text("Delivery risk remains open.", "Leveringsrisico blijft open."),
+    text("Safety risk remains open.", "Veiligheidsrisico blijft open."),
   ];
   const toggleCloseoutWork = (field: "workPerformed" | "tomorrowPlan", label: string) => {
     const current = String(field === "workPerformed" ? workPerformed : tomorrowPlan).split("; ").filter(Boolean);
@@ -3086,11 +3154,27 @@ function DailyQuestionsModal({
               <header><span className="question-group-icon"><Gauge size={18} /></span><span><h3>{text("How did the project go today?", "Hoe is het project vandaag gegaan?")}</h3><p>{text("These answers feed the summary, work performed and progress; the underlying modules remain the source.", "Deze antwoorden voeden samenvatting, werkzaamheden en voortgang; de onderliggende modules blijven de bron.")}</p></span></header>
               <div className="form-grid two-columns">
                 <div className="quick-issue-presets wide" aria-label={text("Choose a daily summary", "Kies een dagsamenvatting")}>{dailySummaryOptions.map((option) => <button className={daySummary === option ? "active" : ""} type="button" onClick={() => setValue("daySummary", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div>
-                <label className="form-field wide"><span>{text("Daily summary *", "Samenvatting van de dag *")}</span><textarea rows={4} placeholder={text("Summarize what happened in no more than five lines.", "Vat in maximaal vijf regels samen wat er is gebeurd.")} {...register("daySummary")} />{errors.daySummary ? <small className="field-error">{errors.daySummary.message}</small> : null}</label>
-                <label className="form-field"><span>{text("What was the actual weather? *", "Wat was het werkelijke weer? *")}</span><input type="text" {...register("weatherSummary")} />{errors.weatherSummary ? <small className="field-error">{errors.weatherSummary.message}</small> : null}</label>
+                {errors.daySummary ? <small className="field-error wide">{errors.daySummary.message}</small> : null}
+                <details className="optional-text-entry wide">
+                  <summary>{text("Different daily summary", "Andere dagsamenvatting")}</summary>
+                  <label className="form-field"><span>{text("Daily summary *", "Samenvatting van de dag *")}</span><textarea rows={4} placeholder={text("Summarize what happened in no more than five lines.", "Vat in maximaal vijf regels samen wat er is gebeurd.")} {...register("daySummary")} /></label>
+                </details>
+                <div className="derived-answer">
+                  <span>{text("Actual weather · automatic", "Werkelijk weer · automatisch")}</span>
+                  <strong><CloudSun size={15} /> {weatherSummary || text("Weather is loaded from the project start.", "Weer wordt overgenomen van de projectstart.")}</strong>
+                  {errors.weatherSummary ? <small className="field-error">{errors.weatherSummary.message}</small> : null}
+                  <details className="optional-text-entry">
+                    <summary>{text("Correct weather", "Weer corrigeren")}</summary>
+                    <label className="form-field"><span>{text("Weather correction", "Weercorrectie")}</span><input type="text" {...register("weatherSummary")} /></label>
+                  </details>
+                </div>
                 <label className="form-field"><span>{text("Project progress", "Voortgang project")}</span><span className="input-with-unit"><input type="number" min="0" max="100" {...register("progressPercent", { valueAsNumber: true })} /><em>%</em></span>{errors.progressPercent ? <small className="field-error">{errors.progressPercent.message}</small> : null}</label>
                 <div className="work-option-grid wide" aria-label={text("Choose completed work", "Kies uitgevoerd werk")}>{constructionWorkOptions.map((option) => { const label = language === "en" ? option.en : option.nl; const active = String(workPerformed).split("; ").includes(label); return <button className={active ? "active" : ""} type="button" aria-pressed={active} onClick={() => toggleCloseoutWork("workPerformed", label)} key={option.en}>{active ? <Check size={14} /> : <Plus size={14} />}{label}</button>; })}</div>
-                <label className="form-field wide"><span>{text("Which work was performed? *", "Welke werkzaamheden zijn uitgevoerd? *")}</span><textarea rows={4} placeholder={text("Activity, location and percentage complete.", "Activiteit, locatie en percentage gereed.")} {...register("workPerformed")} />{errors.workPerformed ? <small className="field-error">{errors.workPerformed.message}</small> : null}</label>
+                {errors.workPerformed ? <small className="field-error wide">{errors.workPerformed.message}</small> : null}
+                <details className="optional-text-entry wide">
+                  <summary>{text("Other completed work", "Andere uitgevoerde werkzaamheden")}</summary>
+                  <label className="form-field"><span>{text("Only add work that is not listed above", "Voeg alleen werk toe dat hierboven niet staat")}</span><textarea rows={4} {...register("workPerformed")} /></label>
+                </details>
               </div>
             </section>
           ) : null}
@@ -3101,9 +3185,9 @@ function DailyQuestionsModal({
               <div className="form-grid two-columns">
                 <label className="form-field"><span>{text("Inspections performed", "Inspecties uitgevoerd")}</span><select {...register("inspectionResult")}><option value="none">{text("No inspection", "Geen inspectie")}</option><option value="all_ok">{text("Performed · all passed", "Uitgevoerd · alles akkoord")}</option><option value="issues">{text("Performed · deviation found", "Uitgevoerd · afwijking gevonden")}</option></select></label>
                 <label className="form-field"><span>{text("Quality findings?", "Kwaliteitsbevindingen?")}</span><select {...register("qualityIssues")}><option value="no">{text("No", "Nee")}</option><option value="yes">{text("Yes", "Ja")}</option></select></label>
-                {qualityIssues === "yes" ? <div className="wide"><div className="quick-issue-presets" aria-label={text("Choose a quality finding", "Kies een kwaliteitsbevinding")}>{qualityDetailOptions.map((option) => <button type="button" onClick={() => setValue("qualityDetails", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><label className="form-field"><span>{text("Location, finding and responsible party *", "Locatie, bevinding en verantwoordelijke *")}</span><textarea rows={4} {...register("qualityDetails")} />{errors.qualityDetails ? <small className="field-error">{errors.qualityDetails.message}</small> : null}</label></div> : null}
+                {qualityIssues === "yes" ? <div className="wide"><div className="quick-issue-presets" aria-label={text("Choose a quality finding", "Kies een kwaliteitsbevinding")}>{qualityDetailOptions.map((option) => <button type="button" onClick={() => setValue("qualityDetails", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div>{errors.qualityDetails ? <small className="field-error">{errors.qualityDetails.message}</small> : null}<details className="optional-text-entry"><summary>{text("Different quality finding", "Andere kwaliteitsbevinding")}</summary><label className="form-field"><span>{text("Location, finding and responsible party *", "Locatie, bevinding en verantwoordelijke *")}</span><textarea rows={4} {...register("qualityDetails")} /></label></details></div> : null}
                 <label className="form-field"><span>{text("Safety event?", "Veiligheidsgebeurtenis?")}</span><select {...register("hseEvent")}><option value="none">{text("No incident / near miss", "Geen incident / near miss")}</option><option value="near_miss">Near miss</option><option value="incident">Incident</option></select></label>
-                {hseEvent !== "none" ? <div className="wide"><div className="quick-issue-presets" aria-label={text("Choose an HSE description", "Kies een HSE-omschrijving")}>{hseDetailOptions.map((option) => <button type="button" onClick={() => setValue("hseDetails", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><label className="form-field"><span>{text("Event and immediate measure *", "Gebeurtenis en directe maatregel *")}</span><textarea rows={4} {...register("hseDetails")} />{errors.hseDetails ? <small className="field-error">{errors.hseDetails.message}</small> : null}</label></div> : null}
+                {hseEvent !== "none" ? <div className="wide"><div className="quick-issue-presets" aria-label={text("Choose an HSE description", "Kies een HSE-omschrijving")}>{hseDetailOptions.map((option) => <button type="button" onClick={() => setValue("hseDetails", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div>{errors.hseDetails ? <small className="field-error">{errors.hseDetails.message}</small> : null}<details className="optional-text-entry"><summary>{text("Different HSE event", "Andere HSE-gebeurtenis")}</summary><label className="form-field"><span>{text("Event and immediate measure *", "Gebeurtenis en directe maatregel *")}</span><textarea rows={4} {...register("hseDetails")} /></label></details></div> : null}
               </div>
               <div className="question-module-note"><AlertTriangle size={14} /><span>{text("The app never closes an incident, NCR or repair autonomously. This remains a human action.", "De app sluit nooit autonoom een incident, NCR of herstel. Dit blijft een menselijke handeling.")}</span></div>
             </section>
@@ -3113,9 +3197,9 @@ function DailyQuestionsModal({
             <section className="question-group">
               <header><span className="question-group-icon"><PackageCheck size={18} /></span><span><h3>{text("Which logistics, tests or delays affected the day?", "Welke logistiek, testen of vertraging speelden mee?")}</h3><p>{text("Answers are linked to equipment, deliveries, measurements, variation work and delay.", "Antwoorden worden gekoppeld aan materieel, leveringen, metingen, meer-/minderwerk en vertraging.")}</p></span></header>
               <div className="form-grid two-columns">
-                <label className="form-field"><span>{text("Equipment and status", "Materieel en status")}</span><textarea rows={3} placeholder={text("For example concrete pump operational; plate compactor out of service", "Bijv. betonpomp operationeel; trilplaat buiten gebruik")} {...register("equipmentStatus")} /></label>
-                <label className="form-field"><span>{text("Materials delivered", "Materialen geleverd")}</span><textarea rows={3} placeholder={text("Material, quantity and supplier", "Materiaal, hoeveelheid en leverancier")} {...register("deliveries")} /></label>
-                <label className="form-field wide"><span>{text("Tests and measurements", "Testen en meetwaarden")}</span><textarea rows={3} placeholder={text("For example slump 90 mm; concrete cover 45 mm", "Bijv. slump 90 mm; betondekking 45 mm")} {...register("testsMeasurements")} /></label>
+                <div className="click-answer-block"><strong>{text("Equipment and status", "Materieel en status")}</strong><div className="quick-issue-presets">{equipmentOptions.map((option) => <button className={equipmentStatus === option ? "active" : ""} type="button" onClick={() => setValue("equipmentStatus", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Other equipment status", "Andere materieelstatus")}</summary><label className="form-field"><textarea rows={3} {...register("equipmentStatus")} /></label></details></div>
+                <div className="click-answer-block"><strong>{text("Materials delivered", "Materialen geleverd")}</strong><div className="quick-issue-presets">{deliveryOptions.map((option) => <button className={deliveries === option ? "active" : ""} type="button" onClick={() => setValue("deliveries", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Other delivery detail", "Andere leveringsinformatie")}</summary><label className="form-field"><textarea rows={3} {...register("deliveries")} /></label></details></div>
+                <div className="click-answer-block wide"><strong>{text("Tests and measurements", "Testen en meetwaarden")}</strong><div className="quick-issue-presets">{testOptions.map((option) => <button className={testsMeasurements === option ? "active" : ""} type="button" onClick={() => setValue("testsMeasurements", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Add a numeric test result", "Numerieke testwaarde toevoegen")}</summary><label className="form-field"><span>{text("Test name, value and unit", "Testnaam, waarde en eenheid")}</span><textarea rows={3} placeholder={text("Example: slump 90 mm", "Bijvoorbeeld: slump 90 mm")} {...register("testsMeasurements")} /></label></details></div>
                 <label className="form-field"><span>{text("Variation work", "Meer- of minderwerk")}</span><select {...register("variationWork")}><option value="none">{text("Not applicable", "Niet van toepassing")}</option><option value="pending">{text("Pending", "In behandeling")}</option><option value="approved">{text("Approved", "Goedgekeurd")}</option><option value="rejected">{text("Rejected", "Afgewezen")}</option></select></label>
                 <label className="form-field"><span>{text("Was there a delay?", "Was er vertraging?")}</span><select {...register("delayCause")}><option value="none">{text("No delay", "Geen vertraging")}</option><option value="weather">{text("Weather", "Weer")}</option><option value="delivery">{text("Late delivery", "Levering te laat")}</option><option value="material">{text("Material shortage", "Materiaaltekort")}</option><option value="equipment">{text("Equipment failure", "Materieelstoring")}</option><option value="other">{text("Other cause", "Andere oorzaak")}</option></select></label>
                 {delayCause !== "none" ? <label className="form-field"><span>{text("Time lost", "Tijdverlies")}</span><span className="input-with-unit"><input type="number" min="0" max="24" step="0.25" {...register("delayHours", { valueAsNumber: true })} /><em>{text("hours", "uur")}</em></span>{errors.delayHours ? <small className="field-error">{errors.delayHours.message}</small> : null}</label> : null}
@@ -3127,10 +3211,11 @@ function DailyQuestionsModal({
             <section className="question-group">
               <header><span className="question-group-icon"><CalendarDays size={18} /></span><span><h3>{text("What was agreed and what is planned for tomorrow?", "Wat is afgesproken en wat staat morgen gepland?")}</h3><p>{text("Agreements, risks and planning remain structured and carry over to the next day.", "Afspraken, risico’s en planning blijven gestructureerd en worden meegenomen naar de volgende dag.")}</p></span></header>
               <div className="form-grid two-columns">
-                <label className="form-field"><span>{text("Communication and agreements", "Communicatie en gemaakte afspraken")}</span><textarea rows={4} placeholder={text("Who agreed what, and when?", "Met wie is wat afgesproken en wanneer?")} {...register("communication")} /></label>
-                <label className="form-field"><span>{text("Open risks", "Open risico’s")}</span><textarea rows={4} placeholder={text("Weather, delivery, groundwater, lifting...", "Weer, levering, grondwater, hijswerk...")} {...register("risks")} /></label>
+                <div className="click-answer-block"><strong>{text("Communication and agreements", "Communicatie en gemaakte afspraken")}</strong><div className="quick-issue-presets">{communicationOptions.map((option) => <button className={communication === option ? "active" : ""} type="button" onClick={() => setValue("communication", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Other agreement", "Andere afspraak")}</summary><label className="form-field"><textarea rows={4} {...register("communication")} /></label></details></div>
+                <div className="click-answer-block"><strong>{text("Open risks", "Open risico’s")}</strong><div className="quick-issue-presets">{openRiskOptions.map((option) => <button className={risks === option ? "active" : ""} type="button" onClick={() => setValue("risks", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Other open risk", "Ander open risico")}</summary><label className="form-field"><textarea rows={4} {...register("risks")} /></label></details></div>
                 <div className="work-option-grid wide" aria-label={text("Choose tomorrow's work", "Kies werkzaamheden voor morgen")}>{constructionWorkOptions.map((option) => { const label = language === "en" ? option.en : option.nl; const active = String(tomorrowPlan).split("; ").includes(label); return <button className={active ? "active" : ""} type="button" aria-pressed={active} onClick={() => toggleCloseoutWork("tomorrowPlan", label)} key={option.en}>{active ? <Check size={14} /> : <Plus size={14} />}{label}</button>; })}</div>
-                <label className="form-field wide"><span>{text("Which work is planned for tomorrow? *", "Welke werkzaamheden staan morgen gepland? *")}</span><textarea rows={4} {...register("tomorrowPlan")} />{errors.tomorrowPlan ? <small className="field-error">{errors.tomorrowPlan.message}</small> : null}</label>
+                {errors.tomorrowPlan ? <small className="field-error wide">{errors.tomorrowPlan.message}</small> : null}
+                <details className="optional-text-entry wide"><summary>{text("Other work for tomorrow", "Andere werkzaamheden voor morgen")}</summary><label className="form-field"><textarea rows={4} {...register("tomorrowPlan")} /></label></details>
                 <label className="form-field"><span>{text("Number of photos today", "Aantal foto’s vandaag")}</span><input type="number" min="0" {...register("photoCount", { valueAsNumber: true })} /></label>
                 <label className="confirmation-check wide"><input type="checkbox" {...register("attachmentsConfirmed")} /><span><strong>{text("Attachments checked", "Bijlagen gecontroleerd")}</strong><small>{text("Inspection forms, certificates, tickets, drawings, NCRs and measurement reports were checked; missing items remain visible.", "Inspectieformulieren, certificaten, bonnen, tekeningen, NCR’s en meetrapporten zijn bekeken; ontbrekende stukken blijven zichtbaar.")}</small>{errors.attachmentsConfirmed ? <em className="field-error">{errors.attachmentsConfirmed.message}</em> : null}</span></label>
               </div>

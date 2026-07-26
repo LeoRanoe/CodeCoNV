@@ -11,7 +11,7 @@ export function createProjectStartSchema(language: "en" | "nl" = "en") {
     windCondition: z.enum(["calm", "moderate", "strong"]),
     shiftStart: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, text("Use hh:mm", "Gebruik uu:mm")),
     shiftEnd: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, text("Use hh:mm", "Gebruik uu:mm")),
-    plannedWork: z.string().trim().min(10, text("Describe the planned work", "Beschrijf de geplande werkzaamheden")),
+    plannedWork: z.string().trim().min(3, text("Choose the planned work", "Kies de geplande werkzaamheden")),
     expectedWorkers: z.number().int().min(0).max(10000),
     inspectionPlanned: yesNoSchema,
     highRiskWork: yesNoSchema,
@@ -64,7 +64,7 @@ export function createDailyCloseoutSchema(language: "en" | "nl" = "en") {
     delayHours: z.number().min(0).max(24),
     communication: z.string().trim().max(1000).optional(),
     risks: z.string().trim().max(1000).optional(),
-    tomorrowPlan: z.string().trim().min(10, text("Describe tomorrow's plan", "Beschrijf de planning voor morgen")).max(1000),
+    tomorrowPlan: z.string().trim().min(3, text("Choose tomorrow's plan", "Kies de planning voor morgen")).max(1000),
     photoCount: z.number().int().min(0).max(10000),
     attachmentsConfirmed: z.boolean(),
   })

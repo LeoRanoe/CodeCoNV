@@ -3,7 +3,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { idbDelete, idbGetAll, idbPut } from "@/lib/offline/idb";
 import { uploadProjectFile } from "@/lib/storage/gateway";
-import { createFinding, createVisualCapture, linkFileToRecord } from "@/lib/supabase/operations";
+import { createFinding, createMediaFolder, createVisualCapture, linkFileToRecord } from "@/lib/supabase/operations";
 
 export type QueuedFindingDraft = {
   organizationId: string;
@@ -34,6 +34,7 @@ export type OfflineUpload = {
   buildingId: string;
   reportId: string | null;
   folderId: string | null;
+  folderName?: string | null;
   kind: "photo" | "panorama" | "drawing";
   file: Blob;
   fileName: string;
@@ -143,6 +144,7 @@ export async function syncOfflineUploads(
   if (!options.force && dataSaverEnabled() && connectionIsMetered()) return { synced: 0, failed: 0, paused: true };
   const uploads = await listOfflineUploads(projectId);
   const findingIds = new Map<string, string>();
+  const resolvedFolderIds = new Map<string, string>();
   uploads.forEach((upload) => {
     if (upload.findingGroup?.findingId) findingIds.set(upload.findingGroup.id, upload.findingGroup.findingId);
   });
@@ -151,10 +153,34 @@ export async function syncOfflineUploads(
   for (const upload of uploads) {
     options.onItem?.(upload, "uploading");
     try {
+      let folderId = upload.folderId;
+      if (!folderId && upload.folderName) {
+        const folderKey = `${upload.projectId}:${upload.buildingId}:${upload.folderName.toLocaleLowerCase()}`;
+        folderId = resolvedFolderIds.get(folderKey) ?? null;
+        if (!folderId) {
+          const existingFolders = await client
+            .from("media_folders")
+            .select("id,name")
+            .eq("project_id", upload.projectId)
+            .eq("building_id", upload.buildingId)
+            .eq("status", "active")
+            .limit(500);
+          if (existingFolders.error) throw existingFolders.error;
+          const existing = existingFolders.data?.find((folder) => folder.name.toLocaleLowerCase() === upload.folderName?.toLocaleLowerCase());
+          const resolvedFolderId = existing?.id ?? (await createMediaFolder(client, {
+            projectId: upload.projectId,
+            buildingId: upload.buildingId,
+            name: upload.folderName,
+            folderType: upload.kind === "drawing" ? "drawings" : "images",
+          })).id;
+          folderId = resolvedFolderId;
+          resolvedFolderIds.set(folderKey, resolvedFolderId);
+        }
+      }
       const stored = await uploadProjectFile(client, {
         projectId: upload.projectId,
         buildingId: upload.buildingId,
-        folderId: upload.folderId,
+        folderId,
         category: upload.kind === "drawing" ? "drawing" : "photo",
         file: asFile(upload),
       });

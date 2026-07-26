@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Folder, FolderPlus, HardDrive, Image as ImageIcon, Loader2, RefreshCw, Trash2, Upload } from "lucide-react";
+import { Camera, Download, Folder, FolderPlus, HardDrive, Image as ImageIcon, Loader2, RefreshCw, ScanLine, Trash2, Upload } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -59,6 +59,9 @@ export function MediaLibraryWorkspace({
   client,
   busy,
   run,
+  initialFiles = [],
+  onInitialFilesConsumed,
+  open360Upload,
 }: {
   data: OperationSnapshot;
   projectId: string;
@@ -68,10 +71,14 @@ export function MediaLibraryWorkspace({
   client: SupabaseClient;
   busy: boolean;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
+  initialFiles?: File[];
+  onInitialFilesConsumed?: () => void;
+  open360Upload: () => void;
 }) {
   const { text } = useLanguage();
   const queryClient = useQueryClient();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const [folderId, setFolderId] = useState("all");
   const [newFolder, setNewFolder] = useState("");
   const [kind, setKind] = useState<"photo" | "drawing">("photo");
@@ -81,10 +88,9 @@ export function MediaLibraryWorkspace({
   const [syncing, setSyncing] = useState(false);
   const folders = useMemo(() => data.mediaFolders.filter((folder) => !folder.building_id || folder.building_id === buildingId), [buildingId, data.mediaFolders]);
   const files = useMemo(() => data.files.filter((file) => file.status === "available" && (!file.building_id || file.building_id === buildingId) && (folderId === "all" || (folderId === "unfiled" ? !file.folder_id : file.folder_id === folderId))), [buildingId, data.files, folderId]);
-  const folderSuggestions = (kind === "photo"
-    ? [text("Daily progress", "Dagvoortgang"), text("Inspections", "Inspecties"), text("Findings", "Bevindingen"), text("Deliveries", "Leveringen"), text("360° tours", "360°-rondgangen")]
-    : [text("Approved drawings", "Goedgekeurde tekeningen"), text("Revisions", "Revisies"), text("As-built", "As-built")]
-  ).filter((name) => !folders.some((folder) => folder.name.toLocaleLowerCase() === name.toLocaleLowerCase()));
+  const standardFolderNames = kind === "photo"
+    ? [text("Daily progress", "Dagvoortgang"), text("Inspections", "Inspecties"), text("Findings", "Bevindingen"), "HSE", text("Deliveries", "Leveringen"), text("360° tours", "360°-rondgangen")]
+    : [text("Approved drawings", "Goedgekeurde tekeningen"), text("Revisions", "Revisies"), text("As-built", "As-built")];
 
   const reloadQueue = useCallback(async () => setQueue(await listOfflineUploads(projectId)), [projectId]);
 
@@ -124,9 +130,25 @@ export function MediaLibraryWorkspace({
     };
   }, [reloadQueue, synchronize]);
 
-  const addFiles = async (selected: FileList | null) => {
+  const addFiles = useCallback(async (selected: FileList | File[] | null, preferredFolderName?: string) => {
     if (!selected?.length) return;
-    const targetFolder = folders.some((folder) => folder.id === folderId) ? folderId : null;
+    let targetFolder = folders.some((folder) => folder.id === folderId) ? folderId : null;
+    const automaticFolderName = preferredFolderName ?? (kind === "photo" ? text("Daily progress", "Dagvoortgang") : text("Approved drawings", "Goedgekeurde tekeningen"));
+    if (!targetFolder && navigator.onLine) {
+      const existing = folders.find((folder) => folder.name.toLocaleLowerCase() === automaticFolderName.toLocaleLowerCase());
+      if (existing) {
+        targetFolder = existing.id;
+      } else {
+        const created = await createMediaFolder(client, {
+          projectId,
+          buildingId,
+          name: automaticFolderName,
+          folderType: kind === "photo" ? "images" : "drawings",
+        });
+        targetFolder = created.id;
+        setFolderId(created.id);
+      }
+    }
     for (const file of Array.from(selected)) {
       const prepared = kind === "photo" ? await compressFieldPhoto(file, savingData) : { blob: file as Blob, fileName: file.name, mimeType: file.type || "application/octet-stream", compressed: false };
       await queueOfflineUpload({
@@ -134,6 +156,7 @@ export function MediaLibraryWorkspace({
         buildingId,
         reportId,
         folderId: targetFolder,
+        folderName: automaticFolderName,
         kind,
         file: prepared.blob,
         fileName: prepared.fileName,
@@ -150,13 +173,32 @@ export function MediaLibraryWorkspace({
     if (navigator.onLine && !(savingData && connectionIsMetered())) {
       await run(() => synchronize(false), text("Files uploaded and linked automatically.", "Bestanden geupload en automatisch gekoppeld."));
     }
-  };
+  }, [buildingId, buildingName, client, folderId, folders, kind, projectId, reloadQueue, reportId, run, savingData, synchronize, text]);
+
+  useEffect(() => {
+    if (!initialFiles.length) return;
+    const captured = [...initialFiles];
+    const uploadTimer = window.setTimeout(() => {
+      onInitialFilesConsumed?.();
+      void addFiles(captured, text("Daily progress", "Dagvoortgang"));
+    }, 0);
+    return () => window.clearTimeout(uploadTimer);
+  }, [addFiles, initialFiles, onInitialFilesConsumed, text]);
+
   const addFolder = async (name: string) => {
+    let createdFolderId = "";
     const okay = await run(
-      () => createMediaFolder(client, { projectId, buildingId, name: name.trim(), folderType: kind === "photo" ? "images" : "drawings" }),
+      async () => {
+        const existing = folders.find((folder) => folder.name.toLocaleLowerCase() === name.trim().toLocaleLowerCase());
+        const folder = existing ?? await createMediaFolder(client, { projectId, buildingId, name: name.trim(), folderType: kind === "photo" ? "images" : "drawings" });
+        createdFolderId = folder.id;
+      },
       text("Folder created.", "Map aangemaakt."),
     );
-    if (okay) setNewFolder("");
+    if (okay) {
+      setNewFolder("");
+      setFolderId(createdFolderId);
+    }
   };
 
   return (
@@ -164,8 +206,8 @@ export function MediaLibraryWorkspace({
       <div className="media-library-toolbar">
         <div>
           <span className={`connectivity-pill ${online ? "online" : "offline"}`}>{online ? text("Online", "Online") : text("Offline · stored on device", "Offline · opgeslagen op apparaat")}</span>
-          <h2>{text("Photos, drawings and folders", "Foto’s, tekeningen en mappen")}</h2>
-          <p>{text("Project, building, date, time and filename are filled automatically.", "Project, gebouw, datum, tijd en bestandsnaam worden automatisch ingevuld.")}</p>
+          <h2>{text("Point, shoot, done", "Richten, foto, klaar")}</h2>
+          <p>{text("Every photo gets project, building, date, time and a folder automatically.", "Elke foto krijgt automatisch project, gebouw, datum, tijd en een map.")}</p>
         </div>
         <label className="data-saver-toggle"><input type="checkbox" checked={savingData} onChange={(event) => { setSavingData(event.target.checked); setDataSaverEnabled(event.target.checked); }} /><span><strong>{text("Save mobile data", "Mobiele data besparen")}</strong><small>{text("Compress regular photos; never alter 360° images or drawings.", "Comprimeert gewone foto’s; wijzigt nooit 360°-beelden of tekeningen.")}</small></span></label>
       </div>
@@ -181,10 +223,18 @@ export function MediaLibraryWorkspace({
           <button className={kind === "photo" ? "active" : ""} type="button" onClick={() => setKind("photo")}><ImageIcon size={16} /> {text("Photo", "Foto")}</button>
           <button className={kind === "drawing" ? "active" : ""} type="button" onClick={() => setKind("drawing")}><HardDrive size={16} /> {text("Drawing", "Tekening")}</button>
         </div>
-        {folderSuggestions.length ? <div className="quick-issue-presets media-folder-presets" aria-label={text("Create a standard folder", "Maak een standaardmap")}>{folderSuggestions.map((name) => <button type="button" disabled={busy} onClick={() => void addFolder(name)} key={name}><FolderPlus size={13} /> {name}</button>)}</div> : null}
-        <input ref={inputRef} hidden type="file" multiple={kind === "photo"} accept={kind === "photo" ? "image/jpeg,image/png,image/webp" : "application/pdf,image/jpeg,image/png,image/webp,.dwg"} capture={kind === "photo" ? "environment" : undefined} onChange={(event) => { void addFiles(event.target.files); event.target.value = ""; }} />
-        <button className="primary-button" type="button" onClick={() => inputRef.current?.click()}><Upload size={15} /> {kind === "photo" ? text("Take or choose photos", "Maak of kies foto’s") : text("Choose drawing", "Kies tekening")}</button>
-        <span className="media-folder-create"><input value={newFolder} onChange={(event) => setNewFolder(event.target.value)} placeholder={text("Only for a custom folder", "Alleen voor een eigen map")} /><button className="secondary-button" type="button" disabled={busy || newFolder.trim().length < 2} onClick={() => void addFolder(newFolder)}><FolderPlus size={15} /> {text("Create custom folder", "Eigen map maken")}</button></span>
+        <div className="quick-issue-presets media-folder-presets" aria-label={text("Choose a photo folder", "Kies een fotomap")}>{standardFolderNames.map((name) => { const folder = folders.find((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase()); return <button className={Boolean(folder && folderId === folder.id) ? "active" : ""} type="button" disabled={busy} onClick={() => folder ? setFolderId(folder.id) : void addFolder(name)} key={name}><Folder size={13} /> {name}</button>; })}</div>
+        <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { void addFiles(event.target.files); event.target.value = ""; }} />
+        <input ref={importInputRef} hidden type="file" multiple accept={kind === "photo" ? "image/jpeg,image/png,image/webp" : "application/pdf,image/jpeg,image/png,image/webp,.dwg"} onChange={(event) => { void addFiles(event.target.files); event.target.value = ""; }} />
+        <div className="media-capture-actions">
+          {kind === "photo" ? <button className="primary-button camera-primary-action" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={18} /> {text("Take photo", "Maak foto")}</button> : <button className="primary-button" type="button" onClick={() => importInputRef.current?.click()}><Upload size={15} /> {text("Choose drawing", "Kies tekening")}</button>}
+          {kind === "photo" ? <button className="secondary-button" type="button" onClick={() => importInputRef.current?.click()}><Upload size={15} /> {text("Import existing photos", "Bestaande foto’s importeren")}</button> : null}
+          {kind === "photo" ? <button className="secondary-button" type="button" onClick={open360Upload}><ScanLine size={15} /> {text("Upload 360° image", "Upload 360°-beeld")}</button> : null}
+        </div>
+        <details className="optional-text-entry media-folder-create">
+          <summary>{text("Custom folder", "Eigen map")}</summary>
+          <span><input value={newFolder} onChange={(event) => setNewFolder(event.target.value)} placeholder={text("Folder name", "Mapnaam")} /><button className="secondary-button" type="button" disabled={busy || newFolder.trim().length < 2} onClick={() => void addFolder(newFolder)}><FolderPlus size={15} /> {text("Create", "Maken")}</button></span>
+        </details>
       </div>
 
       {queue.length ? <div className="offline-queue"><div><strong>{queue.length} {text("upload(s) waiting", "upload(s) wachten")}</strong><span>{!online ? text("They synchronize automatically when the connection returns.", "Ze synchroniseren automatisch zodra de verbinding terug is.") : savingData && connectionIsMetered() ? text("Automatic sync is paused on this metered connection.", "Automatische synchronisatie is gepauzeerd op deze databundel.") : text("Automatic synchronization is active.", "Automatische synchronisatie is actief.")}</span></div><button className="secondary-button" type="button" disabled={!online || syncing} onClick={() => void run(() => synchronize(true), text("Offline uploads synchronized.", "Offline uploads gesynchroniseerd."))}>{syncing ? <Loader2 className="spin" size={15} /> : <RefreshCw size={15} />} {text("Sync now", "Nu synchroniseren")}</button><div className="offline-queue-list">{queue.map((upload) => <span key={upload.id}><ImageIcon size={14} /><b>{upload.fileName}</b><small>{humanSize(upload.queuedSize)}{upload.compressed ? ` · ${Math.round((1 - upload.queuedSize / upload.originalSize) * 100)}% bespaard` : ""}</small><button type="button" aria-label={text("Remove queued upload", "Verwijder wachtende upload")} onClick={() => void removeOfflineUpload(upload.id).then(reloadQueue)}><Trash2 size={14} /></button></span>)}</div></div> : null}

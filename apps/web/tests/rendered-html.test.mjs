@@ -148,7 +148,7 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(app, /Werkdag starten/);
   assert.match(app, /Aanwezigheid vandaag/);
   assert.match(app, /Hoe is het project vandaag gegaan\?/);
-  assert.match(app, /Wat was het werkelijke weer\?/);
+  assert.match(app, /Actual weather · automatic|Werkelijk weer · automatisch/);
   assert.match(app, /Triggered by|Geactiveerd door/);
   assert.match(app, /Dagvragen bevestigen/);
   assert.match(app, /useForm<DailyCloseoutAnswers>/);
@@ -571,7 +571,7 @@ test("minimizes repetitive field typing with controlled quick choices", async ()
   assert.match(operations, /Choose a standard register item|Kies een standaard registeritem/);
   assert.match(operations, /Choose the completed measure|Kies de uitgevoerde maatregel/);
   assert.match(visuals, /Choose a common issue|Kies een veelvoorkomend probleem/);
-  assert.match(media, /Create a standard folder|Maak een standaardmap/);
+  assert.match(media, /Choose a photo folder|Kies een fotomap/);
 });
 
 test("ships automatic project weather, anchor checklists and stacked issue photos", async () => {
@@ -598,7 +598,8 @@ test("ships automatic project weather, anchor checklists and stacked issue photo
   assert.match(anchorLibrary, /LIB-103/);
   assert.match(operations, /Approve section|Sectie akkoord/);
   assert.match(operations, /Prepare all 3 checklists|Zet alle 3 checklists klaar/);
-  assert.match(operations, /multiple onChange/);
+  assert.match(operations, /addPhotosToStack/);
+  assert.match(operations, /Tap again for another photo|Tik opnieuw voor nog een foto/);
   assert.match(operations, /findingPhotos\.length/);
   assert.match(supabaseOperations, /create_project_checklist/);
   assert.match(supabaseOperations, /anchorChecklistLibrary[\s\S]*\.filter/);

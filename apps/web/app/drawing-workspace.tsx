@@ -42,6 +42,7 @@ type DrawingWorkspaceProps = {
   client: SupabaseClient;
   busy: boolean;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
+  onOpenLinkedRecord: (recordType: DrawingPin["linked_record_type"], recordId: string) => void;
 };
 
 type PinPoint = { xRatio: number; yRatio: number };
@@ -81,7 +82,7 @@ const pinTypeClass: Record<DrawingPin["linked_record_type"], string> = {
   visual: "cyan",
 };
 
-export function DrawingWorkspace({ data, projectId, buildingId, client, busy, run }: DrawingWorkspaceProps) {
+export function DrawingWorkspace({ data, projectId, buildingId, client, busy, run, onOpenLinkedRecord }: DrawingWorkspaceProps) {
   const { language, text } = useLanguage();
   const maxFileSizeBytes = (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024;
   const drawings = data.files.filter((file) => file.category === "drawing" && file.status === "available" && supportedDrawingMimeTypes.includes(file.mime_type));
@@ -289,10 +290,13 @@ export function DrawingWorkspace({ data, projectId, buildingId, client, busy, ru
                 {linkOptions.length ? (
                   <label className="form-field"><span>{text("Project record", "Projectrecord")}</span><select value={selectedRecordId} onChange={(event) => setLinkedRecordId(event.target.value)}>{linkOptions.map((option) => <option value={option.id} key={option.id}>{option.number} · {option.title} · {option.meta}</option>)}</select></label>
                 ) : <div className="operation-alert warning"><AlertTriangle size={18} /><div><strong>{text("No records available for this type", "Geen records van dit type beschikbaar")}</strong><span>{text("Create the record in the appropriate project register first.", "Maak het record eerst aan in het bijbehorende projectregister.")}</span></div></div>}
-                <label className="form-field"><span>{text("Pin note · optional", "Notitie bij pin · optioneel")}</span><textarea rows={3} maxLength={1000} value={note} onChange={(event) => setNote(event.target.value)} /></label>
+                <details className="optional-text-entry">
+                  <summary>{text("Add an exceptional pin note", "Uitzonderlijke pinnotitie toevoegen")}</summary>
+                  <label className="form-field"><span>{text("Pin note · optional", "Notitie bij pin · optioneel")}</span><textarea rows={3} maxLength={1000} value={note} onChange={(event) => setNote(event.target.value)} /></label>
+                </details>
                 <div className="button-row"><button className="secondary-button" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button><button className="primary-button" type="button" disabled={busy || !selectedRecordId} onClick={() => void savePin()}><Link2 size={15} /> {text("Create link", "Koppeling maken")}</button></div>
               </div>
-            ) : selectedPin ? <DrawingPinDetails pin={selectedPin} /> : (
+            ) : selectedPin ? <DrawingPinDetails pin={selectedPin} onOpen={() => onOpenLinkedRecord(selectedPin.linked_record_type, selectedPin.linked_record_id)} /> : (
               <div className="visual-panel-empty"><MapPin size={24} /><strong>{text("Place or select a drawing pin", "Plaats of selecteer een tekeningspin")}</strong><span>{text("Every pin keeps its page, exact position and record identity in the audit trail.", "Elke pin bewaart pagina, exacte positie en recordidentiteit in het auditspoor.")}</span></div>
             )}
           </aside>
@@ -482,7 +486,7 @@ function MarkupShape({ markup, arrowMarkerId }: { markup: DrawingMarkup; arrowMa
   return null;
 }
 
-function DrawingPinDetails({ pin }: { pin: DrawingPin }) {
+function DrawingPinDetails({ pin, onOpen }: { pin: DrawingPin; onOpen: () => void }) {
   const { text } = useLanguage();
   return (
     <div className="visual-annotation-details">
@@ -494,6 +498,7 @@ function DrawingPinDetails({ pin }: { pin: DrawingPin }) {
         <div><dt>{text("Drawing page", "Tekeningspagina")}</dt><dd>{pin.page_number}</dd></div>
         <div><dt>{text("Exact position", "Exacte positie")}</dt><dd>X {Math.round(Number(pin.x_ratio) * 100)}% · Y {Math.round(Number(pin.y_ratio) * 100)}%</dd></div>
       </dl>
+      <button className="primary-button" type="button" onClick={onOpen}><ArrowUpRight size={15} /> {text("Open linked project record", "Open gekoppeld projectrecord")}</button>
       <div className="operation-alert"><Link2 size={18} /><div><strong>{text("Traceable project link", "Traceerbare projectkoppeling")}</strong><span>{text("The drawing, page, coordinate and linked record identity remain together in the audit trail.", "Tekening, pagina, coördinaat en identiteit van het gekoppelde record blijven samen in het auditspoor.")}</span></div></div>
     </div>
   );

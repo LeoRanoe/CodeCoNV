@@ -30,7 +30,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { VisualEvidenceWorkspace } from "@/app/visual-evidence-workspace";
 import { DrawingWorkspace } from "@/app/drawing-workspace";
 import { FieldTools } from "@/app/field-tools";
@@ -59,6 +59,7 @@ import {
   createFinding,
   createHseEvent,
   createLocationNode,
+  createMediaFolder,
   createProjectParty,
   createRegisterEntry,
   createExternalShareLink,
@@ -222,6 +223,8 @@ export function OperationalWorkspace({
   canManageOrganization,
   openUserAdmin,
   initialProjectTab = "inspections",
+  initialCameraFiles = [],
+  onInitialCameraFilesConsumed,
   openProjectArea,
 }: {
   mode: WorkspaceMode;
@@ -240,8 +243,10 @@ export function OperationalWorkspace({
   parties: ProjectParty[];
   canManageOrganization: boolean;
   openUserAdmin: () => void;
-  initialProjectTab?: "inspections" | "findings" | "visual";
-  openProjectArea: (tab: "inspections" | "findings" | "visual") => void;
+  initialProjectTab?: "inspections" | "findings" | "visual" | "files";
+  initialCameraFiles?: File[];
+  onInitialCameraFilesConsumed?: () => void;
+  openProjectArea: (tab: "inspections" | "findings" | "visual" | "files") => void;
 }) {
   const { text } = useLanguage();
   const queryClient = useQueryClient();
@@ -303,6 +308,7 @@ export function OperationalWorkspace({
       {notice ? <div className="operation-alert success"><CheckCircle2 size={17} /> {notice}</div> : null}
       {mode === "project" ? (
         <ProjectOperations
+          key={`${projectId}:${initialProjectTab}`}
           data={query.data}
           organizationId={organizationId}
           reportId={reportId}
@@ -318,6 +324,8 @@ export function OperationalWorkspace({
           busy={busy}
           run={run}
           initialTab={initialProjectTab}
+          initialCameraFiles={initialCameraFiles}
+          onInitialCameraFilesConsumed={onInitialCameraFilesConsumed}
         />
       ) : null}
       {mode === "reports" ? (
@@ -372,6 +380,8 @@ function ProjectOperations({
   busy,
   run,
   initialTab,
+  initialCameraFiles,
+  onInitialCameraFilesConsumed,
 }: {
   data: OperationSnapshot;
   organizationId: string;
@@ -388,6 +398,8 @@ function ProjectOperations({
   busy: boolean;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
   initialTab: ProjectTab;
+  initialCameraFiles: File[];
+  onInitialCameraFilesConsumed?: () => void;
 }) {
   const { language, locale, text } = useLanguage();
   const registerNames = language === "en" ? registerLabelsEnglish : registerLabels;
@@ -397,6 +409,8 @@ function ProjectOperations({
   const [inspectionTitle, setInspectionTitle] = useState("");
   const [inspectionTemplateId, setInspectionTemplateId] = useState("");
   const [inspectionAnswers, setInspectionAnswers] = useState<Record<string, InspectionAnswer>>({});
+  const [inspectionPhotos, setInspectionPhotos] = useState<File[]>([]);
+  const [inspectionPhotoError, setInspectionPhotoError] = useState("");
   const [findingForm, setFindingForm] = useState({
     type: "deficiency",
     title: "",
@@ -414,6 +428,8 @@ function ProjectOperations({
   const [findingPhotos, setFindingPhotos] = useState<File[]>([]);
   const [findingPhotoError, setFindingPhotoError] = useState("");
   const [hseForm, setHseForm] = useState({ type: "unsafe_condition", title: "", description: "", severity: "medium", immediateMeasure: "", confidential: false });
+  const [hsePhotos, setHsePhotos] = useState<File[]>([]);
+  const [hsePhotoError, setHsePhotoError] = useState("");
   const [registerForm, setRegisterForm] = useState<ControlledDocumentDraft>({ ...emptyControlledDocumentDraft });
   const [boqFile, setBoqFile] = useState<File | null>(null);
   const [boqItems, setBoqItems] = useState<BoqImportItem[]>([]);
@@ -449,6 +465,16 @@ function ProjectOperations({
     { title: text("Incorrect dimensions", "Verkeerde maatvoering"), description: text("The executed dimensions do not match the approved drawing.", "De uitgevoerde maatvoering komt niet overeen met de goedgekeurde tekening.") },
     { title: text("Safety risk", "Veiligheidsrisico"), description: text("An unsafe condition requires immediate attention.", "Een onveilige situatie vraagt directe opvolging.") },
     { title: text("Finish or cleaning", "Afwerking of schoonmaak"), description: text("The finish or work area does not meet the required condition.", "De afwerking of werkzone voldoet niet aan de vereiste staat.") },
+  ];
+  const findingImpactPresets = [
+    text("No schedule impact identified.", "Geen planningimpact vastgesteld."),
+    text("Possible schedule impact; monitor in the next update.", "Mogelijke planningimpact; volgen in de volgende update."),
+    text("Scope or work area is affected.", "Scope of werkzone is beïnvloed."),
+  ];
+  const findingActionPresets = [
+    text("Correct the issue and submit photo evidence.", "Herstel het probleem en lever fotobewijs."),
+    text("Inspect the correction and verify compliance.", "Inspecteer het herstel en verifieer dat het voldoet."),
+    text("Stop the affected work pending an approved correction.", "Stop het betrokken werk tot een goedgekeurde correctie."),
   ];
   const hsePresets = [
     { type: "positive_observation", severity: "low", title: text("Safe work observed", "Veilig werk waargenomen"), description: text("The work was performed safely and according to the agreed control measures.", "Het werk is veilig en volgens de afgesproken beheersmaatregelen uitgevoerd."), immediateMeasure: text("Positive feedback was given to the team.", "Positieve feedback is aan het team gegeven.") },
@@ -576,16 +602,37 @@ function ProjectOperations({
     ),
   );
 
+  const ensureMediaFolderId = async (name: string) => {
+    const existing = data.mediaFolders.find((folder) => (!folder.building_id || folder.building_id === buildingId) && folder.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+    if (existing) return existing.id;
+    if (!navigator.onLine) return null;
+    const created = await createMediaFolder(client, { projectId, buildingId, name, folderType: "images" });
+    return created.id;
+  };
+
   const submitInspection = async () => {
     if (!activeInspection || !activeTemplate) return;
     if (activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))) return;
     const okay = await run(
-      () => finishInspection(client, activeInspection, inspectionAnswers),
-      text("Inspection completed. Failed points were automatically recorded as findings.", "Inspectie afgerond. Afgekeurde punten zijn automatisch als bevinding vastgelegd."),
+      async () => {
+        await finishInspection(client, activeInspection, inspectionAnswers);
+        if (inspectionPhotos.length) {
+          const folderId = await ensureMediaFolderId(text("Inspections", "Inspecties"));
+          for (const photo of inspectionPhotos) {
+            const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
+            const uploadFile = new File([prepared.blob], prepared.fileName, { type: prepared.mimeType, lastModified: photo.lastModified });
+            const uploaded = await uploadProjectFile(client, { projectId, buildingId, folderId, category: "photo", file: uploadFile });
+            await linkFileToRecord(client, { organizationId, projectId, fileId: uploaded.fileId, recordType: "inspection", recordId: activeInspection.id, relationship: "evidence" });
+          }
+        }
+      },
+      text("Inspection completed with linked photo evidence. Failed points were recorded as findings.", "Inspectie met gekoppeld fotobewijs afgerond. Afgekeurde punten zijn als bevinding vastgelegd."),
     );
     if (okay) {
       setActiveInspection(null);
       setInspectionTitle("");
+      setInspectionPhotos([]);
+      setInspectionPhotoError("");
     }
   };
 
@@ -605,25 +652,31 @@ function ProjectOperations({
     }));
   };
 
-  const addFindingPhotos = (files: FileList | null) => {
+  const addPhotosToStack = (
+    files: FileList | null,
+    setFiles: Dispatch<SetStateAction<File[]>>,
+    setError: Dispatch<SetStateAction<string>>,
+  ) => {
     if (!files) return;
     const maximumSize = (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024;
     const candidates = Array.from(files);
     const valid = candidates.filter((file) => ["image/jpeg", "image/png", "image/webp"].includes(file.type) && file.size <= maximumSize);
     if (valid.length !== candidates.length) {
-      setFindingPhotoError(text(
+      setError(text(
         `Use JPEG, PNG or WebP files up to ${data.settings?.max_file_size_mb ?? 25} MB each.`,
         `Gebruik JPEG-, PNG- of WebP-bestanden tot ${data.settings?.max_file_size_mb ?? 25} MB per foto.`,
       ));
     } else {
-      setFindingPhotoError("");
+      setError("");
     }
-    setFindingPhotos((current) => {
+    setFiles((current) => {
       const keyed = new Map(current.map((file) => [`${file.name}:${file.size}:${file.lastModified}`, file]));
       valid.forEach((file) => keyed.set(`${file.name}:${file.size}:${file.lastModified}`, file));
       return [...keyed.values()].slice(0, 12);
     });
   };
+
+  const addFindingPhotos = (files: FileList | null) => addPhotosToStack(files, setFindingPhotos, setFindingPhotoError);
 
   const addFinding = async () => {
     if (!reportId || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3) return;
@@ -648,6 +701,7 @@ function ProjectOperations({
       ? text("Issue photo and assignment are in the offline sync queue.", "Probleemfoto en toewijzing staan in de offline synchronisatiewachtrij.")
       : text("Finding numbered, assigned and given a rule-driven deadline.", "Bevinding genummerd, toegewezen en van een regelgestuurde deadline voorzien.");
     const okay = await run(async () => {
+      const findingFolderId = findingPhotos.length ? await ensureMediaFolderId(text("Findings", "Bevindingen")) : null;
       if (findingPhotos.length && !online) {
         const groupId = crypto.randomUUID();
         for (const photo of findingPhotos) {
@@ -656,7 +710,8 @@ function ProjectOperations({
             projectId,
             buildingId,
             reportId,
-            folderId: null,
+            folderId: findingFolderId,
+            folderName: text("Findings", "Bevindingen"),
             kind: "photo",
             file: prepared.blob,
             fileName: prepared.fileName,
@@ -695,7 +750,7 @@ function ProjectOperations({
       for (const photo of findingPhotos) {
         const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
         const uploadFile = new File([prepared.blob], prepared.fileName, { type: prepared.mimeType, lastModified: photo.lastModified });
-        const uploaded = await uploadProjectFile(client, { projectId, buildingId, category: "photo", file: uploadFile });
+        const uploaded = await uploadProjectFile(client, { projectId, buildingId, folderId: findingFolderId, category: "photo", file: uploadFile });
         fileIds.push(uploaded.fileId);
       }
       const finding = await createFinding(client, draft);
@@ -725,11 +780,24 @@ function ProjectOperations({
   const addHse = async () => {
     if (!reportId || hseForm.title.trim().length < 3 || hseForm.description.trim().length < 3) return;
     const okay = await run(
-      () => createHseEvent(client, { projectId, buildingId, reportId, ...hseForm }),
-      text("HSE event recorded centrally; urgent classifications were escalated.", "HSE-gebeurtenis centraal geregistreerd; urgente classificaties zijn geëscaleerd."),
+      async () => {
+        const event = await createHseEvent(client, { projectId, buildingId, reportId, ...hseForm });
+        if (hsePhotos.length) {
+          const folderId = await ensureMediaFolderId("HSE");
+          for (const photo of hsePhotos) {
+            const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
+            const uploadFile = new File([prepared.blob], prepared.fileName, { type: prepared.mimeType, lastModified: photo.lastModified });
+            const uploaded = await uploadProjectFile(client, { projectId, buildingId, folderId, category: "photo", file: uploadFile });
+            await linkFileToRecord(client, { organizationId, projectId, fileId: uploaded.fileId, recordType: "hse", recordId: event.id, relationship: "evidence" });
+          }
+        }
+      },
+      text("HSE event and photo evidence recorded centrally; urgent classifications were escalated.", "HSE-gebeurtenis en fotobewijs centraal geregistreerd; urgente classificaties zijn geëscaleerd."),
     );
     if (okay) {
       setHseForm({ type: "unsafe_condition", title: "", description: "", severity: "medium", immediateMeasure: "", confidential: false });
+      setHsePhotos([]);
+      setHsePhotoError("");
       setShowForm(false);
     }
   };
@@ -794,6 +862,12 @@ function ProjectOperations({
         <div><p className="eyebrow">{projectName} · {buildingName}</p><h1>{text("Project records", "Projectregisters")}</h1><p>{text("Inspections, quality, safety and evidence from one controlled source.", "Inspecties, kwaliteit, veiligheid en bewijs vanuit één centrale bron.")}</p></div>
         {tab !== "files" && tab !== "visual" && tab !== "drawings" && tab !== "tools" && !activeInspection ? <button className="primary-button" type="button" onClick={() => setShowForm((value) => !value)}><Plus size={15} /> {text("New record", "Nieuwe registratie")}</button> : null}
       </header>
+      <div className="field-flow-launcher" aria-label={text("Fast field actions", "Snelle veldacties")}>
+        <button type="button" onClick={() => { switchTab("inspections"); setShowForm(true); }}><ClipboardCheck size={19} /><span><strong>{text("Start inspection", "Start inspectie")}</strong><small>{text("Recommended checklist first", "Aanbevolen checklist eerst")}</small></span></button>
+        <button type="button" onClick={() => { switchTab("findings"); setShowForm(true); }}><AlertTriangle size={19} /><span><strong>{text("Photo & finding", "Foto & bevinding")}</strong><small>{text("Stack evidence and assign", "Bewijs stapelen en toewijzen")}</small></span></button>
+        <button type="button" onClick={() => switchTab("drawings")}><FileText size={19} /><span><strong>{text("Drawing & pins", "Tekening & pins")}</strong><small>{text("Link the exact location", "Koppel de exacte locatie")}</small></span></button>
+        <button type="button" onClick={() => switchTab("files")}><Camera size={19} /><span><strong>{text("Photos & folders", "Foto’s & mappen")}</strong><small>{text("Point, shoot, automatically filed", "Richten, foto, automatisch geordend")}</small></span></button>
+      </div>
       <div className="operation-tabs" role="tablist" aria-label={text("Project records", "Projectregisters")}>
         {([
           ["inspections", text("Inspections", "Inspecties"), data.inspections.length],
@@ -853,6 +927,13 @@ function ProjectOperations({
                   </section>
                 ))}
               </div>
+              <label className="finding-photo-capture inspection-photo-capture">
+                <Camera size={22} />
+                <span><strong>{inspectionPhotos.length ? text(`${inspectionPhotos.length} evidence photos ready`, `${inspectionPhotos.length} bewijsfoto’s klaar`) : text("Take inspection evidence photo", "Maak inspectiebewijsfoto")}</strong><small>{text("Tap again for another photo. Every image is linked to this inspection.", "Tik opnieuw voor nog een foto. Elk beeld wordt aan deze inspectie gekoppeld.")}</small></span>
+                <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setInspectionPhotos, setInspectionPhotoError); event.currentTarget.value = ""; }} />
+              </label>
+              {inspectionPhotos.length ? <FindingPhotoStack files={inspectionPhotos} onRemove={(index) => setInspectionPhotos((current) => current.filter((_, currentIndex) => currentIndex !== index))} /> : null}
+              {inspectionPhotoError ? <p className="field-error" role="alert">{inspectionPhotoError}</p> : null}
               <div className="form-actions checklist-sticky-actions"><button className="secondary-button" type="button" onClick={() => setActiveInspection(null)}>{text("Complete later", "Later afronden")}</button><button className="primary-button" type="button" disabled={busy || activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))} onClick={() => void submitInspection()}>{busy ? <Loader2 className="spin" size={15} /> : <FileCheck2 size={15} />} {text("Complete inspection", "Inspectie afronden")}</button></div>
             </div>
           ) : null}
@@ -899,7 +980,7 @@ function ProjectOperations({
               <label className="finding-photo-capture">
                 <Camera size={22} />
                 <span><strong>{findingPhotos.length ? text(`${findingPhotos.length} photos stacked for this issue`, `${findingPhotos.length} foto’s gestapeld voor dit probleem`) : text("Take or choose issue photos", "Maak of kies probleemfoto’s")}</strong><small>{text("Tap again to add another photo. Project, building, date and time are linked automatically.", "Tik opnieuw om nog een foto toe te voegen. Project, gebouw, datum en tijd worden automatisch gekoppeld.")}</small></span>
-                <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
+                <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
               </label>
               {findingPhotos.length ? <FindingPhotoStack files={findingPhotos} onRemove={(index) => setFindingPhotos((current) => current.filter((_, currentIndex) => currentIndex !== index))} /> : null}
               {findingPhotoError ? <p className="field-error" role="alert">{findingPhotoError}</p> : null}
@@ -927,14 +1008,21 @@ function ProjectOperations({
                 <label className="form-field"><span>{text("Type", "Type")}</span><select value={findingForm.type} onChange={(event) => setFindingForm({ ...findingForm, type: event.target.value })}><option value="observation">{text("Observation", "Observatie")}</option><option value="deficiency">{text("Deficiency", "Tekortkoming")}</option><option value="deviation">{text("Deviation", "Afwijking")}</option><option value="ncr">NCR</option><option value="improvement">{text("Improvement opportunity", "Verbeterkans")}</option></select></label>
                 <label className="form-field"><span>{text("Severity", "Ernst")}</span><select value={findingForm.severity} onChange={(event) => setFindingForm({ ...findingForm, severity: event.target.value })}><option value="low">{text("Low · 14 days", "Laag · 14 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label>
               </div>
-              <label className="form-field"><span>{text("Title", "Titel")}</span><input value={findingForm.title} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} /></label>
-              <label className="form-field"><span>{text("Factual description", "Feitelijke omschrijving")}</span><textarea value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} rows={3} /></label>
               <div className="form-grid-2">
                 <label className="form-field"><span>{text("Issue type", "Soort issue")}</span><select value={findingForm.issueType} onChange={(event) => setFindingForm({ ...findingForm, issueType: event.target.value })}><option value="quality">{text("Quality / workmanship", "Kwaliteit / uitvoering")}</option><option value="informational">{text("Informational", "Informatief")}</option><option value="procedural">{text("Procedural", "Procedureel")}</option><option value="system">{text("System / installation", "Systeem / installatie")}</option><option value="other">{text("Other", "Overig")}</option></select></label>
                 <label className="form-field"><span>{text("Disposition", "Beoordeling")}</span><select value={findingForm.disposition} onChange={(event) => setFindingForm({ ...findingForm, disposition: event.target.value as typeof findingForm.disposition })}><option value="validated">{text("Validated", "Gevalideerd")}</option><option value="to_be_corrected">{text("To be corrected", "Te corrigeren")}</option><option value="alternative_solution">{text("Alternative solution required", "Alternatieve oplossing nodig")}</option></select></label>
               </div>
-              <label className="form-field"><span>{text("Impact summary (schedule, scope, resources, space or milestone)", "Impactsamenvatting (planning, scope, middelen, ruimte of mijlpaal)")}</span><textarea value={findingForm.impactSummary} onChange={(event) => setFindingForm({ ...findingForm, impactSummary: event.target.value })} rows={2} /></label>
-              <label className="form-field"><span>{text("Required action steps", "Vereiste actiestappen")}</span><textarea value={findingForm.actionSteps} onChange={(event) => setFindingForm({ ...findingForm, actionSteps: event.target.value })} rows={2} /></label>
+              <div className="click-answer-block"><strong>{text("Impact", "Impact")}</strong><div className="quick-issue-presets">{findingImpactPresets.map((option) => <button className={findingForm.impactSummary === option ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, impactSummary: option })} key={option}>{option}</button>)}</div></div>
+              <div className="click-answer-block"><strong>{text("Required follow-up", "Vereiste opvolging")}</strong><div className="quick-issue-presets">{findingActionPresets.map((option) => <button className={findingForm.actionSteps === option ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, actionSteps: option })} key={option}>{option}</button>)}</div></div>
+              <details className="optional-text-entry">
+                <summary>{text("Different issue details", "Andere probleeminformatie")}</summary>
+                <div className="form-grid">
+                  <label className="form-field"><span>{text("Title", "Titel")}</span><input value={findingForm.title} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} /></label>
+                  <label className="form-field"><span>{text("Factual description", "Feitelijke omschrijving")}</span><textarea value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} rows={3} /></label>
+                  <label className="form-field"><span>{text("Different impact", "Andere impact")}</span><textarea value={findingForm.impactSummary} onChange={(event) => setFindingForm({ ...findingForm, impactSummary: event.target.value })} rows={2} /></label>
+                  <label className="form-field"><span>{text("Different action", "Andere actie")}</span><textarea value={findingForm.actionSteps} onChange={(event) => setFindingForm({ ...findingForm, actionSteps: event.target.value })} rows={2} /></label>
+                </div>
+              </details>
               <div className="form-grid-2">
                 <label className="form-field"><span>{text("Expected resolution date", "Verwachte oplosdatum")}</span><input type="date" value={findingForm.expectedResolutionDate} onChange={(event) => setFindingForm({ ...findingForm, expectedResolutionDate: event.target.value })} /></label>
                 <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required", "Escalatie vereist")}</label>
@@ -972,9 +1060,21 @@ function ProjectOperations({
                 <label className="form-field"><span>{text("Type", "Type")}</span><select value={hseForm.type} onChange={(event) => setHseForm({ ...hseForm, type: event.target.value })}><option value="positive_observation">{text("Positive observation", "Positieve observatie")}</option><option value="unsafe_act">{text("Unsafe act", "Onveilige handeling")}</option><option value="unsafe_condition">{text("Unsafe condition", "Onveilige situatie")}</option><option value="near_miss">Near miss</option><option value="incident">Incident</option><option value="stop_work">Stop work</option><option value="toolbox">Toolbox meeting</option></select></label>
                 <label className="form-field"><span>{text("Severity", "Ernst")}</span><select value={hseForm.severity} onChange={(event) => setHseForm({ ...hseForm, severity: event.target.value })}><option value="low">{text("Low", "Laag")}</option><option value="medium">{text("Medium", "Middel")}</option><option value="high">{text("High", "Hoog")}</option><option value="critical">{text("Critical", "Kritiek")}</option></select></label>
               </div>
-              <label className="form-field"><span>{text("Title", "Titel")}</span><input value={hseForm.title} onChange={(event) => setHseForm({ ...hseForm, title: event.target.value })} /></label>
-              <label className="form-field"><span>{text("What was observed?", "Wat is waargenomen?")}</span><textarea value={hseForm.description} onChange={(event) => setHseForm({ ...hseForm, description: event.target.value })} rows={3} /></label>
-              <label className="form-field"><span>{text("Immediate measure", "Directe maatregel")}</span><textarea value={hseForm.immediateMeasure} onChange={(event) => setHseForm({ ...hseForm, immediateMeasure: event.target.value })} rows={2} /></label>
+              <details className="optional-text-entry">
+                <summary>{text("Different HSE situation", "Andere HSE-situatie")}</summary>
+                <div className="form-grid">
+                  <label className="form-field"><span>{text("Title", "Titel")}</span><input value={hseForm.title} onChange={(event) => setHseForm({ ...hseForm, title: event.target.value })} /></label>
+                  <label className="form-field"><span>{text("What was observed?", "Wat is waargenomen?")}</span><textarea value={hseForm.description} onChange={(event) => setHseForm({ ...hseForm, description: event.target.value })} rows={3} /></label>
+                  <label className="form-field"><span>{text("Immediate measure", "Directe maatregel")}</span><textarea value={hseForm.immediateMeasure} onChange={(event) => setHseForm({ ...hseForm, immediateMeasure: event.target.value })} rows={2} /></label>
+                </div>
+              </details>
+              <label className="finding-photo-capture hse-photo-capture">
+                <Camera size={22} />
+                <span><strong>{hsePhotos.length ? text(`${hsePhotos.length} evidence photos ready`, `${hsePhotos.length} bewijsfoto’s klaar`) : text("Take HSE evidence photo", "Maak HSE-bewijsfoto")}</strong><small>{text("Tap again to stack situation and control-measure photos.", "Tik opnieuw om situatie- en maatregelfoto’s te stapelen.")}</small></span>
+                <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setHsePhotos, setHsePhotoError); event.currentTarget.value = ""; }} />
+              </label>
+              {hsePhotos.length ? <FindingPhotoStack files={hsePhotos} onRemove={(index) => setHsePhotos((current) => current.filter((_, currentIndex) => currentIndex !== index))} /> : null}
+              {hsePhotoError ? <p className="field-error" role="alert">{hsePhotoError}</p> : null}
               <label className="check-field"><input type="checkbox" checked={hseForm.confidential} onChange={(event) => setHseForm({ ...hseForm, confidential: event.target.checked })} /> {text("Restrict this sensitive incident to authorized HSE roles", "Beperk dit gevoelige incident tot bevoegde HSE-rollen")}</label>
               <button className="primary-button" type="button" disabled={busy || !reportId || hseForm.title.trim().length < 3 || hseForm.description.trim().length < 3} onClick={() => void addHse()}><ShieldCheck size={15} /> {text("Save HSE record", "HSE-registratie opslaan")}</button>
             </div>
@@ -990,8 +1090,13 @@ function ProjectOperations({
               <div className="operation-form-heading"><div><span className="record-number">{controlledRegister ? text("Client-controlled form", "Klantgestuurd formulier") : text("Project register", "Projectregister")}</span><h2>{controlledRegister ? registerNames[registerForm.type] : text("Add project register item", "Projectregister aanvullen")}</h2></div>{controlledRegister ? <span className="controlled-document-badge">{projectCode} · {buildingName}</span> : null}</div>
               <label className="form-field"><span>{text("Register / document format", "Register / documentformaat")}</span><select value={registerForm.type} onChange={(event) => setRegisterForm({ ...emptyControlledDocumentDraft, type: event.target.value })}>{Object.entries(registerNames).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
               {activeRegisterPresets.length ? <div className="quick-issue-presets" aria-label={text("Choose a standard register item", "Kies een standaard registeritem")}>{activeRegisterPresets.map((preset) => <button className={registerForm.title === preset.title ? "active" : ""} type="button" onClick={() => setRegisterForm({ ...registerForm, ...preset })} key={preset.title}>{preset.title}</button>)}</div> : null}
-              <label className="form-field"><span>{text("Title / reference", "Titel / referentie")}</span><input value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} /></label>
-              <label className="form-field"><span>{controlledRegister ? text("Formal request / instruction / observation", "Formeel verzoek / instructie / observatie") : text("Details, quantity, measure or decision", "Details, hoeveelheid, maatregel of besluit")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={controlledRegister ? 5 : 3} /></label>
+              <details className="optional-text-entry">
+                <summary>{text("Different title or document content", "Andere titel of documentinhoud")}</summary>
+                <div className="form-grid">
+                  <label className="form-field"><span>{text("Title / reference", "Titel / referentie")}</span><input value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} /></label>
+                  <label className="form-field"><span>{controlledRegister ? text("Formal request / instruction / observation", "Formeel verzoek / instructie / observatie") : text("Details, quantity, measure or decision", "Details, hoeveelheid, maatregel of besluit")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={controlledRegister ? 5 : 3} /></label>
+                </div>
+              </details>
               {controlledRegister ? <>
                 <div className="form-grid-2"><label className="form-field"><span>{text("Revision", "Revisie")}</span><input value={registerForm.revision} onChange={(event) => setRegisterForm({ ...registerForm, revision: event.target.value })} /></label><label className="form-field"><span>{text("Response / information required by", "Antwoord / informatie nodig uiterlijk")}</span><input type="date" value={registerForm.dueDate} onChange={(event) => setRegisterForm({ ...registerForm, dueDate: event.target.value })} /></label></div>
                 <div className="form-grid-2"><label className="form-field"><span>{text("Issued by position", "Functie opsteller")}</span><input value={registerForm.issuerPosition} onChange={(event) => setRegisterForm({ ...registerForm, issuerPosition: event.target.value })} /></label><label className="form-field"><span>{text("Issued by company", "Bedrijf opsteller")}</span><input value={registerForm.issuerCompany} onChange={(event) => setRegisterForm({ ...registerForm, issuerCompany: event.target.value })} /></label></div>
@@ -1022,11 +1127,11 @@ function ProjectOperations({
 
       {tab === "visual" ? <VisualEvidenceWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} reportId={reportId} parties={parties} client={client} busy={busy} run={run} /> : null}
 
-      {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} client={client} busy={busy} run={run} /> : null}
+      {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} client={client} busy={busy} run={run} onOpenLinkedRecord={(recordType) => switchTab(recordType === "observation" ? "findings" : recordType === "inspection" ? "inspections" : recordType === "visual" ? "visual" : "registers")} /> : null}
 
       {tab === "tools" ? <FieldTools data={data} projectId={projectId} buildingId={buildingId} reportId={reportId} client={client} busy={busy} run={run} /> : null}
 
-      {tab === "files" ? <MediaLibraryWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} reportId={reportId} client={client} busy={busy} run={run} /> : null}
+      {tab === "files" ? <MediaLibraryWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} reportId={reportId} client={client} busy={busy} run={run} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} open360Upload={() => setTab("visual")} /> : null}
     </>
   );
 }
