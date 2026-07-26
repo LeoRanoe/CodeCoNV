@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { anchorChecklistLibrary, legacyAnchorPrompts } from "@/lib/checklists/anchor-library";
 
 export type ChecklistItem = {
   id: string;
@@ -350,7 +351,12 @@ export async function loadProjectOperations(
   const items = (itemResult.data ?? []) as ChecklistItem[];
   return {
     templates: templateRows.map((template) => ({ ...template, items: items.filter((item) => item.template_id === template.id) })),
-    checklistLibrary: (libraryResult.data ?? []) as ChecklistLibraryTemplate[],
+    checklistLibrary: [
+      ...((libraryResult.data ?? []) as ChecklistLibraryTemplate[]),
+      ...anchorChecklistLibrary
+        .filter((builtIn) => !(libraryResult.data ?? []).some((row) => row.code === builtIn.code))
+        .map((builtIn) => ({ ...builtIn, prompts: [...builtIn.prompts] })),
+    ].sort((left, right) => left.sort_order - right.sort_order),
     inspections: (inspectionResult.data ?? []) as Inspection[],
     findings: (findingResult.data ?? []) as Finding[],
     findingProgressUpdates: (findingProgressResult.data ?? []) as FindingProgressUpdate[],
@@ -415,14 +421,18 @@ export async function startInspection(client: SupabaseClient, input: { projectId
   return result.data as Inspection;
 }
 
-export async function finishInspection(client: SupabaseClient, inspection: Inspection, answers: Record<string, { result: string; notes: string }>) {
+export async function finishInspection(
+  client: SupabaseClient,
+  inspection: Inspection,
+  answers: Record<string, { result: string; notes: string; numericValue?: number; textValue?: string }>,
+) {
   for (const [itemId, answer] of Object.entries(answers)) {
     const saved = await client.rpc("save_inspection_response", {
       p_inspection_id: inspection.id,
       p_checklist_item_id: itemId,
       p_result: answer.result,
-      p_numeric_value: null,
-      p_text_value: null,
+      p_numeric_value: answer.result === "value" ? answer.numericValue ?? null : null,
+      p_text_value: answer.result === "text" ? answer.textValue?.trim() || null : null,
       p_notes: answer.notes,
       p_idempotency_key: `inspection-response:${inspection.id}:${itemId}`,
     });
@@ -651,8 +661,25 @@ export async function installChecklistLibraryTemplate(client: SupabaseClient, pr
     p_project_id: projectId,
     p_library_code: libraryCode,
   });
-  fail(result.error);
-  return result.data as ChecklistTemplate;
+  if (!result.error) return result.data as ChecklistTemplate;
+
+  const legacyPrompts = legacyAnchorPrompts(libraryCode);
+  if (!legacyPrompts) {
+    fail(result.error);
+  }
+  const builtIn = anchorChecklistLibrary.find((item) => item.code === libraryCode);
+  if (!builtIn || !legacyPrompts) {
+    throw new Error(result.error.message);
+  }
+  const fallback = await client.rpc("create_project_checklist", {
+    p_project_id: projectId,
+    p_module: builtIn.module,
+    p_code: builtIn.code,
+    p_name: builtIn.name,
+    p_prompts: legacyPrompts,
+  });
+  fail(fallback.error);
+  return fallback.data as ChecklistTemplate;
 }
 
 export async function saveProjectSettings(client: SupabaseClient, settings: ProjectSettings, update: Partial<ProjectSettings>) {

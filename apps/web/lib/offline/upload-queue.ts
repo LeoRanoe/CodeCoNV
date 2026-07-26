@@ -21,6 +21,13 @@ export type QueuedFindingDraft = {
   sourceCatalogSubject?: string;
 };
 
+export type OfflineFindingGroup = {
+  id: string;
+  organizationId: string;
+  draft: QueuedFindingDraft;
+  findingId?: string;
+};
+
 export type OfflineUpload = {
   id: string;
   projectId: string;
@@ -41,6 +48,8 @@ export type OfflineUpload = {
   originalSize: number;
   queuedSize: number;
   compressed: boolean;
+  findingGroup?: OfflineFindingGroup | null;
+  /** @deprecated Retained so previously queued single-photo findings still synchronize. */
   findingDraft?: QueuedFindingDraft | null;
   createdAt: string;
   lastError: string | null;
@@ -133,6 +142,10 @@ export async function syncOfflineUploads(
   if (typeof navigator !== "undefined" && !navigator.onLine) return { synced: 0, failed: 0, paused: true };
   if (!options.force && dataSaverEnabled() && connectionIsMetered()) return { synced: 0, failed: 0, paused: true };
   const uploads = await listOfflineUploads(projectId);
+  const findingIds = new Map<string, string>();
+  uploads.forEach((upload) => {
+    if (upload.findingGroup?.findingId) findingIds.set(upload.findingGroup.id, upload.findingGroup.findingId);
+  });
   let synced = 0;
   let failed = 0;
   for (const upload of uploads) {
@@ -145,7 +158,45 @@ export async function syncOfflineUploads(
         category: upload.kind === "drawing" ? "drawing" : "photo",
         file: asFile(upload),
       });
-      if (upload.findingDraft && upload.reportId) {
+      if (upload.findingGroup && upload.reportId) {
+        let findingId = upload.findingGroup.findingId ?? findingIds.get(upload.findingGroup.id);
+        if (!findingId) {
+          const draft = upload.findingGroup.draft;
+          const finding = await createFinding(client, {
+            projectId: upload.projectId,
+            buildingId: upload.buildingId,
+            reportId: upload.reportId,
+            type: draft.type,
+            title: draft.title,
+            description: draft.description,
+            severity: draft.severity,
+            responsiblePartyId: draft.responsiblePartyId,
+            issueType: draft.issueType,
+            impactSummary: draft.impactSummary,
+            actionSteps: draft.actionSteps,
+            escalationRequired: draft.escalationRequired,
+            disposition: draft.disposition,
+            expectedResolutionDate: draft.expectedResolutionDate,
+            sourceCatalogSubject: draft.sourceCatalogSubject,
+          });
+          findingId = finding.id;
+          findingIds.set(upload.findingGroup.id, findingId);
+          await Promise.all(uploads
+            .filter((candidate) => candidate.findingGroup?.id === upload.findingGroup?.id)
+            .map((candidate) => idbPut("uploads", {
+              ...candidate,
+              findingGroup: { ...candidate.findingGroup!, findingId },
+            })));
+        }
+        await linkFileToRecord(client, {
+          organizationId: upload.findingGroup.organizationId,
+          projectId: upload.projectId,
+          fileId: stored.fileId,
+          recordType: "finding",
+          recordId: findingId,
+          relationship: "evidence",
+        });
+      } else if (upload.findingDraft && upload.reportId) {
         const finding = await createFinding(client, {
           projectId: upload.projectId,
           buildingId: upload.buildingId,

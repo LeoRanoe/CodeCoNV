@@ -537,7 +537,7 @@ test("implements the customer video workflows without external accounts", async 
   assert.match(app, /changeCount\(row\.id, 1\)/);
   assert.match(app, /Dictate notes|Notities dicteren/);
   assert.match(operations, /Snap & assign|Foto & toewijzen/);
-  assert.match(operations, /findingDraft/);
+  assert.match(operations, /findingGroup/);
   assert.match(offlineQueue, /createFinding/);
   assert.match(offlineQueue, /relationship: "before"/);
   assert.match(sharePage, /ExternalShareActions/);
@@ -572,4 +572,41 @@ test("minimizes repetitive field typing with controlled quick choices", async ()
   assert.match(operations, /Choose the completed measure|Kies de uitgevoerde maatregel/);
   assert.match(visuals, /Choose a common issue|Kies een veelvoorkomend probleem/);
   assert.match(media, /Create a standard folder|Maak een standaardmap/);
+});
+
+test("ships automatic project weather, anchor checklists and stacked issue photos", async () => {
+  const [app, weatherRoute, weatherRules, anchorLibrary, operations, supabaseOperations, offlineQueue, fieldGuide, migration] = await Promise.all([
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/weather/current/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/weather.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/checklists/anchor-library.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/offline/upload-queue.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/field-guide.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202607260001_codeco_anchor_checklists.sql", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(app, /api\/weather\/current/);
+  assert.match(app, /Automatically loaded|Automatisch geladen/);
+  assert.match(weatherRoute, /geocoding-api\.open-meteo\.com/);
+  assert.match(weatherRoute, /api\.open-meteo\.com\/v1\/forecast/);
+  assert.match(weatherRules, /weatherConditionFromWmoCode/);
+  assert.match(anchorLibrary, /legacyAnchorPrompts/);
+  assert.match(anchorLibrary, /LIB-101/);
+  assert.match(anchorLibrary, /LIB-102/);
+  assert.match(anchorLibrary, /LIB-103/);
+  assert.match(operations, /Approve section|Sectie akkoord/);
+  assert.match(operations, /Prepare all 3 checklists|Zet alle 3 checklists klaar/);
+  assert.match(operations, /multiple onChange/);
+  assert.match(operations, /findingPhotos\.length/);
+  assert.match(supabaseOperations, /create_project_checklist/);
+  assert.match(supabaseOperations, /anchorChecklistLibrary[\s\S]*\.filter/);
+  assert.match(offlineQueue, /findingIds = new Map/);
+  assert.match(fieldGuide, /60-second field guide|60-seconden veldgids/);
+  assert.match(migration, /'LIB-101'/);
+  assert.match(migration, /'LIB-102'/);
+  assert.match(migration, /'LIB-103'/);
+  assert.match(migration, /AUTO_WEATHER/);
+  assert.match(migration, /projects_install_codeco_anchor_checklists/);
 });

@@ -35,6 +35,7 @@ import {
   Minus,
   PackageCheck,
   Plus,
+  RefreshCw,
   Ruler,
   Search,
   Settings,
@@ -49,8 +50,9 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
+import { FieldGuide } from "@/app/field-guide";
 import { OperationalWorkspace } from "@/app/operational-workspace";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
@@ -112,6 +114,7 @@ import {
   type WorkspaceBuilding,
   type WorkspaceProject,
 } from "@/lib/supabase/data";
+import type { CurrentProjectWeather } from "@/lib/weather";
 
 function CompanyLogo({ subtitle }: { subtitle?: string }) {
   return (
@@ -948,6 +951,7 @@ export function CodecoSupervisionApp() {
 
   return (
     <div className="app-shell">
+      <FieldGuide />
       <aside className="sidebar" aria-label={text("Main navigation", "Hoofdnavigatie")}>
         <div className="brand">
           <CompanyLogo subtitle={text("Supervision", "Supervisie")} />
@@ -1059,6 +1063,7 @@ export function CodecoSupervisionApp() {
               reportId={dayQuery.data?.report?.id ? String(dayQuery.data.report.id) : null}
               reportNumber={reportNumber}
               reportStatus={String(dayQuery.data?.report?.status ?? "draft")}
+              projectStartAnswers={projectStartAnswers}
               currentUserName={currentUserName}
               parties={dayQuery.data?.parties ?? []}
               canManageOrganization={canManageMembers}
@@ -1827,6 +1832,36 @@ function ProjectStartForm({
     },
   });
   const answers = useWatch({ control });
+  const [automaticWeather, setAutomaticWeather] = useState<CurrentProjectWeather | null>(null);
+  const [weatherLoadState, setWeatherLoadState] = useState<"idle" | "loading" | "ready" | "failed">(
+    initialAnswers ? "idle" : "loading",
+  );
+  const loadAutomaticWeather = useCallback(async () => {
+    setWeatherLoadState("loading");
+    try {
+      const response = await fetch(`/api/weather/current?location=${encodeURIComponent(project.location)}`, {
+        cache: "no-store",
+      });
+      const payload = await response.json() as CurrentProjectWeather | { error?: string };
+      if (!response.ok || !("condition" in payload)) {
+        throw new Error("weather-unavailable");
+      }
+      setAutomaticWeather(payload);
+      setValue("weatherCondition", payload.condition, { shouldDirty: true, shouldValidate: true });
+      setValue("temperatureC", payload.temperatureC, { shouldDirty: true, shouldValidate: true });
+      setValue("windCondition", payload.windCondition, { shouldDirty: true, shouldValidate: true });
+      setWeatherLoadState("ready");
+    } catch {
+      setWeatherLoadState("failed");
+    }
+  }, [project.location, setValue]);
+
+  useEffect(() => {
+    if (initialAnswers) return;
+    const timer = window.setTimeout(() => void loadAutomaticWeather(), 0);
+    return () => window.clearTimeout(timer);
+  }, [initialAnswers, loadAutomaticWeather]);
+
   const automation = getProjectStartAutomation(answers, undefined, language);
   const selectedWork = String(answers.plannedWork ?? "").split("; ").filter(Boolean);
   const toggleWork = (label: string) => {
@@ -1862,7 +1897,23 @@ function ProjectStartForm({
       <div className="project-start-layout">
         <form className="project-start-form" onSubmit={handleSubmit(startProject)} noValidate>
           <section className="form-section-card">
-            <header><span className="form-section-number">1</span><span><strong>{text("Weather and working hours", "Weer en werktijden")}</strong><small>{text("Observed manually on site", "Handmatig waargenomen op de bouwplaats")}</small></span></header>
+            <header><span className="form-section-number">1</span><span><strong>{text("Weather and working hours", "Weer en werktijden")}</strong><small>{text("Weather loads automatically from the project location", "Weer laadt automatisch vanuit de projectlocatie")}</small></span></header>
+            <div className={`automatic-weather-status ${weatherLoadState}`}>
+              <span className="automatic-weather-icon">{weatherLoadState === "loading" ? <Loader2 className="spin" size={18} /> : weatherLoadState === "ready" ? <CheckCircle2 size={18} /> : <CloudSun size={18} />}</span>
+              <span>
+                <strong>{weatherLoadState === "loading"
+                  ? text("Loading current weather…", "Actueel weer laden…")
+                  : weatherLoadState === "ready" && automaticWeather
+                    ? text(`Automatically loaded · ${automaticWeather.resolvedLocation}`, `Automatisch geladen · ${automaticWeather.resolvedLocation}`)
+                    : initialAnswers
+                      ? text("Saved weather for this workday", "Opgeslagen weer voor deze werkdag")
+                      : text("Automatic source unavailable · check the fields below", "Automatische bron niet beschikbaar · controleer de velden hieronder")}</strong>
+                <small>{weatherLoadState === "ready" && automaticWeather
+                  ? text(`${automaticWeather.source} · wind ${automaticWeather.windSpeedKph} km/h · humidity ${automaticWeather.relativeHumidityPercent}%`, `${automaticWeather.source} · wind ${automaticWeather.windSpeedKph} km/u · luchtvochtigheid ${automaticWeather.relativeHumidityPercent}%`)
+                  : text("The supervisor can always correct the suggested values.", "De supervisor kan de voorgestelde waarden altijd corrigeren.")}</small>
+              </span>
+              {!initialAnswers ? <button type="button" onClick={() => void loadAutomaticWeather()} disabled={weatherLoadState === "loading"}><RefreshCw size={15} /> {text("Refresh", "Vernieuw")}</button> : null}
+            </div>
             <div className="form-grid three-columns">
               <label className="form-field"><span>{text("What is the weather?", "Wat is het weer?")}</span><select {...register("weatherCondition")}><option value="sunny">{text("Sunny", "Zonnig")}</option><option value="partly_cloudy">{text("Partly cloudy", "Licht bewolkt")}</option><option value="cloudy">{text("Cloudy", "Bewolkt")}</option><option value="rain">{text("Rain", "Regen")}</option><option value="heavy_rain">{text("Heavy rain", "Zware regen")}</option></select></label>
               <label className="form-field"><span>{text("Temperature", "Temperatuur")}</span><span className="input-with-unit"><input type="number" {...register("temperatureC", { valueAsNumber: true })} /><em>°C</em></span>{errors.temperatureC ? <small className="field-error">{errors.temperatureC.message}</small> : null}</label>

@@ -43,17 +43,17 @@ export const metadata: Metadata = {
     title: siteConfig.title,
     description: siteConfig.description,
     images: [{
-      url: "/landing/hero-residence.jpg",
-      width: 2560,
-      height: 1440,
-      alt: "Architectural design and engineering by CODECO N.V. in Suriname",
+      url: "/og-supervision.png",
+      width: 1536,
+      height: 1024,
+      alt: "CODECO N.V. Supervision field app for automatic weather, checklists and stacked photo evidence",
     }],
   },
   twitter: {
     card: "summary_large_image",
     title: siteConfig.title,
     description: siteConfig.description,
-    images: ["/landing/hero-residence.jpg"],
+    images: ["/og-supervision.png"],
   },
 };
 

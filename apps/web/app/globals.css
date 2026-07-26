@@ -6473,3 +6473,246 @@ textarea:focus-visible {
   .one-tap-context, .external-choice-grid { grid-template-columns: 1fr; }
   .controlled-document-register-heading, .controlled-document-card-main { align-items: stretch; flex-direction: column; }
 }
+
+/* 2026-07-26 field-efficiency refinement */
+.automatic-weather-status {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  margin-bottom: 13px;
+  padding: 11px 12px;
+  border: 1px solid #cbded9;
+  border-radius: 11px;
+  background: linear-gradient(115deg, #f1f8f6, #fff);
+}
+.automatic-weather-status.failed { border-color: #e9c999; background: #fffaf2; }
+.automatic-weather-status.ready { border-color: #9bcdbc; background: linear-gradient(115deg, #edf9f5, #fff); }
+.automatic-weather-icon {
+  align-items: center;
+  background: #dfeeea;
+  border-radius: 9px;
+  color: var(--green);
+  display: flex;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+.automatic-weather-status > span:nth-child(2) { display: grid; gap: 2px; min-width: 0; }
+.automatic-weather-status strong { color: var(--ink-800); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.automatic-weather-status small { color: var(--ink-500); font-size: 9px; }
+.automatic-weather-status button {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: 8px;
+  color: var(--ink-700);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 9px;
+  font-weight: 750;
+  gap: 5px;
+  padding: 8px 9px;
+}
+
+.checklist-progress {
+  align-items: center;
+  display: grid;
+  gap: 7px;
+  grid-template-columns: auto minmax(120px, 1fr);
+  color: var(--ink-600);
+  font-size: 10px;
+}
+.checklist-progress b { color: var(--green); font-size: 13px; }
+.checklist-progress-track { background: var(--ink-100); border-radius: 999px; height: 8px; overflow: hidden; }
+.checklist-progress-track i { background: linear-gradient(90deg, var(--teal), var(--green)); border-radius: inherit; display: block; height: 100%; transition: width .2s ease; }
+.checklist-section {
+  border: 1px solid #d6e4e1;
+  border-radius: 13px;
+  background: #f8fbfa;
+  overflow: hidden;
+}
+.checklist-section > header {
+  align-items: center;
+  background: #eaf3f0;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 13px;
+}
+.checklist-section > header > span { align-items: center; display: flex; gap: 8px; }
+.checklist-section > header strong { color: var(--ink-800); font-size: 12px; }
+.checklist-section > header small { background: #fff; border-radius: 999px; color: var(--ink-600); font-size: 9px; padding: 3px 7px; }
+.checklist-section > header button {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #9bc8bb;
+  border-radius: 8px;
+  color: var(--green);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 9px;
+  font-weight: 800;
+  gap: 5px;
+  padding: 7px 9px;
+}
+.checklist-section .checklist-question { border: 0; border-radius: 0; border-top: 1px solid #e1ebe8; background: #fff; margin: 0; }
+.checklist-question.automatic { background: linear-gradient(105deg, #f0f9f6, #fff); }
+.checklist-auto-chip {
+  align-items: center;
+  background: #dff2eb;
+  border-radius: 999px;
+  color: var(--green);
+  display: inline-flex;
+  font-size: 9px;
+  font-weight: 800;
+  gap: 5px;
+  justify-self: start;
+  padding: 5px 8px;
+}
+.answer-options label:has(input:checked) { background: var(--green-soft); border-color: #70b29f; box-shadow: 0 0 0 1px rgba(35,118,90,.08); color: var(--green); font-weight: 800; }
+.answer-options label:has(input[value="no"]:checked),
+.answer-options label:has(input[value="fail"]:checked) { background: var(--red-soft); border-color: #d99690; color: var(--red); }
+.checklist-value-input { align-items: center; display: flex; gap: 7px; }
+.checklist-value-input input { border: 1px solid var(--ink-200); border-radius: 8px; max-width: 180px; padding: 9px 10px; }
+.checklist-value-input em { color: var(--ink-500); font-size: 10px; font-style: normal; }
+.checklist-remark { border-color: #e2b4ad !important; background: #fffafa !important; }
+.checklist-sticky-actions { background: rgba(255,255,255,.94); border-top: 1px solid var(--ink-100); bottom: 0; margin: 0 -15px -15px; padding: 11px 15px; position: sticky; z-index: 3; }
+.inspection-subject-details { border-top: 1px solid var(--ink-100); color: var(--ink-600); padding-top: 8px; }
+.inspection-subject-details summary { cursor: pointer; font-size: 10px; font-weight: 700; }
+.inspection-subject-details .form-field { margin-top: 10px; }
+.start-checklist-button { justify-content: center; min-height: 48px; }
+
+.finding-photo-stack {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+}
+.finding-photo-stack article {
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: 10px;
+  min-height: 92px;
+  overflow: hidden;
+  position: relative;
+}
+.finding-photo-stack img { display: block; height: 92px; object-fit: cover; width: 100%; }
+.finding-photo-stack article > span {
+  align-items: center;
+  background: linear-gradient(transparent, rgba(16,36,42,.86));
+  bottom: 0;
+  color: #fff;
+  display: flex;
+  gap: 5px;
+  left: 0;
+  padding: 22px 7px 7px;
+  position: absolute;
+  right: 0;
+}
+.finding-photo-stack article > span strong { background: var(--signal); border-radius: 999px; display: grid; flex: 0 0 auto; font-size: 8px; height: 17px; place-items: center; width: 17px; }
+.finding-photo-stack article > span small { font-size: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.finding-photo-stack article > button {
+  align-items: center;
+  background: rgba(255,255,255,.94);
+  border: 0;
+  border-radius: 999px;
+  color: var(--red);
+  cursor: pointer;
+  display: flex;
+  height: 25px;
+  justify-content: center;
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  width: 25px;
+}
+
+.field-guide-trigger {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #cbdad7;
+  border-radius: 999px;
+  bottom: 18px;
+  box-shadow: 0 8px 24px rgba(19,47,54,.16);
+  color: var(--ink-700);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 800;
+  gap: 6px;
+  padding: 9px 12px;
+  position: fixed;
+  right: 18px;
+  z-index: 45;
+}
+.field-guide-backdrop {
+  align-items: center;
+  background: rgba(13,32,38,.66);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 20px;
+  position: fixed;
+  z-index: 120;
+}
+.field-guide-dialog {
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: 0 30px 90px rgba(4,19,24,.3);
+  max-height: calc(100vh - 32px);
+  max-width: 900px;
+  overflow: auto;
+  padding: 22px;
+  width: 100%;
+}
+.field-guide-dialog > header { align-items: flex-start; display: flex; justify-content: space-between; gap: 15px; }
+.field-guide-dialog > header span { color: var(--signal); font-size: 9px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+.field-guide-dialog h2 { color: var(--ink-900); font-size: clamp(22px, 4vw, 34px); line-height: 1.12; margin: 5px 0 0; }
+.field-guide-dialog > header button { background: var(--ink-50); border: 0; border-radius: 9px; color: var(--ink-600); cursor: pointer; display: grid; height: 36px; place-items: center; width: 36px; }
+.field-guide-steps { display: grid; gap: 10px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 22px; }
+.field-guide-steps article { background: linear-gradient(145deg, #f2f8f6, #fff); border: 1px solid #d7e4e1; border-radius: 14px; min-height: 190px; padding: 15px; position: relative; }
+.field-guide-number { color: #b7c9c4; font-size: 10px; font-weight: 900; letter-spacing: .12em; }
+.field-guide-icon { align-items: center; background: var(--signal); border-radius: 11px; color: #fff; display: flex; height: 46px; justify-content: center; margin-top: 19px; width: 46px; }
+.field-guide-steps article:nth-child(2) .field-guide-icon,
+.field-guide-steps article:nth-child(3) .field-guide-icon { background: var(--teal); }
+.field-guide-steps article:nth-child(4) .field-guide-icon { background: var(--green); }
+.field-guide-steps h3 { color: var(--ink-800); font-size: 13px; margin: 14px 0 5px; }
+.field-guide-steps p { color: var(--ink-600); font-size: 10px; line-height: 1.55; margin: 0; }
+.field-guide-dialog > footer { align-items: center; border-top: 1px solid var(--ink-100); display: flex; gap: 14px; justify-content: space-between; margin-top: 18px; padding-top: 16px; }
+.field-guide-dialog > footer > span { color: var(--ink-500); font-size: 9px; }
+.recommended-checklist-install {
+  align-items: flex-start;
+}
+.recommended-checklist-install > div {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.recommended-checklist-install .primary-button {
+  margin-top: 3px;
+}
+
+@media (max-width: 760px) {
+  .automatic-weather-status { align-items: stretch; grid-template-columns: auto minmax(0, 1fr); }
+  .automatic-weather-status > button { grid-column: 1 / -1; justify-content: center; }
+  .checklist-section > header { align-items: stretch; flex-direction: column; }
+  .checklist-section > header button { justify-content: center; min-height: 38px; }
+  .answer-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .answer-options label { justify-content: center; min-height: 42px; }
+  .field-guide-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .field-guide-steps article { min-height: 170px; }
+}
+@media (max-width: 480px) {
+  .field-guide-trigger span { display: none; }
+  .field-guide-trigger { height: 42px; justify-content: center; padding: 0; width: 42px; }
+  .field-guide-backdrop { align-items: flex-end; padding: 0; }
+  .field-guide-dialog { border-radius: 18px 18px 0 0; max-height: 92vh; padding: 17px; }
+  .field-guide-steps { grid-template-columns: 1fr; }
+  .field-guide-steps article { align-items: center; display: grid; gap: 5px 11px; grid-template-columns: auto 1fr; min-height: 0; padding: 12px; }
+  .field-guide-number { grid-column: 1; grid-row: 1; }
+  .field-guide-icon { grid-column: 1; grid-row: 2 / span 2; margin: 0; }
+  .field-guide-steps h3, .field-guide-steps p { grid-column: 2; margin: 0; }
+  .field-guide-dialog > footer { align-items: stretch; flex-direction: column; }
+  .field-guide-dialog > footer .primary-button { justify-content: center; }
+}

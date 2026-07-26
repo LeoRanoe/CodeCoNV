@@ -7,6 +7,7 @@ import {
   CalendarRange,
   CheckCircle2,
   ClipboardCheck,
+  CloudSun,
   DatabaseBackup,
   Download,
   FileCheck2,
@@ -24,6 +25,7 @@ import {
   Upload,
   WifiOff,
   Wrench,
+  X,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -33,6 +35,7 @@ import { VisualEvidenceWorkspace } from "@/app/visual-evidence-workspace";
 import { DrawingWorkspace } from "@/app/drawing-workspace";
 import { FieldTools } from "@/app/field-tools";
 import { MediaLibraryWorkspace } from "@/app/media-library-workspace";
+import { anchorChecklistCodes } from "@/lib/checklists/anchor-library";
 import { downloadBoqCsvTemplate, parseBoqCsv, type BoqImportItem } from "@/lib/boq/csv";
 import {
   createControlledDocumentDetails,
@@ -41,6 +44,7 @@ import {
   issueCatalogPresets,
   type ControlledDocumentDraft,
 } from "@/lib/forms/controlled-project-documents";
+import type { ProjectStartAnswers } from "@/lib/forms/daily-report";
 import { useLanguage } from "@/lib/i18n";
 import { cacheProjectSnapshot, getCachedProjectSnapshot } from "@/lib/offline/project-cache";
 import { compressFieldPhoto, dataSaverEnabled, queueOfflineUpload } from "@/lib/offline/upload-queue";
@@ -76,6 +80,7 @@ import {
   updateProductionReadiness,
   validateBackupDryRun,
   type Finding,
+  type ChecklistItem,
   type Inspection,
   type OperationSnapshot,
   type ProductionReadinessItem,
@@ -175,6 +180,30 @@ function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "The operation was not completed.";
 }
 
+type InspectionAnswer = {
+  result: string;
+  notes: string;
+  numericValue?: number;
+  textValue?: string;
+};
+
+function checklistItemAnswered(item: ChecklistItem, answer?: InspectionAnswer) {
+  if (!answer?.result) return false;
+  if (item.response_type === "number") return answer.result === "value" && Number.isFinite(answer.numericValue);
+  if (item.response_type === "text") return answer.result === "text" && Boolean(answer.textValue?.trim());
+  return true;
+}
+
+function checklistGuidance(item: ChecklistItem) {
+  if (item.guidance?.startsWith("AUTO_WEATHER|")) return item.guidance.split("|").slice(1).join("|");
+  return item.guidance;
+}
+
+function isAutomaticWeatherItem(item: ChecklistItem) {
+  return item.guidance?.startsWith("AUTO_WEATHER|")
+    || /ambient weather conditions are suitable/i.test(item.prompt);
+}
+
 export function OperationalWorkspace({
   mode,
   client,
@@ -187,6 +216,7 @@ export function OperationalWorkspace({
   reportId,
   reportNumber,
   reportStatus,
+  projectStartAnswers,
   currentUserName,
   parties,
   canManageOrganization,
@@ -205,6 +235,7 @@ export function OperationalWorkspace({
   reportId: string | null;
   reportNumber: string;
   reportStatus: string;
+  projectStartAnswers: ProjectStartAnswers | null;
   currentUserName: string;
   parties: ProjectParty[];
   canManageOrganization: boolean;
@@ -280,6 +311,7 @@ export function OperationalWorkspace({
           projectCode={projectCode}
           buildingId={buildingId}
           buildingName={buildingName}
+          projectStartAnswers={projectStartAnswers}
           currentUserName={currentUserName}
           parties={parties}
           client={client}
@@ -333,6 +365,7 @@ function ProjectOperations({
   projectCode,
   buildingId,
   buildingName,
+  projectStartAnswers,
   currentUserName,
   parties,
   client,
@@ -348,6 +381,7 @@ function ProjectOperations({
   projectCode: string;
   buildingId: string;
   buildingName: string;
+  projectStartAnswers: ProjectStartAnswers | null;
   currentUserName: string;
   parties: ProjectParty[];
   client: SupabaseClient;
@@ -362,7 +396,7 @@ function ProjectOperations({
   const [activeInspection, setActiveInspection] = useState<Inspection | null>(null);
   const [inspectionTitle, setInspectionTitle] = useState("");
   const [inspectionTemplateId, setInspectionTemplateId] = useState("");
-  const [inspectionAnswers, setInspectionAnswers] = useState<Record<string, { result: string; notes: string }>>({});
+  const [inspectionAnswers, setInspectionAnswers] = useState<Record<string, InspectionAnswer>>({});
   const [findingForm, setFindingForm] = useState({
     type: "deficiency",
     title: "",
@@ -377,14 +411,37 @@ function ProjectOperations({
     expectedResolutionDate: "",
     sourceCatalogSubject: "",
   });
-  const [findingPhoto, setFindingPhoto] = useState<File | null>(null);
+  const [findingPhotos, setFindingPhotos] = useState<File[]>([]);
+  const [findingPhotoError, setFindingPhotoError] = useState("");
   const [hseForm, setHseForm] = useState({ type: "unsafe_condition", title: "", description: "", severity: "medium", immediateMeasure: "", confidential: false });
   const [registerForm, setRegisterForm] = useState<ControlledDocumentDraft>({ ...emptyControlledDocumentDraft });
   const [boqFile, setBoqFile] = useState<File | null>(null);
   const [boqItems, setBoqItems] = useState<BoqImportItem[]>([]);
   const [boqError, setBoqError] = useState("");
-  const inspectionTemplates = data.templates.filter((template) => template.module === "inspection" && template.status === "published");
+  const inspectionTemplates = data.templates
+    .filter((template) => template.module === "inspection" && template.status === "published")
+    .sort((left, right) => {
+      const plannedWork = projectStartAnswers?.plannedWork.toLowerCase() ?? "";
+      const relevant = (template: typeof left) => {
+        const anchorTemplate = ["LIB-101", "LIB-102", "LIB-103"].includes(template.code);
+        return anchorTemplate && /(anchor|anker|concrete|beton|stort)/i.test(plannedWork);
+      };
+      return Number(relevant(right)) - Number(relevant(left)) || left.name.localeCompare(right.name);
+    });
   const activeTemplate = data.templates.find((template) => template.id === activeInspection?.template_id);
+  const anchorWorkPlanned = /(anchor|anker|concrete|beton|stort)/i.test(projectStartAnswers?.plannedWork ?? "");
+  const missingAnchorChecklistCodes = anchorChecklistCodes.filter((code) => !data.templates.some(
+    (template) => template.project_id === projectId && template.code === code && template.status === "published",
+  ));
+  const checklistSections = activeTemplate
+    ? [...new Set(activeTemplate.items.map((item) => item.section))].map((section) => ({
+        section,
+        items: activeTemplate.items.filter((item) => item.section === section),
+      }))
+    : [];
+  const answeredChecklistItems = activeTemplate
+    ? activeTemplate.items.filter((item) => checklistItemAnswered(item, inspectionAnswers[item.id])).length
+    : 0;
   const online = typeof navigator === "undefined" ? true : navigator.onLine;
   const findingPresets = [
     { title: text("Crack or damage", "Scheur of beschadiging"), description: text("Visible crack or damage requires repair and verification.", "Zichtbare scheur of beschadiging moet worden hersteld en gecontroleerd.") },
@@ -470,22 +527,58 @@ function ProjectOperations({
   const beginInspection = async () => {
     if (!reportId) return;
     const templateId = inspectionTemplateId || inspectionTemplates[0]?.id;
-    if (!templateId || inspectionTitle.trim().length < 3) return;
+    const template = data.templates.find((item) => item.id === templateId);
+    const resolvedTitle = inspectionTitle.trim() || `${template?.name ?? text("Inspection", "Inspectie")} · ${buildingName}`;
+    if (!templateId) return;
     let created: Inspection | null = null;
     const okay = await run(async () => {
-      created = await startInspection(client, { projectId, buildingId, reportId, templateId, title: inspectionTitle.trim() });
+      created = await startInspection(client, { projectId, buildingId, reportId, templateId, title: resolvedTitle });
     }, text("Inspection started; complete every required checkpoint.", "Inspectie gestart; vul nu ieder verplicht controlepunt in."));
     if (okay && created) {
       setActiveInspection(created);
-      const template = data.templates.find((item) => item.id === templateId);
-      setInspectionAnswers(Object.fromEntries((template?.items ?? []).map((item) => [item.id, { result: "", notes: "" }])));
+      const automaticWeatherResult = projectStartAnswers
+        ? projectStartAnswers.weatherCondition === "rain"
+          || projectStartAnswers.weatherCondition === "heavy_rain"
+          || projectStartAnswers.windCondition === "strong"
+          ? "no"
+          : "yes"
+        : "";
+      const weatherNote = projectStartAnswers
+        ? text(
+            `Automatically suggested from today's recorded weather: ${projectStartAnswers.temperatureC}°C, ${projectStartAnswers.weatherCondition.replaceAll("_", " ")}, wind ${projectStartAnswers.windCondition}.`,
+            `Automatisch voorgesteld vanuit het vastgelegde weer van vandaag: ${projectStartAnswers.temperatureC}°C, ${projectStartAnswers.weatherCondition.replaceAll("_", " ")}, wind ${projectStartAnswers.windCondition}.`,
+          )
+        : "";
+      setInspectionAnswers(Object.fromEntries((template?.items ?? []).map((item) => {
+        const suggestedResult = item.response_type === "yes_no_na"
+          ? automaticWeatherResult
+          : automaticWeatherResult === "yes" ? "pass" : automaticWeatherResult === "no" ? "fail" : "";
+        return [
+          item.id,
+          isAutomaticWeatherItem(item) && suggestedResult
+            ? { result: suggestedResult, notes: weatherNote }
+            : { result: "", notes: "" },
+        ];
+      })));
       setShowForm(false);
     }
   };
 
+  const installRecommendedAnchorPackage = () => run(
+    async () => {
+      for (const code of missingAnchorChecklistCodes) {
+        await installChecklistLibraryTemplate(client, projectId, code);
+      }
+    },
+    text(
+      "The three CODECO anchor checklists are ready for this project.",
+      "De drie CODECO-ankerchecklists staan klaar voor dit project.",
+    ),
+  );
+
   const submitInspection = async () => {
     if (!activeInspection || !activeTemplate) return;
-    if (activeTemplate.items.some((item) => item.required && !inspectionAnswers[item.id]?.result)) return;
+    if (activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))) return;
     const okay = await run(
       () => finishInspection(client, activeInspection, inspectionAnswers),
       text("Inspection completed. Failed points were automatically recorded as findings.", "Inspectie afgerond. Afgekeurde punten zijn automatisch als bevinding vastgelegd."),
@@ -494,6 +587,42 @@ function ProjectOperations({
       setActiveInspection(null);
       setInspectionTitle("");
     }
+  };
+
+  const approveChecklistSection = (items: ChecklistItem[]) => {
+    setInspectionAnswers((answers) => ({
+      ...answers,
+      ...Object.fromEntries(items
+        .filter((item) => item.response_type === "yes_no_na" || item.response_type === "pass_fail_na")
+        .map((item) => [
+          item.id,
+          {
+            ...answers[item.id],
+            result: item.response_type === "yes_no_na" ? "yes" : "pass",
+            notes: answers[item.id]?.notes ?? "",
+          },
+        ])),
+    }));
+  };
+
+  const addFindingPhotos = (files: FileList | null) => {
+    if (!files) return;
+    const maximumSize = (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024;
+    const candidates = Array.from(files);
+    const valid = candidates.filter((file) => ["image/jpeg", "image/png", "image/webp"].includes(file.type) && file.size <= maximumSize);
+    if (valid.length !== candidates.length) {
+      setFindingPhotoError(text(
+        `Use JPEG, PNG or WebP files up to ${data.settings?.max_file_size_mb ?? 25} MB each.`,
+        `Gebruik JPEG-, PNG- of WebP-bestanden tot ${data.settings?.max_file_size_mb ?? 25} MB per foto.`,
+      ));
+    } else {
+      setFindingPhotoError("");
+    }
+    setFindingPhotos((current) => {
+      const keyed = new Map(current.map((file) => [`${file.name}:${file.size}:${file.lastModified}`, file]));
+      valid.forEach((file) => keyed.set(`${file.name}:${file.size}:${file.lastModified}`, file));
+      return [...keyed.values()].slice(0, 12);
+    });
   };
 
   const addFinding = async () => {
@@ -515,62 +644,69 @@ function ProjectOperations({
       expectedResolutionDate: findingForm.expectedResolutionDate,
       sourceCatalogSubject: findingForm.sourceCatalogSubject,
     };
-    const success = !online && findingPhoto
+    const success = !online && findingPhotos.length
       ? text("Issue photo and assignment are in the offline sync queue.", "Probleemfoto en toewijzing staan in de offline synchronisatiewachtrij.")
       : text("Finding numbered, assigned and given a rule-driven deadline.", "Bevinding genummerd, toegewezen en van een regelgestuurde deadline voorzien.");
     const okay = await run(async () => {
-      if (findingPhoto && !online) {
-        const prepared = await compressFieldPhoto(findingPhoto, dataSaverEnabled());
-        await queueOfflineUpload({
-          projectId,
-          buildingId,
-          reportId,
-          folderId: null,
-          kind: "photo",
-          file: prepared.blob,
-          fileName: prepared.fileName,
-          mimeType: prepared.mimeType,
-          title: findingForm.title,
-          description: findingForm.description,
-          locationLabel: buildingName,
-          capturedAt: new Date(findingPhoto.lastModified || Date.now()).toISOString(),
-          originalSize: findingPhoto.size,
-          queuedSize: prepared.blob.size,
-          compressed: prepared.compressed,
-          findingDraft: {
-            organizationId,
-            type: findingForm.type,
+      if (findingPhotos.length && !online) {
+        const groupId = crypto.randomUUID();
+        for (const photo of findingPhotos) {
+          const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
+          await queueOfflineUpload({
+            projectId,
+            buildingId,
+            reportId,
+            folderId: null,
+            kind: "photo",
+            file: prepared.blob,
+            fileName: prepared.fileName,
+            mimeType: prepared.mimeType,
             title: findingForm.title,
             description: findingForm.description,
-            severity: findingForm.severity,
-            responsiblePartyId: findingForm.responsiblePartyId,
-            issueType: findingForm.issueType,
-            impactSummary: findingForm.impactSummary,
-            actionSteps: findingForm.actionSteps,
-            escalationRequired: findingForm.escalationRequired,
-            disposition: findingForm.disposition,
-            expectedResolutionDate: findingForm.expectedResolutionDate,
-            sourceCatalogSubject: findingForm.sourceCatalogSubject,
-          },
-        });
+            locationLabel: buildingName,
+            capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
+            originalSize: photo.size,
+            queuedSize: prepared.blob.size,
+            compressed: prepared.compressed,
+            findingGroup: {
+              id: groupId,
+              organizationId,
+              draft: {
+                organizationId,
+                type: findingForm.type,
+                title: findingForm.title,
+                description: findingForm.description,
+                severity: findingForm.severity,
+                responsiblePartyId: findingForm.responsiblePartyId,
+                issueType: findingForm.issueType,
+                impactSummary: findingForm.impactSummary,
+                actionSteps: findingForm.actionSteps,
+                escalationRequired: findingForm.escalationRequired,
+                disposition: findingForm.disposition,
+                expectedResolutionDate: findingForm.expectedResolutionDate,
+                sourceCatalogSubject: findingForm.sourceCatalogSubject,
+              },
+            },
+          });
+        }
         return;
       }
-      let fileId = "";
-      if (findingPhoto) {
-        const prepared = await compressFieldPhoto(findingPhoto, dataSaverEnabled());
-        const uploadFile = new File([prepared.blob], prepared.fileName, { type: prepared.mimeType, lastModified: findingPhoto.lastModified });
+      const fileIds: string[] = [];
+      for (const photo of findingPhotos) {
+        const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
+        const uploadFile = new File([prepared.blob], prepared.fileName, { type: prepared.mimeType, lastModified: photo.lastModified });
         const uploaded = await uploadProjectFile(client, { projectId, buildingId, category: "photo", file: uploadFile });
-        fileId = uploaded.fileId;
+        fileIds.push(uploaded.fileId);
       }
       const finding = await createFinding(client, draft);
-      if (fileId) {
+      for (const [index, fileId] of fileIds.entries()) {
         await linkFileToRecord(client, {
           organizationId,
           projectId,
           fileId,
           recordType: "finding",
           recordId: finding.id,
-          relationship: "before",
+          relationship: index === 0 ? "before" : "evidence",
         });
       }
     }, success);
@@ -580,7 +716,8 @@ function ProjectOperations({
         issueType: "quality", impactSummary: "", actionSteps: "", escalationRequired: false,
         disposition: "to_be_corrected", expectedResolutionDate: "", sourceCatalogSubject: "",
       });
-      setFindingPhoto(null);
+      setFindingPhotos([]);
+      setFindingPhotoError("");
       setShowForm(false);
     }
   };
@@ -678,33 +815,69 @@ function ProjectOperations({
             <div className="operation-form wide">
               <div className="operation-form-heading"><div><span className="record-number">{activeInspection.inspection_number}</span><h2>{activeInspection.title}</h2></div><span className="task-status">{text("In progress", "In uitvoering")}</span></div>
               <p className="form-intro">{text("Answer every required checkpoint. A failed point automatically creates a traceable finding on completion; the app never closes it by itself.", "Beantwoord alle verplichte controlepunten. Een afkeur maakt bij afronding automatisch een traceerbare bevinding; de app sluit die nooit zelf.")}</p>
-              <div className="checklist-run">
-                {activeTemplate.items.map((item) => {
-                  const current = inspectionAnswers[item.id] ?? { result: "", notes: "" };
-                  return (
-                    <fieldset className="checklist-question" key={item.id}>
-                      <legend><span>{item.section}</span>{item.prompt}{item.required ? " *" : ""}</legend>
-                      {item.guidance ? <small>{item.guidance}</small> : null}
-                      <div className="answer-options">
-                        {(item.response_type === "yes_no_na" ? [["yes", text("Yes", "Ja")], ["no", text("No", "Nee")], ["na", text("N/A", "N.v.t.")]] : [["pass", text("Pass", "Akkoord")], ["fail", text("Fail", "Niet akkoord")], ["na", text("N/A", "N.v.t.")]]).map(([value, label]) => (
-                          <label key={value}><input type="radio" name={item.id} value={value} checked={current.result === value} onChange={() => setInspectionAnswers((answers) => ({ ...answers, [item.id]: { ...current, result: value } }))} /> {label}</label>
-                        ))}
-                      </div>
-                      <input value={current.notes} onChange={(event) => setInspectionAnswers((answers) => ({ ...answers, [item.id]: { ...current, notes: event.target.value } }))} placeholder={text("Comment or evidence reference", "Opmerking of bewijsreferentie")} />
-                    </fieldset>
-                  );
-                })}
+              <div className="checklist-progress" aria-label={text("Checklist progress", "Checklistvoortgang")}>
+                <span><b>{answeredChecklistItems}</b> / {activeTemplate.items.length} {text("answered", "beantwoord")}</span>
+                <span className="checklist-progress-track"><i style={{ width: `${activeTemplate.items.length ? Math.round((answeredChecklistItems / activeTemplate.items.length) * 100) : 0}%` }} /></span>
               </div>
-              <div className="form-actions"><button className="secondary-button" type="button" onClick={() => setActiveInspection(null)}>{text("Complete later", "Later afronden")}</button><button className="primary-button" type="button" disabled={busy || activeTemplate.items.some((item) => item.required && !inspectionAnswers[item.id]?.result)} onClick={() => void submitInspection()}>{busy ? <Loader2 className="spin" size={15} /> : <FileCheck2 size={15} />} {text("Complete inspection", "Inspectie afronden")}</button></div>
+              <div className="checklist-run">
+                {checklistSections.map(({ section, items }) => (
+                  <section className="checklist-section" key={section}>
+                    <header>
+                      <span><strong>{section}</strong><small>{items.filter((item) => checklistItemAnswered(item, inspectionAnswers[item.id])).length} / {items.length}</small></span>
+                      {items.every((item) => item.response_type === "yes_no_na" || item.response_type === "pass_fail_na") ? <button type="button" onClick={() => approveChecklistSection(items)}><CheckCircle2 size={14} /> {text("Approve section", "Sectie akkoord")}</button> : null}
+                    </header>
+                    {items.map((item) => {
+                      const current = inspectionAnswers[item.id] ?? { result: "", notes: "" };
+                      const automaticWeather = isAutomaticWeatherItem(item);
+                      const failed = current.result === "no" || current.result === "fail";
+                      return (
+                        <fieldset className={`checklist-question${automaticWeather ? " automatic" : ""}`} key={item.id}>
+                          <legend>{item.prompt}{item.required ? " *" : ""}</legend>
+                          {automaticWeather ? <span className="checklist-auto-chip"><CloudSun size={13} /> {text("Weather prefilled · confirm", "Weer vooraf ingevuld · bevestig")}</span> : null}
+                          {checklistGuidance(item) ? <small>{checklistGuidance(item)}</small> : null}
+                          {item.response_type === "number" ? (
+                            <label className="checklist-value-input"><input type="number" value={current.numericValue ?? ""} min={item.minimum_value ?? undefined} max={item.maximum_value ?? undefined} onChange={(event) => setInspectionAnswers((answers) => ({ ...answers, [item.id]: { ...current, result: event.target.value ? "value" : "", numericValue: event.target.value ? Number(event.target.value) : undefined } }))} />{item.unit ? <em>{item.unit}</em> : null}</label>
+                          ) : item.response_type === "text" ? (
+                            <input value={current.textValue ?? ""} onChange={(event) => setInspectionAnswers((answers) => ({ ...answers, [item.id]: { ...current, result: event.target.value.trim() ? "text" : "", textValue: event.target.value } }))} placeholder={text("Enter the required value", "Vul de vereiste waarde in")} />
+                          ) : (
+                            <div className="answer-options">
+                              {(item.response_type === "yes_no_na" ? [["yes", text("Yes", "Ja")], ["no", text("No", "Nee")], ["na", text("N/A", "N.v.t.")]] : [["pass", text("Pass", "Akkoord")], ["fail", text("Fail", "Niet akkoord")], ["na", text("N/A", "N.v.t.")]]).map(([value, label]) => (
+                                <label key={value}><input type="radio" name={item.id} value={value} checked={current.result === value} onChange={() => setInspectionAnswers((answers) => ({ ...answers, [item.id]: { ...current, result: value } }))} /> {label}</label>
+                              ))}
+                            </div>
+                          )}
+                          {failed || current.notes ? <input className="checklist-remark" value={current.notes} onChange={(event) => setInspectionAnswers((answers) => ({ ...answers, [item.id]: { ...current, notes: event.target.value } }))} placeholder={text("Short exception note or evidence reference", "Korte afwijkingsnotitie of bewijsreferentie")} /> : null}
+                        </fieldset>
+                      );
+                    })}
+                  </section>
+                ))}
+              </div>
+              <div className="form-actions checklist-sticky-actions"><button className="secondary-button" type="button" onClick={() => setActiveInspection(null)}>{text("Complete later", "Later afronden")}</button><button className="primary-button" type="button" disabled={busy || activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))} onClick={() => void submitInspection()}>{busy ? <Loader2 className="spin" size={15} /> : <FileCheck2 size={15} />} {text("Complete inspection", "Inspectie afronden")}</button></div>
             </div>
           ) : null}
           {showForm && !activeInspection ? (
             <div className="operation-form">
               <h2>{text("Start inspection", "Inspectie starten")}</h2>
               {!reportId ? <p className="inline-error">{text("Start the daily report through Project start first.", "Start eerst het dagrapport via Projectstart.")}</p> : null}
-              <label className="form-field"><span>{text("Checklist", "Checklist")}</span><select value={inspectionTemplateId || inspectionTemplates[0]?.id || ""} onChange={(event) => setInspectionTemplateId(event.target.value)}>{inspectionTemplates.map((template) => <option value={template.id} key={template.id}>{template.name} · v{template.version_number}</option>)}</select></label>
-              <label className="form-field"><span>{text("Subject / element", "Onderwerp / element")}</span><input value={inspectionTitle} onChange={(event) => setInspectionTitle(event.target.value)} placeholder={text("For example foundation reinforcement axes A-D", "Bijv. wapening fundering as A-D")} /></label>
-              <button className="primary-button" type="button" disabled={busy || !reportId || inspectionTitle.trim().length < 3} onClick={() => void beginInspection()}><ClipboardCheck size={15} /> {text("Start checklist", "Start checklist")}</button>
+              {anchorWorkPlanned && missingAnchorChecklistCodes.length ? (
+                <div className="operation-alert success recommended-checklist-install">
+                  <ClipboardCheck size={18} />
+                  <div>
+                    <strong>{text("Anchor work recognized", "Ankerwerk herkend")}</strong>
+                    <span>{text("Install the three client-based checklists here; no searching or typing required.", "Installeer hier de drie klantchecklists; zoeken of typen is niet nodig.")}</span>
+                    <button className="primary-button" type="button" disabled={busy} onClick={() => void installRecommendedAnchorPackage()}>
+                      {busy ? <Loader2 className="spin" size={15} /> : <Plus size={15} />}
+                      {text("Prepare all 3 checklists", "Zet alle 3 checklists klaar")}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {inspectionTemplates.length ? <>
+                <label className="form-field"><span>{text("Checklist · recommended for today's work first", "Checklist · aanbevolen voor vandaag eerst")}</span><select value={inspectionTemplateId || inspectionTemplates[0]?.id || ""} onChange={(event) => { setInspectionTemplateId(event.target.value); setInspectionTitle(""); }}>{inspectionTemplates.map((template) => <option value={template.id} key={template.id}>{["LIB-101", "LIB-102", "LIB-103"].includes(template.code) ? "★ " : ""}{template.name} · v{template.version_number}</option>)}</select></label>
+                <details className="inspection-subject-details"><summary>{text("Add a different subject or element · optional", "Ander onderwerp of element toevoegen · optioneel")}</summary><label className="form-field"><span>{text("Subject / element", "Onderwerp / element")}</span><input value={inspectionTitle} onChange={(event) => setInspectionTitle(event.target.value)} placeholder={`${inspectionTemplates.find((template) => template.id === (inspectionTemplateId || inspectionTemplates[0]?.id))?.name ?? text("Inspection", "Inspectie")} · ${buildingName}`} /></label></details>
+                <button className="primary-button start-checklist-button" type="button" disabled={busy || !reportId} onClick={() => void beginInspection()}><ClipboardCheck size={15} /> {text("Start recommended checklist", "Start aanbevolen checklist")}</button>
+              </> : <div className="operation-alert warning"><AlertTriangle size={18} /><div><strong>{text("No project checklist is published yet", "Nog geen projectchecklist gepubliceerd")}</strong><span>{text("An administrator can install the ready-made CODECO checklist package under More.", "Een beheerder kan het kant-en-klare CODECO-pakket onder Meer installeren.")}</span></div></div>}
             </div>
           ) : null}
           <RecordList empty={text("No formal inspections yet.", "Nog geen formele inspecties.")} rows={data.inspections.map((inspection) => ({
@@ -725,9 +898,11 @@ function ProjectOperations({
               <div className="operation-form-heading"><div><span className="record-number">{text("Snap & assign", "Foto & toewijzen")}</span><h2>{text("Record finding / NCR", "Bevinding / NCR registreren")}</h2></div>{!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}</div>
               <label className="finding-photo-capture">
                 <Camera size={22} />
-                <span><strong>{findingPhoto ? findingPhoto.name : text("Take or choose an issue photo", "Maak of kies een probleemfoto")}</strong><small>{text("Project, building, date and time are linked automatically.", "Project, gebouw, datum en tijd worden automatisch gekoppeld.")}</small></span>
-                <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => setFindingPhoto(event.target.files?.[0] ?? null)} />
+                <span><strong>{findingPhotos.length ? text(`${findingPhotos.length} photos stacked for this issue`, `${findingPhotos.length} foto’s gestapeld voor dit probleem`) : text("Take or choose issue photos", "Maak of kies probleemfoto’s")}</strong><small>{text("Tap again to add another photo. Project, building, date and time are linked automatically.", "Tik opnieuw om nog een foto toe te voegen. Project, gebouw, datum en tijd worden automatisch gekoppeld.")}</small></span>
+                <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
               </label>
+              {findingPhotos.length ? <FindingPhotoStack files={findingPhotos} onRemove={(index) => setFindingPhotos((current) => current.filter((_, currentIndex) => currentIndex !== index))} /> : null}
+              {findingPhotoError ? <p className="field-error" role="alert">{findingPhotoError}</p> : null}
               <div className="quick-issue-presets" aria-label={text("Common issue choices", "Veelvoorkomende problemen")}>
                 {findingPresets.map((preset) => <button className={findingForm.title === preset.title ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, title: preset.title, description: preset.description, type: preset.title === text("Safety risk", "Veiligheidsrisico") ? "observation" : "deficiency", severity: preset.title === text("Safety risk", "Veiligheidsrisico") ? "high" : findingForm.severity })} key={preset.title}>{preset.title}</button>)}
               </div>
@@ -765,7 +940,7 @@ function ProjectOperations({
                 <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required", "Escalatie vereist")}</label>
               </div>
               <label className="form-field"><span>{text("Responsible party", "Verantwoordelijke partij")}</span><select value={findingForm.responsiblePartyId} onChange={(event) => setFindingForm({ ...findingForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Nog niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
-              <button className="primary-button" type="button" disabled={busy || !reportId || (!online && !findingPhoto) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Probleem indienen")}</button>
+              <button className="primary-button" type="button" disabled={busy || !reportId || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Probleem indienen")}</button>
             </div>
           ) : null}
           <FindingList
@@ -904,6 +1079,28 @@ function ControlledDocumentList({ entries, busy, currentUserName, client, run }:
       </div>
     </section>
   );
+}
+
+function FindingPhotoStack({ files, onRemove }: { files: File[]; onRemove: (index: number) => void }) {
+  const { text } = useLanguage();
+
+  return (
+    <div className="finding-photo-stack" aria-label={text("Photos attached to this issue", "Foto’s bij dit probleem")}>
+      {files.map((file, index) => (
+        <article key={`${file.name}:${file.size}:${file.lastModified}`}>
+          <FindingPhotoPreview file={file} />
+          <span><strong>{index + 1}</strong><small>{file.name}</small></span>
+          <button type="button" onClick={() => onRemove(index)} aria-label={text(`Remove photo ${index + 1}`, `Verwijder foto ${index + 1}`)}><X size={14} /></button>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function FindingPhotoPreview({ file }: { file: File }) {
+  const [source] = useState(() => URL.createObjectURL(file));
+  useEffect(() => () => URL.revokeObjectURL(source), [source]);
+  return <NextImage src={source} alt="" width={160} height={110} unoptimized />;
 }
 
 function FindingList({ findings, progressUpdates, projectName, projectCode, buildingName, currentUserName, parties, busy, transition, recordProgress, share }: {
@@ -1072,8 +1269,8 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
       {section === "templates" ? (
         <section className="operation-panel checklist-management">
           <div className="checklist-library-header">
-            <div><span className="record-number">{text("Client requirement", "Klanteis")}</span><h2>{text("100 ready-to-install construction checklists", "100 direct installeerbare bouwchecklists")}</h2><p>{text("Choose a standard. Installation creates a published, project-specific version with five mandatory checkpoints; completed inspections always keep their original version.", "Kies een standaard. Installatie maakt een gepubliceerde, projectspecifieke versie met vijf verplichte controlepunten; afgeronde inspecties behouden altijd hun oorspronkelijke versie.")}</p></div>
-            <label className="form-field"><span>{text("Category", "Categorie")}</span><select value={libraryCategory} onChange={(event) => setLibraryCategory(event.target.value)}><option value="all">{text("All 100", "Alle 100")}</option>{[...new Set(data.checklistLibrary.map((item) => item.category))].map((category) => <option value={category} key={category}>{category}</option>)}</select></label>
+            <div><span className="record-number">{text("Client requirement", "Klanteis")}</span><h2>{text(`${data.checklistLibrary.length} ready-to-install construction checklists`, `${data.checklistLibrary.length} direct installeerbare bouwchecklists`)}</h2><p>{text("Choose a standard. Installation creates a published, project-specific version with all required checkpoints; completed inspections always keep their original version.", "Kies een standaard. Installatie maakt een gepubliceerde, projectspecifieke versie met alle vereiste controlepunten; afgeronde inspecties behouden altijd hun oorspronkelijke versie.")}</p></div>
+            <label className="form-field"><span>{text("Category", "Categorie")}</span><select value={libraryCategory} onChange={(event) => setLibraryCategory(event.target.value)}><option value="all">{text(`All ${data.checklistLibrary.length}`, `Alle ${data.checklistLibrary.length}`)}</option>{[...new Set(data.checklistLibrary.map((item) => item.category))].map((category) => <option value={category} key={category}>{category}</option>)}</select></label>
           </div>
           <div className="checklist-library-grid">
             {data.checklistLibrary.filter((item) => libraryCategory === "all" || item.category === libraryCategory).map((item) => {

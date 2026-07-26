@@ -11,7 +11,7 @@ Interne, online-first Next.js-webapp voor dagelijkse constructiesupervisie. Supa
 - een beveiligde PDF-/tekeningenwerkruimte met genormaliseerde locatiepins naar RFI's, submittals, documenten, observaties/NCR's, inspecties en foto's/360°-camerabeelden;
 - vrije lijnen, revisiewolken, pijlen en tekst als geaudite tekenlaag, terwijl het originele PDF-/DWG-bronbestand ongewijzigd blijft;
 - aanwezigheid per selecteerbare bouwdiscipline, werkzaamheden, acties en alle in de klant-PDF benoemde projectspecifieke registers;
-- exact honderd installeerbare bouw- en HSE-checkliststandaarden, plus configureerbare projectchecklists met automatische bevinding bij afkeur;
+- 103 installeerbare bouw- en HSE-checkliststandaarden, waaronder drie volledige CODECO-anchorchecklists, plus configureerbare projectchecklists met automatische bevinding bij afkeur;
 - BOQ-import met hoeveelheid, contractwaarde en voortgang, plus dagelijkse, wekelijkse, maandelijkse en vrij gekozen periode-PDF's;
 - een veldnotitieblok met optioneel dicteren en een bouwcalculator;
 - bevinding/NCR → herstel → gereed voor verificatie → onafhankelijke sluiting;
