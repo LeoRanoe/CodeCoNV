@@ -54,6 +54,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { FieldGuide } from "@/app/field-guide";
 import { OperationalWorkspace } from "@/app/operational-workspace";
+import { ensureDailyBackup } from "@/lib/backups/client";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import { currentPushState, enablePushNotifications, type PushState } from "@/lib/notifications/push-client";
@@ -448,6 +449,7 @@ export function CodecoSupervisionApp() {
   const [selectedType, setSelectedType] = useState<string>("activity");
   const [initialProjectTab, setInitialProjectTab] = useState<"home" | "inspections" | "findings" | "visual" | "files">("home");
   const quickCameraInputRef = useRef<HTMLInputElement>(null);
+  const dailyBackupCheckRef = useRef("");
   const [pendingQuickPhotos, setPendingQuickPhotos] = useState<File[]>([]);
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("Floor 3 · East zone");
@@ -483,6 +485,18 @@ export function CodecoSupervisionApp() {
     activeOrganizationId
     && workspaceQuery.data?.manageableOrganizationIds.includes(activeOrganizationId),
   );
+
+  useEffect(() => {
+    if (!supabase || !session || !activeOrganizationId || !canManageMembers || !isOnline) return;
+    const checkKey = `${activeOrganizationId}:${reportDate}`;
+    if (dailyBackupCheckRef.current === checkKey) return;
+    dailyBackupCheckRef.current = checkKey;
+    void ensureDailyBackup(supabase, activeOrganizationId)
+      .then(() => queryClient.invalidateQueries({ queryKey: ["project-operations"] }))
+      .catch(() => {
+        dailyBackupCheckRef.current = "";
+      });
+  }, [activeOrganizationId, canManageMembers, isOnline, queryClient, reportDate, session, supabase]);
   const internalAccessQuery = useQuery({
     queryKey: ["internal-access", activeOrganizationId],
     queryFn: () => loadInternalAccess(supabase as SupabaseClient, activeOrganizationId!),

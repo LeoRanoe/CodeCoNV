@@ -367,9 +367,12 @@ test("implements the late client document set as controlled forms and shared rep
 });
 
 test("keeps scheduled backups, retention and daily notification automation enforceable", async () => {
-  const [backupServer, cronRoute, migration, vercel, envExample] = await Promise.all([
+  const [backupServer, cronRoute, watchdogRoute, backupClient, app, migration, vercel, envExample] = await Promise.all([
     readFile(new URL("../lib/backups/server.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/cron/daily/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/backups/ensure-daily/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/backups/client.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../../../supabase/migrations/202607190003_automated_vercel_blob_backups.sql", import.meta.url), "utf8"),
     readFile(new URL("../vercel.json", import.meta.url), "utf8"),
     readFile(new URL("../.env.example", import.meta.url), "utf8"),
@@ -386,6 +389,12 @@ test("keeps scheduled backups, retention and daily notification automation enfor
   assert.match(cronRoute, /refresh_all_project_notifications/);
   assert.match(cronRoute, /sendPendingNotificationEmails/);
   assert.match(cronRoute, /record_scheduled_backup_failure/);
+  assert.match(watchdogRoute, /authenticateStorageRequest/);
+  assert.match(watchdogRoute, /permission_code", "backup\.manage"/);
+  assert.match(watchdogRoute, /runScheduledOrganizationBackup/);
+  assert.match(backupClient, /api\/backups\/ensure-daily/);
+  assert.match(app, /dailyBackupCheckRef/);
+  assert.match(app, /ensureDailyBackup/);
   assert.match(migration, /build_scheduled_backup_export/);
   assert.match(migration, /build_organization_backup_manifest/);
   assert.match(migration, /retention_tier/);
