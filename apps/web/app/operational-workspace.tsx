@@ -3,6 +3,7 @@
 import {
   AlertTriangle,
   Archive,
+  ArrowLeft,
   Camera,
   CalendarRange,
   CheckCircle2,
@@ -88,7 +89,7 @@ import {
 } from "@/lib/supabase/operations";
 
 type WorkspaceMode = "project" | "reports" | "admin";
-type ProjectTab = "inspections" | "findings" | "hse" | "registers" | "visual" | "drawings" | "tools" | "files";
+type ProjectTab = "home" | "inspections" | "findings" | "hse" | "registers" | "visual" | "drawings" | "tools" | "files";
 
 const findingStatusLabels: Record<string, string> = {
   draft: "Concept",
@@ -222,9 +223,10 @@ export function OperationalWorkspace({
   parties,
   canManageOrganization,
   openUserAdmin,
-  initialProjectTab = "inspections",
+  initialProjectTab = "home",
   initialCameraFiles = [],
   onInitialCameraFilesConsumed,
+  openQuickCamera,
   openProjectArea,
 }: {
   mode: WorkspaceMode;
@@ -243,9 +245,10 @@ export function OperationalWorkspace({
   parties: ProjectParty[];
   canManageOrganization: boolean;
   openUserAdmin: () => void;
-  initialProjectTab?: "inspections" | "findings" | "visual" | "files";
+  initialProjectTab?: ProjectTab;
   initialCameraFiles?: File[];
   onInitialCameraFilesConsumed?: () => void;
+  openQuickCamera: () => void;
   openProjectArea: (tab: "inspections" | "findings" | "visual" | "files") => void;
 }) {
   const { text } = useLanguage();
@@ -326,6 +329,7 @@ export function OperationalWorkspace({
           initialTab={initialProjectTab}
           initialCameraFiles={initialCameraFiles}
           onInitialCameraFilesConsumed={onInitialCameraFilesConsumed}
+          openQuickCamera={openQuickCamera}
         />
       ) : null}
       {mode === "reports" ? (
@@ -382,6 +386,7 @@ function ProjectOperations({
   initialTab,
   initialCameraFiles,
   onInitialCameraFilesConsumed,
+  openQuickCamera,
 }: {
   data: OperationSnapshot;
   organizationId: string;
@@ -400,6 +405,7 @@ function ProjectOperations({
   initialTab: ProjectTab;
   initialCameraFiles: File[];
   onInitialCameraFilesConsumed?: () => void;
+  openQuickCamera: () => void;
 }) {
   const { language, locale, text } = useLanguage();
   const registerNames = language === "en" ? registerLabelsEnglish : registerLabels;
@@ -547,6 +553,12 @@ function ProjectOperations({
   const switchTab = (next: ProjectTab) => {
     setTab(next);
     setShowForm(false);
+    setActiveInspection(null);
+  };
+
+  const openTask = (next: ProjectTab, createRecord = false) => {
+    setTab(next);
+    setShowForm(createRecord);
     setActiveInspection(null);
   };
 
@@ -856,32 +868,97 @@ function ProjectOperations({
     }
   };
 
+  const projectSections: Array<[Exclude<ProjectTab, "home">, string, number]> = [
+    ["inspections", text("Inspections", "Inspecties"), data.inspections.length],
+    ["findings", text("Findings / NCR", "Bevindingen / NCR"), data.findings.filter((item) => item.status !== "closed").length],
+    ["hse", "HSE", data.hseEvents.length],
+    ["registers", text("Other records", "Overige registers"), data.registerEntries.length],
+    ["visual", text("Visual evidence", "Visueel bewijs"), data.visualCaptures.length],
+    ["drawings", text("Drawings", "Tekeningen"), data.files.filter((file) => file.category === "drawing" && file.status === "available").length],
+    ["tools", text("Field tools", "Veldtools"), data.registerEntries.filter((entry) => ["notepad", "agreement", "technical_instruction"].includes(entry.register_type)).length],
+    ["files", text("Photos & folders", "Foto’s & mappen"), data.files.length],
+  ];
+  const activeSectionLabel = projectSections.find(([id]) => id === tab)?.[1];
+  const canCreateRecord = ["inspections", "findings", "hse", "registers"].includes(tab);
+
   return (
     <>
-      <header className="secondary-header">
-        <div><p className="eyebrow">{projectName} · {buildingName}</p><h1>{text("Project records", "Projectregisters")}</h1><p>{text("Inspections, quality, safety and evidence from one controlled source.", "Inspecties, kwaliteit, veiligheid en bewijs vanuit één centrale bron.")}</p></div>
-        {tab !== "files" && tab !== "visual" && tab !== "drawings" && tab !== "tools" && !activeInspection ? <button className="primary-button" type="button" onClick={() => setShowForm((value) => !value)}><Plus size={15} /> {text("New record", "Nieuwe registratie")}</button> : null}
+      <header className={`secondary-header workspace-header${tab === "home" ? " home" : ""}`}>
+        <div>
+          <p className="eyebrow">{projectName} · {buildingName}</p>
+          <h1>{tab === "home" ? text("Workspace", "Werkruimte") : activeSectionLabel}</h1>
+          <p>{tab === "home"
+            ? text("Choose one task. Project context and filing are handled automatically.", "Kies één taak. Projectcontext en ordening worden automatisch geregeld.")
+            : text("Finish this task, then return to the workspace.", "Rond deze taak af en ga daarna terug naar de werkruimte.")}</p>
+        </div>
+        {canCreateRecord && !activeInspection ? <button className="primary-button" type="button" onClick={() => setShowForm((value) => !value)}><Plus size={15} /> {text("New record", "Nieuwe registratie")}</button> : null}
       </header>
-      <div className="field-flow-launcher" aria-label={text("Fast field actions", "Snelle veldacties")}>
-        <button type="button" onClick={() => { switchTab("inspections"); setShowForm(true); }}><ClipboardCheck size={19} /><span><strong>{text("Start inspection", "Start inspectie")}</strong><small>{text("Recommended checklist first", "Aanbevolen checklist eerst")}</small></span></button>
-        <button type="button" onClick={() => { switchTab("findings"); setShowForm(true); }}><AlertTriangle size={19} /><span><strong>{text("Photo & finding", "Foto & bevinding")}</strong><small>{text("Stack evidence and assign", "Bewijs stapelen en toewijzen")}</small></span></button>
-        <button type="button" onClick={() => switchTab("drawings")}><FileText size={19} /><span><strong>{text("Drawing & pins", "Tekening & pins")}</strong><small>{text("Link the exact location", "Koppel de exacte locatie")}</small></span></button>
-        <button type="button" onClick={() => switchTab("files")}><Camera size={19} /><span><strong>{text("Photos & folders", "Foto’s & mappen")}</strong><small>{text("Point, shoot, automatically filed", "Richten, foto, automatisch geordend")}</small></span></button>
-      </div>
-      <div className="operation-tabs" role="tablist" aria-label={text("Project records", "Projectregisters")}>
-        {([
-          ["inspections", text("Inspections", "Inspecties"), data.inspections.length],
-          ["findings", text("Findings / NCR", "Bevindingen / NCR"), data.findings.filter((item) => item.status !== "closed").length],
-          ["hse", "HSE", data.hseEvents.length],
-          ["registers", text("Other records", "Overige registers"), data.registerEntries.length],
-          ["visual", text("Visual evidence", "Visueel bewijs"), data.visualCaptures.length],
-          ["drawings", text("Drawings", "Tekeningen"), data.files.filter((file) => file.category === "drawing" && file.status === "available").length],
-          ["tools", text("Field tools", "Veldtools"), data.registerEntries.filter((entry) => ["notepad", "agreement", "technical_instruction"].includes(entry.register_type)).length],
-          ["files", text("Photos & folders", "Foto’s & mappen"), data.files.length],
-        ] as Array<[ProjectTab, string, number]>).map(([id, label, count]) => (
+
+      {tab === "home" ? (
+        <section className="workspace-task-hub" aria-labelledby="workspace-task-title">
+          <div className="workspace-task-heading">
+            <span><Wrench size={22} /></span>
+            <div><p>{text("One task at a time", "Eén taak tegelijk")}</p><h2 id="workspace-task-title">{text("What do you need to do now?", "Wat wil je nu doen?")}</h2></div>
+          </div>
+
+          <button className="workspace-camera-action" type="button" onClick={openQuickCamera}>
+            <span><Camera size={25} /></span>
+            <span><strong>{text("Take a photo", "Foto maken")}</strong><small>{text("Point and shoot · project, building, time and folder are linked automatically", "Richten en maken · project, gebouw, tijd en map worden automatisch gekoppeld")}</small></span>
+          </button>
+
+          <div className="workspace-primary-actions">
+            <button className="workspace-task-action inspection" type="button" onClick={() => openTask("inspections", true)}>
+              <ClipboardCheck size={22} />
+              <strong>{text("Start inspection", "Start inspectie")}</strong>
+              <small>{text("Recommended checklist is ready", "Aanbevolen checklist staat klaar")}</small>
+            </button>
+            <button className="workspace-task-action finding" type="button" onClick={() => openTask("findings", true)}>
+              <AlertTriangle size={22} />
+              <strong>{text("Report issue", "Meld probleem")}</strong>
+              <small>{text("Stack photos and assign directly", "Stapel foto’s en wijs direct toe")}</small>
+            </button>
+          </div>
+
+          <button className="workspace-drawing-action" type="button" onClick={() => openTask("drawings")}>
+            <FileText size={21} />
+            <span><strong>{text("Open drawing and place a pin", "Open tekening en plaats een pin")}</strong><small>{text("Link RFI, document, observation or inspection to the exact location", "Koppel RFI, document, observatie of inspectie aan de exacte locatie")}</small></span>
+          </button>
+
+          <details className="workspace-more-actions">
+            <summary>{text("More field tasks", "Meer veldtaken")}<span>{text("HSE, folders, 360° and documents", "HSE, mappen, 360° en documenten")}</span></summary>
+            <div className="workspace-more-grid">
+              <button type="button" onClick={() => openTask("hse", true)}><ShieldCheck size={18} /><span><strong>HSE</strong><small>{text("Safety event", "Veiligheidsmelding")}</small></span></button>
+              <button type="button" onClick={() => openTask("files")}><Camera size={18} /><span><strong>{text("Photo folders", "Fotomappen")}</strong><small>{text("All evidence", "Alle bewijzen")}</small></span></button>
+              <button type="button" onClick={() => openTask("visual")}><RotateCcw size={18} /><span><strong>{text("360° evidence", "360° bewijs")}</strong><small>{text("Upload panorama", "Panorama uploaden")}</small></span></button>
+              <button type="button" onClick={() => openTask("registers", true)}><Archive size={18} /><span><strong>{text("Documents", "Documenten")}</strong><small>RFI · RFA · WIR · NCR</small></span></button>
+              <button type="button" onClick={() => openTask("tools")}><Wrench size={18} /><span><strong>{text("Field tools", "Veldtools")}</strong><small>{text("Notes and agreements", "Notities en afspraken")}</small></span></button>
+            </div>
+          </details>
+
+          <div className="workspace-automation-strip" aria-label={text("Automatic field support", "Automatische veldondersteuning")}>
+            <span><CloudSun size={16} /><small>{text("Weather prefilled", "Weer vooraf ingevuld")}</small></span>
+            <span><CheckCircle2 size={16} /><small>{text("Numbers assigned", "Nummers toegekend")}</small></span>
+            <span><WifiOff size={16} /><small>{text("Photos queue offline", "Foto’s wachten offline")}</small></span>
+          </div>
+        </section>
+      ) : (
+        <>
+          <div className="workspace-section-controls">
+            <button className="workspace-back-button" type="button" onClick={() => switchTab("home")}><ArrowLeft size={17} /> {text("Workspace", "Werkruimte")}</button>
+            <label className="mobile-workspace-section-select">
+              <span>{text("Current section", "Huidig onderdeel")}</span>
+              <select value={tab} onChange={(event) => switchTab(event.target.value as ProjectTab)}>
+                {projectSections.map(([id, label, count]) => <option value={id} key={id}>{label} · {count}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="operation-tabs workspace-desktop-tabs" role="tablist" aria-label={text("Project records", "Projectregisters")}>
+            {projectSections.map(([id, label, count]) => (
           <button className={tab === id ? "active" : ""} type="button" role="tab" aria-selected={tab === id} onClick={() => switchTab(id)} key={id}>{label}<span>{count}</span></button>
-        ))}
-      </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {tab === "inspections" ? (
         <section className="operation-panel">

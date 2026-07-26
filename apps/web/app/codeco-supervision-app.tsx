@@ -446,7 +446,7 @@ export function CodecoSupervisionApp() {
   const [activeNav, setActiveNav] = useState<NavKey>("vandaag");
   const [modal, setModal] = useState<ModalKey>(null);
   const [selectedType, setSelectedType] = useState<string>("activity");
-  const [initialProjectTab, setInitialProjectTab] = useState<"inspections" | "findings" | "visual" | "files">("inspections");
+  const [initialProjectTab, setInitialProjectTab] = useState<"home" | "inspections" | "findings" | "visual" | "files">("home");
   const quickCameraInputRef = useRef<HTMLInputElement>(null);
   const [pendingQuickPhotos, setPendingQuickPhotos] = useState<File[]>([]);
   const [description, setDescription] = useState("");
@@ -795,6 +795,7 @@ export function CodecoSupervisionApp() {
   };
 
   const navigate = (next: NavKey) => {
+    if (next === "project") setInitialProjectTab("home");
     setActiveNav(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -1093,6 +1094,7 @@ export function CodecoSupervisionApp() {
               initialProjectTab={initialProjectTab}
               initialCameraFiles={pendingQuickPhotos}
               onInitialCameraFilesConsumed={() => setPendingQuickPhotos([])}
+              openQuickCamera={openQuickAdd}
               openProjectArea={(tab) => {
                 setInitialProjectTab(tab);
                 setActiveNav("project");

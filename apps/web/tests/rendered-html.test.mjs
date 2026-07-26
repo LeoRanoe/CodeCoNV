@@ -574,6 +574,24 @@ test("minimizes repetitive field typing with controlled quick choices", async ()
   assert.match(media, /Choose a photo folder|Kies een fotomap/);
 });
 
+test("keeps the project workspace mobile-first and task driven", async () => {
+  const [app, operations, styles] = await Promise.all([
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(app, /useState<"home"[\s\S]*>\("home"\)/);
+  assert.match(app, /openQuickCamera=\{openQuickAdd\}/);
+  assert.match(operations, /What do you need to do now\?|Wat wil je nu doen\?/);
+  assert.match(operations, /workspace-camera-action/);
+  assert.match(operations, /mobile-workspace-section-select/);
+  assert.match(operations, /Point and shoot[\s\S]*linked automatically/);
+  assert.match(styles, /\.workspace-task-hub/);
+  assert.match(styles, /\.workspace-desktop-tabs\s*\{\s*display: none/);
+  assert.doesNotMatch(operations, /field-flow-launcher/);
+});
+
 test("ships automatic project weather, anchor checklists and stacked issue photos", async () => {
   const [app, weatherRoute, weatherRules, anchorLibrary, operations, supabaseOperations, offlineQueue, fieldGuide, migration] = await Promise.all([
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
