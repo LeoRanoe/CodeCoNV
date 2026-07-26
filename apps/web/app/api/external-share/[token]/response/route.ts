@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { loadActiveExternalShare } from "@/lib/external-share/server";
+import { normalizeExternalShareToken } from "@/lib/external-share/token.mjs";
 import { createStorageAdminClient, storageErrorResponse, storageJson } from "@/lib/storage/server";
 
 export const dynamic = "force-dynamic";
@@ -14,8 +15,9 @@ const responseSchema = z.object({
 
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
   try {
-    const { token } = await params;
-    if (!await loadActiveExternalShare(token)) return storageJson({ error: "Deze link is verlopen of ingetrokken." }, 404);
+    const route = await params;
+    const token = normalizeExternalShareToken(route.token);
+    if (!token || !await loadActiveExternalShare(token)) return storageJson({ error: "Deze link is verlopen of ingetrokken." }, 404);
     const input = responseSchema.safeParse(await request.json().catch(() => null));
     if (!input.success) return storageJson({ error: "Controleer de gereedmelding en probeer opnieuw." }, 400);
     const result = await createStorageAdminClient().rpc("submit_external_share_response", {

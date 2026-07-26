@@ -1,14 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { validAccessToken } from "@/lib/supabase/access-token";
 
 // Storage routes are part of the same Next.js application. The server route
 // reports a configuration error until a private Vercel Blob store is connected.
 export const isStorageGatewayConfigured = true;
-
-async function accessToken(client: SupabaseClient) {
-  const { data, error } = await client.auth.getSession();
-  if (error || !data.session?.access_token) throw new Error("Je sessie is verlopen. Meld je opnieuw aan.");
-  return data.session.access_token;
-}
 
 async function sha256Hex(file: File) {
   const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
@@ -50,7 +45,7 @@ export async function uploadProjectFile(
     onProgress?: (percent: number) => void;
   },
 ) {
-  const token = await accessToken(client);
+  const token = await validAccessToken(client);
   input.onProgress?.(1);
   const sha256 = await sha256Hex(input.file);
   const fileId = input.fileId ?? crypto.randomUUID();
@@ -98,7 +93,7 @@ export async function uploadProjectFile(
 }
 
 async function authorizedFileResponse(client: SupabaseClient, fileId: string, download = false) {
-  const token = await accessToken(client);
+  const token = await validAccessToken(client);
   const response = await fetch(`/api/storage/files/${encodeURIComponent(fileId)}${download ? "?download=1" : ""}`, {
     headers: { authorization: `Bearer ${token}` },
   });

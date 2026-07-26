@@ -9,12 +9,14 @@ import {
   CheckCircle2,
   ClipboardCheck,
   CloudSun,
+  Copy,
   DatabaseBackup,
   Download,
   FileCheck2,
   FileText,
   HardDrive,
   KeyRound,
+  Link2,
   Loader2,
   MessageCircle,
   PackageCheck,
@@ -45,22 +47,22 @@ import {
   issueCatalogPresets,
   type ControlledDocumentDraft,
 } from "@/lib/forms/controlled-project-documents";
+import { externalShareUrl } from "@/lib/external-share/token.mjs";
 import type { ProjectStartAnswers } from "@/lib/forms/daily-report";
 import { useLanguage } from "@/lib/i18n";
 import { cacheProjectSnapshot, getCachedProjectSnapshot } from "@/lib/offline/project-cache";
-import { compressFieldPhoto, dataSaverEnabled, queueOfflineUpload } from "@/lib/offline/upload-queue";
+import { compressFieldPhoto, dataSaverEnabled, queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import type { FormalReportSnapshot } from "@/lib/reports/daily-report-pdf";
 import type { PeriodReportSection } from "@/lib/reports/period-report-pdf";
 import type { ProjectParty } from "@/lib/supabase/data";
-import { isStorageGatewayConfigured, uploadProjectFile } from "@/lib/storage/gateway";
+import { isStorageGatewayConfigured } from "@/lib/storage/gateway";
 import {
   buildPeriodReportSnapshot,
   createChecklist,
   createFinding,
   createHseEvent,
   createLocationNode,
-  createMediaFolder,
   createProjectParty,
   createRegisterEntry,
   createExternalShareLink,
@@ -68,7 +70,6 @@ import {
   finishInspection,
   importProjectBoq,
   installChecklistLibraryTemplate,
-  linkFileToRecord,
   loadProjectOperations,
   recordDistribution,
   recordFindingProgress,
@@ -180,6 +181,23 @@ function formatDate(value: string | null, locale = "en-GB") {
 
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "The operation was not completed.";
+}
+
+async function copyToClipboard(value: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+  const field = document.createElement("textarea");
+  field.value = value;
+  field.setAttribute("readonly", "");
+  field.style.position = "fixed";
+  field.style.opacity = "0";
+  document.body.appendChild(field);
+  field.select();
+  const copied = document.execCommand("copy");
+  field.remove();
+  if (!copied) throw new Error("Kopiëren wordt niet ondersteund door deze browser.");
 }
 
 type InspectionAnswer = {
@@ -614,12 +632,9 @@ function ProjectOperations({
     ),
   );
 
-  const ensureMediaFolderId = async (name: string) => {
+  const existingMediaFolderId = (name: string) => {
     const existing = data.mediaFolders.find((folder) => (!folder.building_id || folder.building_id === buildingId) && folder.name.toLocaleLowerCase() === name.toLocaleLowerCase());
-    if (existing) return existing.id;
-    if (!navigator.onLine) return null;
-    const created = await createMediaFolder(client, { projectId, buildingId, name, folderType: "images" });
-    return created.id;
+    return existing?.id ?? null;
   };
 
   const submitInspection = async () => {
@@ -629,16 +644,33 @@ function ProjectOperations({
       async () => {
         await finishInspection(client, activeInspection, inspectionAnswers);
         if (inspectionPhotos.length) {
-          const folderId = await ensureMediaFolderId(text("Inspections", "Inspecties"));
+          const folderName = text("Inspections", "Inspecties");
+          const folderId = existingMediaFolderId(folderName);
           for (const photo of inspectionPhotos) {
             const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
-            const uploadFile = new File([prepared.blob], prepared.fileName, { type: prepared.mimeType, lastModified: photo.lastModified });
-            const uploaded = await uploadProjectFile(client, { projectId, buildingId, folderId, category: "photo", file: uploadFile });
-            await linkFileToRecord(client, { organizationId, projectId, fileId: uploaded.fileId, recordType: "inspection", recordId: activeInspection.id, relationship: "evidence" });
+            await queueOfflineUpload({
+              projectId,
+              buildingId,
+              reportId,
+              folderId,
+              folderName,
+              kind: "photo",
+              file: prepared.blob,
+              fileName: prepared.fileName,
+              mimeType: prepared.mimeType,
+              title: activeInspection.title,
+              locationLabel: buildingName,
+              capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
+              originalSize: photo.size,
+              queuedSize: prepared.blob.size,
+              compressed: prepared.compressed,
+              recordLink: { organizationId, recordType: "inspection", recordId: activeInspection.id, relationship: "evidence" },
+            });
           }
+          if (navigator.onLine) await syncOfflineUploads(client, projectId, { force: true });
         }
       },
-      text("Inspection completed with linked photo evidence. Failed points were recorded as findings.", "Inspectie met gekoppeld fotobewijs afgerond. Afgekeurde punten zijn als bevinding vastgelegd."),
+      text("Inspection completed; every photo is secured locally and linked during automatic sync.", "Inspectie afgerond; elke foto is lokaal veiliggesteld en wordt automatisch gekoppeld."),
     );
     if (okay) {
       setActiveInspection(null);
@@ -709,12 +741,13 @@ function ProjectOperations({
       expectedResolutionDate: findingForm.expectedResolutionDate,
       sourceCatalogSubject: findingForm.sourceCatalogSubject,
     };
-    const success = !online && findingPhotos.length
-      ? text("Issue photo and assignment are in the offline sync queue.", "Probleemfoto en toewijzing staan in de offline synchronisatiewachtrij.")
+    const success = findingPhotos.length
+      ? text("Issue and photo stack secured; numbering and assignment synchronize automatically.", "Probleem en fotostapel veiliggesteld; nummering en toewijzing synchroniseren automatisch.")
       : text("Finding numbered, assigned and given a rule-driven deadline.", "Bevinding genummerd, toegewezen en van een regelgestuurde deadline voorzien.");
     const okay = await run(async () => {
-      const findingFolderId = findingPhotos.length ? await ensureMediaFolderId(text("Findings", "Bevindingen")) : null;
-      if (findingPhotos.length && !online) {
+      if (findingPhotos.length) {
+        const folderName = text("Findings", "Bevindingen");
+        const findingFolderId = existingMediaFolderId(folderName);
         const groupId = crypto.randomUUID();
         for (const photo of findingPhotos) {
           const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
@@ -723,7 +756,7 @@ function ProjectOperations({
             buildingId,
             reportId,
             folderId: findingFolderId,
-            folderName: text("Findings", "Bevindingen"),
+            folderName,
             kind: "photo",
             file: prepared.blob,
             fileName: prepared.fileName,
@@ -756,26 +789,10 @@ function ProjectOperations({
             },
           });
         }
+        if (navigator.onLine) await syncOfflineUploads(client, projectId, { force: true });
         return;
       }
-      const fileIds: string[] = [];
-      for (const photo of findingPhotos) {
-        const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
-        const uploadFile = new File([prepared.blob], prepared.fileName, { type: prepared.mimeType, lastModified: photo.lastModified });
-        const uploaded = await uploadProjectFile(client, { projectId, buildingId, folderId: findingFolderId, category: "photo", file: uploadFile });
-        fileIds.push(uploaded.fileId);
-      }
-      const finding = await createFinding(client, draft);
-      for (const [index, fileId] of fileIds.entries()) {
-        await linkFileToRecord(client, {
-          organizationId,
-          projectId,
-          fileId,
-          recordType: "finding",
-          recordId: finding.id,
-          relationship: index === 0 ? "before" : "evidence",
-        });
-      }
+      await createFinding(client, draft);
     }, success);
     if (okay) {
       setFindingForm({
@@ -795,16 +812,34 @@ function ProjectOperations({
       async () => {
         const event = await createHseEvent(client, { projectId, buildingId, reportId, ...hseForm });
         if (hsePhotos.length) {
-          const folderId = await ensureMediaFolderId("HSE");
+          const folderName = "HSE";
+          const folderId = existingMediaFolderId(folderName);
           for (const photo of hsePhotos) {
             const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
-            const uploadFile = new File([prepared.blob], prepared.fileName, { type: prepared.mimeType, lastModified: photo.lastModified });
-            const uploaded = await uploadProjectFile(client, { projectId, buildingId, folderId, category: "photo", file: uploadFile });
-            await linkFileToRecord(client, { organizationId, projectId, fileId: uploaded.fileId, recordType: "hse", recordId: event.id, relationship: "evidence" });
+            await queueOfflineUpload({
+              projectId,
+              buildingId,
+              reportId,
+              folderId,
+              folderName,
+              kind: "photo",
+              file: prepared.blob,
+              fileName: prepared.fileName,
+              mimeType: prepared.mimeType,
+              title: hseForm.title,
+              description: hseForm.description,
+              locationLabel: buildingName,
+              capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
+              originalSize: photo.size,
+              queuedSize: prepared.blob.size,
+              compressed: prepared.compressed,
+              recordLink: { organizationId, recordType: "hse", recordId: event.id, relationship: "evidence" },
+            });
           }
+          if (navigator.onLine) await syncOfflineUploads(client, projectId, { force: true });
         }
       },
-      text("HSE event and photo evidence recorded centrally; urgent classifications were escalated.", "HSE-gebeurtenis en fotobewijs centraal geregistreerd; urgente classificaties zijn geëscaleerd."),
+      text("HSE event recorded; every photo is secured locally and linked during automatic sync.", "HSE-gebeurtenis vastgelegd; elke foto is lokaal veiliggesteld en wordt automatisch gekoppeld."),
     );
     if (okay) {
       setHseForm({ type: "unsafe_condition", title: "", description: "", severity: "medium", immediateMeasure: "", confidential: false });
@@ -1122,7 +1157,17 @@ function ProjectOperations({
               () => recordFindingProgress(client, { findingId: finding.id, progressPercent, disposition, note }),
               text(`Progress for ${finding.finding_number} recorded; 100% still requires verification.`, `Voortgang voor ${finding.finding_number} vastgelegd; ook 100% vraagt nog verificatie.`),
             )}
-            share={async (finding) => run(async () => { const shared = await createExternalShareLink(client, projectId, "finding", finding.id); const link = `${window.location.origin}/share/${shared.token}`; const message = `CODECO ${finding.finding_number} · ${finding.title}\n${link}\nGedeelde link vervalt automatisch.`; window.location.assign(`https://wa.me/?text=${encodeURIComponent(message)}`); }, text("Secure WhatsApp link created.", "Beveiligde WhatsApp-link aangemaakt."))}
+            share={async (finding) => {
+              let sharedToken = "";
+              let expiresAt = "";
+              const okay = await run(async () => {
+                const created = await createExternalShareLink(client, projectId, "finding", finding.id);
+                sharedToken = created.token;
+                expiresAt = created.expires_at;
+              }, text("Secure external link created.", "Beveiligde externe link aangemaakt."));
+              if (!okay || !sharedToken || !expiresAt) return null;
+              return { url: externalShareUrl(window.location.origin, sharedToken), expiresAt };
+            }}
           />
         </section>
       ) : null}
@@ -1296,7 +1341,7 @@ function FindingList({ findings, progressUpdates, projectName, projectCode, buil
   busy: boolean;
   transition: (finding: Finding, nextStatus: string, note: string, finalMeasure: string) => Promise<boolean>;
   recordProgress: (finding: Finding, progressPercent: number, disposition: "validated" | "to_be_corrected" | "alternative_solution", note: string) => Promise<boolean>;
-  share: (finding: Finding) => Promise<boolean>;
+  share: (finding: Finding) => Promise<{ url: string; expiresAt: string } | null>;
 }) {
   const { language, locale, text } = useLanguage();
   const statusLabels = language === "en" ? findingStatusLabelsEnglish : findingStatusLabels;
@@ -1307,6 +1352,9 @@ function FindingList({ findings, progressUpdates, projectName, projectCode, buil
   const [progressPercent, setProgressPercent] = useState("0");
   const [progressDisposition, setProgressDisposition] = useState<"validated" | "to_be_corrected" | "alternative_solution">("to_be_corrected");
   const [progressNote, setProgressNote] = useState("");
+  const [creatingShareFor, setCreatingShareFor] = useState<string | null>(null);
+  const [externalShare, setExternalShare] = useState<{ findingId: string; url: string; expiresAt: string } | null>(null);
+  const [shareFeedback, setShareFeedback] = useState("");
   const next: Record<string, string> = { open: "in_progress", assigned: "in_progress", reopened: "in_progress", in_progress: "ready_for_verification", ready_for_verification: "closed" };
   const noteChoices: Record<string, string[]> = {
     in_progress: [text("Follow-up has started.", "Opvolging is gestart."), text("Responsible party has started the repair.", "Verantwoordelijke partij is met herstel gestart.")],
@@ -1318,6 +1366,23 @@ function FindingList({ findings, progressUpdates, projectName, projectCode, buil
     text("Work completed and the area cleaned.", "Werk afgerond en de werkzone schoongemaakt."),
     text("Unsafe condition corrected and control measure applied.", "Onveilige situatie gecorrigeerd en beheersmaatregel toegepast."),
   ];
+  const createShare = async (finding: Finding) => {
+    setCreatingShareFor(finding.id);
+    setShareFeedback("");
+    const result = await share(finding);
+    if (result) setExternalShare({ findingId: finding.id, ...result });
+    setCreatingShareFor(null);
+  };
+  const externalMessage = (finding: Finding, shared: { url: string; expiresAt: string }) => [
+    `CODECO werkpunt ${finding.finding_number}`,
+    `${projectCode} · ${projectName}${buildingName ? ` · ${buildingName}` : ""}`,
+    finding.title,
+    `Deadline: ${formatDate(finding.due_at, locale)}`,
+    "",
+    "Open de volledige breakdown, bronfoto en antwoordknoppen zonder account:",
+    shared.url,
+    `Link geldig tot ${formatDate(shared.expiresAt, locale)}.`,
+  ].join("\n");
   return (
     <div className="record-stack">
       {findings.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No findings yet", "Nog geen bevindingen")}</strong><span>{text("Failed inspection points and manual NCRs appear here.", "Afgekeurde inspectiepunten en handmatige NCR’s verschijnen hier.")}</span></div> : null}
@@ -1328,7 +1393,31 @@ function FindingList({ findings, progressUpdates, projectName, projectCode, buil
         return (
           <article className="finding-card" key={finding.id}>
             <div className="finding-card-main"><span className={`record-severity ${finding.severity}`}>{finding.severity}</span><div><span className="record-number">{finding.finding_number} · {finding.finding_type.toUpperCase()}</span><h3>{finding.title}</h3><p>{finding.description}</p>{issue.action_steps ? <p className="finding-required-action"><strong>{text("Required action:", "Vereiste actie:")}</strong> {issue.action_steps}</p> : null}<small>Deadline {formatDate(finding.due_at, locale)}{latestProgress ? ` · ${text("progress", "voortgang")} ${latestProgress.progress_percent}% · ${latestProgress.disposition.replaceAll("_", " ")}` : ""}{finding.verified_at ? ` · ${text("verified", "geverifieerd")} ${formatDate(finding.verified_at, locale)}` : ""}</small></div><span className={`task-status ${finding.status === "closed" ? "green" : finding.severity === "critical" ? "red" : ""}`}>{statusLabels[finding.status] ?? finding.status}</span></div>
-            <div className="finding-actions"><button className="whatsapp-button" type="button" disabled={busy} onClick={() => void share(finding)}><MessageCircle size={15} /> WhatsApp-link</button><button className="secondary-button" type="button" disabled={busy} onClick={() => void import("@/lib/reports/ncr-pdf").then(({ downloadNcrPdf }) => downloadNcrPdf(finding, latestProgress, { projectName, projectCode, buildingName, issuerName: currentUserName, responsiblePartyName: parties.find((party) => party.id === finding.responsible_party_id)?.name ?? "" }))}><Download size={15} /> {text("NCR client PDF", "NCR-klant-PDF")}</button>{!["closed", "cancelled", "rejected"].includes(finding.status) ? <button className="secondary-button" type="button" onClick={() => { setProgressActive(progressActive === finding.id ? null : finding.id); setProgressPercent(String(latestProgress?.progress_percent ?? 0)); setProgressDisposition(latestProgress?.disposition ?? issue.disposition ?? "to_be_corrected"); }}>{text("Record inspection progress", "Inspectievoortgang vastleggen")}</button> : null}{nextStatus ? <button className="secondary-button" type="button" onClick={() => setActive(active === finding.id ? null : finding.id)}>{nextStatus === "closed" ? text("Verify", "Verifiëren") : nextStatus === "ready_for_verification" ? text("Mark repair ready", "Herstel gereedmelden") : text("Update status", "Status bijwerken")}</button> : null}</div>
+            <div className="finding-actions">
+              <button className="external-party-button" type="button" disabled={busy || creatingShareFor === finding.id} onClick={() => void createShare(finding)}>
+                {creatingShareFor === finding.id ? <Loader2 className="spin" size={17} /> : <MessageCircle size={17} />}
+                <span><strong>{text("Send to external party", "Stuur naar externe partij")}</strong><small>{text("WhatsApp link · no account needed", "WhatsApp-link · geen account nodig")}</small></span>
+              </button>
+              <button className="secondary-button" type="button" disabled={busy} onClick={() => void import("@/lib/reports/ncr-pdf").then(({ downloadNcrPdf }) => downloadNcrPdf(finding, latestProgress, { projectName, projectCode, buildingName, issuerName: currentUserName, responsiblePartyName: parties.find((party) => party.id === finding.responsible_party_id)?.name ?? "" }))}><Download size={15} /> {text("NCR client PDF", "NCR-klant-PDF")}</button>
+              {!["closed", "cancelled", "rejected"].includes(finding.status) ? <button className="secondary-button" type="button" onClick={() => { setProgressActive(progressActive === finding.id ? null : finding.id); setProgressPercent(String(latestProgress?.progress_percent ?? 0)); setProgressDisposition(latestProgress?.disposition ?? issue.disposition ?? "to_be_corrected"); }}>{text("Record inspection progress", "Inspectievoortgang vastleggen")}</button> : null}
+              {nextStatus ? <button className="secondary-button" type="button" onClick={() => setActive(active === finding.id ? null : finding.id)}>{nextStatus === "closed" ? text("Verify", "Verifiëren") : nextStatus === "ready_for_verification" ? text("Mark repair ready", "Herstel gereedmelden") : text("Update status", "Status bijwerken")}</button> : null}
+            </div>
+            {externalShare?.findingId === finding.id ? (
+              <section className="external-share-preflight" aria-label={text("External party link ready", "Link voor externe partij klaar")}>
+                <div className="external-share-preflight-heading"><span><Link2 size={18} /></span><div><strong>{text("Ready to send · recipient needs no account", "Klaar om te sturen · ontvanger heeft geen account nodig")}</strong><small>{text("Only this workpoint and its evidence are shared.", "Alleen dit werkpunt en het bijbehorende bewijs worden gedeeld.")}</small></div><button type="button" aria-label={text("Close external link panel", "Sluit extern-linkpaneel")} onClick={() => setExternalShare(null)}><X size={16} /></button></div>
+                <ul>
+                  <li>{text("Sees project, building, workpoint, priority, deadline and source photo.", "Ziet project, gebouw, werkpunt, prioriteit, deadline en bronfoto.")}</li>
+                  <li>{text("Can report completion or a problem with one tap.", "Kan met één tik gereedmelden of een probleem terugmelden.")}</li>
+                  <li>{text("Can take and attach a correction photo directly.", "Kan direct een correctiefoto maken en meesturen.")}</li>
+                </ul>
+                <label><span>{text("Secure link · expires", "Beveiligde link · vervalt")} {formatDate(externalShare.expiresAt, locale)}</span><input readOnly value={externalShare.url} onFocus={(event) => event.currentTarget.select()} /></label>
+                {shareFeedback ? <p className="external-share-feedback" role="status">{shareFeedback}</p> : null}
+                <div className="external-share-preflight-actions">
+                  <button className="secondary-button" type="button" onClick={() => void copyToClipboard(externalShare.url).then(() => setShareFeedback(text("Link copied.", "Link gekopieerd."))).catch((error) => setShareFeedback(messageFrom(error)))}><Copy size={16} /> {text("Copy link", "Kopieer link")}</button>
+                  <button className="whatsapp-button" type="button" onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(externalMessage(finding, externalShare))}`, "_blank", "noopener,noreferrer")}><MessageCircle size={17} /> {text("Open WhatsApp and send", "Open WhatsApp en stuur")}</button>
+                </div>
+              </section>
+            ) : null}
             {progressActive === finding.id ? (
               <div className="inline-transition issue-progress-form">
                 <div className="form-grid-2"><label className="form-field"><span>{text("Progress at this inspection", "Voortgang bij deze inspectie")}</span><input type="number" min="0" max="100" step="1" value={progressPercent} onChange={(event) => setProgressPercent(event.target.value)} /></label><label className="form-field"><span>{text("Disposition", "Beoordeling")}</span><select value={progressDisposition} onChange={(event) => setProgressDisposition(event.target.value as typeof progressDisposition)}><option value="validated">{text("Validated", "Gevalideerd")}</option><option value="to_be_corrected">{text("To be corrected", "Te corrigeren")}</option><option value="alternative_solution">{text("Alternative solution", "Alternatieve oplossing")}</option></select></label></div>

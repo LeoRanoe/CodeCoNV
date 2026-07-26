@@ -31,7 +31,10 @@ function humanSize(bytes: number) {
 }
 
 function SecureImage({ client, file }: { client: SupabaseClient; file: FileRecord }) {
+  const { text } = useLanguage();
   const [source, setSource] = useState("");
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let active = true;
     let objectUrl = "";
@@ -39,15 +42,20 @@ function SecureImage({ client, file }: { client: SupabaseClient; file: FileRecor
       objectUrl = url;
       if (active) setSource(url);
       else URL.revokeObjectURL(url);
-    }).catch(() => undefined);
+    }).catch(() => {
+      if (active) setFailed(true);
+    });
     return () => {
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [client, file.id]);
+  }, [attempt, client, file.id]);
+  if (failed) {
+    return <span className="media-preview-error"><ImageIcon size={20} /><small>{text("Image unavailable", "Beeld niet beschikbaar")}</small><button type="button" onClick={() => { setFailed(false); setSource(""); setAttempt((value) => value + 1); }}><RefreshCw size={14} /> {text("Retry", "Opnieuw")}</button></span>;
+  }
   // Private object URLs cannot use the Next image optimizer without exposing a public URL.
   // eslint-disable-next-line @next/next/no-img-element
-  return source ? <img src={source} alt={file.original_name} loading="lazy" /> : <span className="media-preview-loading"><Loader2 className="spin" size={20} /></span>;
+  return source ? <img src={source} alt={file.original_name} loading="lazy" onError={() => setFailed(true)} /> : <span className="media-preview-loading"><Loader2 className="spin" size={20} /></span>;
 }
 
 export function MediaLibraryWorkspace({

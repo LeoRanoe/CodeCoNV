@@ -1,10 +1,21 @@
 "use client";
 
-import { AlertTriangle, Camera, CheckCircle2, Loader2, Send, Upload } from "lucide-react";
+import { AlertTriangle, Camera, CheckCircle2, ImageOff, Loader2, Send, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 import { compressFieldPhoto } from "@/lib/offline/upload-queue";
 
 type ResponseType = "ready_for_verification" | "issue";
+
+export function ExternalSourceImage({ token, sourceNumber }: { token: string; sourceNumber: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return <div className="external-source-image-error" role="status"><ImageOff size={22} /><span><strong>Bronfoto tijdelijk niet beschikbaar</strong><small>De taakgegevens hieronder blijven geldig. Meld het aan CODECO als de foto nodig is.</small></span></div>;
+  }
+  // This same-origin route validates the narrow, expiring share token before
+  // streaming the private source image.
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img className="external-source-image" src={`/api/external-share/${token}/evidence`} alt={`Bronfoto voor ${sourceNumber}`} onError={() => setFailed(true)} />;
+}
 
 async function responseError(response: Response) {
   const body = await response.json().catch(() => null) as { error?: string } | null;

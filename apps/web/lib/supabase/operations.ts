@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { anchorChecklistLibrary, legacyAnchorPrompts } from "@/lib/checklists/anchor-library";
+import { normalizeExternalShareToken } from "@/lib/external-share/token.mjs";
 
 export type ChecklistItem = {
   id: string;
@@ -405,7 +406,12 @@ export async function createExternalShareLink(client: SupabaseClient, projectId:
     p_expires_days: 14,
   });
   fail(result.error);
-  return result.data as { share_id: string; token: string; expires_at: string };
+  const data = result.data as { share_id?: string; token?: string; expires_at?: string } | null;
+  const token = normalizeExternalShareToken(data?.token);
+  if (!data?.share_id || !data.expires_at || !token) {
+    throw new Error("De database heeft geen geldige externe toegangscode aangemaakt. Probeer opnieuw.");
+  }
+  return { share_id: data.share_id, token, expires_at: data.expires_at };
 }
 
 export async function startInspection(client: SupabaseClient, input: { projectId: string; buildingId: string; reportId: string; templateId: string; title: string }) {

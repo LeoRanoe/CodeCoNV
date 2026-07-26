@@ -1,6 +1,7 @@
 "use client";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { validAccessToken } from "@/lib/supabase/access-token";
 
 export type PushState = "unsupported" | "blocked" | "inactive" | "active";
 
@@ -9,12 +10,6 @@ function applicationServerKey(value: string) {
   const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
   const raw = atob(base64);
   return Uint8Array.from([...raw].map((character) => character.charCodeAt(0)));
-}
-
-async function accessToken(client: SupabaseClient) {
-  const result = await client.auth.getSession();
-  if (result.error || !result.data.session?.access_token) throw new Error("Je sessie is verlopen.");
-  return result.data.session.access_token;
 }
 
 export async function currentPushState(): Promise<PushState> {
@@ -39,7 +34,7 @@ export async function enablePushNotifications(client: SupabaseClient) {
   if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) throw new Error("Het apparaat gaf geen volledige pushregistratie terug.");
   const response = await fetch("/api/notifications/push-subscriptions", {
     method: "POST",
-    headers: { authorization: `Bearer ${await accessToken(client)}`, "content-type": "application/json" },
+    headers: { authorization: `Bearer ${await validAccessToken(client)}`, "content-type": "application/json" },
     body: JSON.stringify({ endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth }),
   });
   if (!response.ok) {

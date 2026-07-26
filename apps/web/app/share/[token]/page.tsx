@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AlertTriangle, Building2, CalendarDays, CheckCircle2 } from "lucide-react";
+import { normalizeExternalShareToken } from "@/lib/external-share/token.mjs";
 import { createStorageAdminClient } from "@/lib/storage/server";
-import { ExternalShareActions } from "./external-share-actions";
+import { ExternalShareActions, ExternalSourceImage } from "./external-share-actions";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Gedeeld projectpunt", robots: { index: false, follow: false } };
@@ -28,8 +29,9 @@ function date(value: string | null) {
 }
 
 export default async function SharedProjectRecord({ params }: { params: Promise<{ token: string }> }) {
-  const { token } = await params;
-  if (!/^[a-f0-9]{48}$/.test(token)) notFound();
+  const route = await params;
+  const token = normalizeExternalShareToken(route.token);
+  if (!token) notFound();
   const result = await createStorageAdminClient().rpc("resolve_external_share_link", { p_token: token });
   if (result.error || !result.data) notFound();
   const record = result.data as SharedRecord;
@@ -41,9 +43,7 @@ export default async function SharedProjectRecord({ params }: { params: Promise<
         <span className="record-number">{record.source_type.toUpperCase()} · {record.source_number}</span>
         <h1>{record.title}</h1>
         {record.has_source_image ? (
-          // The route checks the same expiring token before streaming the private source image.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img className="external-source-image" src={`/api/external-share/${token}/evidence`} alt={`Bronfoto voor ${record.source_number}`} />
+          <ExternalSourceImage token={token} sourceNumber={record.source_number} />
         ) : null}
         <p>{record.summary}</p>
         <div className="external-share-meta"><span><AlertTriangle size={16} /><b>Prioriteit</b>{record.severity ?? "normaal"}</span><span><CalendarDays size={16} /><b>Deadline</b>{date(record.due_at)}</span></div>

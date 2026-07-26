@@ -1,9 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { validAccessToken } from "@/lib/supabase/access-token";
 
 export async function ensureDailyBackup(client: SupabaseClient, organizationId: string) {
-  const session = await client.auth.getSession();
-  const token = session.data.session?.access_token;
-  if (!token) throw new Error("Je sessie is verlopen.");
+  const token = await validAccessToken(client);
 
   const response = await fetch("/api/backups/ensure-daily", {
     method: "POST",

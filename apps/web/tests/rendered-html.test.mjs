@@ -82,6 +82,15 @@ test("serves branded recovery pages and install metadata", async () => {
   assert.equal(manifest.icons[0].src, "/codeco-logo.png");
 });
 
+test("explains an invalid external-party link without exposing a token error", async () => {
+  const response = await fetch(`${baseUrl}/share/not-a-valid-token`);
+  assert.equal(response.status, 404);
+  const html = await response.text();
+  assert.match(html, /Deze gedeelde link is niet meer beschikbaar/i);
+  assert.match(html, /geen account nodig/i);
+  assert.doesNotMatch(html, /JWT|invalid token|token expired|stack trace/i);
+});
+
 test("keeps the mobile landing experience intentional and touch friendly", async () => {
   const [page, navigation, motion, landingCss] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),

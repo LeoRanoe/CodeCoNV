@@ -456,7 +456,7 @@ function DrawingCanvas({ file, pageNumber, pins, markups, pendingPoint, tool, co
         >
           {mimeType === "application/pdf" ? <canvas ref={canvasRef} /> : previewUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={previewUrl} alt={file.original_name} onLoad={(event) => { setAspectRatio(`${event.currentTarget.naturalWidth} / ${event.currentTarget.naturalHeight}`); setLoading(false); onPageCount(1); }} />
+            <img src={previewUrl} alt={file.original_name} onLoad={(event) => { setAspectRatio(`${event.currentTarget.naturalWidth} / ${event.currentTarget.naturalHeight}`); setLoading(false); onPageCount(1); }} onError={() => { setLoading(false); setError(text("Drawing image could not be displayed.", "De tekeningafbeelding kon niet worden weergegeven.")); }} />
           ) : null}
           <svg className="drawing-markup-layer" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">
             <defs><marker id={`drawing-arrow-${file.id}`} markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="context-stroke" /></marker></defs>

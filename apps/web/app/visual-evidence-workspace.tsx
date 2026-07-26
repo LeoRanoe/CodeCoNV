@@ -16,12 +16,11 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
-import { compressFieldPhoto, dataSaverEnabled, queueOfflineUpload } from "@/lib/offline/upload-queue";
-import { isStorageGatewayConfigured, loadProjectFileObjectUrl, uploadProjectFile } from "@/lib/storage/gateway";
+import { fieldPhotoMimeTypes, normalizedImagePoint, validatePanoramaDimensions } from "@/lib/images/field-image.mjs";
+import { compressFieldPhoto, dataSaverEnabled, queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
+import { isStorageGatewayConfigured, loadProjectFileObjectUrl } from "@/lib/storage/gateway";
 import {
-  createMediaFolder,
   createVisualAnnotationFinding,
-  createVisualCapture,
   type FileRecord,
   type Finding,
   type OperationSnapshot,
@@ -91,7 +90,6 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   const [file, setFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState("");
   const [cameraSourceConfirmed, setCameraSourceConfirmed] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [captureForm, setCaptureForm] = useState({
     type: "photo" as VisualCapture["capture_type"],
     title: "",
@@ -138,14 +136,16 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     try {
       const dimensions = await imageDimensions(file);
       if (captureForm.type === "panorama") {
-        if (Math.abs((dimensions.width / dimensions.height) - 2) > 0.04) {
+        const validation = validatePanoramaDimensions(dimensions.width, dimensions.height);
+        if (validation.reason === "ratio") {
           setFileError(text("A 360° camera image must be a stitched 2:1 equirectangular export.", "Een 360°-camerabeeld moet een gestitchte equirectangulaire export met verhouding 2:1 zijn."));
           return;
         }
-        if (dimensions.width < 3840 || dimensions.height < 1920) {
+        if (validation.reason === "resolution") {
           setFileError(text("The 360° camera export must be at least 3840 × 1920 pixels so site details remain inspectable.", "De 360°-camera-export moet minimaal 3840 × 1920 pixels zijn zodat terreindetails controleerbaar blijven."));
           return;
         }
+        if (!validation.valid) throw new Error("invalid-image");
       }
     } catch {
       setFileError(text("The selected file is not a readable image.", "Het gekozen bestand is geen leesbare afbeelding."));
@@ -153,12 +153,12 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     }
     const folderName = captureForm.type === "panorama" ? text("360° tours", "360°-rondgangen") : text("Daily progress", "Dagvoortgang");
     const existingFolder = data.mediaFolders.find((folder) => (!folder.building_id || folder.building_id === buildingId) && folder.name.toLocaleLowerCase() === folderName.toLocaleLowerCase());
-    const folderId = existingFolder?.id ?? (navigator.onLine
-      ? (await createMediaFolder(client, { projectId, buildingId, name: folderName, folderType: "images" })).id
-      : null);
-    if (!navigator.onLine) {
-      const prepared = captureForm.type === "photo" ? await compressFieldPhoto(file, dataSaverEnabled()) : { blob: file as Blob, fileName: file.name, mimeType: file.type, compressed: false };
-      const okay = await run(() => queueOfflineUpload({
+    const folderId = existingFolder?.id ?? null;
+    const prepared = captureForm.type === "photo"
+      ? await compressFieldPhoto(file, dataSaverEnabled())
+      : { blob: file as Blob, fileName: file.name, mimeType: file.type, compressed: false };
+    const okay = await run(async () => {
+      await queueOfflineUpload({
         projectId,
         buildingId,
         reportId,
@@ -178,46 +178,18 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
         originalSize: file.size,
         queuedSize: prepared.blob.size,
         compressed: prepared.compressed,
-      }), text("Visual stored offline and queued for automatic synchronization.", "Beeld offline opgeslagen en klaargezet voor automatische synchronisatie."));
-      if (okay) {
-        setCaptureForm({ type: "photo", title: "", description: "", locationLabel: "", locationNodeId: "", tourName: "", tourOrder: "" });
-        setFile(null);
-        setCameraSourceConfirmed(false);
-        setShowUpload(false);
-      }
-      return;
-    }
-    let created: VisualCapture | null = null;
-    const okay = await run(async () => {
-      const uploaded = await uploadProjectFile(client, {
-        projectId,
-        buildingId,
-        folderId,
-        category: "photo",
-        file,
-        onProgress: setUploadProgress,
       });
-      created = await createVisualCapture(client, {
-        projectId,
-        buildingId,
-        dayReportId: reportId,
-        fileId: uploaded.fileId,
-        captureType: captureForm.type,
-        title: captureForm.title,
-        description: captureForm.description,
-        locationLabel: captureForm.locationLabel,
-        locationNodeId: captureForm.locationNodeId,
-        tourName: captureForm.type === "panorama" ? captureForm.tourName : "",
-        tourOrder: captureForm.type === "panorama" && captureForm.tourName ? Number(captureForm.tourOrder) : null,
-      });
-    }, text("Visual evidence uploaded to private storage and registered centrally.", "Visueel bewijs is privé opgeslagen en centraal geregistreerd."));
-    if (okay && created) {
-      setActiveCaptureId((created as VisualCapture).id);
+      if (navigator.onLine) await syncOfflineUploads(client, projectId, { force: true });
+    }, text(
+      "Visual secured on this device; central synchronization runs automatically.",
+      "Beeld veilig op dit apparaat opgeslagen; centrale synchronisatie loopt automatisch.",
+    ));
+    if (okay) {
+      setActiveCaptureId("");
       setCaptureForm({ type: "photo", title: "", description: "", locationLabel: "", locationNodeId: "", tourName: "", tourOrder: "" });
       setFile(null);
       setFileError("");
       setCameraSourceConfirmed(false);
-      setUploadProgress(0);
       setShowUpload(false);
     }
   };
@@ -287,10 +259,9 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           </details>
           {captureForm.type === "panorama" ? <div className="form-grid-2"><label className="form-field"><span>{text("Tour name · optional", "Tournaam · optioneel")}</span><input value={captureForm.tourName} onChange={(event) => setCaptureForm({ ...captureForm, tourName: event.target.value })} placeholder={text("Ground floor walkthrough", "Rondgang begane grond")} /></label><label className="form-field"><span>{text("Position in tour", "Volgorde in tour")}</span><input type="number" min="1" max="10000" disabled={!captureForm.tourName} value={captureForm.tourOrder} onChange={(event) => setCaptureForm({ ...captureForm, tourOrder: event.target.value })} /></label></div> : null}
           {captureForm.type === "panorama" ? <><div className="operation-alert"><ScanLine size={18} /><div><strong>{text("Dedicated 360° camera required", "Speciale 360°-camera vereist")}</strong><span>{text("Use a stitched 2:1 equirectangular export of at least 3840 × 1920 pixels from an Insta360 or equivalent 360° camera. A swept phone panorama is not accepted.", "Gebruik een gestitchte equirectangulaire 2:1-export van minimaal 3840 × 1920 pixels uit een Insta360 of gelijkwaardige 360°-camera. Een geveegde telefoonpanorama wordt niet geaccepteerd.")}</span></div></div><label className="check-field"><input type="checkbox" checked={cameraSourceConfirmed} onChange={(event) => setCameraSourceConfirmed(event.target.checked)} /> {text("I confirm this is an export from a dedicated 360° camera.", "Ik bevestig dat dit een export uit een speciale 360°-camera is.")}</label></> : null}
-          {uploadProgress > 0 ? <div className="upload-progress" aria-label={`${text("Upload", "Upload")} ${uploadProgress}%`}><span style={{ width: `${uploadProgress}%` }} /><small>{uploadProgress}%</small></div> : null}
           {file && file.size > maxFileSizeBytes ? <p className="field-error">{text("This image exceeds the project file limit.", "Deze afbeelding is groter dan de bestandslimiet van het project.")}</p> : null}
           {fileError ? <p className="field-error" role="alert">{fileError}</p> : null}
-          <button className="primary-button" type="button" disabled={busy || !file || file.size > maxFileSizeBytes || !["image/jpeg", "image/png", "image/webp"].includes(file.type) || captureForm.title.trim().length < 3 || captureForm.locationLabel.trim().length < 2 || (captureForm.type === "panorama" && (!cameraSourceConfirmed || Boolean(captureForm.tourName) !== Boolean(captureForm.tourOrder)))} onClick={() => void uploadCapture()}>{busy ? <Loader2 className="spin" size={15} /> : <Camera size={15} />} {captureForm.type === "panorama" ? text("Upload securely", "Veilig uploaden") : text("Save photo", "Foto opslaan")}</button>
+          <button className="primary-button" type="button" disabled={busy || !file || file.size > maxFileSizeBytes || !fieldPhotoMimeTypes.includes(file.type) || captureForm.title.trim().length < 3 || captureForm.locationLabel.trim().length < 2 || (captureForm.type === "panorama" && (!cameraSourceConfirmed || Boolean(captureForm.tourName) !== Boolean(captureForm.tourOrder)))} onClick={() => void uploadCapture()}>{busy ? <Loader2 className="spin" size={15} /> : <Camera size={15} />} {captureForm.type === "panorama" ? text("Secure and sync 360° image", "Beveilig en synchroniseer 360°-beeld") : text("Save photo", "Foto opslaan")}</button>
         </div>
       ) : null}
 
@@ -349,16 +320,19 @@ function VisualViewer({ capture, file, annotations, pendingPoint, client, onPoin
 
 function PhotoAnnotationViewer({ imageUrl, title, annotations, pendingPoint, onPoint, onSelectAnnotation }: { imageUrl: string; title: string; annotations: VisualAnnotation[]; pendingPoint: Extract<VisualPoint, { mode: "photo" }> | null; onPoint: (point: VisualPoint) => void; onSelectAnnotation: (annotationId: string) => void }) {
   const { text } = useLanguage();
+  const [imageFailed, setImageFailed] = useState(false);
   const placeFromPointer = (clientX: number, clientY: number, target: HTMLElement) => {
     const bounds = target.getBoundingClientRect();
-    onPoint({ mode: "photo", xRatio: Math.min(1, Math.max(0, (clientX - bounds.left) / bounds.width)), yRatio: Math.min(1, Math.max(0, (clientY - bounds.top) / bounds.height)) });
+    const point = normalizedImagePoint(clientX, clientY, bounds);
+    onPoint({ mode: "photo", xRatio: point.x, yRatio: point.y });
   };
+  if (imageFailed) return <div className="visual-load-state error"><AlertTriangle size={21} /> {text("The secured photo could not be displayed. Reload the image and try again.", "De beveiligde foto kon niet worden weergegeven. Laad het beeld opnieuw en probeer nogmaals.")}</div>;
   return (
     <div className="photo-annotation-stage">
       <div className="photo-annotation-canvas" role="button" tabIndex={0} aria-label={text("Photo. Click to mark an issue.", "Foto. Klik om een probleem te markeren.")} onClick={(event) => placeFromPointer(event.clientX, event.clientY, event.currentTarget)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onPoint({ mode: "photo", xRatio: 0.5, yRatio: 0.5 }); } }}>
         {/* The original aspect ratio is preserved so normalized marker coordinates stay exact. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={imageUrl} alt={title} />
+        <img src={imageUrl} alt={title} onError={() => setImageFailed(true)} />
         {annotations.map((annotation, index) => annotation.x_ratio !== null && annotation.y_ratio !== null ? <button className={`visual-marker ${annotation.severity}`} style={{ left: `${Number(annotation.x_ratio) * 100}%`, top: `${Number(annotation.y_ratio) * 100}%` }} type="button" aria-label={`${annotation.title} · ${annotation.severity}`} onClick={(event) => { event.stopPropagation(); onSelectAnnotation(annotation.id); }} key={annotation.id}>{index + 1}</button> : null)}
         {pendingPoint ? <span className="visual-marker pending" style={{ left: `${pendingPoint.xRatio * 100}%`, top: `${pendingPoint.yRatio * 100}%` }}><Plus size={13} /></span> : null}
       </div>
@@ -375,6 +349,8 @@ function PanoramaViewer({ imageUrl, annotations, pendingPoint, onPoint, onSelect
   const onPointRef = useRef(onPoint);
   const onSelectAnnotationRef = useRef(onSelectAnnotation);
   const markerDataRef = useRef({ annotations, pendingPoint });
+  const [viewerState, setViewerState] = useState<"loading" | "ready" | "error">("loading");
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     onPointRef.current = onPoint;
@@ -385,6 +361,7 @@ function PanoramaViewer({ imageUrl, annotations, pendingPoint, onPoint, onSelect
   useEffect(() => {
     let active = true;
     if (!containerRef.current) return;
+    setViewerState("loading");
     void Promise.all([import("@photo-sphere-viewer/core"), import("@photo-sphere-viewer/markers-plugin")]).then(([core, markers]) => {
       if (!active || !containerRef.current) return;
       const viewer = new core.Viewer({
@@ -408,6 +385,9 @@ function PanoramaViewer({ imageUrl, annotations, pendingPoint, onPoint, onSelect
       viewerRef.current = viewer;
       markersRef.current = markerPlugin;
       markerPlugin.setMarkers(panoramaMarkers(markerDataRef.current.annotations, markerDataRef.current.pendingPoint));
+      setViewerState("ready");
+    }).catch(() => {
+      if (active) setViewerState("error");
     });
     return () => {
       active = false;
@@ -415,7 +395,7 @@ function PanoramaViewer({ imageUrl, annotations, pendingPoint, onPoint, onSelect
       viewerRef.current?.destroy();
       viewerRef.current = null;
     };
-  }, [imageUrl, text]);
+  }, [imageUrl, retry, text]);
 
   useEffect(() => {
     markersRef.current?.setMarkers(panoramaMarkers(annotations, pendingPoint));
@@ -426,7 +406,12 @@ function PanoramaViewer({ imageUrl, annotations, pendingPoint, onPoint, onSelect
     if (position) onPoint({ mode: "spherical", yaw: position.yaw, pitch: position.pitch });
   };
 
-  return <div className="panorama-stage"><div className="panorama-viewer" ref={containerRef} /><button className="viewer-center-action" type="button" onClick={markCenter}><CircleDot size={15} /> {text("Mark center of current view", "Markeer midden van huidige weergave")}</button></div>;
+  return <div className="panorama-stage">
+    <div className="panorama-viewer" ref={containerRef} />
+    {viewerState === "loading" ? <div className="panorama-status"><Loader2 className="spin" size={22} /> {text("Opening interactive 360° image…", "Interactief 360°-beeld openen…")}</div> : null}
+    {viewerState === "error" ? <div className="panorama-status error"><AlertTriangle size={22} /><span>{text("The 360° viewer could not start on this device.", "De 360°-viewer kon niet starten op dit apparaat.")}</span><button type="button" onClick={() => setRetry((value) => value + 1)}>{text("Try again", "Probeer opnieuw")}</button></div> : null}
+    {viewerState === "ready" ? <button className="viewer-center-action" type="button" onClick={markCenter}><CircleDot size={15} /> {text("Mark center of current view", "Markeer midden van huidige weergave")}</button> : null}
+  </div>;
 }
 
 function panoramaMarkers(annotations: VisualAnnotation[], pendingPoint: Extract<VisualPoint, { mode: "spherical" }> | null): import("@photo-sphere-viewer/markers-plugin").MarkerConfig[] {

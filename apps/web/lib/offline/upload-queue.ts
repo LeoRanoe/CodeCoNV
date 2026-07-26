@@ -50,6 +50,12 @@ export type OfflineUpload = {
   queuedSize: number;
   compressed: boolean;
   findingGroup?: OfflineFindingGroup | null;
+  recordLink?: {
+    organizationId: string;
+    recordType: "inspection" | "hse";
+    recordId: string;
+    relationship: "evidence";
+  } | null;
   /** @deprecated Retained so previously queued single-photo findings still synchronize. */
   findingDraft?: QueuedFindingDraft | null;
   createdAt: string;
@@ -260,6 +266,15 @@ async function syncOfflineUploadsUnlocked(
           recordType: "finding",
           recordId: finding.id,
           relationship: "before",
+        });
+      } else if (upload.recordLink) {
+        await linkFileToRecord(client, {
+          organizationId: upload.recordLink.organizationId,
+          projectId: upload.projectId,
+          fileId: stored.fileId,
+          recordType: upload.recordLink.recordType,
+          recordId: upload.recordLink.recordId,
+          relationship: upload.recordLink.relationship,
         });
       } else if (upload.kind === "photo" || upload.kind === "panorama") {
         const existingCapture = await client

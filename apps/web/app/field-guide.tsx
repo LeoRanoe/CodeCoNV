@@ -24,7 +24,7 @@ import {
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 
-const guideStorageKey = "codeco-field-guide-seen-v2";
+const guideStorageKey = "codeco-field-guide-seen-v3";
 
 export type FieldGuideDestination = "today" | "photo" | "inspection" | "finding";
 
@@ -271,6 +271,13 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
           copy: text("Stack the before and context photos on the same issue. Correction progress and verification remain linked, so the complete audit trail stays together.", "Stapel de voor- en contextfoto’s bij hetzelfde probleem. Herstelvoortgang en verificatie blijven gekoppeld, zodat het volledige controlespoor bij elkaar blijft."),
         },
         {
+          title: text("Send to an external party without an account", "Stuur naar een externe partij zonder account"),
+          copy: text(
+            "Open Workspace → Issues and tap Send to external party on the correct workpoint. Check the breakdown shown in the green panel, then tap Open WhatsApp and send. The recipient opens the restricted link without signing in, sees only that workpoint, project/building, priority, deadline and source photo, and chooses Ready for verification or Report a problem. They may take a correction photo directly. Their response never closes the issue automatically; CODECO must verify it.",
+            "Open Werkruimte → Problemen en tik bij het juiste werkpunt op Stuur naar externe partij. Controleer de breakdown in het groene paneel en tik daarna op Open WhatsApp en stuur. De ontvanger opent de beperkte link zonder aanmelding, ziet alleen dat werkpunt met project/gebouw, prioriteit, deadline en bronfoto, en kiest Gereedmelden of Probleem melden. De ontvanger kan direct een correctiefoto maken. De reactie sluit het probleem nooit automatisch; CODECO moet het herstel verifiëren.",
+          ),
+        },
+        {
           title: "HSE",
           copy: text("Choose unsafe condition, unsafe act, near miss, incident, stop work or positive observation, then select severity and the immediate measure. Mark sensitive incidents confidential for authorized HSE roles.", "Kies onveilige situatie, onveilige handeling, near miss, incident, stop work of positieve observatie en selecteer daarna ernst en directe maatregel. Markeer gevoelige incidenten als vertrouwelijk voor bevoegde HSE-rollen."),
         },
@@ -410,6 +417,13 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
         {
           title: text("When something is red", "Wanneer iets rood is"),
           copy: text("Read the message first. For an upload, open Photos & folders and tap Sync now. For a deadline, open Actions. For blocked push, allow notifications in browser settings. If a retry still fails, keep the local evidence and report the exact message to the administrator.", "Lees eerst de melding. Open voor een upload Foto’s & mappen en tik op Nu synchroniseren. Open voor een deadline Acties. Sta bij geblokkeerde push meldingen toe in de browserinstellingen. Mislukt een nieuwe poging nog steeds, bewaar dan het lokale bewijs en meld de exacte tekst aan de beheerder."),
+        },
+        {
+          title: text("Session or secure-link message", "Sessie- of beveiligde-linkmelding"),
+          copy: text(
+            "For normal work, the app refreshes an expiring secure session automatically before uploads, backups, push and management actions. If renewal is no longer possible, sign in once again; locally secured photos remain in the queue. An external recipient who sees Link unavailable must ask the CODECO supervisor to create a new link from the workpoint—never send an internal password or account.",
+            "Voor normaal werk vernieuwt de app een aflopende beveiligde sessie automatisch vóór uploads, back-ups, push en beheeracties. Is vernieuwing niet meer mogelijk, meld je één keer opnieuw aan; lokaal veiliggestelde foto’s blijven in de wachtrij. Ziet een externe ontvanger Link niet beschikbaar, maak dan vanuit het werkpunt een nieuwe link—stuur nooit een intern wachtwoord of account.",
+          ),
         },
       ],
     },

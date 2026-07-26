@@ -5,6 +5,7 @@ import {
   type ProjectStartAnswers,
 } from "@/lib/forms/daily-report";
 import type { InternalUserInviteAnswers } from "@/lib/forms/users";
+import { validAccessToken } from "@/lib/supabase/access-token";
 
 export type WorkspaceBuilding = {
   id: string;
@@ -400,12 +401,11 @@ export async function inviteInternalUser(
   client: SupabaseClient,
   input: InternalUserInviteAnswers,
 ) {
-  const session = await getSession(client);
-  if (!session?.access_token) throw new Error("Je sessie is verlopen. Meld je opnieuw aan.");
+  const accessToken = await validAccessToken(client);
   const response = await fetch("/api/admin/users", {
     method: "POST",
     headers: {
-      authorization: `Bearer ${session.access_token}`,
+      authorization: `Bearer ${accessToken}`,
       "content-type": "application/json",
     },
     body: JSON.stringify(input),

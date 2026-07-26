@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { normalizeExternalShareToken } from "@/lib/external-share/token.mjs";
 import { createStorageAdminClient } from "@/lib/storage/server";
 
 export type ActiveExternalShare = {
@@ -15,8 +16,9 @@ export type ActiveExternalShare = {
 };
 
 export async function loadActiveExternalShare(token: string) {
-  if (!/^[a-f0-9]{48}$/.test(token)) return null;
-  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const normalizedToken = normalizeExternalShareToken(token);
+  if (!normalizedToken) return null;
+  const tokenHash = createHash("sha256").update(normalizedToken).digest("hex");
   const result = await createStorageAdminClient()
     .from("external_share_links")
     .select("id,organization_id,project_id,building_id,source_type,source_id,source_number,source_file_id,created_by,expires_at")
