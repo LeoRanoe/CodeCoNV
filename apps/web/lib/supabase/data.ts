@@ -133,8 +133,8 @@ export type ProjectNotification = {
 
 export type ProjectDaySnapshot = {
   report: Record<string, unknown> | null;
-  startCheck: Record<string, unknown> | null;
-  closeout: Record<string, unknown> | null;
+  startChecks: Array<Record<string, unknown>>;
+  closeouts: Array<Record<string, unknown>>;
   registrations: Array<Record<string, unknown>>;
   attendance: Array<Record<string, unknown>>;
   parties: ProjectParty[];
@@ -142,6 +142,14 @@ export type ProjectDaySnapshot = {
   actionUpdates: ActionUpdate[];
   _offlineCached?: boolean;
   _offlineSavedAt?: string;
+};
+
+export type NewBuilding = {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  status: string;
 };
 
 export type AttendanceInput = {
@@ -454,8 +462,8 @@ export async function loadProjectDay(
   if (!report) {
     return {
       report: null,
-      startCheck: null,
-      closeout: null,
+      startChecks: [],
+      closeouts: [],
       registrations: [],
       attendance: [],
       parties: (partyResult.data ?? []).map((party) => ({ id: party.id as string, name: String(party.name), type: String(party.party_type) })),
@@ -466,8 +474,8 @@ export async function loadProjectDay(
 
   const reportId = report.id as string;
   const [startResult, closeoutResult, registrationResult, attendanceResult] = await Promise.all([
-    client.from("day_start_checks").select("*").eq("day_report_id", reportId).maybeSingle(),
-    client.from("day_closeouts").select("*").eq("day_report_id", reportId).maybeSingle(),
+    client.from("day_start_checks").select("*").eq("day_report_id", reportId),
+    client.from("day_closeouts").select("*").eq("day_report_id", reportId),
     client
       .from("site_registrations")
       .select("id,registration_type,title,description,priority,occurred_at,status,building_id,created_by")
@@ -476,7 +484,7 @@ export async function loadProjectDay(
       .limit(100),
     client
       .from("attendance_entries")
-      .select("id,party_id,discipline,shift_start,shift_end,headcount")
+      .select("id,party_id,discipline,shift_start,shift_end,headcount,building_id")
       .eq("day_report_id", reportId)
       .order("created_at"),
   ]);
@@ -487,8 +495,8 @@ export async function loadProjectDay(
 
   return {
     report,
-    startCheck: startResult.data as Record<string, unknown> | null,
-    closeout: closeoutResult.data as Record<string, unknown> | null,
+    startChecks: (startResult.data ?? []) as Array<Record<string, unknown>>,
+    closeouts: (closeoutResult.data ?? []) as Array<Record<string, unknown>>,
     registrations: (registrationResult.data ?? []) as Array<Record<string, unknown>>,
     attendance: (attendanceResult.data ?? []) as Array<Record<string, unknown>>,
     parties: (partyResult.data ?? []).map((party) => ({ id: party.id as string, name: String(party.name), type: String(party.party_type) })),
@@ -537,6 +545,20 @@ export async function createProjectWorkspace(
   return result.data;
 }
 
+export async function createBuilding(
+  client: SupabaseClient,
+  input: { projectId: string; code: string; name: string; description?: string },
+) {
+  const result = await client.rpc("create_building", {
+    p_project_id: input.projectId,
+    p_code: input.code,
+    p_name: input.name,
+    p_description: input.description || null,
+  });
+  fail(result.error);
+  return result.data as NewBuilding;
+}
+
 async function createOrGetReport(client: SupabaseClient, projectId: string, reportDate: string) {
   const result = await client.rpc("create_day_report", {
     p_project_id: projectId,
@@ -581,7 +603,7 @@ export async function saveProjectStart(
     risk_notes: input.answers.riskNotes || null,
     automation_rules_snapshot: getProjectStartAutomation(input.answers),
   };
-  const existing = await client.from("day_start_checks").select("id").eq("day_report_id", reportId).maybeSingle();
+  const existing = await client.from("day_start_checks").select("id").eq("day_report_id", reportId).eq("building_id", input.buildingId).maybeSingle();
   fail(existing.error);
   if (existing.data) {
     const update = await client.from("day_start_checks").update(payload).eq("id", existing.data.id);
@@ -589,7 +611,7 @@ export async function saveProjectStart(
   } else {
     const insert = await client.from("day_start_checks").insert({
       ...payload,
-      idempotency_key: `start:${reportId}`,
+      idempotency_key: `start:${reportId}:${input.buildingId}`,
       created_by: user.id,
     });
     fail(insert.error);
@@ -645,7 +667,7 @@ export async function saveDailyCloseout(
     photo_count: input.answers.photoCount,
     attachments_confirmed: input.answers.attachmentsConfirmed,
   };
-  const existing = await client.from("day_closeouts").select("id").eq("day_report_id", reportId).maybeSingle();
+  const existing = await client.from("day_closeouts").select("id").eq("day_report_id", reportId).eq("building_id", input.buildingId).maybeSingle();
   fail(existing.error);
   if (existing.data) {
     const update = await client.from("day_closeouts").update(payload).eq("id", existing.data.id);
@@ -653,7 +675,7 @@ export async function saveDailyCloseout(
   } else {
     const insert = await client.from("day_closeouts").insert({
       ...payload,
-      idempotency_key: `closeout:${reportId}`,
+      idempotency_key: `closeout:${reportId}:${input.buildingId}`,
       created_by: user.id,
     });
     fail(insert.error);
@@ -702,7 +724,8 @@ export async function saveAttendance(
   const existingResult = await client
     .from("attendance_entries")
     .select("id,party_id,discipline")
-    .eq("day_report_id", reportId);
+    .eq("day_report_id", reportId)
+    .eq("building_id", input.buildingId);
   fail(existingResult.error);
   const existing = new Map((existingResult.data ?? []).map((row) => [`${row.party_id}:${row.discipline}`, row.id as string]));
 
@@ -726,7 +749,7 @@ export async function saveAttendance(
     } else {
       const insert = await client.from("attendance_entries").insert({
         ...payload,
-        idempotency_key: `attendance:${reportId}:${row.partyId}:${row.discipline}`.slice(0, 200),
+        idempotency_key: `attendance:${reportId}:${input.buildingId}:${row.partyId}:${row.discipline}`.slice(0, 200),
         created_by: user.id,
       });
       fail(insert.error);

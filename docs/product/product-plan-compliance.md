@@ -38,21 +38,22 @@ Bij iedere functionele wijziging worden de betrokken regels en de verificatie in
 
 | ID | Eis | Status | Bewijs / eerstvolgende actie |
 | --- | --- | --- | --- |
-| WF-01 | Mijn projecten → Gebouwen → Projectstart | Conform | Verplichte driestapsflow gebouwd en door server-rendercontrole afgedekt |
-| WF-02 | Gekozen project en gebouw blijven zichtbaar | Conform | Context staat in kop en zijbalk; contextwissel keert terug naar de projectkeuze |
-| WF-03 | Fysieke registratie heeft verplicht een gebouw | Conform | De live invoer vereist een gekozen gebouw; samengestelde foreign keys en databaseconstraints blokkeren fysieke registraties zonder geldig projectgebouw |
+| WF-01 | Mijn projecten → Gebouwen → Projectstart | Conform | Eerste keuze blijft een driestapsflow; daarna wisselt de zijbalk direct van gebouw zonder terug te gaan naar de projectkeuze, en een beheerder kan een tweede of derde gebouw toevoegen via de nieuwe `create_building`-RPC |
+| WF-02 | Gekozen project en gebouw blijven zichtbaar | Conform | Context staat in kop en zijbalk; "Gebouw wisselen" wijzigt alleen de actieve gebouwcontext binnen dezelfde werkruimte, zonder de projectkeuze of ingevoerde dagdata te verliezen |
+| WF-03 | Fysieke registratie heeft verplicht een gebouw | Conform | De live invoer vereist een gekozen gebouw; samengestelde foreign keys en databaseconstraints blokkeren fysieke registraties zonder geldig projectgebouw. Projectstart, dagafsluiting en aanwezigheid zijn nu per (dagrapport, gebouw) uniek in plaats van per dagrapport, zodat elk gebouw zijn eigen antwoorden bewaart |
 | WF-04 | Maximaal vijf primaire navigatiekeuzes | Conform | Vandaag, Project, Snel toevoegen, Acties en Meer op mobiel; desktop gebruikt dezelfde informatiestructuur |
 | WF-05 | Dagcockpit beantwoordt planning, controles, problemen, ontbrekende informatie en rapportgereedheid | Gedeeltelijk | Live centrale projectstart en dagvragen verzamelen weer, planning, bezetting, inspecties, risico's en voortgang; projectspecifieke externe planning ontbreekt nog |
 | WF-06 | Dagrapport automatisch per project en datum | Conform | De live cockpit roept de atomische RPC aan; unieke beperking `(project_id, report_date)` en idempotency voorkomen dubbele dagrapporten |
 | WF-07 | Rapportcontrole blokkeert bij ontbrekende verplichte informatie | Conform | Alle vier dagvraaggroepen, inclusief conditionele kwaliteit-/HSE-toelichting, plan voor morgen en bijlagenbevestiging, blokkeren “Gereed voor review” zolang informatie ontbreekt |
 | WF-08 | Open zaken gaan mee naar de volgende dag | Gedeeltelijk | Open acties en bevindingen blijven projectbreed zichtbaar; vervallen/bijna vervallen acties en bevindingen verschijnen als gededupliceerde pushmeldingen met een auditeerbare inboxkopie. Expliciete dagoverdracht en bevestiging ontbreken nog |
+| WF-09 | Eén dagrapport dekt elk gebouw van het project, niet slechts het eerst gekozen gebouw | Conform | `submit_day_report_for_review` vereist nu een projectstart én dagafsluiting voor ieder actief gebouw voordat het gedeelde dagrapport naar review mag; de formele snapshot en rapportcontrole tonen per gebouw welke onderdelen nog ontbreken |
 
 ## MVP-modules
 
 | ID | Module | Status | Opmerking |
 | --- | --- | --- | --- |
 | MVP-01 | Organisatie, gebruikers, rollen en projectinrichting | Gedeeltelijk | Openbare registratie is databasebreed geblokkeerd. Alleen een organisatiebeheerder nodigt accounts uit, wijst organisatie-/projectrollen toe en kan met verplichte auditreden opschorten, heractiveren of definitief intrekken; eigen accountblokkade is verboden. Rollen van een bestaand actief account achteraf wijzigen volgt |
-| MVP-02 | Projectlocaties, partijen en basisdocumenten | Conform | Project, gebouw, beheerbare locatiehiërarchie en projectpartijen werken centraal. Bestandsmetadata is afgeschermd en bestandsbytes gaan naar private Vercel Blob |
+| MVP-02 | Projectlocaties, partijen en basisdocumenten | Conform | Project, gebouw, beheerbare locatiehiërarchie en projectpartijen werken centraal. Een project start met één gebouw en kan nu via een beveiligde RPC verder groeien naar meerdere gebouwen. Bestandsmetadata is afgeschermd en bestandsbytes gaan naar private Vercel Blob |
 | MVP-03 | Dagrapportmotor | Gedeeltelijk | De 19 klantonderdelen, volledigheidsgate, centrale immutable snapshot met SHA-256, review/retour, ondertekening, distributieregistratie en revisies zijn gebouwd. Een rechten-gefilterde PDF werkt voor dag, week, maand en iedere vrije periode; formeel bevriezen en ondertekenen van een periodebundel volgt |
 | MVP-04 | Dagcockpit en Snel toevoegen | Conform | Eerste gecontroleerde vertical slice |
 | MVP-05 | Aanwezigheid | Gedeeltelijk | Partijen, disciplines, diensten, aantallen en totalen worden idempotent centraal opgeslagen; bezoekersregistratie en vorige-dagbevestiging ontbreken |
@@ -181,6 +182,7 @@ Deze onderwerpen blijven bewust **Geblokkeerd** totdat CODECO ze formeel bevesti
 | 22-07-2026 | Bindende PDF-specificatie plus klantcorrecties afgerond met 100 checkliststandaarden, 360°-cameraweergave, tekenmarkup, DWG-bronupload, RFA/RFI/IR/TI/CO, BOQ, klikbare werkzaamheden, zelfgekozen perioderapport, push, offline beelden/databesparing, beeldmappen en WhatsApp-links zonder AI of SMS-notificaties | MVP-03, MVP-07, MVP-10, MVP-14, MVP-17, CC-02, CC-04, CC-05, CC-11, SEC-03 |
 | 26-07-2026 | Drie klant-anchorchecklists projectspecifiek geautomatiseerd, actueel weer op projectlocatie vooraf ingevuld, secties met één tik akkoord, maximaal twaalf probleemfoto's per bevinding en een visuele first-use veldgids | CC-01, CDR-01, CDR-05, CDR-17, MVP-12, MVP-17 |
 | 24-07-2026 | Dertien laat ontvangen klantformulieren verwerkt als beheerde RFI/RFA/WIR/TI/CO/ER/NCR-documenten, B1-issuecatalogus, gedateerde issuevoortgang en uitgebreid week-/maand-/gebouwrapport uit één centrale dataset | MVP-03, MVP-07, MVP-08, MVP-13, MVP-14, CDR-04 t/m CDR-07, CDR-11, CDR-13, CDR-17, CDR-19, SEC-03 t/m SEC-05 |
+| 26-07-2026 | Dagrapportflow losgekoppeld van één vast gebouw: projectstart, dagafsluiting en aanwezigheid zijn per gebouw uniek in plaats van per dagrapport, een nieuwe `create_building`-RPC laat een project na oprichting groeien, rapportindiening vereist alle actieve gebouwen, de formele snapshot en PDF tonen een uitsplitsing per gebouw, en de zijbalk wisselt direct van gebouw zonder de projectcontext te verliezen | WF-01, WF-02, WF-03, WF-09, MVP-02 |
 
 ## Verificatie van deze slice
 

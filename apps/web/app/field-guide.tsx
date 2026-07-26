@@ -183,7 +183,7 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
       items: [
         {
           title: text("Project and building", "Project en gebouw"),
-          copy: text("Choose them once after signing in. Every record, photo, checklist, drawing and report is then linked to that context. Tap the project card to switch safely.", "Kies deze één keer na het aanmelden. Elke registratie, foto, checklist, tekening en rapport wordt daarna aan die context gekoppeld. Tik op de projectkaart om veilig te wisselen."),
+          copy: text("Choose a project after signing in; the daily report then covers every building in it. Tap Switch building any time to change which building new photos and records are tagged with, or add a new building.", "Kies een project na het aanmelden; het dagrapport dekt daarna elk gebouw erin. Tik altijd op Gebouw wisselen om te wijzigen aan welk gebouw nieuwe foto's en registraties worden gekoppeld, of om een nieuw gebouw toe te voegen."),
         },
         {
           title: text("Start today", "Werkdag starten"),

@@ -2,6 +2,12 @@
 import { Document, Image, Page, StyleSheet, Text, View, pdf } from "@react-pdf/renderer";
 import type { DailyCloseoutAnswers, ProjectStartAnswers } from "@/lib/forms/daily-report";
 
+export type BuildingReportBreakdown = {
+  name: string;
+  projectStart: ProjectStartAnswers;
+  closeout: DailyCloseoutAnswers;
+};
+
 export type DailyReportPdfSnapshot = {
   reportNumber: string;
   reportDate: string;
@@ -15,18 +21,24 @@ export type DailyReportPdfSnapshot = {
   projectStart: ProjectStartAnswers;
   closeout: DailyCloseoutAnswers;
   formal?: { revision: number; sha256: string; frozenAt: string };
+  buildings?: BuildingReportBreakdown[];
 };
 
 export type FormalReportSnapshot = {
   frozen_at?: string;
   report?: Record<string, unknown>;
   project?: Record<string, unknown>;
-  building?: Record<string, unknown>;
   created_by_profile?: Record<string, unknown>;
-  start_check?: Record<string, unknown>;
-  closeout?: Record<string, unknown>;
   attendance?: Array<Record<string, unknown>>;
   registrations?: Array<Record<string, unknown>>;
+  // Current (multi-building) shape: one row per building.
+  buildings?: Array<Record<string, unknown>>;
+  start_checks?: Array<Record<string, unknown>>;
+  closeouts?: Array<Record<string, unknown>>;
+  // Legacy shape, kept so older frozen report versions still render.
+  building?: Record<string, unknown>;
+  start_check?: Record<string, unknown>;
+  closeout?: Record<string, unknown>;
 };
 
 const styles = StyleSheet.create({
@@ -109,7 +121,7 @@ export function DailyReportDocument({ snapshot, logoSource = "/codeco-logo-pdf.p
           <Row label="Werkzaamheden" value={closeout.workPerformed} />
           <Row label="Voortgang" value={`${closeout.progressPercent}%`} />
         </Section>
-        <Text style={styles.footer} fixed>CODECO Supervisie · gegenereerd uit centrale Supabase-data · Pagina 1 van 2</Text>
+        <Text style={styles.footer} fixed>CODECO Supervisie · gegenereerd uit centrale Supabase-data · Pagina 1 van {snapshot.buildings?.length ? 3 : 2}</Text>
       </Page>
 
       <Page size="A4" style={styles.page}>
@@ -143,8 +155,29 @@ export function DailyReportDocument({ snapshot, logoSource = "/codeco-logo-pdf.p
           <Text style={styles.confirmation}>{snapshot.formal ? `Deze PDF is uitsluitend opgebouwd uit de immutable snapshot van ${snapshot.formal.frozenAt}. Volledige SHA-256: ${snapshot.formal.sha256}` : "Werk-PDF uit bevestigde dagregistraties. Formele status en verklaringen staan in de rapporthistorie."}</Text>
         </Section>
 
-        <Text style={styles.footer} fixed>CODECO Supervisie · gegenereerd uit centrale Supabase-data · Pagina 2 van 2</Text>
+        <Text style={styles.footer} fixed>CODECO Supervisie · gegenereerd uit centrale Supabase-data · Pagina 2 van {snapshot.buildings?.length ? 3 : 2}</Text>
       </Page>
+
+      {snapshot.buildings?.length ? (
+        <Page size="A4" style={styles.page}>
+          <View style={styles.header}>
+            <View style={styles.brandRow}><View style={styles.logoPlate}><Image src={logoSource} style={styles.logo} /></View><Text style={styles.brand}>CONSTRUCTIESUPERVISIE</Text></View>
+            <Text style={styles.title}>Dagrapport · per gebouw</Text>
+            <Text style={styles.subtitle}>{snapshot.reportNumber} · {snapshot.reportDate} · {snapshot.buildings.length} gebouwen in dit projectrapport</Text>
+          </View>
+          {snapshot.buildings.map((building) => (
+            <Section title={building.name} key={building.name}>
+              <Row label="Weer" value={`${building.projectStart.weatherCondition}; ${building.projectStart.temperatureC} °C`} />
+              <Row label="Werkzaamheden" value={building.closeout.workPerformed} />
+              <Row label="Voortgang" value={`${building.closeout.progressPercent}%`} />
+              <Row label="Kwaliteit" value={building.closeout.qualityIssues === "yes" ? building.closeout.qualityDetails : "Geen afwijking gemeld"} />
+              <Row label="HSE" value={building.closeout.hseEvent === "none" ? "Geen incident of near miss gemeld" : building.closeout.hseDetails} />
+              <Row label="Planning morgen" value={building.closeout.tomorrowPlan} />
+            </Section>
+          ))}
+          <Text style={styles.footer} fixed>CODECO Supervisie · gegenereerd uit centrale Supabase-data · Pagina 3 van 3</Text>
+        </Page>
+      ) : null}
     </Document>
   );
 }
@@ -163,62 +196,96 @@ function truth(valueToCheck: unknown): "yes" | "no" {
   return valueToCheck === true ? "yes" : "no";
 }
 
+function projectStartAnswersFromSnapshotRow(start: Record<string, unknown> | undefined): ProjectStartAnswers {
+  return {
+    weatherCondition: value(start, "weather_condition", "cloudy") as ProjectStartAnswers["weatherCondition"],
+    temperatureC: Number(start?.temperature_c ?? 0),
+    windCondition: value(start, "wind_condition", "calm") as ProjectStartAnswers["windCondition"],
+    shiftStart: value(start, "shift_start", "00:00").slice(0, 5),
+    shiftEnd: value(start, "shift_end", "00:00").slice(0, 5),
+    plannedWork: value(start, "planned_work", "Niet geregistreerd"),
+    expectedWorkers: Number(start?.expected_workers ?? 0),
+    inspectionPlanned: truth(start?.inspection_planned),
+    highRiskWork: truth(start?.high_risk_work),
+    concreteWork: truth(start?.concrete_work),
+    workPermit: value(start, "work_permit_status", "not_required") as ProjectStartAnswers["workPermit"],
+    drawingStatus: value(start, "drawing_status", "not_required") as ProjectStartAnswers["drawingStatus"],
+    drawingIssueReported: start?.drawing_issue_reported === true,
+    riskNotes: value(start, "risk_notes"),
+  };
+}
+
+function dailyCloseoutAnswersFromSnapshotRow(closeout: Record<string, unknown> | undefined): DailyCloseoutAnswers {
+  return {
+    daySummary: value(closeout, "day_summary", "Geen dagsamenvatting in deze vastgezette versie."),
+    weatherSummary: value(closeout, "weather_summary", "Niet geregistreerd"),
+    workPerformed: value(closeout, "work_performed", "Niet geregistreerd"),
+    progressPercent: Number(closeout?.progress_percent ?? 0),
+    inspectionResult: value(closeout, "inspection_result", "none") as DailyCloseoutAnswers["inspectionResult"],
+    qualityIssues: truth(closeout?.quality_issues),
+    qualityDetails: value(closeout, "quality_details"),
+    hseEvent: value(closeout, "hse_event", "none") as DailyCloseoutAnswers["hseEvent"],
+    hseDetails: value(closeout, "hse_details"),
+    equipmentStatus: value(closeout, "equipment_status"),
+    deliveries: value(closeout, "deliveries"),
+    testsMeasurements: value(closeout, "tests_measurements"),
+    variationWork: value(closeout, "variation_work_status", "none") as DailyCloseoutAnswers["variationWork"],
+    delayCause: value(closeout, "delay_cause", "none") as DailyCloseoutAnswers["delayCause"],
+    delayHours: Number(closeout?.delay_hours ?? 0),
+    communication: value(closeout, "communication"),
+    risks: value(closeout, "risks"),
+    tomorrowPlan: value(closeout, "tomorrow_plan", "Niet geregistreerd"),
+    photoCount: Number(closeout?.photo_count ?? 0),
+    attachmentsConfirmed: closeout?.attachments_confirmed === true,
+  };
+}
+
 function immutableDailySnapshot(snapshot: FormalReportSnapshot, revision: number, sha256: string): DailyReportPdfSnapshot {
   const report = snapshot.report;
   const project = snapshot.project;
-  const building = snapshot.building;
   const profile = snapshot.created_by_profile;
-  const start = snapshot.start_check;
-  const closeout = snapshot.closeout;
+
+  // Snapshots frozen after the multi-building change carry `buildings` /
+  // `start_checks` / `closeouts` arrays (one entry per building). Snapshots
+  // frozen before it carry the older singular `building` / `start_check` /
+  // `closeout` keys -- both must keep rendering correctly from their own
+  // immutable snapshot.
+  const buildingRows = Array.isArray(snapshot.buildings) ? snapshot.buildings : null;
+  const startCheckRows = Array.isArray(snapshot.start_checks) ? snapshot.start_checks : null;
+  const closeoutRows = Array.isArray(snapshot.closeouts) ? snapshot.closeouts : null;
+
+  const primaryBuilding = buildingRows?.[0] ?? snapshot.building;
+  const primaryStart = (buildingRows && startCheckRows
+    ? startCheckRows.find((row) => row.building_id === primaryBuilding?.id)
+    : undefined) ?? snapshot.start_check;
+  const primaryCloseout = (buildingRows && closeoutRows
+    ? closeoutRows.find((row) => row.building_id === primaryBuilding?.id)
+    : undefined) ?? snapshot.closeout;
+
+  const buildingBreakdown = buildingRows && buildingRows.length > 1
+    ? buildingRows.map((buildingRow) => ({
+        name: value(buildingRow, "name", "—"),
+        projectStart: projectStartAnswersFromSnapshotRow(startCheckRows?.find((row) => row.building_id === buildingRow.id)),
+        closeout: dailyCloseoutAnswersFromSnapshotRow(closeoutRows?.find((row) => row.building_id === buildingRow.id)),
+      }))
+    : undefined;
+
   return {
     reportNumber: value(report, "report_number", `Dagrapport-revisie-${revision}`),
     reportDate: value(report, "report_date"),
     projectName: value(project, "name", "Onbekend project"),
     projectCode: value(project, "code", "—"),
-    buildingName: value(building, "name", value(report, "building_id", "—")),
+    buildingName: buildingRows && buildingRows.length > 1
+      ? `${buildingRows.length} gebouwen`
+      : value(primaryBuilding, "name", value(report, "building_id", "—")),
     location: value(project, "location", "—"),
     supervisorName: value(profile, "display_name", value(report, "created_by", "Geauthenticeerde gebruiker")),
     attendanceTotal: (snapshot.attendance ?? []).reduce((total, entry) => total + Number(entry.headcount ?? 0), 0),
     registrationCount: snapshot.registrations?.length ?? 0,
-    projectStart: {
-      weatherCondition: value(start, "weather_condition", "cloudy") as ProjectStartAnswers["weatherCondition"],
-      temperatureC: Number(start?.temperature_c ?? 0),
-      windCondition: value(start, "wind_condition", "calm") as ProjectStartAnswers["windCondition"],
-      shiftStart: value(start, "shift_start", "00:00").slice(0, 5),
-      shiftEnd: value(start, "shift_end", "00:00").slice(0, 5),
-      plannedWork: value(start, "planned_work", "Niet geregistreerd"),
-      expectedWorkers: Number(start?.expected_workers ?? 0),
-      inspectionPlanned: truth(start?.inspection_planned),
-      highRiskWork: truth(start?.high_risk_work),
-      concreteWork: truth(start?.concrete_work),
-      workPermit: value(start, "work_permit_status", "not_required") as ProjectStartAnswers["workPermit"],
-      drawingStatus: value(start, "drawing_status", "not_required") as ProjectStartAnswers["drawingStatus"],
-      drawingIssueReported: start?.drawing_issue_reported === true,
-      riskNotes: value(start, "risk_notes"),
-    },
-    closeout: {
-      daySummary: value(closeout, "day_summary", "Geen dagsamenvatting in deze vastgezette versie."),
-      weatherSummary: value(closeout, "weather_summary", "Niet geregistreerd"),
-      workPerformed: value(closeout, "work_performed", "Niet geregistreerd"),
-      progressPercent: Number(closeout?.progress_percent ?? 0),
-      inspectionResult: value(closeout, "inspection_result", "none") as DailyCloseoutAnswers["inspectionResult"],
-      qualityIssues: truth(closeout?.quality_issues),
-      qualityDetails: value(closeout, "quality_details"),
-      hseEvent: value(closeout, "hse_event", "none") as DailyCloseoutAnswers["hseEvent"],
-      hseDetails: value(closeout, "hse_details"),
-      equipmentStatus: value(closeout, "equipment_status"),
-      deliveries: value(closeout, "deliveries"),
-      testsMeasurements: value(closeout, "tests_measurements"),
-      variationWork: value(closeout, "variation_work_status", "none") as DailyCloseoutAnswers["variationWork"],
-      delayCause: value(closeout, "delay_cause", "none") as DailyCloseoutAnswers["delayCause"],
-      delayHours: Number(closeout?.delay_hours ?? 0),
-      communication: value(closeout, "communication"),
-      risks: value(closeout, "risks"),
-      tomorrowPlan: value(closeout, "tomorrow_plan", "Niet geregistreerd"),
-      photoCount: Number(closeout?.photo_count ?? 0),
-      attachmentsConfirmed: closeout?.attachments_confirmed === true,
-    },
+    projectStart: projectStartAnswersFromSnapshotRow(primaryStart),
+    closeout: dailyCloseoutAnswersFromSnapshotRow(primaryCloseout),
     formal: { revision, sha256, frozenAt: snapshot.frozen_at ?? "onbekend tijdstip" },
+    buildings: buildingBreakdown,
   };
 }
 

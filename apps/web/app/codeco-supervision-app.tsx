@@ -89,6 +89,7 @@ import {
 } from "@/lib/forms/actions";
 import {
   bootstrapOrganization,
+  createBuilding,
   createProjectAction,
   createProjectWorkspace,
   getSession,
@@ -134,7 +135,7 @@ function CompanyLogo({ subtitle }: { subtitle?: string }) {
 }
 
 type NavKey = "vandaag" | "project" | "acties" | "rapporten" | "meer";
-type ModalKey = "quick" | "entry" | "action_create" | "action_detail" | "report" | "attendance" | "one_tap_log" | "daily_questions" | "user_admin" | "notifications" | null;
+type ModalKey = "quick" | "entry" | "action_create" | "action_detail" | "report" | "attendance" | "one_tap_log" | "daily_questions" | "user_admin" | "notifications" | "switch_building" | null;
 type WorkspaceStage = "projects" | "buildings" | "project_start" | "cockpit";
 type EntryKind =
   | "activity"
@@ -675,12 +676,13 @@ export function CodecoSupervisionApp() {
     const day = dayQuery.data;
     if (!day || !selectedBuilding) return;
     const hydration = window.setTimeout(() => {
-      const start = projectStartFromRow(day.startCheck);
-      const closeout = closeoutFromRow(day.closeout);
+      const start = projectStartFromRow(day.startChecks.find((row) => row.building_id === selectedBuilding.id) ?? null);
+      const closeout = closeoutFromRow(day.closeouts.find((row) => row.building_id === selectedBuilding.id) ?? null);
       setProjectStartAnswers(start);
       setDailyCloseoutAnswers(closeout);
       setCompletedTodos([...(start ? [1] : []), ...(closeout ? [2, 3] : [])]);
 
+      const buildingNameById = new Map((selectedProject?.buildings ?? []).map((building) => [building.id, building.name]));
       setEntries(day.registrations.map((row) => {
       const type = String(row.registration_type);
       const occurredAt = new Date(String(row.occurred_at));
@@ -692,7 +694,7 @@ export function CodecoSupervisionApp() {
         kind: timelineKind(type),
         title: String(row.title),
         detail: String(row.description ?? `${entryTitles[type] ?? "Registratie"} centraal opgeslagen.`),
-        location: selectedBuilding.name,
+        location: buildingNameById.get(String(row.building_id)) ?? selectedBuilding.name,
         person: currentUserName,
         badge: priorityLabel,
         badgeTone: String(row.priority) === "critical" ? "red" : "green",
@@ -700,8 +702,9 @@ export function CodecoSupervisionApp() {
       }));
 
       const partyById = new Map(day.parties.map((party) => [party.id, party]));
-      if (day.attendance.length) {
-        setAttendance(day.attendance.map((row) => {
+      const buildingAttendance = day.attendance.filter((row) => row.building_id === selectedBuilding.id);
+      if (buildingAttendance.length) {
+        setAttendance(buildingAttendance.map((row) => {
         const party = partyById.get(String(row.party_id));
         return {
           id: String(row.id),
@@ -726,7 +729,7 @@ export function CodecoSupervisionApp() {
       }
     }, 0);
     return () => window.clearTimeout(hydration);
-  }, [currentUserName, dayQuery.data, locale, selectedBuilding, text]);
+  }, [currentUserName, dayQuery.data, locale, selectedBuilding, selectedProject, text]);
 
   useEffect(() => {
     if (!supabase || !session || !selectedProject) return;
@@ -764,6 +767,10 @@ export function CodecoSupervisionApp() {
   const attendanceTotal = useMemo(
     () => attendance.reduce((total, row) => total + row.count, 0),
     [attendance],
+  );
+  const projectAttendanceTotal = useMemo(
+    () => (dayQuery.data?.attendance ?? []).reduce((total, row) => total + Number(row.headcount ?? 0), 0),
+    [dayQuery.data],
   );
   const reportNumber = String(dayQuery.data?.report?.report_number ?? `DR-${reportDate.replaceAll("-", "")}`);
   const dayActions = dayQuery.data?.actions ?? [];
@@ -916,6 +923,39 @@ export function CodecoSupervisionApp() {
   const openProjectStart = () => {
     if (!selectedProject || !selectedBuilding) return;
     setWorkspaceStage("cockpit");
+  };
+
+  const switchBuilding = (building: BuildingContext) => {
+    setSelectedBuilding(building);
+    setModal(null);
+  };
+
+  const addBuilding = async (input: { code: string; name: string; description: string }) => {
+    if (!selectedProject || !supabase) return false;
+    const created = await runSynced(
+      () => createBuilding(supabase, { projectId: selectedProject.id, code: input.code, name: input.name, description: input.description }),
+      text("Building added to the project.", "Gebouw aan het project toegevoegd."),
+    );
+    if (!created) return false;
+    const newBuilding: BuildingContext = {
+      id: created.id,
+      name: created.name,
+      description: created.description ?? "",
+      progress: 0,
+      openIssues: 0,
+      issueCount: 0,
+      ncrCount: 0,
+      inspectionCount: 0,
+      technicalInstructionCount: 0,
+      changeOrderCount: 0,
+      photoCount: 0,
+      todayPlannedWork: [],
+    };
+    setSelectedProject((current) => current ? { ...current, buildings: [...current.buildings, newBuilding] } : current);
+    setSelectedBuilding(newBuilding);
+    setModal(null);
+    await queryClient.invalidateQueries({ queryKey: ["workspace", session?.user.id] });
+    return true;
   };
 
   const startProject = async (answers: ProjectStartAnswers) => {
@@ -1114,6 +1154,12 @@ export function CodecoSupervisionApp() {
           </span>
           <ChevronDown size={15} />
         </button>
+        {selectedProject && selectedProject.buildings.length > 0 ? (
+          <button className="ghost-button building-switch-trigger" type="button" aria-label={text("Switch or add a building", "Gebouw wisselen of toevoegen")} onClick={() => setModal("switch_building")}>
+            <Building2 size={15} />
+            {text("Switch building", "Gebouw wisselen")} · {buildingName}
+          </button>
+        ) : null}
 
         <nav className="side-nav">
           <span className="nav-label">{text("Workspace", "Werkruimte")}</span>
@@ -1179,7 +1225,7 @@ export function CodecoSupervisionApp() {
               openReport={() => setModal("report")}
               projectName={projectName}
               buildingName={buildingName}
-              attendanceTotal={attendanceTotal}
+              attendanceTotal={projectAttendanceTotal}
               projectStartAnswers={projectStartAnswers}
               dailyCloseoutAnswers={dailyCloseoutAnswers}
               openProjectStart={() => setWorkspaceStage("project_start")}
@@ -1198,6 +1244,11 @@ export function CodecoSupervisionApp() {
                 navigate("acties");
                 setToast("De centrale actielijst is geopend.");
               }}
+              buildings={selectedProject?.buildings ?? []}
+              startChecks={dayQuery.data?.startChecks ?? []}
+              closeouts={dayQuery.data?.closeouts ?? []}
+              selectedBuildingId={selectedBuilding?.id}
+              onSwitchBuilding={switchBuilding}
             />
           ) : activeNav === "project" || activeNav === "rapporten" || activeNav === "meer" ? (
             <OperationalWorkspace
@@ -1234,7 +1285,7 @@ export function CodecoSupervisionApp() {
               navigate={navigate}
               projectName={projectName}
               buildingName={buildingName}
-              attendanceTotal={attendanceTotal}
+              attendanceTotal={projectAttendanceTotal}
               openAttendance={() => setModal("attendance")}
               entries={entries}
               actions={dayActions}
@@ -1346,11 +1397,14 @@ export function CodecoSupervisionApp() {
           close={() => setModal(null)}
           completedTodos={completedTodos}
           entries={entries}
-          attendanceTotal={attendanceTotal}
+          attendanceTotal={projectAttendanceTotal}
           projectName={projectName}
           reportNumber={reportNumber}
           reportStatus={String(dayQuery.data?.report?.status ?? "draft")}
           dailyCloseoutAnswers={dailyCloseoutAnswers}
+          buildings={selectedProject?.buildings ?? []}
+          startChecks={dayQuery.data?.startChecks ?? []}
+          closeouts={dayQuery.data?.closeouts ?? []}
           onDownload={async () => {
             if (!selectedProject || !selectedBuilding || !projectStartAnswers || !dailyCloseoutAnswers) return;
             const { downloadDailyReportPdf } = await import("@/lib/reports/daily-report-pdf");
@@ -1524,6 +1578,16 @@ export function CodecoSupervisionApp() {
             await internalAccessQuery.refetch();
             return true;
           }}
+        />
+      ) : null}
+
+      {modal === "switch_building" && selectedProject ? (
+        <BuildingSwitcherModal
+          buildings={selectedProject.buildings}
+          selectedBuildingId={selectedBuilding?.id}
+          choose={switchBuilding}
+          close={() => setModal(null)}
+          addBuilding={addBuilding}
         />
       ) : null}
 
@@ -2155,6 +2219,11 @@ function TodayView({
   now,
   reportNumber,
   actions,
+  buildings,
+  startChecks,
+  closeouts,
+  selectedBuildingId,
+  onSwitchBuilding,
 }: {
   entries: TimelineEntry[];
   completeness: number;
@@ -2179,6 +2248,11 @@ function TodayView({
   now: Date;
   reportNumber: string;
   actions: ProjectAction[];
+  buildings: BuildingContext[];
+  startChecks: Array<Record<string, unknown>>;
+  closeouts: Array<Record<string, unknown>>;
+  selectedBuildingId: string | undefined;
+  onSwitchBuilding: (building: BuildingContext) => void;
 }) {
   const { language, locale, text } = useLanguage();
   const todos = [
@@ -2250,6 +2324,34 @@ function TodayView({
           <button className="text-link" type="button" onClick={showCritical}>{text("Open central action list", "Open centrale actielijst")} <ArrowRight size={13} /></button>
         </article>
       </section>
+
+      {buildings.length > 1 ? (
+        <section className="panel" aria-label={text("Buildings in this report", "Gebouwen in dit rapport")}>
+          <header className="panel-header">
+            <div className="section-heading">
+              <h2>{text("Buildings in today's report", "Gebouwen in het rapport van vandaag")}</h2>
+              <p>{text("One project-wide report, complete once every building below has its own start check and closeout.", "Eén projectbreed rapport, compleet zodra elk gebouw hieronder een eigen projectstart en dagafsluiting heeft.")}</p>
+            </div>
+          </header>
+          <div className="todo-list">
+            {buildings.map((building) => {
+              const startDone = startChecks.some((row) => row.building_id === building.id);
+              const closeoutDone = closeouts.some((row) => row.building_id === building.id);
+              const active = building.id === selectedBuildingId;
+              return (
+                <div className="todo-row" key={building.id}>
+                  <span className={`todo-check ${startDone && closeoutDone ? "done" : ""}`}><Check size={14} /></span>
+                  <span className="todo-copy">
+                    <strong>{building.name}{active ? ` · ${text("active", "actief")}` : ""}</strong>
+                    <span>{startDone ? text("Start done", "Start gereed") : text("Start missing", "Start ontbreekt")} · {closeoutDone ? text("Closeout done", "Afsluiting gereed") : text("Closeout missing", "Afsluiting ontbreekt")}</span>
+                  </span>
+                  {!active ? <button className="text-link" type="button" onClick={() => onSwitchBuilding(building)}>{text("Switch", "Wissel")}</button> : null}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
 
       <section className={`questionnaire-strip ${dailyCloseoutAnswers ? "complete" : ""}`} aria-label={text("Daily questions and automation", "Dagvragen en automatisering")}>
         <div className="questionnaire-main">
@@ -2978,6 +3080,74 @@ function ActionDetailModal({
   );
 }
 
+function BuildingSwitcherModal({
+  buildings,
+  selectedBuildingId,
+  choose,
+  close,
+  addBuilding,
+}: {
+  buildings: BuildingContext[];
+  selectedBuildingId: string | undefined;
+  choose: (building: BuildingContext) => void;
+  close: () => void;
+  addBuilding: (input: { code: string; name: string; description: string }) => Promise<boolean>;
+}) {
+  const { text } = useLanguage();
+  const [busy, setBusy] = useState(false);
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+
+  const submit = async () => {
+    if (code.trim().length < 1 || name.trim().length < 2) return;
+    setBusy(true);
+    const saved = await addBuilding({ code: code.trim(), name: name.trim(), description: description.trim() });
+    setBusy(false);
+    if (saved) {
+      setCode("");
+      setName("");
+      setDescription("");
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+      <section className="modal" role="dialog" aria-modal="true" aria-labelledby="building-switcher-title">
+        <header className="modal-header">
+          <div>
+            <h2 id="building-switcher-title">{text("Switch building", "Gebouw wisselen")}</h2>
+            <p>{text("The daily report already covers every building. Switching only changes which building new photos and records are tagged with.", "Het dagrapport dekt al elk gebouw. Wisselen verandert alleen aan welk gebouw nieuwe foto's en registraties worden gekoppeld.")}</p>
+          </div>
+          <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
+        </header>
+        <div className="modal-body">
+          <div className="building-selection-grid">
+            {buildings.map((building) => {
+              const active = building.id === selectedBuildingId;
+              return (
+                <button className={`building-selection-card ${active ? "selected" : ""}`} type="button" onClick={() => choose(building)} key={building.id}>
+                  <span className="building-radio">{active ? <Check size={14} /> : null}</span>
+                  <span className="building-selection-copy"><strong>{building.name}</strong><small>{building.description}</small></span>
+                </button>
+              );
+            })}
+          </div>
+          <details className="optional-text-entry full">
+            <summary>{text("Add a new building", "Nieuw gebouw toevoegen")}</summary>
+            <div className="form-grid two-columns">
+              <label className="form-field"><span>{text("Building code *", "Gebouwcode *")}</span><input value={code} onChange={(event) => setCode(event.target.value)} placeholder={text("e.g. TOWER-B", "bijv. TOREN-B")} /></label>
+              <label className="form-field"><span>{text("Building name *", "Gebouwnaam *")}</span><input value={name} onChange={(event) => setName(event.target.value)} /></label>
+              <label className="form-field wide"><span>{text("Description", "Omschrijving")}</span><input value={description} onChange={(event) => setDescription(event.target.value)} /></label>
+            </div>
+            <button className="primary-button" type="button" disabled={busy || code.trim().length < 1 || name.trim().length < 2} onClick={() => void submit()}>{busy ? <Loader2 className="spin" size={15} /> : <Plus size={15} />} {text("Add building", "Gebouw toevoegen")}</button>
+          </details>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function AttendanceModal({
   rows,
   total,
@@ -3374,6 +3544,9 @@ function ReportModal({
   reportNumber,
   reportStatus,
   dailyCloseoutAnswers,
+  buildings,
+  startChecks,
+  closeouts,
   onDownload,
   onSubmit,
 }: {
@@ -3385,12 +3558,16 @@ function ReportModal({
   reportNumber: string;
   reportStatus: string;
   dailyCloseoutAnswers: DailyCloseoutAnswers | null;
+  buildings: BuildingContext[];
+  startChecks: Array<Record<string, unknown>>;
+  closeouts: Array<Record<string, unknown>>;
   onDownload: () => void | Promise<void>;
   onSubmit: () => void | Promise<void>;
 }) {
   const { text } = useLanguage();
   const hseComplete = completedTodos.includes(2) || Boolean(dailyCloseoutAnswers);
   const tomorrowComplete = completedTodos.includes(3) || Boolean(dailyCloseoutAnswers?.tomorrowPlan);
+  const buildingsMissing = buildings.filter((building) => !startChecks.some((row) => row.building_id === building.id) || !closeouts.some((row) => row.building_id === building.id));
   const checks = [
     { title: text("Project and report details", "Project- en rapportgegevens"), detail: text("Number, date, shift and buildings", "Nummer, datum, dienst en gebouwen"), complete: true },
     { title: text("Attendance and activities", "Aanwezigheid en activiteiten"), detail: text(`${attendanceTotal} people and ${entries.length} daily records`, `${attendanceTotal} personen en ${entries.length} dagregistraties`), complete: true },
@@ -3398,6 +3575,7 @@ function ReportModal({
     { title: text("Daily questions in the client format", "Dagvragen volgens klantformat"), detail: dailyCloseoutAnswers ? text("Progress, weather, logistics, risks and tomorrow confirmed", "Verloop, weer, logistiek, risico's en morgen bevestigd") : text("Four guided question groups still need completion", "Vier begeleide vraaggroepen nog invullen"), complete: Boolean(dailyCloseoutAnswers) },
     { title: text("Daily HSE check", "HSE-dagcheck"), detail: hseComplete ? text("All checkpoints completed", "Alle controlepunten ingevuld") : text("3 checkpoints are still missing", "Nog 3 controlepunten ontbreken"), complete: hseComplete },
     { title: text("Tomorrow's plan", "Planning voor morgen"), detail: tomorrowComplete ? text("The plan is confirmed", "Planning is bevestigd") : text("Not completed yet", "Nog niet ingevuld"), complete: tomorrowComplete },
+    { title: text("Start check and closeout for every building", "Projectstart en dagafsluiting per gebouw"), detail: buildingsMissing.length === 0 ? text("Every building has confirmed its start check and closeout", "Elk gebouw heeft een bevestigde projectstart en dagafsluiting") : text(`Still missing for: ${buildingsMissing.map((building) => building.name).join(", ")}`, `Nog niet compleet voor: ${buildingsMissing.map((building) => building.name).join(", ")}`), complete: buildingsMissing.length === 0 },
   ];
   const missing = checks.filter((check) => !check.complete).length;
   const submitted = ["ready_for_review", "in_review", "approved"].includes(reportStatus);

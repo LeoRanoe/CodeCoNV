@@ -41,6 +41,7 @@ export type ChecklistLibraryTemplate = {
 
 export type Inspection = {
   id: string;
+  building_id: string;
   template_id: string;
   inspection_number: string;
   title: string;
@@ -52,6 +53,7 @@ export type Inspection = {
 
 export type Finding = {
   id: string;
+  building_id: string;
   finding_number: string;
   finding_type: "observation" | "deficiency" | "deviation" | "ncr" | "improvement";
   title: string;
@@ -90,6 +92,7 @@ export type FindingProgressUpdate = {
 
 export type HseEvent = {
   id: string;
+  building_id: string;
   event_number: string;
   event_type: string;
   title: string;
@@ -103,6 +106,7 @@ export type HseEvent = {
 
 export type RegisterEntry = {
   id: string;
+  building_id: string | null;
   register_type: string;
   entry_number: string;
   title: string;
@@ -215,6 +219,7 @@ export type ProductionReadinessItem = {
 
 export type VisualCapture = {
   id: string;
+  building_id: string;
   file_id: string;
   location_node_id: string | null;
   day_report_id: string | null;
@@ -344,17 +349,17 @@ export async function loadProjectOperations(
   const [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, registerResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult] = await Promise.all([
     client.from("checklist_templates").select("id,project_id,module,code,name,description,version_number,status").or(`project_id.is.null,project_id.eq.${projectId}`).order("name"),
     client.from("checklist_library_templates").select("code,module,category,name,description,prompts,sort_order").eq("active", true).order("sort_order"),
-    client.from("inspections").select("id,template_id,inspection_number,title,status,planned_at,started_at,completed_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
-    client.from("findings").select("id,finding_number,finding_type,title,description,severity,priority,status,responsible_party_id,assigned_user_id,due_at,cause,proposed_correction,final_measure,issue_management,verified_at,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
+    client.from("inspections").select("id,building_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
+    client.from("findings").select("id,building_id,finding_number,finding_type,title,description,severity,priority,status,responsible_party_id,assigned_user_id,due_at,cause,proposed_correction,final_measure,issue_management,verified_at,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
     client.from("finding_progress_updates").select("id,finding_id,progress_percent,disposition,note,inspected_at,created_at").eq("project_id", projectId).order("inspected_at", { ascending: false }).limit(1000),
-    client.from("hse_events").select("id,event_number,event_type,title,description,severity,status,confidential,immediate_measure,occurred_at").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100),
-    client.from("project_register_entries").select("id,register_type,entry_number,title,status,occurred_at,due_at,details").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(150),
+    client.from("hse_events").select("id,building_id,event_number,event_type,title,description,severity,status,confidential,immediate_measure,occurred_at").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100),
+    client.from("project_register_entries").select("id,building_id,register_type,entry_number,title,status,occurred_at,due_at,details").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(150),
     client.from("files").select("id,building_id,folder_id,original_name,mime_type,size_bytes,category,status,created_at").eq("project_id", projectId).neq("status", "deleted").order("created_at", { ascending: false }).limit(500),
     client.from("project_settings").select("id,project_id,report_prefix,default_language,max_file_size_mb,notification_lead_hours,email_notifications_enabled,push_notifications_enabled,retention_days,branding,modules,signing_workflow").eq("project_id", projectId).maybeSingle(),
     client.from("backup_runs").select("id,run_type,status,schema_version,size_bytes,sha256,verified_at,created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(25),
     client.from("location_nodes").select("id,building_id,parent_id,node_type,code,name,description,status").eq("project_id", projectId).order("sort_order").limit(500),
     client.from("production_readiness_items").select("id,code,category,title,description,owner_hint,blocking,status,evidence,completed_at,sort_order").eq("organization_id", organizationId).order("sort_order"),
-    client.from("visual_captures").select("id,file_id,location_node_id,day_report_id,capture_type,title,description,location_label,tour_name,tour_order,captured_at,status,created_at").eq("project_id", projectId).order("captured_at", { ascending: false }).limit(250),
+    client.from("visual_captures").select("id,building_id,file_id,location_node_id,day_report_id,capture_type,title,description,location_label,tour_name,tour_order,captured_at,status,created_at").eq("project_id", projectId).order("captured_at", { ascending: false }).limit(250),
     client.from("visual_annotations").select("id,capture_id,finding_id,coordinate_mode,x_ratio,y_ratio,yaw,pitch,title,description,severity,status,created_at").eq("project_id", projectId).order("created_at").limit(1000),
     client.from("drawing_pins").select("id,drawing_file_id,page_number,x_ratio,y_ratio,linked_record_type,linked_record_id,linked_record_number,linked_record_title,note,status,created_at").eq("project_id", projectId).order("created_at").limit(2000),
     client.from("drawing_markups").select("id,drawing_file_id,page_number,markup_type,geometry,color,stroke_width,text_content,status,created_at").eq("project_id", projectId).order("created_at").limit(5000),
