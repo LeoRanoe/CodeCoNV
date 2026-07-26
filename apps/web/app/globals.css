@@ -6640,6 +6640,8 @@ textarea:focus-visible {
 .offline-queue > div:first-child { display: grid; gap: 3px; }
 .offline-queue-list { display: grid; gap: 6px; grid-column: 1 / -1; }
 .offline-queue-list > span { align-items: center; background: #fff; border: 1px solid #eadfca; border-radius: 9px; color: var(--text); display: grid; gap: 8px; grid-template-columns: auto 1fr auto auto; padding: 9px 10px; }
+.offline-queue-list > span.failed { border-color: #e5a9a3; background: #fff4f2; }
+.offline-queue-list > span.failed small { color: var(--red); font-weight: 700; }
 .offline-queue-list button { background: transparent; border: 0; color: var(--red); }
 .media-gallery { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
 .media-card { background: #fff; border: 1px solid var(--border); border-radius: 13px; display: grid; grid-template-columns: 1fr auto; overflow: hidden; }
@@ -7038,6 +7040,12 @@ textarea:focus-visible {
   right: 18px;
   z-index: 45;
 }
+.field-guide-trigger:hover,
+.field-guide-trigger:focus-visible {
+  border-color: var(--teal);
+  color: var(--teal);
+  transform: translateY(-1px);
+}
 .field-guide-backdrop {
   align-items: center;
   background: rgba(13,32,38,.66);
@@ -7053,7 +7061,7 @@ textarea:focus-visible {
   border-radius: 20px;
   box-shadow: 0 30px 90px rgba(4,19,24,.3);
   max-height: calc(100vh - 32px);
-  max-width: 900px;
+  max-width: 860px;
   overflow: auto;
   padding: 22px;
   width: 100%;
@@ -7061,18 +7069,178 @@ textarea:focus-visible {
 .field-guide-dialog > header { align-items: flex-start; display: flex; justify-content: space-between; gap: 15px; }
 .field-guide-dialog > header span { color: var(--signal); font-size: 9px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
 .field-guide-dialog h2 { color: var(--ink-900); font-size: clamp(22px, 4vw, 34px); line-height: 1.12; margin: 5px 0 0; }
+.field-guide-dialog > header p { color: var(--ink-500); font-size: 11px; line-height: 1.5; margin: 7px 0 0; }
 .field-guide-dialog > header button { background: var(--ink-50); border: 0; border-radius: 9px; color: var(--ink-600); cursor: pointer; display: grid; height: 36px; place-items: center; width: 36px; }
-.field-guide-steps { display: grid; gap: 10px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 22px; }
-.field-guide-steps article { background: linear-gradient(145deg, #f2f8f6, #fff); border: 1px solid #d7e4e1; border-radius: 14px; min-height: 190px; padding: 15px; position: relative; }
-.field-guide-number { color: #b7c9c4; font-size: 10px; font-weight: 900; letter-spacing: .12em; }
-.field-guide-icon { align-items: center; background: var(--signal); border-radius: 11px; color: #fff; display: flex; height: 46px; justify-content: center; margin-top: 19px; width: 46px; }
-.field-guide-steps article:nth-child(2) .field-guide-icon,
-.field-guide-steps article:nth-child(3) .field-guide-icon { background: var(--teal); }
-.field-guide-steps article:nth-child(4) .field-guide-icon { background: var(--green); }
-.field-guide-steps h3 { color: var(--ink-800); font-size: 13px; margin: 14px 0 5px; }
-.field-guide-steps p { color: var(--ink-600); font-size: 10px; line-height: 1.55; margin: 0; }
-.field-guide-dialog > footer { align-items: center; border-top: 1px solid var(--ink-100); display: flex; gap: 14px; justify-content: space-between; margin-top: 18px; padding-top: 16px; }
+.field-guide-body {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 205px minmax(0, 1fr);
+  margin-top: 19px;
+}
+.field-guide-task-picker {
+  display: grid;
+  gap: 7px;
+}
+.field-guide-task-picker button {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: 11px;
+  color: var(--ink-700);
+  cursor: pointer;
+  display: grid;
+  gap: 9px;
+  grid-template-columns: 35px 1fr;
+  min-height: 47px;
+  padding: 6px 9px;
+  text-align: left;
+}
+.field-guide-task-picker button > span {
+  align-items: center;
+  background: var(--ink-50);
+  border-radius: 9px;
+  display: flex;
+  height: 35px;
+  justify-content: center;
+  width: 35px;
+}
+.field-guide-task-picker button strong { font-size: 10px; line-height: 1.3; }
+.field-guide-task-picker button.active {
+  background: var(--signal-soft);
+  border-color: #f3b27d;
+  color: var(--signal-dark);
+}
+.field-guide-task-picker button.active > span { background: var(--signal); color: #fff; }
+.field-guide-task-detail {
+  background: linear-gradient(145deg, #f2f8f6, #fff);
+  border: 1px solid #d7e4e1;
+  border-radius: 15px;
+  display: flex;
+  flex-direction: column;
+  min-height: 262px;
+  padding: 16px;
+}
+.field-guide-task-detail > header { align-items: center; display: flex; gap: 11px; }
+.field-guide-task-detail > header > span {
+  align-items: center;
+  background: var(--teal);
+  border-radius: 11px;
+  color: #fff;
+  display: flex;
+  height: 46px;
+  justify-content: center;
+  width: 46px;
+}
+.field-guide-task-detail h3 { color: var(--ink-900); font-size: 16px; margin: 0; }
+.field-guide-task-detail header p { color: var(--ink-500); font-size: 10px; line-height: 1.45; margin: 4px 0 0; }
+.field-guide-task-detail ol { display: grid; gap: 8px; list-style: none; margin: 15px 0; padding: 0; }
+.field-guide-task-detail li { align-items: flex-start; display: grid; gap: 9px; grid-template-columns: 23px 1fr; }
+.field-guide-task-detail li > span {
+  background: #fff;
+  border: 1px solid #cfe0dc;
+  border-radius: 999px;
+  color: var(--teal);
+  display: grid;
+  font-size: 9px;
+  font-weight: 900;
+  height: 23px;
+  place-items: center;
+  width: 23px;
+}
+.field-guide-task-detail li p { color: var(--ink-700); font-size: 10px; line-height: 1.45; margin: 3px 0 0; }
+.field-guide-task-detail > button { align-self: flex-start; margin-top: auto; }
+.field-guide-navigation {
+  border: 1px solid var(--ink-100);
+  border-radius: 13px;
+  margin-top: 12px;
+  padding: 11px;
+}
+.field-guide-navigation > header { align-items: baseline; display: flex; gap: 7px; }
+.field-guide-navigation > header strong { color: var(--ink-800); font-size: 10px; }
+.field-guide-navigation > header span { color: var(--ink-500); font-size: 9px; }
+.field-guide-navigation > div { display: grid; gap: 5px; grid-template-columns: repeat(5, minmax(0, 1fr)); margin-top: 9px; }
+.field-guide-navigation > div > span {
+  align-items: center;
+  background: var(--ink-50);
+  border-radius: 9px;
+  color: var(--ink-600);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 4px;
+  text-align: center;
+}
+.field-guide-navigation > div > span.featured { background: var(--signal); color: #fff; }
+.field-guide-navigation strong { font-size: 9px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.field-guide-navigation small { font-size: 7px; opacity: .75; }
+.field-guide-reference {
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: 13px;
+  margin-top: 12px;
+  overflow: hidden;
+}
+.field-guide-reference summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  list-style: none;
+}
+.field-guide-reference summary::-webkit-details-marker { display: none; }
+.field-guide-reference > summary { min-height: 56px; padding: 9px 12px; }
+.field-guide-reference > summary > span,
+.field-guide-reference-sections > details > summary > span {
+  align-items: center;
+  display: flex;
+  gap: 9px;
+  min-width: 0;
+}
+.field-guide-reference summary > span > svg { color: var(--teal); flex: 0 0 auto; }
+.field-guide-reference summary > span > span { min-width: 0; }
+.field-guide-reference summary strong { color: var(--ink-800); display: block; font-size: 10px; }
+.field-guide-reference summary small { color: var(--ink-500); display: block; font-size: 8px; line-height: 1.35; margin-top: 3px; }
+.field-guide-reference summary > svg { color: var(--ink-400); flex: 0 0 auto; transition: transform .18s ease; }
+.field-guide-reference[open] > summary > svg,
+.field-guide-reference-sections > details[open] > summary > svg { transform: rotate(180deg); }
+.field-guide-reference-sections {
+  background: var(--ink-50);
+  border-top: 1px solid var(--ink-100);
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+}
+.field-guide-reference-sections > details {
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.field-guide-reference-sections > details > summary { min-height: 48px; padding: 8px 10px; }
+.field-guide-reference-items {
+  border-top: 1px solid var(--ink-100);
+  display: grid;
+  gap: 0;
+  padding: 0 11px;
+}
+.field-guide-reference-items article { border-bottom: 1px solid var(--ink-100); padding: 10px 0; }
+.field-guide-reference-items article:last-child { border-bottom: 0; }
+.field-guide-reference-items strong { color: var(--ink-800); display: block; font-size: 10px; }
+.field-guide-reference-items p { color: var(--ink-600); font-size: 9px; line-height: 1.55; margin: 4px 0 0; }
+.field-guide-dialog > footer {
+  align-items: center;
+  border-top: 1px solid var(--ink-100);
+  display: grid;
+  gap: 5px 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-top: 12px;
+  padding-top: 13px;
+}
 .field-guide-dialog > footer > span { color: var(--ink-500); font-size: 9px; }
+.field-guide-automation { align-items: center; color: var(--green) !important; display: flex; font-weight: 750; gap: 6px; }
+.field-guide-no-typing { grid-column: 1; }
+.field-guide-dialog > footer > button { grid-column: 2; grid-row: 1 / span 2; }
 .recommended-checklist-install {
   align-items: flex-start;
 }
@@ -7093,21 +7261,37 @@ textarea:focus-visible {
   .checklist-section > header button { justify-content: center; min-height: 38px; }
   .answer-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .answer-options label { justify-content: center; min-height: 42px; }
-  .field-guide-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .field-guide-steps article { min-height: 170px; }
+  .field-guide-body { grid-template-columns: 1fr; }
+  .field-guide-task-picker { display: flex; overflow-x: auto; padding-bottom: 3px; scrollbar-width: thin; }
+  .field-guide-task-picker button { flex: 0 0 132px; grid-template-columns: 31px 1fr; min-height: 43px; }
+  .field-guide-task-picker button > span { height: 31px; width: 31px; }
+  .field-guide-task-detail { min-height: 250px; }
+}
+@media (max-width: 860px) {
+  .field-guide-trigger {
+    bottom: calc(84px + env(safe-area-inset-bottom));
+    right: 12px;
+  }
 }
 @media (max-width: 480px) {
   .field-guide-trigger span { display: none; }
   .field-guide-trigger { height: 42px; justify-content: center; padding: 0; width: 42px; }
   .field-guide-backdrop { align-items: flex-end; padding: 0; }
-  .field-guide-dialog { border-radius: 18px 18px 0 0; max-height: 92vh; padding: 17px; }
-  .field-guide-steps { grid-template-columns: 1fr; }
-  .field-guide-steps article { align-items: center; display: grid; gap: 5px 11px; grid-template-columns: auto 1fr; min-height: 0; padding: 12px; }
-  .field-guide-number { grid-column: 1; grid-row: 1; }
-  .field-guide-icon { grid-column: 1; grid-row: 2 / span 2; margin: 0; }
-  .field-guide-steps h3, .field-guide-steps p { grid-column: 2; margin: 0; }
-  .field-guide-dialog > footer { align-items: stretch; flex-direction: column; }
-  .field-guide-dialog > footer .primary-button { justify-content: center; }
+  .field-guide-dialog { border-radius: 18px 18px 0 0; max-height: calc(100dvh - 12px); padding: 16px; }
+  .field-guide-dialog h2 { font-size: 24px; }
+  .field-guide-task-detail { min-height: 270px; padding: 13px; }
+  .field-guide-navigation { padding: 9px; }
+  .field-guide-navigation > header { align-items: flex-start; flex-direction: column; gap: 2px; }
+  .field-guide-navigation > div { gap: 3px; }
+  .field-guide-navigation > div > span { padding: 7px 2px; }
+  .field-guide-navigation small { display: none; }
+  .field-guide-reference > summary { min-height: 52px; }
+  .field-guide-reference-sections { padding: 7px; }
+  .field-guide-reference-sections > details > summary { min-height: 52px; }
+  .field-guide-reference-items p { font-size: 10px; }
+  .field-guide-dialog > footer { align-items: stretch; grid-template-columns: 1fr; }
+  .field-guide-no-typing { grid-column: 1; }
+  .field-guide-dialog > footer > button { grid-column: 1; grid-row: auto; justify-content: center; }
 }
 .visually-hidden {
   position: fixed !important;

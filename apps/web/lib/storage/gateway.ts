@@ -41,6 +41,7 @@ function uploadToPresignedUrl(url: string, file: File, onProgress?: (percent: nu
 export async function uploadProjectFile(
   client: SupabaseClient,
   input: {
+    fileId?: string;
     projectId: string;
     buildingId: string;
     folderId?: string | null;
@@ -52,7 +53,7 @@ export async function uploadProjectFile(
   const token = await accessToken(client);
   input.onProgress?.(1);
   const sha256 = await sha256Hex(input.file);
-  const fileId = crypto.randomUUID();
+  const fileId = input.fileId ?? crypto.randomUUID();
   input.onProgress?.(4);
 
   const initiation = await fetch("/api/storage/uploads", {
@@ -71,7 +72,18 @@ export async function uploadProjectFile(
     }),
   });
   if (!initiation.ok) throw new Error(await storageError(initiation));
-  const upload = await initiation.json() as { fileId: string; pathname: string; presignedUrl: string };
+  const upload = await initiation.json() as {
+    fileId: string;
+    pathname: string;
+    presignedUrl?: string;
+    status?: "pending" | "available";
+    sha256?: string;
+  };
+  if (upload.status === "available") {
+    input.onProgress?.(100);
+    return { fileId: upload.fileId, sha256: upload.sha256 ?? sha256 };
+  }
+  if (!upload.presignedUrl) throw new Error("De beveiligde upload-URL ontbreekt.");
   await uploadToPresignedUrl(upload.presignedUrl, input.file, input.onProgress);
   input.onProgress?.(96);
 

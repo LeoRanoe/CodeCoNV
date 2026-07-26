@@ -531,10 +531,13 @@ test("tracks product-plan and CODECO compliance explicitly", async () => {
 });
 
 test("implements the customer video workflows without external accounts", async () => {
-  const [app, operations, offlineQueue, sharePage, shareActions, responseRoute, uploadRoute, migration] = await Promise.all([
+  const [app, operations, offlineQueue, storageGateway, storageUploadRoute, media, sharePage, shareActions, responseRoute, uploadRoute, migration] = await Promise.all([
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/offline/upload-queue.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/storage/gateway.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/storage/uploads/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/media-library-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/share/[token]/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/share/[token]/external-share-actions.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/external-share/[token]/response/route.ts", import.meta.url), "utf8"),
@@ -549,6 +552,19 @@ test("implements the customer video workflows without external accounts", async 
   assert.match(operations, /findingGroup/);
   assert.match(offlineQueue, /createFinding/);
   assert.match(offlineQueue, /relationship: "before"/);
+  assert.match(offlineQueue, /projectSyncLocks/);
+  assert.match(offlineQueue, /fileId: upload\.id/);
+  assert.match(offlineQueue, /offline-finding:/);
+  assert.match(offlineQueue, /existingCapture/);
+  assert.match(storageGateway, /fileId\?: string/);
+  assert.match(storageUploadRoute, /repeatedReservation/);
+  assert.match(storageUploadRoute, /reservationNeedsPreparation/);
+  assert.match(storageUploadRoute, /existing\.storage_provider === "vercel_blob"/);
+  assert.match(storageUploadRoute, /allowOverwrite: repeatedReservation/);
+  assert.match(media, /flaky connection must never prevent the local evidence copy/);
+  assert.match(media, /Remove this unsynchronized field file/);
+  assert.match(app, /Photo secured on this device/);
+  assert.match(app, /syncOfflineUploads/);
   assert.match(sharePage, /ExternalShareActions/);
   assert.match(shareActions, /ready_for_verification/);
   assert.match(shareActions, /Probleem melden/);
@@ -604,7 +620,7 @@ test("keeps the project workspace mobile-first and task driven", async () => {
 });
 
 test("ships automatic project weather, anchor checklists and stacked issue photos", async () => {
-  const [app, weatherRoute, weatherRules, anchorLibrary, operations, supabaseOperations, offlineQueue, fieldGuide, migration] = await Promise.all([
+  const [app, weatherRoute, weatherRules, anchorLibrary, operations, supabaseOperations, offlineQueue, fieldGuide, styles, migration] = await Promise.all([
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/weather/current/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/weather.ts", import.meta.url), "utf8"),
@@ -613,6 +629,7 @@ test("ships automatic project weather, anchor checklists and stacked issue photo
     readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/offline/upload-queue.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/field-guide.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../../../supabase/migrations/202607260001_codeco_anchor_checklists.sql", import.meta.url), "utf8"),
   ]);
 
@@ -633,7 +650,14 @@ test("ships automatic project weather, anchor checklists and stacked issue photo
   assert.match(supabaseOperations, /create_project_checklist/);
   assert.match(supabaseOperations, /anchorChecklistLibrary[\s\S]*\.filter/);
   assert.match(offlineQueue, /findingIds = new Map/);
-  assert.match(fieldGuide, /60-second field guide|60-seconden veldgids/);
+  assert.match(fieldGuide, /Built-in field guide|Ingebouwde veldgids/);
+  assert.match(fieldGuide, /All functions from A to Z|Alle functies van A tot Z/);
+  assert.match(fieldGuide, /Photos, folders, offline use and 360°/);
+  assert.match(fieldGuide, /Inspections and checklists/);
+  assert.match(fieldGuide, /Issues, NCR, HSE and actions/);
+  assert.match(fieldGuide, /Backups, status signals and recovery/);
+  assert.match(fieldGuide, /onOpenDestination/);
+  assert.match(styles, /@media \(max-width: 860px\)[\s\S]*\.field-guide-trigger[\s\S]*bottom: calc\(84px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(migration, /'LIB-101'/);
   assert.match(migration, /'LIB-102'/);
   assert.match(migration, /'LIB-103'/);

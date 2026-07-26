@@ -114,6 +114,9 @@ export async function POST(request: Request) {
       return storageJson({ error: `Het bestand is groter dan de projectlimiet van ${Math.floor(maximumSizeInBytes / 1024 / 1024)} MB.` }, 413);
     }
 
+    const pathname = `projects/${input.data.projectId}/${input.data.category}/${input.data.fileId}/${safeFilename(input.data.originalName)}`;
+    let repeatedReservation = false;
+    let prepareMetadata = true;
     const reservationResult = await userClient.from("files").insert({
       id: input.data.fileId,
       organization_id: projectResult.data.organization_id,
@@ -129,24 +132,62 @@ export async function POST(request: Request) {
     });
     if (reservationResult.error) {
       const duplicate = reservationResult.error.code === "23505";
-      return storageJson({ error: duplicate ? "Deze upload is al gereserveerd." : "Je hebt geen bestandsrecht voor dit project." }, duplicate ? 409 : 403);
+      if (!duplicate) return storageJson({ error: "Je hebt geen bestandsrecht voor dit project." }, 403);
+      const existingResult = await userClient
+        .from("files")
+        .select("id,project_id,building_id,folder_id,original_name,mime_type,size_bytes,sha256,status,storage_provider,storage_object_key,created_by")
+        .eq("id", input.data.fileId)
+        .maybeSingle();
+      if (existingResult.error || !existingResult.data) return storageJson({ error: "De bestaande upload kon niet worden hervat." }, 409);
+      const existing = existingResult.data;
+      const sameBaseUpload = existing.created_by === user.id
+        && existing.project_id === input.data.projectId
+        && existing.building_id === input.data.buildingId
+        && existing.folder_id === (input.data.folderId || null)
+        && existing.original_name === input.data.originalName
+        && existing.mime_type === input.data.mimeType;
+      const preparedMetadataMatches = Number(existing.size_bytes) === input.data.sizeBytes
+        && existing.sha256 === input.data.sha256
+        && existing.storage_provider === "vercel_blob"
+        && existing.storage_object_key === pathname;
+      const reservationNeedsPreparation = existing.status === "pending"
+        && Number(existing.size_bytes) === 0
+        && !existing.sha256
+        && existing.storage_provider === "vercel_blob"
+        && !existing.storage_object_key;
+      const sameUpload = sameBaseUpload && (preparedMetadataMatches || reservationNeedsPreparation);
+      if (!sameUpload) return storageJson({ error: "De upload-ID hoort bij andere bestandsgegevens." }, 409);
+      if (existing.status === "available") {
+        return storageJson({
+          fileId: existing.id,
+          pathname,
+          status: "available",
+          sha256: existing.sha256,
+        });
+      }
+      if (!["pending", "uploading"].includes(existing.status)) {
+        return storageJson({ error: "Deze upload kan niet veilig worden hervat." }, 409);
+      }
+      repeatedReservation = true;
+      prepareMetadata = reservationNeedsPreparation;
     }
 
-    const pathname = `projects/${input.data.projectId}/${input.data.category}/${input.data.fileId}/${safeFilename(input.data.originalName)}`;
     const adminClient = createStorageAdminClient();
-    const pathResult = await adminClient
-      .from("files")
-      .update({
-        storage_provider: "vercel_blob",
-        storage_object_key: pathname,
-        size_bytes: input.data.sizeBytes,
-        sha256: input.data.sha256,
-      })
-      .eq("id", input.data.fileId)
-      .eq("status", "pending")
-      .select("id")
-      .single();
-    if (pathResult.error || !pathResult.data) throw new Error("Bestandsmetadata kon niet voor Blob-opslag worden voorbereid.");
+    if (prepareMetadata) {
+      const pathResult = await adminClient
+        .from("files")
+        .update({
+          storage_provider: "vercel_blob",
+          storage_object_key: pathname,
+          size_bytes: input.data.sizeBytes,
+          sha256: input.data.sha256,
+        })
+        .eq("id", input.data.fileId)
+        .eq("status", "pending")
+        .select("id")
+        .single();
+      if (pathResult.error || !pathResult.data) throw new Error("Bestandsmetadata kon niet voor Blob-opslag worden voorbereid.");
+    }
 
     try {
       const validUntil = Date.now() + 10 * 60 * 1000;
@@ -164,13 +205,17 @@ export async function POST(request: Request) {
         allowedContentTypes: [input.data.mimeType],
         maximumSizeInBytes,
         addRandomSuffix: false,
-        allowOverwrite: false,
+        allowOverwrite: repeatedReservation,
         cacheControlMaxAge: 30 * 24 * 60 * 60,
         validUntil,
       });
-      return storageJson({ fileId: input.data.fileId, pathname, presignedUrl }, 201);
+      return storageJson({
+        fileId: input.data.fileId,
+        pathname,
+        presignedUrl,
+        status: "pending",
+      }, repeatedReservation ? 200 : 201);
     } catch {
-      await adminClient.from("files").update({ status: "failed" }).eq("id", input.data.fileId);
       throw new Error("Vercel Blob kon geen beveiligde upload-URL aanmaken.");
     }
   } catch (error) {

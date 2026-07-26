@@ -58,6 +58,7 @@ import { ensureDailyBackup } from "@/lib/backups/client";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import { currentPushState, enablePushNotifications, type PushState } from "@/lib/notifications/push-client";
+import { compressFieldPhoto, dataSaverEnabled, queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
 import { cacheProjectDay, cacheWorkspace, getCachedProjectDay, getCachedWorkspace } from "@/lib/offline/workspace-cache";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
@@ -497,6 +498,38 @@ export function CodecoSupervisionApp() {
         dailyBackupCheckRef.current = "";
       });
   }, [activeOrganizationId, canManageMembers, isOnline, queryClient, reportDate, session, supabase]);
+
+  useEffect(() => {
+    if (!supabase || !session || !selectedProject || !isOnline) return;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      void syncOfflineUploads(supabase, selectedProject.id).then(async (result) => {
+        if (!active) return;
+        if (result.synced > 0) {
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["project-operations", selectedProject.id] }),
+            queryClient.invalidateQueries({ queryKey: ["workspace"] }),
+          ]);
+        }
+        if (result.failed > 0) {
+          setToast(text(
+            `${result.failed} field upload(s) still need attention. Open Photos & folders and tap Sync now.`,
+            `${result.failed} veldupload(s) vragen nog aandacht. Open Foto’s & mappen en tik op Nu synchroniseren.`,
+          ));
+        }
+      }).catch(() => {
+        if (active) setToast(text(
+          "Queued field photos remain safely on this device.",
+          "Wachtende veldfoto’s blijven veilig op dit apparaat.",
+        ));
+      });
+    }, 350);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [isOnline, queryClient, selectedProject, session, supabase, text]);
+
   const internalAccessQuery = useQuery({
     queryKey: ["internal-access", activeOrganizationId],
     queryFn: () => loadInternalAccess(supabase as SupabaseClient, activeOrganizationId!),
@@ -763,10 +796,41 @@ export function CodecoSupervisionApp() {
     quickCameraInputRef.current?.click();
   };
 
-  const receiveQuickCameraPhoto = (files: FileList | null) => {
+  const receiveQuickCameraPhoto = async (files: FileList | null) => {
     const captured = Array.from(files ?? []).filter((file) => file.type.startsWith("image/"));
     if (!captured.length) return;
-    setPendingQuickPhotos((current) => [...current, ...captured]);
+    if (!selectedProject || !selectedBuilding) {
+      setToast(text("Choose a project and building before taking a field photo.", "Kies eerst een project en gebouw voordat je een veldfoto maakt."));
+      return;
+    }
+    setToast(text("Securing photo on this device…", "Foto veiligstellen op dit apparaat…"));
+    try {
+      for (const photo of captured) {
+        const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
+        await queueOfflineUpload({
+          projectId: selectedProject.id,
+          buildingId: selectedBuilding.id,
+          reportId: dayQuery.data?.report?.id ? String(dayQuery.data.report.id) : null,
+          folderId: null,
+          folderName: text("Daily progress", "Dagvoortgang"),
+          kind: "photo",
+          file: prepared.blob,
+          fileName: prepared.fileName,
+          mimeType: prepared.mimeType,
+          title: `${text("Site photo", "Terreinfoto")} · ${new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(photo.lastModified || Date.now()))}`,
+          locationLabel: selectedBuilding.name,
+          capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
+          originalSize: photo.size,
+          queuedSize: prepared.blob.size,
+          compressed: prepared.compressed,
+        });
+      }
+      setPendingQuickPhotos([]);
+      setToast(text("Photo secured on this device; synchronization starts automatically.", "Foto veilig op dit apparaat; synchronisatie start automatisch."));
+    } catch {
+      setPendingQuickPhotos((current) => [...current, ...captured]);
+      setToast(text("Local device storage was unavailable. Keep this screen open while the photo is transferred.", "Lokale apparaatopslag was niet beschikbaar. Houd dit scherm open terwijl de foto wordt overgezet."));
+    }
     setInitialProjectTab("files");
     setActiveNav("project");
     setModal(null);
@@ -977,7 +1041,22 @@ export function CodecoSupervisionApp() {
 
   return (
     <div className="app-shell">
-      <FieldGuide />
+      <FieldGuide
+        canManage={canManageMembers}
+        onOpenDestination={(destination) => {
+          if (destination === "today") {
+            navigate("vandaag");
+            return;
+          }
+          if (destination === "photo") {
+            openQuickAdd();
+            return;
+          }
+          setInitialProjectTab(destination === "inspection" ? "inspections" : "findings");
+          setActiveNav("project");
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
+      />
       <input
         ref={quickCameraInputRef}
         className="visually-hidden"
@@ -985,7 +1064,7 @@ export function CodecoSupervisionApp() {
         accept="image/jpeg,image/png,image/webp"
         capture="environment"
         onChange={(event) => {
-          receiveQuickCameraPhoto(event.currentTarget.files);
+          void receiveQuickCameraPhoto(event.currentTarget.files);
           event.currentTarget.value = "";
         }}
       />

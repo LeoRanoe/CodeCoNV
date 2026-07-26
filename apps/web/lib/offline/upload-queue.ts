@@ -85,28 +85,35 @@ export async function compressFieldPhoto(file: File, enabled = dataSaverEnabled(
   if (!enabled || !["image/jpeg", "image/png", "image/webp"].includes(file.type) || typeof createImageBitmap !== "function") {
     return { blob: file as Blob, fileName: file.name, mimeType: file.type || "image/jpeg", compressed: false };
   }
-  const bitmap = await createImageBitmap(file);
-  const maxDimension = 1920;
-  const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
-  const width = Math.max(1, Math.round(bitmap.width * scale));
-  const height = Math.max(1, Math.round(bitmap.height * scale));
-  if (scale === 1 && file.size <= 900_000) {
+  let bitmap: ImageBitmap | null = null;
+  try {
+    bitmap = await createImageBitmap(file);
+    const maxDimension = 1920;
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    if (scale === 1 && file.size <= 900_000) {
+      bitmap.close();
+      return { blob: file as Blob, fileName: file.name, mimeType: file.type, compressed: false };
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d", { alpha: false });
+    if (!context) {
+      bitmap.close();
+      return { blob: file as Blob, fileName: file.name, mimeType: file.type, compressed: false };
+    }
+    context.drawImage(bitmap, 0, 0, width, height);
     bitmap.close();
-    return { blob: file as Blob, fileName: file.name, mimeType: file.type, compressed: false };
+    bitmap = null;
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.78));
+    if (!blob || blob.size >= file.size) return { blob: file as Blob, fileName: file.name, mimeType: file.type, compressed: false };
+    return { blob, fileName: photoName(file.name), mimeType: "image/jpeg", compressed: true };
+  } catch {
+    bitmap?.close();
+    return { blob: file as Blob, fileName: file.name, mimeType: file.type || "image/jpeg", compressed: false };
   }
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d", { alpha: false });
-  if (!context) {
-    bitmap.close();
-    return { blob: file as Blob, fileName: file.name, mimeType: file.type, compressed: false };
-  }
-  context.drawImage(bitmap, 0, 0, width, height);
-  bitmap.close();
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.78));
-  if (!blob || blob.size >= file.size) return { blob: file as Blob, fileName: file.name, mimeType: file.type, compressed: false };
-  return { blob, fileName: photoName(file.name), mimeType: "image/jpeg", compressed: true };
 }
 
 export async function queueOfflineUpload(input: Omit<OfflineUpload, "id" | "createdAt" | "lastError">) {
@@ -135,11 +142,14 @@ function asFile(upload: OfflineUpload) {
   return new File([upload.file], upload.fileName, { type: upload.mimeType, lastModified: new Date(upload.capturedAt).getTime() });
 }
 
-export async function syncOfflineUploads(
+type OfflineSyncResult = { synced: number; failed: number; paused: boolean };
+const projectSyncLocks = new Map<string, Promise<OfflineSyncResult>>();
+
+async function syncOfflineUploadsUnlocked(
   client: SupabaseClient,
   projectId: string,
   options: { force?: boolean; onItem?: (upload: OfflineUpload, state: "uploading" | "done" | "failed") => void } = {},
-) {
+): Promise<OfflineSyncResult> {
   if (typeof navigator !== "undefined" && !navigator.onLine) return { synced: 0, failed: 0, paused: true };
   if (!options.force && dataSaverEnabled() && connectionIsMetered()) return { synced: 0, failed: 0, paused: true };
   const uploads = await listOfflineUploads(projectId);
@@ -178,6 +188,7 @@ export async function syncOfflineUploads(
         }
       }
       const stored = await uploadProjectFile(client, {
+        fileId: upload.id,
         projectId: upload.projectId,
         buildingId: upload.buildingId,
         folderId,
@@ -204,6 +215,7 @@ export async function syncOfflineUploads(
             disposition: draft.disposition,
             expectedResolutionDate: draft.expectedResolutionDate,
             sourceCatalogSubject: draft.sourceCatalogSubject,
+            idempotencyKey: `offline-finding:${upload.findingGroup.id}`,
           });
           findingId = finding.id;
           findingIds.set(upload.findingGroup.id, findingId);
@@ -239,6 +251,7 @@ export async function syncOfflineUploads(
           disposition: upload.findingDraft.disposition,
           expectedResolutionDate: upload.findingDraft.expectedResolutionDate,
           sourceCatalogSubject: upload.findingDraft.sourceCatalogSubject,
+          idempotencyKey: `offline-finding:${upload.id}`,
         });
         await linkFileToRecord(client, {
           organizationId: upload.findingDraft.organizationId,
@@ -249,20 +262,28 @@ export async function syncOfflineUploads(
           relationship: "before",
         });
       } else if (upload.kind === "photo" || upload.kind === "panorama") {
-        await createVisualCapture(client, {
-          projectId: upload.projectId,
-          buildingId: upload.buildingId,
-          dayReportId: upload.reportId,
-          fileId: stored.fileId,
-          locationNodeId: upload.locationNodeId || undefined,
-          captureType: upload.kind === "panorama" ? "panorama" : "photo",
-          title: upload.title,
-          description: upload.description,
-          locationLabel: upload.locationLabel,
-          tourName: upload.tourName || undefined,
-          tourOrder: upload.tourOrder ?? null,
-          capturedAt: upload.capturedAt,
-        });
+        const existingCapture = await client
+          .from("visual_captures")
+          .select("id")
+          .eq("file_id", stored.fileId)
+          .maybeSingle();
+        if (existingCapture.error) throw existingCapture.error;
+        if (!existingCapture.data) {
+          await createVisualCapture(client, {
+            projectId: upload.projectId,
+            buildingId: upload.buildingId,
+            dayReportId: upload.reportId,
+            fileId: stored.fileId,
+            locationNodeId: upload.locationNodeId || undefined,
+            captureType: upload.kind === "panorama" ? "panorama" : "photo",
+            title: upload.title,
+            description: upload.description,
+            locationLabel: upload.locationLabel,
+            tourName: upload.tourName || undefined,
+            tourOrder: upload.tourOrder ?? null,
+            capturedAt: upload.capturedAt,
+          });
+        }
       }
       await idbDelete("uploads", upload.id);
       options.onItem?.(upload, "done");
@@ -275,4 +296,29 @@ export async function syncOfflineUploads(
     }
   }
   return { synced, failed, paused: false };
+}
+
+export function syncOfflineUploads(
+  client: SupabaseClient,
+  projectId: string,
+  options: { force?: boolean; onItem?: (upload: OfflineUpload, state: "uploading" | "done" | "failed") => void } = {},
+): Promise<OfflineSyncResult> {
+  const running = projectSyncLocks.get(projectId);
+  if (running) {
+    return running.then(async (firstResult) => {
+      await Promise.resolve();
+      if (!(await listOfflineUploads(projectId)).length) return firstResult;
+      const followUp = await syncOfflineUploads(client, projectId, options);
+      return {
+        synced: firstResult.synced + followUp.synced,
+        failed: followUp.failed,
+        paused: firstResult.paused || followUp.paused,
+      };
+    });
+  }
+  const pending = syncOfflineUploadsUnlocked(client, projectId, options);
+  projectSyncLocks.set(projectId, pending);
+  return pending.finally(() => {
+    if (projectSyncLocks.get(projectId) === pending) projectSyncLocks.delete(projectId);
+  });
 }

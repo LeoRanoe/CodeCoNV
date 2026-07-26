@@ -459,6 +459,7 @@ export async function createFinding(client: SupabaseClient, input: {
   disposition?: "validated" | "to_be_corrected" | "alternative_solution";
   expectedResolutionDate?: string;
   sourceCatalogSubject?: string;
+  idempotencyKey?: string;
 }) {
   const result = await client.rpc("create_project_finding", {
     p_project_id: input.projectId,
@@ -472,7 +473,7 @@ export async function createFinding(client: SupabaseClient, input: {
     p_severity: input.severity,
     p_responsible_party_id: input.responsiblePartyId || null,
     p_assigned_user_id: null,
-    p_idempotency_key: `finding:${crypto.randomUUID()}`,
+    p_idempotency_key: input.idempotencyKey ?? `finding:${crypto.randomUUID()}`,
     p_issue_management: {
       issue_type: input.issueType || "quality",
       impact_summary: input.impactSummary?.trim() || "",
@@ -501,7 +502,7 @@ export async function linkFileToRecord(
   const userResult = await client.auth.getUser();
   fail(userResult.error);
   if (!userResult.data.user) throw new Error("Je sessie is verlopen.");
-  const result = await client.from("file_links").insert({
+  const result = await client.from("file_links").upsert({
     organization_id: input.organizationId,
     project_id: input.projectId,
     file_id: input.fileId,
@@ -509,7 +510,7 @@ export async function linkFileToRecord(
     record_id: input.recordId,
     relationship: input.relationship ?? "attachment",
     created_by: userResult.data.user.id,
-  });
+  }, { onConflict: "file_id,record_type,record_id,relationship", ignoreDuplicates: true });
   fail(result.error);
 }
 

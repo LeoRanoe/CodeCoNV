@@ -86,6 +86,7 @@ export function MediaLibraryWorkspace({
   const [savingData, setSavingData] = useState(() => typeof window === "undefined" ? true : dataSaverEnabled());
   const [online, setOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
   const [syncing, setSyncing] = useState(false);
+  const [fieldError, setFieldError] = useState("");
   const folders = useMemo(() => data.mediaFolders.filter((folder) => !folder.building_id || folder.building_id === buildingId), [buildingId, data.mediaFolders]);
   const files = useMemo(() => data.files.filter((file) => file.status === "available" && (!file.building_id || file.building_id === buildingId) && (folderId === "all" || (folderId === "unfiled" ? !file.folder_id : file.folder_id === folderId))), [buildingId, data.files, folderId]);
   const standardFolderNames = kind === "photo"
@@ -132,46 +133,69 @@ export function MediaLibraryWorkspace({
 
   const addFiles = useCallback(async (selected: FileList | File[] | null, preferredFolderName?: string) => {
     if (!selected?.length) return;
-    let targetFolder = folders.some((folder) => folder.id === folderId) ? folderId : null;
-    const automaticFolderName = preferredFolderName ?? (kind === "photo" ? text("Daily progress", "Dagvoortgang") : text("Approved drawings", "Goedgekeurde tekeningen"));
-    if (!targetFolder && navigator.onLine) {
-      const existing = folders.find((folder) => folder.name.toLocaleLowerCase() === automaticFolderName.toLocaleLowerCase());
-      if (existing) {
-        targetFolder = existing.id;
-      } else {
-        const created = await createMediaFolder(client, {
+    setFieldError("");
+    try {
+      let targetFolder = folders.some((folder) => folder.id === folderId) ? folderId : null;
+      const automaticFolderName = preferredFolderName ?? (kind === "photo" ? text("Daily progress", "Dagvoortgang") : text("Approved drawings", "Goedgekeurde tekeningen"));
+      if (!targetFolder && navigator.onLine) {
+        const existing = folders.find((folder) => folder.name.toLocaleLowerCase() === automaticFolderName.toLocaleLowerCase());
+        if (existing) {
+          targetFolder = existing.id;
+        } else {
+          try {
+            const created = await createMediaFolder(client, {
+              projectId,
+              buildingId,
+              name: automaticFolderName,
+              folderType: kind === "photo" ? "images" : "drawings",
+            });
+            targetFolder = created.id;
+            setFolderId(created.id);
+          } catch {
+            // A flaky connection must never prevent the local evidence copy.
+            targetFolder = null;
+          }
+        }
+      }
+      const candidates = Array.from(selected);
+      const valid = candidates.filter((file) => kind === "photo"
+        ? ["image/jpeg", "image/png", "image/webp"].includes(file.type)
+        : ["application/pdf", "image/jpeg", "image/png", "image/webp", "application/dwg", "application/acad", "application/x-acad", "image/vnd.dwg", "application/octet-stream"].includes(file.type || "application/octet-stream")
+          || file.name.toLocaleLowerCase().endsWith(".dwg"));
+      if (!valid.length) throw new Error(text("Choose a supported photo or drawing.", "Kies een ondersteunde foto of tekening."));
+      if (valid.length !== candidates.length) {
+        setFieldError(text("Unsupported files were skipped.", "Niet-ondersteunde bestanden zijn overgeslagen."));
+      }
+      for (const file of valid) {
+        const prepared = kind === "photo" ? await compressFieldPhoto(file, savingData) : { blob: file as Blob, fileName: file.name, mimeType: file.type || "application/octet-stream", compressed: false };
+        await queueOfflineUpload({
           projectId,
           buildingId,
-          name: automaticFolderName,
-          folderType: kind === "photo" ? "images" : "drawings",
+          reportId,
+          folderId: targetFolder,
+          folderName: automaticFolderName,
+          kind,
+          file: prepared.blob,
+          fileName: prepared.fileName,
+          mimeType: prepared.mimeType,
+          title: automaticTitle(file.name),
+          locationLabel: buildingName,
+          capturedAt: new Date(file.lastModified || Date.now()).toISOString(),
+          originalSize: file.size,
+          queuedSize: prepared.blob.size,
+          compressed: prepared.compressed,
         });
-        targetFolder = created.id;
-        setFolderId(created.id);
       }
-    }
-    for (const file of Array.from(selected)) {
-      const prepared = kind === "photo" ? await compressFieldPhoto(file, savingData) : { blob: file as Blob, fileName: file.name, mimeType: file.type || "application/octet-stream", compressed: false };
-      await queueOfflineUpload({
-        projectId,
-        buildingId,
-        reportId,
-        folderId: targetFolder,
-        folderName: automaticFolderName,
-        kind,
-        file: prepared.blob,
-        fileName: prepared.fileName,
-        mimeType: prepared.mimeType,
-        title: automaticTitle(file.name),
-        locationLabel: buildingName,
-        capturedAt: new Date(file.lastModified || Date.now()).toISOString(),
-        originalSize: file.size,
-        queuedSize: prepared.blob.size,
-        compressed: prepared.compressed,
-      });
-    }
-    await reloadQueue();
-    if (navigator.onLine && !(savingData && connectionIsMetered())) {
-      await run(() => synchronize(false), text("Files uploaded and linked automatically.", "Bestanden geupload en automatisch gekoppeld."));
+      await reloadQueue();
+      if (navigator.onLine && !(savingData && connectionIsMetered())) {
+        await run(() => synchronize(false), text("Files uploaded and linked automatically.", "Bestanden geüpload en automatisch gekoppeld."));
+      }
+    } catch (error) {
+      setFieldError(error instanceof Error ? error.message : text(
+        "The field file could not be stored on this device.",
+        "Het veldbestand kon niet op dit apparaat worden opgeslagen.",
+      ));
+      await reloadQueue().catch(() => undefined);
     }
   }, [buildingId, buildingName, client, folderId, folders, kind, projectId, reloadQueue, reportId, run, savingData, synchronize, text]);
 
@@ -236,8 +260,9 @@ export function MediaLibraryWorkspace({
           <span><input value={newFolder} onChange={(event) => setNewFolder(event.target.value)} placeholder={text("Folder name", "Mapnaam")} /><button className="secondary-button" type="button" disabled={busy || newFolder.trim().length < 2} onClick={() => void addFolder(newFolder)}><FolderPlus size={15} /> {text("Create", "Maken")}</button></span>
         </details>
       </div>
+      {fieldError ? <div className="operation-alert error" role="alert"><HardDrive size={17} /> {fieldError}</div> : null}
 
-      {queue.length ? <div className="offline-queue"><div><strong>{queue.length} {text("upload(s) waiting", "upload(s) wachten")}</strong><span>{!online ? text("They synchronize automatically when the connection returns.", "Ze synchroniseren automatisch zodra de verbinding terug is.") : savingData && connectionIsMetered() ? text("Automatic sync is paused on this metered connection.", "Automatische synchronisatie is gepauzeerd op deze databundel.") : text("Automatic synchronization is active.", "Automatische synchronisatie is actief.")}</span></div><button className="secondary-button" type="button" disabled={!online || syncing} onClick={() => void run(() => synchronize(true), text("Offline uploads synchronized.", "Offline uploads gesynchroniseerd."))}>{syncing ? <Loader2 className="spin" size={15} /> : <RefreshCw size={15} />} {text("Sync now", "Nu synchroniseren")}</button><div className="offline-queue-list">{queue.map((upload) => <span key={upload.id}><ImageIcon size={14} /><b>{upload.fileName}</b><small>{humanSize(upload.queuedSize)}{upload.compressed ? ` · ${Math.round((1 - upload.queuedSize / upload.originalSize) * 100)}% bespaard` : ""}</small><button type="button" aria-label={text("Remove queued upload", "Verwijder wachtende upload")} onClick={() => void removeOfflineUpload(upload.id).then(reloadQueue)}><Trash2 size={14} /></button></span>)}</div></div> : null}
+      {queue.length ? <div className="offline-queue"><div><strong>{queue.length} {text("upload(s) waiting", "upload(s) wachten")}</strong><span>{!online ? text("They synchronize automatically when the connection returns.", "Ze synchroniseren automatisch zodra de verbinding terug is.") : savingData && connectionIsMetered() ? text("Automatic sync is paused on this metered connection.", "Automatische synchronisatie is gepauzeerd op deze databundel.") : text("Automatic synchronization is active.", "Automatische synchronisatie is actief.")}</span></div><button className="secondary-button" type="button" disabled={!online || syncing} onClick={() => void run(() => synchronize(true), text("Offline uploads synchronized.", "Offline uploads gesynchroniseerd."))}>{syncing ? <Loader2 className="spin" size={15} /> : <RefreshCw size={15} />} {text("Sync now", "Nu synchroniseren")}</button><div className="offline-queue-list">{queue.map((upload) => <span className={upload.lastError ? "failed" : ""} key={upload.id}><ImageIcon size={14} /><b>{upload.fileName}</b><small title={upload.lastError ?? undefined}>{upload.lastError ? text("Sync failed · tap Sync now", "Sync mislukt · tik op Nu synchroniseren") : humanSize(upload.queuedSize)}{!upload.lastError && upload.compressed ? ` · ${Math.round((1 - upload.queuedSize / upload.originalSize) * 100)}% bespaard` : ""}</small><button type="button" aria-label={text("Remove queued upload", "Verwijder wachtende upload")} onClick={() => { if (window.confirm(text("Remove this unsynchronized field file from this device?", "Dit niet-gesynchroniseerde veldbestand van dit apparaat verwijderen?"))) void removeOfflineUpload(upload.id).then(reloadQueue); }}><Trash2 size={14} /></button></span>)}</div></div> : null}
 
       <div className="media-gallery">
         {files.map((file) => <article className="media-card" key={file.id}>{file.mime_type.startsWith("image/") ? <SecureImage client={client} file={file} /> : <span className="media-file-icon"><HardDrive size={28} /></span>}<div><strong>{file.original_name}</strong><span>{file.category} · {humanSize(file.size_bytes)}</span></div><button type="button" onClick={() => void downloadProjectFile(client, file.id, file.original_name)} aria-label={text("Download file", "Bestand downloaden")}><Download size={15} /></button></article>)}
