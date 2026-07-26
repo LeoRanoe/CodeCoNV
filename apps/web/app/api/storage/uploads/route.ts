@@ -53,12 +53,12 @@ export async function POST(request: Request) {
       return storageJson({ error: "Koppel eerst een private Vercel Blob-store aan dit Vercel-project." }, 503);
     }
 
+    const { user, userClient } = await authenticateStorageRequest(request);
     const input = uploadRequestSchema.safeParse(await request.json().catch(() => null));
     if (!input.success || !allowedMimeTypes.has(input.data?.mimeType ?? "")) {
       return storageJson({ error: "Controleer het bestandstype en de bestandsgegevens." }, 400);
     }
 
-    const { user, userClient } = await authenticateStorageRequest(request);
     const rateLimitResult = await userClient.rpc("consume_security_rate_limit", {
       p_action_code: "blob_upload",
       p_max_requests: 60,

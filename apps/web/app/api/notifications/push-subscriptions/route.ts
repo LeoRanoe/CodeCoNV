@@ -12,9 +12,9 @@ const subscriptionSchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    const { user, userClient } = await authenticateStorageRequest(request);
     const input = subscriptionSchema.safeParse(await request.json().catch(() => null));
     if (!input.success) return storageJson({ error: "Ongeldige pushregistratie." }, 400);
-    const { user, userClient } = await authenticateStorageRequest(request);
     const saved = await userClient.from("push_subscriptions").upsert({
       user_id: user.id,
       endpoint: input.data.endpoint,

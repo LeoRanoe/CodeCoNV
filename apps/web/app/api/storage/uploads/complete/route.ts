@@ -21,10 +21,10 @@ export async function POST(request: Request) {
     if (!isBlobServerConfigured()) {
       return storageJson({ error: "Koppel eerst een private Vercel Blob-store aan dit Vercel-project." }, 503);
     }
+    const { user, userClient } = await authenticateStorageRequest(request);
     const input = completionSchema.safeParse(await request.json().catch(() => null));
     if (!input.success) return storageJson({ error: "De uploadbevestiging is ongeldig." }, 400);
 
-    const { user, userClient } = await authenticateStorageRequest(request);
     const fileResult = await userClient
       .from("files")
       .select("id,project_id,created_by,original_name,mime_type,size_bytes,status,sha256,storage_provider,storage_object_key")

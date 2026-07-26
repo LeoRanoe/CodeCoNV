@@ -15,9 +15,9 @@ const requestSchema = z.object({ projectId: z.uuid() });
 
 export async function POST(request: Request) {
   try {
+    const { userClient } = await authenticateStorageRequest(request);
     const input = requestSchema.safeParse(await request.json().catch(() => null));
     if (!input.success) return storageJson({ error: "Ongeldig project voor meldingen." }, 400);
-    const { userClient } = await authenticateStorageRequest(request);
     const projectResult = await userClient.from("projects").select("id").eq("id", input.data.projectId).maybeSingle();
     if (projectResult.error || !projectResult.data) return storageJson({ error: "Geen toegang tot dit project." }, 403);
     const rateLimit = await userClient.rpc("consume_security_rate_limit", {
