@@ -3952,6 +3952,10 @@ textarea:focus-visible {
     grid-template-columns: 1fr;
   }
 
+  .overview-shortcut.mobile-redundant {
+    display: none;
+  }
+
   .action-overview {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

@@ -64,6 +64,8 @@ daarom een snelinvoercatalogus; pas na menselijke indiening ontstaat een nieuw i
 | Zelf rapport kiezen | De klant kiest eerst management, uitvoering, kwaliteit/HSE, contract/besluiten, visueel of compleet en daarna een vrije begin- en einddatum. Alleen die secties worden in de PDF gevuld. |
 | Dashboard vóór projectkeuze | Een compact portfolio-overzicht toont projecten, planning vandaag, open acties, Issues, NCR en inspecties voordat een project wordt geopend. |
 | Gebouwoverzicht | Iedere gebouwkaart toont eigen voortgang, acties, Issues, NCR, inspecties, TI, CO, fotoaantal en werkzaamheden die vandaag zijn gepland. |
+| Mobile-first werkruimte | De werkruimte opent als één taakgestuurde startpagina: camera als primaire actie, inspectie en probleemmelding direct zichtbaar, tekening/pin als vaste vervolgstap en alle overige modules achter één uitklapper. Een geopend onderdeel toont mobiel alleen terugnavigatie en één compacte sectiekeuze. |
+| Point-and-shoot bewijs | De primaire cameraknoppen openen rechtstreeks de achtercamera. Project, gebouw, datum, tijd en standaardmap worden na de opname automatisch gekoppeld; meerdere foto’s kunnen aan dezelfde inspectie, bevinding of HSE-situatie worden gestapeld. |
 | Zo min mogelijk typen | Werkzaamheden voor vandaag, uitgevoerd werk en planning morgen zijn aanklikbare bouwactiviteiten. De app hergebruikt de keuze automatisch in dagplanning, samenvatting en rapportage. |
 | Tik-arme dagelijkse registratie | Dagstart-risico’s en bezetting, standaardacties en deadlines, statusnotities, dagsamenvattingen, kwaliteits- en HSE-situaties, registeritems, 360°-probleemmarkers, herstelmaatregelen en standaard fotomappen zijn aanklikbaar. Vrije tekst blijft beschikbaar voor uitzonderlijke of contractueel specifieke details. |
 | Foto's en tekeningen offline | Bestanden worden direct in IndexedDB klaargezet, inclusief automatisch project, gebouw, datum, tijd, titel en map; synchronisatie start bij herstel van een geschikte verbinding. |
@@ -78,6 +80,7 @@ daarom een snelinvoercatalogus; pas na menselijke indiening ontstaat een nieuw i
 | Notitieblok en spraak naar tekst | Veldnotities, afspraken en technische instructies kunnen worden getypt of op ondersteunde browsers worden gedicteerd en krijgen automatisch datum en tijd. |
 | Calculator | De veldtools bevatten oppervlakte-, inhouds- en veilige rekenfunctionaliteit zonder `eval`. |
 | Pushmeldingen | Nieuwe deadline-, bevinding-, HSE- en reviewmeldingen komen idempotent in een pushwachtrij; verzendstatus, verlopen apparaten en fouten blijven centraal controleerbaar. E-mail is alleen een later configureerbare, standaard uitgeschakelde fallback. |
+| Dagelijkse back-upbewaking | De beveiligde Vercel-taak maakt idempotente private back-ups. Omdat Hobby-planning binnen een uur mag variëren, controleert de eerste bevoegde CODECO-sessie van de dag aanvullend of de back-up al verified is en start hem anders direct. Alleen een gebruiker met `backup.manage` mag deze watchdog activeren. |
 
 ## Reeds aanwezig en gecontroleerd
 
@@ -125,5 +128,6 @@ Dit zijn geen ontbrekende PDF-functies, maar noodzakelijke configuratie- en acce
 14. Maak een probleemfoto terwijl het toestel offline is, kies een standaardprobleem en verantwoordelijke partij, herstel de verbinding en bevestig dat foto, bevinding en toewijzing samen synchroniseren.
 15. Open **Snel daglog**, wijzig de bezetting met plus/min, kies een standaardnotitie, dicteer een aanvulling en bevestig dat één opslagactie alle gegevens aan het dagrapport koppelt.
 16. Doorloop dagstart, actie, HSE, register, 360°-marker, herstel/verificatie en fotomappen uitsluitend met de aangeboden snelkeuzes; bevestig dat vrije tekst nergens verplicht is zolang een passende standaardoptie bestaat.
+17. Open de werkruimte op 390×844 en op desktop, maak via de primaire knop direct een foto, start een inspectie en meld een probleem; bevestig dat geen horizontale registerbalk of snelactiematrix de mobiele startflow verdringt.
 
 De applicatie mag pas als productie-geaccepteerd worden aangeduid nadat bovenstaande UAT, productieconfiguratie en contractuele ondertekenkeuze zijn afgerond.

@@ -3,9 +3,9 @@
 import {
   Camera,
   CheckCircle2,
-  ClipboardCheck,
   CloudSun,
   HelpCircle,
+  Wrench,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -36,10 +36,10 @@ export function FieldGuide() {
       copy: text("Weather and project context load automatically. Confirm only.", "Weer en projectcontext laden automatisch. Alleen bevestigen."),
     },
     {
-      icon: ClipboardCheck,
+      icon: Wrench,
       number: "02",
-      title: text("Choose the checklist", "Kies de checklist"),
-      copy: text("Recommended project checklists appear first. One tap starts.", "Aanbevolen projectchecklists staan bovenaan. Eén tik start."),
+      title: text("Open the workspace", "Open de werkruimte"),
+      copy: text("Choose photo, inspection, issue or drawing. The app opens only that task.", "Kies foto, inspectie, probleem of tekening. De app opent alleen die taak."),
     },
     {
       icon: CheckCircle2,

@@ -598,6 +598,8 @@ test("keeps the project workspace mobile-first and task driven", async () => {
   assert.match(operations, /Point and shoot[\s\S]*linked automatically/);
   assert.match(styles, /\.workspace-task-hub/);
   assert.match(styles, /\.workspace-desktop-tabs\s*\{\s*display: none/);
+  assert.match(styles, /\.overview-shortcut\.mobile-redundant\s*\{\s*display: none/);
+  assert.match(app, /Project, building, time and folder automatic/);
   assert.doesNotMatch(operations, /field-flow-launcher/);
 });
 
