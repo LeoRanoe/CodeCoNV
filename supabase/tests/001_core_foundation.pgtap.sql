@@ -189,7 +189,7 @@ select has_trigger('public', 'day_closeouts', 'day_closeouts_audit', 'daily clos
 select has_trigger('public', 'drawing_pins', 'drawing_pins_audit', 'drawing pin links are audited');
 select has_trigger('public', 'drawing_markups', 'drawing_markups_audit', 'drawing markup overlays are audited');
 select has_column('public', 'notifications', 'email_status', 'notifications track their email delivery status');
-select is((select count(*) from public.checklist_library_templates), 100::bigint, 'the client checklist catalog contains exactly 100 standards');
+select is((select count(*) from public.checklist_library_templates), 103::bigint, 'the client checklist catalog contains exactly 103 standards');
 
 select results_eq(
   $$

@@ -11,7 +11,12 @@ const gunzip = promisify(gunzipCallback);
 const BACKUP_SCHEMA_VERSION = "202607190003";
 
 function backupStoreToken() {
-  const token = process.env.BACKUP_BLOB_READ_WRITE_TOKEN?.trim() ?? "";
+  // Prefer a dedicated disaster-recovery store. For a field rollout that only
+  // has the existing private Blob store configured, keep backups operational
+  // in the isolated backups/ path instead of silently skipping protection.
+  const token = process.env.BACKUP_BLOB_READ_WRITE_TOKEN?.trim()
+    || process.env.BLOB_READ_WRITE_TOKEN?.trim()
+    || "";
   if (!token) throw new Error("BACKUP_STORE_NOT_CONFIGURED");
   return token;
 }

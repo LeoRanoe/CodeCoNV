@@ -44,6 +44,8 @@ test("server-renders the public CODECO landing page", async () => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   assert.match(response.headers.get("content-security-policy") ?? "", /frame-ancestors 'none'/);
+  assert.match(response.headers.get("content-security-policy") ?? "", /connect-src[^;]*https:\/\/vercel\.com/);
+  assert.match(response.headers.get("content-security-policy") ?? "", /connect-src[^;]*blob:/);
   assert.match(response.headers.get("strict-transport-security") ?? "", /max-age=63072000/);
   assert.equal(response.headers.get("x-content-type-options"), "nosniff");
 
@@ -251,7 +253,9 @@ test("keeps standard photo and validated 360 camera annotation production paths"
   assert.match(workspace, /3840 × 1920/);
   assert.match(workspace, /cameraSourceConfirmed/);
   assert.doesNotMatch(workspace, /Experimental 360°/);
-  assert.match(workspace, /EquirectangularAdapter/);
+  assert.match(workspace, /new core\.Viewer/);
+  assert.match(workspace, /ReadyEvent/);
+  assert.match(workspace, /PanoramaErrorEvent/);
   assert.match(workspace, /xRatio/);
   assert.match(workspace, /yaw/);
   assert.match(workspace, /createVisualAnnotationFinding/);
@@ -376,8 +380,9 @@ test("implements the late client document set as controlled forms and shared rep
 });
 
 test("keeps scheduled backups, retention and daily notification automation enforceable", async () => {
-  const [backupServer, cronRoute, watchdogRoute, backupClient, app, migration, vercel, envExample] = await Promise.all([
+  const [backupServer, storageServer, cronRoute, watchdogRoute, backupClient, app, migration, vercel, envExample] = await Promise.all([
     readFile(new URL("../lib/backups/server.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/storage/server.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/cron/daily/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/backups/ensure-daily/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/backups/client.ts", import.meta.url), "utf8"),
@@ -388,6 +393,7 @@ test("keeps scheduled backups, retention and daily notification automation enfor
   ]);
 
   assert.match(backupServer, /access: "private"/);
+  assert.match(backupServer, /BACKUP_BLOB_READ_WRITE_TOKEN[\s\S]{0,160}BLOB_READ_WRITE_TOKEN/);
   assert.match(backupServer, /await get\(pathname/);
   assert.match(backupServer, /BACKUP_BLOB_CHECKSUM_MISMATCH/);
   assert.match(backupServer, /sorted\.slice\(0, 7\)/);
@@ -401,6 +407,7 @@ test("keeps scheduled backups, retention and daily notification automation enfor
   assert.match(watchdogRoute, /authenticateStorageRequest/);
   assert.match(watchdogRoute, /permission_code", "backup\.manage"/);
   assert.match(watchdogRoute, /runScheduledOrganizationBackup/);
+  assert.match(storageServer, /BACKUP_BLOB_READ_WRITE_TOKEN[\s\S]{0,160}BLOB_READ_WRITE_TOKEN/);
   assert.match(backupClient, /api\/backups\/ensure-daily/);
   assert.match(app, /dailyBackupCheckRef/);
   assert.match(app, /ensureDailyBackup/);

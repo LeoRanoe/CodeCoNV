@@ -1,7 +1,7 @@
 begin;
 set local search_path = extensions, pgtap, public;
 
-select plan(33);
+select plan(41);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at)
 values ('00000000-0000-0000-0000-0000000000e1', 'authenticated', 'authenticated', 'formal-admin@example.test', now(), now());
@@ -123,6 +123,29 @@ select is((select count(*) from public.report_versions), 1::bigint, 'original fr
 select is(public.consume_security_rate_limit('admin_invite', 10, 60), true, 'first protected request is allowed');
 select is((select bool_and(public.consume_security_rate_limit('admin_invite', 10, 60)) from generate_series(1, 9)), true, 'requests through the configured hourly limit are allowed');
 select is(public.consume_security_rate_limit('admin_invite', 10, 60), false, 'request above the hourly limit is rejected');
+select is(public.consume_security_rate_limit('blob_upload', 2, 60), true, 'the first protected Blob upload is allowed');
+select is(public.consume_security_rate_limit('blob_upload', 2, 60), true, 'Blob uploads remain allowed through their configured limit');
+select is(public.consume_security_rate_limit('blob_upload', 2, 60), false, 'a Blob upload above its configured limit is rejected');
+select is(public.consume_security_rate_limit('notification_push_dispatch', 1, 10), true, 'the first protected push dispatch is allowed');
+select is(public.consume_security_rate_limit('notification_push_dispatch', 1, 10), false, 'a push dispatch above its configured limit is rejected');
+select throws_ok(
+  $$select public.consume_security_rate_limit('unknown_action', 1, 60)$$,
+  '22023',
+  'Invalid rate-limit configuration',
+  'an action outside the fixed production allowlist is rejected'
+);
+select throws_ok(
+  $$select public.consume_security_rate_limit('blob_upload', 101, 60)$$,
+  '22023',
+  'Invalid rate-limit configuration',
+  'a caller cannot raise the maximum request guard above one hundred'
+);
+select throws_ok(
+  $$select public.consume_security_rate_limit('blob_upload', 1, 1441)$$,
+  '22023',
+  'Invalid rate-limit configuration',
+  'a caller cannot raise the rate-limit window guard above one day'
+);
 select has_trigger('public', 'files', 'files_storage_state_guard', 'browser file-state changes are guarded by the database');
 select has_trigger('public', 'report_versions', 'report_versions_snapshot_guard', 'formal snapshot integrity is database-enforced');
 

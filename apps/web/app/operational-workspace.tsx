@@ -51,7 +51,7 @@ import { externalShareUrl } from "@/lib/external-share/token.mjs";
 import type { ProjectStartAnswers } from "@/lib/forms/daily-report";
 import { useLanguage } from "@/lib/i18n";
 import { cacheProjectSnapshot, getCachedProjectSnapshot } from "@/lib/offline/project-cache";
-import { compressFieldPhoto, dataSaverEnabled, queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
+import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload } from "@/lib/offline/upload-queue";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import type { FormalReportSnapshot } from "@/lib/reports/daily-report-pdf";
 import type { PeriodReportSection } from "@/lib/reports/period-report-pdf";
@@ -73,6 +73,7 @@ import {
   loadProjectOperations,
   recordDistribution,
   recordFindingProgress,
+  revokeExternalShareLink,
   respondToControlledDocument,
   reviewReport,
   saveProjectSettings,
@@ -245,6 +246,7 @@ export function OperationalWorkspace({
   initialCameraFiles = [],
   onInitialCameraFilesConsumed,
   openQuickCamera,
+  openQuickRegister,
   openProjectArea,
 }: {
   mode: WorkspaceMode;
@@ -267,6 +269,7 @@ export function OperationalWorkspace({
   initialCameraFiles?: File[];
   onInitialCameraFilesConsumed?: () => void;
   openQuickCamera: () => void;
+  openQuickRegister: () => void;
   openProjectArea: (tab: "inspections" | "findings" | "visual" | "files") => void;
 }) {
   const { text } = useLanguage();
@@ -348,6 +351,7 @@ export function OperationalWorkspace({
           initialCameraFiles={initialCameraFiles}
           onInitialCameraFilesConsumed={onInitialCameraFilesConsumed}
           openQuickCamera={openQuickCamera}
+          openQuickRegister={openQuickRegister}
         />
       ) : null}
       {mode === "reports" ? (
@@ -405,6 +409,7 @@ function ProjectOperations({
   initialCameraFiles,
   onInitialCameraFilesConsumed,
   openQuickCamera,
+  openQuickRegister,
 }: {
   data: OperationSnapshot;
   organizationId: string;
@@ -424,6 +429,7 @@ function ProjectOperations({
   initialCameraFiles: File[];
   onInitialCameraFilesConsumed?: () => void;
   openQuickCamera: () => void;
+  openQuickRegister: () => void;
 }) {
   const { language, locale, text } = useLanguage();
   const registerNames = language === "en" ? registerLabelsEnglish : registerLabels;
@@ -637,6 +643,17 @@ function ProjectOperations({
     return existing?.id ?? null;
   };
 
+  const syncQueuedEvidenceNow = () => forceSyncOfflineUploads(client, projectId, {
+    paused: text(
+      "The connection changed before central evidence confirmation. The photos remain safe on this device. Keep this form open, then open Photos & folders and tap Sync now.",
+      "De verbinding veranderde vóór de centrale bewijsbevestiging. De foto’s blijven veilig op dit apparaat. Houd dit formulier open, open daarna Foto’s & mappen en tik op Nu synchroniseren.",
+    ),
+    failed: (pendingCount) => text(
+      `${pendingCount} evidence upload(s) could not be confirmed centrally. They remain safe on this device. Keep this form open, then open Photos & folders and tap Sync now.`,
+      `${pendingCount} bewijsupload(s) konden niet centraal worden bevestigd. Ze blijven veilig op dit apparaat. Houd dit formulier open, open daarna Foto’s & mappen en tik op Nu synchroniseren.`,
+    ),
+  });
+
   const submitInspection = async () => {
     if (!activeInspection || !activeTemplate) return;
     if (activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))) return;
@@ -667,7 +684,7 @@ function ProjectOperations({
               recordLink: { organizationId, recordType: "inspection", recordId: activeInspection.id, relationship: "evidence" },
             });
           }
-          if (navigator.onLine) await syncOfflineUploads(client, projectId, { force: true });
+          if (navigator.onLine) await syncQueuedEvidenceNow();
         }
       },
       text("Inspection completed; every photo is secured locally and linked during automatic sync.", "Inspectie afgerond; elke foto is lokaal veiliggesteld en wordt automatisch gekoppeld."),
@@ -789,7 +806,7 @@ function ProjectOperations({
             },
           });
         }
-        if (navigator.onLine) await syncOfflineUploads(client, projectId, { force: true });
+        if (navigator.onLine) await syncQueuedEvidenceNow();
         return;
       }
       await createFinding(client, draft);
@@ -836,7 +853,7 @@ function ProjectOperations({
               recordLink: { organizationId, recordType: "hse", recordId: event.id, relationship: "evidence" },
             });
           }
-          if (navigator.onLine) await syncOfflineUploads(client, projectId, { force: true });
+          if (navigator.onLine) await syncQueuedEvidenceNow();
         }
       },
       text("HSE event recorded; every photo is secured locally and linked during automatic sync.", "HSE-gebeurtenis vastgelegd; elke foto is lokaal veiliggesteld en wordt automatisch gekoppeld."),
@@ -953,6 +970,11 @@ function ProjectOperations({
               <small>{text("Stack photos and assign directly", "Stapel foto’s en wijs direct toe")}</small>
             </button>
           </div>
+
+          <button className="workspace-register-action" type="button" onClick={openQuickRegister}>
+            <Plus size={20} />
+            <span><strong>{text("Other field record", "Andere veldregistratie")}</strong><small>{text("Activity, delivery, measurement, delay or action", "Activiteit, levering, meting, vertraging of actie")}</small></span>
+          </button>
 
           <button className="workspace-drawing-action" type="button" onClick={() => openTask("drawings")}>
             <FileText size={21} />
@@ -1146,6 +1168,7 @@ function ProjectOperations({
           <FindingList
             findings={data.findings}
             progressUpdates={data.findingProgressUpdates}
+            externalShareLinks={data.externalShareLinks ?? []}
             projectName={projectName}
             projectCode={projectCode}
             buildingName={buildingName}
@@ -1159,15 +1182,21 @@ function ProjectOperations({
             )}
             share={async (finding) => {
               let sharedToken = "";
+              let shareId = "";
               let expiresAt = "";
               const okay = await run(async () => {
                 const created = await createExternalShareLink(client, projectId, "finding", finding.id);
+                shareId = created.share_id;
                 sharedToken = created.token;
                 expiresAt = created.expires_at;
               }, text("Secure external link created.", "Beveiligde externe link aangemaakt."));
-              if (!okay || !sharedToken || !expiresAt) return null;
-              return { url: externalShareUrl(window.location.origin, sharedToken), expiresAt };
+              if (!okay || !shareId || !sharedToken || !expiresAt) return null;
+              return { shareId, url: externalShareUrl(window.location.origin, sharedToken), expiresAt };
             }}
+            revoke={(shareId) => run(
+              () => revokeExternalShareLink(client, shareId),
+              text("External link revoked. A previously sent WhatsApp link no longer works.", "Externe link ingetrokken. Een eerder verstuurde WhatsApp-link werkt niet meer."),
+            )}
           />
         </section>
       ) : null}
@@ -1330,9 +1359,10 @@ function FindingPhotoPreview({ file }: { file: File }) {
   return <NextImage src={source} alt="" width={160} height={110} unoptimized />;
 }
 
-function FindingList({ findings, progressUpdates, projectName, projectCode, buildingName, currentUserName, parties, busy, transition, recordProgress, share }: {
+function FindingList({ findings, progressUpdates, externalShareLinks, projectName, projectCode, buildingName, currentUserName, parties, busy, transition, recordProgress, share, revoke }: {
   findings: Finding[];
   progressUpdates: OperationSnapshot["findingProgressUpdates"];
+  externalShareLinks: NonNullable<OperationSnapshot["externalShareLinks"]>;
   projectName: string;
   projectCode: string;
   buildingName: string;
@@ -1341,7 +1371,8 @@ function FindingList({ findings, progressUpdates, projectName, projectCode, buil
   busy: boolean;
   transition: (finding: Finding, nextStatus: string, note: string, finalMeasure: string) => Promise<boolean>;
   recordProgress: (finding: Finding, progressPercent: number, disposition: "validated" | "to_be_corrected" | "alternative_solution", note: string) => Promise<boolean>;
-  share: (finding: Finding) => Promise<{ url: string; expiresAt: string } | null>;
+  share: (finding: Finding) => Promise<{ shareId: string; url: string; expiresAt: string } | null>;
+  revoke: (shareId: string) => Promise<boolean>;
 }) {
   const { language, locale, text } = useLanguage();
   const statusLabels = language === "en" ? findingStatusLabelsEnglish : findingStatusLabels;
@@ -1353,7 +1384,8 @@ function FindingList({ findings, progressUpdates, projectName, projectCode, buil
   const [progressDisposition, setProgressDisposition] = useState<"validated" | "to_be_corrected" | "alternative_solution">("to_be_corrected");
   const [progressNote, setProgressNote] = useState("");
   const [creatingShareFor, setCreatingShareFor] = useState<string | null>(null);
-  const [externalShare, setExternalShare] = useState<{ findingId: string; url: string; expiresAt: string } | null>(null);
+  const [externalShare, setExternalShare] = useState<{ findingId: string; shareId: string; url: string; expiresAt: string } | null>(null);
+  const [revokeConfirmId, setRevokeConfirmId] = useState<string | null>(null);
   const [shareFeedback, setShareFeedback] = useState("");
   const next: Record<string, string> = { open: "in_progress", assigned: "in_progress", reopened: "in_progress", in_progress: "ready_for_verification", ready_for_verification: "closed" };
   const noteChoices: Record<string, string[]> = {
@@ -1390,6 +1422,12 @@ function FindingList({ findings, progressUpdates, projectName, projectCode, buil
         const nextStatus = next[finding.status];
         const latestProgress = progressUpdates.find((item) => item.finding_id === finding.id);
         const issue = finding.issue_management ?? {};
+        const activeExternalShares = externalShareLinks.filter((item) =>
+          item.source_type === "finding"
+          && item.source_id === finding.id
+          && !item.revoked_at
+          && new Date(item.expires_at).getTime() > Date.now()
+        );
         return (
           <article className="finding-card" key={finding.id}>
             <div className="finding-card-main"><span className={`record-severity ${finding.severity}`}>{finding.severity}</span><div><span className="record-number">{finding.finding_number} · {finding.finding_type.toUpperCase()}</span><h3>{finding.title}</h3><p>{finding.description}</p>{issue.action_steps ? <p className="finding-required-action"><strong>{text("Required action:", "Vereiste actie:")}</strong> {issue.action_steps}</p> : null}<small>Deadline {formatDate(finding.due_at, locale)}{latestProgress ? ` · ${text("progress", "voortgang")} ${latestProgress.progress_percent}% · ${latestProgress.disposition.replaceAll("_", " ")}` : ""}{finding.verified_at ? ` · ${text("verified", "geverifieerd")} ${formatDate(finding.verified_at, locale)}` : ""}</small></div><span className={`task-status ${finding.status === "closed" ? "green" : finding.severity === "critical" ? "red" : ""}`}>{statusLabels[finding.status] ?? finding.status}</span></div>
@@ -1402,6 +1440,29 @@ function FindingList({ findings, progressUpdates, projectName, projectCode, buil
               {!["closed", "cancelled", "rejected"].includes(finding.status) ? <button className="secondary-button" type="button" onClick={() => { setProgressActive(progressActive === finding.id ? null : finding.id); setProgressPercent(String(latestProgress?.progress_percent ?? 0)); setProgressDisposition(latestProgress?.disposition ?? issue.disposition ?? "to_be_corrected"); }}>{text("Record inspection progress", "Inspectievoortgang vastleggen")}</button> : null}
               {nextStatus ? <button className="secondary-button" type="button" onClick={() => setActive(active === finding.id ? null : finding.id)}>{nextStatus === "closed" ? text("Verify", "Verifiëren") : nextStatus === "ready_for_verification" ? text("Mark repair ready", "Herstel gereedmelden") : text("Update status", "Status bijwerken")}</button> : null}
             </div>
+            {activeExternalShares.length ? (
+              <section className="active-external-shares" aria-label={text("Active external links", "Actieve externe links")}>
+                <header><Link2 size={16} /><span><strong>{text(`${activeExternalShares.length} active external link${activeExternalShares.length === 1 ? "" : "s"}`, `${activeExternalShares.length} actieve externe link${activeExternalShares.length === 1 ? "" : "s"}`)}</strong><small>{text("The raw link is shown only once when it is created. It can always be revoked here.", "De ruwe link wordt alleen bij het aanmaken getoond. Intrekken kan hier altijd.")}</small></span></header>
+                {activeExternalShares.map((shared) => (
+                  <div className="active-external-share-row" key={shared.id}>
+                    <span><strong>{text("Expires", "Vervalt")} {formatDate(shared.expires_at, locale)}</strong><small>{text(`${shared.view_count} view${shared.view_count === 1 ? "" : "s"}`, `${shared.view_count} keer bekeken`)}</small></span>
+                    {revokeConfirmId === shared.id ? (
+                      <div className="revoke-share-confirm">
+                        <small>{text("The sent link stops immediately.", "De verstuurde link stopt direct.")}</small>
+                        <button className="ghost-button" type="button" onClick={() => setRevokeConfirmId(null)}>{text("Cancel", "Annuleer")}</button>
+                        <button className="danger-button" type="button" disabled={busy} onClick={() => void revoke(shared.id).then((okay) => {
+                          if (!okay) return;
+                          setRevokeConfirmId(null);
+                          if (externalShare?.shareId === shared.id) setExternalShare(null);
+                        })}>{text("Confirm revoke", "Intrekken bevestigen")}</button>
+                      </div>
+                    ) : (
+                      <button className="revoke-share-button" type="button" onClick={() => setRevokeConfirmId(shared.id)}>{text("Revoke link", "Link intrekken")}</button>
+                    )}
+                  </div>
+                ))}
+              </section>
+            ) : null}
             {externalShare?.findingId === finding.id ? (
               <section className="external-share-preflight" aria-label={text("External party link ready", "Link voor externe partij klaar")}>
                 <div className="external-share-preflight-heading"><span><Link2 size={18} /></span><div><strong>{text("Ready to send · recipient needs no account", "Klaar om te sturen · ontvanger heeft geen account nodig")}</strong><small>{text("Only this workpoint and its evidence are shared.", "Alleen dit werkpunt en het bijbehorende bewijs worden gedeeld.")}</small></div><button type="button" aria-label={text("Close external link panel", "Sluit extern-linkpaneel")} onClick={() => setExternalShare(null)}><X size={16} /></button></div>
@@ -1415,6 +1476,7 @@ function FindingList({ findings, progressUpdates, projectName, projectCode, buil
                 <div className="external-share-preflight-actions">
                   <button className="secondary-button" type="button" onClick={() => void copyToClipboard(externalShare.url).then(() => setShareFeedback(text("Link copied.", "Link gekopieerd."))).catch((error) => setShareFeedback(messageFrom(error)))}><Copy size={16} /> {text("Copy link", "Kopieer link")}</button>
                   <button className="whatsapp-button" type="button" onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(externalMessage(finding, externalShare))}`, "_blank", "noopener,noreferrer")}><MessageCircle size={17} /> {text("Open WhatsApp and send", "Open WhatsApp en stuur")}</button>
+                  <button className="revoke-share-button" type="button" onClick={() => setRevokeConfirmId(externalShare.shareId)}><X size={16} /> {text("Revoke link", "Link intrekken")}</button>
                 </div>
               </section>
             ) : null}
@@ -1459,42 +1521,83 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
     { id: "visual", title: text("Visual progress report", "Visueel voortgangsrapport"), sections: ["visual", "work"] },
   ];
   const [reportChoice, setReportChoice] = useState("complete");
+  const [reportView, setReportView] = useState<"create" | "workflow" | "history">("create");
+  const [periodPreset, setPeriodPreset] = useState<"day" | "week" | "month" | "custom">("month");
   const [periodLabel, setPeriodLabel] = useState(() => text("Monthly supervision report", "Maandelijks supervisierapport"));
   const selectedReport = reportChoices.find((choice) => choice.id === reportChoice) ?? reportChoices[0];
-  const applyDatePreset = (days: number, label: string) => {
+  const applyDatePreset = (days: number, label: string, preset: "day" | "week") => {
     const start = new Date(`${today}T12:00:00-03:00`);
     start.setDate(start.getDate() - Math.max(0, days - 1));
     setPeriod({ start: new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(start), end: today });
     setPeriodLabel(label);
+    setPeriodPreset(preset);
   };
   const canReview = reportStatus === "ready_for_review" || reportStatus === "in_review";
   const canSign = reportStatus === "approved" || reportStatus === "signed";
   const canDistribute = reportStatus === "signed" || reportStatus === "sent";
+  const reportViews = [
+    { id: "create" as const, icon: CalendarRange, title: text("Create report", "Rapport maken"), copy: text("Choose content and period", "Kies inhoud en periode") },
+    { id: "workflow" as const, icon: FileCheck2, title: text("Review & sign", "Review & onderteken"), copy: text("Controlled formal steps", "Beheerste formele stappen") },
+    { id: "history" as const, icon: Archive, title: text("Versions & history", "Versies & historie"), copy: text("Fixed audit trail", "Vast controlespoor") },
+  ];
+  const workflowStep = canReview ? 1 : reportStatus === "approved" ? 2 : ["signed", "sent"].includes(reportStatus) ? 3 : 0;
+  const workflowGuidance = !reportId
+    ? text("Start the daily report through Project start first.", "Start eerst het dagrapport via Projectstart.")
+    : ["draft", "in_progress", "returned"].includes(reportStatus)
+      ? text("Next: open Overview, complete the daily questions and choose Check report → Ready for review.", "Volgende stap: open Overzicht, rond de dagvragen af en kies Rapport controleren → Gereed voor review.")
+      : canReview
+        ? text("Next: an authorized reviewer records a comment and approves or returns this version.", "Volgende stap: een bevoegde reviewer legt een commentaar vast en keurt deze versie goed of stuurt haar terug.")
+        : reportStatus === "approved"
+          ? text("Review is complete. Record the signing declaration for the fixed report version.", "De review is afgerond. Leg nu de ondertekenverklaring voor de vastgezette rapportversie vast.")
+          : reportStatus === "signed"
+            ? text("The declaration is recorded. Register only a distribution that actually took place.", "De verklaring is vastgelegd. Registreer nu alleen een distributie die werkelijk heeft plaatsgevonden.")
+            : reportStatus === "sent"
+              ? text("The formal flow is complete. Additional real recipients may be recorded here; the immutable version remains in History.", "De formele flow is afgerond. Extra werkelijke ontvangers kunnen hier worden geregistreerd; de onveranderbare versie blijft in Historie.")
+              : text("This report status has no formal action available. Check History or return to Overview.", "Voor deze rapportstatus is geen formele actie beschikbaar. Controleer Historie of ga terug naar Overzicht.");
   return (
     <>
-      <header className="secondary-header"><div><p className="eyebrow">{text("Formal report workflow", "Formele rapportworkflow")}</p><h1>{reportNumber}</h1><p>{text("Immutable version, review, declarations, distribution and revision history.", "Immutable versie, review, verklaringen, distributie en revisiehistorie.")}</p></div><span className={`report-state-pill ${reportStatus}`}>{statusLabels[reportStatus] ?? reportStatus}</span></header>
-      <section className="period-report-card">
-        <div className="workflow-icon"><CalendarRange size={20} /></div>
-        <div className="period-report-copy"><span className="record-number">{text("Required client period report", "Verplicht klant-perioderapport")}</span><h2>{text("Daily, weekly, monthly or freely selected period", "Dagelijks, wekelijks, maandelijks of vrij gekozen periode")}</h2><p>{text("The PDF is generated from one permission-filtered server snapshot and includes workforce, progress, inspections, findings/NCR, HSE, deliveries, delays, technical instructions, change orders, agreements, deadlines and visual evidence.", "De PDF komt uit één rechten-gefilterde servermomentopname en bevat bezetting, voortgang, inspecties, bevindingen/NCR, HSE, leveringen, vertragingen, technische instructies, change orders, afspraken, deadlines en visueel bewijs.")}</p></div>
-        <div className="period-report-types" role="radiogroup" aria-label={text("Report type", "Rapporttype")}>{reportChoices.map((choice) => <button className={reportChoice === choice.id ? "active" : ""} type="button" role="radio" aria-checked={reportChoice === choice.id} onClick={() => setReportChoice(choice.id)} key={choice.id}><strong>{choice.title}</strong><span>{choice.sections.length} {text("automatic sections", "automatische onderdelen")}</span></button>)}</div>
-        <div className="period-date-presets"><button type="button" onClick={() => applyDatePreset(1, text("Daily supervision report", "Dagelijks supervisierapport"))}>{text("Daily format", "Dagformaat")}</button><button type="button" onClick={() => applyDatePreset(7, text("Weekly supervision report", "Wekelijks supervisierapport"))}>{text("Weekly format", "Weekformaat")}</button><button type="button" onClick={() => { setPeriod({ start: `${today.slice(0, 8)}01`, end: today }); setPeriodLabel(text("Monthly supervision report", "Maandelijks supervisierapport")); }}>{text("Monthly format", "Maandformaat")}</button></div>
-        <label className="form-field"><span>{text("From", "Van")}</span><input type="date" value={period.start} max={period.end} onChange={(event) => { setPeriod({ ...period, start: event.target.value }); setPeriodLabel(text("Period supervision report", "Supervisierapport over periode")); }} /></label>
-        <label className="form-field"><span>{text("Through", "Tot en met")}</span><input type="date" value={period.end} min={period.start} max={today} onChange={(event) => { setPeriod({ ...period, end: event.target.value }); setPeriodLabel(text("Period supervision report", "Supervisierapport over periode")); }} /></label>
-        <button className="primary-button" type="button" disabled={busy || !period.start || !period.end || period.end < period.start} onClick={() => void run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, period.start, period.end); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { sections: selectedReport.sections, reportTitle: `${periodLabel} · ${selectedReport.title}` }); }, text(`${periodLabel} for ${projectName} downloaded.`, `${periodLabel} voor ${projectName} gedownload.`))}><FileText size={15} /> {text("Create selected report", "Maak gekozen rapport")}</button>
-      </section>
-      {!reportId ? <div className="operation-alert warning"><AlertTriangle size={18} /> {text("Start the daily report through Project start first.", "Start eerst het dagrapport via Projectstart.")}</div> : null}
-      <section className="workflow-grid">
-        <div className="workflow-card"><div className="workflow-icon"><ClipboardCheck size={19} /></div><h2>1. Review</h2><p>{text("An authorized reviewer approves or returns the report with a reason. Approval automatically freezes the complete snapshot with SHA-256.", "Een bevoegde reviewer keurt goed of stuurt gemotiveerd terug. Bij goedkeuring bevriest de database automatisch de volledige momentopname met SHA-256.")}</p><label className="form-field"><span>{text("Review comment", "Reviewcommentaar")}</span><textarea rows={3} value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} /></label><div className="button-row"><button className="secondary-button" type="button" disabled={busy || !reportId || !canReview || reviewComment.trim().length < 2} onClick={() => void run(() => reviewReport(client, reportId!, "returned", reviewComment), text("Report returned for correction with a reason.", "Rapport gemotiveerd teruggestuurd voor correctie."))}>{text("Return", "Terugsturen")}</button><button className="primary-button" type="button" disabled={busy || !reportId || !canReview || reviewComment.trim().length < 2} onClick={() => void run(() => reviewReport(client, reportId!, "approved", reviewComment), text("Report approved and frozen as an immutable version.", "Rapport goedgekeurd en als immutable versie vastgezet."))}><FileCheck2 size={15} /> {text("Approve and freeze", "Goedkeuren & vastzetten")}</button></div></div>
-        <div className="workflow-card"><div className="workflow-icon"><FileCheck2 size={19} /></div><h2>2. {text("Signing declaration", "Ondertekenverklaring")}</h2><p>{text("Identity, project role, version hash and declaration remain append-only. The legal level remains", "Identiteit, projectrol, versiehash en verklaring blijven append-only bewaard. Het juridische niveau blijft")} <strong>contract pending</strong> {text("until CODECO formally decides.", "totdat CODECO dit formeel kiest.")}</p><label className="form-field"><span>{text("Sign as", "Onderteken als")}</span><select value={signerRole} onChange={(event) => setSignerRole(event.target.value)}><option value="supervisor">Supervisor</option><option value="project_manager">{text("Project manager", "Projectleider")}</option><option value="lead_supervisor">Lead supervisor</option><option value="contractor">{text("Contractor", "Aannemer")}</option><option value="client">{text("Client", "Opdrachtgever")}</option><option value="quality_hse_manager">{text("Quality/HSE", "Kwaliteit/HSE")}</option></select></label><label className="form-field"><span>{text("Declaration", "Verklaring")}</span><textarea rows={3} value={declaration} onChange={(event) => setDeclaration(event.target.value)} /></label><button className="primary-button" type="button" disabled={busy || !reportId || !canSign || declaration.trim().length < 10} onClick={() => void run(() => signReport(client, reportId!, signerRole, currentUserName, declaration), text("Signing declaration immutably linked to the report version.", "Ondertekenverklaring onveranderbaar aan de rapportversie gekoppeld."))}><FileCheck2 size={15} /> {text("Record declaration", "Verklaring vastleggen")}</button></div>
-        <div className="workflow-card"><div className="workflow-icon"><Users size={19} /></div><h2>3. {text("Distribution", "Distributie")}</h2><p>{text("Only record a delivery that actually occurred. Without an email connector, the app does not claim automatic delivery.", "Registreer alleen een verzending die werkelijk heeft plaatsgevonden. De app claimt zonder e-mailconnector geen automatische bezorging.")}</p><label className="form-field"><span>{text("Recipient", "Ontvanger")}</span><input value={distribution.name} onChange={(event) => setDistribution({ ...distribution, name: event.target.value })} /></label><label className="form-field"><span>{text("Address / reference", "Adres / referentie")}</span><input value={distribution.address} onChange={(event) => setDistribution({ ...distribution, address: event.target.value })} /></label><label className="form-field"><span>{text("Channel", "Kanaal")}</span><select value={distribution.channel} onChange={(event) => setDistribution({ ...distribution, channel: event.target.value })}><option value="manual">{text("Manual transfer", "Handmatige overdracht")}</option><option value="email">{text("Email (sent externally)", "E-mail (extern verzonden)")}</option><option value="download">{text("Secure download", "Beveiligde download")}</option></select></label><button className="primary-button" type="button" disabled={busy || !reportId || !canDistribute || distribution.name.trim().length < 2 || distribution.address.trim().length < 3} onClick={() => void run(() => recordDistribution(client, reportId!, distribution.name, distribution.address, distribution.channel), text("Traceable distribution record added to the fixed version.", "Aantoonbare distributieregel aan de vastgezette versie toegevoegd."))}><FileText size={15} /> {text("Record distribution", "Distributie registreren")}</button></div>
-      </section>
-      <section className="report-history-grid">
-        <HistoryColumn title={text("Fixed versions", "Vastgezette versies")} empty={text("No immutable version yet.", "Nog geen immutable versie.")} rows={data.reportVersions.map((version) => <div className="history-version" key={version.id}><span>{text("Revision", "Revisie")} {version.revision} · {formatDate(version.created_at, locale)} · SHA {version.sha256.slice(0, 12)}…</span><button className="secondary-button" type="button" disabled={busy} onClick={() => void run(async () => { const { downloadFormalReportPdf } = await import("@/lib/reports/daily-report-pdf"); await downloadFormalReportPdf(version.snapshot as FormalReportSnapshot, version.revision, version.sha256); }, text(`Formal revision ${version.revision} downloaded directly from the immutable snapshot.`, `Formele revisie ${version.revision} rechtstreeks uit de immutable snapshot gedownload.`))}><FileText size={14} /> {text("Formal PDF", "Formele PDF")}</button></div>)} />
-        <HistoryColumn title="Reviews" empty={text("No review decision yet.", "Nog geen reviewbesluit.")} rows={data.reportReviews.map((review) => `${statusLabels[review.decision] ?? review.decision} · ${review.comment} · ${formatDate(review.created_at, locale)}`)} />
-        <HistoryColumn title={text("Declarations", "Verklaringen")} empty={text("No signing declaration yet.", "Nog geen ondertekenverklaring.")} rows={data.reportSignatures.map((signature) => `${signature.signer_name} · ${signature.signer_role} · ${formatDate(signature.signed_at, locale)}`)} />
-        <HistoryColumn title={text("Distribution", "Distributie")} empty={text("No delivery recorded yet.", "Nog geen verzending geregistreerd.")} rows={data.reportDistributions.map((item) => `${item.recipient_name} · ${item.channel} · ${item.status}`)} />
-      </section>
-      {reportStatus === "approved" || reportStatus === "signed" || reportStatus === "sent" ? <div className="revision-bar"><div><strong>{text("Correction after freezing?", "Correctie na vastzetten?")}</strong><span>{text("The original version remains; corrections start a new revision.", "De oorspronkelijke versie blijft bestaan; correcties starten een nieuwe revisie.")}</span></div><input value={revisionReason} onChange={(event) => setRevisionReason(event.target.value)} placeholder={text("Required revision reason", "Verplichte revisiereden")} /><button className="secondary-button" type="button" disabled={busy || !reportId || revisionReason.trim().length < 5} onClick={() => void run(() => startRevision(client, reportId!, revisionReason), text("New report revision started; the original version remains immutable.", "Nieuwe rapportrevisie gestart; de oorspronkelijke versie blijft immutable."))}><RotateCcw size={15} /> {text("Start revision", "Start revisie")}</button></div> : null}
+      <header className="secondary-header report-page-header"><div><p className="eyebrow">{text("Reports", "Rapporten")}</p><h1>{text("Client reports", "Klantrapporten")}</h1><p>{text("Create the right PDF first. Formal approval and history stay available in their own clear steps.", "Maak eerst de juiste PDF. Formele goedkeuring en historie blijven beschikbaar in eigen duidelijke stappen.")}</p></div><div className="report-header-state"><span className="record-number">{reportNumber}</span><span className={`report-state-pill ${reportStatus}`}>{statusLabels[reportStatus] ?? reportStatus}</span></div></header>
+      <nav className="report-section-tabs" role="tablist" aria-label={text("Report workspace", "Rapportwerkruimte")}>
+        {reportViews.map((view) => {
+          const Icon = view.icon;
+          return <button className={reportView === view.id ? "active" : ""} type="button" role="tab" aria-selected={reportView === view.id} onClick={() => setReportView(view.id)} key={view.id}><Icon size={18} /><span><strong>{view.title}</strong><small>{view.copy}</small></span></button>;
+        })}
+      </nav>
+      {reportView === "create" ? (
+        <section className="period-report-card">
+          <div className="workflow-icon"><CalendarRange size={20} /></div>
+          <div className="period-report-copy"><span className="record-number">{text("Automatic client output", "Automatische klantoutput")}</span><h2>{text("Choose what the client needs", "Kies wat de klant nodig heeft")}</h2><p>{text("The app compiles one consistent snapshot from workforce, progress, inspections, findings, HSE, deliveries, delays, controlled documents and visual evidence.", "De app stelt één consistente momentopname samen uit bezetting, voortgang, inspecties, bevindingen, HSE, leveringen, vertragingen, beheerde documenten en visueel bewijs.")}</p></div>
+          <div className="period-report-types" role="radiogroup" aria-label={text("Report type", "Rapporttype")}>{reportChoices.map((choice) => <button className={reportChoice === choice.id ? "active" : ""} type="button" role="radio" aria-checked={reportChoice === choice.id} onClick={() => setReportChoice(choice.id)} key={choice.id}><strong>{choice.title}</strong><span>{choice.sections.length} {text("automatic sections", "automatische onderdelen")}</span></button>)}</div>
+          <div className="period-date-presets"><span>{text("Quick period", "Snelle periode")}</span><button className={periodPreset === "day" ? "active" : ""} type="button" aria-pressed={periodPreset === "day"} onClick={() => applyDatePreset(1, text("Daily supervision report", "Dagelijks supervisierapport"), "day")}>{text("Today", "Vandaag")}</button><button className={periodPreset === "week" ? "active" : ""} type="button" aria-pressed={periodPreset === "week"} onClick={() => applyDatePreset(7, text("Weekly supervision report", "Wekelijks supervisierapport"), "week")}>{text("Last 7 days", "Laatste 7 dagen")}</button><button className={periodPreset === "month" ? "active" : ""} type="button" aria-pressed={periodPreset === "month"} onClick={() => { setPeriod({ start: `${today.slice(0, 8)}01`, end: today }); setPeriodLabel(text("Monthly supervision report", "Maandelijks supervisierapport")); setPeriodPreset("month"); }}>{text("This month", "Deze maand")}</button>{periodPreset === "custom" ? <em>{text("Custom period", "Vrije periode")}</em> : null}</div>
+          <label className="form-field"><span>{text("From", "Van")}</span><input type="date" value={period.start} max={period.end} onChange={(event) => { setPeriod({ ...period, start: event.target.value }); setPeriodLabel(text("Period supervision report", "Supervisierapport over periode")); setPeriodPreset("custom"); }} /></label>
+          <label className="form-field"><span>{text("Through", "Tot en met")}</span><input type="date" value={period.end} min={period.start} max={today} onChange={(event) => { setPeriod({ ...period, end: event.target.value }); setPeriodLabel(text("Period supervision report", "Supervisierapport over periode")); setPeriodPreset("custom"); }} /></label>
+          <button className="primary-button report-create-button" type="button" disabled={busy || !period.start || !period.end || period.end < period.start} onClick={() => void run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, period.start, period.end); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { sections: selectedReport.sections, reportTitle: `${periodLabel} · ${selectedReport.title}` }); }, text(`${periodLabel} for ${projectName} downloaded.`, `${periodLabel} voor ${projectName} gedownload.`))}><FileText size={15} /> {text("Create and download PDF", "Maak en download PDF")}</button>
+        </section>
+      ) : null}
+      {reportView === "workflow" ? (
+        <>
+          <div className={`operation-alert report-next-step ${workflowStep ? "success" : "warning"}`} role="status">
+            {workflowStep ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
+            <div><strong>{text("Current next step", "Huidige volgende stap")}</strong><span>{workflowGuidance}</span></div>
+          </div>
+          <section className="workflow-grid">
+            <div className={`workflow-card ${workflowStep === 1 ? "current" : workflowStep > 1 ? "complete" : "locked"}`}><div className="workflow-icon"><ClipboardCheck size={19} /></div><h2>1. Review</h2><p>{text("An authorized reviewer approves or returns the report with a reason. Approval automatically freezes the complete snapshot with SHA-256.", "Een bevoegde reviewer keurt goed of stuurt gemotiveerd terug. Bij goedkeuring bevriest de database automatisch de volledige momentopname met SHA-256.")}</p><label className="form-field"><span>{text("Review comment", "Reviewcommentaar")}</span><textarea rows={3} value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} /></label><div className="button-row"><button className="secondary-button" type="button" disabled={busy || !reportId || !canReview || reviewComment.trim().length < 2} onClick={() => void run(() => reviewReport(client, reportId!, "returned", reviewComment), text("Report returned for correction with a reason.", "Rapport gemotiveerd teruggestuurd voor correctie."))}>{text("Return", "Terugsturen")}</button><button className="primary-button" type="button" disabled={busy || !reportId || !canReview || reviewComment.trim().length < 2} onClick={() => void run(() => reviewReport(client, reportId!, "approved", reviewComment), text("Report approved and frozen as an immutable version.", "Rapport goedgekeurd en als immutable versie vastgezet."))}><FileCheck2 size={15} /> {text("Approve and freeze", "Goedkeuren & vastzetten")}</button></div></div>
+            <div className={`workflow-card ${workflowStep === 2 ? "current" : workflowStep > 2 ? "complete" : "locked"}`}><div className="workflow-icon"><FileCheck2 size={19} /></div><h2>2. {text("Signing declaration", "Ondertekenverklaring")}</h2><p>{text("Identity, project role, version hash and declaration remain append-only. The legal level remains", "Identiteit, projectrol, versiehash en verklaring blijven append-only bewaard. Het juridische niveau blijft")} <strong>contract pending</strong> {text("until CODECO formally decides.", "totdat CODECO dit formeel kiest.")}</p><label className="form-field"><span>{text("Sign as", "Onderteken als")}</span><select value={signerRole} onChange={(event) => setSignerRole(event.target.value)}><option value="supervisor">Supervisor</option><option value="project_manager">{text("Project manager", "Projectleider")}</option><option value="lead_supervisor">Lead supervisor</option><option value="contractor">{text("Contractor", "Aannemer")}</option><option value="client">{text("Client", "Opdrachtgever")}</option><option value="quality_hse_manager">{text("Quality/HSE", "Kwaliteit/HSE")}</option></select></label><label className="form-field"><span>{text("Declaration", "Verklaring")}</span><textarea rows={3} value={declaration} onChange={(event) => setDeclaration(event.target.value)} /></label><button className="primary-button" type="button" disabled={busy || !reportId || !canSign || declaration.trim().length < 10} onClick={() => void run(() => signReport(client, reportId!, signerRole, currentUserName, declaration), text("Signing declaration immutably linked to the report version.", "Ondertekenverklaring onveranderbaar aan de rapportversie gekoppeld."))}><FileCheck2 size={15} /> {text("Record declaration", "Verklaring vastleggen")}</button></div>
+            <div className={`workflow-card ${workflowStep === 3 ? "current" : "locked"}`}><div className="workflow-icon"><Users size={19} /></div><h2>3. {text("Distribution", "Distributie")}</h2><p>{text("Only record a delivery that actually occurred. Without an email connector, the app does not claim automatic delivery.", "Registreer alleen een verzending die werkelijk heeft plaatsgevonden. De app claimt zonder e-mailconnector geen automatische bezorging.")}</p><label className="form-field"><span>{text("Recipient", "Ontvanger")}</span><input value={distribution.name} onChange={(event) => setDistribution({ ...distribution, name: event.target.value })} /></label><label className="form-field"><span>{text("Address / reference", "Adres / referentie")}</span><input value={distribution.address} onChange={(event) => setDistribution({ ...distribution, address: event.target.value })} /></label><label className="form-field"><span>{text("Channel", "Kanaal")}</span><select value={distribution.channel} onChange={(event) => setDistribution({ ...distribution, channel: event.target.value })}><option value="manual">{text("Manual transfer", "Handmatige overdracht")}</option><option value="email">{text("Email (sent externally)", "E-mail (extern verzonden)")}</option><option value="download">{text("Secure download", "Beveiligde download")}</option></select></label><button className="primary-button" type="button" disabled={busy || !reportId || !canDistribute || distribution.name.trim().length < 2 || distribution.address.trim().length < 3} onClick={() => void run(() => recordDistribution(client, reportId!, distribution.name, distribution.address, distribution.channel), text("Traceable distribution record added to the fixed version.", "Aantoonbare distributieregel aan de vastgezette versie toegevoegd."))}><FileText size={15} /> {text("Record distribution", "Distributie registreren")}</button></div>
+          </section>
+        </>
+      ) : null}
+      {reportView === "history" ? (
+        <>
+          <section className="report-history-grid">
+            <HistoryColumn title={text("Fixed versions", "Vastgezette versies")} empty={text("No immutable version yet.", "Nog geen immutable versie.")} rows={data.reportVersions.map((version) => <div className="history-version" key={version.id}><span>{text("Revision", "Revisie")} {version.revision} · {formatDate(version.created_at, locale)} · SHA {version.sha256.slice(0, 12)}…</span><button className="secondary-button" type="button" disabled={busy} onClick={() => void run(async () => { const { downloadFormalReportPdf } = await import("@/lib/reports/daily-report-pdf"); await downloadFormalReportPdf(version.snapshot as FormalReportSnapshot, version.revision, version.sha256); }, text(`Formal revision ${version.revision} downloaded directly from the immutable snapshot.`, `Formele revisie ${version.revision} rechtstreeks uit de immutable snapshot gedownload.`))}><FileText size={14} /> {text("Formal PDF", "Formele PDF")}</button></div>)} />
+            <HistoryColumn title="Reviews" empty={text("No review decision yet.", "Nog geen reviewbesluit.")} rows={data.reportReviews.map((review) => `${statusLabels[review.decision] ?? review.decision} · ${review.comment} · ${formatDate(review.created_at, locale)}`)} />
+            <HistoryColumn title={text("Declarations", "Verklaringen")} empty={text("No signing declaration yet.", "Nog geen ondertekenverklaring.")} rows={data.reportSignatures.map((signature) => `${signature.signer_name} · ${signature.signer_role} · ${formatDate(signature.signed_at, locale)}`)} />
+            <HistoryColumn title={text("Distribution", "Distributie")} empty={text("No delivery recorded yet.", "Nog geen verzending geregistreerd.")} rows={data.reportDistributions.map((item) => `${item.recipient_name} · ${item.channel} · ${item.status}`)} />
+          </section>
+          {reportStatus === "approved" || reportStatus === "signed" || reportStatus === "sent" ? <div className="revision-bar"><div><strong>{text("Correction after freezing?", "Correctie na vastzetten?")}</strong><span>{text("The original version remains; corrections start a new revision.", "De oorspronkelijke versie blijft bestaan; correcties starten een nieuwe revisie.")}</span></div><input value={revisionReason} onChange={(event) => setRevisionReason(event.target.value)} placeholder={text("Required revision reason", "Verplichte revisiereden")} /><button className="secondary-button" type="button" disabled={busy || !reportId || revisionReason.trim().length < 5} onClick={() => void run(() => startRevision(client, reportId!, revisionReason), text("New report revision started; the original version remains immutable.", "Nieuwe rapportrevisie gestart; de oorspronkelijke versie blijft immutable."))}><RotateCcw size={15} /> {text("Start revision", "Start revisie")}</button></div> : null}
+        </>
+      ) : null}
     </>
   );
 }

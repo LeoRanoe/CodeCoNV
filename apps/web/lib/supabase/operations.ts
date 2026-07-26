@@ -134,6 +134,31 @@ export type MediaFolder = {
   created_at: string;
 };
 
+export type ExternalShareLink = {
+  id: string;
+  organization_id: string;
+  project_id: string;
+  building_id: string | null;
+  source_type: "finding" | "action" | "inspection" | "visual";
+  source_id: string;
+  source_number: string;
+  title: string;
+  summary: string;
+  source_file_id: string | null;
+  expires_at: string;
+  revoked_at: string | null;
+  view_count: number;
+  last_viewed_at: string | null;
+  created_by: string;
+  created_at: string;
+};
+
+export type RevokeExternalShareResult = {
+  share_id: string;
+  revoked_at: string;
+  already_revoked: boolean;
+};
+
 export type ReportVersion = {
   id: string;
   revision: number;
@@ -300,6 +325,8 @@ export type OperationSnapshot = {
   drawingPins: DrawingPin[];
   drawingMarkups: DrawingMarkup[];
   mediaFolders: MediaFolder[];
+  // Optional only for offline snapshots cached before link management shipped.
+  externalShareLinks?: ExternalShareLink[];
   _offlineCached?: boolean;
   _offlineSavedAt?: string;
 };
@@ -314,7 +341,7 @@ export async function loadProjectOperations(
   organizationId: string,
   reportId?: string | null,
 ): Promise<OperationSnapshot> {
-  const [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, registerResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult] = await Promise.all([
+  const [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, registerResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult] = await Promise.all([
     client.from("checklist_templates").select("id,project_id,module,code,name,description,version_number,status").or(`project_id.is.null,project_id.eq.${projectId}`).order("name"),
     client.from("checklist_library_templates").select("code,module,category,name,description,prompts,sort_order").eq("active", true).order("sort_order"),
     client.from("inspections").select("id,template_id,inspection_number,title,status,planned_at,started_at,completed_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
@@ -332,8 +359,9 @@ export async function loadProjectOperations(
     client.from("drawing_pins").select("id,drawing_file_id,page_number,x_ratio,y_ratio,linked_record_type,linked_record_id,linked_record_number,linked_record_title,note,status,created_at").eq("project_id", projectId).order("created_at").limit(2000),
     client.from("drawing_markups").select("id,drawing_file_id,page_number,markup_type,geometry,color,stroke_width,text_content,status,created_at").eq("project_id", projectId).order("created_at").limit(5000),
     client.from("media_folders").select("id,building_id,parent_id,name,folder_type,status,created_at").eq("project_id", projectId).eq("status", "active").order("name").limit(500),
+    client.from("external_share_links").select("id,organization_id,project_id,building_id,source_type,source_id,source_number,title,summary,source_file_id,expires_at,revoked_at,view_count,last_viewed_at,created_by,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(500),
   ]);
-  [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, registerResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult].forEach((result) => fail(result.error));
+  [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, registerResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult].forEach((result) => fail(result.error));
   const templateRows = (templateResult.data ?? []) as Omit<ChecklistTemplate, "items">[];
   const itemResult = templateRows.length
     ? await client.from("checklist_items").select("id,template_id,section,prompt,response_type,required,sort_order,unit,minimum_value,maximum_value,failure_severity,guidance").in("template_id", templateRows.map((template) => template.id)).order("sort_order")
@@ -377,6 +405,7 @@ export async function loadProjectOperations(
     drawingPins: (drawingPinResult.data ?? []) as DrawingPin[],
     drawingMarkups: (drawingMarkupResult.data ?? []) as DrawingMarkup[],
     mediaFolders: (mediaFolderResult.data ?? []) as MediaFolder[],
+    externalShareLinks: (externalShareResult.data ?? []) as ExternalShareLink[],
   };
 }
 
@@ -412,6 +441,18 @@ export async function createExternalShareLink(client: SupabaseClient, projectId:
     throw new Error("De database heeft geen geldige externe toegangscode aangemaakt. Probeer opnieuw.");
   }
   return { share_id: data.share_id, token, expires_at: data.expires_at };
+}
+
+export async function revokeExternalShareLink(client: SupabaseClient, shareId: string): Promise<RevokeExternalShareResult> {
+  const result = await client.rpc("revoke_external_share_link", {
+    p_share_id: shareId,
+  });
+  fail(result.error);
+  const data = result.data as Partial<RevokeExternalShareResult> | null;
+  if (!data?.share_id || !data.revoked_at || typeof data.already_revoked !== "boolean") {
+    throw new Error("De externe link kon niet veilig worden ingetrokken. Probeer opnieuw.");
+  }
+  return data as RevokeExternalShareResult;
 }
 
 export async function startInspection(client: SupabaseClient, input: { projectId: string; buildingId: string; reportId: string; templateId: string; title: string }) {

@@ -148,13 +148,21 @@ function asFile(upload: OfflineUpload) {
   return new File([upload.file], upload.fileName, { type: upload.mimeType, lastModified: new Date(upload.capturedAt).getTime() });
 }
 
-type OfflineSyncResult = { synced: number; failed: number; paused: boolean };
+export type OfflineSyncResult = { synced: number; failed: number; paused: boolean };
+export type OfflineSyncOptions = {
+  force?: boolean;
+  onItem?: (upload: OfflineUpload, state: "uploading" | "done" | "failed") => void;
+};
+export type OfflineSyncFailureMessages = {
+  paused: string;
+  failed: (pendingCount: number) => string;
+};
 const projectSyncLocks = new Map<string, Promise<OfflineSyncResult>>();
 
 async function syncOfflineUploadsUnlocked(
   client: SupabaseClient,
   projectId: string,
-  options: { force?: boolean; onItem?: (upload: OfflineUpload, state: "uploading" | "done" | "failed") => void } = {},
+  options: OfflineSyncOptions = {},
 ): Promise<OfflineSyncResult> {
   if (typeof navigator !== "undefined" && !navigator.onLine) return { synced: 0, failed: 0, paused: true };
   if (!options.force && dataSaverEnabled() && connectionIsMetered()) return { synced: 0, failed: 0, paused: true };
@@ -316,7 +324,7 @@ async function syncOfflineUploadsUnlocked(
 export function syncOfflineUploads(
   client: SupabaseClient,
   projectId: string,
-  options: { force?: boolean; onItem?: (upload: OfflineUpload, state: "uploading" | "done" | "failed") => void } = {},
+  options: OfflineSyncOptions = {},
 ): Promise<OfflineSyncResult> {
   const running = projectSyncLocks.get(projectId);
   if (running) {
@@ -336,4 +344,22 @@ export function syncOfflineUploads(
   return pending.finally(() => {
     if (projectSyncLocks.get(projectId) === pending) projectSyncLocks.delete(projectId);
   });
+}
+
+/**
+ * Interactive uploads must not report central success while any project file is
+ * still queued. The queue itself remains the source of truth and is never
+ * removed here when connectivity or storage fails.
+ */
+export async function forceSyncOfflineUploads(
+  client: SupabaseClient,
+  projectId: string,
+  messages: OfflineSyncFailureMessages,
+  options: Omit<OfflineSyncOptions, "force"> = {},
+) {
+  const result = await syncOfflineUploads(client, projectId, { ...options, force: true });
+  const pendingCount = (await listOfflineUploads(projectId)).length;
+  if (pendingCount === 0) return result;
+  if (result.paused) throw new Error(messages.paused);
+  throw new Error(messages.failed(Math.max(result.failed, pendingCount)));
 }

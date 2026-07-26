@@ -26,8 +26,8 @@ select lives_ok(
 );
 
 select is((select count(*) from public.project_settings), 1::bigint, 'project settings are initialized automatically');
-select is((select count(*) from public.checklist_templates where status = 'published'), 2::bigint, 'inspection and HSE templates are published');
-select is((select count(*) from public.checklist_items), 10::bigint, 'default templates contain ten explicit checks');
+select is((select count(*) from public.checklist_templates where status = 'published'), 5::bigint, 'inspection, HSE, and three CODECO anchor templates are published');
+select is((select count(*) from public.checklist_items), 65::bigint, 'default and CODECO anchor templates contain 65 explicit checks');
 select is((select max_file_size_mb from public.project_settings), 25, 'free-pilot file limit defaults to 25 MB');
 select ok(not (select email_notifications_enabled from public.project_settings), 'project email notifications are disabled by default');
 select ok((select push_notifications_enabled from public.project_settings), 'project push notifications are enabled by default');
@@ -37,7 +37,7 @@ select lives_ok(
     $query$select public.install_checklist_library_template(%L::uuid, 'LIB-021')$query$,
     (select id from public.projects where code = 'OPS-001')
   ),
-  'a standard checklist can be installed from the 100-template client library'
+  'a standard checklist can be installed from the 103-template client library'
 );
 select is((select count(*) from public.checklist_templates where code = 'LIB-021' and status = 'published'), 1::bigint, 'library installation creates a published project version');
 select is((select count(*) from public.checklist_items item join public.checklist_templates template on template.id = item.template_id where template.code = 'LIB-021'), 5::bigint, 'installed library checklist contains its five mandatory controls');
@@ -182,7 +182,29 @@ select is((select count(*) from public.project_register_entries where register_t
 
 select lives_ok(
   format(
-    $query$select public.create_project_register_entry(%L::uuid, %L::uuid, %L::uuid, 'rfi', 'Detail aansluiting gevel', now(), null, null, '{"question":"Bevestig het constructieve aansluitdetail."}'::jsonb, 'ops-rfi-idempotency')$query$,
+    $query$select public.create_project_register_entry(
+      %L::uuid,
+      %L::uuid,
+      %L::uuid,
+      'rfi',
+      'Detail aansluiting gevel',
+      now(),
+      null,
+      null,
+      jsonb_build_object(
+        'schema', 'codeco.controlled-document.v1',
+        'document_type', 'rfi',
+        'project_name', 'Operationele MVP',
+        'project_number', 'OPS-001',
+        'building_name', 'Hoofdgebouw',
+        'subject', 'Detail aansluiting gevel',
+        'description', 'Bevestig het constructieve aansluitdetail.',
+        'issue_date', to_char(current_date, 'YYYY-MM-DD'),
+        'requested_to', 'Hoofdaannemer',
+        'response', '{}'::jsonb
+      ),
+      'ops-rfi-idempotency'
+    )$query$,
     (select id from public.projects where code = 'OPS-001'),
     (select id from public.buildings where project_id = (select id from public.projects where code = 'OPS-001')),
     (select id from public.day_reports where project_id = (select id from public.projects where code = 'OPS-001'))

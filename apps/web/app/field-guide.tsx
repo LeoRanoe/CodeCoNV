@@ -26,7 +26,7 @@ import { useLanguage } from "@/lib/i18n";
 
 const guideStorageKey = "codeco-field-guide-seen-v3";
 
-export type FieldGuideDestination = "today" | "photo" | "inspection" | "finding";
+export type FieldGuideDestination = "today" | "photo" | "inspection" | "finding" | "reports";
 
 type FieldGuideProps = {
   canManage: boolean;
@@ -162,8 +162,8 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
         text("Open Actions only when an item still needs an owner or status.", "Open Acties alleen wanneer een punt nog een eigenaar of status nodig heeft."),
         text("Reports are built from the registered work, weather, inspections, issues and photos.", "Rapporten worden opgebouwd uit het geregistreerde werk, weer, inspecties, problemen en foto’s."),
       ],
-      action: text("Check today", "Controleer vandaag"),
-      destination: "today",
+      action: text("Open reports", "Open rapporten"),
+      destination: "reports",
     },
   ];
   const selectedTask = tasks.find((task) => task.id === activeTask) ?? tasks[0];
@@ -173,7 +173,7 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
     { icon: Wrench, label: text("Workspace", "Werkruimte"), copy: text("Do work", "Werk uitvoeren") },
     { icon: Camera, label: text("Photo", "Foto"), copy: text("Direct camera", "Direct camera"), featured: true },
     { icon: ListChecks, label: text("Actions", "Acties"), copy: text("Follow up", "Opvolgen") },
-    { icon: Settings, label: canManage ? text("Management", "Management") : text("Settings", "Instellingen"), copy: canManage ? text("Control", "Beheer") : text("Preferences", "Voorkeuren") },
+    { icon: FileText, label: text("Reports", "Rapporten"), copy: text("Create PDF", "Maak PDF") },
   ];
   const referenceSections: GuideReferenceSection[] = [
     {
@@ -371,6 +371,10 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
         ? text("The controls available to your management role.", "De bediening die beschikbaar is voor jouw managementrol.")
         : text("Why some controls are visible only to administrators.", "Waarom sommige bediening alleen voor beheerders zichtbaar is."),
       items: [
+        {
+          title: text("Open Management", "Open Management"),
+          copy: text("Use the gear in the top-right. Management is kept out of the mobile bottom bar so the five daily field actions remain directly reachable without a crowded menu.", "Gebruik het tandwiel rechtsboven. Management staat buiten de mobiele onderbalk zodat de vijf dagelijkse veldacties direct bereikbaar blijven zonder een druk menu."),
+        },
         {
           title: text("Roles and access", "Rollen en toegang"),
           copy: text("Administrators invite internal users, assign organization or project roles and suspend access. Field users see only projects and records permitted by their role; never share one personal account.", "Beheerders nodigen interne gebruikers uit, wijzen organisatie- of projectrollen toe en schorten toegang op. Veldgebruikers zien alleen projecten en registraties die hun rol toestaat; deel nooit één persoonlijk account."),

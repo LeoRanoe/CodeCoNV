@@ -9,6 +9,7 @@ import {
   compressFieldPhoto,
   connectionIsMetered,
   dataSaverEnabled,
+  forceSyncOfflineUploads,
   listOfflineUploads,
   queueOfflineUpload,
   removeOfflineUpload,
@@ -103,11 +104,21 @@ export function MediaLibraryWorkspace({
 
   const reloadQueue = useCallback(async () => setQueue(await listOfflineUploads(projectId)), [projectId]);
 
-  const synchronize = useCallback(async (force = false) => {
+  const synchronize = useCallback(async (force = false, requireComplete = false) => {
     setSyncing(true);
     try {
-      const result = await syncOfflineUploads(client, projectId, { force });
-      await reloadQueue();
+      const result = requireComplete
+        ? await forceSyncOfflineUploads(client, projectId, {
+          paused: text(
+            "The connection changed before central confirmation. Your files remain safe on this device. Keep this page open, check the connection and tap Sync now again.",
+            "De verbinding veranderde vóór de centrale bevestiging. Je bestanden blijven veilig op dit apparaat. Houd deze pagina open, controleer de verbinding en tik opnieuw op Nu synchroniseren.",
+          ),
+          failed: (pendingCount) => text(
+            `${pendingCount} file upload(s) could not be confirmed centrally. They remain safe on this device. Check the connection and tap Sync now again.`,
+            `${pendingCount} bestandsupload(s) konden niet centraal worden bevestigd. Ze blijven veilig op dit apparaat. Controleer de verbinding en tik opnieuw op Nu synchroniseren.`,
+          ),
+        })
+        : await syncOfflineUploads(client, projectId, { force });
       if (result.synced > 0) {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["project-operations", projectId] }),
@@ -116,9 +127,10 @@ export function MediaLibraryWorkspace({
       }
       return result;
     } finally {
+      await reloadQueue().catch(() => undefined);
       setSyncing(false);
     }
-  }, [client, projectId, queryClient, reloadQueue]);
+  }, [client, projectId, queryClient, reloadQueue, text]);
 
   useEffect(() => {
     const initialSync = window.setTimeout(() => {
@@ -196,7 +208,16 @@ export function MediaLibraryWorkspace({
       }
       await reloadQueue();
       if (navigator.onLine && !(savingData && connectionIsMetered())) {
-        await run(() => synchronize(false), text("Files uploaded and linked automatically.", "Bestanden geüpload en automatisch gekoppeld."));
+        const synchronized = await run(
+          () => synchronize(true, true),
+          text("Files uploaded and linked automatically.", "Bestanden geüpload en automatisch gekoppeld."),
+        );
+        if (!synchronized) {
+          setFieldError(text(
+            "Central upload is still waiting. Your files remain safe below. Check the connection and tap Sync now.",
+            "De centrale upload wacht nog. Je bestanden blijven hieronder veilig staan. Controleer de verbinding en tik op Nu synchroniseren.",
+          ));
+        }
       }
     } catch (error) {
       setFieldError(error instanceof Error ? error.message : text(
@@ -270,7 +291,7 @@ export function MediaLibraryWorkspace({
       </div>
       {fieldError ? <div className="operation-alert error" role="alert"><HardDrive size={17} /> {fieldError}</div> : null}
 
-      {queue.length ? <div className="offline-queue"><div><strong>{queue.length} {text("upload(s) waiting", "upload(s) wachten")}</strong><span>{!online ? text("They synchronize automatically when the connection returns.", "Ze synchroniseren automatisch zodra de verbinding terug is.") : savingData && connectionIsMetered() ? text("Automatic sync is paused on this metered connection.", "Automatische synchronisatie is gepauzeerd op deze databundel.") : text("Automatic synchronization is active.", "Automatische synchronisatie is actief.")}</span></div><button className="secondary-button" type="button" disabled={!online || syncing} onClick={() => void run(() => synchronize(true), text("Offline uploads synchronized.", "Offline uploads gesynchroniseerd."))}>{syncing ? <Loader2 className="spin" size={15} /> : <RefreshCw size={15} />} {text("Sync now", "Nu synchroniseren")}</button><div className="offline-queue-list">{queue.map((upload) => <span className={upload.lastError ? "failed" : ""} key={upload.id}><ImageIcon size={14} /><b>{upload.fileName}</b><small title={upload.lastError ?? undefined}>{upload.lastError ? text("Sync failed · tap Sync now", "Sync mislukt · tik op Nu synchroniseren") : humanSize(upload.queuedSize)}{!upload.lastError && upload.compressed ? ` · ${Math.round((1 - upload.queuedSize / upload.originalSize) * 100)}% bespaard` : ""}</small><button type="button" aria-label={text("Remove queued upload", "Verwijder wachtende upload")} onClick={() => { if (window.confirm(text("Remove this unsynchronized field file from this device?", "Dit niet-gesynchroniseerde veldbestand van dit apparaat verwijderen?"))) void removeOfflineUpload(upload.id).then(reloadQueue); }}><Trash2 size={14} /></button></span>)}</div></div> : null}
+      {queue.length ? <div className="offline-queue"><div><strong>{queue.length} {text("upload(s) waiting", "upload(s) wachten")}</strong><span>{!online ? text("They synchronize automatically when the connection returns.", "Ze synchroniseren automatisch zodra de verbinding terug is.") : savingData && connectionIsMetered() ? text("Automatic sync is paused on this metered connection.", "Automatische synchronisatie is gepauzeerd op deze databundel.") : text("Automatic synchronization is active.", "Automatische synchronisatie is actief.")}</span></div><button className="secondary-button" type="button" disabled={!online || syncing} onClick={() => void run(() => synchronize(true, true), text("Offline uploads synchronized.", "Offline uploads gesynchroniseerd."))}>{syncing ? <Loader2 className="spin" size={15} /> : <RefreshCw size={15} />} {text("Sync now", "Nu synchroniseren")}</button><div className="offline-queue-list">{queue.map((upload) => <span className={upload.lastError ? "failed" : ""} key={upload.id}><ImageIcon size={14} /><b>{upload.fileName}</b><small title={upload.lastError ?? undefined}>{upload.lastError ? text("Sync failed · tap Sync now", "Sync mislukt · tik op Nu synchroniseren") : humanSize(upload.queuedSize)}{!upload.lastError && upload.compressed ? ` · ${Math.round((1 - upload.queuedSize / upload.originalSize) * 100)}% bespaard` : ""}</small><button type="button" aria-label={text("Remove queued upload", "Verwijder wachtende upload")} onClick={() => { if (window.confirm(text("Remove this unsynchronized field file from this device?", "Dit niet-gesynchroniseerde veldbestand van dit apparaat verwijderen?"))) void removeOfflineUpload(upload.id).then(reloadQueue); }}><Trash2 size={14} /></button></span>)}</div></div> : null}
 
       <div className="media-gallery">
         {files.map((file) => <article className="media-card" key={file.id}>{file.mime_type.startsWith("image/") ? <SecureImage client={client} file={file} /> : <span className="media-file-icon"><HardDrive size={28} /></span>}<div><strong>{file.original_name}</strong><span>{file.category} · {humanSize(file.size_bytes)}</span></div><button type="button" onClick={() => void downloadProjectFile(client, file.id, file.original_name)} aria-label={text("Download file", "Bestand downloaden")}><Download size={15} /></button></article>)}

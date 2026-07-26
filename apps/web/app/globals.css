@@ -354,19 +354,35 @@ button.drawing-pin {
 }
 
 .period-report-card {
-  align-items: end;
+  align-items: start;
   background: linear-gradient(135deg, #f1f8f6, #fff);
   border: 1px solid #bdd8d0;
-  border-radius: 18px;
+  border-radius: 20px;
   display: grid;
-  gap: 14px;
-  grid-template-columns: auto minmax(260px, 1fr) 150px 150px auto;
+  gap: 16px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   margin-bottom: 18px;
-  padding: 18px;
+  padding: 22px;
 }
 
 .period-report-card .workflow-icon {
   align-self: start;
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.period-report-card > .period-report-copy {
+  grid-column: 2 / -1;
+}
+
+.period-report-card > .form-field {
+  grid-column: span 3;
+}
+
+.period-report-card > .report-create-button {
+  align-self: end;
+  grid-column: span 6;
+  min-height: 48px;
 }
 
 .period-report-copy h2 {
@@ -378,6 +394,7 @@ button.drawing-pin {
   color: var(--muted);
   line-height: 1.45;
   margin: 0;
+  max-width: 78ch;
 }
 
 .boq-import-card {
@@ -479,6 +496,43 @@ button.drawing-pin {
   font-size: .8rem;
   line-height: 1.4;
   margin: 0;
+}
+
+.secondary-button {
+  align-items: center;
+  background: #edf7f4;
+  border: 1px solid #8fbbb0;
+  border-radius: 10px;
+  color: #0d6b5f;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  gap: 7px;
+  justify-content: center;
+  min-height: 42px;
+  padding: 8px 14px;
+  text-decoration: none;
+}
+
+.secondary-button:hover {
+  background: #dff1eb;
+  border-color: #5f9e8e;
+  color: #07594f;
+}
+
+.secondary-button:active {
+  background: #d2e9e2;
+  transform: translateY(1px);
+}
+
+.secondary-button:disabled {
+  background: #f0f3f3;
+  border-color: #d2dddd;
+  color: #839393;
+  cursor: not-allowed;
+  opacity: 1;
 }
 
 .secondary-button.recording {
@@ -1774,8 +1828,8 @@ textarea:focus-visible {
 .icon-button {
   position: relative;
   display: grid;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   place-items: center;
   border: 1px solid var(--ink-200);
   border-radius: 11px;
@@ -1786,6 +1840,12 @@ textarea:focus-visible {
 
 .icon-button:hover {
   background: var(--ink-50);
+}
+
+.management-button.active {
+  background: var(--green-soft);
+  border-color: #8fc3b5;
+  color: var(--green);
 }
 
 .notification-dot {
@@ -1828,7 +1888,7 @@ textarea:focus-visible {
 }
 
 .main-content {
-  width: min(1460px, 100%);
+  width: min(1360px, 100%);
   margin: 0 auto;
   padding: 32px 34px 86px;
 }
@@ -4142,7 +4202,6 @@ textarea:focus-visible {
     width: 100%;
   }
 
-  .top-actions .icon-button:first-child,
   .storage-state {
     display: none;
   }
@@ -4689,6 +4748,7 @@ textarea:focus-visible {
 
 .workspace-camera-action,
 .workspace-task-action,
+.workspace-register-action,
 .workspace-drawing-action,
 .workspace-more-grid button {
   border: 0;
@@ -4722,6 +4782,8 @@ textarea:focus-visible {
 .workspace-camera-action small,
 .workspace-task-action strong,
 .workspace-task-action small,
+.workspace-register-action strong,
+.workspace-register-action small,
 .workspace-drawing-action strong,
 .workspace-drawing-action small,
 .workspace-more-grid strong,
@@ -4768,11 +4830,40 @@ textarea:focus-visible {
 }
 
 .workspace-task-action small,
+.workspace-register-action small,
 .workspace-drawing-action small,
 .workspace-more-grid small {
   color: var(--ink-500);
   font-size: 9px;
   line-height: 1.4;
+}
+
+.workspace-register-action {
+  align-items: center;
+  background: #fff8ec;
+  border: 1px solid #edc998;
+  border-radius: 12px;
+  color: #a86008;
+  display: grid;
+  gap: 11px;
+  grid-template-columns: 38px minmax(0, 1fr);
+  min-height: 64px;
+  padding: 12px 14px;
+}
+
+.workspace-register-action > svg {
+  justify-self: center;
+}
+
+.workspace-register-action:hover {
+  background: #fff1da;
+  border-color: #dda956;
+}
+
+.workspace-register-action strong {
+  color: var(--ink-900);
+  font-size: 12px;
+  margin-bottom: 3px;
 }
 
 .workspace-drawing-action {
@@ -5200,6 +5291,80 @@ textarea:focus-visible {
   color: #227454;
 }
 
+.report-page-header {
+  margin-bottom: 16px;
+}
+
+.report-header-state {
+  align-items: flex-end;
+  display: grid;
+  gap: 7px;
+  justify-items: end;
+}
+
+.report-section-tabs {
+  display: grid;
+  gap: 9px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0 0 18px;
+}
+
+.report-section-tabs > button {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--ink-600);
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 38px minmax(0, 1fr);
+  min-height: 64px;
+  padding: 10px 13px;
+  text-align: left;
+}
+
+.report-section-tabs > button > svg {
+  background: var(--ink-50);
+  border-radius: 9px;
+  box-sizing: content-box;
+  padding: 9px;
+}
+
+.report-section-tabs > button span,
+.report-section-tabs > button strong,
+.report-section-tabs > button small {
+  display: block;
+  min-width: 0;
+}
+
+.report-section-tabs > button strong {
+  color: var(--ink-900);
+  font-size: 13px;
+}
+
+.report-section-tabs > button small {
+  color: var(--ink-500);
+  font-size: 10px;
+  margin-top: 3px;
+}
+
+.report-section-tabs > button:hover {
+  border-color: #9fc5bb;
+  box-shadow: 0 4px 14px rgba(20, 60, 66, 0.07);
+}
+
+.report-section-tabs > button.active {
+  background: var(--green-soft);
+  border-color: #72ad9d;
+  color: var(--green);
+}
+
+.report-section-tabs > button.active > svg {
+  background: var(--green);
+  color: #fff;
+}
+
 .workflow-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -5283,6 +5448,23 @@ textarea:focus-visible {
   min-height: 32px;
   padding: 6px 9px;
   font-size: 10px;
+}
+
+.workflow-card.current {
+  border-color: rgba(5, 107, 70, 0.42);
+  box-shadow: 0 0 0 3px rgba(5, 107, 70, 0.08);
+}
+
+.workflow-card.complete {
+  background: #f7fbf9;
+}
+
+.workflow-card.locked {
+  background: #fbfcfc;
+}
+
+.report-next-step {
+  margin-bottom: 14px;
 }
 
 .revision-bar {
@@ -6484,6 +6666,21 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
+.panorama-stage > .viewer-center-action {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  z-index: 1;
+  width: 100%;
+  min-height: 48px;
+  justify-content: center;
+  padding: 10px 14px;
+  border-width: 1px 0 0;
+  border-radius: 0;
+  background: #102d38;
+  font-size: 10px;
+}
+
 .visual-stage-help {
   display: flex;
   align-items: flex-start;
@@ -6651,6 +6848,12 @@ textarea:focus-visible {
     padding: 9px 12px;
     font-size: 10px;
   }
+
+  .panorama-stage > .viewer-center-action {
+    right: auto;
+    bottom: auto;
+    max-width: none;
+  }
 }
 
 @media (max-width: 480px) {
@@ -6802,6 +7005,48 @@ textarea:focus-visible {
 .external-share-preflight > label input { background: #fff; border: 1px solid #bdd7cc; border-radius: 8px; color: #245447; font-family: var(--font-geist-mono), monospace; font-size: 9px; min-height: 42px; padding: 9px 10px; width: 100%; }
 .external-share-preflight-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .external-share-feedback { color: #087a38; font-size: 9px; font-weight: 750; margin: 0; }
+.active-external-shares {
+  background: #f6faf8;
+  border-top: 1px solid #d7e6df;
+  display: grid;
+  gap: 9px;
+  padding: 12px 16px;
+}
+.active-external-shares > header { align-items: center; color: #285447; display: flex; gap: 8px; }
+.active-external-shares > header > span,
+.active-external-share-row > span { display: grid; gap: 2px; }
+.active-external-shares strong { font-size: 11px; }
+.active-external-shares small { color: #607b70; font-size: 9px; line-height: 1.4; }
+.active-external-share-row {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #d4e4dc;
+  border-radius: 9px;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 9px 10px;
+}
+.revoke-share-button,
+.danger-button {
+  align-items: center;
+  background: #fff5f4;
+  border: 1px solid #d99c97;
+  border-radius: 8px;
+  color: #a33831;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 750;
+  gap: 6px;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 11px;
+}
+.revoke-share-button:hover,
+.danger-button:hover { background: #fde9e7; border-color: #c87973; }
+.revoke-share-confirm { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
+.revoke-share-confirm > small { flex-basis: 100%; text-align: right; }
 
 @media (max-width: 620px) {
   .finding-actions {
@@ -6822,6 +7067,11 @@ textarea:focus-visible {
   .external-party-button small { font-size: 9px; }
   .external-share-preflight { padding: 14px 13px; }
   .external-share-preflight-actions { display: grid; grid-template-columns: 1fr; }
+  .active-external-shares { padding: 12px 13px; }
+  .active-external-share-row { align-items: stretch; flex-direction: column; }
+  .active-external-share-row > button,
+  .revoke-share-confirm > button { min-height: 44px; width: 100%; }
+  .revoke-share-confirm > small { text-align: left; }
 }
 
 @media (max-width: 520px) {
@@ -7385,12 +7635,12 @@ textarea:focus-visible {
   .automatic-weather-status { align-items: stretch; grid-template-columns: auto minmax(0, 1fr); }
   .automatic-weather-status > button { grid-column: 1 / -1; justify-content: center; }
   .checklist-section > header { align-items: stretch; flex-direction: column; }
-  .checklist-section > header button { justify-content: center; min-height: 38px; }
+  .checklist-section > header button { justify-content: center; min-height: 44px; }
   .answer-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .answer-options label { justify-content: center; min-height: 42px; }
+  .answer-options label { justify-content: center; min-height: 44px; }
   .field-guide-body { grid-template-columns: 1fr; }
   .field-guide-task-picker { display: flex; overflow-x: auto; padding-bottom: 3px; scrollbar-width: thin; }
-  .field-guide-task-picker button { flex: 0 0 132px; grid-template-columns: 31px 1fr; min-height: 43px; }
+  .field-guide-task-picker button { flex: 0 0 132px; grid-template-columns: 31px 1fr; min-height: 44px; }
   .field-guide-task-picker button > span { height: 31px; width: 31px; }
   .field-guide-task-detail { min-height: 250px; }
 }
@@ -7402,7 +7652,7 @@ textarea:focus-visible {
 }
 @media (max-width: 480px) {
   .field-guide-trigger span { display: none; }
-  .field-guide-trigger { height: 42px; justify-content: center; padding: 0; width: 42px; }
+  .field-guide-trigger { height: 44px; justify-content: center; padding: 0; width: 44px; }
   .field-guide-backdrop { align-items: flex-end; padding: 0; }
   .field-guide-dialog { border-radius: 18px 18px 0 0; max-height: calc(100dvh - 12px); padding: 16px; }
   .field-guide-dialog h2 { font-size: 24px; }
@@ -7537,5 +7787,265 @@ textarea:focus-visible {
     width: 100%;
     min-height: 52px;
     justify-content: center;
+  }
+}
+
+/* Final responsive release pass: clear hierarchy, field-sized controls and compact report flow. */
+.period-date-presets > span {
+  align-self: center;
+  color: var(--ink-600);
+  font-size: 11px;
+  font-weight: 800;
+  margin-right: 2px;
+}
+
+.period-date-presets > em {
+  align-self: center;
+  color: var(--green);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.period-date-presets button.active {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+  font-weight: 800;
+}
+
+.workflow-card > p,
+.history-column p,
+.history-column ul {
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.workflow-card > p {
+  min-height: 0;
+}
+
+.history-column h3 {
+  font-size: 14px;
+}
+
+@media (max-width: 1180px) {
+  .period-report-card {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .period-report-card > .form-field {
+    grid-column: span 6;
+  }
+
+  .period-report-card > .report-create-button {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+
+  .workflow-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .secondary-grid,
+  .overview-shortcuts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .report-history-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .mobile-nav-button {
+    border-radius: 10px;
+    min-height: 54px;
+  }
+
+  .mobile-nav-button.active {
+    background: var(--green-soft);
+    color: var(--green);
+    font-weight: 800;
+  }
+
+  .mobile-nav-button.active::before {
+    background: var(--green);
+    border-radius: 0 0 4px 4px;
+    content: "";
+    height: 3px;
+    left: 28%;
+    position: absolute;
+    right: 28%;
+    top: -7px;
+  }
+
+  .mobile-nav-button.quick {
+    color: var(--signal-dark);
+    padding-top: 25px;
+  }
+
+  .mobile-nav-button.quick .mobile-plus {
+    top: -27px;
+  }
+
+  .breadcrumb {
+    max-width: min(48vw, 360px);
+  }
+
+  .breadcrumb span,
+  .breadcrumb strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 760px) {
+  .period-report-card {
+    grid-template-columns: 1fr;
+    padding: 16px;
+  }
+
+  .period-report-card > *,
+  .period-report-card > .period-report-copy,
+  .period-report-card > .form-field,
+  .period-report-card > .report-create-button,
+  .period-report-types,
+  .period-date-presets {
+    grid-column: 1;
+  }
+
+  .period-report-card > .workflow-icon {
+    display: none;
+  }
+
+  .period-report-types {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .drawing-markup-toolbar > button,
+  .tour-controls button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .drawing-pin,
+  .panorama-marker-dot,
+  .visual-marker {
+    height: 44px;
+    width: 44px;
+  }
+}
+
+@media (max-width: 620px) {
+  .main-content {
+    padding: 20px 14px 122px;
+  }
+
+  .secondary-header.report-page-header {
+    gap: 12px;
+  }
+
+  .report-header-state {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .report-section-tabs {
+    gap: 6px;
+  }
+
+  .report-section-tabs > button {
+    gap: 6px;
+    grid-template-columns: 32px minmax(0, 1fr);
+    min-height: 58px;
+    padding: 8px;
+  }
+
+  .report-section-tabs > button > svg {
+    box-sizing: border-box;
+    height: 32px;
+    padding: 7px;
+    width: 32px;
+  }
+
+  .report-section-tabs > button strong {
+    font-size: 10px;
+    line-height: 1.2;
+  }
+
+  .report-section-tabs > button small {
+    display: none;
+  }
+
+  .period-report-types {
+    grid-template-columns: 1fr;
+  }
+
+  .period-report-types button,
+  .period-date-presets button,
+  .quick-issue-presets button,
+  .operation-tabs button,
+  .secondary-button {
+    min-height: 44px;
+  }
+
+  .history-version .secondary-button {
+    min-height: 44px;
+  }
+
+  .period-date-presets {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .period-date-presets > span,
+  .period-date-presets > em {
+    grid-column: 1 / -1;
+  }
+
+  .period-date-presets button {
+    border-radius: 10px;
+    padding: 8px 6px;
+  }
+
+  .workflow-card {
+    padding: 15px;
+  }
+
+  .workflow-card .primary-button,
+  .workflow-card .secondary-button,
+  .backup-actions > button,
+  .backup-actions > .secondary-button {
+    width: 100%;
+  }
+
+  .secondary-grid,
+  .overview-shortcuts {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-register-action,
+  .workspace-drawing-action {
+    min-height: 64px;
+  }
+}
+
+@media (max-width: 390px) {
+  .report-section-tabs > button {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .report-section-tabs > button span {
+    min-width: 0;
   }
 }

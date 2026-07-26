@@ -61,8 +61,10 @@ export async function POST(request: Request) {
 
     const rateLimitResult = await userClient.rpc("consume_security_rate_limit", {
       p_action_code: "blob_upload",
-      p_max_requests: 60,
-      p_window_minutes: 60,
+      // A field supervisor can capture several stacked evidence sets in quick
+      // succession. Keep abuse bounded while allowing realistic site bursts.
+      p_max_requests: 100,
+      p_window_minutes: 10,
     });
     if (rateLimitResult.error) throw new Error("De uploadlimiet kon niet worden gecontroleerd.");
     if (rateLimitResult.data !== true) {

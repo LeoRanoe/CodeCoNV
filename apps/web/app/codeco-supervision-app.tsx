@@ -20,7 +20,6 @@ import {
   FileText,
   Gauge,
   HardDrive,
-  History,
   Home,
   Image,
   KeyRound,
@@ -37,7 +36,6 @@ import {
   Plus,
   RefreshCw,
   Ruler,
-  Search,
   Settings,
   ShieldCheck,
   TimerOff,
@@ -58,7 +56,7 @@ import { ensureDailyBackup } from "@/lib/backups/client";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import { currentPushState, enablePushNotifications, type PushState } from "@/lib/notifications/push-client";
-import { compressFieldPhoto, dataSaverEnabled, queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
+import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
 import { cacheProjectDay, cacheWorkspace, getCachedProjectDay, getCachedWorkspace } from "@/lib/offline/workspace-cache";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
@@ -826,7 +824,38 @@ export function CodecoSupervisionApp() {
         });
       }
       setPendingQuickPhotos([]);
-      setToast(text("Photo secured on this device; synchronization starts automatically.", "Foto veilig op dit apparaat; synchronisatie start automatisch."));
+      if (navigator.onLine && supabase) {
+        try {
+          await forceSyncOfflineUploads(supabase, selectedProject.id, {
+            paused: text(
+              "The connection changed before central photo confirmation. The photo remains safe on this device. In Photos & folders, check the connection and tap Sync now.",
+              "De verbinding veranderde vóór de centrale fotobevestiging. De foto blijft veilig op dit apparaat. Controleer in Foto’s & mappen de verbinding en tik op Nu synchroniseren.",
+            ),
+            failed: (pendingCount) => text(
+              `${pendingCount} photo upload(s) could not be confirmed centrally. They remain safe on this device. In Photos & folders, check the connection and tap Sync now.`,
+              `${pendingCount} foto-upload(s) konden niet centraal worden bevestigd. Ze blijven veilig op dit apparaat. Controleer in Foto’s & mappen de verbinding en tik op Nu synchroniseren.`,
+            ),
+          });
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["project-operations", selectedProject.id] }),
+            queryClient.invalidateQueries({ queryKey: ["workspace"] }),
+          ]).catch(() => undefined);
+          setToast(text(
+            "Photo stored centrally and linked to Daily progress.",
+            "Foto centraal opgeslagen en gekoppeld aan Dagvoortgang.",
+          ));
+        } catch (error) {
+          setToast(error instanceof Error ? error.message : text(
+            "Central confirmation is still waiting. The photo remains safe on this device. Open Photos & folders and tap Sync now.",
+            "De centrale bevestiging wacht nog. De foto blijft veilig op dit apparaat. Open Foto’s & mappen en tik op Nu synchroniseren.",
+          ));
+        }
+      } else {
+        setToast(text(
+          "Photo secured on this device. It will synchronize when the connection returns.",
+          "Foto veilig op dit apparaat. De foto synchroniseert zodra de verbinding terug is.",
+        ));
+      }
     } catch {
       setPendingQuickPhotos((current) => [...current, ...captured]);
       setToast(text("Local device storage was unavailable. Keep this screen open while the photo is transferred.", "Lokale apparaatopslag was niet beschikbaar. Houd dit scherm open terwijl de foto wordt overgezet."));
@@ -1048,6 +1077,10 @@ export function CodecoSupervisionApp() {
             navigate("vandaag");
             return;
           }
+          if (destination === "reports") {
+            navigate("rapporten");
+            return;
+          }
           if (destination === "photo") {
             openQuickAdd();
             return;
@@ -1128,7 +1161,7 @@ export function CodecoSupervisionApp() {
           <div className="top-actions">
             <LanguageSwitcher compact />
             <span className={`storage-state ${syncState}`} title={storageStatus}>{syncState === "error" || !isOnline ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />} <span>{storageStatus}</span></span>
-            <button className="icon-button" type="button" aria-label={text("Search", "Zoeken")}><Search size={17} /></button>
+            <button className={`icon-button management-button ${activeNav === "meer" ? "active" : ""}`} type="button" aria-label={text("Open management and settings", "Open beheer en instellingen")} title={text("Management and settings", "Beheer en instellingen")} onClick={() => navigate("meer")}><Settings size={17} /></button>
             <button className="icon-button" type="button" aria-label={`${text("Notifications", "Meldingen")}${unreadNotificationCount ? `, ${unreadNotificationCount} ${text("unread", "ongelezen")}` : ""}`} onClick={() => setModal("notifications")}>
               <Bell size={17} />
               {unreadNotificationCount ? <span className="notification-dot" /> : null}
@@ -1188,6 +1221,7 @@ export function CodecoSupervisionApp() {
               initialCameraFiles={pendingQuickPhotos}
               onInitialCameraFilesConsumed={() => setPendingQuickPhotos([])}
               openQuickCamera={openQuickAdd}
+              openQuickRegister={() => setModal("quick")}
               openProjectArea={(tab) => {
                 setInitialProjectTab(tab);
                 setActiveNav("project");
@@ -1209,6 +1243,7 @@ export function CodecoSupervisionApp() {
                 setSelectedAction(action);
                 setModal("action_detail");
               }}
+              openActionCreate={() => setModal("action_create")}
               reportNumber={reportNumber}
               reportStatus={String(dayQuery.data?.report?.status ?? "draft")}
               canManageMembers={canManageMembers}
@@ -1219,7 +1254,7 @@ export function CodecoSupervisionApp() {
       </div>
 
       <nav className="mobile-bottom-nav" aria-label={text("Mobile main navigation", "Mobiele hoofdnavigatie")}>
-        {localizedNavigation.filter((item) => item.id !== "rapporten").slice(0, 2).map((item) => {
+        {localizedNavigation.filter((item) => item.id === "vandaag" || item.id === "project").map((item) => {
           const Icon = item.icon;
           return (
             <button className={`mobile-nav-button ${activeNav === item.id ? "active" : ""}`} type="button" onClick={() => navigate(item.id)} key={item.id}>
@@ -1232,7 +1267,7 @@ export function CodecoSupervisionApp() {
           <span className="mobile-plus"><Camera size={23} /></span>
           {text("Photo", "Foto")}
         </button>
-        {localizedNavigation.filter((item) => item.id === "acties" || item.id === "meer").map((item) => {
+        {localizedNavigation.filter((item) => item.id === "acties" || item.id === "rapporten").map((item) => {
           const Icon = item.icon;
           return (
             <button className={`mobile-nav-button ${activeNav === item.id ? "active" : ""}`} type="button" onClick={() => navigate(item.id)} key={item.id}>
@@ -1845,7 +1880,6 @@ function ContextSelection({
           <>
             <section className="context-heading">
               <div><p className="eyebrow">{text("My projects", "Mijn projecten")}</p><h1>{text("Where will you work today?", "Waar ga je vandaag werken?")}</h1><p>{text("Select the project first. Your building and daily report follow in the next step.", "Kies eerst het project. Je gebouw en dagrapport volgen in de volgende stap.")}</p></div>
-              <button className="ghost-button" type="button"><Search size={14} /> {text("Search project", "Project zoeken")}</button>
             </section>
             <section className="portfolio-dashboard" aria-label={text("Portfolio overview", "Portfolio-overzicht")}>
               <div><span>{text("Active projects", "Actieve projecten")}</span><strong>{portfolio.projects}</strong></div>
@@ -2240,7 +2274,6 @@ function TodayView({
               <h2>{text("Today's timeline", "Tijdlijn vandaag")}</h2>
               <p>{entries.length} {text("records · updated in real time", "registraties · realtime bijgewerkt")}</p>
             </div>
-            <button className="ghost-button" type="button"><History size={13} /> {text("View all", "Alles bekijken")}</button>
           </header>
           <div className="timeline">
             {entries.map((entry) => {
@@ -2333,6 +2366,7 @@ function SecondaryView({
   actions,
   actionUpdates,
   openAction,
+  openActionCreate,
   reportNumber,
   reportStatus,
   canManageMembers,
@@ -2349,6 +2383,7 @@ function SecondaryView({
   actions: ProjectAction[];
   actionUpdates: ActionUpdate[];
   openAction: (action: ProjectAction) => void;
+  openActionCreate: () => void;
   reportNumber: string;
   reportStatus: string;
   canManageMembers: boolean;
@@ -2397,7 +2432,7 @@ function SecondaryView({
       <>
         <header className="secondary-header">
           <div><p className="eyebrow">{actions.length} {text("centrally recorded", "centraal geregistreerd")}</p><h1>{text("Actions", "Acties")}</h1><p>{text("Personal and assigned follow-up in one list.", "Persoonlijke en toegewezen opvolging in één lijst.")}</p></div>
-          <button className="primary-button" type="button" onClick={openQuickAdd}><Plus size={15} /> {text("Add action", "Actie toevoegen")}</button>
+          <button className="primary-button" type="button" onClick={openActionCreate}><Plus size={15} /> {text("Add action", "Actie toevoegen")}</button>
         </header>
         <section className="action-overview" aria-label={text("Action summary", "Actieoverzicht")}><button className={actionFilter === "open" ? "active" : ""} type="button" onClick={() => setActionFilter("open")}><strong>{openActions.length}</strong><span>{text("Open", "Open")}</span></button><button className={actionFilter === "urgent" ? "active urgent" : "urgent"} type="button" onClick={() => setActionFilter("urgent")}><strong>{urgentActions.length}</strong><span>{text("Urgent", "Urgent")}</span></button><button className={actionFilter === "completed" ? "active" : ""} type="button" onClick={() => setActionFilter("completed")}><strong>{completedActions.length}</strong><span>{text("Completed", "Afgerond")}</span></button><button className={actionFilter === "all" ? "active" : ""} type="button" onClick={() => setActionFilter("all")}><strong>{actions.length}</strong><span>{text("All", "Alles")}</span></button></section>
         <section className="actions-list">
@@ -2664,12 +2699,12 @@ function UserAdminModal({
 
 function QuickAddModal({ close, chooseType }: { close: () => void; chooseType: (type: string) => void }) {
   const { language, text } = useLanguage();
-  const availableTypes = language === "en" ? quickTypesEnglish : quickTypes;
+  const availableTypes = (language === "en" ? quickTypesEnglish : quickTypes).filter((type) => ["activity", "delivery", "test", "delay", "action"].includes(type.id));
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal" role="dialog" aria-modal="true" aria-labelledby="quick-title">
         <header className="modal-header">
-          <div><h2 id="quick-title">{text("Quick add", "Snel toevoegen")}</h2><p>{text("The project and building are linked automatically.", "Project en gebouw worden automatisch gekoppeld.")}</p></div>
+          <div><h2 id="quick-title">{text("Other field record", "Andere veldregistratie")}</h2><p>{text("Choose once; the project, building and daily report are linked automatically.", "Kies één keer; project, gebouw en dagrapport worden automatisch gekoppeld.")}</p></div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <div className="modal-body">

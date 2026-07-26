@@ -19,7 +19,10 @@ export function isBlobServerConfigured() {
 }
 
 export function isBackupStoreConfigured() {
-  return Boolean(process.env.BACKUP_BLOB_READ_WRITE_TOKEN?.trim());
+  return Boolean(
+    process.env.BACKUP_BLOB_READ_WRITE_TOKEN?.trim()
+    || process.env.BLOB_READ_WRITE_TOKEN?.trim(),
+  );
 }
 
 export function storageJson(body: unknown, status = 200) {

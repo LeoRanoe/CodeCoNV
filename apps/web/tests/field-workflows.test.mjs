@@ -65,7 +65,7 @@ test("refreshes expiring API bearer tokens and preserves every field image local
   assert.match(queue, /else if \(upload\.recordLink\)/);
   assert.match(visual, /validatePanoramaDimensions/);
   assert.match(visual, /queueOfflineUpload/);
-  assert.match(visual, /syncOfflineUploads/);
+  assert.match(visual, /forceSyncOfflineUploads/);
   assert.match(visual, /viewerState === "error"/);
   assert.match(media, /media-preview-error/);
   assert.match(drawing, /Drawing image could not be displayed/);

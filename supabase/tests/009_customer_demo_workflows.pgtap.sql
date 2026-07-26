@@ -73,14 +73,13 @@ select lives_ok(
     $query$select public.create_project_finding(
       %L::uuid, %L::uuid, %L::uuid, null, null, 'deficiency',
       'Wandafwerking herstellen', 'Beschadigde wandhoek herstellen en gereedmelden.',
-      'medium', %L::uuid, null, 'demo-finding-idempotency'
+      'medium', null, null, 'demo-finding-idempotency'
     )$query$,
     (select id from public.projects where code = 'DEMO-001'),
     (select id from public.buildings where project_id = (select id from public.projects where code = 'DEMO-001')),
-    (select id from public.day_reports where project_id = (select id from public.projects where code = 'DEMO-001')),
-    (select id from public.parties where project_id = (select id from public.projects where code = 'DEMO-001') and party_type = 'contractor')
+    (select id from public.day_reports where project_id = (select id from public.projects where code = 'DEMO-001'))
   ),
-  'an assigned finding can be created for the account-free link'
+  'an open finding can be created for the account-free link'
 );
 select lives_ok(
   format(

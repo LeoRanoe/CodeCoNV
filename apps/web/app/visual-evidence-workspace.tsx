@@ -17,7 +17,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 import { fieldPhotoMimeTypes, normalizedImagePoint, validatePanoramaDimensions } from "@/lib/images/field-image.mjs";
-import { compressFieldPhoto, dataSaverEnabled, queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
+import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload } from "@/lib/offline/upload-queue";
 import { isStorageGatewayConfigured, loadProjectFileObjectUrl } from "@/lib/storage/gateway";
 import {
   createVisualAnnotationFinding,
@@ -82,8 +82,12 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   const maxFileSizeBytes = (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024;
   const captures = data.visualCaptures.filter((capture) => capture.status === "active");
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [pendingSelectionFileId, setPendingSelectionFileId] = useState("");
   const [activeCaptureId, setActiveCaptureId] = useState(captures[0]?.id ?? "");
-  const activeCapture = captures.find((capture) => capture.id === activeCaptureId) ?? captures[0] ?? null;
+  const activeCapture = captures.find((capture) => capture.file_id === pendingSelectionFileId)
+    ?? captures.find((capture) => capture.id === activeCaptureId)
+    ?? captures[0]
+    ?? null;
   const activeFile = activeCapture ? captureFile(activeCapture, data.files) : null;
   const activeAnnotations = activeCapture ? data.visualAnnotations.filter((annotation) => annotation.capture_id === activeCapture.id && annotation.status === "active") : [];
   const [showUpload, setShowUpload] = useState(false);
@@ -158,7 +162,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       ? await compressFieldPhoto(file, dataSaverEnabled())
       : { blob: file as Blob, fileName: file.name, mimeType: file.type, compressed: false };
     const okay = await run(async () => {
-      await queueOfflineUpload({
+      const queued = await queueOfflineUpload({
         projectId,
         buildingId,
         reportId,
@@ -179,13 +183,24 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
         queuedSize: prepared.blob.size,
         compressed: prepared.compressed,
       });
-      if (navigator.onLine) await syncOfflineUploads(client, projectId, { force: true });
+      setPendingSelectionFileId(queued.id);
+      if (navigator.onLine) {
+        await forceSyncOfflineUploads(client, projectId, {
+          paused: text(
+            "The connection changed before central image confirmation. The image remains safe on this device. Keep this form open, then open Photos & folders and tap Sync now.",
+            "De verbinding veranderde vóór de centrale beeldbevestiging. Het beeld blijft veilig op dit apparaat. Houd dit formulier open, open daarna Foto’s & mappen en tik op Nu synchroniseren.",
+          ),
+          failed: (pendingCount) => text(
+            `${pendingCount} image upload(s) could not be confirmed centrally. They remain safe on this device. Keep this form open, then open Photos & folders and tap Sync now.`,
+            `${pendingCount} beeld-upload(s) konden niet centraal worden bevestigd. Ze blijven veilig op dit apparaat. Houd dit formulier open, open daarna Foto’s & mappen en tik op Nu synchroniseren.`,
+          ),
+        });
+      }
     }, text(
       "Visual secured on this device; central synchronization runs automatically.",
       "Beeld veilig op dit apparaat opgeslagen; centrale synchronisatie loopt automatisch.",
     ));
     if (okay) {
-      setActiveCaptureId("");
       setCaptureForm({ type: "photo", title: "", description: "", locationLabel: "", locationNodeId: "", tourName: "", tourOrder: "" });
       setFile(null);
       setFileError("");
@@ -221,6 +236,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   const chooseTourCapture = (offset: number) => {
     if (!tour.length || tourIndex < 0) return;
     const next = tour[(tourIndex + offset + tour.length) % tour.length];
+    setPendingSelectionFileId("");
     setActiveCaptureId(next.id);
     setPoint(null);
     setSelectedAnnotationId(null);
@@ -270,7 +286,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           <aside className="visual-capture-list" aria-label={text("Visual evidence list", "Lijst visueel bewijs")}>
             {captures.map((capture) => {
               const count = data.visualAnnotations.filter((annotation) => annotation.capture_id === capture.id && annotation.status === "active").length;
-              return <button type="button" className={activeCapture?.id === capture.id ? "active" : ""} onClick={() => { setActiveCaptureId(capture.id); setPoint(null); setSelectedAnnotationId(null); }} key={capture.id}><span className="visual-list-icon">{capture.capture_type === "panorama" ? <ScanLine size={17} /> : <ImageIcon size={17} />}</span><span><strong>{capture.title}</strong><small>{capture.location_label} · {count} {text(count === 1 ? "issue" : "issues", count === 1 ? "probleem" : "problemen")}</small></span>{capture.capture_type === "panorama" ? <em>360°</em> : null}</button>;
+              return <button type="button" className={activeCapture?.id === capture.id ? "active" : ""} onClick={() => { setPendingSelectionFileId(""); setActiveCaptureId(capture.id); setPoint(null); setSelectedAnnotationId(null); }} key={capture.id}><span className="visual-list-icon">{capture.capture_type === "panorama" ? <ScanLine size={17} /> : <ImageIcon size={17} />}</span><span><strong>{capture.title}</strong><small>{capture.location_label} · {count} {text(count === 1 ? "issue" : "issues", count === 1 ? "probleem" : "problemen")}</small></span>{capture.capture_type === "panorama" ? <em>360°</em> : null}</button>;
             })}
           </aside>
           <div className="visual-stage-column">
@@ -367,7 +383,6 @@ function PanoramaViewer({ imageUrl, annotations, pendingPoint, onPoint, onSelect
       const viewer = new core.Viewer({
         container: containerRef.current,
         panorama: imageUrl,
-        adapter: core.EquirectangularAdapter.withConfig({ shader: true }),
         plugins: [[markers.MarkersPlugin, { clickEventOnMarker: true }]],
         navbar: ["zoom", "move", "fullscreen"],
         mousewheelCtrlKey: false,
@@ -382,10 +397,15 @@ function PanoramaViewer({ imageUrl, annotations, pendingPoint, onPoint, onSelect
       markerPlugin.addEventListener(markers.events.SelectMarkerEvent.type, ({ marker }) => {
         if (!marker.id.startsWith("pending:")) onSelectAnnotationRef.current(marker.id);
       });
+      viewer.addEventListener(core.events.ReadyEvent.type, () => {
+        if (active) setViewerState("ready");
+      });
+      viewer.addEventListener(core.events.PanoramaErrorEvent.type, () => {
+        if (active) setViewerState("error");
+      });
       viewerRef.current = viewer;
       markersRef.current = markerPlugin;
       markerPlugin.setMarkers(panoramaMarkers(markerDataRef.current.annotations, markerDataRef.current.pendingPoint));
-      setViewerState("ready");
     }).catch(() => {
       if (active) setViewerState("error");
     });
@@ -406,7 +426,7 @@ function PanoramaViewer({ imageUrl, annotations, pendingPoint, onPoint, onSelect
     if (position) onPoint({ mode: "spherical", yaw: position.yaw, pitch: position.pitch });
   };
 
-  return <div className="panorama-stage">
+  return <div className="panorama-stage" data-viewer-state={viewerState}>
     <div className="panorama-viewer" ref={containerRef} />
     {viewerState === "loading" ? <div className="panorama-status"><Loader2 className="spin" size={22} /> {text("Opening interactive 360° image…", "Interactief 360°-beeld openen…")}</div> : null}
     {viewerState === "error" ? <div className="panorama-status error"><AlertTriangle size={22} /><span>{text("The 360° viewer could not start on this device.", "De 360°-viewer kon niet starten op dit apparaat.")}</span><button type="button" onClick={() => setRetry((value) => value + 1)}>{text("Try again", "Probeer opnieuw")}</button></div> : null}

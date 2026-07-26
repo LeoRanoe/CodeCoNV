@@ -334,7 +334,13 @@ function DrawingCanvas({ file, pageNumber, pins, markups, pendingPoint, tool, co
   const [error, setError] = useState("");
   const [aspectRatio, setAspectRatio] = useState("4 / 3");
   const [draftPoints, setDraftPoints] = useState<NormalizedPoint[]>([]);
-  const [drawing, setDrawing] = useState(false);
+  const drawingRef = useRef(false);
+  const draftPointsRef = useRef<NormalizedPoint[]>([]);
+
+  const updateDraftPoints = (points: NormalizedPoint[]) => {
+    draftPointsRef.current = points;
+    setDraftPoints(points);
+  };
 
   useEffect(() => {
     let active = true;
@@ -415,24 +421,26 @@ function DrawingCanvas({ file, pageNumber, pins, markups, pendingPoint, tool, co
       return;
     }
     event.currentTarget.setPointerCapture(event.pointerId);
-    setDrawing(true);
-    setDraftPoints([start]);
+    drawingRef.current = true;
+    updateDraftPoints([start]);
   };
 
   const continueMarkup = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!drawing || tool === "pin" || tool === "text") return;
+    if (!drawingRef.current || tool === "pin" || tool === "text") return;
     const point = normalizedPoint(event.clientX, event.clientY, event.currentTarget);
-    setDraftPoints((points) => tool === "arrow" ? [points[0], point] : [...points, point]);
+    const points = draftPointsRef.current;
+    updateDraftPoints(tool === "arrow" ? [points[0], point] : [...points, point]);
   };
 
   const finishMarkup = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!drawing || tool === "pin" || tool === "text") return;
+    if (!drawingRef.current || tool === "pin" || tool === "text") return;
     event.preventDefault();
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    setDrawing(false);
+    drawingRef.current = false;
     const finalPoint = normalizedPoint(event.clientX, event.clientY, event.currentTarget);
-    const points = tool === "arrow" ? [draftPoints[0], finalPoint].filter(Boolean) : [...draftPoints, finalPoint];
-    setDraftPoints([]);
+    const currentPoints = draftPointsRef.current;
+    const points = tool === "arrow" ? [currentPoints[0], finalPoint].filter(Boolean) : [...currentPoints, finalPoint];
+    updateDraftPoints([]);
     if (points.length < 2) return;
     void onCreateMarkup(tool === "arrow" ? { start: points[0], end: points[points.length - 1] } : { points });
   };
@@ -452,7 +460,7 @@ function DrawingCanvas({ file, pageNumber, pins, markups, pendingPoint, tool, co
           onPointerDown={beginMarkup}
           onPointerMove={continueMarkup}
           onPointerUp={finishMarkup}
-          onPointerCancel={() => { setDrawing(false); setDraftPoints([]); }}
+          onPointerCancel={() => { drawingRef.current = false; updateDraftPoints([]); }}
         >
           {mimeType === "application/pdf" ? <canvas ref={canvasRef} /> : previewUrl ? (
             // eslint-disable-next-line @next/next/no-img-element

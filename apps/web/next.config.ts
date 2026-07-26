@@ -3,8 +3,10 @@ import type { NextConfig } from "next";
 function allowedConnectSources() {
   const sources = [
     "'self'",
+    "blob:",
     "https://*.supabase.co",
     "wss://*.supabase.co",
+    "https://vercel.com",
     "https://blob.vercel-storage.com",
     "https://*.blob.vercel-storage.com",
   ];
