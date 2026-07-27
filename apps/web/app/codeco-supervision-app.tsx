@@ -53,6 +53,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { FieldGuide } from "@/app/field-guide";
 import { OperationalWorkspace } from "@/app/operational-workspace";
+import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { ensureDailyBackup } from "@/lib/backups/client";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
@@ -3673,8 +3674,7 @@ function ReportModal({
           <div className="modal-actions">
             <span style={{ color: missing ? "var(--yellow)" : "var(--green)", fontSize: 10, fontWeight: 680 }}>{missing ? text(`${missing} item(s) still need completion`, `${missing} onderdeel${missing > 1 ? "en" : ""} nog aanvullen`) : text("All checks passed", "Alle controles geslaagd")}</span>
             <div className="report-action-buttons">
-              <button className="ghost-button" type="button" disabled={missing > 0} onClick={onDownload}><FileText size={14} /> {text("Draft PDF", "Concept-PDF")}</button>
-              <button className="ghost-button" type="button" disabled={missing > 0} onClick={onDownloadDocx}><FileText size={14} /> {text("Draft Word", "Concept-Word")}</button>
+              <ReportDownloadButtons disabled={missing > 0} onDownloadPdf={onDownload} onDownloadWord={onDownloadDocx} />
               <button className="primary-button" type="button" disabled={missing > 0 || submitted} onClick={onSubmit}>{submitted ? text("Submitted", "Ingediend") : text("Ready for review", "Gereed voor review")} <ArrowRight size={14} /></button>
             </div>
           </div>
