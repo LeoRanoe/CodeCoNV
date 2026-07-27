@@ -3,7 +3,6 @@ import { expect, type Page, test } from "@playwright/test";
 const email = process.env.CODECO_E2E_EMAIL;
 const password = process.env.CODECO_E2E_PASSWORD;
 const projectName = process.env.CODECO_E2E_PROJECT ?? "Paramaribo Field Readiness Demo";
-const buildingName = process.env.CODECO_E2E_BUILDING ?? "Building B1";
 
 test.skip(!email || !password, "CODECO_E2E_EMAIL and CODECO_E2E_PASSWORD are required.");
 
@@ -23,10 +22,6 @@ async function openAuthenticatedWorkspace(page: Page) {
   await expect(project).toBeVisible();
   await project.click();
 
-  const building = page.getByRole("button", { name: new RegExp(buildingName) });
-  await expect(building).toBeVisible();
-  await building.click();
-  await page.getByRole("button", { name: "Open workspace" }).click();
   await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening)/ })).toBeVisible();
   await page.waitForTimeout(500);
   const guideClose = page.getByRole("button", { name: "Close guide" });

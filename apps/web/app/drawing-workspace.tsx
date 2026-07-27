@@ -23,6 +23,7 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { useLanguage } from "@/lib/i18n";
 import { loadProjectFilePreviewObjectUrl, uploadProjectFile } from "@/lib/storage/gateway";
 import {
@@ -39,6 +40,7 @@ type DrawingWorkspaceProps = {
   data: OperationSnapshot;
   projectId: string;
   buildingId: string;
+  buildings: BuildingOption[];
   client: SupabaseClient;
   busy: boolean;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
@@ -82,7 +84,7 @@ const pinTypeClass: Record<DrawingPin["linked_record_type"], string> = {
   visual: "cyan",
 };
 
-export function DrawingWorkspace({ data, projectId, buildingId, client, busy, run, onOpenLinkedRecord }: DrawingWorkspaceProps) {
+export function DrawingWorkspace({ data, projectId, buildingId, buildings, client, busy, run, onOpenLinkedRecord }: DrawingWorkspaceProps) {
   const { language, text } = useLanguage();
   const maxFileSizeBytes = (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024;
   const drawings = data.files.filter((file) => file.category === "drawing" && file.status === "available" && supportedDrawingMimeTypes.includes(file.mime_type));
@@ -102,6 +104,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, client, busy, ru
   const [markupColor, setMarkupColor] = useState("#D92D20");
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [markupText, setMarkupText] = useState("");
+  const [uploadBuildingId, setUploadBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
 
   const activePins = activeDrawing
     ? data.drawingPins.filter((pin) => pin.drawing_file_id === activeDrawing.id && pin.page_number === pageNumber && pin.status === "active")
@@ -149,7 +152,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, client, busy, ru
   const uploadDrawing = async () => {
     if (!uploadFile || uploadFile.size > maxFileSizeBytes || (!supportedDrawingMimeTypes.includes(uploadFile.type) && !isDwgFile(uploadFile))) return;
     const okay = await run(
-      () => uploadProjectFile(client, { projectId, buildingId, category: "drawing", file: uploadFile, onProgress: setUploadProgress }),
+      () => uploadProjectFile(client, { projectId, buildingId: uploadBuildingId, category: "drawing", file: uploadFile, onProgress: setUploadProgress }),
       text("Drawing uploaded securely. Open it here to place project links.", "Tekening veilig geüpload. Open deze hier om projectkoppelingen te plaatsen."),
     );
     if (okay) {
@@ -205,6 +208,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, client, busy, ru
       </div>
 
       <div className="drawing-upload-strip">
+        <BuildingPicker id="drawing-upload-building" buildings={buildings} value={uploadBuildingId} onChange={setUploadBuildingId} />
         <label className="form-field">
           <span>{text(`New drawing · DWG source, PDF, JPEG, PNG or WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`, `Nieuwe tekening · DWG-bron, PDF, JPEG, PNG of WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`)}</span>
           <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp,.dwg,.pdf,.jpg,.jpeg,.png,.webp" onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)} />

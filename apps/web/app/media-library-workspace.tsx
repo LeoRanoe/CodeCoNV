@@ -4,6 +4,7 @@ import { Camera, Download, Folder, FolderPlus, HardDrive, Image as ImageIcon, Lo
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { useLanguage } from "@/lib/i18n";
 import {
   compressFieldPhoto,
@@ -64,6 +65,7 @@ export function MediaLibraryWorkspace({
   projectId,
   buildingId,
   buildingName,
+  buildings,
   reportId,
   client,
   busy,
@@ -76,6 +78,7 @@ export function MediaLibraryWorkspace({
   projectId: string;
   buildingId: string;
   buildingName: string;
+  buildings: BuildingOption[];
   reportId: string | null;
   client: SupabaseClient;
   busy: boolean;
@@ -96,8 +99,10 @@ export function MediaLibraryWorkspace({
   const [online, setOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
   const [syncing, setSyncing] = useState(false);
   const [fieldError, setFieldError] = useState("");
-  const folders = useMemo(() => data.mediaFolders.filter((folder) => !folder.building_id || folder.building_id === buildingId), [buildingId, data.mediaFolders]);
-  const files = useMemo(() => data.files.filter((file) => file.status === "available" && (!file.building_id || file.building_id === buildingId) && (folderId === "all" || (folderId === "unfiled" ? !file.folder_id : file.folder_id === folderId))), [buildingId, data.files, folderId]);
+  const [libraryBuildingId, setLibraryBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
+  const libraryBuildingName = buildings.find((building) => building.id === libraryBuildingId)?.name ?? buildingName;
+  const folders = useMemo(() => data.mediaFolders.filter((folder) => !folder.building_id || folder.building_id === libraryBuildingId), [libraryBuildingId, data.mediaFolders]);
+  const files = useMemo(() => data.files.filter((file) => file.status === "available" && (!file.building_id || file.building_id === libraryBuildingId) && (folderId === "all" || (folderId === "unfiled" ? !file.folder_id : file.folder_id === folderId))), [libraryBuildingId, data.files, folderId]);
   const standardFolderNames = kind === "photo"
     ? [text("Daily progress", "Dagvoortgang"), text("Inspections", "Inspecties"), text("Findings", "Bevindingen"), "HSE", text("Deliveries", "Leveringen"), text("360° tours", "360°-rondgangen")]
     : [text("Approved drawings", "Goedgekeurde tekeningen"), text("Revisions", "Revisies"), text("As-built", "As-built")];
@@ -165,7 +170,7 @@ export function MediaLibraryWorkspace({
           try {
             const created = await createMediaFolder(client, {
               projectId,
-              buildingId,
+              buildingId: libraryBuildingId,
               name: automaticFolderName,
               folderType: kind === "photo" ? "images" : "drawings",
             });
@@ -190,7 +195,7 @@ export function MediaLibraryWorkspace({
         const prepared = kind === "photo" ? await compressFieldPhoto(file, savingData) : { blob: file as Blob, fileName: file.name, mimeType: file.type || "application/octet-stream", compressed: false };
         await queueOfflineUpload({
           projectId,
-          buildingId,
+          buildingId: libraryBuildingId,
           reportId,
           folderId: targetFolder,
           folderName: automaticFolderName,
@@ -199,7 +204,7 @@ export function MediaLibraryWorkspace({
           fileName: prepared.fileName,
           mimeType: prepared.mimeType,
           title: automaticTitle(file.name),
-          locationLabel: buildingName,
+          locationLabel: libraryBuildingName,
           capturedAt: new Date(file.lastModified || Date.now()).toISOString(),
           originalSize: file.size,
           queuedSize: prepared.blob.size,
@@ -226,7 +231,7 @@ export function MediaLibraryWorkspace({
       ));
       await reloadQueue().catch(() => undefined);
     }
-  }, [buildingId, buildingName, client, folderId, folders, kind, projectId, reloadQueue, reportId, run, savingData, synchronize, text]);
+  }, [libraryBuildingId, libraryBuildingName, client, folderId, folders, kind, projectId, reloadQueue, reportId, run, savingData, synchronize, text]);
 
   useEffect(() => {
     if (!initialFiles.length) return;
@@ -243,7 +248,7 @@ export function MediaLibraryWorkspace({
     const okay = await run(
       async () => {
         const existing = folders.find((folder) => folder.name.toLocaleLowerCase() === name.trim().toLocaleLowerCase());
-        const folder = existing ?? await createMediaFolder(client, { projectId, buildingId, name: name.trim(), folderType: kind === "photo" ? "images" : "drawings" });
+        const folder = existing ?? await createMediaFolder(client, { projectId, buildingId: libraryBuildingId, name: name.trim(), folderType: kind === "photo" ? "images" : "drawings" });
         createdFolderId = folder.id;
       },
       text("Folder created.", "Map aangemaakt."),
@@ -272,6 +277,7 @@ export function MediaLibraryWorkspace({
       </div>
 
       <div className="media-actions-panel">
+        <BuildingPicker id="media-library-building" buildings={buildings} value={libraryBuildingId} onChange={(next) => { setLibraryBuildingId(next); setFolderId("all"); }} label={text("Building shown / upload target", "Getoond gebouw / uploaddoel")} />
         <div className="media-kind-toggle">
           <button className={kind === "photo" ? "active" : ""} type="button" onClick={() => setKind("photo")}><ImageIcon size={16} /> {text("Photo", "Foto")}</button>
           <button className={kind === "drawing" ? "active" : ""} type="button" onClick={() => setKind("drawing")}><HardDrive size={16} /> {text("Drawing", "Tekening")}</button>

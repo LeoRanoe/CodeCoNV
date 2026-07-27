@@ -34,6 +34,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { VisualEvidenceWorkspace } from "@/app/visual-evidence-workspace";
 import { DrawingWorkspace } from "@/app/drawing-workspace";
 import { FieldTools } from "@/app/field-tools";
@@ -234,6 +235,7 @@ export function OperationalWorkspace({
   projectCode,
   buildingId,
   buildingName,
+  buildings,
   reportId,
   reportNumber,
   reportStatus,
@@ -257,6 +259,7 @@ export function OperationalWorkspace({
   projectCode: string;
   buildingId: string;
   buildingName: string;
+  buildings: BuildingOption[];
   reportId: string | null;
   reportNumber: string;
   reportStatus: string;
@@ -341,6 +344,7 @@ export function OperationalWorkspace({
           projectCode={projectCode}
           buildingId={buildingId}
           buildingName={buildingName}
+          buildings={buildings}
           projectStartAnswers={projectStartAnswers}
           currentUserName={currentUserName}
           parties={parties}
@@ -399,6 +403,7 @@ function ProjectOperations({
   projectCode,
   buildingId,
   buildingName,
+  buildings,
   projectStartAnswers,
   currentUserName,
   parties,
@@ -419,6 +424,7 @@ function ProjectOperations({
   projectCode: string;
   buildingId: string;
   buildingName: string;
+  buildings: BuildingOption[];
   projectStartAnswers: ProjectStartAnswers | null;
   currentUserName: string;
   parties: ProjectParty[];
@@ -464,6 +470,11 @@ function ProjectOperations({
   const [boqFile, setBoqFile] = useState<File | null>(null);
   const [boqItems, setBoqItems] = useState<BoqImportItem[]>([]);
   const [boqError, setBoqError] = useState("");
+  const [inspectionBuildingId, setInspectionBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
+  const [findingBuildingId, setFindingBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
+  const [hseBuildingId, setHseBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
+  const [registerBuildingId, setRegisterBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
+  const [boqBuildingId, setBoqBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const inspectionTemplates = data.templates
     .filter((template) => template.module === "inspection" && template.status === "published")
     .sort((left, right) => {
@@ -590,11 +601,12 @@ function ProjectOperations({
     if (!reportId) return;
     const templateId = inspectionTemplateId || inspectionTemplates[0]?.id;
     const template = data.templates.find((item) => item.id === templateId);
-    const resolvedTitle = inspectionTitle.trim() || `${template?.name ?? text("Inspection", "Inspectie")} · ${buildingName}`;
+    const inspectionBuildingName = buildings.find((building) => building.id === inspectionBuildingId)?.name ?? buildingName;
+    const resolvedTitle = inspectionTitle.trim() || `${template?.name ?? text("Inspection", "Inspectie")} · ${inspectionBuildingName}`;
     if (!templateId) return;
     let created: Inspection | null = null;
     const okay = await run(async () => {
-      created = await startInspection(client, { projectId, buildingId, reportId, templateId, title: resolvedTitle });
+      created = await startInspection(client, { projectId, buildingId: inspectionBuildingId, reportId, templateId, title: resolvedTitle });
     }, text("Inspection started; complete every required checkpoint.", "Inspectie gestart; vul nu ieder verplicht controlepunt in."));
     if (okay && created) {
       setActiveInspection(created);
@@ -638,8 +650,8 @@ function ProjectOperations({
     ),
   );
 
-  const existingMediaFolderId = (name: string) => {
-    const existing = data.mediaFolders.find((folder) => (!folder.building_id || folder.building_id === buildingId) && folder.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+  const existingMediaFolderId = (name: string, forBuildingId: string) => {
+    const existing = data.mediaFolders.find((folder) => (!folder.building_id || folder.building_id === forBuildingId) && folder.name.toLocaleLowerCase() === name.toLocaleLowerCase());
     return existing?.id ?? null;
   };
 
@@ -662,12 +674,13 @@ function ProjectOperations({
         await finishInspection(client, activeInspection, inspectionAnswers);
         if (inspectionPhotos.length) {
           const folderName = text("Inspections", "Inspecties");
-          const folderId = existingMediaFolderId(folderName);
+          const photoBuildingId = activeInspection.building_id;
+          const folderId = existingMediaFolderId(folderName, photoBuildingId);
           for (const photo of inspectionPhotos) {
             const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
             await queueOfflineUpload({
               projectId,
-              buildingId,
+              buildingId: photoBuildingId,
               reportId,
               folderId,
               folderName,
@@ -676,7 +689,7 @@ function ProjectOperations({
               fileName: prepared.fileName,
               mimeType: prepared.mimeType,
               title: activeInspection.title,
-              locationLabel: buildingName,
+              locationLabel: buildings.find((building) => building.id === photoBuildingId)?.name ?? buildingName,
               capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
               originalSize: photo.size,
               queuedSize: prepared.blob.size,
@@ -741,9 +754,10 @@ function ProjectOperations({
 
   const addFinding = async () => {
     if (!reportId || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3) return;
+    const findingBuildingName = buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName;
     const draft = {
       projectId,
-      buildingId,
+      buildingId: findingBuildingId,
       reportId,
       type: findingForm.type,
       title: findingForm.title,
@@ -764,13 +778,13 @@ function ProjectOperations({
     const okay = await run(async () => {
       if (findingPhotos.length) {
         const folderName = text("Findings", "Bevindingen");
-        const findingFolderId = existingMediaFolderId(folderName);
+        const findingFolderId = existingMediaFolderId(folderName, findingBuildingId);
         const groupId = crypto.randomUUID();
         for (const photo of findingPhotos) {
           const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
           await queueOfflineUpload({
             projectId,
-            buildingId,
+            buildingId: findingBuildingId,
             reportId,
             folderId: findingFolderId,
             folderName,
@@ -780,7 +794,7 @@ function ProjectOperations({
             mimeType: prepared.mimeType,
             title: findingForm.title,
             description: findingForm.description,
-            locationLabel: buildingName,
+            locationLabel: findingBuildingName,
             capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
             originalSize: photo.size,
             queuedSize: prepared.blob.size,
@@ -825,17 +839,18 @@ function ProjectOperations({
 
   const addHse = async () => {
     if (!reportId || hseForm.title.trim().length < 3 || hseForm.description.trim().length < 3) return;
+    const hseBuildingName = buildings.find((building) => building.id === hseBuildingId)?.name ?? buildingName;
     const okay = await run(
       async () => {
-        const event = await createHseEvent(client, { projectId, buildingId, reportId, ...hseForm });
+        const event = await createHseEvent(client, { projectId, buildingId: hseBuildingId, reportId, ...hseForm });
         if (hsePhotos.length) {
           const folderName = "HSE";
-          const folderId = existingMediaFolderId(folderName);
+          const folderId = existingMediaFolderId(folderName, hseBuildingId);
           for (const photo of hsePhotos) {
             const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
             await queueOfflineUpload({
               projectId,
-              buildingId,
+              buildingId: hseBuildingId,
               reportId,
               folderId,
               folderName,
@@ -845,7 +860,7 @@ function ProjectOperations({
               mimeType: prepared.mimeType,
               title: hseForm.title,
               description: hseForm.description,
-              locationLabel: buildingName,
+              locationLabel: hseBuildingName,
               capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
               originalSize: photo.size,
               queuedSize: prepared.blob.size,
@@ -868,18 +883,19 @@ function ProjectOperations({
 
   const addRegisterEntry = async () => {
     if (!reportId || registerForm.title.trim().length < 3) return;
+    const registerBuildingName = buildings.find((building) => building.id === registerBuildingId)?.name ?? buildingName;
     const details = controlledRegister
       ? createControlledDocumentDetails(registerForm, {
           projectName,
           projectCode,
-          buildingName,
+          buildingName: registerBuildingName,
           currentUserName,
         })
       : { description: registerForm.details };
     const okay = await run(
       () => createRegisterEntry(client, {
         projectId,
-        buildingId,
+        buildingId: registerBuildingId,
         reportId,
         type: registerForm.type,
         title: registerForm.title,
@@ -910,7 +926,7 @@ function ProjectOperations({
   const importBoq = async () => {
     if (!boqItems.length) return;
     const okay = await run(
-      () => importProjectBoq(client, { projectId, buildingId, reportId, items: boqItems }),
+      () => importProjectBoq(client, { projectId, buildingId: boqBuildingId, reportId, items: boqItems }),
       text(`${boqItems.length} BOQ lines imported with quantity, value and progress.`, `${boqItems.length} BOQ-regels geïmporteerd met hoeveelheid, waarde en voortgang.`),
     );
     if (okay) {
@@ -1089,6 +1105,7 @@ function ProjectOperations({
                 </div>
               ) : null}
               {inspectionTemplates.length ? <>
+                <BuildingPicker id="inspection-building" buildings={buildings} value={inspectionBuildingId} onChange={setInspectionBuildingId} />
                 <label className="form-field"><span>{text("Checklist · recommended for today's work first", "Checklist · aanbevolen voor vandaag eerst")}</span><select value={inspectionTemplateId || inspectionTemplates[0]?.id || ""} onChange={(event) => { setInspectionTemplateId(event.target.value); setInspectionTitle(""); }}>{inspectionTemplates.map((template) => <option value={template.id} key={template.id}>{["LIB-101", "LIB-102", "LIB-103"].includes(template.code) ? "★ " : ""}{template.name} · v{template.version_number}</option>)}</select></label>
                 <details className="inspection-subject-details"><summary>{text("Add a different subject or element · optional", "Ander onderwerp of element toevoegen · optioneel")}</summary><label className="form-field"><span>{text("Subject / element", "Onderwerp / element")}</span><input value={inspectionTitle} onChange={(event) => setInspectionTitle(event.target.value)} placeholder={`${inspectionTemplates.find((template) => template.id === (inspectionTemplateId || inspectionTemplates[0]?.id))?.name ?? text("Inspection", "Inspectie")} · ${buildingName}`} /></label></details>
                 <button className="primary-button start-checklist-button" type="button" disabled={busy || !reportId} onClick={() => void beginInspection()}><ClipboardCheck size={15} /> {text("Start recommended checklist", "Start aanbevolen checklist")}</button>
@@ -1161,7 +1178,10 @@ function ProjectOperations({
                 <label className="form-field"><span>{text("Expected resolution date", "Verwachte oplosdatum")}</span><input type="date" value={findingForm.expectedResolutionDate} onChange={(event) => setFindingForm({ ...findingForm, expectedResolutionDate: event.target.value })} /></label>
                 <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required", "Escalatie vereist")}</label>
               </div>
-              <label className="form-field"><span>{text("Responsible party", "Verantwoordelijke partij")}</span><select value={findingForm.responsiblePartyId} onChange={(event) => setFindingForm({ ...findingForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Nog niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
+              <div className="form-grid-2">
+                <BuildingPicker id="finding-building" buildings={buildings} value={findingBuildingId} onChange={setFindingBuildingId} />
+                <label className="form-field"><span>{text("Responsible party", "Verantwoordelijke partij")}</span><select value={findingForm.responsiblePartyId} onChange={(event) => setFindingForm({ ...findingForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Nog niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
+              </div>
               <button className="primary-button" type="button" disabled={busy || !reportId || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Probleem indienen")}</button>
             </div>
           ) : null}
@@ -1226,6 +1246,7 @@ function ProjectOperations({
               </label>
               {hsePhotos.length ? <FindingPhotoStack files={hsePhotos} onRemove={(index) => setHsePhotos((current) => current.filter((_, currentIndex) => currentIndex !== index))} /> : null}
               {hsePhotoError ? <p className="field-error" role="alert">{hsePhotoError}</p> : null}
+              <BuildingPicker id="hse-building" buildings={buildings} value={hseBuildingId} onChange={setHseBuildingId} />
               <label className="check-field"><input type="checkbox" checked={hseForm.confidential} onChange={(event) => setHseForm({ ...hseForm, confidential: event.target.checked })} /> {text("Restrict this sensitive incident to authorized HSE roles", "Beperk dit gevoelige incident tot bevoegde HSE-rollen")}</label>
               <button className="primary-button" type="button" disabled={busy || !reportId || hseForm.title.trim().length < 3 || hseForm.description.trim().length < 3} onClick={() => void addHse()}><ShieldCheck size={15} /> {text("Save HSE record", "HSE-registratie opslaan")}</button>
             </div>
@@ -1238,8 +1259,11 @@ function ProjectOperations({
         <section className="operation-panel">
           {showForm ? (
             <div className={`operation-form ${controlledRegister ? "wide controlled-document-form" : ""}`}>
-              <div className="operation-form-heading"><div><span className="record-number">{controlledRegister ? text("Client-controlled form", "Klantgestuurd formulier") : text("Project register", "Projectregister")}</span><h2>{controlledRegister ? registerNames[registerForm.type] : text("Add project register item", "Projectregister aanvullen")}</h2></div>{controlledRegister ? <span className="controlled-document-badge">{projectCode} · {buildingName}</span> : null}</div>
-              <label className="form-field"><span>{text("Register / document format", "Register / documentformaat")}</span><select value={registerForm.type} onChange={(event) => setRegisterForm({ ...emptyControlledDocumentDraft, type: event.target.value })}>{Object.entries(registerNames).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+              <div className="operation-form-heading"><div><span className="record-number">{controlledRegister ? text("Client-controlled form", "Klantgestuurd formulier") : text("Project register", "Projectregister")}</span><h2>{controlledRegister ? registerNames[registerForm.type] : text("Add project register item", "Projectregister aanvullen")}</h2></div>{controlledRegister ? <span className="controlled-document-badge">{projectCode} · {buildings.find((building) => building.id === registerBuildingId)?.name ?? buildingName}</span> : null}</div>
+              <div className="form-grid-2">
+                <BuildingPicker id="register-building" buildings={buildings} value={registerBuildingId} onChange={setRegisterBuildingId} />
+                <label className="form-field"><span>{text("Register / document format", "Register / documentformaat")}</span><select value={registerForm.type} onChange={(event) => setRegisterForm({ ...emptyControlledDocumentDraft, type: event.target.value })}>{Object.entries(registerNames).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+              </div>
               {activeRegisterPresets.length ? <div className="quick-issue-presets" aria-label={text("Choose a standard register item", "Kies een standaard registeritem")}>{activeRegisterPresets.map((preset) => <button className={registerForm.title === preset.title ? "active" : ""} type="button" onClick={() => setRegisterForm({ ...registerForm, ...preset })} key={preset.title}>{preset.title}</button>)}</div> : null}
               <details className="optional-text-entry">
                 <summary>{text("Different title or document content", "Andere titel of documentinhoud")}</summary>
@@ -1265,6 +1289,7 @@ function ProjectOperations({
           ) : null}
           <div className="boq-import-card">
             <div><span className="record-number">{text("BOQ import and progress", "BOQ-import en voortgang")}</span><h2>{text("Import the bill of quantities as a controlled project log", "Importeer de meetstaat als gecontroleerd projectlog")}</h2><p>{text("CSV columns: code, description, quantity, unit, unit rate, contract value and progress percentage. The complete import is atomic: an invalid row stores nothing.", "CSV-kolommen: code, omschrijving, hoeveelheid, eenheid, eenheidsprijs, contractbedrag en voortgangspercentage. De volledige import is atomisch: bij een ongeldige rij wordt niets opgeslagen.")}</p></div>
+            <BuildingPicker id="boq-building" buildings={buildings} value={boqBuildingId} onChange={setBoqBuildingId} />
             <div className="boq-import-actions"><button className="secondary-button" type="button" onClick={downloadBoqCsvTemplate}><Download size={15} /> {text("Download CSV template", "Download CSV-sjabloon")}</button><label className="secondary-button file-button"><Upload size={15} /> {text("Choose BOQ file", "Kies BOQ-bestand")}<input type="file" accept="text/csv,.csv" hidden onChange={(event) => void inspectBoqFile(event.target.files?.[0] ?? null)} /></label><button className="primary-button" type="button" disabled={busy || !boqItems.length} onClick={() => void importBoq()}><PackageCheck size={15} /> {text("Import BOQ", "Importeer BOQ")}</button></div>
             {boqFile ? <span className="boq-file-summary"><strong>{boqFile.name}</strong>{boqItems.length ? ` · ${boqItems.length} ${text("validated rows", "gevalideerde regels")}` : ""}</span> : null}
             {boqError ? <span className="field-error">{boqError}</span> : null}
@@ -1276,13 +1301,13 @@ function ProjectOperations({
         </section>
       ) : null}
 
-      {tab === "visual" ? <VisualEvidenceWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} reportId={reportId} parties={parties} client={client} busy={busy} run={run} /> : null}
+      {tab === "visual" ? <VisualEvidenceWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} parties={parties} client={client} busy={busy} run={run} /> : null}
 
-      {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} client={client} busy={busy} run={run} onOpenLinkedRecord={(recordType) => switchTab(recordType === "observation" ? "findings" : recordType === "inspection" ? "inspections" : recordType === "visual" ? "visual" : "registers")} /> : null}
+      {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} client={client} busy={busy} run={run} onOpenLinkedRecord={(recordType) => switchTab(recordType === "observation" ? "findings" : recordType === "inspection" ? "inspections" : recordType === "visual" ? "visual" : "registers")} /> : null}
 
-      {tab === "tools" ? <FieldTools data={data} projectId={projectId} buildingId={buildingId} reportId={reportId} client={client} busy={busy} run={run} /> : null}
+      {tab === "tools" ? <FieldTools data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} /> : null}
 
-      {tab === "files" ? <MediaLibraryWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} reportId={reportId} client={client} busy={busy} run={run} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} open360Upload={() => setTab("visual")} /> : null}
+      {tab === "files" ? <MediaLibraryWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} open360Upload={() => setTab("visual")} /> : null}
     </>
   );
 }

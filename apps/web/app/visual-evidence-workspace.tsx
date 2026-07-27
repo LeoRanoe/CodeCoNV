@@ -15,6 +15,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { useLanguage } from "@/lib/i18n";
 import { fieldPhotoMimeTypes, normalizedImagePoint, validatePanoramaDimensions } from "@/lib/images/field-image.mjs";
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload } from "@/lib/offline/upload-queue";
@@ -38,6 +39,7 @@ type VisualEvidenceWorkspaceProps = {
   projectId: string;
   buildingId: string;
   buildingName: string;
+  buildings: BuildingOption[];
   reportId: string | null;
   parties: ProjectParty[];
   client: SupabaseClient;
@@ -77,7 +79,7 @@ function imageDimensions(file: File) {
   });
 }
 
-export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingName, reportId, parties, client, busy, run }: VisualEvidenceWorkspaceProps) {
+export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingName, buildings, reportId, parties, client, busy, run }: VisualEvidenceWorkspaceProps) {
   const { text } = useLanguage();
   const maxFileSizeBytes = (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024;
   const captures = data.visualCaptures.filter((capture) => capture.status === "active");
@@ -106,6 +108,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   const [point, setPoint] = useState<VisualPoint | null>(null);
   const [issue, setIssue] = useState(emptyIssue);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
+  const [captureBuildingId, setCaptureBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
+  const captureBuildingName = buildings.find((building) => building.id === captureBuildingId)?.name ?? buildingName;
 
   const stageImage = (selected: File | null, type: VisualCapture["capture_type"]) => {
     setFile(selected);
@@ -119,7 +123,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       ...current,
       type,
       title: automaticName,
-      locationLabel: current.locationLabel || buildingName,
+      locationLabel: current.locationLabel || captureBuildingName,
       tourName: type === "photo" ? "" : current.tourName,
       tourOrder: type === "photo" ? "" : current.tourOrder,
     }));
@@ -156,7 +160,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       return;
     }
     const folderName = captureForm.type === "panorama" ? text("360° tours", "360°-rondgangen") : text("Daily progress", "Dagvoortgang");
-    const existingFolder = data.mediaFolders.find((folder) => (!folder.building_id || folder.building_id === buildingId) && folder.name.toLocaleLowerCase() === folderName.toLocaleLowerCase());
+    const existingFolder = data.mediaFolders.find((folder) => (!folder.building_id || folder.building_id === captureBuildingId) && folder.name.toLocaleLowerCase() === folderName.toLocaleLowerCase());
     const folderId = existingFolder?.id ?? null;
     const prepared = captureForm.type === "photo"
       ? await compressFieldPhoto(file, dataSaverEnabled())
@@ -164,7 +168,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     const okay = await run(async () => {
       const queued = await queueOfflineUpload({
         projectId,
-        buildingId,
+        buildingId: captureBuildingId,
         reportId,
         folderId,
         folderName,
@@ -252,7 +256,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
         <div className="visual-toolbar-actions">
           <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { stageImage(event.currentTarget.files?.[0] ?? null, "photo"); event.currentTarget.value = ""; }} />
           <button className="primary-button camera-primary-action" type="button" disabled={!isStorageGatewayConfigured} onClick={() => cameraInputRef.current?.click()}><Camera size={17} /> {text("Take photo", "Maak foto")}</button>
-          <button className="secondary-button" type="button" disabled={!isStorageGatewayConfigured} onClick={() => { setCaptureForm({ ...captureForm, type: "panorama", title: "", locationLabel: buildingName }); setFile(null); setShowUpload(true); }}><ScanLine size={16} /> {text("Upload 360°", "Upload 360°")}</button>
+          <button className="secondary-button" type="button" disabled={!isStorageGatewayConfigured} onClick={() => { setCaptureForm({ ...captureForm, type: "panorama", title: "", locationLabel: captureBuildingName }); setFile(null); setShowUpload(true); }}><ScanLine size={16} /> {text("Upload 360°", "Upload 360°")}</button>
         </div>
       </div>
 
@@ -262,7 +266,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
         <div className="operation-form wide visual-upload-form">
           <div className="operation-form-heading"><div><span className="record-number">{text("New visual evidence", "Nieuw visueel bewijs")}</span><h2>{captureForm.type === "panorama" ? text("Upload 360° camera image", "Upload 360°-camerabeeld") : text("Photo ready to save", "Foto klaar om op te slaan")}</h2></div><span className="experimental-badge">{captureForm.type === "panorama" ? text("360° camera source", "360°-camerabron") : text("Point & shoot", "Richten & klaar")}</span></div>
           <div className="form-grid-2">
-            <label className="form-field"><span>{text("Project location node", "Projectlocatie")}</span><select value={captureForm.locationNodeId} onChange={(event) => setCaptureForm({ ...captureForm, locationNodeId: event.target.value })}><option value="">{text("No structured location selected", "Geen gestructureerde locatie gekozen")}</option>{data.locationNodes.filter((node) => node.building_id === buildingId).map((node) => <option value={node.id} key={node.id}>{node.code} · {node.name}</option>)}</select></label>
+            <BuildingPicker id="capture-building" buildings={buildings} value={captureBuildingId} onChange={(next) => { setCaptureBuildingId(next); setCaptureForm((current) => ({ ...current, locationNodeId: "" })); }} />
+            <label className="form-field"><span>{text("Project location node", "Projectlocatie")}</span><select value={captureForm.locationNodeId} onChange={(event) => setCaptureForm({ ...captureForm, locationNodeId: event.target.value })}><option value="">{text("No structured location selected", "Geen gestructureerde locatie gekozen")}</option>{data.locationNodes.filter((node) => node.building_id === captureBuildingId).map((node) => <option value={node.id} key={node.id}>{node.code} · {node.name}</option>)}</select></label>
             {captureForm.type === "panorama" ? <label className="form-field"><span>{text(`360° image · JPEG, PNG or WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`, `360°-beeld · JPEG, PNG of WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`)}</span><input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" onChange={(event) => stageImage(event.currentTarget.files?.[0] ?? null, "panorama")} /></label> : <button className="secondary-button visual-retake-button" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={16} /> {text("Retake photo", "Foto opnieuw maken")}</button>}
           </div>
           <details className="optional-text-entry">

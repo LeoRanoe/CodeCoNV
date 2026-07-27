@@ -3,6 +3,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Calculator, CheckCircle2, Mic, MicOff, NotebookPen, Save, ShieldCheck } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
+import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { useLanguage } from "@/lib/i18n";
 import { createRegisterEntry, type OperationSnapshot } from "@/lib/supabase/operations";
 
@@ -61,10 +62,11 @@ function calculateExpression(source: string) {
   return result;
 }
 
-export function FieldTools({ data, projectId, buildingId, reportId, client, busy, run }: {
+export function FieldTools({ data, projectId, buildingId, buildings, reportId, client, busy, run }: {
   data: OperationSnapshot;
   projectId: string;
   buildingId: string;
+  buildings: BuildingOption[];
   reportId: string | null;
   client: SupabaseClient;
   busy: boolean;
@@ -72,6 +74,7 @@ export function FieldTools({ data, projectId, buildingId, reportId, client, busy
 }) {
   const { language, locale, text } = useLanguage();
   const [note, setNote] = useState({ type: "notepad", title: "", body: "" });
+  const [noteBuildingId, setNoteBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const [dimensions, setDimensions] = useState({ length: "", width: "", height: "", quantity: "1" });
@@ -109,7 +112,7 @@ export function FieldTools({ data, projectId, buildingId, reportId, client, busy
   const saveNote = async () => {
     if (!reportId || note.title.trim().length < 3 || note.body.trim().length < 3) return;
     const okay = await run(() => createRegisterEntry(client, {
-      projectId, buildingId, reportId, type: note.type, title: note.title.trim(),
+      projectId, buildingId: noteBuildingId, reportId, type: note.type, title: note.title.trim(),
       details: { text: note.body.trim(), recorded_at: new Date().toISOString(), source: listening ? "voice_and_keyboard" : "keyboard" },
     }), text("Field note stored centrally with its automatic date and time.", "Veldnotitie centraal opgeslagen met automatische datum en tijd."));
     if (okay) setNote({ type: "notepad", title: "", body: "" });
@@ -125,7 +128,7 @@ export function FieldTools({ data, projectId, buildingId, reportId, client, busy
     <section className="field-tools-grid">
       <div className="field-tool-card note-tool-card">
         <div className="field-tool-heading"><span className="module-card-icon"><NotebookPen size={19} /></span><div><span className="record-number">{text("Field notepad", "Veldnotitieblok")}</span><h2>{text("Type or dictate a dated project note", "Typ of dicteer een gedateerde projectnotitie")}</h2></div></div>
-        <div className="form-grid-2"><label className="form-field"><span>{text("Record type", "Type registratie")}</span><select value={note.type} onChange={(event) => setNote({ ...note, type: event.target.value })}><option value="notepad">{text("Notepad", "Notitieblok")}</option><option value="agreement">{text("Agreement", "Afspraak")}</option><option value="technical_instruction">{text("Technical instruction", "Technische instructie")}</option></select></label><label className="form-field"><span>{text("Subject", "Onderwerp")}</span><input value={note.title} onChange={(event) => setNote({ ...note, title: event.target.value })} /></label></div>
+        <div className="form-grid-2"><BuildingPicker id="note-building" buildings={buildings} value={noteBuildingId} onChange={setNoteBuildingId} /><label className="form-field"><span>{text("Record type", "Type registratie")}</span><select value={note.type} onChange={(event) => setNote({ ...note, type: event.target.value })}><option value="notepad">{text("Notepad", "Notitieblok")}</option><option value="agreement">{text("Agreement", "Afspraak")}</option><option value="technical_instruction">{text("Technical instruction", "Technische instructie")}</option></select></label><label className="form-field"><span>{text("Subject", "Onderwerp")}</span><input value={note.title} onChange={(event) => setNote({ ...note, title: event.target.value })} /></label></div>
         <label className="form-field"><span>{text("Text", "Tekst")}</span><textarea rows={7} value={note.body} onChange={(event) => setNote({ ...note, body: event.target.value })} /></label>
         <div className="button-row"><button className={`secondary-button ${listening ? "recording" : ""}`} type="button" disabled={!speechAvailable} onClick={toggleSpeech}>{listening ? <MicOff size={15} /> : <Mic size={15} />} {listening ? text("Stop dictation", "Stop dicteren") : text("Dictate", "Dicteren")}</button><button className="primary-button" type="button" disabled={busy || !reportId || note.title.trim().length < 3 || note.body.trim().length < 3} onClick={() => void saveNote()}><Save size={15} /> {text("Save note", "Notitie opslaan")}</button></div>
         <p className="field-tool-hint">{speechAvailable ? text("Dictation starts only after your click. Review the recognized text before saving.", "Dicteren start uitsluitend na jouw klik. Controleer de herkende tekst vóór opslaan.") : text("This browser does not provide speech recognition; keyboard entry remains available.", "Deze browser biedt geen spraakherkenning; invoer met het toetsenbord blijft beschikbaar.")}</p>

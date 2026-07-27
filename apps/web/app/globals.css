@@ -2725,6 +2725,16 @@ textarea:focus-visible {
   border-bottom: 0;
 }
 
+.todo-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.todo-row-actions .text-link {
+  margin-top: 0;
+}
+
 .todo-check {
   display: grid;
   width: 24px;
@@ -2884,6 +2894,11 @@ textarea:focus-visible {
 
 .modal.user-admin-modal {
   width: min(920px, 100%);
+}
+
+.modal.project-start-modal {
+  width: min(1040px, calc(100% - 32px));
+  max-height: min(880px, calc(100vh - 36px));
 }
 
 .user-admin-body {
@@ -4344,7 +4359,8 @@ textarea:focus-visible {
 
   .modal,
   .modal.report-modal,
-  .modal.user-admin-modal {
+  .modal.user-admin-modal,
+  .modal.project-start-modal {
     width: 100%;
     max-height: calc(100vh - 42px);
     border-radius: 22px 22px 0 0;

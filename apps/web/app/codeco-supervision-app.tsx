@@ -50,6 +50,7 @@ import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
+import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { FieldGuide } from "@/app/field-guide";
 import { OperationalWorkspace } from "@/app/operational-workspace";
 import { ensureDailyBackup } from "@/lib/backups/client";
@@ -110,6 +111,7 @@ import {
   type ActionUpdate,
   type InternalAccessSnapshot,
   type ProjectAction,
+  type ProjectDaySnapshot,
   type ProjectParty,
   type ProjectNotification,
   type WorkspaceBuilding,
@@ -135,8 +137,8 @@ function CompanyLogo({ subtitle }: { subtitle?: string }) {
 }
 
 type NavKey = "vandaag" | "project" | "acties" | "rapporten" | "meer";
-type ModalKey = "quick" | "entry" | "action_create" | "action_detail" | "report" | "attendance" | "one_tap_log" | "daily_questions" | "user_admin" | "notifications" | "switch_building" | null;
-type WorkspaceStage = "projects" | "buildings" | "project_start" | "cockpit";
+type ModalKey = "quick" | "entry" | "action_create" | "action_detail" | "report" | "attendance" | "one_tap_log" | "daily_questions" | "project_start" | "user_admin" | "notifications" | "switch_building" | null;
+type WorkspaceStage = "projects" | "cockpit";
 type EntryKind =
   | "activity"
   | "inspection"
@@ -430,6 +432,38 @@ function disciplineForParty(type: string) {
   return labels[type] ?? "Algemeen";
 }
 
+function attendanceRowsForBuilding(
+  day: Pick<ProjectDaySnapshot, "attendance" | "parties">,
+  buildingId: string,
+  unknownPartyLabel: string,
+): AttendanceRow[] {
+  const partyById = new Map(day.parties.map((party) => [party.id, party]));
+  const buildingAttendance = day.attendance.filter((row) => row.building_id === buildingId);
+  if (buildingAttendance.length) {
+    return buildingAttendance.map((row) => {
+      const party = partyById.get(String(row.party_id));
+      return {
+        id: String(row.id),
+        partyId: String(row.party_id),
+        party: party?.name ?? unknownPartyLabel,
+        discipline: String(row.discipline),
+        count: Number(row.headcount),
+        shiftStart: String(row.shift_start).slice(0, 5),
+        shiftEnd: String(row.shift_end).slice(0, 5),
+      };
+    });
+  }
+  return day.parties.map((party) => ({
+    id: `party:${party.id}`,
+    partyId: party.id,
+    party: party.name,
+    discipline: disciplineForParty(party.type),
+    count: 0,
+    shiftStart: "07:00",
+    shiftEnd: "16:00",
+  }));
+}
+
 export function CodecoSupervisionApp() {
   const { locale, text } = useLanguage();
   const supabase = getSupabaseBrowserClient();
@@ -444,6 +478,7 @@ export function CodecoSupervisionApp() {
   const [workspaceStage, setWorkspaceStage] = useState<WorkspaceStage>("projects");
   const [selectedProject, setSelectedProject] = useState<ProjectContext | null>(null);
   const [selectedBuilding, setSelectedBuilding] = useState<BuildingContext | null>(null);
+  const [contextBuildingId, setContextBuildingId] = useState<string | null>(null);
   const [activeNav, setActiveNav] = useState<NavKey>("vandaag");
   const [modal, setModal] = useState<ModalKey>(null);
   const [selectedType, setSelectedType] = useState<string>("activity");
@@ -454,6 +489,7 @@ export function CodecoSupervisionApp() {
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("Floor 3 · East zone");
   const [priority, setPriority] = useState("normal");
+  const [entryBuildingId, setEntryBuildingId] = useState<string>("");
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
   const [completedTodos, setCompletedTodos] = useState<number[]>([]);
@@ -701,32 +737,7 @@ export function CodecoSupervisionApp() {
       };
       }));
 
-      const partyById = new Map(day.parties.map((party) => [party.id, party]));
-      const buildingAttendance = day.attendance.filter((row) => row.building_id === selectedBuilding.id);
-      if (buildingAttendance.length) {
-        setAttendance(buildingAttendance.map((row) => {
-        const party = partyById.get(String(row.party_id));
-        return {
-          id: String(row.id),
-          partyId: String(row.party_id),
-          party: party?.name ?? text("Unknown party", "Onbekende partij"),
-          discipline: String(row.discipline),
-          count: Number(row.headcount),
-          shiftStart: String(row.shift_start).slice(0, 5),
-          shiftEnd: String(row.shift_end).slice(0, 5),
-        };
-        }));
-      } else {
-        setAttendance(day.parties.map((party) => ({
-        id: `party:${party.id}`,
-        partyId: party.id,
-        party: party.name,
-        discipline: disciplineForParty(party.type),
-        count: 0,
-        shiftStart: "07:00",
-        shiftEnd: "16:00",
-        })));
-      }
+      setAttendance(attendanceRowsForBuilding(day, selectedBuilding.id, text("Unknown party", "Onbekende partij")));
     }, 0);
     return () => window.clearTimeout(hydration);
   }, [currentUserName, dayQuery.data, locale, selectedBuilding, selectedProject, text]);
@@ -880,16 +891,18 @@ export function CodecoSupervisionApp() {
       return;
     }
     setSelectedType(type);
+    setEntryBuildingId(resolveDefaultBuildingId(selectedProject?.buildings ?? [], selectedBuilding?.id));
     setModal(type === "action" ? "action_create" : "entry");
   };
 
   const saveEntry = async () => {
     if (!description.trim() || !supabase || !selectedProject || !selectedBuilding) return;
     const priorityMap: Record<string, string> = { low: "low", normal: "normal", high: "high", critical: "critical" };
+    const entryBuilding = selectedProject.buildings.find((building) => building.id === entryBuildingId) ?? selectedBuilding;
     const saved = await runSynced(
       () => saveSiteRegistration(supabase, {
         projectId: selectedProject.id,
-        buildingId: selectedBuilding.id,
+        buildingId: entryBuilding.id,
         type: selectedType,
         title: description.trim(),
         description: `${location} · ${description.trim()}`,
@@ -916,13 +929,18 @@ export function CodecoSupervisionApp() {
 
   const chooseProject = (project: ProjectContext) => {
     setSelectedProject(project);
-    setSelectedBuilding(null);
-    setWorkspaceStage("buildings");
+    setSelectedBuilding(project.buildings[0] ?? null);
+    setWorkspaceStage("cockpit");
   };
 
-  const openProjectStart = () => {
-    if (!selectedProject || !selectedBuilding) return;
-    setWorkspaceStage("cockpit");
+  const openBuildingStart = (building: BuildingContext) => {
+    setContextBuildingId(building.id);
+    setModal("project_start");
+  };
+
+  const openBuildingCloseout = (building: BuildingContext) => {
+    setContextBuildingId(building.id);
+    setModal("daily_questions");
   };
 
   const switchBuilding = (building: BuildingContext) => {
@@ -958,36 +976,26 @@ export function CodecoSupervisionApp() {
     return true;
   };
 
-  const startProject = async (answers: ProjectStartAnswers) => {
-    if (!supabase || !selectedProject || !selectedBuilding) return;
+  const startProject = async (building: BuildingContext, answers: ProjectStartAnswers) => {
+    if (!supabase || !selectedProject) return;
     const saved = await runSynced(
       () => saveProjectStart(supabase, {
         projectId: selectedProject.id,
-        buildingId: selectedBuilding.id,
+        buildingId: building.id,
         answers,
         reportDate,
       }),
       text("Project start and the draft daily report were saved centrally.", "Projectstart en het conceptdagrapport zijn centraal opgeslagen."),
     );
     if (!saved) return;
-    setProjectStartAnswers(answers);
-    setWorkspaceStage("cockpit");
+    if (building.id === selectedBuilding?.id) setProjectStartAnswers(answers);
+    setModal(null);
     setActiveNav("vandaag");
     window.scrollTo({ top: 0 });
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] }),
       queryClient.invalidateQueries({ queryKey: ["workspace", session?.user.id] }),
     ]);
-  };
-
-  const changeAttendance = (id: string, delta: number) => {
-    setAttendance((current) =>
-      current.map((row) => row.id === id ? { ...row, count: Math.max(0, row.count + delta) } : row),
-    );
-  };
-
-  const changeAttendanceDiscipline = (id: string, discipline: string) => {
-    setAttendance((current) => current.map((row) => row.id === id ? { ...row, discipline } : row));
   };
 
   if (!isSupabaseConfigured || !supabase) {
@@ -1084,29 +1092,38 @@ export function CodecoSupervisionApp() {
     return (
       <ContextSelection
         projects={workspaceQuery.data.projects}
-        stage={workspaceStage}
-        selectedProject={selectedProject}
-        selectedBuilding={selectedBuilding}
         chooseProject={chooseProject}
-        chooseBuilding={setSelectedBuilding}
-        openProjectStart={openProjectStart}
-        startProject={startProject}
         currentUserName={currentUserName}
         storageStatus={storageStatus}
         isOnline={isOnline}
         offlineCached={Boolean(workspaceQuery.data._offlineCached)}
-        initialProjectStart={projectStartAnswers}
-        goBack={() => {
-          setSelectedBuilding(null);
-          setWorkspaceStage("projects");
-        }}
-        goBackToBuilding={() => setWorkspaceStage("buildings")}
       />
+    );
+  }
+
+  if (selectedProject && !selectedBuilding) {
+    return (
+      <div className="access-shell">
+        <section className="access-card state-card">
+          <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={text("Construction supervision", "Constructiesupervisie")} /></div><LanguageSwitcher /></div>
+          <span className="state-icon"><AlertTriangle size={26} /></span>
+          <h1>{text("This project has no building yet", "Dit project heeft nog geen gebouw")}</h1>
+          <p>{text("Add a first building to continue.", "Voeg een eerste gebouw toe om verder te gaan.")}</p>
+          <button className="primary-button" type="button" onClick={() => setWorkspaceStage("projects")}>{text("Back to projects", "Terug naar projecten")}</button>
+        </section>
+      </div>
     );
   }
 
   const projectName = selectedProject?.name ?? "Project";
   const buildingName = selectedBuilding?.name ?? text("Building", "Gebouw");
+  const contextBuilding = selectedProject?.buildings.find((building) => building.id === contextBuildingId) ?? selectedBuilding;
+  const contextProjectStartAnswers = contextBuilding?.id === selectedBuilding?.id
+    ? projectStartAnswers
+    : projectStartFromRow(dayQuery.data?.startChecks.find((row) => row.building_id === contextBuilding?.id) ?? null);
+  const contextDailyCloseoutAnswers = contextBuilding?.id === selectedBuilding?.id
+    ? dailyCloseoutAnswers
+    : closeoutFromRow(dayQuery.data?.closeouts.find((row) => row.building_id === contextBuilding?.id) ?? null);
 
   return (
     <div className="app-shell">
@@ -1228,10 +1245,10 @@ export function CodecoSupervisionApp() {
               attendanceTotal={projectAttendanceTotal}
               projectStartAnswers={projectStartAnswers}
               dailyCloseoutAnswers={dailyCloseoutAnswers}
-              openProjectStart={() => setWorkspaceStage("project_start")}
-              openDailyQuestions={() => setModal("daily_questions")}
+              openProjectStart={() => selectedBuilding && openBuildingStart(selectedBuilding)}
+              openDailyQuestions={() => selectedBuilding && openBuildingCloseout(selectedBuilding)}
               openQuickAdd={openQuickAdd}
-              openOneTapLog={() => projectStartAnswers ? setModal("one_tap_log") : setWorkspaceStage("project_start")}
+              openOneTapLog={() => projectStartAnswers ? setModal("one_tap_log") : (selectedBuilding && openBuildingStart(selectedBuilding))}
               openActions={() => navigate("acties")}
               openWorkspace={() => navigate("project")}
               openSettings={() => navigate("meer")}
@@ -1249,6 +1266,8 @@ export function CodecoSupervisionApp() {
               closeouts={dayQuery.data?.closeouts ?? []}
               selectedBuildingId={selectedBuilding?.id}
               onSwitchBuilding={switchBuilding}
+              onStartBuilding={openBuildingStart}
+              onCloseoutBuilding={openBuildingCloseout}
             />
           ) : activeNav === "project" || activeNav === "rapporten" || activeNav === "meer" ? (
             <OperationalWorkspace
@@ -1260,6 +1279,7 @@ export function CodecoSupervisionApp() {
               projectCode={selectedProject!.code}
               buildingId={selectedBuilding!.id}
               buildingName={buildingName}
+              buildings={selectedProject?.buildings ?? []}
               reportId={dayQuery.data?.report?.id ? String(dayQuery.data.report.id) : null}
               reportNumber={reportNumber}
               reportStatus={String(dayQuery.data?.report?.status ?? "draft")}
@@ -1330,7 +1350,7 @@ export function CodecoSupervisionApp() {
       </nav>
 
       {modal === "quick" ? <QuickAddModal close={() => setModal(null)} chooseType={chooseType} /> : null}
-      {modal === "entry" ? (
+      {modal === "entry" && selectedProject ? (
         <EntryModal
           selectedType={selectedType}
           description={description}
@@ -1345,6 +1365,9 @@ export function CodecoSupervisionApp() {
           openPhoto={() => chooseType("photo")}
           projectName={projectName}
           buildingName={buildingName}
+          buildings={selectedProject.buildings}
+          buildingId={entryBuildingId}
+          setBuildingId={setEntryBuildingId}
         />
       ) : null}
       {modal === "action_create" && selectedProject && selectedBuilding ? (
@@ -1352,13 +1375,15 @@ export function CodecoSupervisionApp() {
           parties={dayQuery.data?.parties ?? []}
           projectName={projectName}
           buildingName={buildingName}
+          buildings={selectedProject.buildings}
+          defaultBuildingId={selectedBuilding.id}
           close={() => setModal(null)}
           goBack={() => setModal("quick")}
-          save={async (answers) => {
+          save={async (answers, actionBuildingId) => {
             const saved = await runSynced(
               () => createProjectAction(supabase, {
                 projectId: selectedProject.id,
-                buildingId: selectedBuilding.id,
+                buildingId: actionBuildingId,
                 ...answers,
               }),
               "Actie is met deadline en verantwoordelijke centraal aangemaakt.",
@@ -1408,6 +1433,15 @@ export function CodecoSupervisionApp() {
           onDownload={async () => {
             if (!selectedProject || !selectedBuilding || !projectStartAnswers || !dailyCloseoutAnswers) return;
             const { downloadDailyReportPdf } = await import("@/lib/reports/daily-report-pdf");
+            const buildings = selectedProject.buildings.length > 1
+              ? selectedProject.buildings
+                  .map((building) => {
+                    const start = projectStartFromRow(dayQuery.data?.startChecks.find((row) => row.building_id === building.id) ?? null);
+                    const closeout = closeoutFromRow(dayQuery.data?.closeouts.find((row) => row.building_id === building.id) ?? null);
+                    return start && closeout ? { name: building.name, projectStart: start, closeout } : null;
+                  })
+                  .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+              : undefined;
             await downloadDailyReportPdf({
               reportNumber: String(dayQuery.data?.report?.report_number ?? `DR-${reportDate.replaceAll("-", "")}`),
               reportDate,
@@ -1420,6 +1454,7 @@ export function CodecoSupervisionApp() {
               registrationCount: entries.length,
               projectStart: projectStartAnswers,
               closeout: dailyCloseoutAnswers,
+              buildings,
             });
             setToast("De concept-PDF is gegenereerd uit de centraal opgeslagen rapportgegevens.");
           }}
@@ -1439,13 +1474,14 @@ export function CodecoSupervisionApp() {
           }}
         />
       ) : null}
-      {modal === "daily_questions" ? (
+      {modal === "daily_questions" && selectedProject && contextBuilding ? (
         <DailyQuestionsModal
-          close={() => setModal(null)}
-          initialAnswers={dailyCloseoutAnswers}
-          projectStartAnswers={projectStartAnswers}
+          buildingName={contextBuilding.name}
+          close={() => { setModal(null); setContextBuildingId(null); }}
+          initialAnswers={contextDailyCloseoutAnswers}
+          projectStartAnswers={contextProjectStartAnswers}
           save={async (answers) => {
-            if (!selectedProject || !selectedBuilding || !dayQuery.data?.report) {
+            if (!dayQuery.data?.report) {
               setToast("Start eerst het centrale dagrapport.");
               return;
             }
@@ -1453,15 +1489,18 @@ export function CodecoSupervisionApp() {
               () => saveDailyCloseout(supabase, {
                 report: dayQuery.data.report!,
                 projectId: selectedProject.id,
-                buildingId: selectedBuilding.id,
+                buildingId: contextBuilding.id,
                 answers,
               }),
               "Dagvragen zijn centraal opgeslagen en in de rapportcontrole verwerkt.",
             );
             if (!saved) return;
-            setDailyCloseoutAnswers(answers);
-            setCompletedTodos((current) => Array.from(new Set([...current, 2, 3])));
+            if (contextBuilding.id === selectedBuilding?.id) {
+              setDailyCloseoutAnswers(answers);
+              setCompletedTodos((current) => Array.from(new Set([...current, 2, 3])));
+            }
             setModal(null);
+            setContextBuildingId(null);
             await Promise.all([
               queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] }),
               queryClient.invalidateQueries({ queryKey: ["workspace", session.user.id] }),
@@ -1469,27 +1508,40 @@ export function CodecoSupervisionApp() {
           }}
         />
       ) : null}
-      {modal === "attendance" ? (
+      {modal === "project_start" && selectedProject && contextBuilding ? (
+        <ProjectStartForm
+          project={selectedProject}
+          building={contextBuilding}
+          close={() => { setModal(null); setContextBuildingId(null); }}
+          initialAnswers={contextProjectStartAnswers}
+          save={async (answers) => {
+            await startProject(contextBuilding, answers);
+            setContextBuildingId(null);
+          }}
+        />
+      ) : null}
+      {modal === "attendance" && selectedProject && selectedBuilding ? (
         <AttendanceModal
-          rows={attendance}
-          total={attendanceTotal}
-          changeCount={changeAttendance}
-          changeDiscipline={changeAttendanceDiscipline}
+          initialRows={attendance}
+          buildings={selectedProject.buildings}
+          defaultBuildingId={selectedBuilding.id}
+          day={dayQuery.data}
           copyPreviousDay={() => {
             setToast("Er is nog geen eerdere centrale werkdag met aanwezigheid om over te nemen.");
           }}
           close={() => setModal(null)}
-          save={async () => {
-            if (!selectedProject || !selectedBuilding || !dayQuery.data?.report) {
+          save={async (rows, attendanceBuildingId) => {
+            if (!dayQuery.data?.report) {
               setToast("Start eerst het centrale dagrapport.");
               return;
             }
+            const total = rows.reduce((sum, row) => sum + row.count, 0);
             const saved = await runSynced(
               () => saveAttendance(supabase, {
                 report: dayQuery.data.report!,
                 projectId: selectedProject.id,
-                buildingId: selectedBuilding.id,
-                rows: attendance.map((row) => ({
+                buildingId: attendanceBuildingId,
+                rows: rows.map((row) => ({
                   partyId: row.partyId,
                   discipline: row.discipline,
                   count: row.count,
@@ -1497,7 +1549,7 @@ export function CodecoSupervisionApp() {
                   shiftEnd: row.shiftEnd,
                 })),
               }),
-              `${attendanceTotal} aanwezigen zijn centraal aan het dagrapport gekoppeld.`,
+              `${total} aanwezigen zijn centraal aan het dagrapport gekoppeld.`,
             );
             if (!saved) return;
             setModal(null);
@@ -1505,16 +1557,17 @@ export function CodecoSupervisionApp() {
           }}
         />
       ) : null}
-      {modal === "one_tap_log" ? (
+      {modal === "one_tap_log" && selectedProject && selectedBuilding ? (
         <OneTapDailyLogModal
-          rows={attendance}
-          total={attendanceTotal}
+          initialRows={attendance}
+          buildings={selectedProject.buildings}
+          defaultBuildingId={selectedBuilding.id}
+          day={dayQuery.data}
           buildingName={buildingName}
           projectStartAnswers={projectStartAnswers}
-          changeCount={changeAttendance}
           close={() => setModal(null)}
-          save={async (notes) => {
-            if (!selectedProject || !selectedBuilding || !dayQuery.data?.report) {
+          save={async (notes, rows, logBuildingId) => {
+            if (!dayQuery.data?.report) {
               setToast("Start eerst de werkdag zodat het dagrapport klaarstaat.");
               return;
             }
@@ -1522,8 +1575,8 @@ export function CodecoSupervisionApp() {
               await saveAttendance(supabase, {
                 report: dayQuery.data.report!,
                 projectId: selectedProject.id,
-                buildingId: selectedBuilding.id,
-                rows: attendance.map((row) => ({
+                buildingId: logBuildingId,
+                rows: rows.map((row) => ({
                   partyId: row.partyId,
                   discipline: row.discipline,
                   count: row.count,
@@ -1534,7 +1587,7 @@ export function CodecoSupervisionApp() {
               if (notes.trim()) {
                 await saveSiteRegistration(supabase, {
                   projectId: selectedProject.id,
-                  buildingId: selectedBuilding.id,
+                  buildingId: logBuildingId,
                   type: "note",
                   title: text("One-tap daily log", "Snel daglog"),
                   description: notes.trim(),
@@ -1868,40 +1921,20 @@ function ProjectSetupScreen({
 
 function ContextSelection({
   projects,
-  stage,
-  selectedProject,
-  selectedBuilding,
   chooseProject,
-  chooseBuilding,
-  openProjectStart,
-  startProject,
-  goBack,
-  goBackToBuilding,
   currentUserName,
   storageStatus,
   isOnline,
   offlineCached,
-  initialProjectStart,
 }: {
   projects: ProjectContext[];
-  stage: WorkspaceStage;
-  selectedProject: ProjectContext | null;
-  selectedBuilding: BuildingContext | null;
   chooseProject: (project: ProjectContext) => void;
-  chooseBuilding: (building: BuildingContext) => void;
-  openProjectStart: () => void;
-  startProject: (answers: ProjectStartAnswers) => void | Promise<void>;
-  goBack: () => void;
-  goBackToBuilding: () => void;
   currentUserName: string;
   storageStatus: string;
   isOnline: boolean;
   offlineCached: boolean;
-  initialProjectStart: ProjectStartAnswers | null;
 }) {
   const { text } = useLanguage();
-  const showBuildings = stage === "buildings" && selectedProject;
-  const showProjectStart = stage === "project_start" && Boolean(selectedProject && selectedBuilding);
   const portfolio = projects.reduce((total, project) => ({
     projects: total.projects + 1,
     actions: total.actions + project.openIssues,
@@ -1924,84 +1957,39 @@ function ContextSelection({
           {isOnline ? <CheckCircle2 size={17} /> : <HardDrive size={17} />}
           <span><strong>{isOnline ? text("Online workspace", "Online werkruimte") : text("Offline field mode", "Offline veldmodus")}</strong> {storageStatus}. {offlineCached ? text("The last synchronized projects and buildings are available; photos and drawings can be queued locally.", "De laatst gesynchroniseerde projecten en gebouwen zijn beschikbaar; foto’s en tekeningen kunnen lokaal worden klaargezet.") : text("Only changes confirmed by Supabase receive the saved status.", "Alleen door Supabase bevestigde wijzigingen krijgen de status opgeslagen.")}</span>
         </div>
-        <div className="context-steps" aria-label={text("Select work context", "Werkcontext kiezen")}>
-          <span className={stage === "projects" ? "active" : "done"}><strong>1</strong> Project</span>
-          <ChevronRight size={14} />
-          <span className={showBuildings ? "active" : showProjectStart ? "done" : ""}><strong>2</strong> {text("Building", "Gebouw")}</span>
-          <ChevronRight size={14} />
-          <span className={showProjectStart ? "active" : ""}><strong>3</strong> {text("Project start", "Projectstart")}</span>
-        </div>
 
-        {showProjectStart ? (
-          <ProjectStartForm
-            project={selectedProject!}
-            building={selectedBuilding!}
-            goBack={goBackToBuilding}
-            startProject={startProject}
-            initialAnswers={initialProjectStart}
-          />
-        ) : !showBuildings ? (
-          <>
-            <section className="context-heading">
-              <div><p className="eyebrow">{text("My projects", "Mijn projecten")}</p><h1>{text("Where will you work today?", "Waar ga je vandaag werken?")}</h1><p>{text("Select the project first. Your building and daily report follow in the next step.", "Kies eerst het project. Je gebouw en dagrapport volgen in de volgende stap.")}</p></div>
-            </section>
-            <section className="portfolio-dashboard" aria-label={text("Portfolio overview", "Portfolio-overzicht")}>
-              <div><span>{text("Active projects", "Actieve projecten")}</span><strong>{portfolio.projects}</strong></div>
-              <div><span>{text("Today's plans", "Planning vandaag")}</span><strong>{portfolio.today}</strong></div>
-              <div><span>{text("Open actions", "Open acties")}</span><strong>{portfolio.actions}</strong></div>
-              <div><span>Issues</span><strong>{portfolio.issues}</strong></div>
-              <div><span>NCR</span><strong>{portfolio.ncr}</strong></div>
-              <div><span>{text("Inspections", "Inspecties")}</span><strong>{portfolio.inspections}</strong></div>
-            </section>
-            <section className="project-selection-grid">
-              {projects.map((project) => (
-                <button className="project-selection-card" type="button" onClick={() => chooseProject(project)} key={project.id}>
-                  <span className="selection-card-top">
-                    <span className="selection-icon"><Building2 size={21} /></span>
-                    <span className="project-code">{project.code}</span>
-                  </span>
-                  <span className="selection-copy"><strong>{project.name}</strong><small><MapPin size={12} /> {project.location}</small></span>
-                  <span className="selection-meta"><span>{project.buildings.length} {text("buildings", "gebouwen")}</span><span>{project.openIssues} {text("open actions", "open acties")}</span></span>
-                  <span className="project-register-metrics" aria-label={text("Project register totals", "Totalen projectregisters")}>
-                    <span><b>{project.issueCount}</b>{text("Issues", "Issues")}</span>
-                    <span><b>{project.ncrCount}</b>NCR</span>
-                    <span><b>{project.inspectionCount}</b>{text("Inspections", "Inspecties")}</span>
-                    <span><b>{project.technicalInstructionCount}</b>TI</span>
-                    <span><b>{project.changeOrderCount}</b>CO</span>
-                  </span>
-                  <span className="selection-progress"><span style={{ width: `${project.progress}%` }} /><em>{project.progress}% {text("progress", "voortgang")}</em></span>
-                  <span className="selection-action">{text("View buildings", "Gebouwen bekijken")} <ArrowRight size={14} /></span>
-                </button>
-              ))}
-            </section>
-          </>
-        ) : (
-          <>
-            <button className="back-button context-back" type="button" onClick={goBack}><ArrowLeft size={15} /> {text("Back to projects", "Terug naar projecten")}</button>
-            <section className="context-heading">
-              <div><p className="eyebrow">{showBuildings.code} · {showBuildings.location}</p><h1>{text("Select a building", "Kies een gebouw")}</h1><p>{text("Physical records are always linked to this building.", "Fysieke registraties worden verplicht aan dit gebouw gekoppeld.")}</p></div>
-              <span className="context-project-pill"><Building2 size={15} /> {showBuildings.name}</span>
-            </section>
-            <section className="building-selection-grid">
-              {showBuildings.buildings.map((building) => {
-                const active = selectedBuilding?.id === building.id;
-                return (
-                  <button className={`building-selection-card ${active ? "selected" : ""}`} type="button" onClick={() => chooseBuilding(building)} key={building.id}>
-                    <span className="building-radio">{active ? <Check size={14} /> : null}</span>
-                    <span className="building-selection-copy"><strong>{building.name}</strong><small>{building.description}</small></span>
-                    <span className="building-stats"><span><b>{building.progress}%</b> {text("progress", "voortgang")}</span><span><b>{building.openIssues}</b> {text("open issues", "open punten")}</span></span>
-                    <span className="building-register-metrics"><span><b>{building.issueCount}</b> Issues</span><span><b>{building.ncrCount}</b> NCR</span><span><b>{building.inspectionCount}</b> {text("Inspections", "Inspecties")}</span><span><b>{building.technicalInstructionCount}</b> TI</span><span><b>{building.changeOrderCount}</b> CO</span><span><b>{building.photoCount}</b> {text("Photos", "Foto’s")}</span></span>
-                    <span className="building-today-plan"><strong>{text("Today", "Vandaag")}</strong>{building.todayPlannedWork.length ? building.todayPlannedWork.map((work, index) => <small key={`${building.id}:${index}`}>{work}</small>) : <small>{text("No work plan started yet", "Nog geen dagplanning gestart")}</small>}</span>
-                  </button>
-                );
-              })}
-            </section>
-            <div className="project-start-bar">
-              <span><strong>{selectedBuilding ? selectedBuilding.name : text("No building selected", "Nog geen gebouw gekozen")}</strong><small>{selectedBuilding ? text("Your work context is complete.", "Je werkcontext is compleet.") : text("Select a building to continue.", "Kies een gebouw om door te gaan.")}</small></span>
-              <button className="primary-button" type="button" disabled={!selectedBuilding} onClick={openProjectStart}>{text("Open workspace", "Werkruimte openen")} <ArrowRight size={15} /></button>
-            </div>
-          </>
-        )}
+        <section className="context-heading">
+          <div><p className="eyebrow">{text("My projects", "Mijn projecten")}</p><h1>{text("Where will you work today?", "Waar ga je vandaag werken?")}</h1><p>{text("Select a project to open its dashboard. Every building in the project is available from there.", "Kies een project om het dashboard te openen. Alle gebouwen van het project zijn daar direct beschikbaar.")}</p></div>
+        </section>
+        <section className="portfolio-dashboard" aria-label={text("Portfolio overview", "Portfolio-overzicht")}>
+          <div><span>{text("Active projects", "Actieve projecten")}</span><strong>{portfolio.projects}</strong></div>
+          <div><span>{text("Today's plans", "Planning vandaag")}</span><strong>{portfolio.today}</strong></div>
+          <div><span>{text("Open actions", "Open acties")}</span><strong>{portfolio.actions}</strong></div>
+          <div><span>Issues</span><strong>{portfolio.issues}</strong></div>
+          <div><span>NCR</span><strong>{portfolio.ncr}</strong></div>
+          <div><span>{text("Inspections", "Inspecties")}</span><strong>{portfolio.inspections}</strong></div>
+        </section>
+        <section className="project-selection-grid">
+          {projects.map((project) => (
+            <button className="project-selection-card" type="button" onClick={() => chooseProject(project)} key={project.id}>
+              <span className="selection-card-top">
+                <span className="selection-icon"><Building2 size={21} /></span>
+                <span className="project-code">{project.code}</span>
+              </span>
+              <span className="selection-copy"><strong>{project.name}</strong><small><MapPin size={12} /> {project.location}</small></span>
+              <span className="selection-meta"><span>{project.buildings.length} {text("buildings", "gebouwen")}</span><span>{project.openIssues} {text("open actions", "open acties")}</span></span>
+              <span className="project-register-metrics" aria-label={text("Project register totals", "Totalen projectregisters")}>
+                <span><b>{project.issueCount}</b>{text("Issues", "Issues")}</span>
+                <span><b>{project.ncrCount}</b>NCR</span>
+                <span><b>{project.inspectionCount}</b>{text("Inspections", "Inspecties")}</span>
+                <span><b>{project.technicalInstructionCount}</b>TI</span>
+                <span><b>{project.changeOrderCount}</b>CO</span>
+              </span>
+              <span className="selection-progress"><span style={{ width: `${project.progress}%` }} /><em>{project.progress}% {text("progress", "voortgang")}</em></span>
+              <span className="selection-action">{text("Open dashboard", "Dashboard openen")} <ArrowRight size={14} /></span>
+            </button>
+          ))}
+        </section>
       </main>
     </div>
   );
@@ -2010,14 +1998,14 @@ function ContextSelection({
 function ProjectStartForm({
   project,
   building,
-  goBack,
-  startProject,
+  close,
+  save,
   initialAnswers,
 }: {
   project: ProjectContext;
   building: BuildingContext;
-  goBack: () => void;
-  startProject: (answers: ProjectStartAnswers) => void | Promise<void>;
+  close: () => void;
+  save: (answers: ProjectStartAnswers) => void | Promise<void>;
   initialAnswers: ProjectStartAnswers | null;
 }) {
   const { language, locale, text } = useLanguage();
@@ -2100,19 +2088,18 @@ function ProjectStartForm({
   };
 
   return (
-    <>
-      <button className="back-button context-back" type="button" onClick={goBack}><ArrowLeft size={15} /> {text("Back to buildings", "Terug naar gebouwen")}</button>
-      <section className="context-heading project-start-heading">
-        <div>
-          <p className="eyebrow">{project.code} · {building.name}</p>
-          <h1>{text("Start the workday with the right questions", "Start de werkdag met de juiste vragen")}</h1>
-          <p>{text("Confirm only what cannot be reliably derived from the project. The rules show exactly what the app prepares next.", "Bevestig alleen wat niet betrouwbaar uit het project kan worden afgeleid. De regels rechts tonen direct wat de app daarna klaarzet.")}</p>
-        </div>
-        <span className="context-project-pill"><CalendarDays size={15} /> {currentDateLabel(locale)}</span>
-      </section>
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+      <section className="modal project-start-modal" role="dialog" aria-modal="true" aria-labelledby="project-start-title">
+        <header className="modal-header">
+          <div>
+            <h2 id="project-start-title">{text("Start the workday", "Werkdag starten")} · {building.name}</h2>
+            <p>{project.code} · {currentDateLabel(locale)}</p>
+          </div>
+          <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
+        </header>
 
-      <div className="project-start-layout">
-        <form className="project-start-form" onSubmit={handleSubmit(startProject)} noValidate>
+      <div className="modal-body project-start-layout">
+        <form className="project-start-form" onSubmit={handleSubmit(save)} noValidate>
           <section className="form-section-card">
             <header><span className="form-section-number">1</span><span><strong>{text("Weather and working hours", "Weer en werktijden")}</strong><small>{text("Weather loads automatically from the project location", "Weer laadt automatisch vanuit de projectlocatie")}</small></span></header>
             <div className={`automatic-weather-status ${weatherLoadState}`}>
@@ -2191,7 +2178,8 @@ function ProjectStartForm({
           </div>
         </aside>
       </div>
-    </>
+      </section>
+    </div>
   );
 }
 
@@ -2224,6 +2212,8 @@ function TodayView({
   closeouts,
   selectedBuildingId,
   onSwitchBuilding,
+  onStartBuilding,
+  onCloseoutBuilding,
 }: {
   entries: TimelineEntry[];
   completeness: number;
@@ -2253,6 +2243,8 @@ function TodayView({
   closeouts: Array<Record<string, unknown>>;
   selectedBuildingId: string | undefined;
   onSwitchBuilding: (building: BuildingContext) => void;
+  onStartBuilding: (building: BuildingContext) => void;
+  onCloseoutBuilding: (building: BuildingContext) => void;
 }) {
   const { language, locale, text } = useLanguage();
   const todos = [
@@ -2342,10 +2334,14 @@ function TodayView({
                 <div className="todo-row" key={building.id}>
                   <span className={`todo-check ${startDone && closeoutDone ? "done" : ""}`}><Check size={14} /></span>
                   <span className="todo-copy">
-                    <strong>{building.name}{active ? ` · ${text("active", "actief")}` : ""}</strong>
+                    <strong>{building.name}{active ? ` · ${text("default", "standaard")}` : ""}</strong>
                     <span>{startDone ? text("Start done", "Start gereed") : text("Start missing", "Start ontbreekt")} · {closeoutDone ? text("Closeout done", "Afsluiting gereed") : text("Closeout missing", "Afsluiting ontbreekt")}</span>
                   </span>
-                  {!active ? <button className="text-link" type="button" onClick={() => onSwitchBuilding(building)}>{text("Switch", "Wissel")}</button> : null}
+                  <span className="todo-row-actions">
+                    {!startDone ? <button className="text-link" type="button" onClick={() => onStartBuilding(building)}>{text("Start check", "Start")}</button> : null}
+                    {startDone && !closeoutDone ? <button className="text-link" type="button" onClick={() => onCloseoutBuilding(building)}>{text("Closeout", "Afsluiting")}</button> : null}
+                    {!active ? <button className="text-link" type="button" onClick={() => onSwitchBuilding(building)}>{text("Set as default", "Als standaard instellen")}</button> : null}
+                  </span>
                 </div>
               );
             })}
@@ -2841,6 +2837,9 @@ function EntryModal({
   openPhoto,
   projectName,
   buildingName,
+  buildings,
+  buildingId,
+  setBuildingId,
 }: {
   selectedType: string;
   description: string;
@@ -2855,9 +2854,13 @@ function EntryModal({
   openPhoto: () => void;
   projectName: string;
   buildingName: string;
+  buildings: BuildingOption[];
+  buildingId: string;
+  setBuildingId: (value: string) => void;
 }) {
   const { language, locale, text } = useLanguage();
   const title = (language === "en" ? entryTitlesEnglish : entryTitles)[selectedType] ?? text("Record", "Registratie");
+  const chosenBuildingName = buildings.find((building) => building.id === buildingId)?.name ?? buildingName;
   const needsPriority = selectedType === "finding" || selectedType === "hse" || selectedType === "action";
   const choices: Record<string, string[]> = {
     activity: [text("Work started as planned.", "Werk volgens planning gestart."), text("Work completed as planned.", "Werk volgens planning afgerond."), text("Work continues tomorrow.", "Werk wordt morgen voortgezet.")],
@@ -2873,7 +2876,7 @@ function EntryModal({
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal" role="dialog" aria-modal="true" aria-labelledby="entry-title">
         <header className="modal-header">
-          <div><h2 id="entry-title">{text(`Record ${title.toLowerCase()}`, `${title} vastleggen`)}</h2><p>{projectName} · {buildingName} · {currentTime(locale)}</p></div>
+          <div><h2 id="entry-title">{text(`Record ${title.toLowerCase()}`, `${title} vastleggen`)}</h2><p>{projectName} · {chosenBuildingName} · {currentTime(locale)}</p></div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <div className="modal-body">
@@ -2883,13 +2886,14 @@ function EntryModal({
               <label htmlFor="description">{text("Short description *", "Korte omschrijving *")}</label>
               <textarea id="description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder={text("Choose above; only add an exceptional detail.", "Kies hierboven; voeg alleen een uitzonderlijk detail toe.")} />
             </div>
+            <BuildingPicker id="entry-building" buildings={buildings} value={buildingId} onChange={setBuildingId} />
             <div className="form-field">
               <label htmlFor="location">{text("Location *", "Locatie *")}</label>
               <select id="location" value={location} onChange={(event) => setLocation(event.target.value)}>
-                <option value={buildingName}>{buildingName} · {text("general", "algemeen")}</option>
-                <option value={`${buildingName} · ${text("Ground floor", "Begane grond")}`}>{buildingName} · {text("Ground floor", "Begane grond")}</option>
-                <option value={`${buildingName} · ${text("Upper floor", "Verdieping")}`}>{buildingName} · {text("Upper floor", "Verdieping")}</option>
-                <option value={`${buildingName} · ${text("Outdoor area", "Buitenterrein")}`}>{buildingName} · {text("Outdoor area", "Buitenterrein")}</option>
+                <option value={chosenBuildingName}>{chosenBuildingName} · {text("general", "algemeen")}</option>
+                <option value={`${chosenBuildingName} · ${text("Ground floor", "Begane grond")}`}>{chosenBuildingName} · {text("Ground floor", "Begane grond")}</option>
+                <option value={`${chosenBuildingName} · ${text("Upper floor", "Verdieping")}`}>{chosenBuildingName} · {text("Upper floor", "Verdieping")}</option>
+                <option value={`${chosenBuildingName} · ${text("Outdoor area", "Buitenterrein")}`}>{chosenBuildingName} · {text("Outdoor area", "Buitenterrein")}</option>
               </select>
             </div>
             {needsPriority ? (
@@ -2925,6 +2929,8 @@ function ActionCreateModal({
   parties,
   projectName,
   buildingName,
+  buildings,
+  defaultBuildingId,
   close,
   goBack,
   save,
@@ -2932,12 +2938,15 @@ function ActionCreateModal({
   parties: ProjectParty[];
   projectName: string;
   buildingName: string;
+  buildings: BuildingOption[];
+  defaultBuildingId: string;
   close: () => void;
   goBack: () => void;
-  save: (answers: ProjectActionAnswers) => Promise<boolean>;
+  save: (answers: ProjectActionAnswers, buildingId: string) => Promise<boolean>;
 }) {
   const { text } = useLanguage();
   const [busy, setBusy] = useState(false);
+  const [buildingId, setBuildingId] = useState(() => resolveDefaultBuildingId(buildings, defaultBuildingId));
   const defaultParty = parties.find((party) => party.type === "contractor")?.id ?? parties[0]?.id ?? "";
   const { register, handleSubmit, setValue, control, formState: { errors } } = useForm<ProjectActionAnswers>({
     resolver: zodResolver(projectActionSchema),
@@ -2964,14 +2973,14 @@ function ActionCreateModal({
   };
   const submit = async (answers: ProjectActionAnswers) => {
     setBusy(true);
-    await save(answers);
+    await save(answers, buildingId);
     setBusy(false);
   };
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal action-modal" role="dialog" aria-modal="true" aria-labelledby="action-create-title">
         <header className="modal-header">
-          <div><h2 id="action-create-title">{text("Create central action", "Actie centraal aanmaken")}</h2><p>{projectName} · {buildingName}</p></div>
+          <div><h2 id="action-create-title">{text("Create central action", "Actie centraal aanmaken")}</h2><p>{projectName} · {buildings.find((building) => building.id === buildingId)?.name ?? buildingName}</p></div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <form className="modal-body" onSubmit={handleSubmit(submit)} noValidate>
@@ -2985,6 +2994,7 @@ function ActionCreateModal({
                 <label className="form-field"><span>{text("Context and acceptance criterion *", "Context en acceptatiecriterium *")}</span><textarea rows={4} placeholder={text("Describe the location, required measure and completion criterion.", "Beschrijf locatie, gewenste maatregel en wanneer de actie gereed is.")} {...register("description")} />{errors.description ? <small className="field-error">{errors.description.message}</small> : null}</label>
               </div>
             </details>
+            <BuildingPicker id="action-building" buildings={buildings} value={buildingId} onChange={setBuildingId} />
             <label className="form-field"><span>{text("Responsible party *", "Verantwoordelijke partij *")}</span><select {...register("ownerPartyId")} disabled={parties.length === 0}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select>{errors.ownerPartyId ? <small className="field-error">{errors.ownerPartyId.message}</small> : null}</label>
             <div className="form-field"><label htmlFor="action-deadline">Deadline *</label><input id="action-deadline" type="datetime-local" {...register("dueAt")} />{errors.dueAt ? <small className="field-error">{errors.dueAt.message}</small> : null}<span className="period-date-presets">{[[0, text("Today", "Vandaag")], [1, text("Tomorrow", "Morgen")], [3, text("3 days", "3 dagen")], [7, text("7 days", "7 dagen")]].map(([days, label]) => <button type="button" onClick={() => setValue("dueAt", actionDeadlineFromToday(Number(days)), { shouldDirty: true, shouldValidate: true })} key={String(label)}>{label}</button>)}</span></div>
             <label className="form-field"><span>{text("Priority", "Prioriteit")}</span><select {...register("priority")}><option value="low">{text("Low", "Laag")}</option><option value="normal">{text("Normal", "Normaal")}</option><option value="high">{text("High", "Hoog")}</option><option value="critical">{text("Critical", "Kritiek")}</option></select></label>
@@ -3117,7 +3127,7 @@ function BuildingSwitcherModal({
         <header className="modal-header">
           <div>
             <h2 id="building-switcher-title">{text("Switch building", "Gebouw wisselen")}</h2>
-            <p>{text("The daily report already covers every building. Switching only changes which building new photos and records are tagged with.", "Het dagrapport dekt al elk gebouw. Wisselen verandert alleen aan welk gebouw nieuwe foto's en registraties worden gekoppeld.")}</p>
+            <p>{text("The daily report already covers every building. Switching only changes the default building pre-filled when you create a new record — you can still pick a different building per record.", "Het dagrapport dekt al elk gebouw. Wisselen verandert alleen het standaardgebouw dat wordt voorgesteld bij een nieuwe registratie — je kunt per registratie nog altijd een ander gebouw kiezen.")}</p>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
@@ -3149,23 +3159,43 @@ function BuildingSwitcherModal({
 }
 
 function AttendanceModal({
-  rows,
-  total,
-  changeCount,
-  changeDiscipline,
+  initialRows,
+  buildings,
+  defaultBuildingId,
+  day,
   copyPreviousDay,
   close,
   save,
 }: {
-  rows: AttendanceRow[];
-  total: number;
-  changeCount: (id: string, delta: number) => void;
-  changeDiscipline: (id: string, discipline: string) => void;
+  initialRows: AttendanceRow[];
+  buildings: BuildingOption[];
+  defaultBuildingId: string;
+  day: Pick<ProjectDaySnapshot, "attendance" | "parties"> | undefined;
   copyPreviousDay: () => void;
   close: () => void;
-  save: () => void;
+  save: (rows: AttendanceRow[], buildingId: string) => void | Promise<void>;
 }) {
   const { text } = useLanguage();
+  const [buildingId, setBuildingId] = useState(() => resolveDefaultBuildingId(buildings, defaultBuildingId));
+  const [rows, setRows] = useState(initialRows);
+  const total = rows.reduce((sum, row) => sum + row.count, 0);
+
+  const switchBuilding = (nextBuildingId: string) => {
+    setBuildingId(nextBuildingId);
+    if (nextBuildingId === defaultBuildingId) {
+      setRows(initialRows);
+      return;
+    }
+    setRows(day ? attendanceRowsForBuilding(day, nextBuildingId, text("Unknown party", "Onbekende partij")) : initialRows);
+  };
+
+  const changeCount = (id: string, delta: number) => {
+    setRows((current) => current.map((row) => row.id === id ? { ...row, count: Math.max(0, row.count + delta) } : row));
+  };
+  const changeDiscipline = (id: string, discipline: string) => {
+    setRows((current) => current.map((row) => row.id === id ? { ...row, discipline } : row));
+  };
+
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal report-modal" role="dialog" aria-modal="true" aria-labelledby="attendance-title">
@@ -3174,6 +3204,7 @@ function AttendanceModal({
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <div className="modal-body">
+          <BuildingPicker id="attendance-building" buildings={buildings} value={buildingId} onChange={switchBuilding} />
           <div className="attendance-toolbar">
             <span><Users size={16} /><strong>{total}</strong> {text("people present in total", "aanwezigen in totaal")}</span>
             <button className="ghost-button" type="button" onClick={copyPreviousDay}><Copy size={13} /> {text("Copy previous workday", "Vorige werkdag overnemen")}</button>
@@ -3201,7 +3232,7 @@ function AttendanceModal({
           </div>
           <div className="modal-actions">
             <span className="form-note"><CheckCircle2 size={13} /> {text("Totals are reused in the daily report.", "Totalen worden in het dagrapport hergebruikt.")}</span>
-            <button className="primary-button" type="button" onClick={save}>{text("Confirm attendance", "Aanwezigheid bevestigen")} <Check size={14} /></button>
+            <button className="primary-button" type="button" onClick={() => void save(rows, buildingId)}>{text("Confirm attendance", "Aanwezigheid bevestigen")} <Check size={14} /></button>
           </div>
         </div>
       </section>
@@ -3210,24 +3241,43 @@ function AttendanceModal({
 }
 
 function OneTapDailyLogModal({
-  rows,
-  total,
+  initialRows,
+  buildings,
+  defaultBuildingId,
+  day,
   buildingName,
   projectStartAnswers,
-  changeCount,
   close,
   save,
 }: {
-  rows: AttendanceRow[];
-  total: number;
+  initialRows: AttendanceRow[];
+  buildings: BuildingOption[];
+  defaultBuildingId: string;
+  day: Pick<ProjectDaySnapshot, "attendance" | "parties"> | undefined;
   buildingName: string;
   projectStartAnswers: ProjectStartAnswers | null;
-  changeCount: (id: string, delta: number) => void;
   close: () => void;
-  save: (notes: string) => void | Promise<void>;
+  save: (notes: string, rows: AttendanceRow[], buildingId: string) => void | Promise<void>;
 }) {
   const { language, text } = useLanguage();
   const [notes, setNotes] = useState("");
+  const [buildingId, setBuildingId] = useState(() => resolveDefaultBuildingId(buildings, defaultBuildingId));
+  const [rows, setRows] = useState(initialRows);
+  const total = rows.reduce((sum, row) => sum + row.count, 0);
+  const chosenBuildingName = buildings.find((building) => building.id === buildingId)?.name ?? buildingName;
+
+  const switchBuilding = (nextBuildingId: string) => {
+    setBuildingId(nextBuildingId);
+    if (nextBuildingId === defaultBuildingId) {
+      setRows(initialRows);
+      return;
+    }
+    setRows(day ? attendanceRowsForBuilding(day, nextBuildingId, text("Unknown party", "Onbekende partij")) : initialRows);
+  };
+
+  const changeCount = (id: string, delta: number) => {
+    setRows((current) => current.map((row) => row.id === id ? { ...row, count: Math.max(0, row.count + delta) } : row));
+  };
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const speechAvailable = Boolean(speechConstructor());
@@ -3291,10 +3341,11 @@ function OneTapDailyLogModal({
         </header>
         <div className="modal-body one-tap-log-body">
           <div className="one-tap-context">
-            <span><MapPin size={17} /><small>{text("Location", "Locatie")}</small><strong>{buildingName}</strong></span>
+            <span><MapPin size={17} /><small>{text("Location", "Locatie")}</small><strong>{chosenBuildingName}</strong></span>
             <span><CloudSun size={17} /><small>{text("Weather", "Weer")}</small><strong>{weather}</strong></span>
             <span><Users size={17} /><small>{text("Headcount", "Bezetting")}</small><strong>{total}</strong></span>
           </div>
+          <BuildingPicker id="one-tap-building" buildings={buildings} value={buildingId} onChange={switchBuilding} />
           <div className="attendance-list compact">
             {rows.map((row) => (
               <div className="attendance-row" key={row.id}>
@@ -3316,7 +3367,7 @@ function OneTapDailyLogModal({
           </div>
           <div className="modal-actions">
             <span className="form-note"><CheckCircle2 size={13} /> {text("Project, building, date and report are linked automatically.", "Project, gebouw, datum en rapport worden automatisch gekoppeld.")}</span>
-            <button className="primary-button" type="button" onClick={() => void save(notes)}><Check size={15} /> {text("Save daily log", "Daglog opslaan")}</button>
+            <button className="primary-button" type="button" onClick={() => void save(notes, rows, buildingId)}><Check size={15} /> {text("Save daily log", "Daglog opslaan")}</button>
           </div>
         </div>
       </section>
@@ -3325,11 +3376,13 @@ function OneTapDailyLogModal({
 }
 
 function DailyQuestionsModal({
+  buildingName,
   close,
   initialAnswers,
   projectStartAnswers,
   save,
 }: {
+  buildingName: string;
   close: () => void;
   initialAnswers: DailyCloseoutAnswers | null;
   projectStartAnswers: ProjectStartAnswers | null;
@@ -3441,7 +3494,7 @@ function DailyQuestionsModal({
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal daily-questions-modal" role="dialog" aria-modal="true" aria-labelledby="daily-questions-title">
         <header className="modal-header">
-          <div><h2 id="daily-questions-title">{text("Daily questions for the report", "Dagvragen voor het rapport")}</h2><p>{clientReportSections.length} {text("client sections · reused across modules · step", "klantonderdelen · modulair hergebruikt · stap")} {step + 1} {text("of", "van")} 4</p></div>
+          <div><h2 id="daily-questions-title">{text("Daily questions for the report", "Dagvragen voor het rapport")} · {buildingName}</h2><p>{clientReportSections.length} {text("client sections · reused across modules · step", "klantonderdelen · modulair hergebruikt · stap")} {step + 1} {text("of", "van")} 4</p></div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <form className="modal-body daily-questions-body" onSubmit={handleSubmit(save)} noValidate>
