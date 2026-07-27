@@ -3,6 +3,14 @@
 /tmp/codeco-logo*.png
 /tmp/codeco_assets/
 
+# Dev/debug scratch output (server logs, e2e run logs, playwright traces, demo fixtures)
+/tmp/*.log
+/tmp/**/*.log
+/tmp/dev-server/
+/tmp/prod-server/
+/tmp/trace-upload-failure*/
+/tmp/release-fixtures/
+
 # Local dependencies, builds and secrets
 **/node_modules/
 **/dist/
@@ -12,3 +20,8 @@
 **/.dev.vars
 **/.env*
 !**/.env.example
+
+# Test runner output
+**/test-results/
+**/playwright-report/
+**/.last-run.json
