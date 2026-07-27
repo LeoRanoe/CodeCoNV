@@ -5,6 +5,7 @@ import { Calculator, CheckCircle2, Mic, MicOff, NotebookPen, Save, ShieldCheck }
 import { useMemo, useRef, useState } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { useLanguage } from "@/lib/i18n";
+import type { ProjectParty } from "@/lib/supabase/data";
 import { createRegisterEntry, type OperationSnapshot } from "@/lib/supabase/operations";
 
 type SpeechRecognitionResultLike = { isFinal: boolean; 0: { transcript: string } };
@@ -62,18 +63,22 @@ function calculateExpression(source: string) {
   return result;
 }
 
-export function FieldTools({ data, projectId, buildingId, buildings, reportId, client, busy, run }: {
+export function FieldTools({ data, projectId, buildingId, buildings, parties, reportId, client, busy, run }: {
   data: OperationSnapshot;
   projectId: string;
   buildingId: string;
   buildings: BuildingOption[];
+  parties: ProjectParty[];
   reportId: string | null;
   client: SupabaseClient;
   busy: boolean;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
 }) {
   const { language, locale, text } = useLanguage();
-  const [note, setNote] = useState({ type: "notepad", title: "", body: "" });
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(new Date());
+  const currentTime = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Paramaribo" }).format(new Date());
+  const emptyNote = { type: "notepad", title: "", body: "", agreementDate: today, agreementTime: currentTime, dueDate: "", responsiblePartyId: "", status: "agreed" };
+  const [note, setNote] = useState(emptyNote);
   const [noteBuildingId, setNoteBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -113,9 +118,22 @@ export function FieldTools({ data, projectId, buildingId, buildings, reportId, c
     if (!reportId || note.title.trim().length < 3 || note.body.trim().length < 3) return;
     const okay = await run(() => createRegisterEntry(client, {
       projectId, buildingId: noteBuildingId, reportId, type: note.type, title: note.title.trim(),
-      details: { text: note.body.trim(), recorded_at: new Date().toISOString(), source: listening ? "voice_and_keyboard" : "keyboard" },
-    }), text("Field note stored centrally with its automatic date and time.", "Veldnotitie centraal opgeslagen met automatische datum en tijd."));
-    if (okay) setNote({ type: "notepad", title: "", body: "" });
+      responsiblePartyId: note.responsiblePartyId || undefined,
+      dueAt: note.dueDate || null,
+      details: {
+        text: note.body.trim(),
+        recorded_at: new Date().toISOString(),
+        source: listening ? "voice_and_keyboard" : "keyboard",
+        agreement_date: note.type === "agreement" ? note.agreementDate : null,
+        agreement_time: note.type === "agreement" ? note.agreementTime : null,
+        agreement_status: note.type === "agreement" ? note.status : null,
+        responsible_party_name: parties.find((party) => party.id === note.responsiblePartyId)?.name ?? "",
+        due_date: note.dueDate || null,
+      },
+    }), note.type === "agreement"
+      ? text("Agreement stored with date, time, responsible party and deadline.", "Afspraak opgeslagen met datum, tijd, verantwoordelijke partij en deadline.")
+      : text("Field note stored centrally with its automatic date and time.", "Veldnotitie centraal opgeslagen met automatische datum en tijd."));
+    if (okay) setNote({ ...emptyNote });
   };
 
   const runExpression = () => {
@@ -128,9 +146,19 @@ export function FieldTools({ data, projectId, buildingId, buildings, reportId, c
     <section className="field-tools-grid">
       <div className="field-tool-card note-tool-card">
         <div className="field-tool-heading"><span className="module-card-icon"><NotebookPen size={19} /></span><div><span className="record-number">{text("Field notepad", "Veldnotitieblok")}</span><h2>{text("Type or dictate a dated project note", "Typ of dicteer een gedateerde projectnotitie")}</h2></div></div>
-        <div className="form-grid-2"><BuildingPicker id="note-building" buildings={buildings} value={noteBuildingId} onChange={setNoteBuildingId} /><label className="form-field"><span>{text("Record type", "Type registratie")}</span><select value={note.type} onChange={(event) => setNote({ ...note, type: event.target.value })}><option value="notepad">{text("Notepad", "Notitieblok")}</option><option value="agreement">{text("Agreement", "Afspraak")}</option><option value="technical_instruction">{text("Technical instruction", "Technische instructie")}</option></select></label><label className="form-field"><span>{text("Subject", "Onderwerp")}</span><input value={note.title} onChange={(event) => setNote({ ...note, title: event.target.value })} /></label></div>
+        <div className="form-grid-2"><BuildingPicker id="note-building" buildings={buildings} value={noteBuildingId} onChange={setNoteBuildingId} /><label className="form-field"><span>{text("Record type", "Type registratie")}</span><select value={note.type} onChange={(event) => setNote({ ...note, type: event.target.value })}><option value="notepad">{text("Notepad", "Notitieblok")}</option><option value="agreement">{text("Formal agreement", "Formele afspraak")}</option></select></label><label className="form-field"><span>{note.type === "agreement" ? text("Agreement subject", "Onderwerp afspraak") : text("Subject", "Onderwerp")}</span><input value={note.title} onChange={(event) => setNote({ ...note, title: event.target.value })} /></label></div>
+        {note.type === "agreement" ? <div className="agreement-fields">
+          <div className="form-grid-2">
+            <label className="form-field"><span>{text("Agreement date", "Datum afspraak")}</span><input type="date" value={note.agreementDate} onChange={(event) => setNote({ ...note, agreementDate: event.target.value })} /></label>
+            <label className="form-field"><span>{text("Agreement time", "Tijd afspraak")}</span><input type="time" value={note.agreementTime} onChange={(event) => setNote({ ...note, agreementTime: event.target.value })} /></label>
+            <label className="form-field"><span>{text("Responsible project party", "Verantwoordelijke projectpartij")}</span><select value={note.responsiblePartyId} onChange={(event) => setNote({ ...note, responsiblePartyId: event.target.value })}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name} · {party.type}</option>)}</select></label>
+            <label className="form-field"><span>{text("Deadline / follow-up date", "Deadline / opvolgdatum")}</span><input type="date" min={note.agreementDate} value={note.dueDate} onChange={(event) => setNote({ ...note, dueDate: event.target.value })} /></label>
+            <label className="form-field"><span>{text("Agreement status", "Status afspraak")}</span><select value={note.status} onChange={(event) => setNote({ ...note, status: event.target.value })}><option value="agreed">{text("Agreed", "Afgesproken")}</option><option value="open">{text("Open for confirmation", "Open voor bevestiging")}</option><option value="in_progress">{text("In progress", "In uitvoering")}</option><option value="completed">{text("Completed", "Afgerond")}</option></select></label>
+          </div>
+          <div className="operation-alert"><CheckCircle2 size={17} /><div><strong>{text("Traceable agreement", "Traceerbare afspraak")}</strong><span>{text("Project, building, author and registration time are added automatically. The agreement date and deadline remain visible in reports.", "Project, gebouw, maker en registratietijd worden automatisch toegevoegd. De afspraakdatum en deadline blijven zichtbaar in rapporten.")}</span></div></div>
+        </div> : null}
         <label className="form-field"><span>{text("Text", "Tekst")}</span><textarea rows={7} value={note.body} onChange={(event) => setNote({ ...note, body: event.target.value })} /></label>
-        <div className="button-row"><button className={`secondary-button ${listening ? "recording" : ""}`} type="button" disabled={!speechAvailable} onClick={toggleSpeech}>{listening ? <MicOff size={15} /> : <Mic size={15} />} {listening ? text("Stop dictation", "Stop dicteren") : text("Dictate", "Dicteren")}</button><button className="primary-button" type="button" disabled={busy || !reportId || note.title.trim().length < 3 || note.body.trim().length < 3} onClick={() => void saveNote()}><Save size={15} /> {text("Save note", "Notitie opslaan")}</button></div>
+        <div className="button-row"><button className={`secondary-button ${listening ? "recording" : ""}`} type="button" disabled={!speechAvailable} onClick={toggleSpeech}>{listening ? <MicOff size={15} /> : <Mic size={15} />} {listening ? text("Stop dictation", "Stop dicteren") : text("Dictate", "Dicteren")}</button><button className="primary-button" type="button" disabled={busy || !reportId || note.title.trim().length < 3 || note.body.trim().length < 3 || (note.type === "agreement" && (!note.agreementDate || !note.agreementTime))} onClick={() => void saveNote()}><Save size={15} /> {note.type === "agreement" ? text("Save agreement", "Afspraak opslaan") : text("Save note", "Notitie opslaan")}</button></div>
         <p className="field-tool-hint">{speechAvailable ? text("Dictation starts only after your click. Review the recognized text before saving.", "Dicteren start uitsluitend na jouw klik. Controleer de herkende tekst vóór opslaan.") : text("This browser does not provide speech recognition; keyboard entry remains available.", "Deze browser biedt geen spraakherkenning; invoer met het toetsenbord blijft beschikbaar.")}</p>
       </div>
 
@@ -145,7 +173,7 @@ export function FieldTools({ data, projectId, buildingId, buildings, reportId, c
 
       <div className="field-tool-card saved-notes-card">
         <span className="record-number">{text("Saved notes and agreements", "Opgeslagen notities en afspraken")}</span>
-        {notes.length ? notes.map((entry) => <article key={entry.id}><div><strong>{entry.title}</strong><span>{entry.entry_number} · {entry.register_type.replaceAll("_", " ")}</span></div><small>{new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(entry.occurred_at))}</small><p>{String(entry.details.text ?? entry.details.description ?? "")}</p></article>) : <div className="empty-list-state"><NotebookPen size={20} /><strong>{text("No field notes yet", "Nog geen veldnotities")}</strong></div>}
+        {notes.length ? notes.map((entry) => <article key={entry.id}><div><strong>{entry.title}</strong><span>{entry.entry_number} · {entry.register_type.replaceAll("_", " ")}</span></div><small>{entry.register_type === "agreement" && entry.details.agreement_date ? `${text("Agreement", "Afspraak")} ${String(entry.details.agreement_date)} ${String(entry.details.agreement_time ?? "")} · ${text("Deadline", "Deadline")} ${String(entry.details.due_date ?? "—")}` : new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(entry.occurred_at))}</small><p>{String(entry.details.text ?? entry.details.description ?? "")}</p></article>) : <div className="empty-list-state"><NotebookPen size={20} /><strong>{text("No field notes yet", "Nog geen veldnotities")}</strong></div>}
       </div>
     </section>
   );

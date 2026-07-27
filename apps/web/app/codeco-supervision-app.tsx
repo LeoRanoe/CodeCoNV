@@ -217,18 +217,25 @@ function speechConstructor() {
 }
 
 const constructionDisciplines = [
-  "Algemeen",
+  "Bouwvakkers / algemeen",
   "Timmerlieden",
+  "Metselaars",
+  "Beton en wapening",
+  "Betonwerkers",
+  "Wapeningwerkers",
   "Elektriciens",
   "HVAC",
+  "Loodgieters / sanitair",
   "Schilders",
   "Gevelwerk",
-  "Beton en wapening",
   "Tegelzetters",
-  "Sanitair",
   "Grondwerk",
   "Staalbouw",
+  "Steigerbouwers",
   "Dakwerk",
+  "Machine-operators",
+  "HSE / veiligheidsmedewerkers",
+  "Voormannen / supervisors",
 ] as const;
 
 const navigation: { id: NavKey; label: string; icon: LucideIcon; badge?: string }[] = [
@@ -395,6 +402,7 @@ function closeoutFromRow(row: Record<string, unknown> | null): DailyCloseoutAnsw
   return {
     daySummary: String(row.day_summary),
     weatherSummary: String(row.weather_summary),
+    workOngoing: String(row.work_ongoing ?? ""),
     workPerformed: String(row.work_performed),
     progressPercent: Number(row.progress_percent),
     inspectionResult: row.inspection_result as DailyCloseoutAnswers["inspectionResult"],
@@ -1581,6 +1589,10 @@ export function CodecoSupervisionApp() {
           buildingName={buildingName}
           projectStartAnswers={projectStartAnswers}
           close={() => setModal(null)}
+          openDetailedLog={() => {
+            setModal(null);
+            openBuildingCloseout(selectedBuilding);
+          }}
           save={async (notes, rows, logBuildingId) => {
             if (!dayQuery.data?.report) {
               setToast("Start eerst de werkdag zodat het dagrapport klaarstaat.");
@@ -2299,7 +2311,7 @@ function TodayView({
 
       <section className="overview-shortcuts" aria-label={text("Quick routes", "Directe routes")}>
         <button className="overview-shortcut primary" type="button" onClick={projectStartAnswers ? openQuickAdd : openProjectStart}><span>{projectStartAnswers ? <Camera size={18} /> : <Plus size={18} />}</span><strong>{projectStartAnswers ? text("Take a photo", "Foto maken") : text("Start the workday", "Werkdag starten")}</strong><small>{projectStartAnswers ? text("Project, building, time and folder automatic", "Project, gebouw, tijd en map automatisch") : text("Confirm weather and working hours", "Bevestig weer en werktijden")}</small><ArrowRight size={16} /></button>
-        <button className="overview-shortcut" type="button" onClick={openOneTapLog}><span><ClipboardCheck size={18} /></span><strong>{text("One-tap daily log", "Snel daglog")}</strong><small>{text("Location, weather, headcount and dictation", "Locatie, weer, bezetting en dicteren")}</small><ArrowRight size={16} /></button>
+        <button className="overview-shortcut" type="button" onClick={openOneTapLog}><span><ClipboardCheck size={18} /></span><strong>{text("Daily log", "Daglog")}</strong><small>{text("Quick workforce entry or the complete client log", "Snelle workforce-invoer of het volledige klantdaglog")}</small><ArrowRight size={16} /></button>
         <button className="overview-shortcut mobile-redundant" type="button" onClick={openActions}><span><ClipboardCheck size={18} /></span><strong>{text("Open actions", "Acties openen")}</strong><small>{text(`${actions.filter((action) => action.status !== "verified" && action.status !== "cancelled").length} require follow-up`, `${actions.filter((action) => action.status !== "verified" && action.status !== "cancelled").length} vragen opvolging`)}</small><ArrowRight size={16} /></button>
         <button className="overview-shortcut mobile-redundant" type="button" onClick={canManageMembers ? openSettings : openWorkspace}><span>{canManageMembers ? <Settings size={18} /> : <LayoutDashboard size={18} />}</span><strong>{canManageMembers ? text("Manage workspace", "Werkruimte beheren") : text("Open project workspace", "Projectwerkruimte openen")}</strong><small>{canManageMembers ? text("Users, rules and project structure", "Gebruikers, regels en projectstructuur") : text("Inspections, findings and files", "Inspecties, bevindingen en bestanden")}</small><ArrowRight size={16} /></button>
       </section>
@@ -3263,6 +3275,7 @@ function OneTapDailyLogModal({
   buildingName,
   projectStartAnswers,
   close,
+  openDetailedLog,
   save,
 }: {
   initialRows: AttendanceRow[];
@@ -3272,12 +3285,14 @@ function OneTapDailyLogModal({
   buildingName: string;
   projectStartAnswers: ProjectStartAnswers | null;
   close: () => void;
+  openDetailedLog: () => void;
   save: (notes: string, rows: AttendanceRow[], buildingId: string) => void | Promise<void>;
 }) {
   const { language, text } = useLanguage();
   const [notes, setNotes] = useState("");
   const [buildingId, setBuildingId] = useState(() => resolveDefaultBuildingId(buildings, defaultBuildingId));
   const [rows, setRows] = useState(initialRows);
+  const [workforcePartyId, setWorkforcePartyId] = useState(() => initialRows[0]?.partyId ?? day?.parties[0]?.id ?? "");
   const total = rows.reduce((sum, row) => sum + row.count, 0);
   const chosenBuildingName = buildings.find((building) => building.id === buildingId)?.name ?? buildingName;
 
@@ -3292,6 +3307,23 @@ function OneTapDailyLogModal({
 
   const changeCount = (id: string, delta: number) => {
     setRows((current) => current.map((row) => row.id === id ? { ...row, count: Math.max(0, row.count + delta) } : row));
+  };
+  const addTradeCount = (discipline: (typeof constructionDisciplines)[number]) => {
+    const party = day?.parties.find((item) => item.id === workforcePartyId);
+    if (!party) return;
+    setRows((current) => {
+      const existing = current.find((row) => row.partyId === party.id && row.discipline === discipline);
+      if (existing) return current.map((row) => row.id === existing.id ? { ...row, count: row.count + 1 } : row);
+      return [...current, {
+        id: `new:${party.id}:${discipline}`,
+        partyId: party.id,
+        party: party.name,
+        discipline,
+        count: 1,
+        shiftStart: "07:00",
+        shiftEnd: "16:00",
+      }];
+    });
   };
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -3351,29 +3383,70 @@ function OneTapDailyLogModal({
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal report-modal one-tap-log-modal" role="dialog" aria-modal="true" aria-labelledby="one-tap-log-title">
         <header className="modal-header">
-          <div><span className="record-number">{text("One-tap daily log", "Snel daglog")}</span><h2 id="one-tap-log-title">{text("Confirm today with as little typing as possible", "Bevestig vandaag met zo min mogelijk typen")}</h2></div>
+          <div><span className="record-number">{text("Daily log", "Daglog")}</span><h2 id="one-tap-log-title">{text("Record the workforce quickly or complete the full client log", "Registreer snel de workforce of vul het volledige klantdaglog in")}</h2></div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <div className="modal-body one-tap-log-body">
+          <div className="daily-log-mode-switch" role="group" aria-label={text("Daily log mode", "Daglogmodus")}>
+            <button className="active" type="button" aria-pressed="true"><Users size={17} /><span><strong>{text("Quick entry", "Snelle registratie")}</strong><small>{text("Workforce and short site notes", "Workforce en korte bouwplaatsnotities")}</small></span></button>
+            <button type="button" onClick={openDetailedLog}><ClipboardCheck size={17} /><span><strong>{text("Complete client log", "Volledig klantdaglog")}</strong><small>{text("All requested daily report sections", "Alle gevraagde dagrapportonderdelen")}</small></span></button>
+          </div>
+
+          <section className="client-daily-log-coverage" aria-labelledby="client-daily-log-coverage-title">
+            <header><span className="record-number">{text("Client specification", "Klantspecificatie")}</span><h3 id="client-daily-log-coverage-title">{text("The complete daily log contains", "Het volledige daglog bevat")}</h3></header>
+            <div>
+              <span><Wrench size={15} /><strong>{text("Work & progress", "Werk & voortgang")}</strong><small>{text("Performed work, ongoing work, percentage and tomorrow", "Uitgevoerd werk, lopend werk, percentage en morgen")}</small></span>
+              <span><ClipboardCheck size={15} /><strong>{text("Quality", "Kwaliteit")}</strong><small>{text("Inspections, issues, NCR and tests", "Inspecties, issues, NCR en testen")}</small></span>
+              <span><ShieldCheck size={15} /><strong>HSE</strong><small>{text("Safety events, risks and measures", "Veiligheidsgebeurtenissen, risico’s en maatregelen")}</small></span>
+              <span><PackageCheck size={15} /><strong>{text("Site logistics", "Bouwplaatslogistiek")}</strong><small>{text("Deliveries, equipment and delays", "Leveringen, materieel en vertragingen")}</small></span>
+              <span><FileText size={15} /><strong>{text("Instructions & decisions", "Instructies & besluiten")}</strong><small>{text("TI, CO, agreements and communication", "TI, CO, afspraken en communicatie")}</small></span>
+              <span><Camera size={15} /><strong>{text("Evidence", "Bewijs")}</strong><small>{text("Photos, attachments and automatic date/time", "Foto’s, bijlagen en automatische datum/tijd")}</small></span>
+            </div>
+            <button className="secondary-button" type="button" onClick={openDetailedLog}><ClipboardCheck size={15} /> {text("Open complete client log", "Open volledig klantdaglog")}</button>
+          </section>
+
           <div className="one-tap-context">
             <span><MapPin size={17} /><small>{text("Location", "Locatie")}</small><strong>{chosenBuildingName}</strong></span>
             <span><CloudSun size={17} /><small>{text("Weather", "Weer")}</small><strong>{weather}</strong></span>
             <span><Users size={17} /><small>{text("Headcount", "Bezetting")}</small><strong>{total}</strong></span>
           </div>
           <BuildingPicker id="one-tap-building" buildings={buildings} value={buildingId} onChange={switchBuilding} />
-          <div className="attendance-list compact">
-            {rows.map((row) => (
-              <div className="attendance-row" key={row.id}>
-                <span className="attendance-party"><strong>{row.discipline}</strong><small>{row.party} · {row.shiftStart}–{row.shiftEnd}</small></span>
-                <span className="counter-control">
-                  <button type="button" onClick={() => changeCount(row.id, -1)} aria-label={text(`One fewer ${row.discipline}`, `Eén ${row.discipline} minder`)}><Minus size={14} /></button>
-                  <strong>{row.count}</strong>
-                  <button type="button" onClick={() => changeCount(row.id, 1)} aria-label={text(`One more ${row.discipline}`, `Eén ${row.discipline} meer`)}><Plus size={14} /></button>
-                </span>
-              </div>
-            ))}
-          </div>
+          <section className="one-tap-workforce" aria-labelledby="one-tap-workforce-title">
+            <header><span><Users size={17} /></span><div><h3 id="one-tap-workforce-title">{text("Workforce by trade", "Workforce / bezetting per vak")}</h3><p>{text("Choose the actual construction trade and adjust today's headcount.", "Kies het werkelijke bouwvak en pas het aantal aanwezigen van vandaag aan.")}</p></div><strong>{total}</strong></header>
+            {rows.length ? (
+              <>
+                <div className="one-tap-workforce-add">
+                  <label><span>{text("Party", "Partij")}</span><select value={workforcePartyId} onChange={(event) => setWorkforcePartyId(event.target.value)}>{day?.parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
+                  <span><strong>{text("Tap a trade below", "Tik hieronder op een vak")}</strong><small>{text("Each tap adds one person to the selected party.", "Iedere tik voegt één persoon toe aan de gekozen partij.")}</small></span>
+                </div>
+                <div className="one-tap-trade-grid" aria-label={text("Construction trades", "Bouwvakken")}>
+                  {constructionDisciplines.map((discipline) => {
+                    const count = rows.find((row) => row.partyId === workforcePartyId && row.discipline === discipline)?.count ?? 0;
+                    return <button className={count ? "active" : ""} type="button" disabled={!workforcePartyId} onClick={() => addTradeCount(discipline)} key={discipline}><span>{discipline}</span><strong>{count}</strong></button>;
+                  })}
+                </div>
+                <div className="attendance-list compact">
+                  {rows.map((row) => (
+                    <div className="attendance-row" key={row.id}>
+                      <span className="attendance-party">
+                        <strong>{row.discipline}</strong>
+                        <small>{row.party} · {row.shiftStart}–{row.shiftEnd}</small>
+                      </span>
+                      <span className="counter-control">
+                        <button type="button" onClick={() => changeCount(row.id, -1)} aria-label={text(`One fewer ${row.discipline}`, `Eén ${row.discipline} minder`)}><Minus size={14} /></button>
+                        <strong>{row.count}</strong>
+                        <button type="button" onClick={() => changeCount(row.id, 1)} aria-label={text(`One more ${row.discipline}`, `Eén ${row.discipline} meer`)}><Plus size={14} /></button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="empty-list-state"><Users size={22} /><strong>{text("No project parties configured", "Nog geen projectpartijen ingericht")}</strong><span>{text("An administrator must add the contractor and subcontractors under Management → Structure and parties before workforce can be recorded.", "Een beheerder moet eerst de aannemer en onderaannemers toevoegen via Management → Structuur en partijen voordat workforce kan worden geregistreerd.")}</span></div>
+            )}
+          </section>
           <div className="one-tap-note">
+            <div><span className="record-number">{text("Short site notes", "Korte bouwplaatsnotities")}</span><h3>{text("Choose what applies today", "Kies wat vandaag van toepassing is")}</h3></div>
             <div className="quick-issue-presets">
               {noteOptions.map((option) => <button className={notes.includes(option) ? "active" : ""} type="button" onClick={() => toggleOption(option)} key={option}>{option}</button>)}
             </div>
@@ -3421,6 +3494,7 @@ function DailyQuestionsModal({
       weatherSummary: projectStartAnswers
         ? `${({ sunny: text("Sunny", "Zonnig"), partly_cloudy: text("Partly cloudy", "Licht bewolkt"), cloudy: text("Cloudy", "Bewolkt"), rain: text("Rain", "Regen"), heavy_rain: text("Heavy rain", "Zware regen") })[projectStartAnswers.weatherCondition]}, ${projectStartAnswers.temperatureC}°C, ${text("wind", "wind")} ${projectStartAnswers.windCondition === "strong" ? text("strong", "sterk") : projectStartAnswers.windCondition === "moderate" ? text("moderate", "matig") : text("calm", "kalm")}`
         : "",
+      workOngoing: "",
       workPerformed: "",
       progressPercent: 67,
       inspectionResult: "none",
@@ -3441,9 +3515,9 @@ function DailyQuestionsModal({
       attachmentsConfirmed: false,
     },
   });
-  const [qualityIssues, hseEvent, delayCause, workPerformed, tomorrowPlan, daySummary, weatherSummary, equipmentStatus, deliveries, testsMeasurements, communication, risks] = useWatch({
+  const [qualityIssues, hseEvent, delayCause, workOngoing, workPerformed, tomorrowPlan, daySummary, weatherSummary, equipmentStatus, deliveries, testsMeasurements, communication, risks] = useWatch({
     control,
-    name: ["qualityIssues", "hseEvent", "delayCause", "workPerformed", "tomorrowPlan", "daySummary", "weatherSummary", "equipmentStatus", "deliveries", "testsMeasurements", "communication", "risks"],
+    name: ["qualityIssues", "hseEvent", "delayCause", "workOngoing", "workPerformed", "tomorrowPlan", "daySummary", "weatherSummary", "equipmentStatus", "deliveries", "testsMeasurements", "communication", "risks"],
   });
   const dailySummaryOptions = [
     text("Work proceeded according to plan.", "Werk is volgens planning verlopen."),
@@ -3487,14 +3561,15 @@ function DailyQuestionsModal({
     text("Delivery risk remains open.", "Leveringsrisico blijft open."),
     text("Safety risk remains open.", "Veiligheidsrisico blijft open."),
   ];
-  const toggleCloseoutWork = (field: "workPerformed" | "tomorrowPlan", label: string) => {
-    const current = String(field === "workPerformed" ? workPerformed : tomorrowPlan).split("; ").filter(Boolean);
+  const toggleCloseoutWork = (field: "workOngoing" | "workPerformed" | "tomorrowPlan", label: string) => {
+    const fieldValue = field === "workOngoing" ? workOngoing : field === "workPerformed" ? workPerformed : tomorrowPlan;
+    const current = String(fieldValue).split("; ").filter(Boolean);
     const next = current.includes(label) ? current.filter((item) => item !== label) : [...current, label];
     setValue(field, next.join("; "), { shouldDirty: true, shouldValidate: true });
     if (field === "workPerformed" && !daySummary && next.length) setValue("daySummary", `${text("Work completed", "Werk uitgevoerd")}: ${next.join(", ")}.`, { shouldDirty: true, shouldValidate: true });
   };
   const stepFields: Array<Array<keyof DailyCloseoutAnswers>> = [
-    ["daySummary", "weatherSummary", "workPerformed", "progressPercent"],
+    ["daySummary", "weatherSummary", "workOngoing", "workPerformed", "progressPercent"],
     ["inspectionResult", "qualityIssues", "qualityDetails", "hseEvent", "hseDetails"],
     ["equipmentStatus", "deliveries", "testsMeasurements", "variationWork", "delayCause", "delayHours"],
     ["communication", "risks", "tomorrowPlan", "photoCount", "attachmentsConfirmed"],
@@ -3537,7 +3612,20 @@ function DailyQuestionsModal({
                   </details>
                 </div>
                 <label className="form-field"><span>{text("Project progress", "Voortgang project")}</span><span className="input-with-unit"><input type="number" min="0" max="100" {...register("progressPercent", { valueAsNumber: true })} /><em>%</em></span>{errors.progressPercent ? <small className="field-error">{errors.progressPercent.message}</small> : null}</label>
-                <div className="work-option-grid wide" aria-label={text("Choose completed work", "Kies uitgevoerd werk")}>{constructionWorkOptions.map((option) => { const label = language === "en" ? option.en : option.nl; const active = String(workPerformed).split("; ").includes(label); return <button className={active ? "active" : ""} type="button" aria-pressed={active} onClick={() => toggleCloseoutWork("workPerformed", label)} key={option.en}>{active ? <Check size={14} /> : <Plus size={14} />}{label}</button>; })}</div>
+                <div className="click-answer-block wide">
+                  <strong>{text("Work ongoing at day end", "Werk lopend aan het einde van de dag")}</strong>
+                  <small>{text("Select work that started but was not yet completed.", "Kies werkzaamheden die zijn gestart maar nog niet zijn afgerond.")}</small>
+                  <div className="work-option-grid" aria-label={text("Choose ongoing work", "Kies lopend werk")}>{constructionWorkOptions.map((option) => { const label = language === "en" ? option.en : option.nl; const active = String(workOngoing).split("; ").includes(label); return <button className={active ? "active" : ""} type="button" aria-pressed={active} onClick={() => toggleCloseoutWork("workOngoing", label)} key={option.en}>{active ? <Check size={14} /> : <Plus size={14} />}{label}</button>; })}</div>
+                  <details className="optional-text-entry">
+                    <summary>{text("Other ongoing work", "Ander lopend werk")}</summary>
+                    <label className="form-field"><textarea rows={3} {...register("workOngoing")} /></label>
+                  </details>
+                </div>
+                <div className="click-answer-block wide">
+                  <strong>{text("Work completed today *", "Werk vandaag afgerond *")}</strong>
+                  <small>{text("Select the work that was actually completed today.", "Kies de werkzaamheden die vandaag daadwerkelijk zijn afgerond.")}</small>
+                  <div className="work-option-grid" aria-label={text("Choose completed work", "Kies afgerond werk")}>{constructionWorkOptions.map((option) => { const label = language === "en" ? option.en : option.nl; const active = String(workPerformed).split("; ").includes(label); return <button className={active ? "active" : ""} type="button" aria-pressed={active} onClick={() => toggleCloseoutWork("workPerformed", label)} key={option.en}>{active ? <Check size={14} /> : <Plus size={14} />}{label}</button>; })}</div>
+                </div>
                 {errors.workPerformed ? <small className="field-error wide">{errors.workPerformed.message}</small> : null}
                 <details className="optional-text-entry wide">
                   <summary>{text("Other completed work", "Andere uitgevoerde werkzaamheden")}</summary>

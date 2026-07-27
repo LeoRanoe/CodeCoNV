@@ -46,6 +46,8 @@ test("server-renders the public CODECO landing page", async () => {
   assert.match(response.headers.get("content-security-policy") ?? "", /frame-ancestors 'none'/);
   assert.match(response.headers.get("content-security-policy") ?? "", /connect-src[^;]*https:\/\/vercel\.com/);
   assert.match(response.headers.get("content-security-policy") ?? "", /connect-src[^;]*blob:/);
+  assert.match(response.headers.get("content-security-policy") ?? "", /script-src[^;]*'wasm-unsafe-eval'/);
+  assert.doesNotMatch(response.headers.get("content-security-policy") ?? "", /script-src[^;]*'unsafe-eval'/);
   assert.match(response.headers.get("strict-transport-security") ?? "", /max-age=63072000/);
   assert.equal(response.headers.get("x-content-type-options"), "nosniff");
 
@@ -280,9 +282,10 @@ test("keeps standard photo and validated 360 camera annotation production paths"
 });
 
 test("implements the handwritten client PDF as required workflows without AI or SMS", async () => {
-  const [migration, app, dataLayer, fieldTools, drawingWorkspace, periodReport, boqCsv, operations, emailDelivery, dispatchRoute, cronRoute, envExample] = await Promise.all([
+  const [migration, app, operationalWorkspace, dataLayer, fieldTools, drawingWorkspace, periodReport, boqCsv, operations, emailDelivery, pushDelivery, pushClient, pushSubscriptionRoute, dispatchRoute, cronRoute, envExample] = await Promise.all([
     readFile(new URL("../../../supabase/migrations/202607220002_client_pdf_requirements.sql", import.meta.url), "utf8"),
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/supabase/data.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/field-tools.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/drawing-workspace.tsx", import.meta.url), "utf8"),
@@ -290,6 +293,9 @@ test("implements the handwritten client PDF as required workflows without AI or 
     readFile(new URL("../lib/boq/csv.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/notifications/email.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/notifications/push.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/notifications/push-client.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/notifications/push-subscriptions/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/notifications/dispatch/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/cron/daily/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../.env.example", import.meta.url), "utf8"),
@@ -306,6 +312,11 @@ test("implements the handwritten client PDF as required workflows without AI or 
   assert.match(app, /project\.changeOrderCount/);
   assert.match(app, /Timmerlieden/);
   assert.match(app, /Beton en wapening/);
+  assert.match(app, /Werk lopend aan het einde van de dag/);
+  assert.match(app, /Werk vandaag afgerond/);
+  assert.match(dataLayer, /work_ongoing/);
+  assert.match(operationalWorkspace, /Upload contract, technische specificatie of bijlage/);
+  assert.match(operationalWorkspace, /uploadProjectFile/);
   assert.match(dataLayer, /finding_type !== "ncr"/);
   assert.match(dataLayer, /"technical_instruction", "site_instruction", "change_order", "variation"/);
   assert.match(fieldTools, /webkitSpeechRecognition/);
@@ -326,6 +337,10 @@ test("implements the handwritten client PDF as required workflows without AI or 
   assert.match(dispatchRoute, /notification_push_dispatch/);
   assert.match(dispatchRoute, /sendPendingPushNotifications/);
   assert.match(dispatchRoute, /sendPendingNotificationEmails/);
+  assert.match(pushDelivery, /sendPushVerification/);
+  assert.match(pushSubscriptionRoute, /await sendPushVerification\(input\.data\)/);
+  assert.match(pushClient, /sameApplicationServerKey/);
+  assert.match(pushClient, /await subscription\.unsubscribe\(\)/);
   assert.match(cronRoute, /sendPendingNotificationEmails/);
   assert.match(envExample, /^RESEND_API_KEY=/m);
   assert.match(envExample, /^NOTIFICATION_FROM_EMAIL=/m);

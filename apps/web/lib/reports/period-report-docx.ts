@@ -179,7 +179,7 @@ export function buildPeriodReportDocxDocument(snapshot: PeriodReportSnapshot, op
         }));
         children.push(new Paragraph({ children: [new TextRun({ text: closeout ? value(closeout, "day_summary", "Geen dagsamenvatting") : "Dagafsluiting nog niet bevestigd", size: 16 })] }));
         if (start) children.push(new Paragraph({ children: [new TextRun({ text: `Weer: ${value(start, "weather_condition")} · ${value(start, "temperature_c")} °C · wind ${value(start, "wind_condition")} | Werkuren: ${value(start, "shift_start")}–${value(start, "shift_end")} | Gepland: ${value(start, "planned_work")}`, color: "5E707B", size: 14 })] }));
-        if (closeout) children.push(new Paragraph({ children: [new TextRun({ text: `Uitgevoerd: ${value(closeout, "work_performed", "-")} | Voortgang: ${value(closeout, "progress_percent", "0")}% | Morgen: ${value(closeout, "tomorrow_plan", "-")}`, color: "5E707B", size: 14 })], spacing: { after: 100 } }));
+        if (closeout) children.push(new Paragraph({ children: [new TextRun({ text: `Lopend: ${value(closeout, "work_ongoing", "-")} | Afgerond: ${value(closeout, "work_performed", "-")} | Voortgang: ${value(closeout, "progress_percent", "0")}% | Morgen: ${value(closeout, "tomorrow_plan", "-")}`, color: "5E707B", size: 14 })], spacing: { after: 100 } }));
       });
     } else {
       children.push(new Paragraph({ children: [new TextRun({ text: "Geen dagrapporten in deze periode.", italics: true, size: 16 })] }));

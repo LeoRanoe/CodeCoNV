@@ -49,6 +49,7 @@ export function createDailyCloseoutSchema(language: "en" | "nl" = "en") {
   .object({
     daySummary: z.string().trim().min(20, text("Describe how the day went in at least one complete sentence", "Beschrijf in minimaal één volledige zin hoe de dag is verlopen")).max(700),
     weatherSummary: z.string().trim().min(5, text("Describe the actual weather", "Beschrijf het werkelijke weer")).max(180),
+    workOngoing: z.string().trim().max(1200).optional(),
     workPerformed: z.string().trim().min(10, text("Describe the work performed", "Beschrijf de uitgevoerde werkzaamheden")).max(1200),
     progressPercent: z.number().min(0).max(100),
     inspectionResult: z.enum(["none", "all_ok", "issues"]),

@@ -118,7 +118,8 @@ export function DailyReportDocument({ snapshot, logoSource = "/codeco-logo-pdf.p
         <Section title="2. Samenvatting van de dag"><Text>{closeout.daySummary}</Text></Section>
         <Section title="3–4. Aanwezigheid, werkzaamheden en voortgang">
           <Row label="Aanwezig" value={`${snapshot.attendanceTotal} personen`} />
-          <Row label="Werkzaamheden" value={closeout.workPerformed} />
+          <Row label="Werk lopend" value={closeout.workOngoing || "Niet geregistreerd"} />
+          <Row label="Werk afgerond" value={closeout.workPerformed} />
           <Row label="Voortgang" value={`${closeout.progressPercent}%`} />
         </Section>
         <Text style={styles.footer} fixed>CODECO Supervisie · gegenereerd uit centrale Supabase-data · Pagina 1 van {snapshot.buildings?.length ? 3 : 2}</Text>
@@ -168,7 +169,8 @@ export function DailyReportDocument({ snapshot, logoSource = "/codeco-logo-pdf.p
           {snapshot.buildings.map((building) => (
             <Section title={building.name} key={building.name}>
               <Row label="Weer" value={`${building.projectStart.weatherCondition}; ${building.projectStart.temperatureC} °C`} />
-              <Row label="Werkzaamheden" value={building.closeout.workPerformed} />
+              <Row label="Werk lopend" value={building.closeout.workOngoing || "Niet geregistreerd"} />
+              <Row label="Werk afgerond" value={building.closeout.workPerformed} />
               <Row label="Voortgang" value={`${building.closeout.progressPercent}%`} />
               <Row label="Kwaliteit" value={building.closeout.qualityIssues === "yes" ? building.closeout.qualityDetails : "Geen afwijking gemeld"} />
               <Row label="HSE" value={building.closeout.hseEvent === "none" ? "Geen incident of near miss gemeld" : building.closeout.hseDetails} />
@@ -219,6 +221,7 @@ function dailyCloseoutAnswersFromSnapshotRow(closeout: Record<string, unknown> |
   return {
     daySummary: value(closeout, "day_summary", "Geen dagsamenvatting in deze vastgezette versie."),
     weatherSummary: value(closeout, "weather_summary", "Niet geregistreerd"),
+    workOngoing: value(closeout, "work_ongoing"),
     workPerformed: value(closeout, "work_performed", "Niet geregistreerd"),
     progressPercent: Number(closeout?.progress_percent ?? 0),
     inspectionResult: value(closeout, "inspection_result", "none") as DailyCloseoutAnswers["inspectionResult"],

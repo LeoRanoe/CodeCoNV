@@ -232,7 +232,7 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
             <Text style={styles.dailyDate}>{formatDate(value(report, "report_date"))} | {value(report, "report_number")} | {humanizeToken(value(report, "status"))}</Text>
             <Text style={styles.dailySummary}>{closeout ? value(closeout, "day_summary", "Geen dagsamenvatting") : "Dagafsluiting nog niet bevestigd"}</Text>
             {start ? <Text style={styles.dailyDetail}>Weer: {value(start, "weather_condition")} · {value(start, "temperature_c")} °C · wind {value(start, "wind_condition")} | Werkuren: {value(start, "shift_start")}–{value(start, "shift_end")} | Gepland: {value(start, "planned_work")}</Text> : null}
-            {closeout ? <Text style={styles.dailyDetail}>Uitgevoerd: {value(closeout, "work_performed", "-")} | Voortgang: {value(closeout, "progress_percent", "0")}% | Morgen: {value(closeout, "tomorrow_plan", "-")}</Text> : null}
+            {closeout ? <Text style={styles.dailyDetail}>Lopend: {value(closeout, "work_ongoing", "-")} | Afgerond: {value(closeout, "work_performed", "-")} | Voortgang: {value(closeout, "progress_percent", "0")}% | Morgen: {value(closeout, "tomorrow_plan", "-")}</Text> : null}
             {closeout ? <Text style={styles.dailyDetail}>QC: {value(closeout, "inspection_result")} · {value(closeout, "quality_details", "geen afwijking")} | HSE: {value(closeout, "hse_event")} · {value(closeout, "hse_details", "geen bijzonderheden")} | Advies/besluit: {value(closeout, "communication", "-")}</Text> : null}
           </View>;
         }) : <Text style={styles.empty}>Geen dagrapporten in deze periode.</Text>}

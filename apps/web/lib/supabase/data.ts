@@ -648,6 +648,7 @@ export async function saveDailyCloseout(
     day_report_id: reportId,
     day_summary: input.answers.daySummary,
     weather_summary: input.answers.weatherSummary,
+    work_ongoing: input.answers.workOngoing || null,
     work_performed: input.answers.workPerformed,
     progress_percent: input.answers.progressPercent,
     inspection_result: input.answers.inspectionResult,
