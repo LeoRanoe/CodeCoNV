@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sendPushVerification } from "@/lib/notifications/push";
 import { authenticateStorageRequest, createStorageAdminClient, storageErrorResponse, storageJson } from "@/lib/storage/server";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +29,8 @@ export async function POST(request: Request) {
     if (saved.error) throw new Error(saved.error.message);
     const reset = await createStorageAdminClient().from("notifications").update({ push_status: "pending", push_last_error: null }).eq("recipient_user_id", user.id).in("push_status", ["skipped", "failed"]);
     if (reset.error) throw new Error(reset.error.message);
-    return storageJson({ ok: true });
+    await sendPushVerification(input.data);
+    return storageJson({ ok: true, verified: true });
   } catch (error) {
     return storageErrorResponse(error);
   }

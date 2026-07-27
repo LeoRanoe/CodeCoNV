@@ -12,10 +12,17 @@ function applicationServerKey(value: string) {
   return Uint8Array.from([...raw].map((character) => character.charCodeAt(0)));
 }
 
+function sameApplicationServerKey(subscription: PushSubscription, expected: Uint8Array) {
+  const current = subscription.options.applicationServerKey;
+  if (!current) return false;
+  const bytes = new Uint8Array(current);
+  return bytes.length === expected.length && bytes.every((value, index) => value === expected[index]);
+}
+
 export async function currentPushState(): Promise<PushState> {
   if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return "unsupported";
   if (Notification.permission === "denied") return "blocked";
-  const registration = await navigator.serviceWorker.getRegistration("/sw.js");
+  const registration = await navigator.serviceWorker.getRegistration("/");
   const subscription = await registration?.pushManager.getSubscription();
   return subscription ? "active" : "inactive";
 }
@@ -26,10 +33,15 @@ export async function enablePushNotifications(client: SupabaseClient) {
   if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) throw new Error("Deze browser ondersteunt geen pushmeldingen.");
   const permission = await Notification.requestPermission();
   if (permission !== "granted") throw new Error("Pushmeldingen zijn niet toegestaan in deze browser.");
-  const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
-  await navigator.serviceWorker.ready;
-  const existing = await registration.pushManager.getSubscription();
-  const subscription = existing ?? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: applicationServerKey(publicKey) });
+  await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+  const registration = await navigator.serviceWorker.ready;
+  const expectedKey = applicationServerKey(publicKey);
+  let subscription = await registration.pushManager.getSubscription();
+  if (subscription && !sameApplicationServerKey(subscription, expectedKey)) {
+    await subscription.unsubscribe();
+    subscription = null;
+  }
+  subscription ??= await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: expectedKey });
   const json = subscription.toJSON();
   if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) throw new Error("Het apparaat gaf geen volledige pushregistratie terug.");
   const response = await fetch("/api/notifications/push-subscriptions", {

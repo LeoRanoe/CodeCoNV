@@ -25,16 +25,40 @@ export function isPushConfigured() {
   return configuration().configured;
 }
 
+function configureWebPush() {
+  const config = configuration();
+  if (!config.configured) throw new Error("De server voor pushmeldingen is nog niet volledig geconfigureerd.");
+  webpush.setVapidDetails(config.subject, config.publicKey, config.privateKey);
+  return config;
+}
+
 function destination(projectId: string) {
   const base = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/$/, "") ?? "";
   return `${base}/supervisie?project=${encodeURIComponent(projectId)}`;
+}
+
+export async function sendPushVerification(subscription: { endpoint: string; p256dh: string; auth: string }) {
+  configureWebPush();
+  try {
+    await webpush.sendNotification({
+      endpoint: subscription.endpoint,
+      keys: { p256dh: subscription.p256dh, auth: subscription.auth },
+    }, JSON.stringify({
+      title: "Pushmeldingen zijn actief",
+      body: "Dit apparaat ontvangt voortaan CODECO-projectmeldingen.",
+      tag: "codeco-push-verification",
+      url: "/supervisie",
+    }), { TTL: 60 * 5, urgency: "high" });
+  } catch {
+    throw new Error("De pushregistratie is opgeslagen, maar de verificatiemelding kon niet worden bezorgd. Controleer of het VAPID-sleutelpaar bij elkaar hoort.");
+  }
 }
 
 export async function sendPendingPushNotifications(admin: SupabaseClient, projectId?: string): Promise<NotificationPushResult> {
   const config = configuration();
   const result: NotificationPushResult = { configured: config.configured, queued: 0, sent: 0, failed: 0, skipped: 0, revoked: 0 };
   if (!config.configured) return result;
-  webpush.setVapidDetails(config.subject, config.publicKey, config.privateKey);
+  configureWebPush();
 
   let builder = admin
     .from("notifications")

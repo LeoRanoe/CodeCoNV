@@ -27,7 +27,9 @@ const contentSecurityPolicy = [
   "object-src 'none'",
   "frame-ancestors 'none'",
   "form-action 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  // PDF.js uses WebAssembly for document/image decoding. This narrowly permits
+  // WASM compilation without enabling general JavaScript eval().
+  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' blob: data:",
   "media-src 'self' blob:",
