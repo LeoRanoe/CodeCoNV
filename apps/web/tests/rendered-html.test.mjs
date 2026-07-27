@@ -282,10 +282,12 @@ test("keeps standard photo and validated 360 camera annotation production paths"
 });
 
 test("implements the handwritten client PDF as required workflows without AI or SMS", async () => {
-  const [migration, app, operationalWorkspace, dataLayer, fieldTools, drawingWorkspace, periodReport, boqCsv, operations, emailDelivery, pushDelivery, pushClient, pushSubscriptionRoute, dispatchRoute, cronRoute, envExample] = await Promise.all([
+  const [migration, visualLinkMigration, app, operationalWorkspace, visualWorkspace, dataLayer, fieldTools, drawingWorkspace, periodReport, boqCsv, operations, emailDelivery, pushDelivery, pushClient, pushSubscriptionRoute, dispatchRoute, cronRoute, envExample] = await Promise.all([
     readFile(new URL("../../../supabase/migrations/202607220002_client_pdf_requirements.sql", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202607270002_link_existing_finding_visual.sql", import.meta.url), "utf8"),
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/visual-evidence-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/supabase/data.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/field-tools.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/drawing-workspace.tsx", import.meta.url), "utf8"),
@@ -317,6 +319,10 @@ test("implements the handwritten client PDF as required workflows without AI or 
   assert.match(dataLayer, /work_ongoing/);
   assert.match(operationalWorkspace, /Upload contract, technische specificatie of bijlage/);
   assert.match(operationalWorkspace, /uploadProjectFile/);
+  assert.match(operationalWorkspace, /Koppel visuele pointer/);
+  assert.match(visualWorkspace, /Koppel pointer aan issue/);
+  assert.match(operations, /linkVisualAnnotationToFinding/);
+  assert.match(visualLinkMigration, /create_visual_annotation_for_finding/);
   assert.match(dataLayer, /finding_type !== "ncr"/);
   assert.match(dataLayer, /"technical_instruction", "site_instruction", "change_order", "variation"/);
   assert.match(fieldTools, /webkitSpeechRecognition/);

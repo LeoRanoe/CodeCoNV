@@ -18,6 +18,7 @@ import {
   KeyRound,
   Link2,
   Loader2,
+  MapPin,
   MessageCircle,
   PackageCheck,
   Plus,
@@ -443,6 +444,7 @@ function ProjectOperations({
   const issueDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(new Date());
   const issueTime = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Paramaribo" }).format(new Date());
   const [tab, setTab] = useState<ProjectTab>(initialTab);
+  const [visualFindingId, setVisualFindingId] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [activeInspection, setActiveInspection] = useState<Inspection | null>(null);
   const [inspectionTitle, setInspectionTitle] = useState("");
@@ -1214,6 +1216,7 @@ function ProjectOperations({
           <FindingList
             findings={data.findings}
             progressUpdates={data.findingProgressUpdates}
+            visualAnnotations={data.visualAnnotations}
             externalShareLinks={data.externalShareLinks ?? []}
             projectName={projectName}
             projectCode={projectCode}
@@ -1243,6 +1246,10 @@ function ProjectOperations({
               () => revokeExternalShareLink(client, shareId),
               text("External link revoked. A previously sent WhatsApp link no longer works.", "Externe link ingetrokken. Een eerder verstuurde WhatsApp-link werkt niet meer."),
             )}
+            linkVisual={(finding) => {
+              setVisualFindingId(finding.id);
+              switchTab("visual");
+            }}
           />
         </section>
       ) : null}
@@ -1359,7 +1366,7 @@ function ProjectOperations({
         </section>
       ) : null}
 
-      {tab === "visual" ? <VisualEvidenceWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} parties={parties} client={client} busy={busy} run={run} /> : null}
+      {tab === "visual" ? <VisualEvidenceWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} parties={parties} client={client} busy={busy} run={run} initialFindingId={visualFindingId} /> : null}
 
       {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} client={client} busy={busy} run={run} onOpenLinkedRecord={(recordType) => switchTab(recordType === "observation" ? "findings" : recordType === "inspection" ? "inspections" : recordType === "visual" ? "visual" : "registers")} /> : null}
 
@@ -1442,9 +1449,10 @@ function FindingPhotoPreview({ file }: { file: File }) {
   return <NextImage src={source} alt="" width={160} height={110} unoptimized />;
 }
 
-function FindingList({ findings, progressUpdates, externalShareLinks, projectName, projectCode, buildingName, currentUserName, parties, busy, transition, recordProgress, share, revoke }: {
+function FindingList({ findings, progressUpdates, visualAnnotations, externalShareLinks, projectName, projectCode, buildingName, currentUserName, parties, busy, transition, recordProgress, share, revoke, linkVisual }: {
   findings: Finding[];
   progressUpdates: OperationSnapshot["findingProgressUpdates"];
+  visualAnnotations: OperationSnapshot["visualAnnotations"];
   externalShareLinks: NonNullable<OperationSnapshot["externalShareLinks"]>;
   projectName: string;
   projectCode: string;
@@ -1456,6 +1464,7 @@ function FindingList({ findings, progressUpdates, externalShareLinks, projectNam
   recordProgress: (finding: Finding, progressPercent: number, disposition: "validated" | "to_be_corrected" | "alternative_solution", note: string) => Promise<boolean>;
   share: (finding: Finding) => Promise<{ shareId: string; url: string; expiresAt: string } | null>;
   revoke: (shareId: string) => Promise<boolean>;
+  linkVisual: (finding: Finding) => void;
 }) {
   const { language, locale, text } = useLanguage();
   const statusLabels = language === "en" ? findingStatusLabelsEnglish : findingStatusLabels;
@@ -1504,6 +1513,7 @@ function FindingList({ findings, progressUpdates, externalShareLinks, projectNam
       {findings.map((finding) => {
         const nextStatus = next[finding.status];
         const latestProgress = progressUpdates.find((item) => item.finding_id === finding.id);
+        const visualAnnotation = visualAnnotations.find((item) => item.finding_id === finding.id && item.status === "active");
         const issue = finding.issue_management ?? {};
         const activeExternalShares = externalShareLinks.filter((item) =>
           item.source_type === "finding"
@@ -1515,6 +1525,7 @@ function FindingList({ findings, progressUpdates, externalShareLinks, projectNam
           <article className="finding-card" key={finding.id}>
             <div className="finding-card-main"><span className={`record-severity ${finding.severity}`}>{finding.severity}</span><div><span className="record-number">{finding.finding_number} · {finding.finding_type.toUpperCase()}</span><h3>{finding.title}</h3><p>{finding.description}</p>{issue.action_steps ? <p className="finding-required-action"><strong>{text("Required action:", "Vereiste actie:")}</strong> {issue.action_steps}</p> : null}<small>Deadline {formatDate(finding.due_at, locale)}{latestProgress ? ` · ${text("progress", "voortgang")} ${latestProgress.progress_percent}% · ${latestProgress.disposition.replaceAll("_", " ")}` : ""}{finding.verified_at ? ` · ${text("verified", "geverifieerd")} ${formatDate(finding.verified_at, locale)}` : ""}</small></div><span className={`task-status ${finding.status === "closed" ? "green" : finding.severity === "critical" ? "red" : ""}`}>{statusLabels[finding.status] ?? finding.status}</span></div>
             <div className="finding-actions">
+              <button className="secondary-button" type="button" onClick={() => linkVisual(finding)}><MapPin size={16} /> {visualAnnotation ? text("View visual pointer", "Bekijk visuele pointer") : text("Link visual pointer", "Koppel visuele pointer")}</button>
               <button className="external-party-button" type="button" disabled={busy || creatingShareFor === finding.id} onClick={() => void createShare(finding)}>
                 {creatingShareFor === finding.id ? <Loader2 className="spin" size={17} /> : <MessageCircle size={17} />}
                 <span><strong>{text("Send to external party", "Stuur naar externe partij")}</strong><small>{text("WhatsApp link · no account needed", "WhatsApp-link · geen account nodig")}</small></span>

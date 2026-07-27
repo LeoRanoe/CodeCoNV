@@ -837,6 +837,31 @@ export async function createVisualAnnotationFinding(client: SupabaseClient, inpu
   return result.data as VisualAnnotation;
 }
 
+export async function linkVisualAnnotationToFinding(client: SupabaseClient, input: {
+  captureId: string;
+  findingId: string;
+  coordinateMode: VisualAnnotation["coordinate_mode"];
+  xRatio?: number | null;
+  yRatio?: number | null;
+  yaw?: number | null;
+  pitch?: number | null;
+  description: string;
+}) {
+  const result = await client.rpc("create_visual_annotation_for_finding", {
+    p_capture_id: input.captureId,
+    p_finding_id: input.findingId,
+    p_coordinate_mode: input.coordinateMode,
+    p_x_ratio: input.xRatio ?? null,
+    p_y_ratio: input.yRatio ?? null,
+    p_yaw: input.yaw ?? null,
+    p_pitch: input.pitch ?? null,
+    p_description: input.description,
+    p_idempotency_key: `visual-existing-finding:${crypto.randomUUID()}`,
+  });
+  fail(result.error);
+  return result.data as VisualAnnotation;
+}
+
 export async function createDrawingPin(client: SupabaseClient, input: {
   drawingFileId: string;
   pageNumber: number;

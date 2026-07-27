@@ -22,6 +22,7 @@ import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOff
 import { isStorageGatewayConfigured, loadProjectFileObjectUrl } from "@/lib/storage/gateway";
 import {
   createVisualAnnotationFinding,
+  linkVisualAnnotationToFinding,
   type FileRecord,
   type Finding,
   type OperationSnapshot,
@@ -45,6 +46,7 @@ type VisualEvidenceWorkspaceProps = {
   client: SupabaseClient;
   busy: boolean;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
+  initialFindingId?: string;
 };
 
 const emptyIssue = {
@@ -79,13 +81,20 @@ function imageDimensions(file: File) {
   });
 }
 
-export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingName, buildings, reportId, parties, client, busy, run }: VisualEvidenceWorkspaceProps) {
+export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingName, buildings, reportId, parties, client, busy, run, initialFindingId }: VisualEvidenceWorkspaceProps) {
   const { text } = useLanguage();
   const maxFileSizeBytes = (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024;
   const captures = data.visualCaptures.filter((capture) => capture.status === "active");
+  const initialFinding = data.findings.find((finding) => finding.id === initialFindingId) ?? null;
+  const initialAnnotation = initialFinding ? data.visualAnnotations.find((annotation) => annotation.finding_id === initialFinding.id && annotation.status === "active") ?? null : null;
+  const initialCapture = initialAnnotation
+    ? captures.find((capture) => capture.id === initialAnnotation.capture_id)
+    : initialFinding
+      ? captures.find((capture) => capture.building_id === initialFinding.building_id)
+      : null;
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [pendingSelectionFileId, setPendingSelectionFileId] = useState("");
-  const [activeCaptureId, setActiveCaptureId] = useState(captures[0]?.id ?? "");
+  const [activeCaptureId, setActiveCaptureId] = useState(initialCapture?.id ?? captures[0]?.id ?? "");
   const activeCapture = captures.find((capture) => capture.file_id === pendingSelectionFileId)
     ?? captures.find((capture) => capture.id === activeCaptureId)
     ?? captures[0]
@@ -106,10 +115,18 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     tourOrder: "",
   });
   const [point, setPoint] = useState<VisualPoint | null>(null);
-  const [issue, setIssue] = useState(emptyIssue);
-  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
-  const [captureBuildingId, setCaptureBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
+  const [issue, setIssue] = useState(() => initialFinding ? {
+    findingType: initialFinding.finding_type,
+    title: initialFinding.title,
+    description: initialFinding.description,
+    severity: initialFinding.severity,
+    responsiblePartyId: initialFinding.responsible_party_id ?? "",
+  } : emptyIssue);
+  const [existingFindingId, setExistingFindingId] = useState(initialFinding?.id ?? "");
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(initialAnnotation?.id ?? null);
+  const [captureBuildingId, setCaptureBuildingId] = useState(() => initialFinding?.building_id ?? resolveDefaultBuildingId(buildings, buildingId));
   const captureBuildingName = buildings.find((building) => building.id === captureBuildingId)?.name ?? buildingName;
+  const existingFinding = data.findings.find((finding) => finding.id === existingFindingId) ?? null;
 
   const stageImage = (selected: File | null, type: VisualCapture["capture_type"]) => {
     setFile(selected);
@@ -216,24 +233,38 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   const saveIssue = async () => {
     if (!activeCapture || !point || issue.title.trim().length < 3 || issue.description.trim().length < 3) return;
     const okay = await run(
-      () => createVisualAnnotationFinding(client, {
-        captureId: activeCapture.id,
-        coordinateMode: point.mode,
-        xRatio: point.mode === "photo" ? point.xRatio : null,
-        yRatio: point.mode === "photo" ? point.yRatio : null,
-        yaw: point.mode === "spherical" ? point.yaw : null,
-        pitch: point.mode === "spherical" ? point.pitch : null,
-        findingType: issue.findingType,
-        title: issue.title,
-        description: issue.description,
-        severity: issue.severity,
-        responsiblePartyId: issue.responsiblePartyId,
-      }),
-      text("Issue marker and traceable finding created together.", "Probleemmarker en traceerbare bevinding zijn samen aangemaakt."),
+      () => existingFinding
+        ? linkVisualAnnotationToFinding(client, {
+            captureId: activeCapture.id,
+            findingId: existingFinding.id,
+            coordinateMode: point.mode,
+            xRatio: point.mode === "photo" ? point.xRatio : null,
+            yRatio: point.mode === "photo" ? point.yRatio : null,
+            yaw: point.mode === "spherical" ? point.yaw : null,
+            pitch: point.mode === "spherical" ? point.pitch : null,
+            description: issue.description,
+          })
+        : createVisualAnnotationFinding(client, {
+            captureId: activeCapture.id,
+            coordinateMode: point.mode,
+            xRatio: point.mode === "photo" ? point.xRatio : null,
+            yRatio: point.mode === "photo" ? point.yRatio : null,
+            yaw: point.mode === "spherical" ? point.yaw : null,
+            pitch: point.mode === "spherical" ? point.pitch : null,
+            findingType: issue.findingType,
+            title: issue.title,
+            description: issue.description,
+            severity: issue.severity,
+            responsiblePartyId: issue.responsiblePartyId,
+          }),
+      existingFinding
+        ? text(`Marker linked to ${existingFinding.finding_number}.`, `Marker gekoppeld aan ${existingFinding.finding_number}.`)
+        : text("Issue marker and traceable finding created together.", "Probleemmarker en traceerbare bevinding zijn samen aangemaakt."),
     );
     if (okay) {
       setPoint(null);
       setIssue(emptyIssue);
+      setExistingFindingId("");
     }
   };
 
@@ -259,6 +290,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           <button className="secondary-button" type="button" disabled={!isStorageGatewayConfigured} onClick={() => { setCaptureForm({ ...captureForm, type: "panorama", title: "", locationLabel: captureBuildingName }); setFile(null); setShowUpload(true); }}><ScanLine size={16} /> {text("Upload 360°", "Upload 360°")}</button>
         </div>
       </div>
+
+      {existingFinding ? <div className="operation-alert success visual-finding-link-banner"><CircleDot size={18} /><div><strong>{text(`Selected issue: ${existingFinding.finding_number}`, `Geselecteerd issue: ${existingFinding.finding_number}`)} · {existingFinding.title}</strong><span>{text("Choose a visual image and click the exact problem location. The pointer and issue will then remain linked.", "Kies een beeld en klik op de exacte probleemlocatie. De pointer en het issue blijven daarna gekoppeld.")}</span></div></div> : null}
 
       {!isStorageGatewayConfigured ? <div className="operation-alert warning"><ShieldCheck size={18} /><div><strong>{text("Private image storage must be connected", "Private beeldopslag moet worden gekoppeld")}</strong><span>{text("Connect a private Vercel Blob store to enable authorized uploads and viewing.", "Koppel een private Vercel Blob-store om geautoriseerde uploads en weergave mogelijk te maken.")}</span></div></div> : null}
 
@@ -304,7 +337,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
             ) : null}
           </div>
           <aside className="visual-issue-panel">
-            {point && activeCapture ? <IssueForm point={point} capture={activeCapture} issue={issue} setIssue={setIssue} parties={parties} busy={busy} save={() => void saveIssue()} cancel={() => { setPoint(null); setIssue(emptyIssue); }} /> : selectedAnnotation && selectedFinding ? <AnnotationDetails annotation={selectedAnnotation} finding={selectedFinding} /> : <div className="visual-panel-empty"><ScanLine size={24} /><strong>{text("Select or place a marker", "Selecteer of plaats een marker")}</strong><span>{text("The exact image position and the formal finding remain linked.", "De exacte beeldpositie en de formele bevinding blijven gekoppeld.")}</span></div>}
+            {point && activeCapture ? <IssueForm point={point} capture={activeCapture} issue={issue} setIssue={setIssue} findings={data.findings} annotations={data.visualAnnotations} existingFindingId={existingFindingId} setExistingFindingId={setExistingFindingId} parties={parties} busy={busy} save={() => void saveIssue()} cancel={() => { setPoint(null); setIssue(emptyIssue); setExistingFindingId(""); }} /> : selectedAnnotation && selectedFinding ? <AnnotationDetails annotation={selectedAnnotation} finding={selectedFinding} /> : <div className="visual-panel-empty"><ScanLine size={24} /><strong>{text("Select or place a marker", "Selecteer of plaats een marker")}</strong><span>{text("The exact image position and the formal finding remain linked.", "De exacte beeldpositie en de formele bevinding blijven gekoppeld.")}</span></div>}
           </aside>
         </div>
       ) : <div className="empty-list-state visual-empty"><Camera size={24} /><strong>{text("No visual evidence yet", "Nog geen visueel bewijs")}</strong><span>{text("Start with a standard photo, or add a dedicated 360° camera export for an interactive site tour.", "Start met een gewone foto of voeg een export uit een speciale 360°-camera toe voor een interactieve terreinrondgang.")}</span></div>}
@@ -452,8 +485,10 @@ function panoramaMarkers(annotations: VisualAnnotation[], pendingPoint: Extract<
   return markers;
 }
 
-function IssueForm({ point, capture, issue, setIssue, parties, busy, save, cancel }: { point: VisualPoint; capture: VisualCapture; issue: typeof emptyIssue; setIssue: (issue: typeof emptyIssue) => void; parties: ProjectParty[]; busy: boolean; save: () => void; cancel: () => void }) {
+function IssueForm({ point, capture, issue, setIssue, findings, annotations, existingFindingId, setExistingFindingId, parties, busy, save, cancel }: { point: VisualPoint; capture: VisualCapture; issue: typeof emptyIssue; setIssue: (issue: typeof emptyIssue) => void; findings: Finding[]; annotations: VisualAnnotation[]; existingFindingId: string; setExistingFindingId: (id: string) => void; parties: ProjectParty[]; busy: boolean; save: () => void; cancel: () => void }) {
   const { text } = useLanguage();
+  const existingFinding = findings.find((finding) => finding.id === existingFindingId) ?? null;
+  const availableFindings = findings.filter((finding) => finding.id === existingFindingId || !annotations.some((annotation) => annotation.finding_id === finding.id && annotation.status === "active"));
   const issuePresets: Array<Pick<typeof emptyIssue, "findingType" | "title" | "description" | "severity">> = [
     { findingType: "deficiency", severity: "medium", title: text("Crack or damage", "Scheur of beschadiging"), description: text("Visible damage at the marked location requires repair and verification.", "Zichtbare beschadiging op de gemarkeerde locatie vraagt herstel en verificatie.") },
     { findingType: "deficiency", severity: "medium", title: text("Work incomplete", "Werk niet volledig"), description: text("The work at the marked location is not fully completed.", "Het werk op de gemarkeerde locatie is niet volledig uitgevoerd.") },
@@ -464,13 +499,26 @@ function IssueForm({ point, capture, issue, setIssue, parties, busy, save, cance
   return (
     <div className="visual-issue-form">
       <div><span className="record-number">{text("New issue marker", "Nieuwe probleemmarker")}</span><h2>{capture.location_label}</h2><p>{point.mode === "photo" ? `X ${Math.round(point.xRatio * 100)}% · Y ${Math.round(point.yRatio * 100)}%` : `${text("Yaw", "Draaihoek")} ${degrees(point.yaw)} · ${text("Pitch", "Hoogtehoek")} ${degrees(point.pitch)}`}</p></div>
-      <div className="quick-issue-presets" aria-label={text("Choose a common issue", "Kies een veelvoorkomend probleem")}>{issuePresets.map((preset) => <button className={issue.title === preset.title ? "active" : ""} type="button" onClick={() => setIssue({ ...issue, ...preset })} key={preset.title}>{preset.title}</button>)}</div>
-      <label className="form-field"><span>{text("Issue type", "Probleemtype")}</span><select value={issue.findingType} onChange={(event) => setIssue({ ...issue, findingType: event.target.value as Finding["finding_type"] })}><option value="observation">{text("Observation", "Observatie")}</option><option value="deficiency">{text("Deficiency", "Tekortkoming")}</option><option value="deviation">{text("Deviation", "Afwijking")}</option><option value="ncr">NCR</option><option value="improvement">{text("Improvement opportunity", "Verbeterkans")}</option></select></label>
-      <label className="form-field"><span>{text("Severity", "Ernst")}</span><select value={issue.severity} onChange={(event) => setIssue({ ...issue, severity: event.target.value as Finding["severity"] })}><option value="low">{text("Low · 14 days", "Laag · 14 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label>
-      <label className="form-field"><span>{text("Title", "Titel")}</span><input value={issue.title} onChange={(event) => setIssue({ ...issue, title: event.target.value })} placeholder={text("Choose above or type a short title.", "Kies hierboven of typ een korte titel.")} /></label>
-      <label className="form-field"><span>{text("Factual description", "Feitelijke omschrijving")}</span><textarea rows={3} value={issue.description} onChange={(event) => setIssue({ ...issue, description: event.target.value })} /></label>
-      <label className="form-field"><span>{text("Responsible party", "Verantwoordelijke partij")}</span><select value={issue.responsiblePartyId} onChange={(event) => setIssue({ ...issue, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
-      <div className="button-row"><button className="secondary-button" type="button" onClick={cancel}>{text("Cancel", "Annuleren")}</button><button className="primary-button" type="button" disabled={busy || issue.title.trim().length < 3 || issue.description.trim().length < 3} onClick={save}><AlertTriangle size={15} /> {text("Create finding", "Bevinding maken")}</button></div>
+      <label className="form-field"><span>{text("Link marker to", "Koppel marker aan")}</span><select value={existingFindingId} onChange={(event) => {
+        const finding = findings.find((item) => item.id === event.target.value);
+        setExistingFindingId(event.target.value);
+        setIssue(finding ? {
+          findingType: finding.finding_type,
+          title: finding.title,
+          description: finding.description,
+          severity: finding.severity,
+          responsiblePartyId: finding.responsible_party_id ?? "",
+        } : emptyIssue);
+      }}><option value="">{text("Create a new issue", "Maak een nieuw issue")}</option>{availableFindings.map((finding) => <option value={finding.id} key={finding.id}>{finding.finding_number} · {finding.title}</option>)}</select></label>
+      {existingFinding ? <div className="operation-alert success"><CircleDot size={18} /><div><strong>{existingFinding.finding_number} · {existingFinding.title}</strong><span>{text("This pointer will be added to the existing formal issue.", "Deze pointer wordt aan het bestaande formele issue toegevoegd.")}</span></div></div> : <>
+        <div className="quick-issue-presets" aria-label={text("Choose a common issue", "Kies een veelvoorkomend probleem")}>{issuePresets.map((preset) => <button className={issue.title === preset.title ? "active" : ""} type="button" onClick={() => setIssue({ ...issue, ...preset })} key={preset.title}>{preset.title}</button>)}</div>
+        <label className="form-field"><span>{text("Issue type", "Probleemtype")}</span><select value={issue.findingType} onChange={(event) => setIssue({ ...issue, findingType: event.target.value as Finding["finding_type"] })}><option value="observation">{text("Observation", "Observatie")}</option><option value="deficiency">{text("Deficiency", "Tekortkoming")}</option><option value="deviation">{text("Deviation", "Afwijking")}</option><option value="ncr">NCR</option><option value="improvement">{text("Improvement opportunity", "Verbeterkans")}</option></select></label>
+        <label className="form-field"><span>{text("Severity", "Ernst")}</span><select value={issue.severity} onChange={(event) => setIssue({ ...issue, severity: event.target.value as Finding["severity"] })}><option value="low">{text("Low · 14 days", "Laag · 14 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label>
+        <label className="form-field"><span>{text("Title", "Titel")}</span><input value={issue.title} onChange={(event) => setIssue({ ...issue, title: event.target.value })} placeholder={text("Choose above or type a short title.", "Kies hierboven of typ een korte titel.")} /></label>
+        <label className="form-field"><span>{text("Responsible party", "Verantwoordelijke partij")}</span><select value={issue.responsiblePartyId} onChange={(event) => setIssue({ ...issue, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
+      </>}
+      <label className="form-field"><span>{existingFinding ? text("What does the pointer indicate?", "Wat wijst de pointer precies aan?") : text("Factual description", "Feitelijke omschrijving")}</span><textarea rows={3} value={issue.description} onChange={(event) => setIssue({ ...issue, description: event.target.value })} /></label>
+      <div className="button-row"><button className="secondary-button" type="button" onClick={cancel}>{text("Cancel", "Annuleren")}</button><button className="primary-button" type="button" disabled={busy || issue.title.trim().length < 3 || issue.description.trim().length < 3} onClick={save}><AlertTriangle size={15} /> {existingFinding ? text("Link pointer to issue", "Koppel pointer aan issue") : text("Create finding", "Bevinding maken")}</button></div>
     </div>
   );
 }
