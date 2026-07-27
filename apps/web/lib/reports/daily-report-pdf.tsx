@@ -240,7 +240,7 @@ function dailyCloseoutAnswersFromSnapshotRow(closeout: Record<string, unknown> |
   };
 }
 
-function immutableDailySnapshot(snapshot: FormalReportSnapshot, revision: number, sha256: string): DailyReportPdfSnapshot {
+export function immutableDailySnapshot(snapshot: FormalReportSnapshot, revision: number, sha256: string): DailyReportPdfSnapshot {
   const report = snapshot.report;
   const project = snapshot.project;
   const profile = snapshot.created_by_profile;

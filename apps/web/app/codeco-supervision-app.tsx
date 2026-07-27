@@ -117,6 +117,7 @@ import {
   type WorkspaceBuilding,
   type WorkspaceProject,
 } from "@/lib/supabase/data";
+import type { DailyReportPdfSnapshot } from "@/lib/reports/daily-report-pdf";
 import type { CurrentProjectWeather } from "@/lib/weather";
 
 function CompanyLogo({ subtitle }: { subtitle?: string }) {
@@ -1125,6 +1126,33 @@ export function CodecoSupervisionApp() {
     ? dailyCloseoutAnswers
     : closeoutFromRow(dayQuery.data?.closeouts.find((row) => row.building_id === contextBuilding?.id) ?? null);
 
+  const buildDraftReportSnapshot = (): DailyReportPdfSnapshot | null => {
+    if (!selectedProject || !selectedBuilding || !projectStartAnswers || !dailyCloseoutAnswers) return null;
+    const buildingsBreakdown = selectedProject.buildings.length > 1
+      ? selectedProject.buildings
+          .map((building) => {
+            const start = projectStartFromRow(dayQuery.data?.startChecks.find((row) => row.building_id === building.id) ?? null);
+            const closeout = closeoutFromRow(dayQuery.data?.closeouts.find((row) => row.building_id === building.id) ?? null);
+            return start && closeout ? { name: building.name, projectStart: start, closeout } : null;
+          })
+          .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+      : undefined;
+    return {
+      reportNumber: String(dayQuery.data?.report?.report_number ?? `DR-${reportDate.replaceAll("-", "")}`),
+      reportDate,
+      projectName,
+      projectCode: selectedProject.code,
+      buildingName,
+      location: selectedProject.location,
+      supervisorName: currentUserName,
+      attendanceTotal,
+      registrationCount: entries.length,
+      projectStart: projectStartAnswers,
+      closeout: dailyCloseoutAnswers,
+      buildings: buildingsBreakdown,
+    };
+  };
+
   return (
     <div className="app-shell">
       <FieldGuide
@@ -1431,32 +1459,18 @@ export function CodecoSupervisionApp() {
           startChecks={dayQuery.data?.startChecks ?? []}
           closeouts={dayQuery.data?.closeouts ?? []}
           onDownload={async () => {
-            if (!selectedProject || !selectedBuilding || !projectStartAnswers || !dailyCloseoutAnswers) return;
+            const snapshot = buildDraftReportSnapshot();
+            if (!snapshot) return;
             const { downloadDailyReportPdf } = await import("@/lib/reports/daily-report-pdf");
-            const buildings = selectedProject.buildings.length > 1
-              ? selectedProject.buildings
-                  .map((building) => {
-                    const start = projectStartFromRow(dayQuery.data?.startChecks.find((row) => row.building_id === building.id) ?? null);
-                    const closeout = closeoutFromRow(dayQuery.data?.closeouts.find((row) => row.building_id === building.id) ?? null);
-                    return start && closeout ? { name: building.name, projectStart: start, closeout } : null;
-                  })
-                  .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
-              : undefined;
-            await downloadDailyReportPdf({
-              reportNumber: String(dayQuery.data?.report?.report_number ?? `DR-${reportDate.replaceAll("-", "")}`),
-              reportDate,
-              projectName,
-              projectCode: selectedProject.code,
-              buildingName,
-              location: selectedProject.location,
-              supervisorName: currentUserName,
-              attendanceTotal,
-              registrationCount: entries.length,
-              projectStart: projectStartAnswers,
-              closeout: dailyCloseoutAnswers,
-              buildings,
-            });
+            await downloadDailyReportPdf(snapshot);
             setToast("De concept-PDF is gegenereerd uit de centraal opgeslagen rapportgegevens.");
+          }}
+          onDownloadDocx={async () => {
+            const snapshot = buildDraftReportSnapshot();
+            if (!snapshot) return;
+            const { downloadDailyReportDocx } = await import("@/lib/reports/daily-report-docx");
+            await downloadDailyReportDocx(snapshot);
+            setToast("Het concept-Worddocument is gegenereerd uit de centraal opgeslagen rapportgegevens.");
           }}
           onSubmit={async () => {
             const reportId = dayQuery.data?.report?.id;
@@ -3601,6 +3615,7 @@ function ReportModal({
   startChecks,
   closeouts,
   onDownload,
+  onDownloadDocx,
   onSubmit,
 }: {
   close: () => void;
@@ -3615,6 +3630,7 @@ function ReportModal({
   startChecks: Array<Record<string, unknown>>;
   closeouts: Array<Record<string, unknown>>;
   onDownload: () => void | Promise<void>;
+  onDownloadDocx: () => void | Promise<void>;
   onSubmit: () => void | Promise<void>;
 }) {
   const { text } = useLanguage();
@@ -3658,6 +3674,7 @@ function ReportModal({
             <span style={{ color: missing ? "var(--yellow)" : "var(--green)", fontSize: 10, fontWeight: 680 }}>{missing ? text(`${missing} item(s) still need completion`, `${missing} onderdeel${missing > 1 ? "en" : ""} nog aanvullen`) : text("All checks passed", "Alle controles geslaagd")}</span>
             <div className="report-action-buttons">
               <button className="ghost-button" type="button" disabled={missing > 0} onClick={onDownload}><FileText size={14} /> {text("Draft PDF", "Concept-PDF")}</button>
+              <button className="ghost-button" type="button" disabled={missing > 0} onClick={onDownloadDocx}><FileText size={14} /> {text("Draft Word", "Concept-Word")}</button>
               <button className="primary-button" type="button" disabled={missing > 0 || submitted} onClick={onSubmit}>{submitted ? text("Submitted", "Ingediend") : text("Ready for review", "Gereed voor review")} <ArrowRight size={14} /></button>
             </div>
           </div>
