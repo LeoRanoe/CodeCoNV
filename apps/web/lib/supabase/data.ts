@@ -98,6 +98,7 @@ export type ProjectAction = {
   priority: "low" | "normal" | "high" | "critical";
   status: "open" | "accepted" | "in_progress" | "ready_for_verification" | "verified" | "cancelled";
   building_id: string | null;
+  location_node_id: string | null;
   owner_party_id: string | null;
   closure_reason: string | null;
   created_at: string;
@@ -438,7 +439,7 @@ export async function loadProjectDay(
     client.from("parties").select("id,name,party_type").eq("project_id", projectId).eq("active", true).order("name"),
     client
       .from("actions")
-      .select("id,action_number,title,description,due_at,priority,status,building_id,owner_party_id,closure_reason,created_at,updated_at")
+      .select("id,action_number,title,description,due_at,priority,status,building_id,location_node_id,owner_party_id,closure_reason,created_at,updated_at")
       .eq("project_id", projectId)
       .order("due_at", { ascending: true, nullsFirst: false })
       .limit(50),
@@ -478,7 +479,7 @@ export async function loadProjectDay(
     client.from("day_closeouts").select("*").eq("day_report_id", reportId),
     client
       .from("site_registrations")
-      .select("id,registration_type,title,description,priority,occurred_at,status,building_id,created_by")
+      .select("id,registration_type,title,description,priority,occurred_at,status,building_id,location_node_id,created_by")
       .eq("day_report_id", reportId)
       .order("occurred_at", { ascending: false })
       .limit(100),
@@ -528,7 +529,28 @@ export async function createProjectWorkspace(
     clientName: string;
     buildingCode: string;
     buildingName: string;
+    additionalBuildings: string;
+    locationLevels: string;
     contractorName: string;
+    defaultLanguage: "en" | "nl";
+    shiftStart: string;
+    shiftEnd: string;
+    reportPrefix: string;
+    requiredLocationDepth: "building" | "floor" | "room" | "element";
+    disciplines: string;
+    lowDeadlineDays: number;
+    mediumDeadlineDays: number;
+    highDeadlineDays: number;
+    criticalDeadlineDays: number;
+    notificationLeadHours: number;
+    reportHeader: string;
+    reportFooter: string;
+    enableWorkforce: boolean;
+    enableInspections: boolean;
+    enableQuality: boolean;
+    enableHse: boolean;
+    enableDocuments: boolean;
+    enableVisualEvidence: boolean;
   },
 ) {
   const result = await client.rpc("create_project_workspace", {
@@ -542,7 +564,104 @@ export async function createProjectWorkspace(
     p_contractor_name: input.contractorName,
   });
   fail(result.error);
-  return result.data;
+  const workspace = result.data as { project_id: string; building_id: string; created: boolean };
+  const user = await currentUser(client);
+  const disciplines = input.disciplines.split("\n").map((value) => value.trim()).filter(Boolean);
+  const settingsResult = await client
+    .from("project_settings")
+    .update({
+      configuration_status: "setup",
+      report_prefix: input.reportPrefix.trim().toUpperCase(),
+      default_language: input.defaultLanguage,
+      default_shift_start: input.shiftStart,
+      default_shift_end: input.shiftEnd,
+      notification_lead_hours: input.notificationLeadHours,
+      disciplines,
+      required_location_depth: input.requiredLocationDepth,
+      finding_deadlines: {
+        low: input.lowDeadlineDays,
+        medium: input.mediumDeadlineDays,
+        high: input.highDeadlineDays,
+        critical: input.criticalDeadlineDays,
+      },
+      report_header: input.reportHeader.trim() || null,
+      report_footer: input.reportFooter.trim() || null,
+      modules: {
+        attendance: input.enableWorkforce,
+        inspections: input.enableInspections,
+        quality: input.enableQuality,
+        hse: input.enableHse,
+        actions: true,
+        documents: input.enableDocuments,
+        visual_evidence: input.enableVisualEvidence,
+      },
+    })
+    .eq("project_id", workspace.project_id);
+  fail(settingsResult.error);
+
+  const buildingRows: Array<{ id: string; code: string }> = [
+    { id: workspace.building_id, code: input.buildingCode.trim().toUpperCase() },
+  ];
+  const existingBuildings = await client
+    .from("buildings")
+    .select("id,code")
+    .eq("project_id", workspace.project_id);
+  fail(existingBuildings.error);
+  const existingByCode = new Map((existingBuildings.data ?? []).map((building) => [String(building.code).toUpperCase(), String(building.id)]));
+  const includedBuildingIds = new Set(buildingRows.map((building) => building.id));
+  for (const line of input.additionalBuildings.split("\n").map((value) => value.trim()).filter(Boolean)) {
+    const [rawCode, ...nameParts] = line.split("|");
+    const code = rawCode?.trim().toUpperCase();
+    const name = nameParts.join("|").trim();
+    if (!code || name.length < 2) continue;
+    const existingId = existingByCode.get(code);
+    const building = existingId
+      ? { id: existingId }
+      : await createBuilding(client, { projectId: workspace.project_id, code, name });
+    existingByCode.set(code, building.id);
+    if (!includedBuildingIds.has(building.id)) {
+      buildingRows.push({ id: building.id, code });
+      includedBuildingIds.add(building.id);
+    }
+  }
+
+  const locationDefinitions = input.locationLevels.split("\n").map((line) => {
+    const [type, code, name, parentCode] = line.split("|").map((value) => value.trim());
+    return { type, code: code?.toUpperCase(), name, parentCode: parentCode?.toUpperCase() };
+  }).filter((item) => ["zone", "floor", "room", "element", "work_package"].includes(item.type) && item.code && item.name?.length >= 2);
+
+  for (const building of buildingRows) {
+    const existingLocations = await client
+      .from("location_nodes")
+      .select("id,code")
+      .eq("project_id", workspace.project_id)
+      .eq("building_id", building.id);
+    fail(existingLocations.error);
+    const idsByCode = new Map((existingLocations.data ?? []).map((location) => [String(location.code).toUpperCase(), String(location.id)]));
+    for (const [index, definition] of locationDefinitions.entries()) {
+      if (idsByCode.has(definition.code)) continue;
+      const inserted = await client.from("location_nodes").insert({
+        organization_id: input.organizationId,
+        project_id: workspace.project_id,
+        building_id: building.id,
+        parent_id: definition.parentCode ? idsByCode.get(definition.parentCode) ?? null : null,
+        node_type: definition.type,
+        code: definition.code,
+        name: definition.name,
+        sort_order: (index + 1) * 10,
+        created_by: user.id,
+      }).select("id").single();
+      fail(inserted.error);
+      if (!inserted.data) throw new Error("De projectlocatie kon niet worden aangemaakt.");
+      idsByCode.set(definition.code, String(inserted.data.id));
+    }
+  }
+  const activation = await client
+    .from("project_settings")
+    .update({ configuration_status: "active" })
+    .eq("project_id", workspace.project_id);
+  fail(activation.error);
+  return workspace;
 }
 
 export async function createBuilding(
@@ -574,6 +693,7 @@ export async function saveProjectStart(
   input: {
     projectId: string;
     buildingId: string;
+    locationNodeId?: string;
     answers: ProjectStartAnswers;
     reportDate?: string;
   },
@@ -690,6 +810,7 @@ export async function saveSiteRegistration(
   input: {
     projectId: string;
     buildingId: string;
+    locationNodeId?: string;
     type: string;
     title: string;
     description: string;
@@ -706,6 +827,7 @@ export async function saveSiteRegistration(
     p_priority: input.priority,
     p_occurred_at: new Date().toISOString(),
     p_idempotency_key: `registration:${crypto.randomUUID()}`,
+    p_location_node_id: input.locationNodeId || null,
   });
   fail(result.error);
   return result.data;
@@ -769,6 +891,7 @@ export async function createProjectAction(
   input: {
     projectId: string;
     buildingId: string;
+    locationNodeId?: string;
     ownerPartyId: string;
     title: string;
     description: string;
@@ -785,6 +908,7 @@ export async function createProjectAction(
     p_due_at: surinameLocalDateTimeToIso(input.dueAt),
     p_priority: input.priority,
     p_idempotency_key: `action:${crypto.randomUUID()}`,
+    p_location_node_id: input.locationNodeId || null,
   });
   fail(result.error);
   return result.data as ProjectAction;

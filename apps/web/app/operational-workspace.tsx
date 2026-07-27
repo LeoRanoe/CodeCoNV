@@ -36,6 +36,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { VisualEvidenceWorkspace } from "@/app/visual-evidence-workspace";
 import { DrawingWorkspace } from "@/app/drawing-workspace";
@@ -75,6 +76,7 @@ import {
   installChecklistLibraryTemplate,
   loadProjectOperations,
   recordDistribution,
+  recordBoqProgress,
   recordFindingProgress,
   revokeExternalShareLink,
   respondToControlledDocument,
@@ -476,11 +478,35 @@ function ProjectOperations({
   const [boqFile, setBoqFile] = useState<File | null>(null);
   const [boqItems, setBoqItems] = useState<BoqImportItem[]>([]);
   const [boqError, setBoqError] = useState("");
+  const [inspectionLocationNodeId, setInspectionLocationNodeId] = useState("");
+  const [findingLocationNodeId, setFindingLocationNodeId] = useState("");
+  const [hseLocationNodeId, setHseLocationNodeId] = useState("");
+  const [registerLocationNodeId, setRegisterLocationNodeId] = useState("");
   const [inspectionBuildingId, setInspectionBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [findingBuildingId, setFindingBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [hseBuildingId, setHseBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [registerBuildingId, setRegisterBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [boqBuildingId, setBoqBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
+  const [inspectionFilterBuildingId, setInspectionFilterBuildingId] = useState("");
+  const [inspectionFilterLocationNodeId, setInspectionFilterLocationNodeId] = useState("");
+  const [inspectionFilterDate, setInspectionFilterDate] = useState("");
+  const requiredLocationDepth = data.settings?.required_location_depth ?? "building";
+  const exactLocationRequired = requiredLocationDepth !== "building";
+  const recordContextLabel = (recordBuildingId: string | null, locationNodeId?: string | null) => {
+    const recordBuilding = buildings.find((building) => building.id === recordBuildingId)?.name
+      ?? text("Project-wide", "Projectbreed");
+    const exactLocation = locationBreadcrumb(data.locationNodes, locationNodeId);
+    return exactLocation ? `${recordBuilding} → ${exactLocation}` : recordBuilding;
+  };
+  const filteredInspections = data.inspections.filter((inspection) => {
+    if (inspectionFilterBuildingId && inspection.building_id !== inspectionFilterBuildingId) return false;
+    if (inspectionFilterLocationNodeId && inspection.location_node_id !== inspectionFilterLocationNodeId) return false;
+    if (inspectionFilterDate) {
+      const recordedAt = inspection.completed_at ?? inspection.started_at ?? inspection.planned_at;
+      if (!recordedAt || new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(new Date(recordedAt)) !== inspectionFilterDate) return false;
+    }
+    return true;
+  });
   const inspectionTemplates = data.templates
     .filter((template) => template.module === "inspection" && template.status === "published")
     .sort((left, right) => {
@@ -612,7 +638,7 @@ function ProjectOperations({
     if (!templateId) return;
     let created: Inspection | null = null;
     const okay = await run(async () => {
-      created = await startInspection(client, { projectId, buildingId: inspectionBuildingId, reportId, templateId, title: resolvedTitle });
+      created = await startInspection(client, { projectId, buildingId: inspectionBuildingId, locationNodeId: inspectionLocationNodeId, reportId, templateId, title: resolvedTitle });
     }, text("Inspection started; complete every required checkpoint.", "Inspectie gestart; vul nu ieder verplicht controlepunt in."));
     if (okay && created) {
       setActiveInspection(created);
@@ -696,6 +722,7 @@ function ProjectOperations({
               mimeType: prepared.mimeType,
               title: activeInspection.title,
               locationLabel: buildings.find((building) => building.id === photoBuildingId)?.name ?? buildingName,
+              locationNodeId: activeInspection.location_node_id,
               capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
               originalSize: photo.size,
               queuedSize: prepared.blob.size,
@@ -711,6 +738,7 @@ function ProjectOperations({
     if (okay) {
       setActiveInspection(null);
       setInspectionTitle("");
+      setInspectionLocationNodeId("");
       setInspectionPhotos([]);
       setInspectionPhotoError("");
     }
@@ -777,6 +805,7 @@ function ProjectOperations({
       disposition: findingForm.disposition,
       expectedResolutionDate: findingForm.expectedResolutionDate,
       sourceCatalogSubject: findingForm.sourceCatalogSubject,
+      locationNodeId: findingLocationNodeId,
     };
     const success = findingPhotos.length
       ? text("Issue and photo stack secured; numbering and assignment synchronize automatically.", "Probleem en fotostapel veiliggesteld; nummering en toewijzing synchroniseren automatisch.")
@@ -801,6 +830,7 @@ function ProjectOperations({
             title: findingForm.title,
             description: findingForm.description,
             locationLabel: findingBuildingName,
+            locationNodeId: findingLocationNodeId || null,
             capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
             originalSize: photo.size,
             queuedSize: prepared.blob.size,
@@ -822,6 +852,7 @@ function ProjectOperations({
                 disposition: findingForm.disposition,
                 expectedResolutionDate: findingForm.expectedResolutionDate,
                 sourceCatalogSubject: findingForm.sourceCatalogSubject,
+                locationNodeId: findingLocationNodeId || undefined,
               },
             },
           });
@@ -839,6 +870,7 @@ function ProjectOperations({
       });
       setFindingPhotos([]);
       setFindingPhotoError("");
+      setFindingLocationNodeId("");
       setShowForm(false);
     }
   };
@@ -848,7 +880,7 @@ function ProjectOperations({
     const hseBuildingName = buildings.find((building) => building.id === hseBuildingId)?.name ?? buildingName;
     const okay = await run(
       async () => {
-        const event = await createHseEvent(client, { projectId, buildingId: hseBuildingId, reportId, ...hseForm });
+        const event = await createHseEvent(client, { projectId, buildingId: hseBuildingId, locationNodeId: hseLocationNodeId, reportId, ...hseForm });
         if (hsePhotos.length) {
           const folderName = "HSE";
           const folderId = existingMediaFolderId(folderName, hseBuildingId);
@@ -867,6 +899,7 @@ function ProjectOperations({
               title: hseForm.title,
               description: hseForm.description,
               locationLabel: hseBuildingName,
+              locationNodeId: hseLocationNodeId || null,
               capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
               originalSize: photo.size,
               queuedSize: prepared.blob.size,
@@ -883,6 +916,7 @@ function ProjectOperations({
       setHseForm({ type: "unsafe_condition", title: "", description: "", severity: "medium", immediateMeasure: "", confidential: false });
       setHsePhotos([]);
       setHsePhotoError("");
+      setHseLocationNodeId("");
       setShowForm(false);
     }
   };
@@ -916,9 +950,10 @@ function ProjectOperations({
             size_bytes: file.size,
           });
         }
-        return createRegisterEntry(client, {
+        const entry = await createRegisterEntry(client, {
           projectId,
           buildingId: registerBuildingId,
+          locationNodeId: registerLocationNodeId,
           reportId,
           type: registerForm.type,
           title: registerForm.title,
@@ -929,12 +964,30 @@ function ProjectOperations({
             attachment_files: uploadedFiles,
           },
         });
+        if (registerForm.type === "punch_list") {
+          await createFinding(client, {
+            projectId,
+            buildingId: registerBuildingId,
+            locationNodeId: registerLocationNodeId,
+            reportId,
+            type: "deficiency",
+            title: registerForm.title,
+            description: registerForm.details,
+            severity: "medium",
+            responsiblePartyId: registerForm.responsiblePartyId,
+            issueType: "quality",
+            actionSteps: text("Correct this punch-list item and submit visual evidence.", "Herstel dit punch-listpunt en lever visueel bewijs."),
+            sourceCatalogSubject: entry.entry_number,
+          });
+        }
+        return entry;
       },
       text(`${registerNames[registerForm.type] ?? "Record"} was saved centrally and linked to the daily report.`, `${registerNames[registerForm.type] ?? "Registeritem"} centraal opgeslagen en aan het dagrapport gekoppeld.`),
     );
     if (okay) {
       setRegisterForm({ ...emptyControlledDocumentDraft });
       setRegisterFiles([]);
+      setRegisterLocationNodeId("");
       setShowForm(false);
     }
   };
@@ -964,7 +1017,8 @@ function ProjectOperations({
     }
   };
 
-  const projectSections: Array<[Exclude<ProjectTab, "home">, string, number]> = [
+  const moduleEnabled = (module: string) => data.settings?.modules?.[module] !== false;
+  const projectSections: Array<[Exclude<ProjectTab, "home">, string, number]> = ([
     ["inspections", text("Inspections", "Inspecties"), data.inspections.length],
     ["findings", text("Findings / NCR", "Bevindingen / NCR"), data.findings.filter((item) => item.status !== "closed").length],
     ["hse", "HSE", data.hseEvents.length],
@@ -973,7 +1027,16 @@ function ProjectOperations({
     ["drawings", text("Drawings", "Tekeningen"), data.files.filter((file) => file.category === "drawing" && file.status === "available").length],
     ["tools", text("Field tools", "Veldtools"), data.registerEntries.filter((entry) => ["notepad", "agreement", "technical_instruction"].includes(entry.register_type)).length],
     ["files", text("Photos & folders", "Foto’s & mappen"), data.files.length],
-  ];
+  ] as Array<[Exclude<ProjectTab, "home">, string, number]>).filter(([sectionId]) => ({
+    inspections: moduleEnabled("inspections"),
+    findings: moduleEnabled("quality"),
+    hse: moduleEnabled("hse"),
+    registers: moduleEnabled("documents"),
+    visual: moduleEnabled("visual_evidence"),
+    drawings: moduleEnabled("documents"),
+    tools: moduleEnabled("documents"),
+    files: moduleEnabled("visual_evidence"),
+  })[sectionId]);
   const activeSectionLabel = projectSections.find(([id]) => id === tab)?.[1];
   const canCreateRecord = ["inspections", "findings", "hse", "registers"].includes(tab);
 
@@ -997,22 +1060,22 @@ function ProjectOperations({
             <div><p>{text("One task at a time", "Eén taak tegelijk")}</p><h2 id="workspace-task-title">{text("What do you need to do now?", "Wat wil je nu doen?")}</h2></div>
           </div>
 
-          <button className="workspace-camera-action" type="button" onClick={openQuickCamera}>
+          {moduleEnabled("visual_evidence") ? <button className="workspace-camera-action" type="button" onClick={openQuickCamera}>
             <span><Camera size={25} /></span>
             <span><strong>{text("Take a photo", "Foto maken")}</strong><small>{text("Point and shoot · project, building, time and folder are linked automatically", "Richten en maken · project, gebouw, tijd en map worden automatisch gekoppeld")}</small></span>
-          </button>
+          </button> : null}
 
           <div className="workspace-primary-actions">
-            <button className="workspace-task-action inspection" type="button" onClick={() => openTask("inspections", true)}>
+            {moduleEnabled("inspections") ? <button className="workspace-task-action inspection" type="button" onClick={() => openTask("inspections", true)}>
               <ClipboardCheck size={22} />
               <strong>{text("Start inspection", "Start inspectie")}</strong>
               <small>{text("Recommended checklist is ready", "Aanbevolen checklist staat klaar")}</small>
-            </button>
-            <button className="workspace-task-action finding" type="button" onClick={() => openTask("findings", true)}>
+            </button> : null}
+            {moduleEnabled("quality") ? <button className="workspace-task-action finding" type="button" onClick={() => openTask("findings", true)}>
               <AlertTriangle size={22} />
               <strong>{text("Report issue", "Meld probleem")}</strong>
               <small>{text("Stack photos and assign directly", "Stapel foto’s en wijs direct toe")}</small>
-            </button>
+            </button> : null}
           </div>
 
           <button className="workspace-register-action" type="button" onClick={openQuickRegister}>
@@ -1020,10 +1083,10 @@ function ProjectOperations({
             <span><strong>{text("Other field record", "Andere veldregistratie")}</strong><small>{text("Activity, delivery, measurement, delay or action", "Activiteit, levering, meting, vertraging of actie")}</small></span>
           </button>
 
-          <button className="workspace-drawing-action" type="button" onClick={() => openTask("drawings")}>
+          {moduleEnabled("documents") ? <button className="workspace-drawing-action" type="button" onClick={() => openTask("drawings")}>
             <FileText size={21} />
             <span><strong>{text("Open drawing and place a pin", "Open tekening en plaats een pin")}</strong><small>{text("Link RFI, document, observation or inspection to the exact location", "Koppel RFI, document, observatie of inspectie aan de exacte locatie")}</small></span>
-          </button>
+          </button> : null}
 
           <details className="workspace-more-actions">
             <summary>{text("More field tasks", "Meer veldtaken")}<span>{text("HSE, folders, 360° and documents", "HSE, mappen, 360° en documenten")}</span></summary>
@@ -1133,18 +1196,28 @@ function ProjectOperations({
                 </div>
               ) : null}
               {inspectionTemplates.length ? <>
-                <BuildingPicker id="inspection-building" buildings={buildings} value={inspectionBuildingId} onChange={setInspectionBuildingId} />
+                <BuildingPicker id="inspection-building" buildings={buildings} value={inspectionBuildingId} onChange={(next) => { setInspectionBuildingId(next); setInspectionLocationNodeId(""); }} />
+                <LocationPicker id="inspection-location" nodes={data.locationNodes} buildingId={inspectionBuildingId} value={inspectionLocationNodeId} onChange={setInspectionLocationNodeId} requiredDepth={requiredLocationDepth} />
                 <label className="form-field"><span>{text("Checklist · recommended for today's work first", "Checklist · aanbevolen voor vandaag eerst")}</span><select value={inspectionTemplateId || inspectionTemplates[0]?.id || ""} onChange={(event) => { setInspectionTemplateId(event.target.value); setInspectionTitle(""); }}>{inspectionTemplates.map((template) => <option value={template.id} key={template.id}>{["LIB-101", "LIB-102", "LIB-103"].includes(template.code) ? "★ " : ""}{template.name} · v{template.version_number}</option>)}</select></label>
                 <details className="inspection-subject-details"><summary>{text("Add a different subject or element · optional", "Ander onderwerp of element toevoegen · optioneel")}</summary><label className="form-field"><span>{text("Subject / element", "Onderwerp / element")}</span><input value={inspectionTitle} onChange={(event) => setInspectionTitle(event.target.value)} placeholder={`${inspectionTemplates.find((template) => template.id === (inspectionTemplateId || inspectionTemplates[0]?.id))?.name ?? text("Inspection", "Inspectie")} · ${buildingName}`} /></label></details>
-                <button className="primary-button start-checklist-button" type="button" disabled={busy || !reportId} onClick={() => void beginInspection()}><ClipboardCheck size={15} /> {text("Start recommended checklist", "Start aanbevolen checklist")}</button>
+                <button className="primary-button start-checklist-button" type="button" disabled={busy || !reportId || (exactLocationRequired && !inspectionLocationNodeId)} onClick={() => void beginInspection()}><ClipboardCheck size={15} /> {text("Start recommended checklist", "Start aanbevolen checklist")}</button>
               </> : <div className="operation-alert warning"><AlertTriangle size={18} /><div><strong>{text("No project checklist is published yet", "Nog geen projectchecklist gepubliceerd")}</strong><span>{text("An administrator can install the ready-made CODECO checklist package under More.", "Een beheerder kan het kant-en-klare CODECO-pakket onder Meer installeren.")}</span></div></div>}
             </div>
           ) : null}
-          <RecordList empty={text("No formal inspections yet.", "Nog geen formele inspecties.")} rows={data.inspections.map((inspection) => ({
+          <div className="operation-form inspection-search">
+            <div className="operation-form-heading"><div><span className="record-number">{text("Inspection lookup", "Inspecties terugvinden")}</span><h2>{text("Search by building, exact location and date", "Zoek op gebouw, exacte locatie en datum")}</h2></div><span>{filteredInspections.length}</span></div>
+            <div className="form-grid-2">
+              <label className="form-field"><span>{text("Building", "Gebouw")}</span><select value={inspectionFilterBuildingId} onChange={(event) => { setInspectionFilterBuildingId(event.target.value); setInspectionFilterLocationNodeId(""); }}><option value="">{text("All buildings", "Alle gebouwen")}</option>{buildings.map((building) => <option value={building.id} key={building.id}>{building.name}</option>)}</select></label>
+              <label className="form-field"><span>{text("Exact location", "Exacte locatie")}</span><select value={inspectionFilterLocationNodeId} onChange={(event) => setInspectionFilterLocationNodeId(event.target.value)}><option value="">{text("All locations", "Alle locaties")}</option>{data.locationNodes.filter((node) => !inspectionFilterBuildingId || node.building_id === inspectionFilterBuildingId).map((node) => <option value={node.id} key={node.id}>{locationBreadcrumb(data.locationNodes, node.id)}</option>)}</select></label>
+              <label className="form-field"><span>{text("Inspection date", "Inspectiedatum")}</span><input type="date" value={inspectionFilterDate} onChange={(event) => setInspectionFilterDate(event.target.value)} /></label>
+              <button className="secondary-button" type="button" onClick={() => { setInspectionFilterBuildingId(""); setInspectionFilterLocationNodeId(""); setInspectionFilterDate(""); }}>{text("Clear filters", "Wis filters")}</button>
+            </div>
+          </div>
+          <RecordList empty={text("No inspections match these filters.", "Geen inspecties gevonden met deze filters.")} rows={filteredInspections.map((inspection) => ({
             id: inspection.id,
             icon: ClipboardCheck,
             title: inspection.title,
-            meta: `${inspection.inspection_number} · ${formatDate(inspection.completed_at ?? inspection.started_at, locale)}`,
+            meta: `${inspection.inspection_number} · ${recordContextLabel(inspection.building_id, inspection.location_node_id)} · ${formatDate(inspection.completed_at ?? inspection.started_at, locale)}`,
             status: inspection.status.replaceAll("_", " "),
             tone: inspection.status === "passed" ? "green" : inspection.status === "failed" ? "red" : "",
           }))} />
@@ -1207,10 +1280,11 @@ function ProjectOperations({
                 <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required", "Escalatie vereist")}</label>
               </div>
               <div className="form-grid-2">
-                <BuildingPicker id="finding-building" buildings={buildings} value={findingBuildingId} onChange={setFindingBuildingId} />
+                <BuildingPicker id="finding-building" buildings={buildings} value={findingBuildingId} onChange={(next) => { setFindingBuildingId(next); setFindingLocationNodeId(""); }} />
                 <label className="form-field"><span>{text("Responsible party", "Verantwoordelijke partij")}</span><select value={findingForm.responsiblePartyId} onChange={(event) => setFindingForm({ ...findingForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Nog niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
               </div>
-              <button className="primary-button" type="button" disabled={busy || !reportId || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Probleem indienen")}</button>
+              <LocationPicker id="finding-location" nodes={data.locationNodes} buildingId={findingBuildingId} value={findingLocationNodeId} onChange={setFindingLocationNodeId} requiredDepth={requiredLocationDepth} />
+              <button className="primary-button" type="button" disabled={busy || !reportId || (exactLocationRequired && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Probleem indienen")}</button>
             </div>
           ) : null}
           <FindingList
@@ -1220,7 +1294,8 @@ function ProjectOperations({
             externalShareLinks={data.externalShareLinks ?? []}
             projectName={projectName}
             projectCode={projectCode}
-            buildingName={buildingName}
+            buildings={buildings}
+            locationNodes={data.locationNodes}
             currentUserName={currentUserName}
             parties={parties}
             busy={busy}
@@ -1279,12 +1354,13 @@ function ProjectOperations({
               </label>
               {hsePhotos.length ? <FindingPhotoStack files={hsePhotos} onRemove={(index) => setHsePhotos((current) => current.filter((_, currentIndex) => currentIndex !== index))} /> : null}
               {hsePhotoError ? <p className="field-error" role="alert">{hsePhotoError}</p> : null}
-              <BuildingPicker id="hse-building" buildings={buildings} value={hseBuildingId} onChange={setHseBuildingId} />
+              <BuildingPicker id="hse-building" buildings={buildings} value={hseBuildingId} onChange={(next) => { setHseBuildingId(next); setHseLocationNodeId(""); }} />
+              <LocationPicker id="hse-location" nodes={data.locationNodes} buildingId={hseBuildingId} value={hseLocationNodeId} onChange={setHseLocationNodeId} requiredDepth={requiredLocationDepth} />
               <label className="check-field"><input type="checkbox" checked={hseForm.confidential} onChange={(event) => setHseForm({ ...hseForm, confidential: event.target.checked })} /> {text("Restrict this sensitive incident to authorized HSE roles", "Beperk dit gevoelige incident tot bevoegde HSE-rollen")}</label>
-              <button className="primary-button" type="button" disabled={busy || !reportId || hseForm.title.trim().length < 3 || hseForm.description.trim().length < 3} onClick={() => void addHse()}><ShieldCheck size={15} /> {text("Save HSE record", "HSE-registratie opslaan")}</button>
+              <button className="primary-button" type="button" disabled={busy || !reportId || (exactLocationRequired && !hseLocationNodeId) || hseForm.title.trim().length < 3 || hseForm.description.trim().length < 3} onClick={() => void addHse()}><ShieldCheck size={15} /> {text("Save HSE record", "HSE-registratie opslaan")}</button>
             </div>
           ) : null}
-          <RecordList empty={text("No formal HSE records yet.", "Nog geen formele HSE-registraties.")} rows={data.hseEvents.map((event) => ({ id: event.id, icon: ShieldCheck, title: event.confidential ? `${event.title} · ${text("confidential", "vertrouwelijk")}` : event.title, meta: `${event.event_number} · ${event.event_type.replaceAll("_", " ")} · ${formatDate(event.occurred_at, locale)}`, status: event.status.replaceAll("_", " "), tone: event.severity === "critical" ? "red" : event.status === "closed" ? "green" : "" }))} />
+          <RecordList empty={text("No formal HSE records yet.", "Nog geen formele HSE-registraties.")} rows={data.hseEvents.map((event) => ({ id: event.id, icon: ShieldCheck, title: event.confidential ? `${event.title} · ${text("confidential", "vertrouwelijk")}` : event.title, meta: `${event.event_number} · ${recordContextLabel(event.building_id, event.location_node_id)} · ${event.event_type.replaceAll("_", " ")} · ${formatDate(event.occurred_at, locale)}`, status: event.status.replaceAll("_", " "), tone: event.severity === "critical" ? "red" : event.status === "closed" ? "green" : "" }))} />
         </section>
       ) : null}
 
@@ -1294,7 +1370,8 @@ function ProjectOperations({
             <div className={`operation-form ${controlledRegister ? "wide controlled-document-form" : ""}`}>
               <div className="operation-form-heading"><div><span className="record-number">{controlledRegister ? text("Client-controlled form", "Klantgestuurd formulier") : text("Project register", "Projectregister")}</span><h2>{controlledRegister ? registerNames[registerForm.type] : text("Add project register item", "Projectregister aanvullen")}</h2></div>{controlledRegister ? <span className="controlled-document-badge">{projectCode} · {buildings.find((building) => building.id === registerBuildingId)?.name ?? buildingName}</span> : null}</div>
               <div className="form-grid-2">
-                <BuildingPicker id="register-building" buildings={buildings} value={registerBuildingId} onChange={setRegisterBuildingId} />
+                <BuildingPicker id="register-building" buildings={buildings} value={registerBuildingId} onChange={(next) => { setRegisterBuildingId(next); setRegisterLocationNodeId(""); }} />
+                <LocationPicker id="register-location" nodes={data.locationNodes} buildingId={registerBuildingId} value={registerLocationNodeId} onChange={setRegisterLocationNodeId} requiredDepth={requiredLocationDepth} />
                 <label className="form-field"><span>{text("Register / document format", "Register / documentformaat")}</span><select value={registerForm.type} onChange={(event) => setRegisterForm({ ...emptyControlledDocumentDraft, type: event.target.value })}>{Object.entries(registerNames).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
               </div>
               {activeRegisterPresets.length ? <div className="quick-issue-presets" aria-label={text("Choose a standard register item", "Kies een standaard registeritem")}>{activeRegisterPresets.map((preset) => <button className={registerForm.title === preset.title ? "active" : ""} type="button" onClick={() => setRegisterForm({ ...registerForm, ...preset })} key={preset.title}>{preset.title}</button>)}</div> : null}
@@ -1349,7 +1426,7 @@ function ProjectOperations({
                 {registerForm.type === "environmental_report" ? <><div className="form-grid-2"><label className="form-field"><span>{text("Period start", "Periode start")}</span><input type="date" value={registerForm.periodStart} onChange={(event) => setRegisterForm({ ...registerForm, periodStart: event.target.value })} /></label><label className="form-field"><span>{text("Period end", "Periode einde")}</span><input type="date" value={registerForm.periodEnd} onChange={(event) => setRegisterForm({ ...registerForm, periodEnd: event.target.value })} /></label></div><div className="form-grid-2"><label className="form-field"><span>{text("Lost hours", "Verloren uren")}</span><input type="number" min="0" value={registerForm.lostHours} onChange={(event) => setRegisterForm({ ...registerForm, lostHours: event.target.value })} /></label><label className="form-field"><span>{text("Reason for lost hours", "Reden verloren uren")}</span><input value={registerForm.lostHoursReason} onChange={(event) => setRegisterForm({ ...registerForm, lostHoursReason: event.target.value })} /></label></div></> : null}
                 <div className="operation-alert warning"><FileCheck2 size={17} /><div><strong>{text("Numbering and metadata are automatic", "Nummering en metadata zijn automatisch")}</strong><span>{text("Project, building, issue date, author and audit history are filled from the current context. Approval, acknowledgement and signature remain explicit human actions.", "Project, gebouw, uitgiftedatum, opsteller en auditgeschiedenis komen uit de actuele context. Goedkeuring, ontvangst en ondertekening blijven expliciete menselijke acties.")}</span></div></div>
               </> : <label className="form-field"><span>{text("Involved party", "Betrokken partij")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>}
-              <button className="primary-button" type="button" disabled={busy || !reportId || registerForm.title.trim().length < 3 || !controlledFormReady} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : text("Save register item", "Registeritem opslaan")}</button>
+              <button className="primary-button" type="button" disabled={busy || !reportId || (exactLocationRequired && !registerLocationNodeId) || registerForm.title.trim().length < 3 || !controlledFormReady} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : text("Save register item", "Registeritem opslaan")}</button>
             </div>
           ) : null}
           <div className="boq-import-card">
@@ -1360,9 +1437,17 @@ function ProjectOperations({
             {boqError ? <span className="field-error">{boqError}</span> : null}
             {boqItems.length ? <div className="boq-preview"><span>{text("First validated lines", "Eerste gevalideerde regels")}</span>{boqItems.slice(0, 5).map((item) => <div key={`${item.code}:${item.source_row}`}><strong>{item.code}</strong><span>{item.description}</span><small>{item.quantity ?? "-"} {item.unit} · {item.progress_percent}%</small></div>)}</div> : null}
           </div>
+          <BoqProgressRegister
+            entries={data.registerEntries.filter((entry) => entry.register_type === "boq")}
+            updates={data.boqProgressUpdates}
+            buildings={buildings}
+            busy={busy}
+            run={run}
+            client={client}
+          />
           <div className="register-summary-grid">{Object.entries(registerNames).map(([type, label]) => <div className="register-summary" key={type}><strong>{data.registerEntries.filter((entry) => entry.register_type === type).length}</strong><span>{label}</span></div>)}</div>
-          <ControlledDocumentList entries={data.registerEntries.filter((entry) => isControlledDocumentType(entry.register_type))} busy={busy} currentUserName={currentUserName} client={client} run={run} />
-          <RecordList empty={text("No additional project registers yet.", "Nog geen aanvullende projectregisters.")} rows={data.registerEntries.filter((entry) => !isControlledDocumentType(entry.register_type)).map((entry) => ({ id: entry.id, icon: Wrench, title: entry.title, meta: `${entry.entry_number} · ${registerNames[entry.register_type] ?? entry.register_type} · ${formatDate(entry.occurred_at, locale)}`, status: entry.status, tone: entry.status === "closed" || entry.status === "approved" ? "green" : "" }))} />
+          <ControlledDocumentList entries={data.registerEntries.filter((entry) => isControlledDocumentType(entry.register_type))} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={currentUserName} client={client} run={run} />
+          <RecordList empty={text("No additional project registers yet.", "Nog geen aanvullende projectregisters.")} rows={data.registerEntries.filter((entry) => !isControlledDocumentType(entry.register_type) && entry.register_type !== "boq").map((entry) => ({ id: entry.id, icon: Wrench, title: entry.title, meta: `${entry.entry_number} · ${recordContextLabel(entry.building_id, entry.location_node_id)} · ${registerNames[entry.register_type] ?? entry.register_type} · ${formatDate(entry.occurred_at, locale)}`, status: entry.status, tone: entry.status === "closed" || entry.status === "approved" ? "green" : "" }))} />
         </section>
       ) : null}
 
@@ -1377,8 +1462,88 @@ function ProjectOperations({
   );
 }
 
-function ControlledDocumentList({ entries, busy, currentUserName, client, run }: {
+function BoqProgressRegister({
+  entries,
+  updates,
+  buildings,
+  busy,
+  run,
+  client,
+}: {
   entries: OperationSnapshot["registerEntries"];
+  updates: OperationSnapshot["boqProgressUpdates"];
+  buildings: BuildingOption[];
+  busy: boolean;
+  run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
+  client: SupabaseClient;
+}) {
+  const { locale, text } = useLanguage();
+  const [active, setActive] = useState<string | null>(null);
+  const [progress, setProgress] = useState("0");
+  const [quantity, setQuantity] = useState("");
+  const [note, setNote] = useState("");
+  if (!entries.length) return null;
+  return (
+    <section className="controlled-document-register">
+      <div className="controlled-document-register-heading">
+        <div><span className="record-number">{text("Measured progress", "Gemeten voortgang")}</span><h2>{text("Update BOQ lines with dated evidence", "Werk BOQ-regels bij met gedateerd bewijs")}</h2></div>
+        <span>{entries.length} {text("lines", "regels")}</span>
+      </div>
+      <div className="record-stack">
+        {entries.map((entry) => {
+          const details = entry.details ?? {};
+          const latest = updates.find((update) => update.register_entry_id === entry.id);
+          const currentProgress = Number(latest?.progress_percent ?? details.progress_percent ?? 0);
+          const building = buildings.find((item) => item.id === entry.building_id)?.name ?? text("Project-wide", "Projectbreed");
+          return (
+            <article className="controlled-document-card" key={entry.id}>
+              <div className="controlled-document-card-main">
+                <div>
+                  <span className="record-number">{String(details.code ?? entry.entry_number)} · {building}</span>
+                  <h3>{String(details.description ?? entry.title)}</h3>
+                  <p>{String(details.quantity ?? "—")} {String(details.unit ?? "")} · {text("contract value", "contractwaarde")} {String(details.contract_value ?? "—")}</p>
+                  <small>{currentProgress}%{latest ? ` · ${formatDate(latest.recorded_at, locale)} · ${latest.note}` : ""}</small>
+                </div>
+                <span className={`task-status ${currentProgress >= 100 ? "green" : ""}`}>{currentProgress}%</span>
+              </div>
+              <div className="finding-actions">
+                <button className="secondary-button" type="button" onClick={() => {
+                  setActive(active === entry.id ? null : entry.id);
+                  setProgress(String(currentProgress));
+                  setQuantity(latest?.quantity_completed == null ? "" : String(latest.quantity_completed));
+                  setNote("");
+                }}>{text("Record progress", "Voortgang vastleggen")}</button>
+              </div>
+              {active === entry.id ? (
+                <div className="inline-transition issue-progress-form">
+                  <div className="form-grid-2">
+                    <label className="form-field"><span>{text("Progress percentage", "Voortgangspercentage")}</span><input type="number" min="0" max="100" step="0.1" value={progress} onChange={(event) => setProgress(event.target.value)} /></label>
+                    <label className="form-field"><span>{text("Completed quantity", "Uitgevoerde hoeveelheid")}</span><input type="number" min="0" step="0.01" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label>
+                  </div>
+                  <label className="form-field"><span>{text("Measurement / evidence note", "Meet- / bewijsnotitie")}</span><textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} /></label>
+                  <button className="primary-button" type="button" disabled={busy || Number(progress) < 0 || Number(progress) > 100 || note.trim().length < 2} onClick={() => void run(
+                    () => recordBoqProgress(client, {
+                      registerEntryId: entry.id,
+                      progressPercent: Number(progress),
+                      quantityCompleted: quantity ? Number(quantity) : null,
+                      note,
+                    }),
+                    text(`BOQ progress for ${String(details.code ?? entry.entry_number)} recorded.`, `BOQ-voortgang voor ${String(details.code ?? entry.entry_number)} vastgelegd.`),
+                  ).then((okay) => { if (okay) { setActive(null); setNote(""); } })}>{text("Save dated progress", "Sla gedateerde voortgang op")}</button>
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ControlledDocumentList({ entries, buildings, locationNodes, busy, currentUserName, client, run }: {
+  entries: OperationSnapshot["registerEntries"];
+  buildings: BuildingOption[];
+  locationNodes: OperationSnapshot["locationNodes"];
   busy: boolean;
   currentUserName: string;
   client: SupabaseClient;
@@ -1410,9 +1575,11 @@ function ControlledDocumentList({ entries, busy, currentUserName, client, run }:
       <div className="record-stack">
         {entries.map((entry) => {
           const details = entry.details ?? {};
+          const entryBuildingName = buildings.find((building) => building.id === entry.building_id)?.name ?? text("Project-wide", "Projectbreed");
+          const entryLocation = locationBreadcrumb(locationNodes, entry.location_node_id);
           const responseData = details.response && typeof details.response === "object" && !Array.isArray(details.response) ? details.response as Record<string, unknown> : {};
           return <article className="controlled-document-card" key={entry.id}>
-            <div className="controlled-document-card-main"><div><span className="record-number">{entry.entry_number} · {entry.register_type.replaceAll("_", " ").toUpperCase()}</span><h3>{entry.title}</h3><p>{String(details.description ?? "")}</p><small>{formatDate(entry.occurred_at, locale)}{entry.due_at ? ` · ${text("due", "uiterlijk")} ${formatDate(entry.due_at, locale)}` : ""}{responseData.decision ? ` · ${String(responseData.decision).replaceAll("_", " ")}` : ""}</small></div><span className={`task-status ${entry.status === "approved" || entry.status === "closed" ? "green" : entry.status === "rejected" ? "red" : ""}`}>{entry.status.replaceAll("_", " ")}</span></div>
+            <div className="controlled-document-card-main"><div><span className="record-number">{entry.entry_number} · {entry.register_type.replaceAll("_", " ").toUpperCase()}</span><h3>{entry.title}</h3><p>{String(details.description ?? "")}</p><small>{entryBuildingName}{entryLocation ? ` → ${entryLocation}` : ""} · {formatDate(entry.occurred_at, locale)}{entry.due_at ? ` · ${text("due", "uiterlijk")} ${formatDate(entry.due_at, locale)}` : ""}{responseData.decision ? ` · ${String(responseData.decision).replaceAll("_", " ")}` : ""}</small></div><span className={`task-status ${entry.status === "approved" || entry.status === "closed" ? "green" : entry.status === "rejected" ? "red" : ""}`}>{entry.status.replaceAll("_", " ")}</span></div>
             <div className="finding-actions"><ReportDownloadButtons disabled={busy} onDownloadPdf={() => import("@/lib/reports/controlled-document-pdf").then(({ downloadControlledDocumentPdf }) => downloadControlledDocumentPdf(entry))} onDownloadWord={() => import("@/lib/reports/controlled-document-docx").then(({ downloadControlledDocumentDocx }) => downloadControlledDocumentDocx(entry))} />{!["closed", "cancelled"].includes(entry.status) ? <button className="primary-button" type="button" disabled={busy} onClick={() => { setActive(active === entry.id ? null : entry.id); setResponse({ decision: entry.register_type === "technical_instruction" || entry.register_type === "change_order" ? "acknowledged" : "approved", comments: "", respondentName: currentUserName, respondentPosition: "", respondentCompany: "CODECO N.V." }); }}><FileCheck2 size={15} /> {text("Record formal response", "Leg formeel antwoord vast")}</button> : null}</div>
             {active === entry.id ? <div className="inline-transition controlled-response-form">
               <div className="form-grid-2"><label className="form-field"><span>{text("Decision / response code", "Besluit / antwoordcode")}</span><select value={response.decision} onChange={(event) => setResponse({ ...response, decision: event.target.value })}>{decisions.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label className="form-field"><span>{text("Respondent name", "Naam respondent")}</span><input value={response.respondentName} onChange={(event) => setResponse({ ...response, respondentName: event.target.value })} /></label></div>
@@ -1449,14 +1616,15 @@ function FindingPhotoPreview({ file }: { file: File }) {
   return <NextImage src={source} alt="" width={160} height={110} unoptimized />;
 }
 
-function FindingList({ findings, progressUpdates, visualAnnotations, externalShareLinks, projectName, projectCode, buildingName, currentUserName, parties, busy, transition, recordProgress, share, revoke, linkVisual }: {
+function FindingList({ findings, progressUpdates, visualAnnotations, externalShareLinks, projectName, projectCode, buildings, locationNodes, currentUserName, parties, busy, transition, recordProgress, share, revoke, linkVisual }: {
   findings: Finding[];
   progressUpdates: OperationSnapshot["findingProgressUpdates"];
   visualAnnotations: OperationSnapshot["visualAnnotations"];
   externalShareLinks: NonNullable<OperationSnapshot["externalShareLinks"]>;
   projectName: string;
   projectCode: string;
-  buildingName: string;
+  buildings: BuildingOption[];
+  locationNodes: OperationSnapshot["locationNodes"];
   currentUserName: string;
   parties: ProjectParty[];
   busy: boolean;
@@ -1497,9 +1665,10 @@ function FindingList({ findings, progressUpdates, visualAnnotations, externalSha
     if (result) setExternalShare({ findingId: finding.id, ...result });
     setCreatingShareFor(null);
   };
+  const findingBuildingName = (finding: Finding) => buildings.find((building) => building.id === finding.building_id)?.name ?? "";
   const externalMessage = (finding: Finding, shared: { url: string; expiresAt: string }) => [
     `CODECO werkpunt ${finding.finding_number}`,
-    `${projectCode} · ${projectName}${buildingName ? ` · ${buildingName}` : ""}`,
+    `${projectCode} · ${projectName}${findingBuildingName(finding) ? ` · ${findingBuildingName(finding)}` : ""}`,
     finding.title,
     `Deadline: ${formatDate(finding.due_at, locale)}`,
     "",
@@ -1515,6 +1684,8 @@ function FindingList({ findings, progressUpdates, visualAnnotations, externalSha
         const latestProgress = progressUpdates.find((item) => item.finding_id === finding.id);
         const visualAnnotation = visualAnnotations.find((item) => item.finding_id === finding.id && item.status === "active");
         const issue = finding.issue_management ?? {};
+        const recordBuildingName = findingBuildingName(finding);
+        const recordLocation = locationBreadcrumb(locationNodes, finding.location_node_id);
         const activeExternalShares = externalShareLinks.filter((item) =>
           item.source_type === "finding"
           && item.source_id === finding.id
@@ -1523,14 +1694,14 @@ function FindingList({ findings, progressUpdates, visualAnnotations, externalSha
         );
         return (
           <article className="finding-card" key={finding.id}>
-            <div className="finding-card-main"><span className={`record-severity ${finding.severity}`}>{finding.severity}</span><div><span className="record-number">{finding.finding_number} · {finding.finding_type.toUpperCase()}</span><h3>{finding.title}</h3><p>{finding.description}</p>{issue.action_steps ? <p className="finding-required-action"><strong>{text("Required action:", "Vereiste actie:")}</strong> {issue.action_steps}</p> : null}<small>Deadline {formatDate(finding.due_at, locale)}{latestProgress ? ` · ${text("progress", "voortgang")} ${latestProgress.progress_percent}% · ${latestProgress.disposition.replaceAll("_", " ")}` : ""}{finding.verified_at ? ` · ${text("verified", "geverifieerd")} ${formatDate(finding.verified_at, locale)}` : ""}</small></div><span className={`task-status ${finding.status === "closed" ? "green" : finding.severity === "critical" ? "red" : ""}`}>{statusLabels[finding.status] ?? finding.status}</span></div>
+            <div className="finding-card-main"><span className={`record-severity ${finding.severity}`}>{finding.severity}</span><div><span className="record-number">{finding.finding_number} · {finding.finding_type.toUpperCase()}</span><h3>{finding.title}</h3><p>{finding.description}</p>{issue.action_steps ? <p className="finding-required-action"><strong>{text("Required action:", "Vereiste actie:")}</strong> {issue.action_steps}</p> : null}<small>{recordBuildingName}{recordLocation ? ` → ${recordLocation}` : ""} · Deadline {formatDate(finding.due_at, locale)}{latestProgress ? ` · ${text("progress", "voortgang")} ${latestProgress.progress_percent}% · ${latestProgress.disposition.replaceAll("_", " ")}` : ""}{finding.verified_at ? ` · ${text("verified", "geverifieerd")} ${formatDate(finding.verified_at, locale)}` : ""}</small></div><span className={`task-status ${finding.status === "closed" ? "green" : finding.severity === "critical" ? "red" : ""}`}>{statusLabels[finding.status] ?? finding.status}</span></div>
             <div className="finding-actions">
               <button className="secondary-button" type="button" onClick={() => linkVisual(finding)}><MapPin size={16} /> {visualAnnotation ? text("View visual pointer", "Bekijk visuele pointer") : text("Link visual pointer", "Koppel visuele pointer")}</button>
               <button className="external-party-button" type="button" disabled={busy || creatingShareFor === finding.id} onClick={() => void createShare(finding)}>
                 {creatingShareFor === finding.id ? <Loader2 className="spin" size={17} /> : <MessageCircle size={17} />}
                 <span><strong>{text("Send to external party", "Stuur naar externe partij")}</strong><small>{text("WhatsApp link · no account needed", "WhatsApp-link · geen account nodig")}</small></span>
               </button>
-              <ReportDownloadButtons disabled={busy} onDownloadPdf={() => import("@/lib/reports/ncr-pdf").then(({ downloadNcrPdf }) => downloadNcrPdf(finding, latestProgress, { projectName, projectCode, buildingName, issuerName: currentUserName, responsiblePartyName: parties.find((party) => party.id === finding.responsible_party_id)?.name ?? "" }))} onDownloadWord={() => import("@/lib/reports/ncr-docx").then(({ downloadNcrDocx }) => downloadNcrDocx(finding, latestProgress, { projectName, projectCode, buildingName, issuerName: currentUserName, responsiblePartyName: parties.find((party) => party.id === finding.responsible_party_id)?.name ?? "" }))} />
+              <ReportDownloadButtons disabled={busy} onDownloadPdf={() => import("@/lib/reports/ncr-pdf").then(({ downloadNcrPdf }) => downloadNcrPdf(finding, latestProgress, { projectName, projectCode, buildingName: recordBuildingName, issuerName: currentUserName, responsiblePartyName: parties.find((party) => party.id === finding.responsible_party_id)?.name ?? "" }))} onDownloadWord={() => import("@/lib/reports/ncr-docx").then(({ downloadNcrDocx }) => downloadNcrDocx(finding, latestProgress, { projectName, projectCode, buildingName: recordBuildingName, issuerName: currentUserName, responsiblePartyName: parties.find((party) => party.id === finding.responsible_party_id)?.name ?? "" }))} />
               {!["closed", "cancelled", "rejected"].includes(finding.status) ? <button className="secondary-button" type="button" onClick={() => { setProgressActive(progressActive === finding.id ? null : finding.id); setProgressPercent(String(latestProgress?.progress_percent ?? 0)); setProgressDisposition(latestProgress?.disposition ?? issue.disposition ?? "to_be_corrected"); }}>{text("Record inspection progress", "Inspectievoortgang vastleggen")}</button> : null}
               {nextStatus ? <button className="secondary-button" type="button" onClick={() => setActive(active === finding.id ? null : finding.id)}>{nextStatus === "closed" ? text("Verify", "Verifiëren") : nextStatus === "ready_for_verification" ? text("Mark repair ready", "Herstel gereedmelden") : text("Update status", "Status bijwerken")}</button> : null}
             </div>
@@ -1607,6 +1778,11 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(new Date());
   const [period, setPeriod] = useState({ start: `${today.slice(0, 8)}01`, end: today });
   const reportChoices: Array<{ id: string; title: string; sections: PeriodReportSection[] }> = [
+    ...(data.settings?.report_sections?.length ? [{
+      id: "project",
+      title: text("Configured client report", "Geconfigureerd klantrapport"),
+      sections: data.settings.report_sections as PeriodReportSection[],
+    }] : []),
     { id: "complete", title: text("Complete project report", "Compleet projectrapport"), sections: ["management", "workforce", "work", "quality", "hse", "actions", "logistics", "instructions", "commercial", "communications", "requests", "boq", "visual", "documents", "environment", "buildings"] },
     { id: "management", title: text("Management report", "Managementrapport"), sections: ["management", "workforce", "work", "actions", "commercial"] },
     { id: "execution", title: text("Execution and progress", "Uitvoering & voortgang"), sections: ["management", "workforce", "work", "logistics", "visual"] },
@@ -1614,7 +1790,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
     { id: "contract", title: text("Contract and decisions", "Contract & besluiten"), sections: ["management", "instructions", "commercial", "communications", "requests", "documents", "boq"] },
     { id: "visual", title: text("Visual progress report", "Visueel voortgangsrapport"), sections: ["visual", "work"] },
   ];
-  const [reportChoice, setReportChoice] = useState("complete");
+  const [reportChoice, setReportChoice] = useState(data.settings?.report_sections?.length ? "project" : "complete");
   const [reportView, setReportView] = useState<"create" | "workflow" | "history">("create");
   const [periodPreset, setPeriodPreset] = useState<"day" | "week" | "month" | "custom">("month");
   const [periodLabel, setPeriodLabel] = useState(() => text("Monthly supervision report", "Maandelijks supervisierapport"));
@@ -1669,8 +1845,8 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
             variant="prominent"
             className="report-create-button"
             disabled={busy || !period.start || !period.end || period.end < period.start}
-            onDownloadPdf={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, period.start, period.end); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { sections: selectedReport.sections, reportTitle: `${periodLabel} · ${selectedReport.title}` }); }, text(`${periodLabel} for ${projectName} downloaded.`, `${periodLabel} voor ${projectName} gedownload.`))}
-            onDownloadWord={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, period.start, period.end); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { sections: selectedReport.sections, reportTitle: `${periodLabel} · ${selectedReport.title}` }); }, text(`${periodLabel} for ${projectName} downloaded as Word.`, `${periodLabel} voor ${projectName} als Word gedownload.`))}
+            onDownloadPdf={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, period.start, period.end); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { sections: selectedReport.sections, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded.`, `${periodLabel} voor ${projectName} gedownload.`))}
+            onDownloadWord={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, period.start, period.end); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { sections: selectedReport.sections, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded as Word.`, `${periodLabel} voor ${projectName} als Word gedownload.`))}
           />
         </section>
       ) : null}
@@ -1706,7 +1882,26 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
   const { text } = useLanguage();
   const [section, setSection] = useState<"overview" | "settings" | "structure" | "templates" | "backup">("overview");
   const [template, setTemplate] = useState({ module: "inspection", code: "", name: "", prompts: "" });
-  const [settings, setSettings] = useState(() => ({ maxFileSizeMb: data.settings?.max_file_size_mb ?? 25, leadHours: data.settings?.notification_lead_hours ?? 24, retentionDays: data.settings?.retention_days?.toString() ?? "", reportPrefix: data.settings?.report_prefix ?? "DR", pushNotificationsEnabled: data.settings?.push_notifications_enabled ?? true }));
+  const [settings, setSettings] = useState(() => ({
+    maxFileSizeMb: data.settings?.max_file_size_mb ?? 25,
+    leadHours: data.settings?.notification_lead_hours ?? 24,
+    retentionDays: data.settings?.retention_days?.toString() ?? "",
+    reportPrefix: data.settings?.report_prefix ?? "DR",
+    pushNotificationsEnabled: data.settings?.push_notifications_enabled ?? true,
+    defaultLanguage: data.settings?.default_language ?? "en",
+    shiftStart: data.settings?.default_shift_start?.slice(0, 5) ?? "07:00",
+    shiftEnd: data.settings?.default_shift_end?.slice(0, 5) ?? "16:00",
+    disciplines: (data.settings?.disciplines ?? []).join("\n"),
+    requiredLocationDepth: data.settings?.required_location_depth ?? "building",
+    lowDays: data.settings?.finding_deadlines?.low ?? 14,
+    mediumDays: data.settings?.finding_deadlines?.medium ?? 7,
+    highDays: data.settings?.finding_deadlines?.high ?? 3,
+    criticalDays: data.settings?.finding_deadlines?.critical ?? 1,
+    reportSections: data.settings?.report_sections ?? [],
+    reportHeader: data.settings?.report_header ?? "",
+    reportFooter: data.settings?.report_footer ?? "",
+    modules: data.settings?.modules ?? {},
+  }));
   const [location, setLocation] = useState({ type: "zone", code: "", name: "", parentId: "", description: "" });
   const [party, setParty] = useState({ type: "contractor", code: "", name: "" });
   const [libraryCategory, setLibraryCategory] = useState("all");
@@ -1738,7 +1933,72 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
         </div>
         <div className="management-context"><div><span>{text("Current report", "Huidig rapport")}</span><strong>{reportStatus.replaceAll("_", " ")}</strong></div><div><span>{text("Project locations", "Projectlocaties")}</span><strong>{data.locationNodes.length}</strong></div><div><span>{text("Published checklists", "Gepubliceerde checklists")}</span><strong>{data.templates.filter((item) => item.status === "published").length}</strong></div><div><span>{text("Controlled files", "Beheerde bestanden")}</span><strong>{data.files.length}</strong></div></div>
       </section> : null}
-      {section === "settings" ? <section className="operation-panel"><div className="admin-card-grid">{canManageOrganization ? <button className="module-card" type="button" onClick={openUserAdmin}><span className="module-card-icon"><Users size={19} /></span><h2>{text("Users and access", "Gebruikers en toegang")}</h2><p>{text("Only administrators create internal accounts and assign organization or project roles.", "Alleen beheerders maken interne accounts en wijzen organisatie- of projectrollen toe.")}</p></button> : null}<MfaSecurityCard client={client} /><div className="operation-form"><h2>{text("Project rules", "Projectregels")}</h2><div className="form-grid-2"><label className="form-field"><span>{text("Report prefix", "Rapportprefix")}</span><input value={settings.reportPrefix} onChange={(event) => setSettings({ ...settings, reportPrefix: event.target.value.toUpperCase() })} /></label><label className="form-field"><span>{text("File limit (MB)", "Bestandslimiet (MB)")}</span><input type="number" min="1" max="100" value={settings.maxFileSizeMb} onChange={(event) => setSettings({ ...settings, maxFileSizeMb: Number(event.target.value) })} /></label><label className="form-field"><span>{text("Reminder before deadline (hours)", "Herinnering vóór deadline (uur)")}</span><input type="number" min="1" max="720" value={settings.leadHours} onChange={(event) => setSettings({ ...settings, leadHours: Number(event.target.value) })} /></label><label className="form-field"><span>{text("Retention period (days)", "Bewaartermijn (dagen)")}</span><input type="number" min="30" value={settings.retentionDays} onChange={(event) => setSettings({ ...settings, retentionDays: event.target.value })} placeholder={text("Client decision required", "Klantbesluit vereist")} /></label></div><label className="confirmation-check"><input type="checkbox" checked={settings.pushNotificationsEnabled} onChange={(event) => setSettings({ ...settings, pushNotificationsEnabled: event.target.checked })} /><span><strong>{text("Automatic push notifications for deadlines", "Automatische pushmeldingen voor deadlines")}</strong><small>{text("Users activate delivery once per device; the in-app inbox keeps the auditable copy.", "Gebruikers activeren bezorging één keer per apparaat; de inbox bewaart de auditeerbare kopie.")}</small></span></label><button className="primary-button" type="button" disabled={busy || !data.settings} onClick={() => data.settings && void run(() => saveProjectSettings(client, data.settings!, { report_prefix: settings.reportPrefix, max_file_size_mb: settings.maxFileSizeMb, notification_lead_hours: settings.leadHours, push_notifications_enabled: settings.pushNotificationsEnabled, email_notifications_enabled: false, retention_days: settings.retentionDays ? Number(settings.retentionDays) : null }), text("Project rules stored centrally and audited.", "Projectregels centraal opgeslagen en geaudit."))}><Settings size={15} /> {text("Save rules", "Regels opslaan")}</button></div></div></section> : null}
+      {section === "settings" ? (
+        <section className="operation-panel">
+          <div className="admin-card-grid">
+            {canManageOrganization ? <button className="module-card" type="button" onClick={openUserAdmin}><span className="module-card-icon"><Users size={19} /></span><h2>{text("Users and access", "Gebruikers en toegang")}</h2><p>{text("Only administrators create internal accounts and assign organization or project roles.", "Alleen beheerders maken interne accounts en wijzen organisatie- of projectrollen toe.")}</p></button> : null}
+            <MfaSecurityCard client={client} />
+            <div className="operation-form">
+              <div className="operation-form-heading"><div><span className="record-number">{text("Client-controlled configuration", "Klantbeheerbare configuratie")}</span><h2>{text("Project rules", "Projectregels")}</h2></div><span className={`task-status ${data.settings?.configuration_status === "active" ? "green" : ""}`}>{data.settings?.configuration_status ?? "setup"}</span></div>
+              <div className="form-grid-2">
+                <label className="form-field"><span>{text("Report prefix", "Rapportprefix")}</span><input value={settings.reportPrefix} onChange={(event) => setSettings({ ...settings, reportPrefix: event.target.value.toUpperCase() })} /></label>
+                <label className="form-field"><span>{text("Default language", "Standaardtaal")}</span><select value={settings.defaultLanguage} onChange={(event) => setSettings({ ...settings, defaultLanguage: event.target.value })}><option value="en">English</option><option value="nl">Nederlands</option></select></label>
+                <label className="form-field"><span>{text("Default shift start", "Standaard starttijd")}</span><input type="time" value={settings.shiftStart} onChange={(event) => setSettings({ ...settings, shiftStart: event.target.value })} /></label>
+                <label className="form-field"><span>{text("Default shift end", "Standaard eindtijd")}</span><input type="time" value={settings.shiftEnd} onChange={(event) => setSettings({ ...settings, shiftEnd: event.target.value })} /></label>
+                <label className="form-field"><span>{text("Required location detail", "Verplicht locatieniveau")}</span><select value={settings.requiredLocationDepth} onChange={(event) => setSettings({ ...settings, requiredLocationDepth: event.target.value as typeof settings.requiredLocationDepth })}><option value="building">{text("Building", "Gebouw")}</option><option value="floor">{text("Floor", "Verdieping")}</option><option value="room">{text("Room", "Ruimte")}</option><option value="element">{text("Element", "Element")}</option></select></label>
+                <label className="form-field"><span>{text("File limit (MB)", "Bestandslimiet (MB)")}</span><input type="number" min="1" max="100" value={settings.maxFileSizeMb} onChange={(event) => setSettings({ ...settings, maxFileSizeMb: Number(event.target.value) })} /></label>
+                <label className="form-field"><span>{text("Reminder before deadline (hours)", "Herinnering vóór deadline (uur)")}</span><input type="number" min="1" max="720" value={settings.leadHours} onChange={(event) => setSettings({ ...settings, leadHours: Number(event.target.value) })} /></label>
+                <label className="form-field"><span>{text("Retention period (days)", "Bewaartermijn (dagen)")}</span><input type="number" min="30" value={settings.retentionDays} onChange={(event) => setSettings({ ...settings, retentionDays: event.target.value })} /></label>
+              </div>
+              <label className="form-field"><span>{text("Workforce disciplines · one per line", "Workforce-disciplines · één per regel")}</span><textarea rows={7} value={settings.disciplines} onChange={(event) => setSettings({ ...settings, disciplines: event.target.value })} /></label>
+              <div className="form-grid-2">
+                {[
+                  ["lowDays", text("Low severity deadline (days)", "Deadline lage ernst (dagen)")],
+                  ["mediumDays", text("Medium severity deadline (days)", "Deadline middelhoge ernst (dagen)")],
+                  ["highDays", text("High severity deadline (days)", "Deadline hoge ernst (dagen)")],
+                  ["criticalDays", text("Critical severity deadline (days)", "Deadline kritieke ernst (dagen)")],
+                ].map(([key, label]) => <label className="form-field" key={key}><span>{label}</span><input type="number" min="0" max="365" value={settings[key as "lowDays" | "mediumDays" | "highDays" | "criticalDays"]} onChange={(event) => setSettings({ ...settings, [key]: Number(event.target.value) })} /></label>)}
+              </div>
+              <div className="click-answer-block">
+                <strong>{text("Active project modules", "Actieve projectmodules")}</strong>
+                <div className="quick-issue-presets">{Object.entries({
+                  attendance: text("Workforce", "Workforce"), inspections: text("Inspections", "Inspecties"),
+                  quality: text("Issues & NCR", "Issues & NCR"), hse: "HSE", actions: text("Actions", "Acties"),
+                  documents: text("Documents", "Documenten"), visual_evidence: text("Visual evidence", "Visueel bewijs"),
+                }).map(([module, label]) => <button className={settings.modules[module] !== false ? "active" : ""} type="button" onClick={() => setSettings({ ...settings, modules: { ...settings.modules, [module]: settings.modules[module] === false } })} key={module}>{label}</button>)}</div>
+              </div>
+              <div className="click-answer-block">
+                <strong>{text("Client report sections", "Secties in klantrapport")}</strong>
+                <div className="quick-issue-presets">{["management","workforce","work","logistics","quality","hse","documents","visual","boq"].map((sectionName) => <button className={settings.reportSections.includes(sectionName) ? "active" : ""} type="button" onClick={() => setSettings({ ...settings, reportSections: settings.reportSections.includes(sectionName) ? settings.reportSections.filter((item) => item !== sectionName) : [...settings.reportSections, sectionName] })} key={sectionName}>{sectionName}</button>)}</div>
+              </div>
+              <div className="form-grid-2">
+                <label className="form-field"><span>{text("Report header", "Rapportkop")}</span><input value={settings.reportHeader} onChange={(event) => setSettings({ ...settings, reportHeader: event.target.value })} /></label>
+                <label className="form-field"><span>{text("Report footer", "Rapportvoettekst")}</span><input value={settings.reportFooter} onChange={(event) => setSettings({ ...settings, reportFooter: event.target.value })} /></label>
+              </div>
+              <label className="confirmation-check"><input type="checkbox" checked={settings.pushNotificationsEnabled} onChange={(event) => setSettings({ ...settings, pushNotificationsEnabled: event.target.checked })} /><span><strong>{text("Automatic push notifications for deadlines", "Automatische pushmeldingen voor deadlines")}</strong><small>{text("The in-app inbox keeps the auditable copy.", "De inbox bewaart de auditeerbare kopie.")}</small></span></label>
+              <button className="primary-button" type="button" disabled={busy || !data.settings || settings.disciplines.split("\n").filter((item) => item.trim()).length === 0 || settings.reportSections.length === 0} onClick={() => data.settings && void run(() => saveProjectSettings(client, data.settings!, {
+                report_prefix: settings.reportPrefix,
+                default_language: settings.defaultLanguage,
+                default_shift_start: settings.shiftStart,
+                default_shift_end: settings.shiftEnd,
+                max_file_size_mb: settings.maxFileSizeMb,
+                notification_lead_hours: settings.leadHours,
+                push_notifications_enabled: settings.pushNotificationsEnabled,
+                email_notifications_enabled: false,
+                retention_days: settings.retentionDays ? Number(settings.retentionDays) : null,
+                disciplines: settings.disciplines.split("\n").map((item) => item.trim()).filter(Boolean),
+                required_location_depth: settings.requiredLocationDepth,
+                finding_deadlines: { low: settings.lowDays, medium: settings.mediumDays, high: settings.highDays, critical: settings.criticalDays },
+                report_sections: settings.reportSections,
+                report_header: settings.reportHeader.trim() || null,
+                report_footer: settings.reportFooter.trim() || null,
+                modules: settings.modules,
+                configuration_status: "active",
+              }), text("All client-controlled project rules were stored centrally.", "Alle klantbeheerbare projectregels zijn centraal opgeslagen."))}><Settings size={15} /> {text("Save all project parameters", "Sla alle projectparameters op")}</button>
+            </div>
+          </div>
+        </section>
+      ) : null}
       {section === "structure" ? <section className="operation-panel"><div className="admin-card-grid"><div className="operation-form"><h2>Locatieboom · {buildingName}</h2><div className="form-grid-2"><label className="form-field"><span>Type</span><select value={location.type} onChange={(event) => setLocation({ ...location, type: event.target.value })}><option value="zone">Zone</option><option value="floor">Verdieping</option><option value="room">Ruimte</option><option value="element">Element</option><option value="work_package">Werkpakket</option></select></label><label className="form-field"><span>Code</span><input value={location.code} onChange={(event) => setLocation({ ...location, code: event.target.value })} /></label></div><label className="form-field"><span>Naam</span><input value={location.name} onChange={(event) => setLocation({ ...location, name: event.target.value })} /></label><label className="form-field"><span>Bovenliggende locatie</span><select value={location.parentId} onChange={(event) => setLocation({ ...location, parentId: event.target.value })}><option value="">Direct onder {buildingName}</option>{data.locationNodes.filter((node) => node.building_id === buildingId).map((node) => <option value={node.id} key={node.id}>{node.code} · {node.name}</option>)}</select></label><label className="form-field"><span>Toelichting</span><input value={location.description} onChange={(event) => setLocation({ ...location, description: event.target.value })} /></label><button className="primary-button" type="button" disabled={busy || location.code.trim().length < 1 || location.name.trim().length < 2} onClick={() => void run(() => createLocationNode(client, { organizationId, projectId, buildingId, parentId: location.parentId, type: location.type, code: location.code, name: location.name, description: location.description }), "Locatie aan de vaste projecthiërarchie toegevoegd.").then((okay) => { if (okay) setLocation({ type: "zone", code: "", name: "", parentId: "", description: "" }); })}><Plus size={15} /> Locatie toevoegen</button><div className="compact-register">{data.locationNodes.filter((node) => node.building_id === buildingId).map((node) => <span key={node.id}><strong>{node.code}</strong> {node.name} · {node.node_type}</span>)}</div></div><div className="operation-form"><h2>Projectpartijen</h2><div className="form-grid-2"><label className="form-field"><span>Type</span><select value={party.type} onChange={(event) => setParty({ ...party, type: event.target.value })}><option value="client">Opdrachtgever</option><option value="supervisor">Supervisor</option><option value="contractor">Aannemer</option><option value="subcontractor">Onderaannemer</option><option value="supplier">Leverancier</option><option value="consultant">Adviseur</option><option value="other">Overig</option></select></label><label className="form-field"><span>Code</span><input value={party.code} onChange={(event) => setParty({ ...party, code: event.target.value })} /></label></div><label className="form-field"><span>Naam</span><input value={party.name} onChange={(event) => setParty({ ...party, name: event.target.value })} /></label><button className="primary-button" type="button" disabled={busy || party.code.trim().length < 1 || party.name.trim().length < 2} onClick={() => void run(() => createProjectParty(client, { organizationId, projectId, code: party.code, name: party.name, type: party.type }), "Projectpartij centraal toegevoegd en beschikbaar voor aanwezigheid en toewijzing.").then((okay) => { if (okay) setParty({ type: "contractor", code: "", name: "" }); })}><Users size={15} /> Partij toevoegen</button><div className="compact-register">{parties.map((item) => <span key={item.id}><strong>{item.name}</strong> {item.type}</span>)}</div></div></div></section> : null}
       {section === "templates" ? (
         <section className="operation-panel checklist-management">

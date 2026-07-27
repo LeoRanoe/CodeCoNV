@@ -19,6 +19,7 @@ export type QueuedFindingDraft = {
   disposition?: "validated" | "to_be_corrected" | "alternative_solution";
   expectedResolutionDate?: string;
   sourceCatalogSubject?: string;
+  locationNodeId?: string;
 };
 
 export type OfflineFindingGroup = {
@@ -229,6 +230,7 @@ async function syncOfflineUploadsUnlocked(
             disposition: draft.disposition,
             expectedResolutionDate: draft.expectedResolutionDate,
             sourceCatalogSubject: draft.sourceCatalogSubject,
+            locationNodeId: draft.locationNodeId || upload.locationNodeId || undefined,
             idempotencyKey: `offline-finding:${upload.findingGroup.id}`,
           });
           findingId = finding.id;
@@ -265,6 +267,7 @@ async function syncOfflineUploadsUnlocked(
           disposition: upload.findingDraft.disposition,
           expectedResolutionDate: upload.findingDraft.expectedResolutionDate,
           sourceCatalogSubject: upload.findingDraft.sourceCatalogSubject,
+          locationNodeId: upload.findingDraft.locationNodeId || upload.locationNodeId || undefined,
           idempotencyKey: `offline-finding:${upload.id}`,
         });
         await linkFileToRecord(client, {

@@ -7064,6 +7064,9 @@ textarea:focus-visible {
   .media-actions-panel > .primary-button { flex: 1; }
 }
 .period-report-types { display: grid; gap: 8px; grid-column: 1 / -1; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.configuration-modules { border: 1px solid var(--border); border-radius: 12px; display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); padding: 14px; }
+.configuration-modules legend { color: var(--text); font-size: 13px; font-weight: 750; padding: 0 6px; }
+.inspection-search { margin-bottom: 16px; }
 .period-report-types button { background: #fff; border: 1px solid var(--border); border-radius: 10px; display: grid; gap: 3px; padding: 11px; text-align: left; }
 .period-report-types button.active { background: var(--green-soft); border-color: #86c1b0; color: var(--green); }
 .period-report-types span { color: var(--muted); font-size: 11px; }

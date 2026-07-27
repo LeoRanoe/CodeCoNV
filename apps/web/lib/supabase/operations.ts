@@ -42,6 +42,7 @@ export type ChecklistLibraryTemplate = {
 export type Inspection = {
   id: string;
   building_id: string;
+  location_node_id: string | null;
   template_id: string;
   inspection_number: string;
   title: string;
@@ -54,6 +55,7 @@ export type Inspection = {
 export type Finding = {
   id: string;
   building_id: string;
+  location_node_id: string | null;
   finding_number: string;
   finding_type: "observation" | "deficiency" | "deviation" | "ncr" | "improvement";
   title: string;
@@ -93,6 +95,7 @@ export type FindingProgressUpdate = {
 export type HseEvent = {
   id: string;
   building_id: string;
+  location_node_id: string | null;
   event_number: string;
   event_type: string;
   title: string;
@@ -107,6 +110,7 @@ export type HseEvent = {
 export type RegisterEntry = {
   id: string;
   building_id: string | null;
+  location_node_id: string | null;
   register_type: string;
   entry_number: string;
   title: string;
@@ -190,6 +194,27 @@ export type ProjectSettings = {
   branding: Record<string, unknown>;
   modules: Record<string, boolean>;
   signing_workflow: Array<{ role: string; required: boolean }>;
+  configuration_status: "setup" | "ready" | "active";
+  default_shift_start: string;
+  default_shift_end: string;
+  disciplines: string[];
+  finding_deadlines: Record<"low" | "medium" | "high" | "critical", number>;
+  report_sections: string[];
+  default_units: Record<string, string>;
+  required_location_depth: "building" | "floor" | "room" | "element";
+  report_header: string | null;
+  report_footer: string | null;
+};
+
+export type BoqProgressUpdate = {
+  id: string;
+  register_entry_id: string;
+  building_id: string;
+  progress_percent: number;
+  quantity_completed: number | null;
+  note: string;
+  recorded_at: string;
+  created_at: string;
 };
 
 export type LocationNode = {
@@ -306,6 +331,9 @@ export type PeriodReportSnapshot = {
   files: Array<Record<string, unknown>>;
   media_folders: Array<Record<string, unknown>>;
   finding_progress_updates: Array<Record<string, unknown>>;
+  boq_progress_updates?: Array<Record<string, unknown>>;
+  location_nodes?: Array<Record<string, unknown>>;
+  project_settings?: Record<string, unknown>;
 };
 
 export type OperationSnapshot = {
@@ -316,6 +344,7 @@ export type OperationSnapshot = {
   findingProgressUpdates: FindingProgressUpdate[];
   hseEvents: HseEvent[];
   registerEntries: RegisterEntry[];
+  boqProgressUpdates: BoqProgressUpdate[];
   files: FileRecord[];
   reportVersions: ReportVersion[];
   reportReviews: ReportReview[];
@@ -346,16 +375,17 @@ export async function loadProjectOperations(
   organizationId: string,
   reportId?: string | null,
 ): Promise<OperationSnapshot> {
-  const [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, registerResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult] = await Promise.all([
+  const [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, registerResult, boqProgressResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult] = await Promise.all([
     client.from("checklist_templates").select("id,project_id,module,code,name,description,version_number,status").or(`project_id.is.null,project_id.eq.${projectId}`).order("name"),
     client.from("checklist_library_templates").select("code,module,category,name,description,prompts,sort_order").eq("active", true).order("sort_order"),
-    client.from("inspections").select("id,building_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
-    client.from("findings").select("id,building_id,finding_number,finding_type,title,description,severity,priority,status,responsible_party_id,assigned_user_id,due_at,cause,proposed_correction,final_measure,issue_management,verified_at,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
+    client.from("inspections").select("id,building_id,location_node_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
+    client.from("findings").select("id,building_id,location_node_id,finding_number,finding_type,title,description,severity,priority,status,responsible_party_id,assigned_user_id,due_at,cause,proposed_correction,final_measure,issue_management,verified_at,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
     client.from("finding_progress_updates").select("id,finding_id,progress_percent,disposition,note,inspected_at,created_at").eq("project_id", projectId).order("inspected_at", { ascending: false }).limit(1000),
-    client.from("hse_events").select("id,building_id,event_number,event_type,title,description,severity,status,confidential,immediate_measure,occurred_at").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100),
-    client.from("project_register_entries").select("id,building_id,register_type,entry_number,title,status,occurred_at,due_at,details").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(150),
+    client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,title,description,severity,status,confidential,immediate_measure,occurred_at").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100),
+    client.from("project_register_entries").select("id,building_id,location_node_id,register_type,entry_number,title,status,occurred_at,due_at,details").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(5000),
+    client.from("boq_progress_updates").select("id,register_entry_id,building_id,progress_percent,quantity_completed,note,recorded_at,created_at").eq("project_id", projectId).order("recorded_at", { ascending: false }).limit(5000),
     client.from("files").select("id,building_id,folder_id,original_name,mime_type,size_bytes,category,status,created_at").eq("project_id", projectId).neq("status", "deleted").order("created_at", { ascending: false }).limit(500),
-    client.from("project_settings").select("id,project_id,report_prefix,default_language,max_file_size_mb,notification_lead_hours,email_notifications_enabled,push_notifications_enabled,retention_days,branding,modules,signing_workflow").eq("project_id", projectId).maybeSingle(),
+    client.from("project_settings").select("id,project_id,report_prefix,default_language,max_file_size_mb,notification_lead_hours,email_notifications_enabled,push_notifications_enabled,retention_days,branding,modules,signing_workflow,configuration_status,default_shift_start,default_shift_end,disciplines,finding_deadlines,report_sections,default_units,required_location_depth,report_header,report_footer").eq("project_id", projectId).maybeSingle(),
     client.from("backup_runs").select("id,run_type,status,schema_version,size_bytes,sha256,verified_at,created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(25),
     client.from("location_nodes").select("id,building_id,parent_id,node_type,code,name,description,status").eq("project_id", projectId).order("sort_order").limit(500),
     client.from("production_readiness_items").select("id,code,category,title,description,owner_hint,blocking,status,evidence,completed_at,sort_order").eq("organization_id", organizationId).order("sort_order"),
@@ -366,7 +396,7 @@ export async function loadProjectOperations(
     client.from("media_folders").select("id,building_id,parent_id,name,folder_type,status,created_at").eq("project_id", projectId).eq("status", "active").order("name").limit(500),
     client.from("external_share_links").select("id,organization_id,project_id,building_id,source_type,source_id,source_number,title,summary,source_file_id,expires_at,revoked_at,view_count,last_viewed_at,created_by,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(500),
   ]);
-  [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, registerResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult].forEach((result) => fail(result.error));
+  [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, registerResult, boqProgressResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult].forEach((result) => fail(result.error));
   const templateRows = (templateResult.data ?? []) as Omit<ChecklistTemplate, "items">[];
   const itemResult = templateRows.length
     ? await client.from("checklist_items").select("id,template_id,section,prompt,response_type,required,sort_order,unit,minimum_value,maximum_value,failure_severity,guidance").in("template_id", templateRows.map((template) => template.id)).order("sort_order")
@@ -396,6 +426,7 @@ export async function loadProjectOperations(
     findingProgressUpdates: (findingProgressResult.data ?? []) as FindingProgressUpdate[],
     hseEvents: (hseResult.data ?? []) as HseEvent[],
     registerEntries: (registerResult.data ?? []) as RegisterEntry[],
+    boqProgressUpdates: (boqProgressResult.data ?? []) as BoqProgressUpdate[],
     files: (fileResult.data ?? []) as FileRecord[],
     settings: settingsResult.data as ProjectSettings | null,
     backupRuns: (backupResult.data ?? []) as BackupRun[],
@@ -460,7 +491,7 @@ export async function revokeExternalShareLink(client: SupabaseClient, shareId: s
   return data as RevokeExternalShareResult;
 }
 
-export async function startInspection(client: SupabaseClient, input: { projectId: string; buildingId: string; reportId: string; templateId: string; title: string }) {
+export async function startInspection(client: SupabaseClient, input: { projectId: string; buildingId: string; locationNodeId?: string; reportId: string; templateId: string; title: string }) {
   const result = await client.rpc("start_project_inspection", {
     p_project_id: input.projectId,
     p_building_id: input.buildingId,
@@ -468,6 +499,7 @@ export async function startInspection(client: SupabaseClient, input: { projectId
     p_template_id: input.templateId,
     p_title: input.title,
     p_idempotency_key: `inspection:${crypto.randomUUID()}`,
+    p_location_node_id: input.locationNodeId || null,
   });
   fail(result.error);
   return result.data as Inspection;
@@ -511,6 +543,7 @@ export async function createFinding(client: SupabaseClient, input: {
   disposition?: "validated" | "to_be_corrected" | "alternative_solution";
   expectedResolutionDate?: string;
   sourceCatalogSubject?: string;
+  locationNodeId?: string;
   idempotencyKey?: string;
 }) {
   const result = await client.rpc("create_project_finding", {
@@ -534,6 +567,7 @@ export async function createFinding(client: SupabaseClient, input: {
       disposition: input.disposition || "to_be_corrected",
       expected_resolution_date: input.expectedResolutionDate || null,
       source_catalog_subject: input.sourceCatalogSubject || null,
+      location_node_id: input.locationNodeId || null,
     },
   });
   fail(result.error);
@@ -579,7 +613,7 @@ export async function transitionFinding(client: SupabaseClient, findingId: strin
   return result.data as Finding;
 }
 
-export async function createHseEvent(client: SupabaseClient, input: { projectId: string; buildingId: string; reportId: string; type: string; title: string; description: string; severity: string; immediateMeasure: string; confidential: boolean }) {
+export async function createHseEvent(client: SupabaseClient, input: { projectId: string; buildingId: string; locationNodeId?: string; reportId: string; type: string; title: string; description: string; severity: string; immediateMeasure: string; confidential: boolean }) {
   const result = await client.rpc("create_project_hse_event", {
     p_project_id: input.projectId,
     p_building_id: input.buildingId,
@@ -592,12 +626,13 @@ export async function createHseEvent(client: SupabaseClient, input: { projectId:
     p_confidential: input.confidential,
     p_occurred_at: new Date().toISOString(),
     p_idempotency_key: `hse:${crypto.randomUUID()}`,
+    p_location_node_id: input.locationNodeId || null,
   });
   fail(result.error);
   return result.data as HseEvent;
 }
 
-export async function createRegisterEntry(client: SupabaseClient, input: { projectId: string; buildingId: string; reportId: string; type: string; title: string; responsiblePartyId?: string; dueAt?: string | null; details: Record<string, unknown> }) {
+export async function createRegisterEntry(client: SupabaseClient, input: { projectId: string; buildingId: string; locationNodeId?: string; reportId: string; type: string; title: string; responsiblePartyId?: string; dueAt?: string | null; details: Record<string, unknown> }) {
   const result = await client.rpc("create_project_register_entry", {
     p_project_id: input.projectId,
     p_building_id: input.buildingId,
@@ -607,7 +642,7 @@ export async function createRegisterEntry(client: SupabaseClient, input: { proje
     p_occurred_at: new Date().toISOString(),
     p_due_at: input.dueAt ? `${input.dueAt}T23:59:59-03:00` : null,
     p_responsible_party_id: input.responsiblePartyId || null,
-    p_details: input.details,
+    p_details: { ...input.details, location_node_id: input.locationNodeId || null },
     p_idempotency_key: `register:${crypto.randomUUID()}`,
   });
   fail(result.error);
@@ -670,6 +705,24 @@ export async function importProjectBoq(client: SupabaseClient, input: {
   });
   fail(result.error);
   return Number(result.data ?? 0);
+}
+
+export async function recordBoqProgress(client: SupabaseClient, input: {
+  registerEntryId: string;
+  progressPercent: number;
+  quantityCompleted?: number | null;
+  note: string;
+  recordedAt?: string;
+}) {
+  const result = await client.rpc("record_boq_progress", {
+    p_register_entry_id: input.registerEntryId,
+    p_progress_percent: input.progressPercent,
+    p_quantity_completed: input.quantityCompleted ?? null,
+    p_note: input.note.trim(),
+    p_recorded_at: input.recordedAt || new Date().toISOString(),
+  });
+  fail(result.error);
+  return result.data as BoqProgressUpdate;
 }
 
 export async function reviewReport(client: SupabaseClient, reportId: string, decision: "approved" | "returned", comment: string) {

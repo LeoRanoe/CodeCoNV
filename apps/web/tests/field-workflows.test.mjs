@@ -76,3 +76,30 @@ test("refreshes expiring API bearer tokens and preserves every field image local
   assert.match(guide, /Stuur naar een externe partij zonder account/);
   assert.match(guide, /vernieuwt de app een aflopende beveiligde sessie automatisch/);
 });
+
+test("enforces project configuration, exact locations and auditable BOQ progress", async () => {
+  const [app, operations, picker, dataLayer, migration] = await Promise.all([
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/location-picker.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/data.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202607270003_client_configuration_location_boq.sql", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(app, /New configured project/);
+  assert.match(app, /Workforce disciplines/);
+  assert.match(app, /requiredLocationDepth/);
+  assert.match(app, /action-location/);
+  assert.match(app, /authTimeout/);
+  assert.match(operations, /Datums technische instructie/);
+  assert.match(operations, /Change order \(CO\)/);
+  assert.match(operations, /recordBoqProgress/);
+  assert.match(operations, /findingLocationNodeId/);
+  assert.match(picker, /locationBreadcrumb/);
+  assert.match(dataLayer, /configuration_status: "setup"/);
+  assert.match(dataLayer, /configuration_status: "active"/);
+  assert.match(migration, /create table if not exists public\.boq_progress_updates/);
+  assert.match(migration, /create or replace function public\.record_boq_progress/);
+  assert.match(migration, /create or replace function app_private\.validate_record_location/);
+  assert.match(migration, /create or replace function public\.create_project_action\([\s\S]*p_location_node_id uuid/);
+});

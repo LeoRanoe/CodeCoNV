@@ -51,6 +51,7 @@ import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { LocationPicker, locationBreadcrumb, type ProjectLocationOption } from "@/app/location-picker";
 import { FieldGuide } from "@/app/field-guide";
 import { OperationalWorkspace } from "@/app/operational-workspace";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
@@ -162,7 +163,7 @@ type TimelineEntry = {
 };
 
 type QuickType = {
-  id: EntryKind | "hse" | "delivery" | "test" | "delay";
+  id: EntryKind | "hse" | "delivery" | "test" | "delay" | "agreement";
   title: string;
   description: string;
   icon: LucideIcon;
@@ -256,6 +257,8 @@ const quickTypes: QuickType[] = [
   { id: "delivery", title: "Levering", description: "Registreer materiaalontvangst", icon: PackageCheck },
   { id: "test", title: "Test / meting", description: "Noteer waarde en tolerantie", icon: Ruler },
   { id: "delay", title: "Vertraging", description: "Leg oorzaak en tijdblok vast", icon: TimerOff },
+  { id: "note", title: "Notitie", description: "Leg een gedateerde veldnotitie vast", icon: MessageSquareText },
+  { id: "agreement", title: "Afspraak", description: "Leg afspraak, verantwoordelijke en deadline vast", icon: FileCheck2 },
 ];
 
 const quickTypesEnglish: QuickType[] = [
@@ -268,6 +271,8 @@ const quickTypesEnglish: QuickType[] = [
   { id: "delivery", title: "Delivery", description: "Record a material delivery", icon: PackageCheck },
   { id: "test", title: "Test / measurement", description: "Record a value and tolerance", icon: Ruler },
   { id: "delay", title: "Delay", description: "Record the cause and time lost", icon: TimerOff },
+  { id: "note", title: "Note", description: "Record a dated field note", icon: MessageSquareText },
+  { id: "agreement", title: "Agreement", description: "Record the agreement, owner and deadline", icon: FileCheck2 },
 ];
 
 const entryIcons: Record<EntryKind, LucideIcon> = {
@@ -446,6 +451,8 @@ function attendanceRowsForBuilding(
   day: Pick<ProjectDaySnapshot, "attendance" | "parties">,
   buildingId: string,
   unknownPartyLabel: string,
+  defaultShiftStart = "07:00",
+  defaultShiftEnd = "16:00",
 ): AttendanceRow[] {
   const partyById = new Map(day.parties.map((party) => [party.id, party]));
   const buildingAttendance = day.attendance.filter((row) => row.building_id === buildingId);
@@ -469,8 +476,8 @@ function attendanceRowsForBuilding(
     party: party.name,
     discipline: disciplineForParty(party.type),
     count: 0,
-    shiftStart: "07:00",
-    shiftEnd: "16:00",
+    shiftStart: defaultShiftStart,
+    shiftEnd: defaultShiftEnd,
   }));
 }
 
@@ -492,7 +499,7 @@ export function CodecoSupervisionApp() {
   const [activeNav, setActiveNav] = useState<NavKey>("vandaag");
   const [modal, setModal] = useState<ModalKey>(null);
   const [selectedType, setSelectedType] = useState<string>("activity");
-  const [initialProjectTab, setInitialProjectTab] = useState<"home" | "inspections" | "findings" | "visual" | "files">("home");
+  const [initialProjectTab, setInitialProjectTab] = useState<"home" | "inspections" | "findings" | "hse" | "registers" | "visual" | "tools" | "files">("home");
   const quickCameraInputRef = useRef<HTMLInputElement>(null);
   const dailyBackupCheckRef = useRef("");
   const [pendingQuickPhotos, setPendingQuickPhotos] = useState<File[]>([]);
@@ -500,6 +507,7 @@ export function CodecoSupervisionApp() {
   const [location, setLocation] = useState("Floor 3 · East zone");
   const [priority, setPriority] = useState("normal");
   const [entryBuildingId, setEntryBuildingId] = useState<string>("");
+  const [entryLocationNodeId, setEntryLocationNodeId] = useState("");
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
   const [completedTodos, setCompletedTodos] = useState<number[]>([]);
@@ -597,6 +605,45 @@ export function CodecoSupervisionApp() {
     enabled: Boolean(supabase && session && selectedProject),
   });
 
+  const projectConfigurationQuery = useQuery({
+    queryKey: ["project-configuration", selectedProject?.id],
+    queryFn: async () => {
+      const result = await (supabase as SupabaseClient)
+        .from("project_settings")
+        .select("disciplines,default_shift_start,default_shift_end,modules,required_location_depth")
+        .eq("project_id", selectedProject!.id)
+        .single();
+      if (result.error) throw result.error;
+      return result.data as {
+        disciplines: string[];
+        default_shift_start: string;
+        default_shift_end: string;
+        modules: Record<string, boolean>;
+        required_location_depth: "building" | "floor" | "room" | "element";
+      };
+    },
+    enabled: Boolean(supabase && session && selectedProject),
+  });
+  const configuredDisciplines = projectConfigurationQuery.data?.disciplines?.length
+    ? projectConfigurationQuery.data.disciplines
+    : [...constructionDisciplines];
+  const configuredShiftStart = projectConfigurationQuery.data?.default_shift_start?.slice(0, 5) ?? "07:00";
+  const configuredShiftEnd = projectConfigurationQuery.data?.default_shift_end?.slice(0, 5) ?? "16:00";
+  const projectLocationsQuery = useQuery({
+    queryKey: ["project-locations", selectedProject?.id],
+    queryFn: async () => {
+      const result = await (supabase as SupabaseClient)
+        .from("location_nodes")
+        .select("id,building_id,parent_id,node_type,code,name,status")
+        .eq("project_id", selectedProject!.id)
+        .eq("status", "active")
+        .order("sort_order");
+      if (result.error) throw result.error;
+      return result.data as ProjectLocationOption[];
+    },
+    enabled: Boolean(supabase && session && selectedProject),
+  });
+
   const notificationQuery = useQuery({
     queryKey: ["project-notifications", selectedProject?.id],
     queryFn: () => loadProjectNotifications(supabase as SupabaseClient, selectedProject!.id),
@@ -629,6 +676,9 @@ export function CodecoSupervisionApp() {
   useEffect(() => {
     if (!supabase) return;
     let active = true;
+    const authTimeout = window.setTimeout(() => {
+      if (active) setAuthReady(true);
+    }, 8_000);
     void getSession(supabase).then((nextSession) => {
       if (active) {
         setSession(nextSession);
@@ -636,6 +686,8 @@ export function CodecoSupervisionApp() {
       }
     }).catch(() => {
       if (active) setAuthReady(true);
+    }).finally(() => {
+      window.clearTimeout(authTimeout);
     });
     const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (event === "PASSWORD_RECOVERY") setPasswordRecovery(true);
@@ -650,6 +702,7 @@ export function CodecoSupervisionApp() {
     });
     return () => {
       active = false;
+      window.clearTimeout(authTimeout);
       data.subscription.unsubscribe();
     };
   }, [supabase]);
@@ -740,17 +793,20 @@ export function CodecoSupervisionApp() {
         kind: timelineKind(type),
         title: String(row.title),
         detail: String(row.description ?? `${entryTitles[type] ?? "Registratie"} centraal opgeslagen.`),
-        location: buildingNameById.get(String(row.building_id)) ?? selectedBuilding.name,
+        location: [
+          buildingNameById.get(String(row.building_id)) ?? selectedBuilding.name,
+          locationBreadcrumb(projectLocationsQuery.data ?? [], String(row.location_node_id ?? "")),
+        ].filter(Boolean).join(" → "),
         person: currentUserName,
         badge: priorityLabel,
         badgeTone: String(row.priority) === "critical" ? "red" : "green",
       };
       }));
 
-      setAttendance(attendanceRowsForBuilding(day, selectedBuilding.id, text("Unknown party", "Onbekende partij")));
+      setAttendance(attendanceRowsForBuilding(day, selectedBuilding.id, text("Unknown party", "Onbekende partij"), configuredShiftStart, configuredShiftEnd));
     }, 0);
     return () => window.clearTimeout(hydration);
-  }, [currentUserName, dayQuery.data, locale, selectedBuilding, selectedProject, text]);
+  }, [configuredShiftEnd, configuredShiftStart, currentUserName, dayQuery.data, locale, projectLocationsQuery.data, selectedBuilding, selectedProject, text]);
 
   useEffect(() => {
     if (!supabase || !session || !selectedProject) return;
@@ -900,8 +956,21 @@ export function CodecoSupervisionApp() {
       setModal(null);
       return;
     }
+    if (type === "finding" || type === "inspection" || type === "hse") {
+      setInitialProjectTab(type === "finding" ? "findings" : type === "inspection" ? "inspections" : "hse");
+      setActiveNav("project");
+      setModal(null);
+      return;
+    }
+    if (type === "note" || type === "agreement") {
+      setInitialProjectTab("tools");
+      setActiveNav("project");
+      setModal(null);
+      return;
+    }
     setSelectedType(type);
     setEntryBuildingId(resolveDefaultBuildingId(selectedProject?.buildings ?? [], selectedBuilding?.id));
+    setEntryLocationNodeId("");
     setModal(type === "action" ? "action_create" : "entry");
   };
 
@@ -913,6 +982,7 @@ export function CodecoSupervisionApp() {
       () => saveSiteRegistration(supabase, {
         projectId: selectedProject.id,
         buildingId: entryBuilding.id,
+        locationNodeId: entryLocationNodeId,
         type: selectedType,
         title: description.trim(),
         description: `${location} · ${description.trim()}`,
@@ -1103,6 +1173,18 @@ export function CodecoSupervisionApp() {
       <ContextSelection
         projects={workspaceQuery.data.projects}
         chooseProject={chooseProject}
+        organizationName={workspaceQuery.data.organizations[0].name}
+        createProject={async (answers) => {
+          const saved = await runSynced(
+            () => createProjectWorkspace(supabase, {
+              organizationId: workspaceQuery.data!.organizations[0].id,
+              ...answers,
+            }),
+            text("Configured project workspace created.", "Geconfigureerde projectwerkruimte aangemaakt."),
+          );
+          if (saved) await queryClient.invalidateQueries({ queryKey: ["workspace", session.user.id] });
+          return Boolean(saved);
+        }}
         currentUserName={currentUserName}
         storageStatus={storageStatus}
         isOnline={isOnline}
@@ -1347,6 +1429,7 @@ export function CodecoSupervisionApp() {
               entries={entries}
               actions={dayActions}
               actionUpdates={dayQuery.data?.actionUpdates ?? []}
+              locationNodes={projectLocationsQuery.data ?? []}
               openAction={(action) => {
                 setSelectedAction(action);
                 setModal("action_detail");
@@ -1391,7 +1474,6 @@ export function CodecoSupervisionApp() {
         <EntryModal
           selectedType={selectedType}
           description={description}
-          location={location}
           priority={priority}
           setDescription={setDescription}
           setLocation={setLocation}
@@ -1404,7 +1486,11 @@ export function CodecoSupervisionApp() {
           buildingName={buildingName}
           buildings={selectedProject.buildings}
           buildingId={entryBuildingId}
-          setBuildingId={setEntryBuildingId}
+          setBuildingId={(next) => { setEntryBuildingId(next); setEntryLocationNodeId(""); }}
+          locationNodes={projectLocationsQuery.data ?? []}
+          locationNodeId={entryLocationNodeId}
+          setLocationNodeId={setEntryLocationNodeId}
+          requiredLocationDepth={projectConfigurationQuery.data?.required_location_depth ?? "building"}
         />
       ) : null}
       {modal === "action_create" && selectedProject && selectedBuilding ? (
@@ -1414,13 +1500,16 @@ export function CodecoSupervisionApp() {
           buildingName={buildingName}
           buildings={selectedProject.buildings}
           defaultBuildingId={selectedBuilding.id}
+          locationNodes={projectLocationsQuery.data ?? []}
+          requiredLocationDepth={projectConfigurationQuery.data?.required_location_depth ?? "building"}
           close={() => setModal(null)}
           goBack={() => setModal("quick")}
-          save={async (answers, actionBuildingId) => {
+          save={async (answers, actionBuildingId, locationNodeId) => {
             const saved = await runSynced(
               () => createProjectAction(supabase, {
                 projectId: selectedProject.id,
                 buildingId: actionBuildingId,
+                locationNodeId,
                 ...answers,
               }),
               "Actie is met deadline en verantwoordelijke centraal aangemaakt.",
@@ -1437,6 +1526,7 @@ export function CodecoSupervisionApp() {
         <ActionDetailModal
           action={selectedAction}
           partyName={dayQuery.data?.parties.find((party) => party.id === selectedAction.owner_party_id)?.name ?? "Niet toegewezen"}
+          locationNodes={projectLocationsQuery.data ?? []}
           updates={(dayQuery.data?.actionUpdates ?? []).filter((update) => update.action_id === selectedAction.id)}
           close={() => {
             setSelectedAction(null);
@@ -1535,6 +1625,8 @@ export function CodecoSupervisionApp() {
         <ProjectStartForm
           project={selectedProject}
           building={contextBuilding}
+          defaultShiftStart={configuredShiftStart}
+          defaultShiftEnd={configuredShiftEnd}
           close={() => { setModal(null); setContextBuildingId(null); }}
           initialAnswers={contextProjectStartAnswers}
           save={async (answers) => {
@@ -1546,6 +1638,9 @@ export function CodecoSupervisionApp() {
       {modal === "attendance" && selectedProject && selectedBuilding ? (
         <AttendanceModal
           initialRows={attendance}
+          disciplines={configuredDisciplines}
+          defaultShiftStart={configuredShiftStart}
+          defaultShiftEnd={configuredShiftEnd}
           buildings={selectedProject.buildings}
           defaultBuildingId={selectedBuilding.id}
           day={dayQuery.data}
@@ -1583,6 +1678,9 @@ export function CodecoSupervisionApp() {
       {modal === "one_tap_log" && selectedProject && selectedBuilding ? (
         <OneTapDailyLogModal
           initialRows={attendance}
+          disciplines={configuredDisciplines}
+          defaultShiftStart={configuredShiftStart}
+          defaultShiftEnd={configuredShiftEnd}
           buildings={selectedProject.buildings}
           defaultBuildingId={selectedBuilding.id}
           day={dayQuery.data}
@@ -1897,10 +1995,14 @@ function ProjectSetupScreen({
   organizationName,
   save,
   signOut,
+  embedded = false,
+  close,
 }: {
   organizationName: string;
   save: (answers: ProjectSetupAnswers) => Promise<boolean>;
   signOut: () => void;
+  embedded?: boolean;
+  close?: () => void;
 }) {
   const { text } = useLanguage();
   const localizedProjectSetupSchema = useMemo(() => createProjectSetupSchema(), []);
@@ -1915,7 +2017,28 @@ function ProjectSetupScreen({
       clientName: "Client",
       buildingCode: "HOOFD",
       buildingName: "Main building",
+      additionalBuildings: "",
+      locationLevels: "floor|GF|Ground floor\nfloor|L1|First floor\nfloor|L2|Second floor",
       contractorName: "Main contractor",
+      defaultLanguage: "en",
+      shiftStart: "07:00",
+      shiftEnd: "16:00",
+      reportPrefix: "DR",
+      requiredLocationDepth: "floor",
+      disciplines: constructionDisciplines.join("\n"),
+      lowDeadlineDays: 14,
+      mediumDeadlineDays: 7,
+      highDeadlineDays: 3,
+      criticalDeadlineDays: 1,
+      notificationLeadHours: 24,
+      reportHeader: "CODECO Construction Supervision",
+      reportFooter: "",
+      enableWorkforce: true,
+      enableInspections: true,
+      enableQuality: true,
+      enableHse: true,
+      enableDocuments: true,
+      enableVisualEvidence: true,
     },
   });
   const submit = async (answers: ProjectSetupAnswers) => {
@@ -1926,10 +2049,10 @@ function ProjectSetupScreen({
     setBusy(false);
   };
   return (
-    <div className="access-shell setup-shell">
-      <section className="access-card setup-card project-setup-card">
-        <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={`${organizationName} · ${text("Initial setup", "Eerste inrichting")}`} /></div><LanguageSwitcher /><button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button></div>
-        <p className="eyebrow">{text("Step 2 of 2", "Stap 2 van 2")}</p><h1>{text("First project and building", "Eerste project en gebouw")}</h1><p>{text("The application atomically creates the project, building, your project access and three standard parties.", "De applicatie maakt atomair het project, gebouw, jouw projecttoegang en drie standaardpartijen aan.")}</p>
+    <div className={embedded ? "modal-backdrop" : "access-shell setup-shell"} onMouseDown={(event) => embedded && event.target === event.currentTarget && close?.()}>
+      <section className={embedded ? "modal setup-card project-setup-card" : "access-card setup-card project-setup-card"} role={embedded ? "dialog" : undefined} aria-modal={embedded ? true : undefined}>
+        <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={`${organizationName} · ${embedded ? text("New project", "Nieuw project") : text("Initial setup", "Eerste inrichting")}`} /></div><LanguageSwitcher />{embedded ? <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button> : <button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button>}</div>
+        <p className="eyebrow">{embedded ? text("Configure before activation", "Configureer vóór activatie") : text("Step 2 of 2", "Stap 2 van 2")}</p><h1>{embedded ? text("Create configured project", "Maak geconfigureerd project") : text("First project and building", "Eerste project en gebouw")}</h1><p>{text("The project, buildings, location tree, client parameters and standard parties are stored before field work starts.", "Project, gebouwen, locatieboom, klantparameters en standaardpartijen worden opgeslagen voordat het veldwerk start.")}</p>
         <form className="access-form setup-form two-columns" onSubmit={handleSubmit(submit)} noValidate>
           <label className="form-field"><span>{text("Project code", "Projectcode")}</span><input {...register("code")} />{errors.code ? <small className="field-error">{errors.code.message}</small> : null}</label>
           <label className="form-field"><span>{text("Project name", "Projectnaam")}</span><input {...register("name")} /></label>
@@ -1938,8 +2061,42 @@ function ProjectSetupScreen({
           <label className="form-field"><span>{text("Building code", "Gebouwcode")}</span><input {...register("buildingCode")} /></label>
           <label className="form-field"><span>{text("Building name", "Gebouwnaam")}</span><input {...register("buildingName")} /></label>
           <label className="form-field wide"><span>{text("Main contractor", "Hoofdaannemer")}</span><input {...register("contractorName")} /></label>
+          <details className="optional-text-entry wide" open>
+            <summary>{text("Buildings and exact location structure", "Gebouwen en exacte locatiestructuur")}</summary>
+            <div className="form-grid two-columns">
+              <label className="form-field wide"><span>{text("Additional buildings · CODE|Name · one per line", "Extra gebouwen · CODE|Naam · één per regel")}</span><textarea rows={3} {...register("additionalBuildings")} placeholder={"B2|Building 2\nB3|Building 3"} /></label>
+              <label className="form-field wide"><span>{text("Location template · type|code|name|optional parent code", "Locatiesjabloon · type|code|naam|optionele bovenliggende code")}</span><textarea rows={6} {...register("locationLevels")} /><small>{text("Types: zone, floor, room, element or work_package. The template is applied to every building.", "Typen: zone, floor, room, element of work_package. Het sjabloon wordt op ieder gebouw toegepast.")}</small></label>
+              <label className="form-field"><span>{text("Required location detail", "Verplicht locatieniveau")}</span><select {...register("requiredLocationDepth")}><option value="building">{text("Building", "Gebouw")}</option><option value="floor">{text("Floor", "Verdieping")}</option><option value="room">{text("Room", "Ruimte")}</option><option value="element">{text("Element", "Element")}</option></select></label>
+            </div>
+          </details>
+          <details className="optional-text-entry wide" open>
+            <summary>{text("Daily work parameters", "Dagelijkse werkparameters")}</summary>
+            <div className="form-grid two-columns">
+              <label className="form-field"><span>{text("Default language", "Standaardtaal")}</span><select {...register("defaultLanguage")}><option value="en">English</option><option value="nl">Nederlands</option></select></label>
+              <label className="form-field"><span>{text("Report prefix", "Rapportprefix")}</span><input {...register("reportPrefix")} /></label>
+              <label className="form-field"><span>{text("Shift start", "Start werktijd")}</span><input type="time" {...register("shiftStart")} /></label>
+              <label className="form-field"><span>{text("Shift end", "Einde werktijd")}</span><input type="time" {...register("shiftEnd")} /></label>
+              <label className="form-field wide"><span>{text("Workforce disciplines · one per line", "Workforce-disciplines · één per regel")}</span><textarea rows={9} {...register("disciplines")} /></label>
+            </div>
+          </details>
+          <details className="optional-text-entry wide">
+            <summary>{text("Deadlines, notifications and reports", "Deadlines, meldingen en rapporten")}</summary>
+            <div className="form-grid two-columns">
+              <label className="form-field"><span>{text("Low severity · days", "Lage ernst · dagen")}</span><input type="number" {...register("lowDeadlineDays", { valueAsNumber: true })} /></label>
+              <label className="form-field"><span>{text("Medium severity · days", "Middelhoge ernst · dagen")}</span><input type="number" {...register("mediumDeadlineDays", { valueAsNumber: true })} /></label>
+              <label className="form-field"><span>{text("High severity · days", "Hoge ernst · dagen")}</span><input type="number" {...register("highDeadlineDays", { valueAsNumber: true })} /></label>
+              <label className="form-field"><span>{text("Critical severity · days", "Kritieke ernst · dagen")}</span><input type="number" {...register("criticalDeadlineDays", { valueAsNumber: true })} /></label>
+              <label className="form-field"><span>{text("Reminder before deadline · hours", "Herinnering vóór deadline · uur")}</span><input type="number" {...register("notificationLeadHours", { valueAsNumber: true })} /></label>
+              <label className="form-field"><span>{text("Report header", "Rapportkop")}</span><input {...register("reportHeader")} /></label>
+              <label className="form-field wide"><span>{text("Report footer", "Rapportvoettekst")}</span><input {...register("reportFooter")} /></label>
+            </div>
+          </details>
+          <fieldset className="wide configuration-modules">
+            <legend>{text("Active modules for this project", "Actieve modules voor dit project")}</legend>
+            {[["enableWorkforce", text("Workforce", "Workforce")], ["enableInspections", text("Inspections", "Inspecties")], ["enableQuality", text("Issues & NCR", "Issues & NCR")], ["enableHse", "HSE"], ["enableDocuments", text("Documents and formal registers", "Documenten en formele registers")], ["enableVisualEvidence", text("Photos, 360° and pointers", "Foto's, 360° en pointers")]].map(([field, label]) => <label className="confirmation-check" key={field}><input type="checkbox" {...register(field as "enableWorkforce" | "enableInspections" | "enableQuality" | "enableHse" | "enableDocuments" | "enableVisualEvidence")} /><span><strong>{label}</strong></span></label>)}
+          </fieldset>
           {error ? <p className="access-message error wide" role="alert">{error}</p> : null}
-          <button className="primary-button access-submit wide" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <ArrowRight size={16} />}{text("Create project workspace", "Projectwerkruimte aanmaken")}</button>
+          <button className="primary-button access-submit wide" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <ArrowRight size={16} />}{text("Validate configuration and create project", "Valideer configuratie en maak project")}</button>
         </form>
       </section>
     </div>
@@ -1949,6 +2106,8 @@ function ProjectSetupScreen({
 function ContextSelection({
   projects,
   chooseProject,
+  organizationName,
+  createProject,
   currentUserName,
   storageStatus,
   isOnline,
@@ -1956,12 +2115,15 @@ function ContextSelection({
 }: {
   projects: ProjectContext[];
   chooseProject: (project: ProjectContext) => void;
+  organizationName: string;
+  createProject: (answers: ProjectSetupAnswers) => Promise<boolean>;
   currentUserName: string;
   storageStatus: string;
   isOnline: boolean;
   offlineCached: boolean;
 }) {
   const { text } = useLanguage();
+  const [showProjectSetup, setShowProjectSetup] = useState(false);
   const portfolio = projects.reduce((total, project) => ({
     projects: total.projects + 1,
     actions: total.actions + project.openIssues,
@@ -1987,6 +2149,7 @@ function ContextSelection({
 
         <section className="context-heading">
           <div><p className="eyebrow">{text("My projects", "Mijn projecten")}</p><h1>{text("Where will you work today?", "Waar ga je vandaag werken?")}</h1><p>{text("Select a project to open its dashboard. Every building in the project is available from there.", "Kies een project om het dashboard te openen. Alle gebouwen van het project zijn daar direct beschikbaar.")}</p></div>
+          <button className="primary-button" type="button" onClick={() => setShowProjectSetup(true)}><Plus size={15} /> {text("New configured project", "Nieuw geconfigureerd project")}</button>
         </section>
         <section className="portfolio-dashboard" aria-label={text("Portfolio overview", "Portfolio-overzicht")}>
           <div><span>{text("Active projects", "Actieve projecten")}</span><strong>{portfolio.projects}</strong></div>
@@ -2018,6 +2181,11 @@ function ContextSelection({
           ))}
         </section>
       </main>
+      {showProjectSetup ? <ProjectSetupScreen organizationName={organizationName} save={async (answers) => {
+        const okay = await createProject(answers);
+        if (okay) setShowProjectSetup(false);
+        return okay;
+      }} signOut={() => undefined} embedded close={() => setShowProjectSetup(false)} /> : null}
     </div>
   );
 }
@@ -2025,12 +2193,16 @@ function ContextSelection({
 function ProjectStartForm({
   project,
   building,
+  defaultShiftStart,
+  defaultShiftEnd,
   close,
   save,
   initialAnswers,
 }: {
   project: ProjectContext;
   building: BuildingContext;
+  defaultShiftStart: string;
+  defaultShiftEnd: string;
   close: () => void;
   save: (answers: ProjectStartAnswers) => void | Promise<void>;
   initialAnswers: ProjectStartAnswers | null;
@@ -2050,8 +2222,8 @@ function ProjectStartForm({
       weatherCondition: "partly_cloudy",
       temperatureC: 31,
       windCondition: "moderate",
-      shiftStart: "07:00",
-      shiftEnd: "16:00",
+      shiftStart: defaultShiftStart,
+      shiftEnd: defaultShiftEnd,
       plannedWork: "",
       expectedWorkers: 42,
       inspectionPlanned: "yes",
@@ -2490,6 +2662,7 @@ function SecondaryView({
   entries,
   actions,
   actionUpdates,
+  locationNodes,
   openAction,
   openActionCreate,
   reportNumber,
@@ -2507,6 +2680,7 @@ function SecondaryView({
   entries: TimelineEntry[];
   actions: ProjectAction[];
   actionUpdates: ActionUpdate[];
+  locationNodes: ProjectLocationOption[];
   openAction: (action: ProjectAction) => void;
   openActionCreate: () => void;
   reportNumber: string;
@@ -2568,7 +2742,7 @@ function SecondaryView({
             return (
             <button className="action-row" type="button" key={action.id} onClick={() => openAction(action)} style={{ textAlign: "left", cursor: "pointer" }}>
               <span className="action-icon"><CheckCircle2 size={18} /></span>
-              <span className="action-copy"><strong>{action.title}</strong><span>{dueAt} · {action.action_number}{latestUpdate ? ` · ${latestUpdate.message}` : ""}</span></span>
+              <span className="action-copy"><strong>{action.title}</strong><span>{dueAt} · {action.action_number}{action.location_node_id ? ` · ${locationBreadcrumb(locationNodes, action.location_node_id)}` : ""}{latestUpdate ? ` · ${latestUpdate.message}` : ""}</span></span>
               <span className={`task-status ${action.priority === "critical" ? "red" : action.status === "verified" ? "green" : ""}`}>{statusLabels[action.status]}</span>
             </button>
           );})}
@@ -2824,7 +2998,7 @@ function UserAdminModal({
 
 function QuickAddModal({ close, chooseType }: { close: () => void; chooseType: (type: string) => void }) {
   const { language, text } = useLanguage();
-  const availableTypes = (language === "en" ? quickTypesEnglish : quickTypes).filter((type) => ["activity", "delivery", "test", "delay", "action"].includes(type.id));
+  const availableTypes = language === "en" ? quickTypesEnglish : quickTypes;
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal" role="dialog" aria-modal="true" aria-labelledby="quick-title">
@@ -2853,7 +3027,6 @@ function QuickAddModal({ close, chooseType }: { close: () => void; chooseType: (
 function EntryModal({
   selectedType,
   description,
-  location,
   priority,
   setDescription,
   setLocation,
@@ -2867,10 +3040,13 @@ function EntryModal({
   buildings,
   buildingId,
   setBuildingId,
+  locationNodes,
+  locationNodeId,
+  setLocationNodeId,
+  requiredLocationDepth,
 }: {
   selectedType: string;
   description: string;
-  location: string;
   priority: string;
   setDescription: (value: string) => void;
   setLocation: (value: string) => void;
@@ -2884,6 +3060,10 @@ function EntryModal({
   buildings: BuildingOption[];
   buildingId: string;
   setBuildingId: (value: string) => void;
+  locationNodes: ProjectLocationOption[];
+  locationNodeId: string;
+  setLocationNodeId: (value: string) => void;
+  requiredLocationDepth: "building" | "floor" | "room" | "element";
 }) {
   const { language, locale, text } = useLanguage();
   const title = (language === "en" ? entryTitlesEnglish : entryTitles)[selectedType] ?? text("Record", "Registratie");
@@ -2914,15 +3094,7 @@ function EntryModal({
               <textarea id="description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder={text("Choose above; only add an exceptional detail.", "Kies hierboven; voeg alleen een uitzonderlijk detail toe.")} />
             </div>
             <BuildingPicker id="entry-building" buildings={buildings} value={buildingId} onChange={setBuildingId} />
-            <div className="form-field">
-              <label htmlFor="location">{text("Location *", "Locatie *")}</label>
-              <select id="location" value={location} onChange={(event) => setLocation(event.target.value)}>
-                <option value={chosenBuildingName}>{chosenBuildingName} · {text("general", "algemeen")}</option>
-                <option value={`${chosenBuildingName} · ${text("Ground floor", "Begane grond")}`}>{chosenBuildingName} · {text("Ground floor", "Begane grond")}</option>
-                <option value={`${chosenBuildingName} · ${text("Upper floor", "Verdieping")}`}>{chosenBuildingName} · {text("Upper floor", "Verdieping")}</option>
-                <option value={`${chosenBuildingName} · ${text("Outdoor area", "Buitenterrein")}`}>{chosenBuildingName} · {text("Outdoor area", "Buitenterrein")}</option>
-              </select>
-            </div>
+            <LocationPicker id="entry-location" nodes={locationNodes} buildingId={buildingId} value={locationNodeId} onChange={(next) => { setLocationNodeId(next); setLocation(next ? `${chosenBuildingName} → ${locationBreadcrumb(locationNodes, next)}` : chosenBuildingName); }} requiredDepth={requiredLocationDepth} />
             {needsPriority ? (
               <div className="form-field">
                 <label htmlFor="priority">{text("Priority", "Prioriteit")}</label>
@@ -2944,7 +3116,7 @@ function EntryModal({
           </div>
           <div className="modal-actions">
             <button className="back-button" type="button" onClick={goBack}><ArrowLeft size={14} /> {text("Back", "Terug")}</button>
-            <button className="primary-button" type="button" onClick={save} disabled={!description.trim()}>{text("Save and include", "Opslaan en opnemen")} <Check size={14} /></button>
+            <button className="primary-button" type="button" onClick={save} disabled={!description.trim() || (requiredLocationDepth !== "building" && !locationNodeId)}>{text("Save and include", "Opslaan en opnemen")} <Check size={14} /></button>
           </div>
         </div>
       </section>
@@ -2958,6 +3130,8 @@ function ActionCreateModal({
   buildingName,
   buildings,
   defaultBuildingId,
+  locationNodes,
+  requiredLocationDepth,
   close,
   goBack,
   save,
@@ -2967,13 +3141,16 @@ function ActionCreateModal({
   buildingName: string;
   buildings: BuildingOption[];
   defaultBuildingId: string;
+  locationNodes: ProjectLocationOption[];
+  requiredLocationDepth: "building" | "floor" | "room" | "element";
   close: () => void;
   goBack: () => void;
-  save: (answers: ProjectActionAnswers, buildingId: string) => Promise<boolean>;
+  save: (answers: ProjectActionAnswers, buildingId: string, locationNodeId?: string) => Promise<boolean>;
 }) {
   const { text } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [buildingId, setBuildingId] = useState(() => resolveDefaultBuildingId(buildings, defaultBuildingId));
+  const [locationNodeId, setLocationNodeId] = useState("");
   const defaultParty = parties.find((party) => party.type === "contractor")?.id ?? parties[0]?.id ?? "";
   const { register, handleSubmit, setValue, control, formState: { errors } } = useForm<ProjectActionAnswers>({
     resolver: zodResolver(projectActionSchema),
@@ -3000,7 +3177,7 @@ function ActionCreateModal({
   };
   const submit = async (answers: ProjectActionAnswers) => {
     setBusy(true);
-    await save(answers, buildingId);
+    await save(answers, buildingId, locationNodeId || undefined);
     setBusy(false);
   };
   return (
@@ -3021,7 +3198,8 @@ function ActionCreateModal({
                 <label className="form-field"><span>{text("Context and acceptance criterion *", "Context en acceptatiecriterium *")}</span><textarea rows={4} placeholder={text("Describe the location, required measure and completion criterion.", "Beschrijf locatie, gewenste maatregel en wanneer de actie gereed is.")} {...register("description")} />{errors.description ? <small className="field-error">{errors.description.message}</small> : null}</label>
               </div>
             </details>
-            <BuildingPicker id="action-building" buildings={buildings} value={buildingId} onChange={setBuildingId} />
+            <BuildingPicker id="action-building" buildings={buildings} value={buildingId} onChange={(next) => { setBuildingId(next); setLocationNodeId(""); }} />
+            <LocationPicker id="action-location" nodes={locationNodes} buildingId={buildingId} value={locationNodeId} onChange={setLocationNodeId} requiredDepth={requiredLocationDepth} />
             <label className="form-field"><span>{text("Responsible party *", "Verantwoordelijke partij *")}</span><select {...register("ownerPartyId")} disabled={parties.length === 0}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select>{errors.ownerPartyId ? <small className="field-error">{errors.ownerPartyId.message}</small> : null}</label>
             <div className="form-field"><label htmlFor="action-deadline">Deadline *</label><input id="action-deadline" type="datetime-local" {...register("dueAt")} />{errors.dueAt ? <small className="field-error">{errors.dueAt.message}</small> : null}<span className="period-date-presets">{[[0, text("Today", "Vandaag")], [1, text("Tomorrow", "Morgen")], [3, text("3 days", "3 dagen")], [7, text("7 days", "7 dagen")]].map(([days, label]) => <button type="button" onClick={() => setValue("dueAt", actionDeadlineFromToday(Number(days)), { shouldDirty: true, shouldValidate: true })} key={String(label)}>{label}</button>)}</span></div>
             <label className="form-field"><span>{text("Priority", "Prioriteit")}</span><select {...register("priority")}><option value="low">{text("Low", "Laag")}</option><option value="normal">{text("Normal", "Normaal")}</option><option value="high">{text("High", "Hoog")}</option><option value="critical">{text("Critical", "Kritiek")}</option></select></label>
@@ -3029,7 +3207,7 @@ function ActionCreateModal({
           </div>
           <div className="modal-actions">
             <button className="back-button" type="button" onClick={goBack}><ArrowLeft size={14} /> {text("Back", "Terug")}</button>
-            <button className="primary-button" type="submit" disabled={busy || parties.length === 0}>{busy ? <Loader2 className="spin" size={14} /> : <Check size={14} />} {text("Save centrally", "Centraal opslaan")}</button>
+            <button className="primary-button" type="submit" disabled={busy || parties.length === 0 || (requiredLocationDepth !== "building" && !locationNodeId)}>{busy ? <Loader2 className="spin" size={14} /> : <Check size={14} />} {text("Save centrally", "Centraal opslaan")}</button>
           </div>
         </form>
       </section>
@@ -3040,12 +3218,14 @@ function ActionCreateModal({
 function ActionDetailModal({
   action,
   partyName,
+  locationNodes,
   updates,
   close,
   transition,
 }: {
   action: ProjectAction;
   partyName: string;
+  locationNodes: ProjectLocationOption[];
   updates: ActionUpdate[];
   close: () => void;
   transition: (nextStatus: ProjectAction["status"], note: string) => Promise<boolean>;
@@ -3078,7 +3258,7 @@ function ActionDetailModal({
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal action-detail-modal" role="dialog" aria-modal="true" aria-labelledby="action-detail-title">
         <header className="modal-header">
-          <div><p className="eyebrow">{action.action_number}</p><h2 id="action-detail-title">{action.title}</h2><p>{partyName} · {text("deadline", "deadline")} {dueAt}</p></div>
+          <div><p className="eyebrow">{action.action_number}</p><h2 id="action-detail-title">{action.title}</h2><p>{partyName}{action.location_node_id ? ` · ${locationBreadcrumb(locationNodes, action.location_node_id)}` : ""} · {text("deadline", "deadline")} {dueAt}</p></div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <div className="modal-body action-detail-body">
@@ -3187,6 +3367,9 @@ function BuildingSwitcherModal({
 
 function AttendanceModal({
   initialRows,
+  disciplines,
+  defaultShiftStart,
+  defaultShiftEnd,
   buildings,
   defaultBuildingId,
   day,
@@ -3195,6 +3378,9 @@ function AttendanceModal({
   save,
 }: {
   initialRows: AttendanceRow[];
+  disciplines: string[];
+  defaultShiftStart: string;
+  defaultShiftEnd: string;
   buildings: BuildingOption[];
   defaultBuildingId: string;
   day: Pick<ProjectDaySnapshot, "attendance" | "parties"> | undefined;
@@ -3213,7 +3399,7 @@ function AttendanceModal({
       setRows(initialRows);
       return;
     }
-    setRows(day ? attendanceRowsForBuilding(day, nextBuildingId, text("Unknown party", "Onbekende partij")) : initialRows);
+    setRows(day ? attendanceRowsForBuilding(day, nextBuildingId, text("Unknown party", "Onbekende partij"), defaultShiftStart, defaultShiftEnd) : initialRows);
   };
 
   const changeCount = (id: string, delta: number) => {
@@ -3244,7 +3430,7 @@ function AttendanceModal({
                   <label>
                     <span className="sr-only">{text(`Discipline for ${row.party}`, `Discipline voor ${row.party}`)}</span>
                     <select value={row.discipline} onChange={(event) => changeDiscipline(row.id, event.target.value)}>
-                      {Array.from(new Set([row.discipline, ...constructionDisciplines])).map((discipline) => <option value={discipline} key={discipline}>{discipline}</option>)}
+                      {Array.from(new Set([row.discipline, ...disciplines])).map((discipline) => <option value={discipline} key={discipline}>{discipline}</option>)}
                     </select>
                   </label>
                   <small>{row.shiftStart}–{row.shiftEnd}</small>
@@ -3269,6 +3455,9 @@ function AttendanceModal({
 
 function OneTapDailyLogModal({
   initialRows,
+  disciplines,
+  defaultShiftStart,
+  defaultShiftEnd,
   buildings,
   defaultBuildingId,
   day,
@@ -3279,6 +3468,9 @@ function OneTapDailyLogModal({
   save,
 }: {
   initialRows: AttendanceRow[];
+  disciplines: string[];
+  defaultShiftStart: string;
+  defaultShiftEnd: string;
   buildings: BuildingOption[];
   defaultBuildingId: string;
   day: Pick<ProjectDaySnapshot, "attendance" | "parties"> | undefined;
@@ -3302,13 +3494,13 @@ function OneTapDailyLogModal({
       setRows(initialRows);
       return;
     }
-    setRows(day ? attendanceRowsForBuilding(day, nextBuildingId, text("Unknown party", "Onbekende partij")) : initialRows);
+    setRows(day ? attendanceRowsForBuilding(day, nextBuildingId, text("Unknown party", "Onbekende partij"), defaultShiftStart, defaultShiftEnd) : initialRows);
   };
 
   const changeCount = (id: string, delta: number) => {
     setRows((current) => current.map((row) => row.id === id ? { ...row, count: Math.max(0, row.count + delta) } : row));
   };
-  const addTradeCount = (discipline: (typeof constructionDisciplines)[number]) => {
+  const addTradeCount = (discipline: string) => {
     const party = day?.parties.find((item) => item.id === workforcePartyId);
     if (!party) return;
     setRows((current) => {
@@ -3320,8 +3512,8 @@ function OneTapDailyLogModal({
         party: party.name,
         discipline,
         count: 1,
-        shiftStart: "07:00",
-        shiftEnd: "16:00",
+        shiftStart: defaultShiftStart,
+        shiftEnd: defaultShiftEnd,
       }];
     });
   };
@@ -3420,7 +3612,7 @@ function OneTapDailyLogModal({
                   <span><strong>{text("Tap a trade below", "Tik hieronder op een vak")}</strong><small>{text("Each tap adds one person to the selected party.", "Iedere tik voegt één persoon toe aan de gekozen partij.")}</small></span>
                 </div>
                 <div className="one-tap-trade-grid" aria-label={text("Construction trades", "Bouwvakken")}>
-                  {constructionDisciplines.map((discipline) => {
+                  {disciplines.map((discipline) => {
                     const count = rows.find((row) => row.partyId === workforcePartyId && row.discipline === discipline)?.count ?? 0;
                     return <button className={count ? "active" : ""} type="button" disabled={!workforcePartyId} onClick={() => addTradeCount(discipline)} key={discipline}><span>{discipline}</span><strong>{count}</strong></button>;
                   })}

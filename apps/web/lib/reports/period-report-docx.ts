@@ -127,7 +127,7 @@ export function buildPeriodReportDocxDocument(snapshot: PeriodReportSnapshot, op
     : 0;
 
   const children: Array<Paragraph | Table> = [
-    ...brandHeader(logoBytes, options.reportTitle ?? "Perioderapport", "Dagelijks, wekelijks, maandelijks of vrij gekozen periode met zelfgekozen rapportonderdelen uit hetzelfde gecontroleerde projectdossier."),
+    ...brandHeader(logoBytes, options.reportTitle ?? "Perioderapport", options.headerText || "Dagelijks, wekelijks, maandelijks of vrij gekozen periode met zelfgekozen rapportonderdelen uit hetzelfde gecontroleerde projectdossier."),
     metadataTable([
       ["Project", projectName],
       ["Periode", `${formatDate(snapshot.period.start_date)} t/m ${formatDate(snapshot.period.end_date)}`],

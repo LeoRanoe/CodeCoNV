@@ -12,7 +12,7 @@ import type { PeriodReportSnapshot } from "@/lib/supabase/operations";
 
 export type PeriodReportSection = "management" | "workforce" | "work" | "quality" | "hse" | "actions" | "logistics" | "instructions" | "commercial" | "communications" | "requests" | "boq" | "visual" | "documents" | "environment" | "buildings";
 export const allPeriodReportSections: PeriodReportSection[] = ["management", "workforce", "work", "quality", "hse", "actions", "logistics", "instructions", "commercial", "communications", "requests", "boq", "visual", "documents", "environment", "buildings"];
-export type PeriodReportOptions = { sections?: PeriodReportSection[]; reportTitle?: string };
+export type PeriodReportOptions = { sections?: PeriodReportSection[]; reportTitle?: string; headerText?: string | null; footerText?: string | null };
 
 const styles = StyleSheet.create({
   page: { backgroundColor: "#ffffff", color: "#20252b", fontFamily: "Helvetica", fontSize: 9, paddingBottom: 42, paddingHorizontal: 34, paddingTop: 88 },
@@ -69,6 +69,7 @@ function detailsText(record: Record<string, unknown>) {
   const values = details as Record<string, unknown>;
   const preferredKeys = [
     "building_name",
+    "location_path",
     "requested_to",
     "due_date",
     "revision",
@@ -134,8 +135,35 @@ function ReportBrand({ label, logoSource }: { label: string; logoSource: string 
 export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/codeco-logo-pdf.png" }: { snapshot: PeriodReportSnapshot; options?: PeriodReportOptions; logoSource?: string }) {
   const projectName = value(snapshot.project, "name", "CODECO-project");
   const sections = new Set(options.sections?.length ? options.sections : allPeriodReportSections);
-  const register = (type: string) => snapshot.register_entries.filter((entry) => value(entry, "register_type") === type);
-  const openFindings = snapshot.findings.filter((entry) => !["closed", "cancelled"].includes(value(entry, "status")));
+  const buildings = snapshot.buildings ?? [];
+  const locationNodes = snapshot.location_nodes ?? [];
+  const buildingById = new Map(buildings.map((building) => [value(building, "id"), value(building, "name")]));
+  const locationById = new Map(locationNodes.map((location) => [value(location, "id"), location]));
+  const locationPath = (locationNodeId: string) => {
+    const labels: string[] = [];
+    const visited = new Set<string>();
+    let location = locationById.get(locationNodeId);
+    while (location && !visited.has(value(location, "id"))) {
+      visited.add(value(location, "id"));
+      labels.unshift(`${value(location, "code")} ${value(location, "name")}`);
+      location = locationById.get(value(location, "parent_id"));
+    }
+    return labels.join(" → ");
+  };
+  const withContext = (rows: Array<Record<string, unknown>>) => rows.map((row) => ({
+    ...row,
+    details: {
+      ...nested(row, "details"),
+      building_name: buildingById.get(value(row, "building_id")) ?? "",
+      location_path: locationPath(value(row, "location_node_id")),
+    },
+  }));
+  const registerEntries = withContext(snapshot.register_entries);
+  const inspections = withContext(snapshot.inspections);
+  const findings = withContext(snapshot.findings);
+  const hseEvents = withContext(snapshot.hse_events);
+  const register = (type: string) => registerEntries.filter((entry) => value(entry, "register_type") === type);
+  const openFindings = findings.filter((entry) => !["closed", "cancelled"].includes(value(entry, "status")));
   const attendanceTotal = snapshot.attendance.reduce((total, entry) => total + Number(entry.headcount ?? 0), 0);
   const workforce = Object.entries(snapshot.attendance.reduce<Record<string, number>>((groups, entry) => {
     const discipline = value(entry, "discipline", "Onbekend");
@@ -144,12 +172,11 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
   }, {})).sort((a, b) => b[1] - a[1]);
   const startsByReport = new Map(snapshot.day_starts.map((item) => [value(item, "day_report_id"), item]));
   const closeoutsByReport = new Map(snapshot.day_closeouts.map((item) => [value(item, "day_report_id"), item]));
-  const buildings = snapshot.buildings ?? [];
   const parties = snapshot.parties ?? [];
   const files = snapshot.files ?? [];
   const findingProgressUpdates = snapshot.finding_progress_updates ?? [];
-  const controlledDocuments = snapshot.register_entries.filter((entry) => ["rfi", "rfa", "inspection_request", "technical_instruction", "change_order", "environmental_report"].includes(value(entry, "register_type")));
-  const lessonsLearned = snapshot.findings.flatMap((finding) => {
+  const controlledDocuments = registerEntries.filter((entry) => ["rfi", "rfa", "inspection_request", "technical_instruction", "change_order", "environmental_report"].includes(value(entry, "register_type")));
+  const lessonsLearned = findings.flatMap((finding) => {
     const issue = nested(finding, "issue_management");
     const action = value(issue, "action_steps");
     return action ? [{
@@ -184,7 +211,7 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
       <Page size="A4" style={styles.page} wrap={false}>
         <ReportBrand label="CONSTRUCTIESUPERVISIE" logoSource={logoSource} />
         <Text style={styles.title}>{options.reportTitle ?? "Perioderapport"}</Text>
-        <Text style={styles.subtitle}>Dagelijks, wekelijks, maandelijks of vrij gekozen periode met zelfgekozen rapportonderdelen uit hetzelfde gecontroleerde projectdossier.</Text>
+        <Text style={styles.subtitle}>{options.headerText || "Dagelijks, wekelijks, maandelijks of vrij gekozen periode met zelfgekozen rapportonderdelen uit hetzelfde gecontroleerde projectdossier."}</Text>
         <View style={styles.meta}>
           <Text style={styles.metaLabel}>Project</Text><Text style={styles.metaValue}>{projectName}</Text>
           <Text style={styles.metaLabel}>Periode</Text><Text style={styles.metaValue}>{formatDate(snapshot.period.start_date)} t/m {formatDate(snapshot.period.end_date)}</Text>
@@ -219,7 +246,7 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
           {workforce.length > 6 ? <Text style={styles.empty}>Nog {workforce.length - 6} disciplines staan in de bronregistraties.</Text> : null}
         </> : <Text style={styles.empty}>Geen bezetting geregistreerd.</Text>}</> : null}
 
-        <Text style={styles.footer} fixed>CODECO Supervisie | bron: centraal, rechten-gefilterd periodsnapshot</Text>
+        <Text style={styles.footer} fixed>{options.footerText || "CODECO Supervisie | bron: centraal, rechten-gefilterd periodsnapshot"}</Text>
       </Page>
 
       {sections.has("work") ? <Page size="A4" style={styles.page}>
@@ -242,11 +269,11 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
 
       <Page size="A4" style={styles.page}>
         <ReportBrand label="KWALITEIT EN VEILIGHEID" logoSource={logoSource} />
-        {sections.has("quality") ? <><Text style={styles.heading}>Lessons learned / corrigerende standaard</Text><RecordRows rows={lessonsLearned} empty="Nog geen issuegebonden lessons learned in deze periode." /><Text style={styles.heading}>Inspecties</Text><RecordRows rows={snapshot.inspections} /><Text style={styles.heading}>Issue control, bevindingen, afwijkingen en NCR</Text><RecordRows rows={snapshot.findings.map((finding) => {
+        {sections.has("quality") ? <><Text style={styles.heading}>Lessons learned / corrigerende standaard</Text><RecordRows rows={lessonsLearned} empty="Nog geen issuegebonden lessons learned in deze periode." /><Text style={styles.heading}>Inspecties</Text><RecordRows rows={inspections} /><Text style={styles.heading}>Issue control, bevindingen, afwijkingen en NCR</Text><RecordRows rows={findings.map((finding) => {
           const progress = progressByFinding.get(value(finding, "id"));
           return { ...finding, details: { disposition: progress ? value(progress, "disposition") : "", progress_percent: progress ? value(progress, "progress_percent") : "0", inspected_at: progress ? value(progress, "inspected_at") : "" } };
         })} /></> : null}
-        {sections.has("hse") ? <><Text style={styles.heading}>HSE, incidenten en near misses</Text><RecordRows rows={snapshot.hse_events} /></> : null}
+        {sections.has("hse") ? <><Text style={styles.heading}>HSE, incidenten en near misses</Text><RecordRows rows={hseEvents} /></> : null}
         {sections.has("environment") ? <><Text style={styles.heading}>Milieu, social en housekeeping</Text><RecordRows rows={register("environmental_report")} empty="Geen milieurapport of housekeepingobservatie in deze periode." /></> : null}
         {sections.has("actions") ? <><Text style={styles.heading}>Open deadlines en acties</Text><RecordRows rows={snapshot.open_actions} /></> : null}
         <Text style={styles.footer} fixed>CODECO Supervisie | kwaliteit en HSE</Text>
@@ -273,9 +300,9 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
 
       {sections.has("buildings") ? buildings.map((building, buildingIndex) => {
         const buildingId = value(building, "id");
-        const buildingFindings = snapshot.findings.filter((item) => value(item, "building_id") === buildingId);
-        const buildingInspections = snapshot.inspections.filter((item) => value(item, "building_id") === buildingId);
-        const buildingRegisters = snapshot.register_entries.filter((item) => value(item, "building_id") === buildingId);
+        const buildingFindings = findings.filter((item) => value(item, "building_id") === buildingId);
+        const buildingInspections = inspections.filter((item) => value(item, "building_id") === buildingId);
+        const buildingRegisters = registerEntries.filter((item) => value(item, "building_id") === buildingId);
         const buildingVisuals = snapshot.visual_captures.filter((item) => value(item, "building_id") === buildingId);
         return <Page size="A4" style={styles.page} key={buildingId || String(buildingIndex)}>
           <ReportBrand label="GEBOUWVOORTGANG" logoSource={logoSource} />
