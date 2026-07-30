@@ -38,6 +38,7 @@ import {
   Ruler,
   Search,
   Settings,
+  Share,
   ShieldCheck,
   TimerOff,
   Users,
@@ -2987,7 +2988,24 @@ function NotificationsModal({ client, notifications, loading, close, markRead }:
       <section className="modal notifications-modal" role="dialog" aria-modal="true" aria-labelledby="notifications-title">
         <header className="modal-header"><div><h2 id="notifications-title">{text("Push notifications and deadlines", "Pushmeldingen en deadlines")}</h2><p>{text("Automatic device notifications from actions, findings and report reviews, with an auditable copy in this inbox.", "Automatische apparaatmeldingen uit acties, bevindingen en rapportreviews, met een auditeerbare kopie in deze inbox.")}</p></div><button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button></header>
         <div className="modal-body notification-list">
-          <div className={`push-activation ${pushState}`}><Bell size={19} /><span><strong>{pushState === "active" ? text("Push is active on this device", "Push is actief op dit apparaat") : pushState === "blocked" ? text("Push is blocked in browser settings", "Push is geblokkeerd in de browserinstellingen") : pushState === "unsupported" ? text("This browser does not support push", "Deze browser ondersteunt geen push") : text("Activate push on this device", "Activeer push op dit apparaat")}</strong><small>{pushState === "active" ? text("Use Test push to verify the complete browser, subscription and delivery chain.", "Gebruik Test push om de volledige browser-, registratie- en afleverketen te controleren.") : text("Deadlines are generated automatically from fixed project rules.", "Deadlines worden automatisch uit vaste projectregels gegenereerd.")}</small></span>{pushState === "inactive" || pushState === "active" ? <button className={pushState === "active" ? "secondary-button" : "primary-button"} type="button" disabled={pushBusy} onClick={() => void activatePush()}>{pushBusy ? <Loader2 className="spin" size={15} /> : <Bell size={15} />}{pushState === "active" ? text("Test push", "Test push") : text("Activate", "Activeren")}</button> : null}</div>
+          <div className={`push-activation ${pushState}`}>
+            {pushState === "ios-add-to-home-screen" ? <Share size={19} /> : <Bell size={19} />}
+            <span>
+              <strong>
+                {pushState === "active" ? text("Push is active on this device", "Push is actief op dit apparaat")
+                  : pushState === "blocked" ? text("Push is blocked in browser settings", "Push is geblokkeerd in de browserinstellingen")
+                  : pushState === "ios-add-to-home-screen" ? text("Add this app to your Home Screen first", "Voeg deze app eerst toe aan je beginscherm")
+                  : pushState === "unsupported" ? text("This browser does not support push", "Deze browser ondersteunt geen push")
+                  : text("Activate push on this device", "Activeer push op dit apparaat")}
+              </strong>
+              <small>
+                {pushState === "active" ? text("Use Test push to verify the complete browser, subscription and delivery chain.", "Gebruik Test push om de volledige browser-, registratie- en afleverketen te controleren.")
+                  : pushState === "ios-add-to-home-screen" ? text("iPhone and iPad only support push for apps opened from the Home Screen. Tap Share, then \"Add to Home Screen\", and open the app from there to activate push.", "iPhone en iPad ondersteunen push alleen voor apps die vanaf het beginscherm zijn geopend. Tik op Delen, dan op \"Zet op beginscherm\", en open de app van daaruit om push te activeren.")
+                  : text("Deadlines are generated automatically from fixed project rules.", "Deadlines worden automatisch uit vaste projectregels gegenereerd.")}
+              </small>
+            </span>
+            {pushState === "inactive" || pushState === "active" ? <button className={pushState === "active" ? "secondary-button" : "primary-button"} type="button" disabled={pushBusy} onClick={() => void activatePush()}>{pushBusy ? <Loader2 className="spin" size={15} /> : <Bell size={15} />}{pushState === "active" ? text("Test push", "Test push") : text("Activate", "Activeren")}</button> : null}
+          </div>
           {pushError ? <div className="operation-alert error">{pushError}</div> : null}
           {loading ? <div className="empty-list-state"><Loader2 className="spin" size={22} /><strong>{text("Loading notifications", "Meldingen laden")}</strong><span>{text("Deadlines are checked using fixed rules.", "Deadlines worden regelgestuurd gecontroleerd.")}</span></div> : null}
           {!loading && notifications.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No notifications", "Geen meldingen")}</strong><span>{text("There are no open personal reminders.", "Er zijn geen openstaande persoonlijke herinneringen.")}</span></div> : null}

@@ -3,7 +3,17 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validAccessToken } from "@/lib/supabase/access-token";
 
-export type PushState = "unsupported" | "blocked" | "inactive" | "active";
+export type PushState = "unsupported" | "ios-add-to-home-screen" | "blocked" | "inactive" | "active";
+
+function isIosDevice() {
+  const platform = navigator.userAgent || navigator.platform;
+  return /iPad|iPhone|iPod/.test(platform) || (platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+function isStandaloneDisplay() {
+  return window.matchMedia?.("(display-mode: standalone)").matches
+    || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+}
 
 function applicationServerKey(value: string) {
   const padding = "=".repeat((4 - value.length % 4) % 4);
@@ -20,7 +30,9 @@ function sameApplicationServerKey(subscription: PushSubscription, expected: Uint
 }
 
 export async function currentPushState(): Promise<PushState> {
-  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return "unsupported";
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+    return isIosDevice() && !isStandaloneDisplay() ? "ios-add-to-home-screen" : "unsupported";
+  }
   if (Notification.permission === "denied") return "blocked";
   const registration = await navigator.serviceWorker.getRegistration("/");
   const subscription = await registration?.pushManager.getSubscription();
