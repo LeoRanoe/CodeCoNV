@@ -1680,7 +1680,11 @@ export function CodecoSupervisionApp() {
       ) : null}
       {modal === "daily_questions" && selectedProject && contextBuilding ? (
         <DailyQuestionsModal
+          key={contextBuilding.id}
           buildingName={contextBuilding.name}
+          buildingId={contextBuilding.id}
+          buildings={selectedProject.buildings}
+          onChangeBuilding={setContextBuildingId}
           close={() => { setModal(null); setContextBuildingId(null); }}
           initialAnswers={contextDailyCloseoutAnswers}
           projectStartAnswers={contextProjectStartAnswers}
@@ -1714,8 +1718,11 @@ export function CodecoSupervisionApp() {
       ) : null}
       {modal === "project_start" && selectedProject && contextBuilding ? (
         <ProjectStartForm
+          key={contextBuilding.id}
           project={selectedProject}
           building={contextBuilding}
+          buildings={selectedProject.buildings}
+          onChangeBuilding={setContextBuildingId}
           defaultShiftStart={configuredShiftStart}
           defaultShiftEnd={configuredShiftEnd}
           close={() => { setModal(null); setContextBuildingId(null); }}
@@ -2328,6 +2335,8 @@ function ContextSelection({
 function ProjectStartForm({
   project,
   building,
+  buildings,
+  onChangeBuilding,
   defaultShiftStart,
   defaultShiftEnd,
   close,
@@ -2336,6 +2345,8 @@ function ProjectStartForm({
 }: {
   project: ProjectContext;
   building: BuildingContext;
+  buildings: BuildingOption[];
+  onChangeBuilding: (buildingId: string) => void;
   defaultShiftStart: string;
   defaultShiftEnd: string;
   close: () => void;
@@ -2428,6 +2439,7 @@ function ProjectStartForm({
           <div>
             <h2 id="project-start-title">{text("Start the workday", "Werkdag starten")} · {building.name}</h2>
             <p>{project.code} · {currentDateLabel(locale)}</p>
+            <BuildingPicker id="project-start-building" buildings={buildings} value={building.id} onChange={onChangeBuilding} />
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
@@ -3910,12 +3922,18 @@ function OneTapPhotoPreview({ file }: { file: File }) {
 
 function DailyQuestionsModal({
   buildingName,
+  buildingId,
+  buildings,
+  onChangeBuilding,
   close,
   initialAnswers,
   projectStartAnswers,
   save,
 }: {
   buildingName: string;
+  buildingId: string;
+  buildings: BuildingOption[];
+  onChangeBuilding: (buildingId: string) => void;
   close: () => void;
   initialAnswers: DailyCloseoutAnswers | null;
   projectStartAnswers: ProjectStartAnswers | null;
@@ -4029,7 +4047,7 @@ function DailyQuestionsModal({
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal daily-questions-modal" role="dialog" aria-modal="true" aria-labelledby="daily-questions-title">
         <header className="modal-header">
-          <div><h2 id="daily-questions-title">{text("Daily questions for the report", "Dagvragen voor het rapport")} · {buildingName}</h2><p>{clientReportSections.length} {text("client sections · reused across modules · step", "klantonderdelen · modulair hergebruikt · stap")} {step + 1} {text("of", "van")} 4</p></div>
+          <div><h2 id="daily-questions-title">{text("Daily questions for the report", "Dagvragen voor het rapport")} · {buildingName}</h2><p>{clientReportSections.length} {text("client sections · reused across modules · step", "klantonderdelen · modulair hergebruikt · stap")} {step + 1} {text("of", "van")} 4</p><BuildingPicker id="daily-questions-building" buildings={buildings} value={buildingId} onChange={onChangeBuilding} /></div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <form className="modal-body daily-questions-body" onSubmit={handleSubmit(save)} noValidate>
