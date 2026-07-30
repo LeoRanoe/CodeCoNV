@@ -2287,16 +2287,16 @@ function ContextSelection({
 
         <section className="context-heading">
           <div><p className="eyebrow">{text("My projects", "Mijn projecten")}</p><h1>{text("Where will you work today?", "Waar ga je vandaag werken?")}</h1><p>{text("Select a project to open its dashboard. Every building in the project is available from there.", "Kies een project om het dashboard te openen. Alle gebouwen van het project zijn daar direct beschikbaar.")}</p></div>
-          <button className="primary-button" type="button" onClick={() => setShowProjectSetup(true)}><Plus size={15} /> {text("New configured project", "Nieuw geconfigureerd project")}</button>
+          <button className="primary-button portfolio-cta" type="button" onClick={() => setShowProjectSetup(true)}><Plus size={15} /> {text("New configured project", "Nieuw geconfigureerd project")}</button>
         </section>
         <section className="portfolio-dashboard" aria-label={text("Portfolio overview", "Portfolio-overzicht")}>
-          <div><span>{text("Active projects", "Actieve projecten")}</span><strong>{portfolio.projects}</strong></div>
-          <div><span>{text("Today's plans", "Planning vandaag")}</span><strong>{portfolio.today}</strong></div>
-          <div><span>{text("Open actions", "Open acties")}</span><strong>{portfolio.actions}</strong></div>
-          <div><span>Issues</span><strong>{portfolio.issues}</strong></div>
-          <div><span>NCR</span><strong>{portfolio.ncr}</strong></div>
-          <div><span>{text("Inspections", "Inspecties")}</span><strong>{portfolio.inspections}</strong></div>
-          <div><span>{text("Agreements", "Afspraken")}</span><strong>{portfolio.agreements}</strong></div>
+          <div className="tone-blue"><span className="portfolio-stat-icon"><Building2 size={16} /></span><span className="portfolio-stat-copy"><small>{text("Active projects", "Actieve projecten")}</small><strong>{portfolio.projects}</strong></span></div>
+          <div className="tone-green"><span className="portfolio-stat-icon"><CalendarDays size={16} /></span><span className="portfolio-stat-copy"><small>{text("Today's plans", "Planning vandaag")}</small><strong>{portfolio.today}</strong></span></div>
+          <div className="tone-amber"><span className="portfolio-stat-icon"><ClipboardCheck size={16} /></span><span className="portfolio-stat-copy"><small>{text("Open actions", "Open acties")}</small><strong>{portfolio.actions}</strong></span></div>
+          <div className="tone-red"><span className="portfolio-stat-icon"><AlertTriangle size={16} /></span><span className="portfolio-stat-copy"><small>Issues</small><strong>{portfolio.issues}</strong></span></div>
+          <div className="tone-red"><span className="portfolio-stat-icon"><FileCheck2 size={16} /></span><span className="portfolio-stat-copy"><small>NCR</small><strong>{portfolio.ncr}</strong></span></div>
+          <div className="tone-green"><span className="portfolio-stat-icon"><ShieldCheck size={16} /></span><span className="portfolio-stat-copy"><small>{text("Inspections", "Inspecties")}</small><strong>{portfolio.inspections}</strong></span></div>
+          <div className="tone-blue"><span className="portfolio-stat-icon"><FileText size={16} /></span><span className="portfolio-stat-copy"><small>{text("Agreements", "Afspraken")}</small><strong>{portfolio.agreements}</strong></span></div>
         </section>
         <section className={`project-selection-grid ${projects.length === 1 ? "single-project" : ""}`}>
           {projects.map((project) => (
