@@ -14,7 +14,7 @@ import {
   ScanLine,
   ShieldCheck,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { useLanguage } from "@/lib/i18n";
 import { fieldPhotoMimeTypes, normalizedImagePoint, validatePanoramaDimensions } from "@/lib/images/field-image.mjs";
@@ -106,6 +106,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   const activeAnnotations = activeCapture ? data.visualAnnotations.filter((annotation) => annotation.capture_id === activeCapture.id && annotation.status === "active") : [];
   const [showUpload, setShowUpload] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  const filePreviewUrl = useMemo(() => (file ? URL.createObjectURL(file) : ""), [file]);
   const [fileError, setFileError] = useState("");
   const [cameraSourceConfirmed, setCameraSourceConfirmed] = useState(false);
   const [captureForm, setCaptureForm] = useState({
@@ -151,6 +152,21 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       tourOrder: type === "photo" ? "" : current.tourOrder,
     }));
     setShowUpload(true);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (filePreviewUrl) URL.revokeObjectURL(filePreviewUrl);
+    };
+  }, [filePreviewUrl]);
+
+  const discardCapture = () => {
+    setFile(null);
+    setFileError("");
+    setCameraSourceConfirmed(false);
+    setCameraHandoff(false);
+    setShowUpload(false);
+    setCaptureForm({ type: "photo", title: "", description: "", locationLabel: "", locationNodeId: "", tourName: "", tourOrder: "" });
   };
 
   useEffect(() => {
@@ -318,10 +334,15 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       {showUpload ? (
         <div className="operation-form wide visual-upload-form">
           <div className="operation-form-heading"><div><span className="record-number">{text("New visual evidence", "Nieuw visueel bewijs")}</span><h2>{captureForm.type === "panorama" ? text("Upload 360° camera image", "Upload 360°-camerabeeld") : text("Photo ready to save", "Foto klaar om op te slaan")}</h2></div><span className="experimental-badge">{captureForm.type === "panorama" ? text("360° camera source", "360°-camerabron") : text("Point & shoot", "Richten & klaar")}</span></div>
+          {captureForm.type === "photo" && filePreviewUrl ? (
+            <div className="visual-photo-preview">
+              <img src={filePreviewUrl} alt={text("Captured photo preview", "Voorbeeld van gemaakte foto")} />
+            </div>
+          ) : null}
           <div className="form-grid-2">
             <BuildingPicker id="capture-building" buildings={buildings} value={captureBuildingId} onChange={(next) => { setCaptureBuildingId(next); setCaptureForm((current) => ({ ...current, locationNodeId: "" })); }} />
             <label className="form-field"><span>{text("Project location node", "Projectlocatie")}</span><select value={captureForm.locationNodeId} onChange={(event) => setCaptureForm({ ...captureForm, locationNodeId: event.target.value })}><option value="">{text("No structured location selected", "Geen gestructureerde locatie gekozen")}</option>{data.locationNodes.filter((node) => node.building_id === captureBuildingId).map((node) => <option value={node.id} key={node.id}>{node.code} · {node.name}</option>)}</select></label>
-            {captureForm.type === "panorama" ? <label className="form-field"><span>{text(`360° image · JPEG, PNG or WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`, `360°-beeld · JPEG, PNG of WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`)}</span><input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" onChange={(event) => stageImage(event.currentTarget.files?.[0] ?? null, "panorama")} /></label> : <button className="secondary-button visual-retake-button" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={16} /> {text("Retake photo", "Foto opnieuw maken")}</button>}
+            {captureForm.type === "panorama" ? <label className="form-field"><span>{text(`360° image · JPEG, PNG or WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`, `360°-beeld · JPEG, PNG of WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`)}</span><input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" onChange={(event) => stageImage(event.currentTarget.files?.[0] ?? null, "panorama")} /></label> : <div className="visual-review-actions"><button className="secondary-button visual-retake-button" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={16} /> {text("Retake photo", "Foto opnieuw maken")}</button><button className="secondary-button visual-discard-button" type="button" onClick={discardCapture}>{text("Discard photo", "Foto verwijderen")}</button></div>}
           </div>
           <details className="optional-text-entry">
             <summary>{text("Adjust title, location or context", "Titel, locatie of context aanpassen")}</summary>

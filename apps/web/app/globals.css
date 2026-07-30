@@ -6691,6 +6691,32 @@ textarea:focus-visible {
   max-width: none;
 }
 
+.visual-photo-preview {
+  width: 100%;
+  max-height: 420px;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--ink-50);
+}
+
+.visual-photo-preview img {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  background: #000;
+}
+
+.visual-review-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.visual-review-actions > button {
+  flex: 1;
+}
+
 .experimental-badge {
   min-width: max-content;
   padding: 6px 9px;
