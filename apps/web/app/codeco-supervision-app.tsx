@@ -61,7 +61,7 @@ import { ensureDailyBackup } from "@/lib/backups/client";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import { currentPushState, enablePushNotifications, type PushState } from "@/lib/notifications/push-client";
-import { syncOfflineUploads } from "@/lib/offline/upload-queue";
+import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
 import { cacheProjectDay, cacheWorkspace, getCachedProjectDay, getCachedWorkspace } from "@/lib/offline/workspace-cache";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
@@ -1785,7 +1785,7 @@ export function CodecoSupervisionApp() {
             setModal(null);
             openBuildingCloseout(selectedBuilding);
           }}
-          save={async (notes, rows, logBuildingId) => {
+          save={async (notes, rows, logBuildingId, photos) => {
             const saved = await runSynced(async () => {
               const report = dayQuery.data?.report ?? await createOrGetReport(supabase, selectedProject.id, reportDate);
               await saveAttendance(supabase, {
@@ -1810,8 +1810,45 @@ export function CodecoSupervisionApp() {
                   priority: "normal",
                 });
               }
+              if (photos.length) {
+                const reportId = String(report.id);
+                const logBuildingName = selectedProject.buildings.find((building) => building.id === logBuildingId)?.name ?? buildingName;
+                for (const photo of photos) {
+                  const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
+                  await queueOfflineUpload({
+                    projectId: selectedProject.id,
+                    buildingId: logBuildingId,
+                    reportId,
+                    folderId: null,
+                    folderName: text("Daily progress", "Dagvoortgang"),
+                    kind: "photo",
+                    file: prepared.blob,
+                    fileName: prepared.fileName,
+                    mimeType: prepared.mimeType,
+                    title: text("Field photo", "Veldfoto"),
+                    description: "",
+                    locationLabel: logBuildingName,
+                    capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
+                    originalSize: photo.size,
+                    queuedSize: prepared.blob.size,
+                    compressed: prepared.compressed,
+                  });
+                }
+                if (navigator.onLine) {
+                  await forceSyncOfflineUploads(supabase, selectedProject.id, {
+                    paused: text(
+                      "The connection changed before central photo confirmation. The photos remain safe on this device. Open Photos & folders and tap Sync now.",
+                      "De verbinding veranderde vóór de centrale fotobevestiging. De foto’s blijven veilig op dit apparaat. Open Foto’s & mappen en tik op Nu synchroniseren.",
+                    ),
+                    failed: (pendingCount) => text(
+                      `${pendingCount} photo upload(s) could not be confirmed centrally. They remain safe on this device. Open Photos & folders and tap Sync now.`,
+                      `${pendingCount} foto-upload(s) konden niet centraal worden bevestigd. Ze blijven veilig op dit apparaat. Open Foto’s & mappen en tik op Nu synchroniseren.`,
+                    ),
+                  });
+                }
+              }
               return true;
-            }, text("Daily log saved: context, headcount and notes are linked automatically.", "Daglog opgeslagen: context, bezetting en notities zijn automatisch gekoppeld."));
+            }, text("Daily log saved: context, headcount, notes and photos are linked automatically.", "Daglog opgeslagen: context, bezetting, notities en foto’s zijn automatisch gekoppeld."));
             if (!saved) return;
             setModal(null);
             await queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] });
@@ -3663,12 +3700,18 @@ function OneTapDailyLogModal({
   projectStartAnswers: ProjectStartAnswers | null;
   close: () => void;
   openDetailedLog: () => void;
-  save: (notes: string, rows: AttendanceRow[], buildingId: string) => void | Promise<void>;
+  save: (notes: string, rows: AttendanceRow[], buildingId: string, photos: File[]) => void | Promise<void>;
 }) {
   const { language, text } = useLanguage();
   const [notes, setNotes] = useState("");
   const [buildingId, setBuildingId] = useState(() => resolveDefaultBuildingId(buildings, defaultBuildingId));
   const [rows, setRows] = useState(initialRows);
+  const [photos, setPhotos] = useState<File[]>([]);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const addPhotos = (files: FileList | null) => {
+    const captured = Array.from(files ?? []).filter((file) => file.type.startsWith("image/"));
+    if (captured.length) setPhotos((current) => [...current, ...captured]);
+  };
   const [workforcePartyId, setWorkforcePartyId] = useState(() => initialRows[0]?.partyId ?? day?.parties[0]?.id ?? "");
   const total = rows.reduce((sum, row) => sum + row.count, 0);
   const chosenBuildingName = buildings.find((building) => building.id === buildingId)?.name ?? buildingName;
@@ -3769,8 +3812,8 @@ function OneTapDailyLogModal({
             <button type="button" onClick={openDetailedLog}><ClipboardCheck size={17} /><span><strong>{text("Complete client log", "Volledig klantdaglog")}</strong><small>{text("All requested daily report sections", "Alle gevraagde dagrapportonderdelen")}</small></span></button>
           </div>
 
-          <section className="client-daily-log-coverage" aria-labelledby="client-daily-log-coverage-title">
-            <header><span className="record-number">{text("Client specification", "Klantspecificatie")}</span><h3 id="client-daily-log-coverage-title">{text("The complete daily log contains", "Het volledige daglog bevat")}</h3></header>
+          <details className="client-daily-log-coverage">
+            <summary>{text("What does the complete client log contain?", "Wat bevat het volledige klantdaglog?")}</summary>
             <div>
               <span><Wrench size={15} /><strong>{text("Work & progress", "Werk & voortgang")}</strong><small>{text("Performed work, ongoing work, percentage and tomorrow", "Uitgevoerd werk, lopend werk, percentage en morgen")}</small></span>
               <span><ClipboardCheck size={15} /><strong>{text("Quality", "Kwaliteit")}</strong><small>{text("Inspections, issues, NCR and tests", "Inspecties, issues, NCR en testen")}</small></span>
@@ -3780,7 +3823,7 @@ function OneTapDailyLogModal({
               <span><Camera size={15} /><strong>{text("Evidence", "Bewijs")}</strong><small>{text("Photos, attachments and automatic date/time", "Foto’s, bijlagen en automatische datum/tijd")}</small></span>
             </div>
             <button className="secondary-button" type="button" onClick={openDetailedLog}><ClipboardCheck size={15} /> {text("Open complete client log", "Open volledig klantdaglog")}</button>
-          </section>
+          </details>
 
           <div className="one-tap-context">
             <span><MapPin size={17} /><small>{text("Location", "Locatie")}</small><strong>{chosenBuildingName}</strong></span>
@@ -3822,6 +3865,12 @@ function OneTapDailyLogModal({
               <div className="empty-list-state"><Users size={22} /><strong>{text("No project parties configured", "Nog geen projectpartijen ingericht")}</strong><span>{text("An administrator must add the contractor and subcontractors under Management → Structure and parties before workforce can be recorded.", "Een beheerder moet eerst de aannemer en onderaannemers toevoegen via Management → Structuur en partijen voordat workforce kan worden geregistreerd.")}</span></div>
             )}
           </section>
+          <div className="one-tap-photos">
+            <div><span className="record-number">{text("Evidence", "Bewijs")}</span><h3>{text("Add today's photos", "Voeg foto’s van vandaag toe")}</h3></div>
+            <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotos(event.currentTarget.files); event.currentTarget.value = ""; }} />
+            <button className="secondary-button" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={16} /> {photos.length ? text(`${photos.length} photo(s) added`, `${photos.length} foto('s) toegevoegd`) : text("Take photo", "Foto maken")}</button>
+            {photos.length ? <OneTapPhotoStack files={photos} onRemove={(index) => setPhotos((current) => current.filter((_, currentIndex) => currentIndex !== index))} /> : null}
+          </div>
           <div className="one-tap-note">
             <div><span className="record-number">{text("Short site notes", "Korte bouwplaatsnotities")}</span><h3>{text("Choose what applies today", "Kies wat vandaag van toepassing is")}</h3></div>
             <div className="quick-issue-presets">
@@ -3832,12 +3881,33 @@ function OneTapDailyLogModal({
           </div>
           <div className="modal-actions">
             <span className="form-note"><CheckCircle2 size={13} /> {text("Project, building, date and report are linked automatically.", "Project, gebouw, datum en rapport worden automatisch gekoppeld.")}</span>
-            <button className="primary-button" type="button" onClick={() => void save(notes, rows, buildingId)}><Check size={15} /> {text("Save daily log", "Daglog opslaan")}</button>
+            <button className="primary-button" type="button" onClick={() => void save(notes, rows, buildingId, photos)}><Check size={15} /> {text("Save daily log", "Daglog opslaan")}</button>
           </div>
         </div>
       </section>
     </div>
   );
+}
+
+function OneTapPhotoStack({ files, onRemove }: { files: File[]; onRemove: (index: number) => void }) {
+  const { text } = useLanguage();
+  return (
+    <div className="finding-photo-stack" aria-label={text("Photos added to this daily log", "Foto’s bij dit daglog")}>
+      {files.map((file, index) => (
+        <article key={`${file.name}:${file.size}:${file.lastModified}`}>
+          <OneTapPhotoPreview file={file} />
+          <span><strong>{index + 1}</strong><small>{file.name}</small></span>
+          <button type="button" onClick={() => onRemove(index)} aria-label={text(`Remove photo ${index + 1}`, `Verwijder foto ${index + 1}`)}><X size={14} /></button>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function OneTapPhotoPreview({ file }: { file: File }) {
+  const [source] = useState(() => URL.createObjectURL(file));
+  useEffect(() => () => URL.revokeObjectURL(source), [source]);
+  return <NextImage src={source} alt="" width={160} height={110} unoptimized />;
 }
 
 function DailyQuestionsModal({

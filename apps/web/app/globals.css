@@ -7497,12 +7497,18 @@ textarea:focus-visible {
   background: linear-gradient(145deg, #f5faf8, #eef5f3);
   border: 1px solid #cfe2dc;
   border-radius: 14px;
-  display: grid;
-  gap: 12px;
-  padding: 15px;
+  padding: 12px 15px;
 }
-.client-daily-log-coverage header { display: grid; gap: 3px; }
-.client-daily-log-coverage header h3 { color: var(--ink-900); font-size: 15px; margin: 0; }
+.client-daily-log-coverage[open] { display: grid; gap: 12px; padding: 15px; }
+.client-daily-log-coverage summary {
+  color: var(--ink-800);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  list-style: none;
+}
+.client-daily-log-coverage summary::-webkit-details-marker { display: none; }
+.client-daily-log-coverage > div { margin-top: 12px; }
 .client-daily-log-coverage > div { display: grid; gap: 7px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .client-daily-log-coverage > div > span {
   align-items: start;
@@ -7574,6 +7580,8 @@ textarea:focus-visible {
 .attendance-list.compact { max-height: 280px; overflow-y: auto; }
 .one-tap-note { display: grid; gap: 10px; }
 .one-tap-note h3 { color: var(--ink-900); font-size: 13px; margin: 3px 0 0; }
+.one-tap-photos { display: grid; gap: 10px; }
+.one-tap-photos h3 { color: var(--ink-900); font-size: 13px; margin: 3px 0 0; }
 
 .external-source-image { background: #edf2f2; border-radius: 12px; max-height: 360px; object-fit: cover; width: 100%; }
 .external-response-panel { border-top: 1px solid #e0e7e8; display: grid; gap: 13px; padding-top: 16px; }
