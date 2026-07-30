@@ -10700,6 +10700,42 @@ button {
 .document-status.approved { background: #e8f5f1; color: #0b6a5c; }
 .project-document-footer { align-items: center; background: #f8faf9; border: 0; border-top: 1px solid #e7ecea; color: var(--teal); display: flex; font-size: 9px; font-weight: 800; gap: 5px; justify-content: center; min-height: 42px; width: 100%; }
 
+.document-preview-backdrop {
+  align-items: center;
+  background: rgba(10, 25, 30, .72);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 22px;
+  position: fixed;
+  z-index: 90;
+}
+
+.document-preview-modal {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, .32);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: min(88vh, 900px);
+  overflow: hidden;
+  width: min(94vw, 1180px);
+}
+
+.document-preview-modal > header {
+  align-items: center;
+  border-bottom: 1px solid #dfe7e4;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 12px 14px;
+}
+
+.document-preview-modal > header > div:last-child { align-items: center; display: flex; gap: 8px; }
+.document-preview-modal header span { color: var(--teal); display: block; font-size: 8px; font-weight: 800; text-transform: uppercase; }
+.document-preview-modal h3 { color: var(--ink-900); font-size: 12px; margin: 3px 0 0; }
+.document-preview-modal iframe { background: #edf2f0; border: 0; height: 100%; width: 100%; }
+
 /* Unified action center */
 .action-center {
   display: grid;
@@ -10931,6 +10967,10 @@ button {
   .project-document-tabs > button { flex: 0 0 145px; }
   .project-document-browser > header { align-items: stretch; flex-direction: column; gap: 8px; }
   .project-document-browser header input { min-width: 0; width: 100%; }
+  .document-preview-backdrop { padding: 8px; }
+  .document-preview-modal { border-radius: 11px; height: 92vh; width: 100%; }
+  .document-preview-modal > header { align-items: flex-start; }
+  .document-preview-modal > header .secondary-button { font-size: 0; min-width: 38px; padding: 8px; }
   .project-document-list > button { grid-template-columns: 35px minmax(0, 1fr) auto; }
   .project-document-list > button > .document-status { display: none; }
   .action-center-summary > button { align-items: flex-start; flex-direction: column; gap: 2px; }

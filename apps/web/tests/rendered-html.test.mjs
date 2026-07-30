@@ -773,7 +773,8 @@ test("keeps employee assignment, editable external rights and openable document 
   assert.match(operations, /assignProjectAction/);
   assert.match(operations, /Open record & history|Open dossier & historie/);
   assert.match(operations, /attachment_files/);
-  assert.match(documents, /openProjectFile/);
+  assert.match(documents, /loadProjectFileBlob/);
+  assert.match(documents, /document-preview-modal/);
   assert.match(media, /Open file|Bestand openen/);
   assert.match(storage, /export async function openProjectFile/);
   assert.match(data, /agreementCount/);

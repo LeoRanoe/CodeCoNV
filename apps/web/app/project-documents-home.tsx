@@ -4,6 +4,7 @@ import {
   Archive,
   ArrowRight,
   DatabaseBackup,
+  Download,
   FileSpreadsheet,
   FileText,
   FolderOpen,
@@ -13,11 +14,12 @@ import {
   Search,
   ShieldCheck,
   Upload,
+  X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useLanguage } from "@/lib/i18n";
-import { openProjectFile } from "@/lib/storage/gateway";
+import { downloadProjectFile, loadProjectFileBlob } from "@/lib/storage/gateway";
 import type { OperationSnapshot } from "@/lib/supabase/operations";
 
 type DocumentView = "all" | "drawings" | "renders" | "boq" | "specifications" | "contracts";
@@ -42,6 +44,10 @@ export function ProjectDocumentsHome({
   const [query, setQuery] = useState("");
   const [openingFileId, setOpeningFileId] = useState("");
   const [openError, setOpenError] = useState("");
+  const [preview, setPreview] = useState<{ fileId: string; title: string; url: string } | null>(null);
+  useEffect(() => () => {
+    if (preview?.url) URL.revokeObjectURL(preview.url);
+  }, [preview?.url]);
   const availableFiles = data.files.filter((file) => file.status === "available");
   const drawings = availableFiles.filter((file) => file.category === "drawing");
   const renders = availableFiles.filter((file) => file.mime_type.startsWith("image/") && file.category !== "photo");
@@ -84,7 +90,12 @@ export function ProjectDocumentsHome({
     setOpeningFileId(item.id);
     setOpenError("");
     try {
-      await openProjectFile(client, item.id, item.title);
+      const blob = await loadProjectFileBlob(client, item.id);
+      const url = URL.createObjectURL(blob);
+      setPreview((current) => {
+        if (current?.url) URL.revokeObjectURL(current.url);
+        return { fileId: item.id, title: item.title, url };
+      });
     } catch (error) {
       setOpenError(error instanceof Error ? error.message : text("The document could not be opened.", "Het document kon niet worden geopend."));
     } finally {
@@ -126,6 +137,12 @@ export function ProjectDocumentsHome({
         </div>
         {items.length ? <button className="project-document-footer" type="button" onClick={openCurrent}>{text("Open the complete controlled workflow", "Open de volledige gecontroleerde workflow")} <ArrowRight size={14} /></button> : null}
       </div>
+      {preview ? <div className="document-preview-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setPreview(null)}>
+        <section className="document-preview-modal" role="dialog" aria-modal="true" aria-labelledby="document-preview-title">
+          <header><div><span>{text("Secure project document", "Beveiligd projectdocument")}</span><h3 id="document-preview-title">{preview.title}</h3></div><div><button className="secondary-button" type="button" onClick={() => void downloadProjectFile(client, preview.fileId, preview.title)}><Download size={15} /> {text("Download", "Downloaden")}</button><button className="modal-close" type="button" onClick={() => setPreview(null)} aria-label={text("Close document", "Sluit document")}><X size={18} /></button></div></header>
+          <iframe src={preview.url} title={preview.title} />
+        </section>
+      </div> : null}
     </section>
   );
 }
