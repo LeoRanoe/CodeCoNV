@@ -1046,19 +1046,19 @@ export function CodecoSupervisionApp() {
     return true;
   };
 
-  const startProject = async (building: BuildingContext, answers: ProjectStartAnswers) => {
-    if (!supabase || !selectedProject) return;
+  const startProject = async (buildings: BuildingContext[], answers: ProjectStartAnswers) => {
+    if (!supabase || !selectedProject || !buildings.length) return;
     const saved = await runSynced(
-      () => saveProjectStart(supabase, {
+      () => Promise.all(buildings.map((building) => saveProjectStart(supabase, {
         projectId: selectedProject.id,
         buildingId: building.id,
         answers,
         reportDate,
-      }),
+      }))),
       text("Project start and the draft daily report were saved centrally.", "Projectstart en het conceptdagrapport zijn centraal opgeslagen."),
     );
     if (!saved) return;
-    if (building.id === selectedBuilding?.id) setProjectStartAnswers(answers);
+    if (buildings.some((building) => building.id === selectedBuilding?.id)) setProjectStartAnswers(answers);
     setModal(null);
     setActiveNav("vandaag");
     window.scrollTo({ top: 0 });
@@ -1203,13 +1203,20 @@ export function CodecoSupervisionApp() {
   const buildingContextLabel = buildingCount > 1
     ? text(`${buildingCount} buildings`, `${buildingCount} gebouwen`)
     : buildingName;
-  const contextBuilding = selectedProject?.buildings.find((building) => building.id === contextBuildingId) ?? selectedBuilding;
-  const contextProjectStartAnswers = contextBuilding?.id === selectedBuilding?.id
-    ? projectStartAnswers
-    : projectStartFromRow(dayQuery.data?.startChecks.find((row) => row.building_id === contextBuilding?.id) ?? null);
-  const contextDailyCloseoutAnswers = contextBuilding?.id === selectedBuilding?.id
-    ? dailyCloseoutAnswers
-    : closeoutFromRow(dayQuery.data?.closeouts.find((row) => row.building_id === contextBuilding?.id) ?? null);
+  const contextIsAllBuildings = contextBuildingId === ALL_BUILDINGS;
+  const contextBuilding = contextIsAllBuildings
+    ? null
+    : selectedProject?.buildings.find((building) => building.id === contextBuildingId) ?? selectedBuilding;
+  const contextProjectStartAnswers = contextIsAllBuildings
+    ? null
+    : contextBuilding?.id === selectedBuilding?.id
+      ? projectStartAnswers
+      : projectStartFromRow(dayQuery.data?.startChecks.find((row) => row.building_id === contextBuilding?.id) ?? null);
+  const contextDailyCloseoutAnswers = contextIsAllBuildings
+    ? null
+    : contextBuilding?.id === selectedBuilding?.id
+      ? dailyCloseoutAnswers
+      : closeoutFromRow(dayQuery.data?.closeouts.find((row) => row.building_id === contextBuilding?.id) ?? null);
 
   const buildDraftReportSnapshot = (): DailyReportPdfSnapshot | null => {
     if (!selectedProject || !selectedBuilding || !projectStartAnswers || !dailyCloseoutAnswers) return null;
@@ -1662,11 +1669,11 @@ export function CodecoSupervisionApp() {
           }}
         />
       ) : null}
-      {modal === "daily_questions" && selectedProject && contextBuilding ? (
+      {modal === "daily_questions" && selectedProject && (contextBuilding || contextIsAllBuildings) ? (
         <DailyQuestionsModal
-          key={contextBuilding.id}
-          buildingName={contextBuilding.name}
-          buildingId={contextBuilding.id}
+          key={contextBuildingId ?? "none"}
+          buildingName={contextIsAllBuildings ? text("All buildings", "Alle gebouwen") : contextBuilding!.name}
+          buildingId={contextIsAllBuildings ? ALL_BUILDINGS : contextBuilding!.id}
           buildings={selectedProject.buildings}
           onChangeBuilding={setContextBuildingId}
           close={() => { setModal(null); setContextBuildingId(null); }}
@@ -1677,17 +1684,18 @@ export function CodecoSupervisionApp() {
               setToast("Start eerst het centrale dagrapport.");
               return;
             }
+            const targetBuildings = contextIsAllBuildings ? selectedProject.buildings : [contextBuilding!];
             const saved = await runSynced(
-              () => saveDailyCloseout(supabase, {
+              () => Promise.all(targetBuildings.map((building) => saveDailyCloseout(supabase, {
                 report: dayQuery.data.report!,
                 projectId: selectedProject.id,
-                buildingId: contextBuilding.id,
+                buildingId: building.id,
                 answers,
-              }),
+              }))),
               "Dagvragen zijn centraal opgeslagen en in de rapportcontrole verwerkt.",
             );
             if (!saved) return;
-            if (contextBuilding.id === selectedBuilding?.id) {
+            if (targetBuildings.some((building) => building.id === selectedBuilding?.id)) {
               setDailyCloseoutAnswers(answers);
               setCompletedTodos((current) => Array.from(new Set([...current, 2, 3])));
             }
@@ -1700,11 +1708,12 @@ export function CodecoSupervisionApp() {
           }}
         />
       ) : null}
-      {modal === "project_start" && selectedProject && contextBuilding ? (
+      {modal === "project_start" && selectedProject && (contextBuilding || contextIsAllBuildings) ? (
         <ProjectStartForm
-          key={contextBuilding.id}
+          key={contextBuildingId ?? "none"}
           project={selectedProject}
-          building={contextBuilding}
+          buildingId={contextIsAllBuildings ? ALL_BUILDINGS : contextBuilding!.id}
+          buildingName={contextIsAllBuildings ? text("All buildings", "Alle gebouwen") : contextBuilding!.name}
           buildings={selectedProject.buildings}
           onChangeBuilding={setContextBuildingId}
           defaultShiftStart={configuredShiftStart}
@@ -1712,7 +1721,8 @@ export function CodecoSupervisionApp() {
           close={() => { setModal(null); setContextBuildingId(null); }}
           initialAnswers={contextProjectStartAnswers}
           save={async (answers) => {
-            await startProject(contextBuilding, answers);
+            const targetBuildings = contextIsAllBuildings ? selectedProject.buildings : [contextBuilding!];
+            await startProject(targetBuildings, answers);
             setContextBuildingId(null);
           }}
         />
@@ -2318,7 +2328,8 @@ function ContextSelection({
 
 function ProjectStartForm({
   project,
-  building,
+  buildingId,
+  buildingName,
   buildings,
   onChangeBuilding,
   defaultShiftStart,
@@ -2328,7 +2339,8 @@ function ProjectStartForm({
   initialAnswers,
 }: {
   project: ProjectContext;
-  building: BuildingContext;
+  buildingId: string;
+  buildingName: string;
   buildings: BuildingOption[];
   onChangeBuilding: (buildingId: string) => void;
   defaultShiftStart: string;
@@ -2422,9 +2434,9 @@ function ProjectStartForm({
       <section className="modal project-start-modal" role="dialog" aria-modal="true" aria-labelledby="project-start-title">
         <header className="modal-header">
           <div>
-            <h2 id="project-start-title">{text("Start the workday", "Werkdag starten")} · {building.name}</h2>
+            <h2 id="project-start-title">{text("Start the workday", "Werkdag starten")} · {buildingName}</h2>
             <p>{project.code} · {currentDateLabel(locale)}</p>
-            <BuildingPicker id="project-start-building" buildings={buildings} value={building.id} onChange={onChangeBuilding} />
+            <BuildingPicker id="project-start-building" buildings={buildings} value={buildingId} onChange={onChangeBuilding} allowAll />
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
@@ -3843,7 +3855,7 @@ function OneTapDailyLogModal({
             <div className="quick-issue-presets">
               {noteOptions.map((option) => <button className={notes.includes(option) ? "active" : ""} type="button" onClick={() => toggleOption(option)} key={option}>{option}</button>)}
             </div>
-            <label className="form-field"><span>{text("Notes · optional", "Notities · optioneel")}</span><textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder={text("Choose an option above or dictate.", "Kies hierboven een optie of dicteer.")} /><DictateButton onText={(transcript) => setNotes((current) => appendDictation(current, transcript))} /></label>
+            <label className="form-field"><span>{text("Notes · optional", "Notities · optioneel")}</span><textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder={text("Choose an option above or dictate.", "Kies hierboven een optie of dicteer.")} /><DictateButton label={text("Dictate notes", "Notities dicteren")} onText={(transcript) => setNotes((current) => appendDictation(current, transcript))} /></label>
           </div>
           <div className="modal-actions">
             <span className="form-note"><CheckCircle2 size={13} /> {text("Project, building, date and report are linked automatically.", "Project, gebouw, datum en rapport worden automatisch gekoppeld.")}</span>
@@ -4004,7 +4016,7 @@ function DailyQuestionsModal({
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal daily-questions-modal" role="dialog" aria-modal="true" aria-labelledby="daily-questions-title">
         <header className="modal-header">
-          <div><h2 id="daily-questions-title">{text("Daily questions for the report", "Dagvragen voor het rapport")} · {buildingName}</h2><p>{clientReportSections.length} {text("client sections · reused across modules · step", "klantonderdelen · modulair hergebruikt · stap")} {step + 1} {text("of", "van")} 4</p><BuildingPicker id="daily-questions-building" buildings={buildings} value={buildingId} onChange={onChangeBuilding} /></div>
+          <div><h2 id="daily-questions-title">{text("Daily questions for the report", "Dagvragen voor het rapport")} · {buildingName}</h2><p>{clientReportSections.length} {text("client sections · reused across modules · step", "klantonderdelen · modulair hergebruikt · stap")} {step + 1} {text("of", "van")} 4</p><BuildingPicker id="daily-questions-building" buildings={buildings} value={buildingId} onChange={onChangeBuilding} allowAll /></div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <form className="modal-body daily-questions-body" onSubmit={handleSubmit(save)} noValidate>

@@ -282,7 +282,7 @@ test("keeps standard photo and validated 360 camera annotation production paths"
 });
 
 test("implements the handwritten client PDF as required workflows without AI or SMS", async () => {
-  const [migration, visualLinkMigration, app, operationalWorkspace, visualWorkspace, dataLayer, fieldTools, drawingWorkspace, periodReport, boqCsv, operations, emailDelivery, pushDelivery, pushClient, pushSubscriptionRoute, dispatchRoute, cronRoute, envExample] = await Promise.all([
+  const [migration, visualLinkMigration, app, operationalWorkspace, visualWorkspace, dataLayer, fieldTools, dictateButtonModule, drawingWorkspace, periodReport, boqCsv, operations, emailDelivery, pushDelivery, pushClient, pushSubscriptionRoute, dispatchRoute, cronRoute, envExample] = await Promise.all([
     readFile(new URL("../../../supabase/migrations/202607220002_client_pdf_requirements.sql", import.meta.url), "utf8"),
     readFile(new URL("../../../supabase/migrations/202607270002_link_existing_finding_visual.sql", import.meta.url), "utf8"),
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
@@ -290,6 +290,7 @@ test("implements the handwritten client PDF as required workflows without AI or 
     readFile(new URL("../app/visual-evidence-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/supabase/data.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/field-tools.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/dictate-button.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/drawing-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/reports/period-report-pdf.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/boq/csv.ts", import.meta.url), "utf8"),
@@ -325,7 +326,8 @@ test("implements the handwritten client PDF as required workflows without AI or 
   assert.match(visualLinkMigration, /create_visual_annotation_for_finding/);
   assert.match(dataLayer, /finding_type !== "ncr"/);
   assert.match(dataLayer, /"technical_instruction", "site_instruction", "change_order", "variation"/);
-  assert.match(fieldTools, /webkitSpeechRecognition/);
+  assert.match(dictateButtonModule, /webkitSpeechRecognition/);
+  assert.match(fieldTools, /DictateButton/);
   assert.match(fieldTools, /Construction calculator/);
   assert.match(fieldTools, /createRegisterEntry/);
   assert.doesNotMatch(fieldTools, /\bAI\b|SMS/i);
@@ -741,9 +743,11 @@ test("treats every project as a multi-building workspace", async () => {
   ]);
 
   assert.match(app, /additionalBuildings/);
-  assert.match(app, /BuildingSwitcherModal/);
-  assert.match(app, /setModal\("switch_building"\)/);
+  assert.match(app, /ManageBuildingsModal/);
+  assert.match(app, /setModal\("manage_buildings"\)/);
   assert.match(app, /buildings\.length[\s\S]*in this project/);
+  assert.match(app, /allowAll/);
+  assert.match(app, /ALL_BUILDINGS/);
   assert.match(data, /createBuilding/);
   assert.match(data, /client\.rpc\("create_building"/);
   assert.match(migration, /create or replace function public\.create_building/);
