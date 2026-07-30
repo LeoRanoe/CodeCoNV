@@ -3713,6 +3713,7 @@ function OneTapDailyLogModal({
     if (captured.length) setPhotos((current) => [...current, ...captured]);
   };
   const [workforcePartyId, setWorkforcePartyId] = useState(() => initialRows[0]?.partyId ?? day?.parties[0]?.id ?? "");
+  const [workforceDiscipline, setWorkforceDiscipline] = useState(() => disciplines[0] ?? "");
   const total = rows.reduce((sum, row) => sum + row.count, 0);
   const chosenBuildingName = buildings.find((building) => building.id === buildingId)?.name ?? buildingName;
 
@@ -3837,13 +3838,8 @@ function OneTapDailyLogModal({
               <>
                 <div className="one-tap-workforce-add">
                   <label><span>{text("Party", "Partij")}</span><select value={workforcePartyId} onChange={(event) => setWorkforcePartyId(event.target.value)}>{day?.parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
-                  <span><strong>{text("Tap a trade below", "Tik hieronder op een vak")}</strong><small>{text("Each tap adds one person to the selected party.", "Iedere tik voegt één persoon toe aan de gekozen partij.")}</small></span>
-                </div>
-                <div className="one-tap-trade-grid" aria-label={text("Construction trades", "Bouwvakken")}>
-                  {disciplines.map((discipline) => {
-                    const count = rows.find((row) => row.partyId === workforcePartyId && row.discipline === discipline)?.count ?? 0;
-                    return <button className={count ? "active" : ""} type="button" disabled={!workforcePartyId} onClick={() => addTradeCount(discipline)} key={discipline}><span>{discipline}</span><strong>{count}</strong></button>;
-                  })}
+                  <label><span>{text("Trade", "Bouwvak")}</span><select value={workforceDiscipline} onChange={(event) => setWorkforceDiscipline(event.target.value)}>{disciplines.map((discipline) => <option value={discipline} key={discipline}>{discipline}</option>)}</select></label>
+                  <button className="secondary-button one-tap-trade-add" type="button" disabled={!workforcePartyId || !workforceDiscipline} onClick={() => addTradeCount(workforceDiscipline)}><Plus size={14} /> {text("Add person", "Persoon toevoegen")}</button>
                 </div>
                 <div className="attendance-list compact">
                   {rows.map((row) => (

@@ -7593,40 +7593,18 @@ textarea:focus-visible {
 .one-tap-workforce > header p { color: var(--ink-500); font-size: 9px; margin: 2px 0 0; }
 .one-tap-workforce > header > strong { color: var(--green); font-size: 20px; }
 .one-tap-workforce-add {
-  align-items: center;
+  align-items: end;
   background: #f5f8f8;
   border-radius: 10px;
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   padding: 10px;
 }
 .one-tap-workforce-add label { display: grid; gap: 4px; }
 .one-tap-workforce-add label > span { color: var(--ink-500); font-size: 9px; font-weight: 750; text-transform: uppercase; }
 .one-tap-workforce-add select { background: #fff; border: 1px solid var(--ink-200); border-radius: 8px; min-height: 40px; padding: 7px 9px; }
-.one-tap-workforce-add > span { display: grid; gap: 2px; }
-.one-tap-workforce-add > span strong { color: var(--ink-800); font-size: 10px; }
-.one-tap-workforce-add > span small { color: var(--ink-500); font-size: 9px; }
-.one-tap-trade-grid { display: grid; gap: 6px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.one-tap-trade-grid button {
-  align-items: center;
-  background: #fff;
-  border: 1px solid var(--ink-200);
-  border-radius: 9px;
-  color: var(--ink-700);
-  cursor: pointer;
-  display: flex;
-  font-size: 10px;
-  font-weight: 700;
-  gap: 7px;
-  justify-content: space-between;
-  min-height: 42px;
-  padding: 8px 9px;
-  text-align: left;
-}
-.one-tap-trade-grid button strong { align-items: center; background: #edf3f3; border-radius: 999px; display: flex; flex: 0 0 auto; font-size: 10px; height: 23px; justify-content: center; min-width: 23px; padding: 0 5px; }
-.one-tap-trade-grid button.active { background: var(--green-soft); border-color: #7fbead; color: var(--green); }
-.one-tap-trade-grid button.active strong { background: var(--green); color: #fff; }
+.one-tap-workforce-add .one-tap-trade-add { min-height: 40px; white-space: nowrap; }
 .attendance-list.compact { max-height: 280px; overflow-y: auto; }
 .one-tap-note { display: grid; gap: 10px; }
 .one-tap-note h3 { color: var(--ink-900); font-size: 13px; margin: 3px 0 0; }
@@ -7795,7 +7773,7 @@ textarea:focus-visible {
 @media (max-width: 620px) {
   .daily-log-mode-switch, .client-daily-log-coverage > div, .one-tap-context, .external-choice-grid { grid-template-columns: 1fr; }
   .one-tap-workforce-add { grid-template-columns: 1fr; }
-  .one-tap-trade-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .one-tap-workforce-add .one-tap-trade-add { width: 100%; }
   .controlled-document-dates > .form-grid { grid-template-columns: 1fr; }
   .controlled-document-history { grid-template-columns: 1fr; }
   .controlled-document-history > div { grid-column: 1; }
