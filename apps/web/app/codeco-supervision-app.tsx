@@ -2446,13 +2446,13 @@ function ProjectStartForm({
           <div>
             <h2 id="project-start-title">{text("Start the workday", "Werkdag starten")} · {buildingName}</h2>
             <p>{project.code} · {currentDateLabel(locale)}</p>
-            <BuildingPicker id="project-start-building" buildings={buildings} value={buildingId} onChange={onChangeBuilding} allowAll />
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
 
       <div className="modal-body project-start-layout">
         <form className="project-start-form" onSubmit={handleSubmit(save)} noValidate>
+          <BuildingPicker id="project-start-building" buildings={buildings} value={buildingId} onChange={onChangeBuilding} allowAll />
           <section className="form-section-card">
             <header><span className="form-section-number">1</span><span><strong>{text("Weather and working hours", "Weer en werktijden")}</strong><small>{text("Weather loads automatically from the project location", "Weer laadt automatisch vanuit de projectlocatie")}</small></span></header>
             <div className={`automatic-weather-status ${weatherLoadState}`}>
@@ -4026,10 +4026,11 @@ function DailyQuestionsModal({
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal daily-questions-modal" role="dialog" aria-modal="true" aria-labelledby="daily-questions-title">
         <header className="modal-header">
-          <div><h2 id="daily-questions-title">{text("Daily questions for the report", "Dagvragen voor het rapport")} · {buildingName}</h2><p>{clientReportSections.length} {text("client sections · reused across modules · step", "klantonderdelen · modulair hergebruikt · stap")} {step + 1} {text("of", "van")} 4</p><BuildingPicker id="daily-questions-building" buildings={buildings} value={buildingId} onChange={onChangeBuilding} allowAll /></div>
+          <div><h2 id="daily-questions-title">{text("Daily questions for the report", "Dagvragen voor het rapport")} · {buildingName}</h2><p>{clientReportSections.length} {text("client sections · reused across modules · step", "klantonderdelen · modulair hergebruikt · stap")} {step + 1} {text("of", "van")} 4</p></div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <form className="modal-body daily-questions-body" onSubmit={handleSubmit(save)} noValidate>
+          <BuildingPicker id="daily-questions-building" buildings={buildings} value={buildingId} onChange={onChangeBuilding} allowAll />
           <div className="question-stepper" aria-label={text("Daily questions progress", "Voortgang dagvragen")}>
             {stepTitles.map((title, index) => <span className={index === step ? "active" : index < step ? "done" : ""} key={title}><b>{index < step ? <Check size={12} /> : index + 1}</b>{title}</span>)}
           </div>
