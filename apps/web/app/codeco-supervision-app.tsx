@@ -1018,6 +1018,16 @@ export function CodecoSupervisionApp() {
     setModal("daily_questions");
   };
 
+  const openProjectStartForAllBuildings = () => {
+    setContextBuildingId(ALL_BUILDINGS);
+    setModal("project_start");
+  };
+
+  const openDailyQuestionsForAllBuildings = () => {
+    setContextBuildingId(ALL_BUILDINGS);
+    setModal("daily_questions");
+  };
+
   const addBuilding = async (input: { code: string; name: string; description: string }) => {
     if (!selectedProject || !supabase) return false;
     const created = await runSynced(
@@ -1364,8 +1374,8 @@ export function CodecoSupervisionApp() {
               attendanceTotal={projectAttendanceTotal}
               projectStartAnswers={projectStartAnswers}
               dailyCloseoutAnswers={dailyCloseoutAnswers}
-              openProjectStart={() => selectedBuilding && openBuildingStart(selectedBuilding)}
-              openDailyQuestions={() => selectedBuilding && openBuildingCloseout(selectedBuilding)}
+              openProjectStart={() => selectedBuilding && openProjectStartForAllBuildings()}
+              openDailyQuestions={() => selectedBuilding && openDailyQuestionsForAllBuildings()}
               openQuickAdd={openQuickAdd}
               openOneTapLog={() => setModal("one_tap_log")}
               openActions={() => navigate("acties")}
