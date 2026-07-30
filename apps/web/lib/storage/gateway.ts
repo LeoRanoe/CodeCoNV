@@ -112,18 +112,27 @@ export async function downloadProjectFile(client: SupabaseClient, fileId: string
 }
 
 export async function openProjectFile(client: SupabaseClient, fileId: string, filename: string) {
-  const response = await authorizedFileResponse(client, fileId);
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.target = "_blank";
-  anchor.rel = "noopener noreferrer";
-  anchor.title = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  const previewWindow = window.open("about:blank", "_blank");
+  try {
+    const response = await authorizedFileResponse(client, fileId);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    if (previewWindow) {
+      previewWindow.opener = null;
+      previewWindow.location.replace(url);
+    } else {
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.title = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    }
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (error) {
+    previewWindow?.close();
+    throw error;
+  }
 }
 
 export async function loadProjectFileBlob(client: SupabaseClient, fileId: string) {
