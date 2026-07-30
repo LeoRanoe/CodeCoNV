@@ -30,12 +30,36 @@ export function BuildingPicker({
 }) {
   const { text } = useLanguage();
   if (buildings.length < 2) return null;
+  const fieldLabel = label ?? text("Building", "Gebouw");
+  const options = allowAll ? [{ id: ALL_BUILDINGS, name: text("All buildings", "Alle gebouwen") }, ...buildings] : buildings;
+
+  // Few enough options to pick with one tap; a full dropdown just adds an extra step and takes more room.
+  if (options.length <= 5) {
+    return (
+      <div className="building-picker-compact">
+        <span>{fieldLabel}</span>
+        <div className="quick-issue-presets">
+          {options.map((option) => (
+            <button
+              className={option.id === value ? "active" : ""}
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange(option.id)}
+              key={option.id}
+            >
+              {option.name}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <label className="form-field building-picker-field" htmlFor={id}>
-      <span>{label ?? text("Building", "Gebouw")}</span>
+      <span>{fieldLabel}</span>
       <select id={id} disabled={disabled} value={value} onChange={(event) => onChange(event.target.value)}>
-        {allowAll ? <option value={ALL_BUILDINGS}>{text("All buildings", "Alle gebouwen")}</option> : null}
-        {buildings.map((building) => <option value={building.id} key={building.id}>{building.name}</option>)}
+        {options.map((option) => <option value={option.id} key={option.id}>{option.name}</option>)}
       </select>
     </label>
   );

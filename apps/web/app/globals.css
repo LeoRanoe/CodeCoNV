@@ -3405,30 +3405,52 @@ textarea:focus-visible {
 
 .dictate-button {
   position: absolute;
-  top: 0;
-  right: 0;
+  right: 7px;
+  bottom: 7px;
   display: grid;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   place-items: center;
   border: 1px solid var(--ink-200);
   border-radius: 999px;
-  background: #fff;
-  color: var(--ink-600);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink-500);
   cursor: pointer;
+  opacity: 0.75;
   z-index: 1;
+}
+
+.dictate-button:hover,
+.dictate-button:focus-visible {
+  opacity: 1;
 }
 
 .dictate-button.recording {
   background: var(--red-soft);
   border-color: #dc8c85;
   color: var(--red);
+  opacity: 1;
   animation: dictate-pulse 1.4s ease-in-out infinite;
 }
 
 @keyframes dictate-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(220, 76, 60, 0.25); }
   50% { box-shadow: 0 0 0 5px rgba(220, 76, 60, 0.12); }
+}
+
+.form-field:has(> .dictate-button) textarea {
+  padding-right: 34px;
+}
+
+.building-picker-compact {
+  display: grid;
+  gap: 6px;
+}
+
+.building-picker-compact > span {
+  color: var(--ink-700);
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .form-field.full {
