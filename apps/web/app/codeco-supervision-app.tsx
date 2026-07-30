@@ -2994,13 +2994,16 @@ function NotificationsModal({ client, notifications, loading, close, markRead }:
               <strong>
                 {pushState === "active" ? text("Push is active on this device", "Push is actief op dit apparaat")
                   : pushState === "blocked" ? text("Push is blocked in browser settings", "Push is geblokkeerd in de browserinstellingen")
+                  : pushState === "not-configured" ? text("Push is not configured for this deployment yet", "Push is nog niet geconfigureerd voor deze omgeving")
                   : pushState === "ios-add-to-home-screen" ? text("Add this app to your Home Screen first", "Voeg deze app eerst toe aan je beginscherm")
                   : pushState === "unsupported" ? text("This browser does not support push", "Deze browser ondersteunt geen push")
                   : text("Activate push on this device", "Activeer push op dit apparaat")}
               </strong>
               <small>
                 {pushState === "active" ? text("Use Test push to verify the complete browser, subscription and delivery chain.", "Gebruik Test push om de volledige browser-, registratie- en afleverketen te controleren.")
+                  : pushState === "not-configured" ? text("An administrator still needs to add the VAPID keys (NEXT_PUBLIC_VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT) to the deployment. Nobody can activate push until that's done.", "Een beheerder moet de VAPID-sleutels (NEXT_PUBLIC_VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT) nog toevoegen aan de omgeving. Niemand kan push activeren zolang dat niet is gebeurd.")
                   : pushState === "ios-add-to-home-screen" ? text("iPhone and iPad only support push for apps opened from the Home Screen. Tap Share, then \"Add to Home Screen\", and open the app from there to activate push.", "iPhone en iPad ondersteunen push alleen voor apps die vanaf het beginscherm zijn geopend. Tik op Delen, dan op \"Zet op beginscherm\", en open de app van daaruit om push te activeren.")
+                  : pushState === "inactive" ? text("If Activate fails on a Chromium browser (Brave, Chrome, Edge), check that the browser isn't blocking Google push services: Brave disables this by default under Settings → Privacy and security → Use Google services for push messaging.", "Als Activeren mislukt in een Chromium-browser (Brave, Chrome, Edge), controleer dan of de browser Google-pushservices niet blokkeert: Brave zet dit standaard uit onder Instellingen → Privacy en beveiliging → Google-services gebruiken voor pushmeldingen.")
                   : text("Deadlines are generated automatically from fixed project rules.", "Deadlines worden automatisch uit vaste projectregels gegenereerd.")}
               </small>
             </span>

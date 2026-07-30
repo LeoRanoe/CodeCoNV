@@ -3,7 +3,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validAccessToken } from "@/lib/supabase/access-token";
 
-export type PushState = "unsupported" | "ios-add-to-home-screen" | "blocked" | "inactive" | "active";
+export type PushState = "unsupported" | "ios-add-to-home-screen" | "blocked" | "not-configured" | "inactive" | "active";
 
 function isIosDevice() {
   const platform = navigator.userAgent || navigator.platform;
@@ -34,10 +34,11 @@ export async function currentPushState(): Promise<PushState> {
     return isIosDevice() && !isStandaloneDisplay() ? "ios-add-to-home-screen" : "unsupported";
   }
   if (Notification.permission === "denied") return "blocked";
+  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim();
+  if (!publicKey) return "not-configured";
   const registration = await navigator.serviceWorker.getRegistration("/");
   const subscription = await registration?.pushManager.getSubscription();
-  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim();
-  if (!subscription || !publicKey) return "inactive";
+  if (!subscription) return "inactive";
   return sameApplicationServerKey(subscription, applicationServerKey(publicKey)) ? "active" : "inactive";
 }
 
