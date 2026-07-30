@@ -111,6 +111,11 @@ export async function downloadProjectFile(client: SupabaseClient, fileId: string
   URL.revokeObjectURL(url);
 }
 
+export async function loadProjectFileBlob(client: SupabaseClient, fileId: string) {
+  const response = await authorizedFileResponse(client, fileId);
+  return response.blob();
+}
+
 export async function loadProjectFileObjectUrl(client: SupabaseClient, fileId: string) {
   const preview = await loadProjectFilePreviewObjectUrl(client, fileId);
   if (!preview.mimeType.startsWith("image/")) {

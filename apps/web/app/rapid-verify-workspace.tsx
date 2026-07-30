@@ -8,13 +8,17 @@ import {
   FileSearch,
   FileText,
   Loader2,
+  Plus,
   Search,
   ShieldQuestion,
   Upload,
   X,
 } from "lucide-react";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { useMemo, useRef, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
+import { loadProjectFileBlob } from "@/lib/storage/gateway";
+import type { FileRecord } from "@/lib/supabase/operations";
 
 type IndexedPage = {
   page: number;
@@ -92,7 +96,15 @@ async function indexFile(file: File): Promise<IndexedDocument> {
   return { id, name: file.name, kind: "pdf", pages };
 }
 
-export function RapidVerifyWorkspace({ projectName }: { projectName: string }) {
+export function RapidVerifyWorkspace({
+  projectName,
+  projectFiles = [],
+  client,
+}: {
+  projectName: string;
+  projectFiles?: FileRecord[];
+  client?: SupabaseClient;
+}) {
   const { text } = useLanguage();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<"question" | "compare">("question");
@@ -101,6 +113,7 @@ export function RapidVerifyWorkspace({ projectName }: { projectName: string }) {
   const [comparison, setComparison] = useState("");
   const [results, setResults] = useState<VerifyResult[]>([]);
   const [busy, setBusy] = useState(false);
+  const [loadingProjectFileId, setLoadingProjectFileId] = useState("");
   const [error, setError] = useState("");
   const [searched, setSearched] = useState(false);
 
@@ -127,6 +140,30 @@ export function RapidVerifyWorkspace({ projectName }: { projectName: string }) {
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
+
+  const addProjectFile = async (file: FileRecord) => {
+    if (!client) return;
+    setLoadingProjectFileId(file.id);
+    setError("");
+    try {
+      const blob = await loadProjectFileBlob(client, file.id);
+      const indexed = await indexFile(new File([blob], file.original_name, { type: file.mime_type }));
+      setDocuments((current) => {
+        const merged = new Map(current.map((document) => [document.id, document]));
+        merged.set(indexed.id, indexed);
+        return [...merged.values()];
+      });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : text("The project document could not be indexed.", "Het projectdocument kon niet worden geïndexeerd."));
+    } finally {
+      setLoadingProjectFileId("");
+    }
+  };
+
+  const availableProjectFiles = projectFiles.filter((file) =>
+    file.status === "available"
+    && (file.mime_type === "application/pdf" || file.mime_type.startsWith("text/") || /\.(pdf|txt|md)$/i.test(file.original_name)),
+  );
 
   const verify = () => {
     const sourceText = mode === "question" ? question : comparison;
@@ -200,6 +237,15 @@ export function RapidVerifyWorkspace({ projectName }: { projectName: string }) {
             <strong>{text("Upload PDF or text", "Upload PDF of tekst")}</strong>
             <small>{text("Drawings · tech specs · contract", "Tekeningen · tech specs · contract")}</small>
           </button>
+          {availableProjectFiles.length ? (
+            <div className="rapid-project-library">
+              <span>{text("Available in Project Docs", "Beschikbaar in Project Docs")}</span>
+              {availableProjectFiles.slice(0, 8).map((file) => {
+                const indexed = documents.some((document) => document.name === file.original_name);
+                return <button className={indexed ? "indexed" : ""} type="button" disabled={indexed || Boolean(loadingProjectFileId)} onClick={() => void addProjectFile(file)} key={file.id}><FileText size={14} /><span><strong>{file.original_name}</strong><small>{indexed ? text("Indexed", "Geïndexeerd") : text("Use as source", "Gebruik als bron")}</small></span>{loadingProjectFileId === file.id ? <Loader2 className="spin" size={13} /> : indexed ? <CheckCircle2 size={13} /> : <Plus size={13} />}</button>;
+              })}
+            </div>
+          ) : null}
           <div className="rapid-source-list">
             {documents.length === 0 ? <p>{text("Add approved project documents to start.", "Voeg goedgekeurde projectdocumenten toe om te beginnen.")}</p> : null}
             {documents.map((document) => (

@@ -1,4 +1,5 @@
 export const controlledDocumentTypes = [
+  "wcr",
   "rfi",
   "rfa",
   "inspection_request",

@@ -2,20 +2,24 @@
 
 import {
   AlertTriangle,
+  ArrowRight,
   Bell,
   CalendarDays,
   Camera,
   CheckCircle2,
-  ChevronRight,
   ClipboardCheck,
   CloudSun,
   FileCheck2,
+  HardHat,
   LayoutDashboard,
   MapPin,
   Plus,
   Search,
+  ShieldCheck,
+  Sparkles,
+  TimerReset,
+  Wrench,
 } from "lucide-react";
-import NextImage from "next/image";
 import { useMemo, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 
@@ -42,73 +46,41 @@ type DashboardWeather = {
   weatherCondition: string;
 } | null;
 
-const projectPhotos = [
-  "/landing/structural-frame.jpg",
-  "/landing/commewijne-port-facility.png",
-  "/landing/structural-analysis.jpg",
-  "/landing/newmont-recreation-centre.jpg",
-  "/landing/consulting-design.jpg",
-  "/landing/samara-apartment-complex.jpg",
-];
-
-function DashboardKpi({
+function MetricCard({
+  icon,
   label,
   value,
   detail,
-  icon,
   tone,
   onClick,
 }: {
+  icon: React.ReactNode;
   label: string;
   value: number;
   detail: string;
-  icon: React.ReactNode;
-  tone: "green" | "orange" | "purple" | "cyan";
-  onClick?: () => void;
+  tone: "teal" | "orange" | "blue" | "violet";
+  onClick: () => void;
 }) {
   return (
-    <button className="client-kpi-card" type="button" onClick={onClick}>
-      <span><small>{label}</small><strong>{value}</strong><em>{detail}</em></span>
-      <i className={tone}>{icon}</i>
+    <button className={`overview-metric ${tone}`} type="button" onClick={onClick}>
+      <span className="overview-metric-icon">{icon}</span>
+      <span className="overview-metric-copy">
+        <small>{label}</small>
+        <strong>{value}</strong>
+        <em>{detail}</em>
+      </span>
+      <ArrowRight size={15} />
     </button>
   );
 }
 
-function DonutCard({
-  title,
-  total,
-  segments,
-  link,
-  onClick,
-}: {
-  title: string;
-  total: number;
-  segments: Array<{ label: string; value: number; color: string }>;
-  link: string;
-  onClick: () => void;
-}) {
-  const safeTotal = Math.max(1, segments.reduce((sum, segment) => sum + segment.value, 0));
-  const stops = segments.map((segment, index) => {
-    const start = segments
-      .slice(0, index)
-      .reduce((sum, item) => sum + (item.value / safeTotal) * 100, 0);
-    const end = start + (segment.value / safeTotal) * 100;
-    return `${segment.color} ${start}% ${end}%`;
-  }).join(", ");
-  return (
-    <article className="client-dashboard-card client-donut-card">
-      <h2>{title}</h2>
-      <div className="client-donut-content">
-        <div className="client-donut" style={{ background: `conic-gradient(${stops || "#eaf0f2 0 100%"})` }}>
-          <span><strong>{total}</strong><small>Totaal</small></span>
-        </div>
-        <div className="client-donut-legend">
-          {segments.map((segment) => <span key={segment.label}><i style={{ background: segment.color }} /><b>{segment.label}</b><em>{segment.value}</em></span>)}
-        </div>
-      </div>
-      <button className="client-card-link" type="button" onClick={onClick}>{link} <ChevronRight size={13} /></button>
-    </article>
-  );
+function EntryIcon({ kind, alert }: { kind: string; alert?: boolean }) {
+  if (alert) return <AlertTriangle size={16} />;
+  if (kind === "inspection") return <ClipboardCheck size={16} />;
+  if (kind === "photo") return <Camera size={16} />;
+  if (kind === "finding") return <AlertTriangle size={16} />;
+  if (kind === "action") return <FileCheck2 size={16} />;
+  return <Wrench size={16} />;
 }
 
 export function ClientDashboard({
@@ -132,127 +104,170 @@ export function ClientDashboard({
   openWorkspace: () => void;
   openDailyQuestions: () => void;
 }) {
-  const { text } = useLanguage();
+  const { locale, text } = useLanguage();
   const [search, setSearch] = useState("");
-  const openTaskItems = actions.filter((action) => action.status !== "verified" && action.status !== "cancelled");
-  const completedActions = actions.filter((action) => action.status === "verified" || action.status === "cancelled");
-  const urgentActions = openTaskItems.filter((action) => action.priority === "high" || action.priority === "critical");
+  const openItems = actions.filter((action) => !["verified", "cancelled"].includes(action.status));
+  const completedItems = actions.filter((action) => ["verified", "cancelled"].includes(action.status));
+  const urgentItems = openItems.filter((action) => ["high", "critical"].includes(action.priority));
   const inspections = entries.filter((entry) => entry.kind === "inspection");
   const issues = entries.filter((entry) => entry.kind === "finding" || entry.badgeTone === "red");
-  const photos = entries.filter((entry) => entry.kind === "photo");
+  const photoEntries = entries.filter((entry) => entry.kind === "photo");
   const workEntries = entries.filter((entry) => entry.kind === "activity");
-  const displayedWork = (workEntries.length ? workEntries : entries).slice(0, 3);
-  const displayedEntries = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) return entries.slice(0, 5);
-    return entries.filter((entry) => `${entry.title} ${entry.detail} ${entry.location} ${entry.person}`.toLowerCase().includes(term)).slice(0, 5);
-  }, [entries, search]);
-  const issueOpen = issues.length;
-  const issueReview = Math.min(issueOpen, Math.max(0, Math.round(issueOpen * 0.3)));
-  const issueClosed = Math.max(0, entries.filter((entry) => entry.kind === "finding" && entry.badgeTone === "green").length);
-  const temperature = weather?.temperatureC ?? 31;
-  const weatherText = weather
-    ? ({ sunny: text("Sunny", "Zonnig"), partly_cloudy: text("Partly cloudy", "Licht bewolkt"), cloudy: text("Cloudy", "Bewolkt"), rain: text("Rain", "Regen"), heavy_rain: text("Heavy rain", "Zware regen") } as Record<string, string>)[weather.weatherCondition] ?? text("Current weather", "Actueel weer")
-    : text("Lightly clouded", "Licht bewolkt");
+  const completion = actions.length ? Math.round((completedItems.length / actions.length) * 100) : 0;
+
+  const visibleEntries = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase(locale);
+    const source = workEntries.length ? workEntries : entries;
+    if (!term) return source.slice(0, 5);
+    return source.filter((entry) =>
+      `${entry.title} ${entry.detail} ${entry.location} ${entry.person}`.toLocaleLowerCase(locale).includes(term),
+    ).slice(0, 5);
+  }, [entries, locale, search, workEntries]);
+
+  const activityEntries = entries.slice(0, 6);
+  const evidenceEntries = photoEntries.slice(0, 4);
+  const weatherLabel = weather
+    ? ({
+      sunny: text("Clear", "Helder"),
+      partly_cloudy: text("Partly cloudy", "Licht bewolkt"),
+      cloudy: text("Cloudy", "Bewolkt"),
+      rain: text("Rain", "Regen"),
+      heavy_rain: text("Heavy rain", "Zware regen"),
+    } as Record<string, string>)[weather.weatherCondition] ?? text("Recorded", "Vastgelegd")
+    : text("Not confirmed", "Niet bevestigd");
 
   return (
-    <section className="client-dashboard" aria-label={text("Project dashboard", "Projectdashboard")}>
-      <header className="client-dashboard-toolbar">
-        <div><LayoutDashboard size={18} /><strong>Dashboard</strong></div>
-        <div className="client-dashboard-tools">
-          <label className="client-dashboard-search"><Search size={16} /><span className="sr-only">{text("Search dashboard", "Doorzoek dashboard")}</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text("Search", "Zoeken")} /></label>
-          <button type="button" aria-label={text("Notifications", "Meldingen")}><Bell size={17} /><i /></button>
-          <button type="button" aria-label={text("Daily questions", "Dagvragen")} onClick={openDailyQuestions}><CalendarDays size={17} /></button>
-          <button className="client-new-button" type="button" onClick={openQuickAdd}><Plus size={16} /> {text("New", "Nieuw")}</button>
+    <section className="project-overview" aria-label={text("Project command center", "Projectcommandocentrum")}>
+      <header className="overview-hero">
+        <div>
+          <span className="overview-kicker"><LayoutDashboard size={15} /> {text("Live project control", "Actuele projectsturing")}</span>
+          <h1>{buildingName}</h1>
+          <p>{projectName} · {text("One operational view for today’s work, risks and evidence.", "Eén operationeel overzicht voor het werk, de risico’s en het bewijs van vandaag.")}</p>
+        </div>
+        <div className="overview-hero-actions">
+          <label className="overview-search">
+            <Search size={16} />
+            <span className="sr-only">{text("Search recent project records", "Doorzoek recente projectregistraties")}</span>
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text("Search today", "Zoek in vandaag")} />
+          </label>
+          <button className="overview-icon-button" type="button" aria-label={text("Notifications", "Meldingen")} onClick={openActions}><Bell size={17} />{urgentItems.length ? <i /> : null}</button>
+          <button className="overview-icon-button" type="button" aria-label={text("Daily questions", "Dagvragen")} onClick={openDailyQuestions}><CalendarDays size={17} /></button>
+          <button className="primary-button overview-create-button" type="button" onClick={openQuickAdd}><Plus size={16} /> {text("New field record", "Nieuwe veldregistratie")}</button>
         </div>
       </header>
 
-      <div className="client-kpi-grid">
-        <DashboardKpi label={text("Tasks", "Taken")} value={actions.length} detail={`${completedActions.length} ${text("completed", "voltooid")} · ${openTaskItems.length} open`} icon={<FileCheck2 size={22} />} tone="green" onClick={openActions} />
-        <DashboardKpi label={text("Issues / defects", "Issues / defecten")} value={issues.length} detail={`${issueOpen} open · ${issueClosed} ${text("closed", "gesloten")}`} icon={<AlertTriangle size={22} />} tone="orange" onClick={openActions} />
-        <DashboardKpi label={text("Inspections", "Inspecties")} value={inspections.length} detail={text("This month", "Deze maand")} icon={<ClipboardCheck size={22} />} tone="purple" onClick={openWorkspace} />
-        <DashboardKpi label={text("Photos", "Foto's")} value={photos.length} detail={text("This month", "Deze maand")} icon={<Camera size={22} />} tone="cyan" onClick={openQuickAdd} />
+      <div className="overview-metrics">
+        <MetricCard icon={<FileCheck2 size={21} />} label={text("Open follow-up", "Open opvolging")} value={openItems.length} detail={`${urgentItems.length} ${text("high priority", "hoge prioriteit")}`} tone="teal" onClick={openActions} />
+        <MetricCard icon={<AlertTriangle size={21} />} label={text("Quality issues", "Kwaliteitspunten")} value={issues.length} detail={text("Findings and NCRs", "Bevindingen en NCR's")} tone="orange" onClick={openActions} />
+        <MetricCard icon={<ClipboardCheck size={21} />} label={text("Inspections", "Inspecties")} value={inspections.length} detail={text("Recorded in this report", "In dit rapport vastgelegd")} tone="blue" onClick={openWorkspace} />
+        <MetricCard icon={<Camera size={21} />} label={text("Evidence", "Bewijs")} value={photoEntries.length} detail={text("Photos linked to context", "Foto's met projectcontext")} tone="violet" onClick={openQuickAdd} />
       </div>
 
-      <div className="client-dashboard-row client-dashboard-middle">
-        <article className="client-dashboard-card client-work-card">
-          <h2>{text("Latest recorded work", "Laatst ingevoerde werkzaamheden")}</h2>
-          <div className="client-work-table">
-            <header><span>{text("Work", "Werkzaamheid")}</span><span>{text("Location", "Locatie")}</span><span>{text("Latest update", "Laatste update")}</span></header>
-            {displayedWork.length ? displayedWork.map((entry) => (
+      <div className="overview-primary-grid">
+        <article className="overview-panel overview-work-panel">
+          <header className="overview-panel-heading">
+            <div><span>{text("Today on site", "Vandaag op locatie")}</span><h2>{text("Latest recorded work", "Laatst vastgelegde werkzaamheden")}</h2></div>
+            <button type="button" onClick={openWorkspace}>{text("Open workspace", "Open werkruimte")} <ArrowRight size={14} /></button>
+          </header>
+          <div className="overview-work-list">
+            {visibleEntries.length ? visibleEntries.map((entry, index) => (
               <button type="button" key={entry.id} onClick={openWorkspace}>
-                <span><strong>{entry.title}</strong><small>{entry.detail}</small></span>
-                <span>{entry.location}</span>
-                <span>{entry.time}</span>
-              </button>
-            )) : <div className="client-empty-row">{text("No work recorded yet.", "Nog geen werkzaamheden geregistreerd.")}</div>}
-          </div>
-          <button className="client-card-link" type="button" onClick={openWorkspace}>{text("View all work", "Bekijk alle werkzaamheden")} <ChevronRight size={13} /></button>
-        </article>
-
-        <DonutCard
-          title={text("Issues overview", "Issues overzicht")}
-          total={issues.length}
-          segments={[
-            { label: text("Open", "Open"), value: Math.max(0, issueOpen - issueReview), color: "#ef3f36" },
-            { label: text("In review", "In review"), value: issueReview, color: "#22a6d5" },
-            { label: text("Closed", "Gesloten"), value: issueClosed, color: "#42af58" },
-          ]}
-          link={text("View all issues", "Bekijk alle issues")}
-          onClick={openActions}
-        />
-        <DonutCard
-          title={text("Tasks overview", "Taken overzicht")}
-          total={actions.length}
-          segments={[
-            { label: text("Open", "Open"), value: Math.max(0, openTaskItems.length - urgentActions.length), color: "#ef3f36" },
-            { label: text("Urgent", "Urgent"), value: urgentActions.length, color: "#f6a51c" },
-            { label: text("Completed", "Voltooid"), value: completedActions.length, color: "#42af58" },
-          ]}
-          link={text("View all tasks", "Bekijk alle taken")}
-          onClick={openActions}
-        />
-      </div>
-
-      <div className="client-dashboard-row client-dashboard-bottom">
-        <article className="client-dashboard-card client-activity-card">
-          <h2>{text("Latest activities", "Laatste activiteiten")}</h2>
-          <div className="client-activity-list">
-            {displayedEntries.length ? displayedEntries.map((entry) => (
-              <button type="button" key={entry.id} onClick={openActions}>
-                <i className={entry.badgeTone === "red" ? "alert" : entry.kind}><CheckCircle2 size={15} /></i>
-                <span><strong>{entry.title}</strong><small>{entry.person} · {entry.detail}</small></span>
+                <span className="overview-work-index">{String(index + 1).padStart(2, "0")}</span>
+                <span><strong>{entry.title}</strong><small>{entry.detail || text("No additional note", "Geen aanvullende notitie")}</small></span>
+                <span className="overview-work-location"><MapPin size={13} /> {entry.location || buildingName}</span>
                 <time>{entry.time}</time>
               </button>
-            )) : <div className="client-empty-row">{text("No matching activities.", "Geen overeenkomende activiteiten.")}</div>}
+            )) : (
+              <div className="overview-purposeful-empty">
+                <span><HardHat size={24} /></span>
+                <div><strong>{text("No work recorded for this view", "Geen werkzaamheden in deze weergave")}</strong><p>{text("Start with a field record; the overview will build itself from verified project data.", "Start met een veldregistratie; het overzicht vult zich daarna met gecontroleerde projectdata.")}</p></div>
+                <button className="secondary-button" type="button" onClick={openQuickAdd}><Plus size={15} /> {text("Record work", "Werk vastleggen")}</button>
+              </div>
+            )}
           </div>
-          <button className="client-card-link" type="button" onClick={openActions}>{text("View all activities", "Bekijk alle activiteiten")} <ChevronRight size={13} /></button>
         </article>
 
-        <article className="client-dashboard-card client-photo-card">
-          <h2>{text("Recent photos", "Recente foto's")}</h2>
-          <div className="client-photo-grid">
-            {projectPhotos.map((source, index) => <button type="button" key={source} onClick={openQuickAdd} aria-label={text(`Open project photo ${index + 1}`, `Open projectfoto ${index + 1}`)}><NextImage src={source} alt="" fill sizes="(max-width: 900px) 33vw, 150px" /></button>)}
+        <article className="overview-panel overview-priority-panel">
+          <header className="overview-panel-heading">
+            <div><span>{text("Attention", "Aandacht")}</span><h2>{text("Priority queue", "Prioriteitenlijst")}</h2></div>
+            <span className={`overview-health ${urgentItems.length ? "attention" : "stable"}`}>{urgentItems.length ? text("Action needed", "Actie nodig") : text("Under control", "Onder controle")}</span>
+          </header>
+          <div className="overview-progress">
+            <div><span>{text("Action completion", "Actievoortgang")}</span><strong>{completion}%</strong></div>
+            <span><i style={{ width: `${completion}%` }} /></span>
+            <small>{completedItems.length} {text("completed", "afgerond")} · {openItems.length} open</small>
           </div>
-          <button className="client-card-link" type="button" onClick={openQuickAdd}>{text("View all photos", "Bekijk alle foto's")} <ChevronRight size={13} /></button>
-        </article>
-
-        <article className="client-dashboard-card client-weather-plan-card">
-          <div className="client-weather">
-            <div><CloudSun size={34} /><span><strong>{temperature}°C</strong><small>{weatherText}</small></span></div>
-            <dl><div><dt>{text("Humidity", "Vochtigheid")}</dt><dd>70%</dd></div><div><dt>{text("Wind", "Wind")}</dt><dd>18 km/h</dd></div><div><dt>{text("Rain chance", "Regenkans")}</dt><dd>40%</dd></div></dl>
+          <div className="overview-priority-list">
+            {(urgentItems.length ? urgentItems : openItems).slice(0, 4).map((action) => (
+              <button type="button" onClick={openActions} key={action.id}>
+                <span className={`priority-dot ${action.priority}`} />
+                <span><strong>{action.title}</strong><small>{action.priority} · {action.status.replaceAll("_", " ")}</small></span>
+                <ArrowRight size={14} />
+              </button>
+            ))}
+            {!openItems.length ? <div className="overview-clear-state"><CheckCircle2 size={22} /><span><strong>{text("No open actions", "Geen open acties")}</strong><small>{text("New assigned work will appear here.", "Nieuw toegewezen werk verschijnt hier.")}</small></span></div> : null}
           </div>
-          <div className="client-weather-days">
-            {["MA", "DI", "WO", "DO", "VR"].map((day, index) => <span key={day}><b>{day}</b><CloudSun size={17} /><small>{32 - (index % 2)}° / 24°</small></span>)}
-          </div>
-          <button className="client-plan-preview" type="button" onClick={openWorkspace}>
-            <NextImage src="/landing/structural-analysis.jpg" alt={text("Project drawing with linked supervision points", "Projecttekening met gekoppelde supervisiepunten")} fill sizes="360px" />
-            <i className="pin one"><MapPin size={16} /></i><i className="pin two"><MapPin size={16} /></i><i className="pin three"><MapPin size={16} /></i>
-          </button>
-          <button className="client-card-link" type="button" onClick={openWorkspace}>{text("View on plan", "Bekijk op plattegrond")} <ChevronRight size={13} /></button>
+          <button className="overview-text-link" type="button" onClick={openActions}>{text("View the complete action center", "Bekijk het volledige actiecentrum")} <ArrowRight size={14} /></button>
         </article>
       </div>
-      <p className="client-dashboard-context">{projectName} · {buildingName}</p>
+
+      <div className="overview-secondary-grid">
+        <article className="overview-panel overview-activity-panel">
+          <header className="overview-panel-heading">
+            <div><span>{text("Traceability", "Traceerbaarheid")}</span><h2>{text("Recent activity", "Recente activiteit")}</h2></div>
+          </header>
+          <div className="overview-activity-list">
+            {activityEntries.length ? activityEntries.map((entry) => (
+              <button type="button" onClick={entry.kind === "photo" ? openQuickAdd : openActions} key={entry.id}>
+                <i className={entry.badgeTone === "red" ? "alert" : entry.kind}><EntryIcon kind={entry.kind} alert={entry.badgeTone === "red"} /></i>
+                <span><strong>{entry.title}</strong><small>{entry.person} · {entry.location || buildingName}</small></span>
+                <time>{entry.time}</time>
+              </button>
+            )) : <p className="overview-inline-empty">{text("Activity appears after the first project record.", "Activiteit verschijnt na de eerste projectregistratie.")}</p>}
+          </div>
+        </article>
+
+        <article className="overview-panel overview-evidence-panel">
+          <header className="overview-panel-heading">
+            <div><span>{text("Visual evidence", "Visueel bewijs")}</span><h2>{text("Latest photo records", "Laatste fotoregistraties")}</h2></div>
+            <button type="button" onClick={openQuickAdd}><Camera size={14} /> {text("Add", "Toevoegen")}</button>
+          </header>
+          <div className="overview-evidence-grid">
+            {evidenceEntries.length ? evidenceEntries.map((entry, index) => (
+              <button type="button" onClick={openQuickAdd} key={entry.id}>
+                <span className={`evidence-placeholder tone-${(index % 4) + 1}`}><Camera size={20} /><i>{String(index + 1).padStart(2, "0")}</i></span>
+                <span><strong>{entry.title}</strong><small>{entry.location || buildingName} · {entry.time}</small></span>
+              </button>
+            )) : [0, 1, 2, 3].map((index) => (
+              <button className="empty" type="button" onClick={openQuickAdd} key={index}>
+                <span className={`evidence-placeholder tone-${index + 1}`}><Camera size={20} /><i>+</i></span>
+                <span><strong>{text("Photo position available", "Fotopositie beschikbaar")}</strong><small>{text("Add verified site evidence", "Voeg gecontroleerd bouwplaatsbewijs toe")}</small></span>
+              </button>
+            ))}
+          </div>
+        </article>
+
+        <article className="overview-panel overview-site-panel">
+          <header className="overview-panel-heading">
+            <div><span>{text("Site readiness", "Locatiegereedheid")}</span><h2>{text("Conditions & location", "Condities & locatie")}</h2></div>
+            <span className="overview-weather-icon"><CloudSun size={20} /></span>
+          </header>
+          <div className="overview-weather">
+            <span><strong>{weather ? `${weather.temperatureC}°C` : "—"}</strong><small>{weatherLabel}</small></span>
+            <span className="overview-weather-status"><ShieldCheck size={14} /> {weather ? text("Start check recorded", "Startcontrole vastgelegd") : text("Confirm at project start", "Bevestig bij projectstart")}</span>
+          </div>
+          <button className="overview-plan-placeholder" type="button" onClick={openWorkspace}>
+            <span className="plan-grid-lines" />
+            <span className="plan-mass mass-one" />
+            <span className="plan-mass mass-two" />
+            <span className="plan-mass mass-three" />
+            <i className="plan-pin pin-one"><MapPin size={14} /></i>
+            <i className="plan-pin pin-two"><MapPin size={14} /></i>
+            <span className="plan-caption"><Sparkles size={13} /> {text("Open linked project drawing", "Open gekoppelde projecttekening")}</span>
+          </button>
+          <div className="overview-site-meta"><span><TimerReset size={14} /> {text("Current report context", "Actuele rapportcontext")}</span><strong>{buildingName}</strong></div>
+        </article>
+      </div>
     </section>
   );
 }

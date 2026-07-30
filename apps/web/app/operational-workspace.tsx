@@ -42,6 +42,10 @@ import { VisualEvidenceWorkspace } from "@/app/visual-evidence-workspace";
 import { DrawingWorkspace } from "@/app/drawing-workspace";
 import { FieldTools } from "@/app/field-tools";
 import { MediaLibraryWorkspace } from "@/app/media-library-workspace";
+import { ProjectWorkspaceHome } from "@/app/project-workspace-home";
+import { ProjectDocumentsHome } from "@/app/project-documents-home";
+import { ProjectActionCenter } from "@/app/project-action-center";
+import { RapidVerifyWorkspace } from "@/app/rapid-verify-workspace";
 import { anchorChecklistCodes } from "@/lib/checklists/anchor-library";
 import { downloadBoqCsvTemplate, parseBoqCsv, type BoqImportItem } from "@/lib/boq/csv";
 import {
@@ -95,8 +99,8 @@ import {
   type ProductionReadinessItem,
 } from "@/lib/supabase/operations";
 
-type WorkspaceMode = "project" | "reports" | "admin";
-type ProjectTab = "home" | "inspections" | "findings" | "hse" | "registers" | "visual" | "drawings" | "tools" | "files";
+type WorkspaceMode = "project" | "actions" | "verify" | "reports" | "admin";
+type ProjectTab = "home" | "inspections" | "findings" | "hse" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files";
 
 const findingStatusLabels: Record<string, string> = {
   draft: "Concept",
@@ -145,6 +149,7 @@ const registerLabels: Record<string, string> = {
   risk: "Risico",
   document: "Document",
   drawing: "Tekening",
+  wcr: "WCR - Work Completion Request",
   rfi: "RFI",
   submittal: "Submittal",
   site_instruction: "Site instruction",
@@ -168,7 +173,7 @@ const registerLabels: Record<string, string> = {
 const registerLabelsEnglish: Record<string, string> = {
   equipment: "Equipment", delivery: "Delivery", test: "Test / measurement", variation: "Variation",
   delay: "Delay", communication: "Communication / decision", risk: "Risk", document: "Document",
-  drawing: "Drawing", rfi: "RFI", submittal: "Submittal", site_instruction: "Site instruction",
+  drawing: "Drawing", wcr: "WCR - Work Completion Request", rfi: "RFI", submittal: "Submittal", site_instruction: "Site instruction",
   meeting: "Meeting", correspondence: "Correspondence", cost: "Cost control", declaration: "Contractor payment claim",
   rfa: "RFA - Request for Approval", inspection_request: "IR - Inspection request", boq: "BOQ / progress",
   punch_list: "Punch list", notepad: "Notepad", agreement: "Agreement", technical_instruction: "Technical instruction (TI)",
@@ -254,6 +259,9 @@ export function OperationalWorkspace({
   openQuickCamera,
   openQuickRegister,
   openProjectArea,
+  projectActions = [],
+  openProjectAction,
+  createProjectAction,
 }: {
   mode: WorkspaceMode;
   client: SupabaseClient;
@@ -277,7 +285,10 @@ export function OperationalWorkspace({
   onInitialCameraFilesConsumed?: () => void;
   openQuickCamera: () => void;
   openQuickRegister: () => void;
-  openProjectArea: (tab: "inspections" | "findings" | "visual" | "files") => void;
+  openProjectArea: (tab: "inspections" | "findings" | "documents" | "registers" | "visual" | "drawings" | "files") => void;
+  projectActions?: Array<{ id: string; title: string; action_number: string; status: string; priority: string; due_at: string | null }>;
+  openProjectAction?: (actionId: string) => void;
+  createProjectAction?: () => void;
 }) {
   const { text } = useLanguage();
   const queryClient = useQueryClient();
@@ -362,6 +373,18 @@ export function OperationalWorkspace({
           openQuickRegister={openQuickRegister}
         />
       ) : null}
+      {mode === "actions" ? (
+        <ProjectActionCenter
+          data={query.data}
+          actions={projectActions}
+          projectName={projectName}
+          buildingName={buildingName}
+          openAction={(actionId) => openProjectAction?.(actionId)}
+          createAction={() => createProjectAction?.()}
+          openProjectArea={(tab) => openProjectArea(tab)}
+        />
+      ) : null}
+      {mode === "verify" ? <RapidVerifyWorkspace projectName={projectName} projectFiles={query.data.files} client={client} /> : null}
       {mode === "reports" ? (
         <ReportOperations
           data={query.data}
@@ -1022,6 +1045,7 @@ function ProjectOperations({
     ["inspections", text("Inspections", "Inspecties"), data.inspections.length],
     ["findings", text("Findings / NCR", "Bevindingen / NCR"), data.findings.filter((item) => item.status !== "closed").length],
     ["hse", "HSE", data.hseEvents.length],
+    ["documents", "Project Docs", data.files.filter((file) => file.status === "available").length + data.registerEntries.filter((entry) => ["document", "drawing", "specification", "contract", "boq"].includes(entry.register_type)).length],
     ["registers", text("Formal documents & registers", "Formele documenten & registers"), data.registerEntries.length],
     ["visual", text("Visual evidence", "Visueel bewijs"), data.visualCaptures.length],
     ["drawings", text("Drawings", "Tekeningen"), data.files.filter((file) => file.category === "drawing" && file.status === "available").length],
@@ -1031,6 +1055,7 @@ function ProjectOperations({
     inspections: moduleEnabled("inspections"),
     findings: moduleEnabled("quality"),
     hse: moduleEnabled("hse"),
+    documents: moduleEnabled("documents"),
     registers: moduleEnabled("documents"),
     visual: moduleEnabled("visual_evidence"),
     drawings: moduleEnabled("documents"),
@@ -1054,7 +1079,20 @@ function ProjectOperations({
       </header>
 
       {tab === "home" ? (
-        <section className="workspace-task-hub feedback-mode" aria-labelledby="workspace-task-title">
+        <>
+          <ProjectWorkspaceHome
+            inspectionCount={data.inspections.length}
+            openFindingCount={data.findings.filter((item) => item.status !== "closed" && item.status !== "cancelled").length}
+            hseCount={data.hseEvents.length}
+            documentCount={data.registerEntries.length}
+            drawingCount={data.files.filter((file) => file.category === "drawing" && file.status === "available").length}
+            visualCount={data.visualCaptures.length}
+            fileCount={data.files.filter((file) => file.status === "available").length}
+            openQuickCamera={openQuickCamera}
+            openQuickRegister={openQuickRegister}
+            openTask={openTask}
+          />
+        <section className="workspace-task-hub feedback-mode" aria-hidden="true" hidden>
           <div className="workspace-feedback-grid">
             <button type="button" onClick={openQuickCamera}><span className="photo"><Camera size={22} /></span><strong>{text("Take photo", "Foto maken")}</strong><small>{text("Description and daily filing", "Omschrijving en dagordening")}</small></button>
             <button type="button" onClick={() => openTask("inspections", true)}><span className="inspection"><ClipboardCheck size={22} /></span><strong>{text("Inspection", "Inspectie")}</strong><small>{data.inspections.length} {text("recorded", "geregistreerd")}</small></button>
@@ -1122,6 +1160,7 @@ function ProjectOperations({
             <span><WifiOff size={16} /><small>{text("Photos queue offline", "Foto’s wachten offline")}</small></span>
           </div>
         </section>
+        </>
       ) : (
         <>
           <div className="workspace-section-controls">
@@ -1243,6 +1282,21 @@ function ProjectOperations({
 
       {tab === "findings" ? (
         <section className="operation-panel">
+          <div className="punchlist-command">
+            <div className="punchlist-stages">
+              {[
+                [text("Open", "Open"), data.findings.filter((item) => ["draft", "open", "assigned"].includes(item.status)).length],
+                [text("In progress", "In uitvoering"), data.findings.filter((item) => ["in_progress", "reopened", "rejected"].includes(item.status)).length],
+                [text("Ready for verification", "Gereed voor verificatie"), data.findings.filter((item) => item.status === "ready_for_verification").length],
+                [text("Verified", "Geverifieerd"), data.findings.filter((item) => item.status === "closed").length],
+              ].map(([label, count], index) => <div className={index === 2 ? "attention" : index === 3 ? "complete" : ""} key={String(label)}><span>{index + 1}</span><strong>{count}</strong><small>{label}</small></div>)}
+            </div>
+            <div className="punchlist-cycle-card">
+              <span><RotateCcw size={19} /></span>
+              <div><strong>{text("Contractor-to-supervisor review cycle", "Reviewcyclus aannemer naar supervisor")}</strong><p>{text("The contractor marks work ready with evidence. A supervisor verifies, closes or reopens it with a reason. The history remains intact.", "De aannemer meldt werk gereed met bewijs. Een supervisor verifieert, sluit of heropent het met reden. De historie blijft intact.")}</p></div>
+              <button className="secondary-button" type="button" onClick={() => setTab("visual")}><RotateCcw size={14} /> {text("Open 360° evidence", "Open 360°-bewijs")}</button>
+            </div>
+          </div>
           {showForm ? (
             <div className="operation-form snap-assign-form">
               <div className="operation-form-heading"><div><span className="record-number">{text("Snap & assign", "Foto & toewijzen")}</span><h2>{text("Record finding / NCR", "Bevinding / NCR registreren")}</h2></div>{!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}</div>
@@ -1469,6 +1523,8 @@ function ProjectOperations({
       ) : null}
 
       {tab === "visual" ? <VisualEvidenceWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} parties={parties} client={client} busy={busy} run={run} initialFindingId={visualFindingId} /> : null}
+
+      {tab === "documents" ? <ProjectDocumentsHome data={data} openDrawings={() => switchTab("drawings")} openFiles={() => switchTab("files")} openRegisters={() => switchTab("registers")} createDocument={() => openTask("registers", true)} /> : null}
 
       {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} client={client} busy={busy} run={run} onOpenLinkedRecord={(recordType) => switchTab(recordType === "observation" ? "findings" : recordType === "inspection" ? "inspections" : recordType === "visual" ? "visual" : "registers")} /> : null}
 

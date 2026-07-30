@@ -16,6 +16,7 @@ import type { RegisterEntry } from "@/lib/supabase/operations";
 type Details = Record<string, unknown>;
 
 const documentTitles: Record<ControlledDocumentType, string> = {
+  wcr: "WORK COMPLETION REQUEST",
   rfi: "REQUEST FOR INFORMATION",
   rfa: "REQUEST FOR APPROVAL",
   inspection_request: "WORK INSPECTION REQUEST",

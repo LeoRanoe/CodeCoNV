@@ -56,7 +56,6 @@ import { ClientDashboard } from "@/app/client-dashboard";
 import { LocationPicker, locationBreadcrumb, type ProjectLocationOption } from "@/app/location-picker";
 import { FieldGuide } from "@/app/field-guide";
 import { OperationalWorkspace } from "@/app/operational-workspace";
-import { RapidVerifyWorkspace } from "@/app/rapid-verify-workspace";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { ensureDailyBackup } from "@/lib/backups/client";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
@@ -504,8 +503,9 @@ export function CodecoSupervisionApp() {
   const [contextBuildingId, setContextBuildingId] = useState<string | null>(null);
   const [activeNav, setActiveNav] = useState<NavKey>("vandaag");
   const [modal, setModal] = useState<ModalKey>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [selectedType, setSelectedType] = useState<string>("activity");
-  const [initialProjectTab, setInitialProjectTab] = useState<"home" | "inspections" | "findings" | "hse" | "registers" | "visual" | "drawings" | "tools" | "files">("home");
+  const [initialProjectTab, setInitialProjectTab] = useState<"home" | "inspections" | "findings" | "hse" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files">("home");
   const quickCameraInputRef = useRef<HTMLInputElement>(null);
   const dailyBackupCheckRef = useRef("");
   const [pendingQuickPhotos, setPendingQuickPhotos] = useState<File[]>([]);
@@ -1018,6 +1018,7 @@ export function CodecoSupervisionApp() {
 
   const navigate = (next: NavKey) => {
     if (next === "project") setInitialProjectTab("home");
+    setMobileMenuOpen(false);
     setActiveNav(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -1396,9 +1397,9 @@ export function CodecoSupervisionApp() {
               onStartBuilding={openBuildingStart}
               onCloseoutBuilding={openBuildingCloseout}
             />
-          ) : activeNav === "project" || activeNav === "projectdocs" || activeNav === "punchlist" || activeNav === "rapporten" || activeNav === "meer" ? (
+          ) : activeNav === "project" || activeNav === "acties" || activeNav === "projectdocs" || activeNav === "punchlist" || activeNav === "verify" || activeNav === "rapporten" || activeNav === "meer" ? (
             <OperationalWorkspace
-              mode={activeNav === "project" || activeNav === "projectdocs" || activeNav === "punchlist" ? "project" : activeNav === "rapporten" ? "reports" : "admin"}
+              mode={activeNav === "acties" ? "actions" : activeNav === "verify" ? "verify" : activeNav === "project" || activeNav === "projectdocs" || activeNav === "punchlist" ? "project" : activeNav === "rapporten" ? "reports" : "admin"}
               client={supabase}
               organizationId={activeOrganizationId!}
               projectId={selectedProject!.id}
@@ -1415,18 +1416,24 @@ export function CodecoSupervisionApp() {
               parties={dayQuery.data?.parties ?? []}
               canManageOrganization={canManageMembers}
               openUserAdmin={() => setModal("user_admin")}
-              initialProjectTab={activeNav === "projectdocs" ? "drawings" : activeNav === "punchlist" ? "findings" : initialProjectTab}
+              initialProjectTab={activeNav === "projectdocs" ? "documents" : activeNav === "punchlist" ? "findings" : initialProjectTab}
               initialCameraFiles={pendingQuickPhotos}
               onInitialCameraFilesConsumed={() => setPendingQuickPhotos([])}
               openQuickCamera={openQuickAdd}
               openQuickRegister={() => setModal("quick")}
+              projectActions={dayActions}
+              openProjectAction={(actionId) => {
+                const action = dayActions.find((item) => item.id === actionId);
+                if (!action) return;
+                setSelectedAction(action);
+                setModal("action_detail");
+              }}
+              createProjectAction={() => setModal("action_create")}
               openProjectArea={(tab) => {
                 setInitialProjectTab(tab);
                 setActiveNav("project");
               }}
             />
-          ) : activeNav === "verify" ? (
-            <RapidVerifyWorkspace projectName={projectName} />
           ) : (
             <SecondaryView
               activeNav={activeNav}
@@ -1472,7 +1479,7 @@ export function CodecoSupervisionApp() {
           <span className="mobile-plus"><Camera size={23} /></span>
           {text("Photo", "Foto")}
         </button>
-        {localizedNavigation.filter((item) => item.id === "acties" || item.id === "rapporten").map((item) => {
+        {localizedNavigation.filter((item) => item.id === "acties").map((item) => {
           const Icon = item.icon;
           return (
             <button className={`mobile-nav-button ${activeNav === item.id ? "active" : ""}`} type="button" onClick={() => navigate(item.id)} key={item.id}>
@@ -1481,7 +1488,50 @@ export function CodecoSupervisionApp() {
             </button>
           );
         })}
+        <button
+          className={`mobile-nav-button ${["projectdocs", "punchlist", "verify", "rapporten", "meer"].includes(activeNav) ? "active" : ""}`}
+          type="button"
+          aria-expanded={mobileMenuOpen}
+          aria-controls="mobile-module-menu"
+          onClick={() => setMobileMenuOpen((open) => !open)}
+        >
+          <Settings size={20} />
+          {text("More", "Meer")}
+        </button>
       </nav>
+
+      {mobileMenuOpen ? (
+        <div className="mobile-module-sheet-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setMobileMenuOpen(false)}>
+          <section className="mobile-module-sheet" id="mobile-module-menu" role="dialog" aria-modal="true" aria-labelledby="mobile-module-title">
+            <header>
+              <div>
+                <span>{projectName}</span>
+                <h2 id="mobile-module-title">{text("All project modules", "Alle projectmodules")}</h2>
+              </div>
+              <button type="button" onClick={() => setMobileMenuOpen(false)} aria-label={text("Close", "Sluiten")}><X size={19} /></button>
+            </header>
+            <div className="mobile-module-grid">
+              {localizedNavigation.filter((item) => ["projectdocs", "punchlist", "verify", "rapporten", "meer"].includes(item.id)).map((item) => {
+                const Icon = item.icon;
+                const descriptions: Record<string, string> = {
+                  projectdocs: text("Drawings, BOQ, specifications and contracts", "Tekeningen, BOQ, specificaties en contracten"),
+                  punchlist: text("Contractor and supervisor verification", "Verificatie door aannemer en supervisor"),
+                  verify: text("Check project documents quickly", "Controleer projectdocumenten snel"),
+                  rapporten: text("Daily, weekly and monthly output", "Dag-, week- en maandrapportage"),
+                  meer: text("Team, rules and project setup", "Team, regels en projectinrichting"),
+                };
+                return (
+                  <button className={activeNav === item.id ? "active" : ""} type="button" onClick={() => navigate(item.id)} key={item.id}>
+                    <span><Icon size={19} /></span>
+                    <span><strong>{item.label}</strong><small>{descriptions[item.id]}</small></span>
+                    <ChevronRight size={17} />
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {modal === "quick" ? <QuickAddModal close={() => setModal(null)} chooseType={chooseType} /> : null}
       {modal === "entry" && selectedProject ? (
