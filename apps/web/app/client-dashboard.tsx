@@ -89,6 +89,7 @@ export function ClientDashboard({
   projectName,
   projectLocation,
   buildingName,
+  buildingCount,
   weather,
   openQuickAdd,
   openActions,
@@ -100,6 +101,7 @@ export function ClientDashboard({
   projectName: string;
   projectLocation: string;
   buildingName: string;
+  buildingCount: number;
   weather: DashboardWeather;
   openQuickAdd: () => void;
   openActions: () => void;
@@ -164,6 +166,7 @@ export function ClientDashboard({
 
   const activityEntries = entries.slice(0, 6);
   const evidenceEntries = photoEntries.slice(0, 4);
+  const buildingContextLabel = buildingCount > 1 ? text(`${buildingCount} buildings`, `${buildingCount} gebouwen`) : buildingName;
   const weatherLabel = weather
     ? ({
       sunny: text("Clear", "Helder"),
@@ -180,7 +183,7 @@ export function ClientDashboard({
         <div>
           <span className="overview-kicker"><LayoutDashboard size={15} /> {text("Live project control", "Actuele projectsturing")}</span>
           <h1>{projectName}</h1>
-          <p>{buildingName} · {text("One operational view for today’s work, risks and evidence.", "Eén operationeel overzicht voor het werk, de risico’s en het bewijs van vandaag.")}</p>
+          <p>{buildingContextLabel} · {text("One operational view for today’s work, risks and evidence.", "Eén operationeel overzicht voor het werk, de risico’s en het bewijs van vandaag.")}</p>
         </div>
         <div className="overview-hero-actions">
           <label className="overview-search">
@@ -309,7 +312,7 @@ export function ClientDashboard({
             <i className="plan-pin pin-two"><MapPin size={14} /></i>
             <span className="plan-caption"><Sparkles size={13} /> {text("Open linked project drawing", "Open gekoppelde projecttekening")}</span>
           </button>
-          <div className="overview-site-meta"><span><TimerReset size={14} /> {text("Current report context", "Actuele rapportcontext")}</span><strong>{buildingName}</strong></div>
+          <div className="overview-site-meta"><span><TimerReset size={14} /> {text("Current report context", "Actuele rapportcontext")}</span><strong>{buildingContextLabel}</strong></div>
         </article>
       </div>
     </section>

@@ -146,7 +146,7 @@ function CompanyLogo({ subtitle }: { subtitle?: string }) {
 }
 
 type NavKey = "vandaag" | "project" | "acties" | "projectdocs" | "punchlist" | "verify" | "rapporten" | "meer";
-type ModalKey = "quick" | "entry" | "action_create" | "action_detail" | "report" | "attendance" | "one_tap_log" | "daily_questions" | "project_start" | "user_admin" | "notifications" | "switch_building" | null;
+type ModalKey = "quick" | "entry" | "action_create" | "action_detail" | "report" | "attendance" | "one_tap_log" | "daily_questions" | "project_start" | "user_admin" | "notifications" | "manage_buildings" | null;
 type WorkspaceStage = "projects" | "cockpit";
 type EntryKind =
   | "activity"
@@ -1037,11 +1037,6 @@ export function CodecoSupervisionApp() {
     setModal("daily_questions");
   };
 
-  const switchBuilding = (building: BuildingContext) => {
-    setSelectedBuilding(building);
-    setModal(null);
-  };
-
   const addBuilding = async (input: { code: string; name: string; description: string }) => {
     if (!selectedProject || !supabase) return false;
     const created = await runSynced(
@@ -1065,7 +1060,6 @@ export function CodecoSupervisionApp() {
       todayPlannedWork: [],
     };
     setSelectedProject((current) => current ? { ...current, buildings: [...current.buildings, newBuilding] } : current);
-    setSelectedBuilding(newBuilding);
     setModal(null);
     await queryClient.invalidateQueries({ queryKey: ["workspace", session?.user.id] });
     return true;
@@ -1224,6 +1218,10 @@ export function CodecoSupervisionApp() {
 
   const projectName = selectedProject?.name ?? "Project";
   const buildingName = selectedBuilding?.name ?? text("Building", "Gebouw");
+  const buildingCount = selectedProject?.buildings.length ?? 0;
+  const buildingContextLabel = buildingCount > 1
+    ? text(`${buildingCount} buildings`, `${buildingCount} gebouwen`)
+    : buildingName;
   const contextBuilding = selectedProject?.buildings.find((building) => building.id === contextBuildingId) ?? selectedBuilding;
   const contextProjectStartAnswers = contextBuilding?.id === selectedBuilding?.id
     ? projectStartAnswers
@@ -1301,7 +1299,7 @@ export function CodecoSupervisionApp() {
           <span className="project-context-icon"><Building2 size={17} /></span>
           <span className="project-context-copy">
             <strong>{projectName}</strong>
-            <small>{buildingName} · {selectedProject?.location}</small>
+            <small>{buildingContextLabel} · {selectedProject?.location}</small>
           </span>
           <ChevronDown size={15} />
         </button>
@@ -1344,14 +1342,14 @@ export function CodecoSupervisionApp() {
           <button
             className="breadcrumb"
             type="button"
-            aria-label={text(`Switch building. ${selectedProject?.buildings.length ?? 0} buildings in this project.`, `Gebouw wisselen. ${selectedProject?.buildings.length ?? 0} gebouwen in dit project.`)}
-            onClick={() => setModal("switch_building")}
+            aria-label={text(`Manage buildings. ${buildingCount} buildings in this project.`, `Gebouwen beheren. ${buildingCount} gebouwen in dit project.`)}
+            onClick={() => setModal("manage_buildings")}
           >
             <span>{text("My projects", "Mijn projecten")}</span>
             <ChevronRight size={13} />
             <span>{projectName}</span>
             <ChevronRight size={13} />
-            <strong>{buildingName}</strong>
+            <strong>{buildingContextLabel}</strong>
           </button>
           <div className="top-actions">
             <LanguageSwitcher compact />
@@ -1397,8 +1395,6 @@ export function CodecoSupervisionApp() {
               buildings={selectedProject?.buildings ?? []}
               startChecks={dayQuery.data?.startChecks ?? []}
               closeouts={dayQuery.data?.closeouts ?? []}
-              selectedBuildingId={selectedBuilding?.id}
-              onSwitchBuilding={switchBuilding}
               onStartBuilding={openBuildingStart}
               onCloseoutBuilding={openBuildingCloseout}
             />
@@ -1526,7 +1522,7 @@ export function CodecoSupervisionApp() {
                 type="button"
                 onClick={() => {
                   setMobileMenuOpen(false);
-                  setModal("switch_building");
+                  setModal("manage_buildings");
                 }}
               >
                 <span><Building2 size={19} /></span>
@@ -1534,8 +1530,8 @@ export function CodecoSupervisionApp() {
                   <strong>{text("Buildings", "Gebouwen")}</strong>
                   <small>
                     {text(
-                      `${selectedProject?.buildings.length ?? 0} in this project · switch or add`,
-                      `${selectedProject?.buildings.length ?? 0} in dit project · wisselen of toevoegen`,
+                      `${selectedProject?.buildings.length ?? 0} in this project · view or add`,
+                      `${selectedProject?.buildings.length ?? 0} in dit project · bekijken of toevoegen`,
                     )}
                   </small>
                 </span>
@@ -1897,11 +1893,9 @@ export function CodecoSupervisionApp() {
         />
       ) : null}
 
-      {modal === "switch_building" && selectedProject ? (
-        <BuildingSwitcherModal
+      {modal === "manage_buildings" && selectedProject ? (
+        <ManageBuildingsModal
           buildings={selectedProject.buildings}
-          selectedBuildingId={selectedBuilding?.id}
-          choose={switchBuilding}
           close={() => setModal(null)}
           addBuilding={addBuilding}
         />
@@ -2551,8 +2545,6 @@ function TodayView({
   buildings,
   startChecks,
   closeouts,
-  selectedBuildingId,
-  onSwitchBuilding,
   onStartBuilding,
   onCloseoutBuilding,
 }: {
@@ -2583,8 +2575,6 @@ function TodayView({
   buildings: BuildingContext[];
   startChecks: Array<Record<string, unknown>>;
   closeouts: Array<Record<string, unknown>>;
-  selectedBuildingId: string | undefined;
-  onSwitchBuilding: (building: BuildingContext) => void;
   onStartBuilding: (building: BuildingContext) => void;
   onCloseoutBuilding: (building: BuildingContext) => void;
 }) {
@@ -2611,6 +2601,7 @@ function TodayView({
         projectName={projectName}
         projectLocation={projectLocation}
         buildingName={buildingName}
+        buildingCount={buildings.length}
         weather={projectStartAnswers ? { temperatureC: projectStartAnswers.temperatureC, weatherCondition: projectStartAnswers.weatherCondition } : null}
         openQuickAdd={openQuickAdd}
         openActions={openActions}
@@ -2688,18 +2679,16 @@ function TodayView({
             {buildings.map((building) => {
               const startDone = startChecks.some((row) => row.building_id === building.id);
               const closeoutDone = closeouts.some((row) => row.building_id === building.id);
-              const active = building.id === selectedBuildingId;
               return (
                 <div className="todo-row" key={building.id}>
                   <span className={`todo-check ${startDone && closeoutDone ? "done" : ""}`}><Check size={14} /></span>
                   <span className="todo-copy">
-                    <strong>{building.name}{active ? ` · ${text("default", "standaard")}` : ""}</strong>
+                    <strong>{building.name}</strong>
                     <span>{startDone ? text("Start done", "Start gereed") : text("Start missing", "Start ontbreekt")} · {closeoutDone ? text("Closeout done", "Afsluiting gereed") : text("Closeout missing", "Afsluiting ontbreekt")}</span>
                   </span>
                   <span className="todo-row-actions">
                     {!startDone ? <button className="text-link" type="button" onClick={() => onStartBuilding(building)}>{text("Start check", "Start")}</button> : null}
                     {startDone && !closeoutDone ? <button className="text-link" type="button" onClick={() => onCloseoutBuilding(building)}>{text("Closeout", "Afsluiting")}</button> : null}
-                    {!active ? <button className="text-link" type="button" onClick={() => onSwitchBuilding(building)}>{text("Set as default", "Als standaard instellen")}</button> : null}
                   </span>
                 </div>
               );
@@ -3540,16 +3529,12 @@ function ActionDetailModal({
   );
 }
 
-function BuildingSwitcherModal({
+function ManageBuildingsModal({
   buildings,
-  selectedBuildingId,
-  choose,
   close,
   addBuilding,
 }: {
   buildings: BuildingContext[];
-  selectedBuildingId: string | undefined;
-  choose: (building: BuildingContext) => void;
   close: () => void;
   addBuilding: (input: { code: string; name: string; description: string }) => Promise<boolean>;
 }) {
@@ -3573,25 +3558,21 @@ function BuildingSwitcherModal({
 
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
-      <section className="modal" role="dialog" aria-modal="true" aria-labelledby="building-switcher-title">
+      <section className="modal" role="dialog" aria-modal="true" aria-labelledby="manage-buildings-title">
         <header className="modal-header">
           <div>
-            <h2 id="building-switcher-title">{text("Switch building", "Gebouw wisselen")}</h2>
-            <p>{text("The daily report already covers every building. Switching only changes the default building pre-filled when you create a new record — you can still pick a different building per record.", "Het dagrapport dekt al elk gebouw. Wisselen verandert alleen het standaardgebouw dat wordt voorgesteld bij een nieuwe registratie — je kunt per registratie nog altijd een ander gebouw kiezen.")}</p>
+            <h2 id="manage-buildings-title">{text("Buildings in this project", "Gebouwen in dit project")}</h2>
+            <p>{text("The daily report already covers every building. Every record — photo, finding, inspection, log — lets you choose its own building individually. Buildings you add here become available to pick from.", "Het dagrapport dekt al elk gebouw. Elke registratie — foto, bevinding, inspectie, log — laat je zelf het gebouw kiezen. Gebouwen die je hier toevoegt, worden overal beschikbaar om uit te kiezen.")}</p>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <div className="modal-body">
           <div className="building-selection-grid">
-            {buildings.map((building) => {
-              const active = building.id === selectedBuildingId;
-              return (
-                <button className={`building-selection-card ${active ? "selected" : ""}`} type="button" onClick={() => choose(building)} key={building.id}>
-                  <span className="building-radio">{active ? <Check size={14} /> : null}</span>
-                  <span className="building-selection-copy"><strong>{building.name}</strong><small>{building.description}</small></span>
-                </button>
-              );
-            })}
+            {buildings.map((building) => (
+              <div className="building-selection-card" key={building.id}>
+                <span className="building-selection-copy"><strong>{building.name}</strong><small>{building.description}</small></span>
+              </div>
+            ))}
           </div>
           <details className="optional-text-entry full">
             <summary>{text("Add a new building", "Nieuw gebouw toevoegen")}</summary>

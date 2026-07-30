@@ -1249,43 +1249,15 @@ textarea:focus-visible {
 
 .building-selection-card {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 15px;
-  min-height: 98px;
+  min-height: 72px;
   padding: 17px 19px;
   border: 1px solid var(--ink-200);
   border-radius: 14px;
   background: #fff;
   text-align: left;
   box-shadow: var(--shadow-sm);
-  cursor: pointer;
-}
-
-.building-selection-card:hover,
-.building-selection-card.selected {
-  border-color: var(--signal);
-}
-
-.building-selection-card.selected {
-  background: #fffaf6;
-  box-shadow: 0 0 0 3px rgba(240, 116, 0, 0.1);
-}
-
-.building-radio {
-  display: grid;
-  width: 27px;
-  height: 27px;
-  place-items: center;
-  border: 1px solid var(--ink-200);
-  border-radius: 50%;
-  background: #fff;
-  color: #fff;
-}
-
-.building-selection-card.selected .building-radio {
-  border-color: var(--signal);
-  background: var(--signal);
 }
 
 .building-selection-copy strong,
@@ -4319,10 +4291,6 @@ textarea:focus-visible {
   .project-selection-card {
     min-height: 285px;
     padding: 20px;
-  }
-
-  .building-selection-card {
-    grid-template-columns: auto minmax(0, 1fr);
   }
 
   .building-stats {
