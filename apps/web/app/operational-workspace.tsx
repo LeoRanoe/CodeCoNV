@@ -158,7 +158,7 @@ const registerLabels: Record<string, string> = {
   cost: "Kostenbewaking",
   declaration: "Aannemersdeclaratie",
   rfa: "RFA - Request for Approval",
-  inspection_request: "IR - Inspectieverzoek",
+  inspection_request: "WIR - Werkinspectieverzoek",
   boq: "BOQ / voortgang",
   punch_list: "Punch list",
   notepad: "Notitieblok",
@@ -175,7 +175,7 @@ const registerLabelsEnglish: Record<string, string> = {
   delay: "Delay", communication: "Communication / decision", risk: "Risk", document: "Document",
   drawing: "Drawing", wcr: "WCR - Work Completion Request", rfi: "RFI", submittal: "Submittal", site_instruction: "Site instruction",
   meeting: "Meeting", correspondence: "Correspondence", cost: "Cost control", declaration: "Contractor payment claim",
-  rfa: "RFA - Request for Approval", inspection_request: "IR - Inspection request", boq: "BOQ / progress",
+  rfa: "RFA - Request for Approval", inspection_request: "WIR - Work Inspection Request", boq: "BOQ / progress",
   punch_list: "Punch list", notepad: "Notepad", agreement: "Agreement", technical_instruction: "Technical instruction (TI)",
   change_order: "Change order (CO)", contract: "Contract", specification: "Technical specification",
   environmental_report: "Environmental report (ER)",
@@ -652,6 +652,13 @@ function ProjectOperations({
     setActiveInspection(null);
   };
 
+  const openRegister = (type: "wcr" | "rfi" | "rfa" | "inspection_request" | "boq") => {
+    setRegisterForm({ ...emptyControlledDocumentDraft, type });
+    setRegisterFiles([]);
+    setRegisterLocationNodeId("");
+    openTask("registers", type !== "boq");
+  };
+
   const beginInspection = async () => {
     if (!reportId) return;
     const templateId = inspectionTemplateId || inspectionTemplates[0]?.id;
@@ -1063,6 +1070,21 @@ function ProjectOperations({
     files: moduleEnabled("visual_evidence"),
   })[sectionId]);
   const activeSectionLabel = projectSections.find(([id]) => id === tab)?.[1];
+  const activeSectionCount = projectSections.find(([id]) => id === tab)?.[2] ?? 0;
+  const projectSectionGroups = [
+    {
+      label: text("Field control", "Veldcontrole"),
+      sections: projectSections.filter(([id]) => ["inspections", "findings", "hse"].includes(id)),
+    },
+    {
+      label: text("Documents & approvals", "Documenten & goedkeuring"),
+      sections: projectSections.filter(([id]) => ["documents", "registers", "drawings"].includes(id)),
+    },
+    {
+      label: text("Evidence & tools", "Bewijs & hulpmiddelen"),
+      sections: projectSections.filter(([id]) => ["visual", "files", "tools"].includes(id)),
+    },
+  ].filter((group) => group.sections.length);
   const canCreateRecord = ["inspections", "findings", "hse", "registers"].includes(tab);
 
   return (
@@ -1091,6 +1113,7 @@ function ProjectOperations({
             openQuickCamera={openQuickCamera}
             openQuickRegister={openQuickRegister}
             openTask={openTask}
+            openRegister={openRegister}
           />
         <section className="workspace-task-hub feedback-mode" aria-hidden="true" hidden>
           <div className="workspace-feedback-grid">
@@ -1165,17 +1188,21 @@ function ProjectOperations({
         <>
           <div className="workspace-section-controls">
             <button className="workspace-back-button" type="button" onClick={() => switchTab("home")}><ArrowLeft size={17} /> {text("Workspace", "Werkruimte")}</button>
-            <label className="mobile-workspace-section-select">
-              <span>{text("Current section", "Huidig onderdeel")}</span>
-              <select value={tab} onChange={(event) => switchTab(event.target.value as ProjectTab)}>
-                {projectSections.map(([id, label, count]) => <option value={id} key={id}>{label} · {count}</option>)}
+            <div className="workspace-current-module" aria-live="polite">
+              <span>{text("Current module", "Huidige module")}</span>
+              <strong>{activeSectionLabel}</strong>
+              <b>{activeSectionCount}</b>
+            </div>
+            <label className="workspace-section-picker mobile-workspace-section-select">
+              <span>{text("Switch module", "Wissel van module")}</span>
+              <select value={tab} onChange={(event) => switchTab(event.target.value as ProjectTab)} aria-label={text("Switch project module", "Wissel projectmodule")}>
+                {projectSectionGroups.map((group) => (
+                  <optgroup label={group.label} key={group.label}>
+                    {group.sections.map(([id, label, count]) => <option value={id} key={id}>{label} · {count}</option>)}
+                  </optgroup>
+                ))}
               </select>
             </label>
-          </div>
-          <div className="operation-tabs workspace-desktop-tabs" role="tablist" aria-label={text("Project records", "Projectregisters")}>
-            {projectSections.map(([id, label, count]) => (
-          <button className={tab === id ? "active" : ""} type="button" role="tab" aria-selected={tab === id} onClick={() => switchTab(id)} key={id}>{label}<span>{count}</span></button>
-            ))}
           </div>
         </>
       )}

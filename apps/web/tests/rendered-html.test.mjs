@@ -637,9 +637,10 @@ test("minimizes repetitive field typing with controlled quick choices", async ()
 });
 
 test("keeps the project workspace mobile-first and task driven", async () => {
-  const [app, operations, styles] = await Promise.all([
+  const [app, operations, workspaceHome, styles] = await Promise.all([
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/project-workspace-home.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
 
@@ -648,7 +649,15 @@ test("keeps the project workspace mobile-first and task driven", async () => {
   assert.match(operations, /What do you need to do now\?|Wat wil je nu doen\?/);
   assert.match(operations, /workspace-camera-action/);
   assert.match(operations, /mobile-workspace-section-select/);
+  assert.match(operations, /projectSectionGroups/);
+  assert.match(operations, /workspace-current-module/);
   assert.match(operations, /Point and shoot[\s\S]*linked automatically/);
+  assert.match(workspaceHome, /openRegister\("wcr"\)/);
+  assert.match(workspaceHome, /openRegister\("rfi"\)/);
+  assert.match(workspaceHome, /openRegister\("rfa"\)/);
+  assert.match(workspaceHome, /openRegister\("inspection_request"\)/);
+  assert.match(workspaceHome, /openRegister\("boq"\)/);
+  assert.match(workspaceHome, /openTask\("documents"\)/);
   assert.match(styles, /\.workspace-task-hub/);
   assert.match(styles, /\.workspace-desktop-tabs\s*\{\s*display: none/);
   assert.match(styles, /\.overview-shortcut\.mobile-redundant\s*\{\s*display: none/);

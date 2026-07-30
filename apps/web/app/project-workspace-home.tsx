@@ -23,7 +23,8 @@ import {
 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
 
-type WorkspaceDestination = "inspections" | "findings" | "hse" | "registers" | "visual" | "drawings" | "tools" | "files";
+type WorkspaceDestination = "inspections" | "findings" | "hse" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files";
+type RegisterShortcut = "wcr" | "rfi" | "rfa" | "inspection_request" | "boq";
 
 type ProjectWorkspaceHomeProps = {
   inspectionCount: number;
@@ -36,6 +37,7 @@ type ProjectWorkspaceHomeProps = {
   openQuickCamera: () => void;
   openQuickRegister: () => void;
   openTask: (destination: WorkspaceDestination, create?: boolean) => void;
+  openRegister: (type: RegisterShortcut) => void;
 };
 
 function WorkspaceLink({
@@ -71,6 +73,7 @@ export function ProjectWorkspaceHome({
   openQuickCamera,
   openQuickRegister,
   openTask,
+  openRegister,
 }: ProjectWorkspaceHomeProps) {
   const { text } = useLanguage();
   return (
@@ -106,10 +109,10 @@ export function ProjectWorkspaceHome({
         <section className="workspace-module-group">
           <header><span><FileCheck2 size={17} /></span><div><h3>{text("Quality & approvals", "Kwaliteit & goedkeuring")}</h3><p>{text("Formal requests and close-out control", "Formele verzoeken en oplevercontrole")}</p></div></header>
           <div>
-            <WorkspaceLink icon={<FileCheck2 size={18} />} label="WCR" copy={text("Work completion request", "Gereedmelding werk")} onClick={() => openTask("registers", true)} />
-            <WorkspaceLink icon={<MessageCircle size={18} />} label="RFI" copy={text("Request for information", "Informatieverzoek")} onClick={() => openTask("registers", true)} />
-            <WorkspaceLink icon={<PackageCheck size={18} />} label="RFA" copy={text("Request for approval", "Goedkeuringsverzoek")} onClick={() => openTask("registers", true)} />
-            <WorkspaceLink icon={<ClipboardCheck size={18} />} label="WIR" copy={text("Work inspection request", "Werkinspectieverzoek")} onClick={() => openTask("registers", true)} />
+            <WorkspaceLink icon={<FileCheck2 size={18} />} label="WCR" copy={text("Work completion request", "Gereedmelding werk")} onClick={() => openRegister("wcr")} />
+            <WorkspaceLink icon={<MessageCircle size={18} />} label="RFI" copy={text("Request for information", "Informatieverzoek")} onClick={() => openRegister("rfi")} />
+            <WorkspaceLink icon={<PackageCheck size={18} />} label="RFA" copy={text("Request for approval", "Goedkeuringsverzoek")} onClick={() => openRegister("rfa")} />
+            <WorkspaceLink icon={<ClipboardCheck size={18} />} label="WIR" copy={text("Work inspection request", "Werkinspectieverzoek")} onClick={() => openRegister("inspection_request")} />
             <WorkspaceLink icon={<CheckCircle2 size={18} />} label="Punchlist" copy={text("Contractor review cycle", "Reviewcyclus aannemer")} count={openFindingCount} onClick={() => openTask("findings")} />
           </div>
         </section>
@@ -118,8 +121,8 @@ export function ProjectWorkspaceHome({
           <header><span><Archive size={17} /></span><div><h3>{text("Evidence & project control", "Bewijs & projectbeheersing")}</h3><p>{text("One source for drawings, documents and progress", "Eén bron voor tekeningen, documenten en voortgang")}</p></div></header>
           <div>
             <WorkspaceLink icon={<MapPin size={18} />} label={text("Drawings & pins", "Tekeningen & pins")} copy={text("Open the coordinated plan", "Open de gecoördineerde plattegrond")} count={drawingCount} onClick={() => openTask("drawings")} />
-            <WorkspaceLink icon={<FolderOpen size={18} />} label="Project Docs" copy={text("Controlled document register", "Beheerd documentenregister")} count={documentCount} onClick={() => openTask("registers")} />
-            <WorkspaceLink icon={<DatabaseBackup size={18} />} label="BOQ / Finance" copy={text("Import and measured progress", "Import en gemeten voortgang")} onClick={() => openTask("registers")} />
+            <WorkspaceLink icon={<FolderOpen size={18} />} label="Project Docs" copy={text("Controlled document register", "Beheerd documentenregister")} count={documentCount} onClick={() => openTask("documents")} />
+            <WorkspaceLink icon={<DatabaseBackup size={18} />} label="BOQ / Finance" copy={text("Import and measured progress", "Import en gemeten voortgang")} onClick={() => openRegister("boq")} />
             <WorkspaceLink icon={<RotateCcw size={18} />} label={text("360° evidence", "360°-bewijs")} copy={text("Panoramas with linked findings", "Panorama's met gekoppelde punten")} count={visualCount} onClick={() => openTask("visual")} />
             <WorkspaceLink icon={<HardDrive size={18} />} label={text("Photo library", "Fotobibliotheek")} copy={text("Daily folders and drawings", "Dagmappen en tekeningen")} count={fileCount} onClick={() => openTask("files")} />
           </div>
