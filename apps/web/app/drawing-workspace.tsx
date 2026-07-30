@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { useLanguage } from "@/lib/i18n";
 import { loadProjectFilePreviewObjectUrl, uploadProjectFile } from "@/lib/storage/gateway";
 import {
@@ -296,7 +297,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                 ) : <div className="operation-alert warning"><AlertTriangle size={18} /><div><strong>{text("No records available for this type", "Geen records van dit type beschikbaar")}</strong><span>{text("Create the record in the appropriate project register first.", "Maak het record eerst aan in het bijbehorende projectregister.")}</span></div></div>}
                 <details className="optional-text-entry">
                   <summary>{text("Add an exceptional pin note", "Uitzonderlijke pinnotitie toevoegen")}</summary>
-                  <label className="form-field"><span>{text("Pin note · optional", "Notitie bij pin · optioneel")}</span><textarea rows={3} maxLength={1000} value={note} onChange={(event) => setNote(event.target.value)} /></label>
+                  <label className="form-field"><span>{text("Pin note · optional", "Notitie bij pin · optioneel")}</span><textarea rows={3} maxLength={1000} value={note} onChange={(event) => setNote(event.target.value)} /><DictateButton onText={(transcript) => setNote((current) => appendDictation(current, transcript))} /></label>
                 </details>
                 <div className="button-row"><button className="secondary-button" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button><button className="primary-button" type="button" disabled={busy || !selectedRecordId} onClick={() => void savePin()}><Link2 size={15} /> {text("Create link", "Koppeling maken")}</button></div>
               </div>

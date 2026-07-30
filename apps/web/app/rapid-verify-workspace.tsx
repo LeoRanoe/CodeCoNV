@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useMemo, useRef, useState } from "react";
+import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { useLanguage } from "@/lib/i18n";
 import { loadProjectFileBlob } from "@/lib/storage/gateway";
 import type { FileRecord } from "@/lib/supabase/operations";
@@ -289,11 +290,13 @@ export function RapidVerifyWorkspace({
             <label className="rapid-query-field">
               <span>{text("Question", "Vraag")}</span>
               <textarea rows={5} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder={text("Example: Which concrete strength is prescribed for the ground-floor shear wall?", "Voorbeeld: Welke betonsterkte is voorgeschreven voor de shear wall op de begane grond?")} />
+              <DictateButton onText={(transcript) => setQuestion((current) => appendDictation(current, transcript))} />
             </label>
           ) : (
             <label className="rapid-query-field">
               <span>{text("Specification to verify", "Te verifieren specificatie")}</span>
               <textarea rows={7} value={comparison} onChange={(event) => setComparison(event.target.value)} placeholder={text("Paste the received specification or requirement here.", "Plak hier de ontvangen specificatie of eis.")} />
+              <DictateButton onText={(transcript) => setComparison((current) => appendDictation(current, transcript))} />
             </label>
           )}
 

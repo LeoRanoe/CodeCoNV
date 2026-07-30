@@ -4,6 +4,8 @@ import { useLanguage } from "@/lib/i18n";
 
 export type BuildingOption = { id: string; name: string };
 
+export const ALL_BUILDINGS = "all";
+
 export function resolveDefaultBuildingId(buildings: BuildingOption[], preferredId?: string | null): string {
   if (preferredId && buildings.some((building) => building.id === preferredId)) return preferredId;
   return buildings[0]?.id ?? "";
@@ -16,6 +18,7 @@ export function BuildingPicker({
   onChange,
   label,
   disabled = false,
+  allowAll = false,
 }: {
   id: string;
   buildings: BuildingOption[];
@@ -23,6 +26,7 @@ export function BuildingPicker({
   onChange: (buildingId: string) => void;
   label?: string;
   disabled?: boolean;
+  allowAll?: boolean;
 }) {
   const { text } = useLanguage();
   if (buildings.length < 2) return null;
@@ -30,6 +34,7 @@ export function BuildingPicker({
     <label className="form-field building-picker-field" htmlFor={id}>
       <span>{label ?? text("Building", "Gebouw")}</span>
       <select id={id} disabled={disabled} value={value} onChange={(event) => onChange(event.target.value)}>
+        {allowAll ? <option value={ALL_BUILDINGS}>{text("All buildings", "Alle gebouwen")}</option> : null}
         {buildings.map((building) => <option value={building.id} key={building.id}>{building.name}</option>)}
       </select>
     </label>

@@ -1,32 +1,14 @@
 "use client";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Calculator, CheckCircle2, Mic, MicOff, NotebookPen, Save, ShieldCheck } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
-import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { Calculator, CheckCircle2, NotebookPen, Save, ShieldCheck } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { appendDictation, DictateButton, speechToTextAvailable } from "@/app/dictate-button";
 import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
 import { useLanguage } from "@/lib/i18n";
 import type { ProjectParty } from "@/lib/supabase/data";
 import { createRegisterEntry, type OperationSnapshot } from "@/lib/supabase/operations";
-
-type SpeechRecognitionResultLike = { isFinal: boolean; 0: { transcript: string } };
-type SpeechRecognitionEventLike = { resultIndex: number; results: ArrayLike<SpeechRecognitionResultLike> };
-type SpeechRecognitionLike = {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start: () => void;
-  stop: () => void;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
-};
-type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
-
-function speechConstructor() {
-  const browser = window as typeof window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor };
-  return browser.SpeechRecognition ?? browser.webkitSpeechRecognition ?? null;
-}
 
 function numeric(value: string) {
   const result = Number(value.replace(",", "."));
@@ -75,15 +57,14 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
   busy: boolean;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
 }) {
-  const { language, locale, text } = useLanguage();
+  const { locale, text } = useLanguage();
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(new Date());
   const currentTime = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Paramaribo" }).format(new Date());
   const emptyNote = { type: "notepad", title: "", body: "", agreementDate: today, agreementTime: currentTime, dueDate: "", responsiblePartyId: "", status: "agreed" };
   const [note, setNote] = useState(emptyNote);
   const [noteBuildingId, setNoteBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [noteLocationNodeId, setNoteLocationNodeId] = useState("");
-  const [listening, setListening] = useState(false);
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const [dictated, setDictated] = useState(false);
   const [dimensions, setDimensions] = useState({ length: "", width: "", height: "", quantity: "1" });
   const [expression, setExpression] = useState("");
   const [expressionResult, setExpressionResult] = useState<string>("");
@@ -94,48 +75,29 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
   const height = numeric(dimensions.height);
   const quantity = numeric(dimensions.quantity) || 1;
   const measurements = useMemo(() => ({ area: length * width * quantity, volume: length * width * height * quantity }), [height, length, quantity, width]);
-  const speechAvailable = typeof window !== "undefined" && Boolean(speechConstructor());
-
-  const toggleSpeech = () => {
-    if (listening) { recognitionRef.current?.stop(); return; }
-    const Constructor = speechConstructor();
-    if (!Constructor) return;
-    const recognition = new Constructor();
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.lang = language === "nl" ? "nl-NL" : "en-US";
-    recognition.onresult = (event) => {
-      let transcript = "";
-      for (let index = event.resultIndex; index < event.results.length; index += 1) if (event.results[index].isFinal) transcript += `${event.results[index][0].transcript} `;
-      if (transcript.trim()) setNote((current) => ({ ...current, body: `${current.body}${current.body ? " " : ""}${transcript.trim()}` }));
-    };
-    recognition.onerror = () => setListening(false);
-    recognition.onend = () => { setListening(false); recognitionRef.current = null; };
-    recognitionRef.current = recognition;
-    setListening(true);
-    recognition.start();
-  };
+  const speechAvailable = speechToTextAvailable();
 
   const saveNote = async () => {
     if (note.title.trim().length < 3 || note.body.trim().length < 3) return;
-    const okay = await run(() => createRegisterEntry(client, {
-      projectId, buildingId: noteBuildingId, locationNodeId: noteLocationNodeId, reportId, type: note.type, title: note.title.trim(),
+    const targetBuildingIds = noteBuildingId === ALL_BUILDINGS ? buildings.map((building) => building.id) : [noteBuildingId];
+    const okay = await run(() => Promise.all(targetBuildingIds.map((targetBuildingId) => createRegisterEntry(client, {
+      projectId, buildingId: targetBuildingId, locationNodeId: noteBuildingId === ALL_BUILDINGS ? "" : noteLocationNodeId, reportId, type: note.type, title: note.title.trim(),
       responsiblePartyId: note.responsiblePartyId || undefined,
       dueAt: note.dueDate || null,
       details: {
         text: note.body.trim(),
         recorded_at: new Date().toISOString(),
-        source: listening ? "voice_and_keyboard" : "keyboard",
+        source: dictated ? "voice_and_keyboard" : "keyboard",
         agreement_date: note.type === "agreement" ? note.agreementDate : null,
         agreement_time: note.type === "agreement" ? note.agreementTime : null,
         agreement_status: note.type === "agreement" ? note.status : null,
         responsible_party_name: parties.find((party) => party.id === note.responsiblePartyId)?.name ?? "",
         due_date: note.dueDate || null,
       },
-    }), note.type === "agreement"
+    }))), note.type === "agreement"
       ? text("Agreement stored with date, time, responsible party and deadline.", "Afspraak opgeslagen met datum, tijd, verantwoordelijke partij en deadline.")
       : text("Field note stored centrally with its automatic date and time.", "Veldnotitie centraal opgeslagen met automatische datum en tijd."));
-    if (okay) { setNote({ ...emptyNote }); setNoteLocationNodeId(""); }
+    if (okay) { setNote({ ...emptyNote }); setNoteLocationNodeId(""); setDictated(false); }
   };
 
   const runExpression = () => {
@@ -148,8 +110,8 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
     <section className="field-tools-grid">
       <div className="field-tool-card note-tool-card">
         <div className="field-tool-heading"><span className="module-card-icon"><NotebookPen size={19} /></span><div><span className="record-number">{text("Field notepad", "Veldnotitieblok")}</span><h2>{text("Type or dictate a dated project note", "Typ of dicteer een gedateerde projectnotitie")}</h2></div></div>
-        <div className="form-grid-2"><BuildingPicker id="note-building" buildings={buildings} value={noteBuildingId} onChange={(next) => { setNoteBuildingId(next); setNoteLocationNodeId(""); }} /><label className="form-field"><span>{text("Record type", "Type registratie")}</span><select value={note.type} onChange={(event) => setNote({ ...note, type: event.target.value })}><option value="notepad">{text("Notepad", "Notitieblok")}</option><option value="agreement">{text("Formal agreement", "Formele afspraak")}</option></select></label><label className="form-field"><span>{note.type === "agreement" ? text("Agreement subject", "Onderwerp afspraak") : text("Subject", "Onderwerp")}</span><input value={note.title} onChange={(event) => setNote({ ...note, title: event.target.value })} /></label></div>
-        <LocationPicker id="note-location" nodes={data.locationNodes} buildingId={noteBuildingId} value={noteLocationNodeId} onChange={setNoteLocationNodeId} requiredDepth={data.settings?.required_location_depth ?? "building"} />
+        <div className="form-grid-2"><BuildingPicker id="note-building" buildings={buildings} value={noteBuildingId} onChange={(next) => { setNoteBuildingId(next); setNoteLocationNodeId(""); }} allowAll /><label className="form-field"><span>{text("Record type", "Type registratie")}</span><select value={note.type} onChange={(event) => setNote({ ...note, type: event.target.value })}><option value="notepad">{text("Notepad", "Notitieblok")}</option><option value="agreement">{text("Formal agreement", "Formele afspraak")}</option></select></label><label className="form-field"><span>{note.type === "agreement" ? text("Agreement subject", "Onderwerp afspraak") : text("Subject", "Onderwerp")}</span><input value={note.title} onChange={(event) => setNote({ ...note, title: event.target.value })} /></label></div>
+        {noteBuildingId !== ALL_BUILDINGS ? <LocationPicker id="note-location" nodes={data.locationNodes} buildingId={noteBuildingId} value={noteLocationNodeId} onChange={setNoteLocationNodeId} requiredDepth={data.settings?.required_location_depth ?? "building"} /> : null}
         {note.type === "agreement" ? <div className="agreement-fields">
           <div className="form-grid-2">
             <label className="form-field"><span>{text("Agreement date", "Datum afspraak")}</span><input type="date" value={note.agreementDate} onChange={(event) => setNote({ ...note, agreementDate: event.target.value })} /></label>
@@ -160,9 +122,9 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
           </div>
           <div className="operation-alert"><CheckCircle2 size={17} /><div><strong>{text("Traceable agreement", "Traceerbare afspraak")}</strong><span>{text("Project, building, author and registration time are added automatically. The agreement date and deadline remain visible in reports.", "Project, gebouw, maker en registratietijd worden automatisch toegevoegd. De afspraakdatum en deadline blijven zichtbaar in rapporten.")}</span></div></div>
         </div> : null}
-        <label className="form-field"><span>{text("Text", "Tekst")}</span><textarea rows={7} value={note.body} onChange={(event) => setNote({ ...note, body: event.target.value })} /></label>
-        <div className="button-row"><button className={`secondary-button ${listening ? "recording" : ""}`} type="button" disabled={!speechAvailable} onClick={toggleSpeech}>{listening ? <MicOff size={15} /> : <Mic size={15} />} {listening ? text("Stop dictation", "Stop dicteren") : text("Dictate", "Dicteren")}</button><button className="primary-button" type="button" disabled={busy || ((data.settings?.required_location_depth ?? "building") !== "building" && !noteLocationNodeId) || note.title.trim().length < 3 || note.body.trim().length < 3 || (note.type === "agreement" && (!note.agreementDate || !note.agreementTime))} onClick={() => void saveNote()}><Save size={15} /> {note.type === "agreement" ? text("Save agreement", "Afspraak opslaan") : text("Save note", "Notitie opslaan")}</button></div>
-        <p className="field-tool-hint">{speechAvailable ? text("Dictation starts only after your click. Review the recognized text before saving.", "Dicteren start uitsluitend na jouw klik. Controleer de herkende tekst vóór opslaan.") : text("This browser does not provide speech recognition; keyboard entry remains available.", "Deze browser biedt geen spraakherkenning; invoer met het toetsenbord blijft beschikbaar.")}</p>
+        <label className="form-field"><span>{text("Text", "Tekst")}</span><textarea rows={7} value={note.body} onChange={(event) => setNote({ ...note, body: event.target.value })} /><DictateButton onText={(transcript) => { setNote((current) => ({ ...current, body: appendDictation(current.body, transcript) })); setDictated(true); }} /></label>
+        <div className="button-row"><button className="primary-button" type="button" disabled={busy || (noteBuildingId !== ALL_BUILDINGS && (data.settings?.required_location_depth ?? "building") !== "building" && !noteLocationNodeId) || note.title.trim().length < 3 || note.body.trim().length < 3 || (note.type === "agreement" && (!note.agreementDate || !note.agreementTime))} onClick={() => void saveNote()}><Save size={15} /> {note.type === "agreement" ? text("Save agreement", "Afspraak opslaan") : text("Save note", "Notitie opslaan")}</button></div>
+        {!speechAvailable ? <p className="field-tool-hint">{text("This browser does not provide speech recognition; keyboard entry remains available.", "Deze browser biedt geen spraakherkenning; invoer met het toetsenbord blijft beschikbaar.")}</p> : null}
       </div>
 
       <div className="field-tool-card calculator-card">

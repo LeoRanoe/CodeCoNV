@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { useLanguage } from "@/lib/i18n";
 import {
   compressFieldPhoto,
@@ -335,7 +336,7 @@ export function MediaLibraryWorkspace({
                 <small>{text("Add a short description before saving. The photo is filed under today's date.", "Voeg vóór het opslaan een korte omschrijving toe. De foto wordt onder de datum van vandaag bewaard.")}</small>
               </div>
             </div>
-            <label>
+            <label className="form-field">
               <span>{text("Photo description", "Foto-omschrijving")}</span>
               <textarea
                 value={photoDescription}
@@ -343,6 +344,7 @@ export function MediaLibraryWorkspace({
                 placeholder={text("What is visible, where was it taken and why does it matter?", "Wat is zichtbaar, waar is de foto gemaakt en waarom is dit belangrijk?")}
                 rows={3}
               />
+              <DictateButton onText={(transcript) => setPhotoDescription((current) => appendDictation(current, transcript))} />
             </label>
             <div className="media-capture-review-actions">
               <button className="secondary-button" type="button" onClick={() => { setPendingCapture([]); setPhotoDescription(""); }}>{text("Discard", "Verwijderen")}</button>

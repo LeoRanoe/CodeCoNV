@@ -29,8 +29,6 @@ import {
   LogOut,
   MapPin,
   MessageSquareText,
-  Mic,
-  MicOff,
   Minus,
   PackageCheck,
   Plus,
@@ -52,7 +50,8 @@ import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
-import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { ClientDashboard } from "@/app/client-dashboard";
 import { LocationPicker, locationBreadcrumb, type ProjectLocationOption } from "@/app/location-picker";
 import { FieldGuide } from "@/app/field-guide";
@@ -202,26 +201,6 @@ type AttendanceRow = {
   shiftStart: string;
   shiftEnd: string;
 };
-
-type SpeechRecognitionResultLike = { isFinal: boolean; 0: { transcript: string } };
-type SpeechRecognitionEventLike = { resultIndex: number; results: ArrayLike<SpeechRecognitionResultLike> };
-type SpeechRecognitionLike = {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start: () => void;
-  stop: () => void;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
-};
-type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
-
-function speechConstructor() {
-  if (typeof window === "undefined") return null;
-  const browser = window as typeof window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor };
-  return browser.SpeechRecognition ?? browser.webkitSpeechRecognition ?? null;
-}
 
 const constructionDisciplines = [
   "Bouwvakkers / algemeen",
@@ -990,17 +969,19 @@ export function CodecoSupervisionApp() {
   const saveEntry = async () => {
     if (!description.trim() || !supabase || !selectedProject || !selectedBuilding) return;
     const priorityMap: Record<string, string> = { low: "low", normal: "normal", high: "high", critical: "critical" };
-    const entryBuilding = selectedProject.buildings.find((building) => building.id === entryBuildingId) ?? selectedBuilding;
+    const targetBuildings = entryBuildingId === ALL_BUILDINGS
+      ? selectedProject.buildings
+      : [selectedProject.buildings.find((building) => building.id === entryBuildingId) ?? selectedBuilding];
     const saved = await runSynced(
-      () => saveSiteRegistration(supabase, {
+      () => Promise.all(targetBuildings.map((entryBuilding) => saveSiteRegistration(supabase, {
         projectId: selectedProject.id,
         buildingId: entryBuilding.id,
-        locationNodeId: entryLocationNodeId,
+        locationNodeId: entryBuildingId === ALL_BUILDINGS ? "" : entryLocationNodeId,
         type: selectedType,
         title: description.trim(),
         description: `${location} · ${description.trim()}`,
         priority: priorityMap[priority] ?? "normal",
-      }),
+      }))),
       text(`${entryTitles[selectedType]} was saved centrally and linked to the daily report.`, `${entryTitles[selectedType]} is centraal opgeslagen en aan het dagrapport gekoppeld.`),
     );
     if (!saved) return;
@@ -1596,13 +1577,16 @@ export function CodecoSupervisionApp() {
           close={() => setModal(null)}
           goBack={() => setModal("quick")}
           save={async (answers, actionBuildingId, locationNodeId) => {
+            const targetBuildingIds = actionBuildingId === ALL_BUILDINGS
+              ? selectedProject.buildings.map((building) => building.id)
+              : [actionBuildingId];
             const saved = await runSynced(
-              () => createProjectAction(supabase, {
+              () => Promise.all(targetBuildingIds.map((buildingId) => createProjectAction(supabase, {
                 projectId: selectedProject.id,
-                buildingId: actionBuildingId,
-                locationNodeId,
+                buildingId,
+                locationNodeId: actionBuildingId === ALL_BUILDINGS ? undefined : locationNodeId,
                 ...answers,
-              }),
+              }))),
               "Actie is met deadline en verantwoordelijke centraal aangemaakt.",
             );
             if (!saved) return false;
@@ -2360,6 +2344,7 @@ function ProjectStartForm({
     handleSubmit,
     control,
     setValue,
+    getValues,
     formState: { errors },
   } = useForm<ProjectStartAnswers>({
     resolver: zodResolver(localizedProjectStartSchema),
@@ -2481,7 +2466,7 @@ function ProjectStartForm({
               {errors.plannedWork ? <small className="field-error wide">{errors.plannedWork.message}</small> : null}
               <details className="optional-text-entry wide">
                 <summary>{text("Other planned work · optional", "Andere werkzaamheden · optioneel")}</summary>
-                <label className="form-field"><span>{text("Only add work that is not listed above", "Voeg alleen werk toe dat hierboven niet staat")}</span><textarea rows={3} {...register("plannedWork")} /></label>
+                <label className="form-field"><span>{text("Only add work that is not listed above", "Voeg alleen werk toe dat hierboven niet staat")}</span><textarea rows={3} {...register("plannedWork")} /><DictateButton onText={(transcript) => setValue("plannedWork", appendDictation(getValues("plannedWork") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label>
               </details>
               <label className="form-field"><span>{text("Inspection planned?", "Inspectie gepland?")}</span><select {...register("inspectionPlanned")}><option value="yes">{text("Yes", "Ja")}</option><option value="no">{text("No", "Nee")}</option></select></label>
               <label className="form-field"><span>{text("Concrete work planned?", "Betonwerk gepland?")}</span><select {...register("concreteWork")}><option value="yes">{text("Yes", "Ja")}</option><option value="no">{text("No", "Nee")}</option></select></label>
@@ -2497,7 +2482,7 @@ function ProjectStartForm({
               <div className="quick-issue-presets wide" aria-label={text("Choose expected risks", "Kies verwachte risico's")}>{riskOptions.map((option) => <button className={selectedRisks.includes(option) ? "active" : ""} type="button" aria-pressed={selectedRisks.includes(option)} onClick={() => toggleRisk(option)} key={option}>{option}</button>)}</div>
               <details className="optional-text-entry wide">
                 <summary>{text("Other risk · optional", "Ander risico · optioneel")}</summary>
-                <label className="form-field"><span>{text("Only add an exceptional project-specific risk", "Voeg alleen een uitzonderlijk projectspecifiek risico toe")}</span><textarea rows={3} {...register("riskNotes")} /></label>
+                <label className="form-field"><span>{text("Only add an exceptional project-specific risk", "Voeg alleen een uitzonderlijk projectspecifiek risico toe")}</span><textarea rows={3} {...register("riskNotes")} /><DictateButton onText={(transcript) => setValue("riskNotes", appendDictation(getValues("riskNotes") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label>
               </details>
               {answers.drawingStatus === "missing" ? (
                 <label className="confirmation-check wide"><input type="checkbox" {...register("drawingIssueReported")} /><span><strong>{text("Missing drawing was reported", "Ontbrekende tekening is gemeld")}</strong><small>{text("Human confirmation is required before the workday opens.", "Menselijke bevestiging vereist voordat de werkdag wordt geopend.")}</small>{errors.drawingIssueReported ? <em className="field-error">{errors.drawingIssueReported.message}</em> : null}</span></label>
@@ -3306,7 +3291,9 @@ function EntryModal({
 }) {
   const { language, locale, text } = useLanguage();
   const title = (language === "en" ? entryTitlesEnglish : entryTitles)[selectedType] ?? text("Record", "Registratie");
-  const chosenBuildingName = buildings.find((building) => building.id === buildingId)?.name ?? buildingName;
+  const chosenBuildingName = buildingId === ALL_BUILDINGS
+    ? text("All buildings", "Alle gebouwen")
+    : buildings.find((building) => building.id === buildingId)?.name ?? buildingName;
   const needsPriority = selectedType === "finding" || selectedType === "hse" || selectedType === "action";
   const choices: Record<string, string[]> = {
     activity: [text("Work started as planned.", "Werk volgens planning gestart."), text("Work completed as planned.", "Werk volgens planning afgerond."), text("Work continues tomorrow.", "Werk wordt morgen voortgezet.")],
@@ -3331,9 +3318,10 @@ function EntryModal({
             <div className="form-field full">
               <label htmlFor="description">{text("Short description *", "Korte omschrijving *")}</label>
               <textarea id="description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder={text("Choose above; only add an exceptional detail.", "Kies hierboven; voeg alleen een uitzonderlijk detail toe.")} />
+              <DictateButton onText={(transcript) => setDescription(appendDictation(description, transcript))} />
             </div>
-            <BuildingPicker id="entry-building" buildings={buildings} value={buildingId} onChange={setBuildingId} />
-            <LocationPicker id="entry-location" nodes={locationNodes} buildingId={buildingId} value={locationNodeId} onChange={(next) => { setLocationNodeId(next); setLocation(next ? `${chosenBuildingName} → ${locationBreadcrumb(locationNodes, next)}` : chosenBuildingName); }} requiredDepth={requiredLocationDepth} />
+            <BuildingPicker id="entry-building" buildings={buildings} value={buildingId} onChange={setBuildingId} allowAll />
+            {buildingId !== ALL_BUILDINGS ? <LocationPicker id="entry-location" nodes={locationNodes} buildingId={buildingId} value={locationNodeId} onChange={(next) => { setLocationNodeId(next); setLocation(next ? `${chosenBuildingName} → ${locationBreadcrumb(locationNodes, next)}` : chosenBuildingName); }} requiredDepth={requiredLocationDepth} /> : null}
             {needsPriority ? (
               <div className="form-field">
                 <label htmlFor="priority">{text("Priority", "Prioriteit")}</label>
@@ -3355,7 +3343,7 @@ function EntryModal({
           </div>
           <div className="modal-actions">
             <button className="back-button" type="button" onClick={goBack}><ArrowLeft size={14} /> {text("Back", "Terug")}</button>
-            <button className="primary-button" type="button" onClick={save} disabled={!description.trim() || (requiredLocationDepth !== "building" && !locationNodeId)}>{text("Save and include", "Opslaan en opnemen")} <Check size={14} /></button>
+            <button className="primary-button" type="button" onClick={save} disabled={!description.trim() || (buildingId !== ALL_BUILDINGS && requiredLocationDepth !== "building" && !locationNodeId)}>{text("Save and include", "Opslaan en opnemen")} <Check size={14} /></button>
           </div>
         </div>
       </section>
@@ -3394,7 +3382,7 @@ function ActionCreateModal({
   const [locationNodeId, setLocationNodeId] = useState("");
   const defaultParty = parties.find((party) => party.type === "contractor")?.id ?? parties[0]?.id ?? "";
   const defaultEmployee = employees[0]?.userId ?? "";
-  const { register, handleSubmit, setValue, control, formState: { errors } } = useForm<ProjectActionAnswers>({
+  const { register, handleSubmit, setValue, getValues, control, formState: { errors } } = useForm<ProjectActionAnswers>({
     resolver: zodResolver(projectActionSchema),
     defaultValues: {
       title: "",
@@ -3427,7 +3415,7 @@ function ActionCreateModal({
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal action-modal" role="dialog" aria-modal="true" aria-labelledby="action-create-title">
         <header className="modal-header">
-          <div><h2 id="action-create-title">{text("Create central action", "Actie centraal aanmaken")}</h2><p>{projectName} · {buildings.find((building) => building.id === buildingId)?.name ?? buildingName}</p></div>
+          <div><h2 id="action-create-title">{text("Create central action", "Actie centraal aanmaken")}</h2><p>{projectName} · {buildingId === ALL_BUILDINGS ? text("All buildings", "Alle gebouwen") : buildings.find((building) => building.id === buildingId)?.name ?? buildingName}</p></div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <form className="modal-body" onSubmit={handleSubmit(submit)} noValidate>
@@ -3438,11 +3426,11 @@ function ActionCreateModal({
               <summary>{text("Different action", "Andere actie")}</summary>
               <div className="form-grid">
                 <label className="form-field"><span>{text("Action *", "Actie *")}</span><input placeholder={text("What must demonstrably be completed?", "Wat moet aantoonbaar worden uitgevoerd?")} {...register("title")} />{errors.title ? <small className="field-error">{errors.title.message}</small> : null}</label>
-                <label className="form-field"><span>{text("Context and acceptance criterion *", "Context en acceptatiecriterium *")}</span><textarea rows={4} placeholder={text("Describe the location, required measure and completion criterion.", "Beschrijf locatie, gewenste maatregel en wanneer de actie gereed is.")} {...register("description")} />{errors.description ? <small className="field-error">{errors.description.message}</small> : null}</label>
+                <label className="form-field"><span>{text("Context and acceptance criterion *", "Context en acceptatiecriterium *")}</span><textarea rows={4} placeholder={text("Describe the location, required measure and completion criterion.", "Beschrijf locatie, gewenste maatregel en wanneer de actie gereed is.")} {...register("description")} /><DictateButton onText={(transcript) => setValue("description", appendDictation(getValues("description") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} />{errors.description ? <small className="field-error">{errors.description.message}</small> : null}</label>
               </div>
             </details>
-            <BuildingPicker id="action-building" buildings={buildings} value={buildingId} onChange={(next) => { setBuildingId(next); setLocationNodeId(""); }} />
-            <LocationPicker id="action-location" nodes={locationNodes} buildingId={buildingId} value={locationNodeId} onChange={setLocationNodeId} requiredDepth={requiredLocationDepth} />
+            <BuildingPicker id="action-building" buildings={buildings} value={buildingId} onChange={(next) => { setBuildingId(next); setLocationNodeId(""); }} allowAll />
+            {buildingId !== ALL_BUILDINGS ? <LocationPicker id="action-location" nodes={locationNodes} buildingId={buildingId} value={locationNodeId} onChange={setLocationNodeId} requiredDepth={requiredLocationDepth} /> : null}
             <label className="form-field"><span>{text("Responsible party *", "Verantwoordelijke partij *")}</span><select {...register("ownerPartyId")} disabled={parties.length === 0}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select>{errors.ownerPartyId ? <small className="field-error">{errors.ownerPartyId.message}</small> : null}</label>
             <label className="form-field"><span>{text("Assigned company employee *", "Toegewezen bedrijfsmedewerker *")}</span><select {...register("ownerUserId")} disabled={employees.length === 0}><option value="">{text("Choose employee", "Kies medewerker")}</option>{employees.map((employee) => <option value={employee.userId} key={employee.userId}>{employee.displayName || employee.email} · {[...employee.organizationRoles.map((role) => role.name), ...employee.projectRoles.filter((role) => role.projectId).map((role) => role.roleName)][0] ?? text("Employee", "Medewerker")}</option>)}</select>{errors.ownerUserId ? <small className="field-error">{errors.ownerUserId.message}</small> : null}{employees.length === 0 ? <small className="field-error">{text("No active company employees are available. Invite or activate one under Management → Team and access.", "Er zijn geen actieve bedrijfsmedewerkers beschikbaar. Nodig iemand uit of activeer het account via Management → Team en toegang.")}</small> : null}</label>
             <div className="form-field"><label htmlFor="action-deadline">Deadline *</label><input id="action-deadline" type="datetime-local" {...register("dueAt")} />{errors.dueAt ? <small className="field-error">{errors.dueAt.message}</small> : null}<span className="period-date-presets">{[[0, text("Today", "Vandaag")], [1, text("Tomorrow", "Morgen")], [3, text("3 days", "3 dagen")], [7, text("7 days", "7 dagen")]].map(([days, label]) => <button type="button" onClick={() => setValue("dueAt", actionDeadlineFromToday(Number(days)), { shouldDirty: true, shouldValidate: true })} key={String(label)}>{label}</button>)}</span></div>
@@ -3451,7 +3439,7 @@ function ActionCreateModal({
           </div>
           <div className="modal-actions">
             <button className="back-button" type="button" onClick={goBack}><ArrowLeft size={14} /> {text("Back", "Terug")}</button>
-            <button className="primary-button" type="submit" disabled={busy || parties.length === 0 || employees.length === 0 || (requiredLocationDepth !== "building" && !locationNodeId)}>{busy ? <Loader2 className="spin" size={14} /> : <Check size={14} />} {text("Save and assign", "Opslaan en toewijzen")}</button>
+            <button className="primary-button" type="submit" disabled={busy || parties.length === 0 || employees.length === 0 || (buildingId !== ALL_BUILDINGS && requiredLocationDepth !== "building" && !locationNodeId)}>{busy ? <Loader2 className="spin" size={14} /> : <Check size={14} />} {text("Save and assign", "Opslaan en toewijzen")}</button>
           </div>
         </form>
       </section>
@@ -3478,7 +3466,7 @@ function ActionDetailModal({
   const statusLabels = language === "en" ? actionStatusLabelsEnglish : actionStatusLabels;
   const [busy, setBusy] = useState(false);
   const nextStatus = nextActionStatus[action.status];
-  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<ActionTransitionAnswers>({
+  const { register, handleSubmit, reset, setValue, getValues, formState: { errors } } = useForm<ActionTransitionAnswers>({
     resolver: zodResolver(actionTransitionSchema),
     defaultValues: { note: "" },
   });
@@ -3530,7 +3518,7 @@ function ActionDetailModal({
               {errors.note ? <small className="field-error">{text("Choose a standard status note or enter a different note.", "Kies een standaard statusnotitie of voer een andere notitie in.")}</small> : null}
               <details className="optional-text-entry">
                 <summary>{text("Different status note", "Andere statusnotitie")}</summary>
-                <label className="form-field"><span>{nextStatus === "verified" ? text("Verification note *", "Verificatienotitie *") : text("Execution note *", "Uitvoeringsnotitie *")}</span><textarea rows={3} placeholder={text("Record what was completed, checked or is still required.", "Leg vast wat is uitgevoerd, gecontroleerd of nog nodig is.")} {...register("note")} />{errors.note ? <small className="field-error">{errors.note.message}</small> : null}</label>
+                <label className="form-field"><span>{nextStatus === "verified" ? text("Verification note *", "Verificatienotitie *") : text("Execution note *", "Uitvoeringsnotitie *")}</span><textarea rows={3} placeholder={text("Record what was completed, checked or is still required.", "Leg vast wat is uitgevoerd, gecontroleerd of nog nodig is.")} {...register("note")} /><DictateButton onText={(transcript) => setValue("note", appendDictation(getValues("note") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} />{errors.note ? <small className="field-error">{errors.note.message}</small> : null}</label>
               </details>
               <button className="primary-button" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={14} /> : <ArrowRight size={14} />} {text("Move to", "Naar")} {statusLabels[nextStatus].toLowerCase()}</button>
             </form>
@@ -3716,7 +3704,7 @@ function OneTapDailyLogModal({
   openDetailedLog: () => void;
   save: (notes: string, rows: AttendanceRow[], buildingId: string, photos: File[]) => void | Promise<void>;
 }) {
-  const { language, text } = useLanguage();
+  const { text } = useLanguage();
   const [notes, setNotes] = useState("");
   const [buildingId, setBuildingId] = useState(() => resolveDefaultBuildingId(buildings, defaultBuildingId));
   const [rows, setRows] = useState(initialRows);
@@ -3760,9 +3748,6 @@ function OneTapDailyLogModal({
       }];
     });
   };
-  const [listening, setListening] = useState(false);
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  const speechAvailable = Boolean(speechConstructor());
   const noteOptions = [
     text("Work is proceeding according to plan.", "Werk verloopt volgens planning."),
     text("All scheduled inspections passed.", "Alle geplande inspecties zijn akkoord."),
@@ -3779,34 +3764,6 @@ function OneTapDailyLogModal({
       heavy_rain: text("Heavy rain", "Zware regen"),
     })[projectStartAnswers.weatherCondition]}`
     : text("Start the workday to load weather", "Start de werkdag om het weer te laden");
-
-  const toggleSpeech = () => {
-    if (listening) {
-      recognitionRef.current?.stop();
-      return;
-    }
-    const Constructor = speechConstructor();
-    if (!Constructor) return;
-    const recognition = new Constructor();
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.lang = language === "nl" ? "nl-NL" : "en-US";
-    recognition.onresult = (event) => {
-      let transcript = "";
-      for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        if (event.results[index].isFinal) transcript += `${event.results[index][0].transcript} `;
-      }
-      if (transcript.trim()) setNotes((current) => `${current}${current ? " " : ""}${transcript.trim()}`);
-    };
-    recognition.onerror = () => setListening(false);
-    recognition.onend = () => {
-      setListening(false);
-      recognitionRef.current = null;
-    };
-    recognitionRef.current = recognition;
-    setListening(true);
-    recognition.start();
-  };
 
   const toggleOption = (option: string) => {
     setNotes((current) => current.includes(option)
@@ -3886,8 +3843,7 @@ function OneTapDailyLogModal({
             <div className="quick-issue-presets">
               {noteOptions.map((option) => <button className={notes.includes(option) ? "active" : ""} type="button" onClick={() => toggleOption(option)} key={option}>{option}</button>)}
             </div>
-            <label className="form-field"><span>{text("Notes · optional", "Notities · optioneel")}</span><textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder={text("Choose an option above or dictate.", "Kies hierboven een optie of dicteer.")} /></label>
-            <button className={`secondary-button ${listening ? "recording" : ""}`} type="button" disabled={!speechAvailable} onClick={toggleSpeech}>{listening ? <MicOff size={15} /> : <Mic size={15} />} {listening ? text("Stop dictation", "Stop dicteren") : text("Dictate notes", "Notities dicteren")}</button>
+            <label className="form-field"><span>{text("Notes · optional", "Notities · optioneel")}</span><textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder={text("Choose an option above or dictate.", "Kies hierboven een optie of dicteer.")} /><DictateButton onText={(transcript) => setNotes((current) => appendDictation(current, transcript))} /></label>
           </div>
           <div className="modal-actions">
             <span className="form-note"><CheckCircle2 size={13} /> {text("Project, building, date and report are linked automatically.", "Project, gebouw, datum en rapport worden automatisch gekoppeld.")}</span>
@@ -3948,6 +3904,7 @@ function DailyQuestionsModal({
     control,
     trigger,
     setValue,
+    getValues,
     formState: { errors },
   } = useForm<DailyCloseoutAnswers>({
     resolver: zodResolver(localizedDailyCloseoutSchema),
@@ -4063,7 +4020,7 @@ function DailyQuestionsModal({
                 {errors.daySummary ? <small className="field-error wide">{errors.daySummary.message}</small> : null}
                 <details className="optional-text-entry wide">
                   <summary>{text("Different daily summary", "Andere dagsamenvatting")}</summary>
-                  <label className="form-field"><span>{text("Daily summary *", "Samenvatting van de dag *")}</span><textarea rows={4} placeholder={text("Summarize what happened in no more than five lines.", "Vat in maximaal vijf regels samen wat er is gebeurd.")} {...register("daySummary")} /></label>
+                  <label className="form-field"><span>{text("Daily summary *", "Samenvatting van de dag *")}</span><textarea rows={4} placeholder={text("Summarize what happened in no more than five lines.", "Vat in maximaal vijf regels samen wat er is gebeurd.")} {...register("daySummary")} /><DictateButton onText={(transcript) => setValue("daySummary", appendDictation(getValues("daySummary") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label>
                 </details>
                 <div className="derived-answer">
                   <span>{text("Actual weather · automatic", "Werkelijk weer · automatisch")}</span>
@@ -4081,7 +4038,7 @@ function DailyQuestionsModal({
                   <div className="work-option-grid" aria-label={text("Choose ongoing work", "Kies lopend werk")}>{constructionWorkOptions.map((option) => { const label = language === "en" ? option.en : option.nl; const active = String(workOngoing).split("; ").includes(label); return <button className={active ? "active" : ""} type="button" aria-pressed={active} onClick={() => toggleCloseoutWork("workOngoing", label)} key={option.en}>{active ? <Check size={14} /> : <Plus size={14} />}{label}</button>; })}</div>
                   <details className="optional-text-entry">
                     <summary>{text("Other ongoing work", "Ander lopend werk")}</summary>
-                    <label className="form-field"><textarea rows={3} {...register("workOngoing")} /></label>
+                    <label className="form-field"><textarea rows={3} {...register("workOngoing")} /><DictateButton onText={(transcript) => setValue("workOngoing", appendDictation(getValues("workOngoing") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label>
                   </details>
                 </div>
                 <div className="click-answer-block wide">
@@ -4092,7 +4049,7 @@ function DailyQuestionsModal({
                 {errors.workPerformed ? <small className="field-error wide">{errors.workPerformed.message}</small> : null}
                 <details className="optional-text-entry wide">
                   <summary>{text("Other completed work", "Andere uitgevoerde werkzaamheden")}</summary>
-                  <label className="form-field"><span>{text("Only add work that is not listed above", "Voeg alleen werk toe dat hierboven niet staat")}</span><textarea rows={4} {...register("workPerformed")} /></label>
+                  <label className="form-field"><span>{text("Only add work that is not listed above", "Voeg alleen werk toe dat hierboven niet staat")}</span><textarea rows={4} {...register("workPerformed")} /><DictateButton onText={(transcript) => setValue("workPerformed", appendDictation(getValues("workPerformed") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label>
                 </details>
               </div>
             </section>
@@ -4104,9 +4061,9 @@ function DailyQuestionsModal({
               <div className="form-grid two-columns">
                 <label className="form-field"><span>{text("Inspections performed", "Inspecties uitgevoerd")}</span><select {...register("inspectionResult")}><option value="none">{text("No inspection", "Geen inspectie")}</option><option value="all_ok">{text("Performed · all passed", "Uitgevoerd · alles akkoord")}</option><option value="issues">{text("Performed · deviation found", "Uitgevoerd · afwijking gevonden")}</option></select></label>
                 <label className="form-field"><span>{text("Quality findings?", "Kwaliteitsbevindingen?")}</span><select {...register("qualityIssues")}><option value="no">{text("No", "Nee")}</option><option value="yes">{text("Yes", "Ja")}</option></select></label>
-                {qualityIssues === "yes" ? <div className="wide"><div className="quick-issue-presets" aria-label={text("Choose a quality finding", "Kies een kwaliteitsbevinding")}>{qualityDetailOptions.map((option) => <button type="button" onClick={() => setValue("qualityDetails", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div>{errors.qualityDetails ? <small className="field-error">{errors.qualityDetails.message}</small> : null}<details className="optional-text-entry"><summary>{text("Different quality finding", "Andere kwaliteitsbevinding")}</summary><label className="form-field"><span>{text("Location, finding and responsible party *", "Locatie, bevinding en verantwoordelijke *")}</span><textarea rows={4} {...register("qualityDetails")} /></label></details></div> : null}
+                {qualityIssues === "yes" ? <div className="wide"><div className="quick-issue-presets" aria-label={text("Choose a quality finding", "Kies een kwaliteitsbevinding")}>{qualityDetailOptions.map((option) => <button type="button" onClick={() => setValue("qualityDetails", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div>{errors.qualityDetails ? <small className="field-error">{errors.qualityDetails.message}</small> : null}<details className="optional-text-entry"><summary>{text("Different quality finding", "Andere kwaliteitsbevinding")}</summary><label className="form-field"><span>{text("Location, finding and responsible party *", "Locatie, bevinding en verantwoordelijke *")}</span><textarea rows={4} {...register("qualityDetails")} /><DictateButton onText={(transcript) => setValue("qualityDetails", appendDictation(getValues("qualityDetails") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details></div> : null}
                 <label className="form-field"><span>{text("Safety event?", "Veiligheidsgebeurtenis?")}</span><select {...register("hseEvent")}><option value="none">{text("No incident / near miss", "Geen incident / near miss")}</option><option value="near_miss">Near miss</option><option value="incident">Incident</option></select></label>
-                {hseEvent !== "none" ? <div className="wide"><div className="quick-issue-presets" aria-label={text("Choose an HSE description", "Kies een HSE-omschrijving")}>{hseDetailOptions.map((option) => <button type="button" onClick={() => setValue("hseDetails", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div>{errors.hseDetails ? <small className="field-error">{errors.hseDetails.message}</small> : null}<details className="optional-text-entry"><summary>{text("Different HSE event", "Andere HSE-gebeurtenis")}</summary><label className="form-field"><span>{text("Event and immediate measure *", "Gebeurtenis en directe maatregel *")}</span><textarea rows={4} {...register("hseDetails")} /></label></details></div> : null}
+                {hseEvent !== "none" ? <div className="wide"><div className="quick-issue-presets" aria-label={text("Choose an HSE description", "Kies een HSE-omschrijving")}>{hseDetailOptions.map((option) => <button type="button" onClick={() => setValue("hseDetails", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div>{errors.hseDetails ? <small className="field-error">{errors.hseDetails.message}</small> : null}<details className="optional-text-entry"><summary>{text("Different HSE event", "Andere HSE-gebeurtenis")}</summary><label className="form-field"><span>{text("Event and immediate measure *", "Gebeurtenis en directe maatregel *")}</span><textarea rows={4} {...register("hseDetails")} /><DictateButton onText={(transcript) => setValue("hseDetails", appendDictation(getValues("hseDetails") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details></div> : null}
               </div>
               <div className="question-module-note"><AlertTriangle size={14} /><span>{text("The app never closes an incident, NCR or repair autonomously. This remains a human action.", "De app sluit nooit autonoom een incident, NCR of herstel. Dit blijft een menselijke handeling.")}</span></div>
             </section>
@@ -4116,9 +4073,9 @@ function DailyQuestionsModal({
             <section className="question-group">
               <header><span className="question-group-icon"><PackageCheck size={18} /></span><span><h3>{text("Which logistics, tests or delays affected the day?", "Welke logistiek, testen of vertraging speelden mee?")}</h3><p>{text("Answers are linked to equipment, deliveries, measurements, variation work and delay.", "Antwoorden worden gekoppeld aan materieel, leveringen, metingen, meer-/minderwerk en vertraging.")}</p></span></header>
               <div className="form-grid two-columns">
-                <div className="click-answer-block"><strong>{text("Equipment and status", "Materieel en status")}</strong><div className="quick-issue-presets">{equipmentOptions.map((option) => <button className={equipmentStatus === option ? "active" : ""} type="button" onClick={() => setValue("equipmentStatus", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Other equipment status", "Andere materieelstatus")}</summary><label className="form-field"><textarea rows={3} {...register("equipmentStatus")} /></label></details></div>
-                <div className="click-answer-block"><strong>{text("Materials delivered", "Materialen geleverd")}</strong><div className="quick-issue-presets">{deliveryOptions.map((option) => <button className={deliveries === option ? "active" : ""} type="button" onClick={() => setValue("deliveries", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Other delivery detail", "Andere leveringsinformatie")}</summary><label className="form-field"><textarea rows={3} {...register("deliveries")} /></label></details></div>
-                <div className="click-answer-block wide"><strong>{text("Tests and measurements", "Testen en meetwaarden")}</strong><div className="quick-issue-presets">{testOptions.map((option) => <button className={testsMeasurements === option ? "active" : ""} type="button" onClick={() => setValue("testsMeasurements", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Add a numeric test result", "Numerieke testwaarde toevoegen")}</summary><label className="form-field"><span>{text("Test name, value and unit", "Testnaam, waarde en eenheid")}</span><textarea rows={3} placeholder={text("Example: slump 90 mm", "Bijvoorbeeld: slump 90 mm")} {...register("testsMeasurements")} /></label></details></div>
+                <div className="click-answer-block"><strong>{text("Equipment and status", "Materieel en status")}</strong><div className="quick-issue-presets">{equipmentOptions.map((option) => <button className={equipmentStatus === option ? "active" : ""} type="button" onClick={() => setValue("equipmentStatus", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Other equipment status", "Andere materieelstatus")}</summary><label className="form-field"><textarea rows={3} {...register("equipmentStatus")} /><DictateButton onText={(transcript) => setValue("equipmentStatus", appendDictation(getValues("equipmentStatus") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details></div>
+                <div className="click-answer-block"><strong>{text("Materials delivered", "Materialen geleverd")}</strong><div className="quick-issue-presets">{deliveryOptions.map((option) => <button className={deliveries === option ? "active" : ""} type="button" onClick={() => setValue("deliveries", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Other delivery detail", "Andere leveringsinformatie")}</summary><label className="form-field"><textarea rows={3} {...register("deliveries")} /><DictateButton onText={(transcript) => setValue("deliveries", appendDictation(getValues("deliveries") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details></div>
+                <div className="click-answer-block wide"><strong>{text("Tests and measurements", "Testen en meetwaarden")}</strong><div className="quick-issue-presets">{testOptions.map((option) => <button className={testsMeasurements === option ? "active" : ""} type="button" onClick={() => setValue("testsMeasurements", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Add a numeric test result", "Numerieke testwaarde toevoegen")}</summary><label className="form-field"><span>{text("Test name, value and unit", "Testnaam, waarde en eenheid")}</span><textarea rows={3} placeholder={text("Example: slump 90 mm", "Bijvoorbeeld: slump 90 mm")} {...register("testsMeasurements")} /><DictateButton onText={(transcript) => setValue("testsMeasurements", appendDictation(getValues("testsMeasurements") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details></div>
                 <label className="form-field"><span>{text("Variation work", "Meer- of minderwerk")}</span><select {...register("variationWork")}><option value="none">{text("Not applicable", "Niet van toepassing")}</option><option value="pending">{text("Pending", "In behandeling")}</option><option value="approved">{text("Approved", "Goedgekeurd")}</option><option value="rejected">{text("Rejected", "Afgewezen")}</option></select></label>
                 <label className="form-field"><span>{text("Was there a delay?", "Was er vertraging?")}</span><select {...register("delayCause")}><option value="none">{text("No delay", "Geen vertraging")}</option><option value="weather">{text("Weather", "Weer")}</option><option value="delivery">{text("Late delivery", "Levering te laat")}</option><option value="material">{text("Material shortage", "Materiaaltekort")}</option><option value="equipment">{text("Equipment failure", "Materieelstoring")}</option><option value="other">{text("Other cause", "Andere oorzaak")}</option></select></label>
                 {delayCause !== "none" ? <label className="form-field"><span>{text("Time lost", "Tijdverlies")}</span><span className="input-with-unit"><input type="number" min="0" max="24" step="0.25" {...register("delayHours", { valueAsNumber: true })} /><em>{text("hours", "uur")}</em></span>{errors.delayHours ? <small className="field-error">{errors.delayHours.message}</small> : null}</label> : null}
@@ -4130,11 +4087,11 @@ function DailyQuestionsModal({
             <section className="question-group">
               <header><span className="question-group-icon"><CalendarDays size={18} /></span><span><h3>{text("What was agreed and what is planned for tomorrow?", "Wat is afgesproken en wat staat morgen gepland?")}</h3><p>{text("Agreements, risks and planning remain structured and carry over to the next day.", "Afspraken, risico’s en planning blijven gestructureerd en worden meegenomen naar de volgende dag.")}</p></span></header>
               <div className="form-grid two-columns">
-                <div className="click-answer-block"><strong>{text("Communication and agreements", "Communicatie en gemaakte afspraken")}</strong><div className="quick-issue-presets">{communicationOptions.map((option) => <button className={communication === option ? "active" : ""} type="button" onClick={() => setValue("communication", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Other agreement", "Andere afspraak")}</summary><label className="form-field"><textarea rows={4} {...register("communication")} /></label></details></div>
-                <div className="click-answer-block"><strong>{text("Open risks", "Open risico’s")}</strong><div className="quick-issue-presets">{openRiskOptions.map((option) => <button className={risks === option ? "active" : ""} type="button" onClick={() => setValue("risks", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Other open risk", "Ander open risico")}</summary><label className="form-field"><textarea rows={4} {...register("risks")} /></label></details></div>
+                <div className="click-answer-block"><strong>{text("Communication and agreements", "Communicatie en gemaakte afspraken")}</strong><div className="quick-issue-presets">{communicationOptions.map((option) => <button className={communication === option ? "active" : ""} type="button" onClick={() => setValue("communication", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Other agreement", "Andere afspraak")}</summary><label className="form-field"><textarea rows={4} {...register("communication")} /><DictateButton onText={(transcript) => setValue("communication", appendDictation(getValues("communication") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details></div>
+                <div className="click-answer-block"><strong>{text("Open risks", "Open risico’s")}</strong><div className="quick-issue-presets">{openRiskOptions.map((option) => <button className={risks === option ? "active" : ""} type="button" onClick={() => setValue("risks", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Other open risk", "Ander open risico")}</summary><label className="form-field"><textarea rows={4} {...register("risks")} /><DictateButton onText={(transcript) => setValue("risks", appendDictation(getValues("risks") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details></div>
                 <div className="work-option-grid wide" aria-label={text("Choose tomorrow's work", "Kies werkzaamheden voor morgen")}>{constructionWorkOptions.map((option) => { const label = language === "en" ? option.en : option.nl; const active = String(tomorrowPlan).split("; ").includes(label); return <button className={active ? "active" : ""} type="button" aria-pressed={active} onClick={() => toggleCloseoutWork("tomorrowPlan", label)} key={option.en}>{active ? <Check size={14} /> : <Plus size={14} />}{label}</button>; })}</div>
                 {errors.tomorrowPlan ? <small className="field-error wide">{errors.tomorrowPlan.message}</small> : null}
-                <details className="optional-text-entry wide"><summary>{text("Other work for tomorrow", "Andere werkzaamheden voor morgen")}</summary><label className="form-field"><textarea rows={4} {...register("tomorrowPlan")} /></label></details>
+                <details className="optional-text-entry wide"><summary>{text("Other work for tomorrow", "Andere werkzaamheden voor morgen")}</summary><label className="form-field"><textarea rows={4} {...register("tomorrowPlan")} /><DictateButton onText={(transcript) => setValue("tomorrowPlan", appendDictation(getValues("tomorrowPlan") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details>
                 <label className="form-field"><span>{text("Number of photos today", "Aantal foto’s vandaag")}</span><input type="number" min="0" {...register("photoCount", { valueAsNumber: true })} /></label>
                 <label className="confirmation-check wide"><input type="checkbox" {...register("attachmentsConfirmed")} /><span><strong>{text("Attachments checked", "Bijlagen gecontroleerd")}</strong><small>{text("Inspection forms, certificates, tickets, drawings, NCRs and measurement reports were checked; missing items remain visible.", "Inspectieformulieren, certificaten, bonnen, tekeningen, NCR’s en meetrapporten zijn bekeken; ontbrekende stukken blijven zichtbaar.")}</small>{errors.attachmentsConfirmed ? <em className="field-error">{errors.attachmentsConfirmed.message}</em> : null}</span></label>
               </div>
