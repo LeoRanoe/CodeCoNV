@@ -99,6 +99,8 @@ export function MediaLibraryWorkspace({
   const [online, setOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
   const [syncing, setSyncing] = useState(false);
   const [fieldError, setFieldError] = useState("");
+  const [photoDescription, setPhotoDescription] = useState("");
+  const [pendingCapture, setPendingCapture] = useState<File[]>([]);
   const [libraryBuildingId, setLibraryBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const libraryBuildingName = buildings.find((building) => building.id === libraryBuildingId)?.name ?? buildingName;
   const folders = useMemo(() => data.mediaFolders.filter((folder) => !folder.building_id || folder.building_id === libraryBuildingId), [libraryBuildingId, data.mediaFolders]);
@@ -156,7 +158,11 @@ export function MediaLibraryWorkspace({
     };
   }, [reloadQueue, synchronize]);
 
-  const addFiles = useCallback(async (selected: FileList | File[] | null, preferredFolderName?: string) => {
+  const addFiles = useCallback(async (
+    selected: FileList | File[] | null,
+    preferredFolderName?: string,
+    descriptionOverride?: string,
+  ) => {
     if (!selected?.length) return;
     setFieldError("");
     try {
@@ -204,6 +210,7 @@ export function MediaLibraryWorkspace({
           fileName: prepared.fileName,
           mimeType: prepared.mimeType,
           title: automaticTitle(file.name),
+          description: descriptionOverride?.trim() || photoDescription.trim() || undefined,
           locationLabel: libraryBuildingName,
           capturedAt: new Date(file.lastModified || Date.now()).toISOString(),
           originalSize: file.size,
@@ -231,17 +238,34 @@ export function MediaLibraryWorkspace({
       ));
       await reloadQueue().catch(() => undefined);
     }
-  }, [libraryBuildingId, libraryBuildingName, client, folderId, folders, kind, projectId, reloadQueue, reportId, run, savingData, synchronize, text]);
+  }, [libraryBuildingId, libraryBuildingName, client, folderId, folders, kind, photoDescription, projectId, reloadQueue, reportId, run, savingData, synchronize, text]);
 
   useEffect(() => {
     if (!initialFiles.length) return;
     const captured = [...initialFiles];
-    const uploadTimer = window.setTimeout(() => {
+    const captureTimer = window.setTimeout(() => {
       onInitialFilesConsumed?.();
-      void addFiles(captured, text("Daily progress", "Dagvoortgang"));
+      setPendingCapture(captured);
     }, 0);
-    return () => window.clearTimeout(uploadTimer);
-  }, [addFiles, initialFiles, onInitialFilesConsumed, text]);
+    return () => window.clearTimeout(captureTimer);
+  }, [initialFiles, onInitialFilesConsumed]);
+
+  const savePendingCapture = useCallback(async () => {
+    if (!pendingCapture.length) return;
+    const dayKey = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Paramaribo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    await addFiles(
+      pendingCapture,
+      `${text("Daily progress", "Dagvoortgang")} · ${dayKey}`,
+      photoDescription,
+    );
+    setPendingCapture([]);
+    setPhotoDescription("");
+  }, [addFiles, pendingCapture, photoDescription, text]);
 
   const addFolder = async (name: string) => {
     let createdFolderId = "";
@@ -283,13 +307,37 @@ export function MediaLibraryWorkspace({
           <button className={kind === "drawing" ? "active" : ""} type="button" onClick={() => setKind("drawing")}><HardDrive size={16} /> {text("Drawing", "Tekening")}</button>
         </div>
         <div className="quick-issue-presets media-folder-presets" aria-label={text("Choose a photo folder", "Kies een fotomap")}>{standardFolderNames.map((name) => { const folder = folders.find((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase()); return <button className={Boolean(folder && folderId === folder.id) ? "active" : ""} type="button" disabled={busy} onClick={() => folder ? setFolderId(folder.id) : void addFolder(name)} key={name}><Folder size={13} /> {name}</button>; })}</div>
-        <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { void addFiles(event.target.files); event.target.value = ""; }} />
+        <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { setPendingCapture(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
         <input ref={importInputRef} hidden type="file" multiple accept={kind === "photo" ? "image/jpeg,image/png,image/webp" : "application/pdf,image/jpeg,image/png,image/webp,.dwg"} onChange={(event) => { void addFiles(event.target.files); event.target.value = ""; }} />
         <div className="media-capture-actions">
           {kind === "photo" ? <button className="primary-button camera-primary-action" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={18} /> {text("Take photo", "Maak foto")}</button> : <button className="primary-button" type="button" onClick={() => importInputRef.current?.click()}><Upload size={15} /> {text("Choose drawing", "Kies tekening")}</button>}
           {kind === "photo" ? <button className="secondary-button" type="button" onClick={() => importInputRef.current?.click()}><Upload size={15} /> {text("Import existing photos", "Bestaande foto’s importeren")}</button> : null}
           {kind === "photo" ? <button className="secondary-button" type="button" onClick={open360Upload}><ScanLine size={15} /> {text("Upload 360° image", "Upload 360°-beeld")}</button> : null}
         </div>
+        {kind === "photo" && pendingCapture.length ? (
+          <div className="media-capture-review">
+            <div className="media-capture-review-heading">
+              <span><Camera size={18} /></span>
+              <div>
+                <strong>{pendingCapture.length === 1 ? pendingCapture[0]?.name : `${pendingCapture.length} ${text("photos", "foto's")}`}</strong>
+                <small>{text("Add a short description before saving. The photo is filed under today's date.", "Voeg vóór het opslaan een korte omschrijving toe. De foto wordt onder de datum van vandaag bewaard.")}</small>
+              </div>
+            </div>
+            <label>
+              <span>{text("Photo description", "Foto-omschrijving")}</span>
+              <textarea
+                value={photoDescription}
+                onChange={(event) => setPhotoDescription(event.target.value)}
+                placeholder={text("What is visible, where was it taken and why does it matter?", "Wat is zichtbaar, waar is de foto gemaakt en waarom is dit belangrijk?")}
+                rows={3}
+              />
+            </label>
+            <div className="media-capture-review-actions">
+              <button className="secondary-button" type="button" onClick={() => { setPendingCapture([]); setPhotoDescription(""); }}>{text("Discard", "Verwijderen")}</button>
+              <button className="primary-button" type="button" disabled={busy} onClick={() => void savePendingCapture()}><Upload size={15} /> {text("Save with date", "Opslaan met datum")}</button>
+            </div>
+          </div>
+        ) : null}
         <details className="optional-text-entry media-folder-create">
           <summary>{text("Custom folder", "Eigen map")}</summary>
           <span><input value={newFolder} onChange={(event) => setNewFolder(event.target.value)} placeholder={text("Folder name", "Mapnaam")} /><button className="secondary-button" type="button" disabled={busy || newFolder.trim().length < 2} onClick={() => void addFolder(newFolder)}><FolderPlus size={15} /> {text("Create", "Maken")}</button></span>

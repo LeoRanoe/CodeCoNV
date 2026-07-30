@@ -36,6 +36,7 @@ import {
   Plus,
   RefreshCw,
   Ruler,
+  Search,
   Settings,
   ShieldCheck,
   TimerOff,
@@ -51,9 +52,11 @@ import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { ClientDashboard } from "@/app/client-dashboard";
 import { LocationPicker, locationBreadcrumb, type ProjectLocationOption } from "@/app/location-picker";
 import { FieldGuide } from "@/app/field-guide";
 import { OperationalWorkspace } from "@/app/operational-workspace";
+import { RapidVerifyWorkspace } from "@/app/rapid-verify-workspace";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { ensureDailyBackup } from "@/lib/backups/client";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
@@ -139,7 +142,7 @@ function CompanyLogo({ subtitle }: { subtitle?: string }) {
   );
 }
 
-type NavKey = "vandaag" | "project" | "acties" | "rapporten" | "meer";
+type NavKey = "vandaag" | "project" | "acties" | "projectdocs" | "punchlist" | "verify" | "rapporten" | "meer";
 type ModalKey = "quick" | "entry" | "action_create" | "action_detail" | "report" | "attendance" | "one_tap_log" | "daily_questions" | "project_start" | "user_admin" | "notifications" | "switch_building" | null;
 type WorkspaceStage = "projects" | "cockpit";
 type EntryKind =
@@ -243,6 +246,9 @@ const navigation: { id: NavKey; label: string; icon: LucideIcon; badge?: string 
   { id: "vandaag", label: "Overzicht", icon: Home },
   { id: "project", label: "Werkruimte", icon: LayoutDashboard },
   { id: "acties", label: "Acties", icon: ClipboardCheck },
+  { id: "projectdocs", label: "Project Docs", icon: FileText },
+  { id: "punchlist", label: "Punchlist", icon: CheckCircle2 },
+  { id: "verify", label: "Rapid Verify", icon: Search },
   { id: "rapporten", label: "Rapporten", icon: FileText },
   { id: "meer", label: "Instellingen", icon: Settings },
 ];
@@ -499,7 +505,7 @@ export function CodecoSupervisionApp() {
   const [activeNav, setActiveNav] = useState<NavKey>("vandaag");
   const [modal, setModal] = useState<ModalKey>(null);
   const [selectedType, setSelectedType] = useState<string>("activity");
-  const [initialProjectTab, setInitialProjectTab] = useState<"home" | "inspections" | "findings" | "hse" | "registers" | "visual" | "tools" | "files">("home");
+  const [initialProjectTab, setInitialProjectTab] = useState<"home" | "inspections" | "findings" | "hse" | "registers" | "visual" | "drawings" | "tools" | "files">("home");
   const quickCameraInputRef = useRef<HTMLInputElement>(null);
   const dailyBackupCheckRef = useRef("");
   const [pendingQuickPhotos, setPendingQuickPhotos] = useState<File[]>([]);
@@ -665,7 +671,16 @@ export function CodecoSupervisionApp() {
           : text("Live database · Supabase Realtime", "Live database · Supabase Realtime");
   const localizedNavigation = navigation.map((item) => ({
     ...item,
-    label: ({ vandaag: text("Overview", "Overzicht"), project: text("Workspace", "Werkruimte"), acties: text("Actions", "Acties"), rapporten: text("Reports", "Rapporten"), meer: canManageMembers ? text("Management", "Management") : text("Settings", "Instellingen") } satisfies Record<NavKey, string>)[item.id],
+    label: ({
+      vandaag: text("Overview", "Overzicht"),
+      project: text("Workspace", "Werkruimte"),
+      acties: text("Actions", "Acties"),
+      projectdocs: "Project Docs",
+      punchlist: "Punchlist",
+      verify: "Rapid Verify",
+      rapporten: text("Reports", "Rapporten"),
+      meer: canManageMembers ? text("Management", "Management") : text("Settings", "Instellingen"),
+    } satisfies Record<NavKey, string>)[item.id],
   }));
 
   useEffect(() => {
@@ -1290,13 +1305,6 @@ export function CodecoSupervisionApp() {
           </span>
           <ChevronDown size={15} />
         </button>
-        {selectedProject && selectedProject.buildings.length > 0 ? (
-          <button className="ghost-button building-switch-trigger" type="button" aria-label={text("Switch or add a building", "Gebouw wisselen of toevoegen")} onClick={() => setModal("switch_building")}>
-            <Building2 size={15} />
-            {text("Switch building", "Gebouw wisselen")} · {buildingName}
-          </button>
-        ) : null}
-
         <nav className="side-nav">
           <span className="nav-label">{text("Workspace", "Werkruimte")}</span>
           {localizedNavigation.map((item) => {
@@ -1388,9 +1396,9 @@ export function CodecoSupervisionApp() {
               onStartBuilding={openBuildingStart}
               onCloseoutBuilding={openBuildingCloseout}
             />
-          ) : activeNav === "project" || activeNav === "rapporten" || activeNav === "meer" ? (
+          ) : activeNav === "project" || activeNav === "projectdocs" || activeNav === "punchlist" || activeNav === "rapporten" || activeNav === "meer" ? (
             <OperationalWorkspace
-              mode={activeNav === "project" ? "project" : activeNav === "rapporten" ? "reports" : "admin"}
+              mode={activeNav === "project" || activeNav === "projectdocs" || activeNav === "punchlist" ? "project" : activeNav === "rapporten" ? "reports" : "admin"}
               client={supabase}
               organizationId={activeOrganizationId!}
               projectId={selectedProject!.id}
@@ -1407,7 +1415,7 @@ export function CodecoSupervisionApp() {
               parties={dayQuery.data?.parties ?? []}
               canManageOrganization={canManageMembers}
               openUserAdmin={() => setModal("user_admin")}
-              initialProjectTab={initialProjectTab}
+              initialProjectTab={activeNav === "projectdocs" ? "drawings" : activeNav === "punchlist" ? "findings" : initialProjectTab}
               initialCameraFiles={pendingQuickPhotos}
               onInitialCameraFilesConsumed={() => setPendingQuickPhotos([])}
               openQuickCamera={openQuickAdd}
@@ -1417,6 +1425,8 @@ export function CodecoSupervisionApp() {
                 setActiveNav("project");
               }}
             />
+          ) : activeNav === "verify" ? (
+            <RapidVerifyWorkspace projectName={projectName} />
           ) : (
             <SecondaryView
               activeNav={activeNav}
@@ -1435,6 +1445,10 @@ export function CodecoSupervisionApp() {
                 setModal("action_detail");
               }}
               openActionCreate={() => setModal("action_create")}
+              openProjectTab={(tab) => {
+                setInitialProjectTab(tab);
+                setActiveNav("project");
+              }}
               reportNumber={reportNumber}
               reportStatus={String(dayQuery.data?.report?.status ?? "draft")}
               canManageMembers={canManageMembers}
@@ -2460,6 +2474,22 @@ function TodayView({
     ? `${projectStartAnswers.temperatureC}°C · ${({ sunny: text("Sunny", "Zonnig"), partly_cloudy: text("Partly cloudy", "Licht bewolkt"), cloudy: text("Cloudy", "Bewolkt"), rain: text("Rain", "Regen"), heavy_rain: text("Heavy rain", "Zware regen") })[projectStartAnswers.weatherCondition]}`
     : text("Weather not confirmed", "Weer nog niet bevestigd");
 
+  if (process.env.NEXT_PUBLIC_SUPERVISION_DASHBOARD !== "legacy") {
+    return (
+      <ClientDashboard
+        entries={entries}
+        actions={actions}
+        projectName={projectName}
+        buildingName={buildingName}
+        weather={projectStartAnswers ? { temperatureC: projectStartAnswers.temperatureC, weatherCondition: projectStartAnswers.weatherCondition } : null}
+        openQuickAdd={openQuickAdd}
+        openActions={openActions}
+        openWorkspace={openWorkspace}
+        openDailyQuestions={openDailyQuestions}
+      />
+    );
+  }
+
   return (
     <>
       <section className="page-intro">
@@ -2665,6 +2695,7 @@ function SecondaryView({
   locationNodes,
   openAction,
   openActionCreate,
+  openProjectTab,
   reportNumber,
   reportStatus,
   canManageMembers,
@@ -2683,6 +2714,7 @@ function SecondaryView({
   locationNodes: ProjectLocationOption[];
   openAction: (action: ProjectAction) => void;
   openActionCreate: () => void;
+  openProjectTab: (tab: "registers" | "findings" | "drawings") => void;
   reportNumber: string;
   reportStatus: string;
   canManageMembers: boolean;
@@ -2733,6 +2765,15 @@ function SecondaryView({
           <div><p className="eyebrow">{actions.length} {text("centrally recorded", "centraal geregistreerd")}</p><h1>{text("Actions", "Acties")}</h1><p>{text("Personal and assigned follow-up in one list.", "Persoonlijke en toegewezen opvolging in één lijst.")}</p></div>
           <button className="primary-button" type="button" onClick={openActionCreate}><Plus size={15} /> {text("Add action", "Actie toevoegen")}</button>
         </header>
+        <nav className="action-record-shortcuts" aria-label={text("Open work and document records", "Openstaande werk- en documentregistraties")}>
+          <button type="button" onClick={() => openProjectTab("registers")}><FileCheck2 size={16} /><span><strong>WCR</strong><small>{text("Work completion requests", "Werkcontroleverzoeken")}</small></span></button>
+          <button type="button" onClick={() => openProjectTab("registers")}><MessageSquareText size={16} /><span><strong>RFI</strong><small>{text("Information requests", "Informatieverzoeken")}</small></span></button>
+          <button type="button" onClick={() => openProjectTab("registers")}><PackageCheck size={16} /><span><strong>RFA</strong><small>{text("Approval requests", "Goedkeuringsverzoeken")}</small></span></button>
+          <button type="button" onClick={() => openProjectTab("registers")}><ClipboardCheck size={16} /><span><strong>WIR</strong><small>{text("Inspection requests", "Inspectieverzoeken")}</small></span></button>
+          <button type="button" onClick={() => openProjectTab("findings")}><AlertTriangle size={16} /><span><strong>{text("Issues / NCR", "Issues / NCR")}</strong><small>{text("Open findings", "Open bevindingen")}</small></span></button>
+          <button type="button" onClick={() => openProjectTab("findings")}><CheckCircle2 size={16} /><span><strong>Punchlist</strong><small>{text("Ready for review", "Gereed voor review")}</small></span></button>
+          <button type="button" onClick={() => openProjectTab("drawings")}><MapPin size={16} /><span><strong>{text("Floor plan", "Plattegrond")}</strong><small>{text("All linked pins", "Alle gekoppelde pins")}</small></span></button>
+        </nav>
         <section className="action-overview" aria-label={text("Action summary", "Actieoverzicht")}><button className={actionFilter === "open" ? "active" : ""} type="button" onClick={() => setActionFilter("open")}><strong>{openActions.length}</strong><span>{text("Open", "Open")}</span></button><button className={actionFilter === "urgent" ? "active urgent" : "urgent"} type="button" onClick={() => setActionFilter("urgent")}><strong>{urgentActions.length}</strong><span>{text("Urgent", "Urgent")}</span></button><button className={actionFilter === "completed" ? "active" : ""} type="button" onClick={() => setActionFilter("completed")}><strong>{completedActions.length}</strong><span>{text("Completed", "Afgerond")}</span></button><button className={actionFilter === "all" ? "active" : ""} type="button" onClick={() => setActionFilter("all")}><strong>{actions.length}</strong><span>{text("All", "Alles")}</span></button></section>
         <section className="actions-list">
           {visibleActions.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{actionFilter === "urgent" ? text("Nothing urgent", "Niets urgent") : actionFilter === "completed" ? text("No completed actions", "Nog geen afgeronde acties") : text("No open actions", "Geen open acties")}</strong><span>{text("Choose another filter or create a new action.", "Kies een ander filter of maak een nieuwe actie aan.")}</span></div> : null}

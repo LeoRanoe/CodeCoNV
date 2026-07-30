@@ -1054,7 +1054,24 @@ function ProjectOperations({
       </header>
 
       {tab === "home" ? (
-        <section className="workspace-task-hub" aria-labelledby="workspace-task-title">
+        <section className="workspace-task-hub feedback-mode" aria-labelledby="workspace-task-title">
+          <div className="workspace-feedback-grid">
+            <button type="button" onClick={openQuickCamera}><span className="photo"><Camera size={22} /></span><strong>{text("Take photo", "Foto maken")}</strong><small>{text("Description and daily filing", "Omschrijving en dagordening")}</small></button>
+            <button type="button" onClick={() => openTask("inspections", true)}><span className="inspection"><ClipboardCheck size={22} /></span><strong>{text("Inspection", "Inspectie")}</strong><small>{data.inspections.length} {text("recorded", "geregistreerd")}</small></button>
+            <button type="button" onClick={() => openTask("findings", true)}><span className="issue"><AlertTriangle size={22} /></span><strong>{text("Issue / NCR", "Issue / NCR")}</strong><small>{data.findings.filter((item) => item.status !== "closed").length} open</small></button>
+            <button type="button" onClick={() => openTask("registers", true)}><span className="wcr"><FileCheck2 size={22} /></span><strong>WCR</strong><small>{text("Work completion request", "Werkcontroleverzoek")}</small></button>
+            <button type="button" onClick={() => openTask("registers", true)}><span className="rfi"><MessageCircle size={22} /></span><strong>RFI</strong><small>{text("Request for information", "Informatieverzoek")}</small></button>
+            <button type="button" onClick={() => openTask("registers", true)}><span className="rfa"><PackageCheck size={22} /></span><strong>RFA</strong><small>{text("Request for approval", "Goedkeuringsverzoek")}</small></button>
+            <button type="button" onClick={() => openTask("registers", true)}><span className="wir"><ShieldCheck size={22} /></span><strong>WIR</strong><small>{text("Work inspection request", "Werkinspectieverzoek")}</small></button>
+            <button type="button" onClick={() => openTask("hse", true)}><span className="hse"><ShieldCheck size={22} /></span><strong>HSE</strong><small>{data.hseEvents.length} {text("events", "meldingen")}</small></button>
+            <button type="button" onClick={() => openTask("findings", true)}><span className="punch"><CheckCircle2 size={22} /></span><strong>Punchlist</strong><small>{text("Contractor and supervision", "Contractor en supervisie")}</small></button>
+            <button type="button" onClick={() => openTask("drawings")}><span className="drawing"><MapPin size={22} /></span><strong>{text("Drawing & pins", "Tekening & pins")}</strong><small>{data.files.filter((file) => file.category === "drawing").length} {text("drawings", "tekeningen")}</small></button>
+            <button type="button" onClick={() => openTask("registers")}><span className="docs"><Archive size={22} /></span><strong>Project Docs</strong><small>{data.registerEntries.length} {text("documents", "documenten")}</small></button>
+            <button type="button" onClick={() => openTask("registers", true)}><span className="boq"><DatabaseBackup size={22} /></span><strong>BOQ / Finance</strong><small>{text("Import and progress", "Import en voortgang")}</small></button>
+            <button type="button" onClick={() => openTask("visual")}><span className="visual"><RotateCcw size={22} /></span><strong>360° {text("evidence", "bewijs")}</strong><small>{data.visualCaptures.length} {text("captures", "opnamen")}</small></button>
+            <button type="button" onClick={() => openTask("files")}><span className="files"><HardDrive size={22} /></span><strong>{text("Photo folders", "Fotomappen")}</strong><small>{data.files.length} {text("files", "bestanden")}</small></button>
+            <button type="button" onClick={() => openTask("tools")}><span className="tools"><Wrench size={22} /></span><strong>{text("Field tools", "Veldtools")}</strong><small>{text("Notes and agreements", "Notities en afspraken")}</small></button>
+          </div>
           <div className="workspace-task-heading">
             <span><Wrench size={22} /></span>
             <div><p>{text("One task at a time", "Eén taak tegelijk")}</p><h2 id="workspace-task-title">{text("What do you need to do now?", "Wat wil je nu doen?")}</h2></div>
@@ -1785,9 +1802,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
     }] : []),
     { id: "complete", title: text("Complete project report", "Compleet projectrapport"), sections: ["management", "workforce", "work", "quality", "hse", "actions", "logistics", "instructions", "commercial", "communications", "requests", "boq", "visual", "documents", "environment", "buildings"] },
     { id: "management", title: text("Management report", "Managementrapport"), sections: ["management", "workforce", "work", "actions", "commercial"] },
-    { id: "execution", title: text("Execution and progress", "Uitvoering & voortgang"), sections: ["management", "workforce", "work", "logistics", "visual"] },
     { id: "quality", title: text("Quality and HSE", "Kwaliteit & HSE"), sections: ["quality", "hse", "environment", "actions", "visual", "buildings"] },
-    { id: "contract", title: text("Contract and decisions", "Contract & besluiten"), sections: ["management", "instructions", "commercial", "communications", "requests", "documents", "boq"] },
     { id: "visual", title: text("Visual progress report", "Visueel voortgangsrapport"), sections: ["visual", "work"] },
   ];
   const [reportChoice, setReportChoice] = useState(data.settings?.report_sections?.length ? "project" : "complete");
@@ -1795,6 +1810,30 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
   const [periodPreset, setPeriodPreset] = useState<"day" | "week" | "month" | "custom">("month");
   const [periodLabel, setPeriodLabel] = useState(() => text("Monthly supervision report", "Maandelijks supervisierapport"));
   const selectedReport = reportChoices.find((choice) => choice.id === reportChoice) ?? reportChoices[0];
+  const availableReportSections = reportChoices.find((choice) => choice.id === "complete")?.sections ?? selectedReport.sections;
+  const reportPromptLibrary = [
+    text(
+      "Create an executive project-management summary from the attached CODECO report. Separate facts, risks, decisions required, overdue actions and the next seven-day outlook. Do not invent missing information.",
+      "Maak uit het bijgevoegde CODECO-rapport een managementsamenvatting. Scheid feiten, risico's, vereiste besluiten, achterstallige acties en de vooruitblik voor zeven dagen. Verzin geen ontbrekende informatie.",
+    ),
+    text(
+      "Review this supervision report for schedule, quality, HSE and commercial risks. For every conclusion, cite the exact report section and clearly mark uncertainty.",
+      "Controleer dit supervisierapport op planning-, kwaliteit-, HSE- en commerciële risico's. Noem bij elke conclusie het exacte rapportonderdeel en markeer onzekerheid duidelijk.",
+    ),
+    text(
+      "Rewrite the attached report for a client steering meeting. Preserve all figures and statuses, group actions by responsible party and finish with a decision list.",
+      "Herschrijf het bijgevoegde rapport voor een stuurgroepoverleg met de klant. Behoud alle cijfers en statussen, groepeer acties per verantwoordelijke en eindig met een besluitenlijst.",
+    ),
+  ];
+  const [sectionOverrides, setSectionOverrides] = useState<Partial<Record<string, PeriodReportSection[]>>>({});
+  const activeSections = sectionOverrides[reportChoice] ?? selectedReport.sections;
+  const toggleReportSection = (section: PeriodReportSection) => {
+    setSectionOverrides((current) => {
+      const selected = current[reportChoice] ?? selectedReport.sections;
+      const next = selected.includes(section) ? selected.filter((item) => item !== section) : [...selected, section];
+      return { ...current, [reportChoice]: next };
+    });
+  };
   const applyDatePreset = (days: number, label: string, preset: "day" | "week") => {
     const start = new Date(`${today}T12:00:00-03:00`);
     start.setDate(start.getDate() - Math.max(0, days - 1));
@@ -1827,6 +1866,11 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
   return (
     <>
       <header className="secondary-header report-page-header"><div><p className="eyebrow">{text("Reports", "Rapporten")}</p><h1>{text("Client reports", "Klantrapporten")}</h1><p>{text("Create the right PDF first. Formal approval and history stay available in their own clear steps.", "Maak eerst de juiste PDF. Formele goedkeuring en historie blijven beschikbaar in eigen duidelijke stappen.")}</p></div><div className="report-header-state"><span className="record-number">{reportNumber}</span><span className={`report-state-pill ${reportStatus}`}>{statusLabels[reportStatus] ?? reportStatus}</span></div></header>
+      <nav className="report-frequency-tabs" aria-label={text("Report frequency", "Rapportfrequentie")}>
+        <button className={periodPreset === "day" ? "active" : ""} type="button" onClick={() => { setReportView("create"); applyDatePreset(1, text("Daily supervision report", "Dagelijks supervisierapport"), "day"); }}><CalendarRange size={19} /><span><strong>Daily report</strong><small>{text("Today and daily records", "Vandaag en dagregistraties")}</small></span></button>
+        <button className={periodPreset === "week" ? "active" : ""} type="button" onClick={() => { setReportView("create"); applyDatePreset(7, text("Weekly supervision report", "Wekelijks supervisierapport"), "week"); }}><FileText size={19} /><span><strong>Weekly report</strong><small>{text("Last seven days", "Laatste zeven dagen")}</small></span></button>
+        <button className={periodPreset === "month" ? "active" : ""} type="button" onClick={() => { setReportView("create"); setPeriod({ start: `${today.slice(0, 8)}01`, end: today }); setPeriodLabel(text("Monthly supervision report", "Maandelijks supervisierapport")); setPeriodPreset("month"); }}><Archive size={19} /><span><strong>Monthly report</strong><small>{text("Management summary and trends", "Managementsamenvatting en trends")}</small></span></button>
+      </nav>
       <nav className="report-section-tabs" role="tablist" aria-label={text("Report workspace", "Rapportwerkruimte")}>
         {reportViews.map((view) => {
           const Icon = view.icon;
@@ -1838,15 +1882,24 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
           <div className="workflow-icon"><CalendarRange size={20} /></div>
           <div className="period-report-copy"><span className="record-number">{text("Automatic client output", "Automatische klantoutput")}</span><h2>{text("Choose what the client needs", "Kies wat de klant nodig heeft")}</h2><p>{text("The app compiles one consistent snapshot from workforce, progress, inspections, findings, HSE, deliveries, delays, controlled documents and visual evidence.", "De app stelt één consistente momentopname samen uit bezetting, voortgang, inspecties, bevindingen, HSE, leveringen, vertragingen, beheerde documenten en visueel bewijs.")}</p></div>
           <div className="period-report-types" role="radiogroup" aria-label={text("Report type", "Rapporttype")}>{reportChoices.map((choice) => <button className={reportChoice === choice.id ? "active" : ""} type="button" role="radio" aria-checked={reportChoice === choice.id} onClick={() => setReportChoice(choice.id)} key={choice.id}><strong>{choice.title}</strong><span>{choice.sections.length} {text("automatic sections", "automatische onderdelen")}</span></button>)}</div>
+          <fieldset className="report-source-checklist">
+            <legend>{text("Include in this report", "Opnemen in dit rapport")}</legend>
+            {availableReportSections.map((section) => <label key={section}><input type="checkbox" checked={activeSections.includes(section)} onChange={() => toggleReportSection(section)} /><span>{section.replaceAll("_", " ")}</span></label>)}
+          </fieldset>
+          <details className="report-prompt-library">
+            <summary><MessageCircle size={15} /> {text("Prompt library for external writing review", "Promptlijst voor externe schrijfreview")}</summary>
+            <p>{text("Copy a controlled prompt after downloading the report. No project data is sent automatically.", "Kopieer na het downloaden van het rapport een gecontroleerde prompt. Er worden niet automatisch projectgegevens verstuurd.")}</p>
+            <div>{reportPromptLibrary.map((prompt, index) => <button type="button" onClick={() => void navigator.clipboard.writeText(prompt)} key={prompt}><Copy size={14} /><span><strong>{text("Copy prompt", "Kopieer prompt")} {index + 1}</strong><small>{prompt}</small></span></button>)}</div>
+          </details>
           <div className="period-date-presets"><span>{text("Quick period", "Snelle periode")}</span><button className={periodPreset === "day" ? "active" : ""} type="button" aria-pressed={periodPreset === "day"} onClick={() => applyDatePreset(1, text("Daily supervision report", "Dagelijks supervisierapport"), "day")}>{text("Today", "Vandaag")}</button><button className={periodPreset === "week" ? "active" : ""} type="button" aria-pressed={periodPreset === "week"} onClick={() => applyDatePreset(7, text("Weekly supervision report", "Wekelijks supervisierapport"), "week")}>{text("Last 7 days", "Laatste 7 dagen")}</button><button className={periodPreset === "month" ? "active" : ""} type="button" aria-pressed={periodPreset === "month"} onClick={() => { setPeriod({ start: `${today.slice(0, 8)}01`, end: today }); setPeriodLabel(text("Monthly supervision report", "Maandelijks supervisierapport")); setPeriodPreset("month"); }}>{text("This month", "Deze maand")}</button>{periodPreset === "custom" ? <em>{text("Custom period", "Vrije periode")}</em> : null}</div>
           <label className="form-field"><span>{text("From", "Van")}</span><input type="date" value={period.start} max={period.end} onChange={(event) => { setPeriod({ ...period, start: event.target.value }); setPeriodLabel(text("Period supervision report", "Supervisierapport over periode")); setPeriodPreset("custom"); }} /></label>
           <label className="form-field"><span>{text("Through", "Tot en met")}</span><input type="date" value={period.end} min={period.start} max={today} onChange={(event) => { setPeriod({ ...period, end: event.target.value }); setPeriodLabel(text("Period supervision report", "Supervisierapport over periode")); setPeriodPreset("custom"); }} /></label>
           <ReportDownloadButtons
             variant="prominent"
             className="report-create-button"
-            disabled={busy || !period.start || !period.end || period.end < period.start}
-            onDownloadPdf={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, period.start, period.end); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { sections: selectedReport.sections, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded.`, `${periodLabel} voor ${projectName} gedownload.`))}
-            onDownloadWord={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, period.start, period.end); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { sections: selectedReport.sections, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded as Word.`, `${periodLabel} voor ${projectName} als Word gedownload.`))}
+            disabled={busy || !activeSections.length || !period.start || !period.end || period.end < period.start}
+            onDownloadPdf={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, period.start, period.end); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { sections: activeSections, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded.`, `${periodLabel} voor ${projectName} gedownload.`))}
+            onDownloadWord={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, period.start, period.end); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { sections: activeSections, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded as Word.`, `${periodLabel} voor ${projectName} als Word gedownload.`))}
           />
         </section>
       ) : null}
