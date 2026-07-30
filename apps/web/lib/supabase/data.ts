@@ -744,7 +744,7 @@ export async function createBuilding(
   return result.data as NewBuilding;
 }
 
-async function createOrGetReport(client: SupabaseClient, projectId: string, reportDate: string) {
+export async function createOrGetReport(client: SupabaseClient, projectId: string, reportDate: string) {
   const result = await client.rpc("create_day_report", {
     p_project_id: projectId,
     p_report_date: reportDate,

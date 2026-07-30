@@ -96,6 +96,7 @@ import {
   bootstrapOrganization,
   createBuilding,
   createProjectAction,
+  createOrGetReport,
   createProjectWorkspace,
   getSession,
   inviteInternalUser,
@@ -969,8 +970,7 @@ export function CodecoSupervisionApp() {
 
   const openWorkspaceDailyRecord = (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => {
     if (type === "workforce") {
-      if (projectStartAnswers) setModal("one_tap_log");
-      else if (selectedBuilding) openBuildingStart(selectedBuilding);
+      setModal("one_tap_log");
       return;
     }
     const isDelay = type === "delay";
@@ -1380,7 +1380,7 @@ export function CodecoSupervisionApp() {
               openProjectStart={() => selectedBuilding && openBuildingStart(selectedBuilding)}
               openDailyQuestions={() => selectedBuilding && openBuildingCloseout(selectedBuilding)}
               openQuickAdd={openQuickAdd}
-              openOneTapLog={() => projectStartAnswers ? setModal("one_tap_log") : (selectedBuilding && openBuildingStart(selectedBuilding))}
+              openOneTapLog={() => setModal("one_tap_log")}
               openActions={() => navigate("acties")}
               openWorkspace={() => navigate("project")}
               openSettings={() => navigate("meer")}
@@ -1786,13 +1786,10 @@ export function CodecoSupervisionApp() {
             openBuildingCloseout(selectedBuilding);
           }}
           save={async (notes, rows, logBuildingId) => {
-            if (!dayQuery.data?.report) {
-              setToast("Start eerst de werkdag zodat het dagrapport klaarstaat.");
-              return;
-            }
             const saved = await runSynced(async () => {
+              const report = dayQuery.data?.report ?? await createOrGetReport(supabase, selectedProject.id, reportDate);
               await saveAttendance(supabase, {
-                report: dayQuery.data.report!,
+                report,
                 projectId: selectedProject.id,
                 buildingId: logBuildingId,
                 rows: rows.map((row) => ({
@@ -2607,7 +2604,7 @@ function TodayView({
       </section>
 
       <section className="overview-shortcuts" aria-label={text("Quick routes", "Directe routes")}>
-        <button className="overview-shortcut primary" type="button" onClick={projectStartAnswers ? openQuickAdd : openProjectStart}><span>{projectStartAnswers ? <Camera size={18} /> : <Plus size={18} />}</span><strong>{projectStartAnswers ? text("Take a photo", "Foto maken") : text("Start the workday", "Werkdag starten")}</strong><small>{projectStartAnswers ? text("Project, building, time and folder automatic", "Project, gebouw, tijd en map automatisch") : text("Confirm weather and working hours", "Bevestig weer en werktijden")}</small><ArrowRight size={16} /></button>
+        <button className="overview-shortcut primary" type="button" onClick={openQuickAdd}><span><Camera size={18} /></span><strong>{text("Take a photo", "Foto maken")}</strong><small>{text("Project, building, time and folder automatic", "Project, gebouw, tijd en map automatisch")}</small><ArrowRight size={16} /></button>
         <button className="overview-shortcut" type="button" onClick={openOneTapLog}><span><ClipboardCheck size={18} /></span><strong>{text("Daily log", "Daglog")}</strong><small>{text("Quick workforce entry or the complete client log", "Snelle workforce-invoer of het volledige klantdaglog")}</small><ArrowRight size={16} /></button>
         <button className="overview-shortcut mobile-redundant" type="button" onClick={openActions}><span><ClipboardCheck size={18} /></span><strong>{text("Open actions", "Acties openen")}</strong><small>{text(`${actions.filter((action) => action.status !== "verified" && action.status !== "cancelled").length} require follow-up`, `${actions.filter((action) => action.status !== "verified" && action.status !== "cancelled").length} vragen opvolging`)}</small><ArrowRight size={16} /></button>
         <button className="overview-shortcut mobile-redundant" type="button" onClick={canManageMembers ? openSettings : openWorkspace}><span>{canManageMembers ? <Settings size={18} /> : <LayoutDashboard size={18} />}</span><strong>{canManageMembers ? text("Manage workspace", "Werkruimte beheren") : text("Open project workspace", "Projectwerkruimte openen")}</strong><small>{canManageMembers ? text("Users, rules and project structure", "Gebruikers, regels en projectstructuur") : text("Inspections, findings and files", "Inspecties, bevindingen en bestanden")}</small><ArrowRight size={16} /></button>
