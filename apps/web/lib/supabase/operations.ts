@@ -369,6 +369,49 @@ function fail(error: { message: string } | null) {
   if (error) throw new Error(error.message);
 }
 
+function schemaFeatureMissing(error: { message: string } | null, feature: string) {
+  const message = error?.message.toLowerCase() ?? "";
+  return message.includes(feature.toLowerCase())
+    && (message.includes("does not exist") || message.includes("schema cache") || message.includes("could not find"));
+}
+
+function rpcSignatureMissing(error: { message: string } | null, functionName: string) {
+  const message = error?.message.toLowerCase() ?? "";
+  return message.includes(functionName.toLowerCase())
+    && (message.includes("schema cache") || message.includes("could not find the function"));
+}
+
+function legacySettingsCompatibility(branding: unknown) {
+  if (!branding || typeof branding !== "object" || Array.isArray(branding)) return {};
+  const compatibility = (branding as Record<string, unknown>).client_configuration_compatibility;
+  return compatibility && typeof compatibility === "object" && !Array.isArray(compatibility)
+    ? compatibility as Partial<ProjectSettings>
+    : {};
+}
+
+export async function ensureProjectDayReport(
+  client: SupabaseClient,
+  projectId: string,
+  reportId?: string | null,
+) {
+  if (reportId) return reportId;
+  const reportDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Paramaribo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const result = await client.rpc("create_day_report", {
+    p_project_id: projectId,
+    p_report_date: reportDate,
+    p_idempotency_key: `report:${projectId}:${reportDate}`,
+  });
+  fail(result.error);
+  const createdId = (result.data as { id?: string } | null)?.id;
+  if (!createdId) throw new Error("The daily report could not be prepared.");
+  return createdId;
+}
+
 export async function loadProjectOperations(
   client: SupabaseClient,
   projectId: string,
@@ -396,7 +439,17 @@ export async function loadProjectOperations(
     client.from("media_folders").select("id,building_id,parent_id,name,folder_type,status,created_at").eq("project_id", projectId).eq("status", "active").order("name").limit(500),
     client.from("external_share_links").select("id,organization_id,project_id,building_id,source_type,source_id,source_number,title,summary,source_file_id,expires_at,revoked_at,view_count,last_viewed_at,created_by,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(500),
   ]);
-  [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, registerResult, boqProgressResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult].forEach((result) => fail(result.error));
+  const compatibleRegisterResult = schemaFeatureMissing(registerResult.error, "location_node_id")
+    ? await client.from("project_register_entries").select("id,building_id,register_type,entry_number,title,status,occurred_at,due_at,details").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(5000)
+    : registerResult;
+  const compatibleBoqProgressResult = schemaFeatureMissing(boqProgressResult.error, "boq_progress_updates")
+    ? { data: [], error: null }
+    : boqProgressResult;
+  const legacySettingsSchema = schemaFeatureMissing(settingsResult.error, "project_settings");
+  const compatibleSettingsResult = legacySettingsSchema
+    ? await client.from("project_settings").select("id,project_id,report_prefix,default_language,max_file_size_mb,notification_lead_hours,email_notifications_enabled,push_notifications_enabled,retention_days,branding,modules,signing_workflow").eq("project_id", projectId).maybeSingle()
+    : settingsResult;
+  [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, compatibleRegisterResult, compatibleBoqProgressResult, fileResult, compatibleSettingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult].forEach((result) => fail(result.error));
   const templateRows = (templateResult.data ?? []) as Omit<ChecklistTemplate, "items">[];
   const itemResult = templateRows.length
     ? await client.from("checklist_items").select("id,template_id,section,prompt,response_type,required,sort_order,unit,minimum_value,maximum_value,failure_severity,guidance").in("template_id", templateRows.map((template) => template.id)).order("sort_order")
@@ -425,10 +478,30 @@ export async function loadProjectOperations(
     findings: (findingResult.data ?? []) as Finding[],
     findingProgressUpdates: (findingProgressResult.data ?? []) as FindingProgressUpdate[],
     hseEvents: (hseResult.data ?? []) as HseEvent[],
-    registerEntries: (registerResult.data ?? []) as RegisterEntry[],
-    boqProgressUpdates: (boqProgressResult.data ?? []) as BoqProgressUpdate[],
+    registerEntries: (compatibleRegisterResult.data ?? []).map((entry) => ({
+      ...entry,
+      location_node_id: "location_node_id" in entry
+        ? entry.location_node_id
+        : typeof entry.details === "object" && entry.details && "location_node_id" in entry.details
+          ? String(entry.details.location_node_id || "") || null
+          : null,
+    })) as RegisterEntry[],
+    boqProgressUpdates: (compatibleBoqProgressResult.data ?? []) as BoqProgressUpdate[],
     files: (fileResult.data ?? []) as FileRecord[],
-    settings: settingsResult.data as ProjectSettings | null,
+    settings: compatibleSettingsResult.data ? {
+      configuration_status: "setup",
+      default_shift_start: "07:00",
+      default_shift_end: "16:00",
+      disciplines: ["Carpenters", "Electricians", "HVAC", "Painters", "Facade", "Rebar / concrete workers", "Tiler", "Sanitary", "General"],
+      finding_deadlines: { low: 14, medium: 7, high: 3, critical: 1 },
+      report_sections: ["management", "workforce", "work", "logistics", "quality", "hse", "documents", "visual", "boq"],
+      default_units: { length: "m", area: "m2", volume: "m3", weight: "kg", temperature: "C" },
+      required_location_depth: "building",
+      report_header: null,
+      report_footer: null,
+      ...compatibleSettingsResult.data,
+      ...(legacySettingsSchema ? legacySettingsCompatibility(compatibleSettingsResult.data.branding) : {}),
+    } as ProjectSettings : null,
     backupRuns: (backupResult.data ?? []) as BackupRun[],
     reportVersions: (reportFilters[0]?.data ?? []) as ReportVersion[],
     reportReviews: (reportFilters[1]?.data ?? []) as ReportReview[],
@@ -483,6 +556,23 @@ export async function revokeExternalShareLink(client: SupabaseClient, shareId: s
   const result = await client.rpc("revoke_external_share_link", {
     p_share_id: shareId,
   });
+  if (rpcSignatureMissing(result.error, "revoke_external_share_link")) {
+    const current = await client.from("external_share_links").select("id,revoked_at").eq("id", shareId).single();
+    fail(current.error);
+    if (!current.data) throw new Error("De externe link bestaat niet meer.");
+    if (current.data.revoked_at) {
+      return { share_id: current.data.id, revoked_at: current.data.revoked_at, already_revoked: true };
+    }
+    const revokedAt = new Date().toISOString();
+    const fallback = await client.from("external_share_links")
+      .update({ revoked_at: revokedAt })
+      .eq("id", shareId)
+      .select("id,revoked_at")
+      .single();
+    fail(fallback.error);
+    if (!fallback.data?.revoked_at) throw new Error("De externe link kon niet worden ingetrokken.");
+    return { share_id: fallback.data.id, revoked_at: fallback.data.revoked_at, already_revoked: false };
+  }
   fail(result.error);
   const data = result.data as Partial<RevokeExternalShareResult> | null;
   if (!data?.share_id || !data.revoked_at || typeof data.already_revoked !== "boolean") {
@@ -491,18 +581,29 @@ export async function revokeExternalShareLink(client: SupabaseClient, shareId: s
   return data as RevokeExternalShareResult;
 }
 
-export async function startInspection(client: SupabaseClient, input: { projectId: string; buildingId: string; locationNodeId?: string; reportId: string; templateId: string; title: string }) {
-  const result = await client.rpc("start_project_inspection", {
+export async function startInspection(client: SupabaseClient, input: { projectId: string; buildingId: string; locationNodeId?: string; reportId?: string | null; templateId: string; title: string }) {
+  const reportId = await ensureProjectDayReport(client, input.projectId, input.reportId);
+  let result = await client.rpc("start_project_inspection", {
     p_project_id: input.projectId,
     p_building_id: input.buildingId,
-    p_day_report_id: input.reportId,
+    p_day_report_id: reportId,
     p_template_id: input.templateId,
     p_title: input.title,
     p_idempotency_key: `inspection:${crypto.randomUUID()}`,
     p_location_node_id: input.locationNodeId || null,
   });
+  if (rpcSignatureMissing(result.error, "start_project_inspection")) {
+    result = await client.rpc("start_project_inspection", {
+      p_project_id: input.projectId,
+      p_building_id: input.buildingId,
+      p_day_report_id: reportId,
+      p_template_id: input.templateId,
+      p_title: input.title,
+      p_idempotency_key: `inspection:${crypto.randomUUID()}`,
+    });
+  }
   fail(result.error);
-  return result.data as Inspection;
+  return { ...(result.data as Inspection), location_node_id: (result.data as Inspection).location_node_id ?? input.locationNodeId ?? null };
 }
 
 export async function finishInspection(
@@ -530,7 +631,7 @@ export async function finishInspection(
 export async function createFinding(client: SupabaseClient, input: {
   projectId: string;
   buildingId: string;
-  reportId: string;
+  reportId?: string | null;
   type: string;
   title: string;
   description: string;
@@ -546,10 +647,11 @@ export async function createFinding(client: SupabaseClient, input: {
   locationNodeId?: string;
   idempotencyKey?: string;
 }) {
+  const reportId = await ensureProjectDayReport(client, input.projectId, input.reportId);
   const result = await client.rpc("create_project_finding", {
     p_project_id: input.projectId,
     p_building_id: input.buildingId,
-    p_day_report_id: input.reportId,
+    p_day_report_id: reportId,
     p_inspection_id: null,
     p_inspection_response_id: null,
     p_finding_type: input.type,
@@ -613,11 +715,12 @@ export async function transitionFinding(client: SupabaseClient, findingId: strin
   return result.data as Finding;
 }
 
-export async function createHseEvent(client: SupabaseClient, input: { projectId: string; buildingId: string; locationNodeId?: string; reportId: string; type: string; title: string; description: string; severity: string; immediateMeasure: string; confidential: boolean }) {
-  const result = await client.rpc("create_project_hse_event", {
+export async function createHseEvent(client: SupabaseClient, input: { projectId: string; buildingId: string; locationNodeId?: string; reportId?: string | null; type: string; title: string; description: string; severity: string; immediateMeasure: string; confidential: boolean }) {
+  const reportId = await ensureProjectDayReport(client, input.projectId, input.reportId);
+  let result = await client.rpc("create_project_hse_event", {
     p_project_id: input.projectId,
     p_building_id: input.buildingId,
-    p_day_report_id: input.reportId,
+    p_day_report_id: reportId,
     p_event_type: input.type,
     p_title: input.title,
     p_description: input.description,
@@ -628,15 +731,31 @@ export async function createHseEvent(client: SupabaseClient, input: { projectId:
     p_idempotency_key: `hse:${crypto.randomUUID()}`,
     p_location_node_id: input.locationNodeId || null,
   });
+  if (rpcSignatureMissing(result.error, "create_project_hse_event")) {
+    result = await client.rpc("create_project_hse_event", {
+      p_project_id: input.projectId,
+      p_building_id: input.buildingId,
+      p_day_report_id: reportId,
+      p_event_type: input.type,
+      p_title: input.title,
+      p_description: input.description,
+      p_severity: input.severity,
+      p_immediate_measure: input.immediateMeasure,
+      p_confidential: input.confidential,
+      p_occurred_at: new Date().toISOString(),
+      p_idempotency_key: `hse:${crypto.randomUUID()}`,
+    });
+  }
   fail(result.error);
-  return result.data as HseEvent;
+  return { ...(result.data as HseEvent), location_node_id: (result.data as HseEvent).location_node_id ?? input.locationNodeId ?? null };
 }
 
-export async function createRegisterEntry(client: SupabaseClient, input: { projectId: string; buildingId: string; locationNodeId?: string; reportId: string; type: string; title: string; responsiblePartyId?: string; dueAt?: string | null; details: Record<string, unknown> }) {
+export async function createRegisterEntry(client: SupabaseClient, input: { projectId: string; buildingId: string; locationNodeId?: string; reportId?: string | null; type: string; title: string; responsiblePartyId?: string; dueAt?: string | null; details: Record<string, unknown> }) {
+  const reportId = await ensureProjectDayReport(client, input.projectId, input.reportId);
   const result = await client.rpc("create_project_register_entry", {
     p_project_id: input.projectId,
     p_building_id: input.buildingId,
-    p_day_report_id: input.reportId,
+    p_day_report_id: reportId,
     p_register_type: input.type,
     p_title: input.title,
     p_occurred_at: new Date().toISOString(),
@@ -696,10 +815,11 @@ export async function importProjectBoq(client: SupabaseClient, input: {
   reportId?: string | null;
   items: Array<Record<string, unknown>>;
 }) {
+  const reportId = await ensureProjectDayReport(client, input.projectId, input.reportId);
   const result = await client.rpc("import_project_boq", {
     p_project_id: input.projectId,
     p_building_id: input.buildingId,
-    p_day_report_id: input.reportId || null,
+    p_day_report_id: reportId,
     p_items: input.items,
     p_idempotency_key: `boq-import:${crypto.randomUUID()}`,
   });
@@ -721,8 +841,40 @@ export async function recordBoqProgress(client: SupabaseClient, input: {
     p_note: input.note.trim(),
     p_recorded_at: input.recordedAt || new Date().toISOString(),
   });
-  fail(result.error);
-  return result.data as BoqProgressUpdate;
+  if (!result.error) return result.data as BoqProgressUpdate;
+  if (!rpcSignatureMissing(result.error, "record_boq_progress")) fail(result.error);
+
+  const entryResult = await client.from("project_register_entries")
+    .select("id,project_id,building_id,details")
+    .eq("id", input.registerEntryId)
+    .eq("register_type", "boq")
+    .single();
+  fail(entryResult.error);
+  if (!entryResult.data) throw new Error("BOQ line not found.");
+  const recordedAt = input.recordedAt || new Date().toISOString();
+  const details = entryResult.data.details && typeof entryResult.data.details === "object"
+    ? entryResult.data.details as Record<string, unknown>
+    : {};
+  const updateResult = await client.from("project_register_entries").update({
+    details: {
+      ...details,
+      progress_percent: input.progressPercent,
+      quantity_completed: input.quantityCompleted ?? null,
+      progress_updated_at: recordedAt,
+      progress_note: input.note.trim(),
+    },
+  }).eq("id", input.registerEntryId);
+  fail(updateResult.error);
+  return {
+    id: `legacy-${input.registerEntryId}-${recordedAt}`,
+    register_entry_id: input.registerEntryId,
+    building_id: entryResult.data.building_id,
+    progress_percent: input.progressPercent,
+    quantity_completed: input.quantityCompleted ?? null,
+    note: input.note.trim(),
+    recorded_at: recordedAt,
+    created_at: recordedAt,
+  };
 }
 
 export async function reviewReport(client: SupabaseClient, reportId: string, decision: "approved" | "returned", comment: string) {
@@ -790,8 +942,46 @@ export async function installChecklistLibraryTemplate(client: SupabaseClient, pr
 
 export async function saveProjectSettings(client: SupabaseClient, settings: ProjectSettings, update: Partial<ProjectSettings>) {
   const result = await client.from("project_settings").update(update).eq("id", settings.id).select("*").single();
-  fail(result.error);
-  return result.data as ProjectSettings;
+  if (!result.error) return result.data as ProjectSettings;
+  if (!schemaFeatureMissing(result.error, "project_settings")) fail(result.error);
+
+  const legacyKeys: Array<keyof ProjectSettings> = [
+    "report_prefix",
+    "default_language",
+    "max_file_size_mb",
+    "notification_lead_hours",
+    "email_notifications_enabled",
+    "push_notifications_enabled",
+    "retention_days",
+    "modules",
+    "signing_workflow",
+  ];
+  const legacyUpdate: Record<string, unknown> = {};
+  legacyKeys.forEach((key) => {
+    if (key in update) legacyUpdate[key] = update[key];
+  });
+  const compatibility = {
+    ...legacySettingsCompatibility(settings.branding),
+    ...update,
+  };
+  delete compatibility.branding;
+  legacyUpdate.branding = {
+    ...settings.branding,
+    ...(update.branding ?? {}),
+    client_configuration_compatibility: compatibility,
+  };
+
+  const legacyResult = await client.from("project_settings")
+    .update(legacyUpdate)
+    .eq("id", settings.id)
+    .select("id,project_id,report_prefix,default_language,max_file_size_mb,notification_lead_hours,email_notifications_enabled,push_notifications_enabled,retention_days,branding,modules,signing_workflow")
+    .single();
+  fail(legacyResult.error);
+  return {
+    ...settings,
+    ...update,
+    ...legacyResult.data,
+  } as ProjectSettings;
 }
 
 export async function createLocationNode(client: SupabaseClient, input: { organizationId: string; projectId: string; buildingId: string; parentId?: string; type: string; code: string; name: string; description?: string }) {
@@ -976,11 +1166,18 @@ export async function buildPeriodReportSnapshot(
   startDate: string,
   endDate: string,
 ) {
-  const result = await client.rpc("build_client_period_report_snapshot", {
+  let result = await client.rpc("build_client_period_report_snapshot", {
     p_project_id: projectId,
     p_start_date: startDate,
     p_end_date: endDate,
   });
+  if (rpcSignatureMissing(result.error, "build_client_period_report_snapshot")) {
+    result = await client.rpc("build_period_report_snapshot", {
+      p_project_id: projectId,
+      p_start_date: startDate,
+      p_end_date: endDate,
+    });
+  }
   fail(result.error);
   return result.data as PeriodReportSnapshot;
 }

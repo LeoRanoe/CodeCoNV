@@ -165,6 +165,17 @@ function fail(error: { message: string } | null) {
   if (error) throw new Error(error.message);
 }
 
+function schemaColumnMissing(error: { message: string } | null, column: string) {
+  const message = error?.message.toLowerCase() ?? "";
+  return message.includes(column.toLowerCase()) && message.includes("does not exist");
+}
+
+function rpcSignatureMissing(error: { message: string } | null, functionName: string) {
+  const message = error?.message.toLowerCase() ?? "";
+  return message.includes(functionName.toLowerCase())
+    && (message.includes("schema cache") || message.includes("could not find the function"));
+}
+
 async function currentUser(client: SupabaseClient) {
   const { data, error } = await client.auth.getUser();
   fail(error);
@@ -444,10 +455,21 @@ export async function loadProjectDay(
       .order("due_at", { ascending: true, nullsFirst: false })
       .limit(50),
   ]);
+  const compatibleActionResult = schemaColumnMissing(actionResult.error, "location_node_id")
+    ? await client
+        .from("actions")
+        .select("id,action_number,title,description,due_at,priority,status,building_id,owner_party_id,closure_reason,created_at,updated_at")
+        .eq("project_id", projectId)
+        .order("due_at", { ascending: true, nullsFirst: false })
+        .limit(50)
+    : actionResult;
   fail(reportResult.error);
   fail(partyResult.error);
-  fail(actionResult.error);
-  const actionRows = (actionResult.data ?? []) as ProjectAction[];
+  fail(compatibleActionResult.error);
+  const actionRows = (compatibleActionResult.data ?? []).map((action) => ({
+    ...action,
+    location_node_id: "location_node_id" in action ? action.location_node_id : null,
+  })) as ProjectAction[];
   const actionIds = actionRows.map((action) => action.id);
   const actionUpdateResult = actionIds.length
     ? await client
@@ -489,16 +511,27 @@ export async function loadProjectDay(
       .eq("day_report_id", reportId)
       .order("created_at"),
   ]);
+  const compatibleRegistrationResult = schemaColumnMissing(registrationResult.error, "location_node_id")
+    ? await client
+        .from("site_registrations")
+        .select("id,registration_type,title,description,priority,occurred_at,status,building_id,created_by")
+        .eq("day_report_id", reportId)
+        .order("occurred_at", { ascending: false })
+        .limit(100)
+    : registrationResult;
   fail(startResult.error);
   fail(closeoutResult.error);
-  fail(registrationResult.error);
+  fail(compatibleRegistrationResult.error);
   fail(attendanceResult.error);
 
   return {
     report,
     startChecks: (startResult.data ?? []) as Array<Record<string, unknown>>,
     closeouts: (closeoutResult.data ?? []) as Array<Record<string, unknown>>,
-    registrations: (registrationResult.data ?? []) as Array<Record<string, unknown>>,
+    registrations: (compatibleRegistrationResult.data ?? []).map((registration) => ({
+      ...registration,
+      location_node_id: "location_node_id" in registration ? registration.location_node_id : null,
+    })) as Array<Record<string, unknown>>,
     attendance: (attendanceResult.data ?? []) as Array<Record<string, unknown>>,
     parties: (partyResult.data ?? []).map((party) => ({ id: party.id as string, name: String(party.name), type: String(party.party_type) })),
     actions: actionRows,
@@ -817,7 +850,7 @@ export async function saveSiteRegistration(
     priority: string;
   },
 ) {
-  const result = await client.rpc("create_site_registration", {
+  let result = await client.rpc("create_site_registration", {
     p_project_id: input.projectId,
     p_building_id: input.buildingId,
     p_report_date: reportDateInSuriname(),
@@ -829,6 +862,19 @@ export async function saveSiteRegistration(
     p_idempotency_key: `registration:${crypto.randomUUID()}`,
     p_location_node_id: input.locationNodeId || null,
   });
+  if (rpcSignatureMissing(result.error, "create_site_registration")) {
+    result = await client.rpc("create_site_registration", {
+      p_project_id: input.projectId,
+      p_building_id: input.buildingId,
+      p_report_date: reportDateInSuriname(),
+      p_registration_type: input.type,
+      p_title: input.title,
+      p_description: input.description,
+      p_priority: input.priority,
+      p_occurred_at: new Date().toISOString(),
+      p_idempotency_key: `registration:${crypto.randomUUID()}`,
+    });
+  }
   fail(result.error);
   return result.data;
 }
@@ -899,7 +945,7 @@ export async function createProjectAction(
     priority: ProjectAction["priority"];
   },
 ) {
-  const result = await client.rpc("create_project_action", {
+  let result = await client.rpc("create_project_action", {
     p_project_id: input.projectId,
     p_building_id: input.buildingId,
     p_owner_party_id: input.ownerPartyId,
@@ -910,6 +956,18 @@ export async function createProjectAction(
     p_idempotency_key: `action:${crypto.randomUUID()}`,
     p_location_node_id: input.locationNodeId || null,
   });
+  if (rpcSignatureMissing(result.error, "create_project_action")) {
+    result = await client.rpc("create_project_action", {
+      p_project_id: input.projectId,
+      p_building_id: input.buildingId,
+      p_owner_party_id: input.ownerPartyId,
+      p_title: input.title,
+      p_description: input.description,
+      p_due_at: surinameLocalDateTimeToIso(input.dueAt),
+      p_priority: input.priority,
+      p_idempotency_key: `action:${crypto.randomUUID()}`,
+    });
+  }
   fail(result.error);
   return result.data as ProjectAction;
 }

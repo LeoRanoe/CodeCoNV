@@ -117,7 +117,7 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
   };
 
   const saveNote = async () => {
-    if (!reportId || note.title.trim().length < 3 || note.body.trim().length < 3) return;
+    if (note.title.trim().length < 3 || note.body.trim().length < 3) return;
     const okay = await run(() => createRegisterEntry(client, {
       projectId, buildingId: noteBuildingId, locationNodeId: noteLocationNodeId, reportId, type: note.type, title: note.title.trim(),
       responsiblePartyId: note.responsiblePartyId || undefined,
@@ -161,7 +161,7 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
           <div className="operation-alert"><CheckCircle2 size={17} /><div><strong>{text("Traceable agreement", "Traceerbare afspraak")}</strong><span>{text("Project, building, author and registration time are added automatically. The agreement date and deadline remain visible in reports.", "Project, gebouw, maker en registratietijd worden automatisch toegevoegd. De afspraakdatum en deadline blijven zichtbaar in rapporten.")}</span></div></div>
         </div> : null}
         <label className="form-field"><span>{text("Text", "Tekst")}</span><textarea rows={7} value={note.body} onChange={(event) => setNote({ ...note, body: event.target.value })} /></label>
-        <div className="button-row"><button className={`secondary-button ${listening ? "recording" : ""}`} type="button" disabled={!speechAvailable} onClick={toggleSpeech}>{listening ? <MicOff size={15} /> : <Mic size={15} />} {listening ? text("Stop dictation", "Stop dicteren") : text("Dictate", "Dicteren")}</button><button className="primary-button" type="button" disabled={busy || !reportId || ((data.settings?.required_location_depth ?? "building") !== "building" && !noteLocationNodeId) || note.title.trim().length < 3 || note.body.trim().length < 3 || (note.type === "agreement" && (!note.agreementDate || !note.agreementTime))} onClick={() => void saveNote()}><Save size={15} /> {note.type === "agreement" ? text("Save agreement", "Afspraak opslaan") : text("Save note", "Notitie opslaan")}</button></div>
+        <div className="button-row"><button className={`secondary-button ${listening ? "recording" : ""}`} type="button" disabled={!speechAvailable} onClick={toggleSpeech}>{listening ? <MicOff size={15} /> : <Mic size={15} />} {listening ? text("Stop dictation", "Stop dicteren") : text("Dictate", "Dicteren")}</button><button className="primary-button" type="button" disabled={busy || ((data.settings?.required_location_depth ?? "building") !== "building" && !noteLocationNodeId) || note.title.trim().length < 3 || note.body.trim().length < 3 || (note.type === "agreement" && (!note.agreementDate || !note.agreementTime))} onClick={() => void saveNote()}><Save size={15} /> {note.type === "agreement" ? text("Save agreement", "Afspraak opslaan") : text("Save note", "Notitie opslaan")}</button></div>
         <p className="field-tool-hint">{speechAvailable ? text("Dictation starts only after your click. Review the recognized text before saving.", "Dicteren start uitsluitend na jouw klik. Controleer de herkende tekst vóór opslaan.") : text("This browser does not provide speech recognition; keyboard entry remains available.", "Deze browser biedt geen spraakherkenning; invoer met het toetsenbord blijft beschikbaar.")}</p>
       </div>
 

@@ -22,7 +22,7 @@ async function openAuthenticatedWorkspace(page: Page) {
   await expect(project).toBeVisible();
   await project.click();
 
-  await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening)/ })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Project command center" })).toBeVisible();
   await page.waitForTimeout(500);
   const guideClose = page.getByRole("button", { name: "Close guide" });
   if (await guideClose.isVisible().catch(() => false)) await guideClose.click();
@@ -59,7 +59,7 @@ test("mobile navigation exposes reports, management and uncluttered report steps
   await expect(bottomNav).toContainText("Workspace");
   await expect(bottomNav).toContainText("Photo");
   await expect(bottomNav).toContainText("Actions");
-  await expect(bottomNav).toContainText("Reports");
+  await expect(bottomNav).toContainText("More");
 
   await expectMinimumTarget(page, ".management-button");
   await expectMinimumTarget(page, ".top-actions button[aria-label^='Notifications']");
@@ -72,14 +72,17 @@ test("mobile navigation exposes reports, management and uncluttered report steps
   expect(managementBox && helpBox && bottomBox).toBeTruthy();
   expect(helpBox!.y + helpBox!.height).toBeLessThanOrEqual(bottomBox!.y);
 
-  await bottomNav.getByRole("button", { name: "Reports", exact: true }).click();
+  await bottomNav.getByRole("button", { name: "More", exact: true }).click();
+  const moduleMenu = page.getByRole("dialog", { name: "All project modules" });
+  await expect(moduleMenu).toBeVisible();
+  await moduleMenu.getByRole("button", { name: /Reports/ }).click();
   await expect(page.getByRole("heading", { name: "Client reports" })).toBeVisible();
   await expect(page.locator(".report-section-tabs [role='tab']")).toHaveCount(3);
   await expect(page.locator(".period-report-card")).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
   await page.getByRole("tab", { name: /Review & sign/ }).click();
-  await expect(page.locator(".report-next-step")).toContainText("Next:");
+  await expect(page.locator(".report-next-step")).toContainText(/Current next step|Next:/);
   await expect(page.locator(".workflow-grid")).toBeVisible();
   await expect(page.locator(".period-report-card")).toBeHidden();
 
@@ -93,16 +96,103 @@ test("mobile workspace keeps daily work within two taps and action uses the corr
   const bottomNav = page.locator(".mobile-bottom-nav");
   await bottomNav.getByRole("button", { name: "Workspace", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Workspace", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Other field record/ })).toBeVisible();
-  await page.getByRole("button", { name: /Other field record/ }).click();
+  await expect(page.locator(".workspace-launcher-grid [data-workspace-destination]")).toHaveCount(25);
+  await expect(page.getByRole("button", { name: "Other record", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Other record", exact: true }).click();
   await expect(page.getByRole("dialog", { name: /Other field record|Andere veldregistratie/ })).toBeVisible();
-  await expect(page.getByRole("dialog").getByRole("button")).toHaveCount(6);
+  const recordDialog = page.getByRole("dialog");
+  await expect(recordDialog.getByRole("button", { name: /^Photo\b/ })).toBeVisible();
+  await expect(recordDialog.getByRole("button", { name: /^Finding\b/ })).toBeVisible();
+  await expect(recordDialog.getByRole("button", { name: /^Inspection\b/ })).toBeVisible();
+  await expect(recordDialog.getByRole("button", { name: /^HSE\b/ })).toBeVisible();
+  await expect(recordDialog.getByRole("button", { name: /^Action\b/ })).toBeVisible();
+  await expect(recordDialog.getByRole("button", { name: /^Delivery\b/ })).toBeVisible();
+  await expect(recordDialog.getByRole("button", { name: /^Test \/ measurement\b/ })).toBeVisible();
   await page.getByRole("button", { name: "Close", exact: true }).click();
 
   await bottomNav.getByRole("button", { name: "Actions", exact: true }).click();
-  await page.getByRole("button", { name: "Add action" }).click();
+  await page.getByRole("button", { name: /^(Add|New) action$/ }).click();
   await expect(page.getByRole("dialog", { name: /Create central action|Centrale actie maken/ })).toBeVisible();
   await expect(page.getByRole("dialog").getByText(/Take photo|Maak foto/)).toHaveCount(0);
+  await expectNoHorizontalOverflow(page);
+});
+
+test("desktop workspace exposes every client module through a working destination", async ({ page }) => {
+  const sidebar = page.locator(".sidebar");
+  const openWorkspace = async () => {
+    await sidebar.getByRole("button", { name: "Workspace", exact: true }).click();
+    await expect(page.locator(".workspace-launcher-grid")).toBeVisible();
+  };
+  const openTile = async (id: string) => {
+    const tile = page.locator(`[data-workspace-destination="${id}"]`);
+    await expect(tile).toBeVisible();
+    await expect(tile).toBeEnabled();
+    await tile.click();
+  };
+  const returnFromWorkspaceModule = async () => {
+    const back = page.locator(".workspace-back-button");
+    await expect(back).toBeVisible();
+    await back.click();
+    await expect(page.locator(".workspace-launcher-grid")).toBeVisible();
+  };
+
+  await openWorkspace();
+  await expect(page.locator(".workspace-launcher-grid [data-workspace-destination]")).toHaveCount(25);
+
+  const taskDestinations = [
+    ["inspections", "Inspections"],
+    ["issues", "Findings / NCR"],
+    ["punchlist", "Findings / NCR"],
+    ["hse", "HSE"],
+    ["documents", "Project Docs"],
+    ["drawings", "Drawings"],
+    ["photos", "Photos & folders"],
+    ["visual-evidence", "Visual evidence"],
+    ["field-tools", "Field tools"],
+  ] as const;
+  for (const [id, heading] of taskDestinations) {
+    await openTile(id);
+    await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+    await returnFromWorkspaceModule();
+  }
+
+  const registerDestinations = [
+    "wcr",
+    "rfi",
+    "rfa",
+    "wir",
+    "change-orders",
+    "submittals",
+    "meetings",
+    "equipment",
+    "deliveries",
+    "tests",
+    "boq",
+  ] as const;
+  for (const id of registerDestinations) {
+    await openTile(id);
+    await expect(page.getByRole("heading", { name: "Formal documents & registers", exact: true })).toBeVisible();
+    await returnFromWorkspaceModule();
+  }
+
+  await openTile("daily-log");
+  await expect(page.getByRole("region", { name: "Project command center" })).toBeVisible();
+  await openWorkspace();
+
+  await openTile("actions");
+  await expect(page.getByRole("heading", { name: "Action center", exact: true })).toBeVisible();
+  await openWorkspace();
+
+  await openTile("rapid-verify");
+  await expect(page.getByRole("heading", { name: "Rapid Verify", exact: true })).toBeVisible();
+  await openWorkspace();
+
+  await openTile("reports");
+  await expect(page.getByRole("heading", { name: "Client reports", exact: true })).toBeVisible();
+  await openWorkspace();
+
+  await openTile("management");
+  await expect(page.getByRole("heading", { name: "Management overview", exact: true })).toBeVisible();
   await expectNoHorizontalOverflow(page);
 });
 

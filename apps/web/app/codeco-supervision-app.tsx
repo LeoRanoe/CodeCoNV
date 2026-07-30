@@ -619,13 +619,26 @@ export function CodecoSupervisionApp() {
         .select("disciplines,default_shift_start,default_shift_end,modules,required_location_depth")
         .eq("project_id", selectedProject!.id)
         .single();
-      if (result.error) throw result.error;
-      return result.data as {
+      if (!result.error) return result.data as {
         disciplines: string[];
         default_shift_start: string;
         default_shift_end: string;
         modules: Record<string, boolean>;
         required_location_depth: "building" | "floor" | "room" | "element";
+      };
+      if (!result.error.message.includes("does not exist")) throw result.error;
+      const compatible = await (supabase as SupabaseClient)
+        .from("project_settings")
+        .select("modules")
+        .eq("project_id", selectedProject!.id)
+        .single();
+      if (compatible.error) throw compatible.error;
+      return {
+        disciplines: [...constructionDisciplines],
+        default_shift_start: "07:00",
+        default_shift_end: "16:00",
+        modules: (compatible.data?.modules ?? {}) as Record<string, boolean>,
+        required_location_depth: "building" as const,
       };
     },
     enabled: Boolean(supabase && session && selectedProject),
@@ -1433,6 +1446,11 @@ export function CodecoSupervisionApp() {
                 setInitialProjectTab(tab);
                 setActiveNav("project");
               }}
+              openOverview={() => navigate("vandaag")}
+              openActionCenter={() => navigate("acties")}
+              openRapidVerify={() => navigate("verify")}
+              openReports={() => navigate("rapporten")}
+              openManagement={() => navigate("meer")}
             />
           ) : (
             <SecondaryView

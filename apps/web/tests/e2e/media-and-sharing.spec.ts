@@ -1,4 +1,5 @@
 import { expect, type Browser, type Page, test } from "@playwright/test";
+import { basename, extname } from "node:path";
 
 const email = process.env.CODECO_E2E_EMAIL;
 const password = process.env.CODECO_E2E_PASSWORD;
@@ -26,7 +27,7 @@ async function openAuthenticatedWorkspace(page: Page) {
     await page.getByRole("button", { name: "Sign in securely" }).click();
   }
   await page.getByRole("button", { name: new RegExp(projectName) }).click();
-  await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening)/ })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Project command center" })).toBeVisible();
 }
 
 async function openWorkspaceHome(page: Page) {
@@ -38,15 +39,14 @@ async function openWorkspaceHome(page: Page) {
 
 async function openVisualEvidence(page: Page) {
   await openWorkspaceHome(page);
-  const more = page.locator(".workspace-more-actions");
-  if (!(await more.getAttribute("open"))) await more.locator("summary").click();
-  await more.getByRole("button", { name: /360° evidence/ }).click();
+  await page.locator('[data-workspace-destination="visual-evidence"]').click();
   await expect(page.getByRole("heading", { name: /Photos, 360° camera tours/ })).toBeVisible();
 }
 
 async function createStackedFinding(page: Page, title: string) {
   await openWorkspaceHome(page);
-  await page.getByRole("button", { name: /Report issue/ }).click();
+  await page.locator('[data-workspace-destination="issues"]').click();
+  await page.getByRole("button", { name: "New record", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Record finding / NCR" })).toBeVisible();
   const input = page.locator(".finding-photo-capture input[type='file']");
   await input.setInputFiles(photoOne!);
@@ -59,6 +59,8 @@ async function createStackedFinding(page: Page, title: string) {
   await page.getByLabel("Factual description").fill("Three field photos document the same exact defect and its surrounding context.");
   await page.getByRole("button", { name: "Submit issue" }).click();
   await expect(page.locator(".operation-alert.success")).toContainText(/Issue and photo stack secured/, { timeout: 90_000 });
+  await openWorkspaceHome(page);
+  await page.locator('[data-workspace-destination="issues"]').click();
   await expect(page.locator(".finding-card").filter({ hasText: title })).toBeVisible({ timeout: 60_000 });
   const queueState = await page.evaluate(async () => new Promise<Array<{ fileName: string; lastError: string | null }>>((resolve, reject) => {
     const open = indexedDB.open("codeco-field-v1", 1);
@@ -134,12 +136,13 @@ async function uploadAndMarkPanorama(page: Page, title: string) {
 
 async function uploadDrawingAndCreatePin(page: Page, findingTitle: string) {
   await openWorkspaceHome(page);
-  await page.getByRole("button", { name: /Open drawing and place a pin/ }).click();
+  await page.locator('[data-workspace-destination="drawings"]').click();
   await expect(page.getByRole("heading", { name: "Pins that open the exact project record" })).toBeVisible();
   await page.locator(".drawing-upload-strip input[type='file']").setInputFiles(drawing!);
   await page.getByRole("button", { name: "Upload drawing" }).click();
   await expect(page.locator(".operation-alert.success")).toContainText("Drawing uploaded securely", { timeout: 90_000 });
-  const drawingButton = page.locator(".drawing-file-list button").filter({ hasText: /Lighting switch layout/ }).first();
+  const drawingName = basename(drawing!, extname(drawing!));
+  const drawingButton = page.locator(".drawing-file-list button").filter({ hasText: drawingName }).first();
   await expect(drawingButton).toBeVisible({ timeout: 90_000 });
   await drawingButton.click();
   const canvas = page.getByRole("button", { name: "Drawing. Click to place a linked pin." });
@@ -177,7 +180,8 @@ async function uploadDrawingAndCreatePin(page: Page, findingTitle: string) {
 }
 
 async function testExternalShareAndRevocation(page: Page, browser: Browser, findingTitle: string) {
-  await page.getByRole("tab", { name: /Findings \/ NCR/ }).click();
+  await openWorkspaceHome(page);
+  await page.locator('[data-workspace-destination="issues"]').click();
   const finding = page.locator(".finding-card").filter({ hasText: findingTitle });
   await expect(finding).toBeVisible();
   await finding.getByRole("button", { name: /Send to external party/ }).click();

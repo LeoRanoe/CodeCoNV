@@ -75,6 +75,7 @@ import {
   createRegisterEntry,
   createExternalShareLink,
   downloadManualBackup,
+  ensureProjectDayReport,
   finishInspection,
   importProjectBoq,
   installChecklistLibraryTemplate,
@@ -259,6 +260,11 @@ export function OperationalWorkspace({
   openQuickCamera,
   openQuickRegister,
   openProjectArea,
+  openOverview,
+  openActionCenter,
+  openRapidVerify,
+  openReports,
+  openManagement,
   projectActions = [],
   openProjectAction,
   createProjectAction,
@@ -286,6 +292,11 @@ export function OperationalWorkspace({
   openQuickCamera: () => void;
   openQuickRegister: () => void;
   openProjectArea: (tab: "inspections" | "findings" | "documents" | "registers" | "visual" | "drawings" | "files") => void;
+  openOverview: () => void;
+  openActionCenter: () => void;
+  openRapidVerify: () => void;
+  openReports: () => void;
+  openManagement: () => void;
   projectActions?: Array<{ id: string; title: string; action_number: string; status: string; priority: string; due_at: string | null }>;
   openProjectAction?: (actionId: string) => void;
   createProjectAction?: () => void;
@@ -371,6 +382,11 @@ export function OperationalWorkspace({
           onInitialCameraFilesConsumed={onInitialCameraFilesConsumed}
           openQuickCamera={openQuickCamera}
           openQuickRegister={openQuickRegister}
+          openOverview={openOverview}
+          openActionCenter={openActionCenter}
+          openRapidVerify={openRapidVerify}
+          openReports={openReports}
+          openManagement={openManagement}
         />
       ) : null}
       {mode === "actions" ? (
@@ -442,6 +458,11 @@ function ProjectOperations({
   onInitialCameraFilesConsumed,
   openQuickCamera,
   openQuickRegister,
+  openOverview,
+  openActionCenter,
+  openRapidVerify,
+  openReports,
+  openManagement,
 }: {
   data: OperationSnapshot;
   organizationId: string;
@@ -463,6 +484,11 @@ function ProjectOperations({
   onInitialCameraFilesConsumed?: () => void;
   openQuickCamera: () => void;
   openQuickRegister: () => void;
+  openOverview: () => void;
+  openActionCenter: () => void;
+  openRapidVerify: () => void;
+  openReports: () => void;
+  openManagement: () => void;
 }) {
   const { language, locale, text } = useLanguage();
   const registerNames = language === "en" ? registerLabelsEnglish : registerLabels;
@@ -652,7 +678,7 @@ function ProjectOperations({
     setActiveInspection(null);
   };
 
-  const openRegister = (type: "wcr" | "rfi" | "rfa" | "inspection_request" | "boq") => {
+  const openRegister = (type: "wcr" | "rfi" | "rfa" | "inspection_request" | "boq" | "change_order" | "submittal" | "meeting" | "equipment" | "delivery" | "test") => {
     setRegisterForm({ ...emptyControlledDocumentDraft, type });
     setRegisterFiles([]);
     setRegisterLocationNodeId("");
@@ -660,7 +686,6 @@ function ProjectOperations({
   };
 
   const beginInspection = async () => {
-    if (!reportId) return;
     const templateId = inspectionTemplateId || inspectionTemplates[0]?.id;
     const template = data.templates.find((item) => item.id === templateId);
     const inspectionBuildingName = buildings.find((building) => building.id === inspectionBuildingId)?.name ?? buildingName;
@@ -733,6 +758,7 @@ function ProjectOperations({
     if (activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))) return;
     const okay = await run(
       async () => {
+        const effectiveReportId = await ensureProjectDayReport(client, projectId, reportId);
         await finishInspection(client, activeInspection, inspectionAnswers);
         if (inspectionPhotos.length) {
           const folderName = text("Inspections", "Inspecties");
@@ -743,7 +769,7 @@ function ProjectOperations({
             await queueOfflineUpload({
               projectId,
               buildingId: photoBuildingId,
-              reportId,
+              reportId: effectiveReportId,
               folderId,
               folderName,
               kind: "photo",
@@ -817,12 +843,11 @@ function ProjectOperations({
   const addFindingPhotos = (files: FileList | null) => addPhotosToStack(files, setFindingPhotos, setFindingPhotoError);
 
   const addFinding = async () => {
-    if (!reportId || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3) return;
+    if (findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3) return;
     const findingBuildingName = buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName;
     const draft = {
       projectId,
       buildingId: findingBuildingId,
-      reportId,
       type: findingForm.type,
       title: findingForm.title,
       description: findingForm.description,
@@ -841,6 +866,7 @@ function ProjectOperations({
       ? text("Issue and photo stack secured; numbering and assignment synchronize automatically.", "Probleem en fotostapel veiliggesteld; nummering en toewijzing synchroniseren automatisch.")
       : text("Finding numbered, assigned and given a rule-driven deadline.", "Bevinding genummerd, toegewezen en van een regelgestuurde deadline voorzien.");
     const okay = await run(async () => {
+      const effectiveReportId = await ensureProjectDayReport(client, projectId, reportId);
       if (findingPhotos.length) {
         const folderName = text("Findings", "Bevindingen");
         const findingFolderId = existingMediaFolderId(folderName, findingBuildingId);
@@ -850,7 +876,7 @@ function ProjectOperations({
           await queueOfflineUpload({
             projectId,
             buildingId: findingBuildingId,
-            reportId,
+            reportId: effectiveReportId,
             folderId: findingFolderId,
             folderName,
             kind: "photo",
@@ -890,7 +916,7 @@ function ProjectOperations({
         if (navigator.onLine) await syncQueuedEvidenceNow();
         return;
       }
-      await createFinding(client, draft);
+      await createFinding(client, { ...draft, reportId: effectiveReportId });
     }, success);
     if (okay) {
       setFindingForm({
@@ -906,11 +932,12 @@ function ProjectOperations({
   };
 
   const addHse = async () => {
-    if (!reportId || hseForm.title.trim().length < 3 || hseForm.description.trim().length < 3) return;
+    if (hseForm.title.trim().length < 3 || hseForm.description.trim().length < 3) return;
     const hseBuildingName = buildings.find((building) => building.id === hseBuildingId)?.name ?? buildingName;
     const okay = await run(
       async () => {
-        const event = await createHseEvent(client, { projectId, buildingId: hseBuildingId, locationNodeId: hseLocationNodeId, reportId, ...hseForm });
+        const effectiveReportId = await ensureProjectDayReport(client, projectId, reportId);
+        const event = await createHseEvent(client, { projectId, buildingId: hseBuildingId, locationNodeId: hseLocationNodeId, reportId: effectiveReportId, ...hseForm });
         if (hsePhotos.length) {
           const folderName = "HSE";
           const folderId = existingMediaFolderId(folderName, hseBuildingId);
@@ -919,7 +946,7 @@ function ProjectOperations({
             await queueOfflineUpload({
               projectId,
               buildingId: hseBuildingId,
-              reportId,
+              reportId: effectiveReportId,
               folderId,
               folderName,
               kind: "photo",
@@ -952,7 +979,7 @@ function ProjectOperations({
   };
 
   const addRegisterEntry = async () => {
-    if (!reportId || registerForm.title.trim().length < 3) return;
+    if (registerForm.title.trim().length < 3) return;
     const registerBuildingName = buildings.find((building) => building.id === registerBuildingId)?.name ?? buildingName;
     const baseDetails = controlledRegister
       ? createControlledDocumentDetails(registerForm, {
@@ -964,6 +991,7 @@ function ProjectOperations({
       : { description: registerForm.details };
     const okay = await run(
       async () => {
+        const effectiveReportId = await ensureProjectDayReport(client, projectId, reportId);
         const uploadedFiles = [];
         for (const file of registerFiles) {
           const uploaded = await uploadProjectFile(client, {
@@ -984,7 +1012,7 @@ function ProjectOperations({
           projectId,
           buildingId: registerBuildingId,
           locationNodeId: registerLocationNodeId,
-          reportId,
+          reportId: effectiveReportId,
           type: registerForm.type,
           title: registerForm.title,
           responsiblePartyId: registerForm.responsiblePartyId,
@@ -999,7 +1027,7 @@ function ProjectOperations({
             projectId,
             buildingId: registerBuildingId,
             locationNodeId: registerLocationNodeId,
-            reportId,
+            reportId: effectiveReportId,
             type: "deficiency",
             title: registerForm.title,
             description: registerForm.details,
@@ -1110,10 +1138,17 @@ function ProjectOperations({
             drawingCount={data.files.filter((file) => file.category === "drawing" && file.status === "available").length}
             visualCount={data.visualCaptures.length}
             fileCount={data.files.filter((file) => file.status === "available").length}
+            actionCount={data.findings.filter((item) => item.status !== "closed" && item.status !== "cancelled").length + data.registerEntries.filter((entry) => ["wcr", "rfi", "rfa", "inspection_request", "punch_list"].includes(entry.register_type) && !["closed", "approved", "cancelled"].includes(entry.status)).length}
+            modules={data.settings?.modules ?? {}}
             openQuickCamera={openQuickCamera}
             openQuickRegister={openQuickRegister}
             openTask={openTask}
             openRegister={openRegister}
+            openOverview={openOverview}
+            openActionCenter={openActionCenter}
+            openRapidVerify={openRapidVerify}
+            openReports={openReports}
+            openManagement={openManagement}
           />
         <section className="workspace-task-hub feedback-mode" aria-hidden="true" hidden>
           <div className="workspace-feedback-grid">
@@ -1264,7 +1299,7 @@ function ProjectOperations({
           {showForm && !activeInspection ? (
             <div className="operation-form">
               <h2>{text("Start inspection", "Inspectie starten")}</h2>
-              {!reportId ? <p className="inline-error">{text("Start the daily report through Project start first.", "Start eerst het dagrapport via Projectstart.")}</p> : null}
+              {!reportId ? <p className="form-helper">{text("Starting this checklist prepares today’s draft report automatically.", "Bij het starten van deze checklist wordt het conceptrapport van vandaag automatisch klaargezet.")}</p> : null}
               {anchorWorkPlanned && missingAnchorChecklistCodes.length ? (
                 <div className="operation-alert success recommended-checklist-install">
                   <ClipboardCheck size={18} />
@@ -1283,7 +1318,7 @@ function ProjectOperations({
                 <LocationPicker id="inspection-location" nodes={data.locationNodes} buildingId={inspectionBuildingId} value={inspectionLocationNodeId} onChange={setInspectionLocationNodeId} requiredDepth={requiredLocationDepth} />
                 <label className="form-field"><span>{text("Checklist · recommended for today's work first", "Checklist · aanbevolen voor vandaag eerst")}</span><select value={inspectionTemplateId || inspectionTemplates[0]?.id || ""} onChange={(event) => { setInspectionTemplateId(event.target.value); setInspectionTitle(""); }}>{inspectionTemplates.map((template) => <option value={template.id} key={template.id}>{["LIB-101", "LIB-102", "LIB-103"].includes(template.code) ? "★ " : ""}{template.name} · v{template.version_number}</option>)}</select></label>
                 <details className="inspection-subject-details"><summary>{text("Add a different subject or element · optional", "Ander onderwerp of element toevoegen · optioneel")}</summary><label className="form-field"><span>{text("Subject / element", "Onderwerp / element")}</span><input value={inspectionTitle} onChange={(event) => setInspectionTitle(event.target.value)} placeholder={`${inspectionTemplates.find((template) => template.id === (inspectionTemplateId || inspectionTemplates[0]?.id))?.name ?? text("Inspection", "Inspectie")} · ${buildingName}`} /></label></details>
-                <button className="primary-button start-checklist-button" type="button" disabled={busy || !reportId || (exactLocationRequired && !inspectionLocationNodeId)} onClick={() => void beginInspection()}><ClipboardCheck size={15} /> {text("Start recommended checklist", "Start aanbevolen checklist")}</button>
+                <button className="primary-button start-checklist-button" type="button" disabled={busy || (exactLocationRequired && !inspectionLocationNodeId)} onClick={() => void beginInspection()}><ClipboardCheck size={15} /> {text("Start recommended checklist", "Start aanbevolen checklist")}</button>
               </> : <div className="operation-alert warning"><AlertTriangle size={18} /><div><strong>{text("No project checklist is published yet", "Nog geen projectchecklist gepubliceerd")}</strong><span>{text("An administrator can install the ready-made CODECO checklist package under More.", "Een beheerder kan het kant-en-klare CODECO-pakket onder Meer installeren.")}</span></div></div>}
             </div>
           ) : null}
@@ -1382,7 +1417,7 @@ function ProjectOperations({
                 <label className="form-field"><span>{text("Responsible party", "Verantwoordelijke partij")}</span><select value={findingForm.responsiblePartyId} onChange={(event) => setFindingForm({ ...findingForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Nog niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
               </div>
               <LocationPicker id="finding-location" nodes={data.locationNodes} buildingId={findingBuildingId} value={findingLocationNodeId} onChange={setFindingLocationNodeId} requiredDepth={requiredLocationDepth} />
-              <button className="primary-button" type="button" disabled={busy || !reportId || (exactLocationRequired && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Probleem indienen")}</button>
+              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Probleem indienen")}</button>
             </div>
           ) : null}
           <FindingList
@@ -1455,7 +1490,7 @@ function ProjectOperations({
               <BuildingPicker id="hse-building" buildings={buildings} value={hseBuildingId} onChange={(next) => { setHseBuildingId(next); setHseLocationNodeId(""); }} />
               <LocationPicker id="hse-location" nodes={data.locationNodes} buildingId={hseBuildingId} value={hseLocationNodeId} onChange={setHseLocationNodeId} requiredDepth={requiredLocationDepth} />
               <label className="check-field"><input type="checkbox" checked={hseForm.confidential} onChange={(event) => setHseForm({ ...hseForm, confidential: event.target.checked })} /> {text("Restrict this sensitive incident to authorized HSE roles", "Beperk dit gevoelige incident tot bevoegde HSE-rollen")}</label>
-              <button className="primary-button" type="button" disabled={busy || !reportId || (exactLocationRequired && !hseLocationNodeId) || hseForm.title.trim().length < 3 || hseForm.description.trim().length < 3} onClick={() => void addHse()}><ShieldCheck size={15} /> {text("Save HSE record", "HSE-registratie opslaan")}</button>
+              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !hseLocationNodeId) || hseForm.title.trim().length < 3 || hseForm.description.trim().length < 3} onClick={() => void addHse()}><ShieldCheck size={15} /> {text("Save HSE record", "HSE-registratie opslaan")}</button>
             </div>
           ) : null}
           <RecordList empty={text("No formal HSE records yet.", "Nog geen formele HSE-registraties.")} rows={data.hseEvents.map((event) => ({ id: event.id, icon: ShieldCheck, title: event.confidential ? `${event.title} · ${text("confidential", "vertrouwelijk")}` : event.title, meta: `${event.event_number} · ${recordContextLabel(event.building_id, event.location_node_id)} · ${event.event_type.replaceAll("_", " ")} · ${formatDate(event.occurred_at, locale)}`, status: event.status.replaceAll("_", " "), tone: event.severity === "critical" ? "red" : event.status === "closed" ? "green" : "" }))} />
@@ -1524,7 +1559,7 @@ function ProjectOperations({
                 {registerForm.type === "environmental_report" ? <><div className="form-grid-2"><label className="form-field"><span>{text("Period start", "Periode start")}</span><input type="date" value={registerForm.periodStart} onChange={(event) => setRegisterForm({ ...registerForm, periodStart: event.target.value })} /></label><label className="form-field"><span>{text("Period end", "Periode einde")}</span><input type="date" value={registerForm.periodEnd} onChange={(event) => setRegisterForm({ ...registerForm, periodEnd: event.target.value })} /></label></div><div className="form-grid-2"><label className="form-field"><span>{text("Lost hours", "Verloren uren")}</span><input type="number" min="0" value={registerForm.lostHours} onChange={(event) => setRegisterForm({ ...registerForm, lostHours: event.target.value })} /></label><label className="form-field"><span>{text("Reason for lost hours", "Reden verloren uren")}</span><input value={registerForm.lostHoursReason} onChange={(event) => setRegisterForm({ ...registerForm, lostHoursReason: event.target.value })} /></label></div></> : null}
                 <div className="operation-alert warning"><FileCheck2 size={17} /><div><strong>{text("Numbering and metadata are automatic", "Nummering en metadata zijn automatisch")}</strong><span>{text("Project, building, issue date, author and audit history are filled from the current context. Approval, acknowledgement and signature remain explicit human actions.", "Project, gebouw, uitgiftedatum, opsteller en auditgeschiedenis komen uit de actuele context. Goedkeuring, ontvangst en ondertekening blijven expliciete menselijke acties.")}</span></div></div>
               </> : <label className="form-field"><span>{text("Involved party", "Betrokken partij")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>}
-              <button className="primary-button" type="button" disabled={busy || !reportId || (exactLocationRequired && !registerLocationNodeId) || registerForm.title.trim().length < 3 || !controlledFormReady} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : text("Save register item", "Registeritem opslaan")}</button>
+              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerForm.title.trim().length < 3 || !controlledFormReady} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : text("Save register item", "Registeritem opslaan")}</button>
             </div>
           ) : null}
           <div className="boq-import-card">
