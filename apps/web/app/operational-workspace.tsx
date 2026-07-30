@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Archive,
   ArrowLeft,
+  ArrowRight,
   Camera,
   CalendarRange,
   CheckCircle2,
@@ -259,8 +260,8 @@ export function OperationalWorkspace({
   onInitialCameraFilesConsumed,
   openQuickCamera,
   openQuickRegister,
+  openDailyRecord,
   openProjectArea,
-  openOverview,
   openActionCenter,
   openRapidVerify,
   openReports,
@@ -291,8 +292,8 @@ export function OperationalWorkspace({
   onInitialCameraFilesConsumed?: () => void;
   openQuickCamera: () => void;
   openQuickRegister: () => void;
+  openDailyRecord: (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => void;
   openProjectArea: (tab: "inspections" | "findings" | "documents" | "registers" | "visual" | "drawings" | "files") => void;
-  openOverview: () => void;
   openActionCenter: () => void;
   openRapidVerify: () => void;
   openReports: () => void;
@@ -382,7 +383,7 @@ export function OperationalWorkspace({
           onInitialCameraFilesConsumed={onInitialCameraFilesConsumed}
           openQuickCamera={openQuickCamera}
           openQuickRegister={openQuickRegister}
-          openOverview={openOverview}
+          openDailyRecord={openDailyRecord}
           openActionCenter={openActionCenter}
           openRapidVerify={openRapidVerify}
           openReports={openReports}
@@ -425,10 +426,13 @@ export function OperationalWorkspace({
           reportStatus={reportStatus}
           buildingId={buildingId}
           buildingName={buildingName}
+          buildings={buildings}
           parties={parties}
           canManageOrganization={canManageOrganization}
           openUserAdmin={openUserAdmin}
           openProjectArea={openProjectArea}
+          openActionCenter={openActionCenter}
+          createProjectAction={() => createProjectAction?.()}
           busy={busy}
           run={run}
         />
@@ -458,7 +462,7 @@ function ProjectOperations({
   onInitialCameraFilesConsumed,
   openQuickCamera,
   openQuickRegister,
-  openOverview,
+  openDailyRecord,
   openActionCenter,
   openRapidVerify,
   openReports,
@@ -484,7 +488,7 @@ function ProjectOperations({
   onInitialCameraFilesConsumed?: () => void;
   openQuickCamera: () => void;
   openQuickRegister: () => void;
-  openOverview: () => void;
+  openDailyRecord: (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => void;
   openActionCenter: () => void;
   openRapidVerify: () => void;
   openReports: () => void;
@@ -495,6 +499,7 @@ function ProjectOperations({
   const issueDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(new Date());
   const issueTime = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Paramaribo" }).format(new Date());
   const [tab, setTab] = useState<ProjectTab>(initialTab);
+  const [findingScope, setFindingScope] = useState<"issue" | "ncr">("issue");
   const [visualFindingId, setVisualFindingId] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [activeInspection, setActiveInspection] = useState<Inspection | null>(null);
@@ -581,6 +586,9 @@ function ProjectOperations({
     ? activeTemplate.items.filter((item) => checklistItemAnswered(item, inspectionAnswers[item.id])).length
     : 0;
   const online = typeof navigator === "undefined" ? true : navigator.onLine;
+  const scopedFindings = data.findings.filter((finding) => findingScope === "ncr"
+    ? finding.finding_type === "ncr"
+    : finding.finding_type !== "ncr");
   const findingPresets = [
     { title: text("Crack or damage", "Scheur of beschadiging"), description: text("Visible crack or damage requires repair and verification.", "Zichtbare scheur of beschadiging moet worden hersteld en gecontroleerd.") },
     { title: text("Work incomplete", "Werk niet volledig"), description: text("The planned work is not fully completed.", "Het geplande werk is niet volledig uitgevoerd.") },
@@ -678,11 +686,17 @@ function ProjectOperations({
     setActiveInspection(null);
   };
 
-  const openRegister = (type: "wcr" | "rfi" | "rfa" | "inspection_request" | "boq" | "change_order" | "submittal" | "meeting" | "equipment" | "delivery" | "test") => {
+  const openRegister = (type: "change_order" | "delivery" | "technical_instruction" | "agreement") => {
     setRegisterForm({ ...emptyControlledDocumentDraft, type });
     setRegisterFiles([]);
     setRegisterLocationNodeId("");
-    openTask("registers", type !== "boq");
+    openTask("registers", true);
+  };
+
+  const openFinding = (scope: "issue" | "ncr", createRecord = false) => {
+    setFindingScope(scope);
+    setFindingForm((current) => ({ ...current, type: scope === "ncr" ? "ncr" : current.type === "ncr" ? "deficiency" : current.type }));
+    openTask("findings", createRecord);
   };
 
   const beginInspection = async () => {
@@ -1117,34 +1131,34 @@ function ProjectOperations({
 
   return (
     <>
-      <header className={`secondary-header workspace-header${tab === "home" ? " home" : ""}`}>
+      {tab === "home" ? <header className="secondary-header workspace-header home">
         <div>
           <p className="eyebrow">{projectName} · {buildingName}</p>
-          <h1>{tab === "home" ? text("Workspace", "Werkruimte") : activeSectionLabel}</h1>
-          <p>{tab === "home"
-            ? text("Choose one task. Project context and filing are handled automatically.", "Kies één taak. Projectcontext en ordening worden automatisch geregeld.")
-            : text("Finish this task, then return to the workspace.", "Rond deze taak af en ga daarna terug naar de werkruimte.")}</p>
+          <h1>{text("Workspace", "Werkruimte")}</h1>
+          <p>{text("Choose one task. Project context and filing are handled automatically.", "Kies één taak. Projectcontext en ordening worden automatisch geregeld.")}</p>
         </div>
-        {canCreateRecord && !activeInspection ? <button className="primary-button" type="button" onClick={() => setShowForm((value) => !value)}><Plus size={15} /> {text("New record", "Nieuwe registratie")}</button> : null}
-      </header>
+      </header> : null}
 
       {tab === "home" ? (
         <>
           <ProjectWorkspaceHome
-            inspectionCount={data.inspections.length}
-            openFindingCount={data.findings.filter((item) => item.status !== "closed" && item.status !== "cancelled").length}
-            hseCount={data.hseEvents.length}
-            documentCount={data.registerEntries.length}
-            drawingCount={data.files.filter((file) => file.category === "drawing" && file.status === "available").length}
-            visualCount={data.visualCaptures.length}
-            fileCount={data.files.filter((file) => file.status === "available").length}
-            actionCount={data.findings.filter((item) => item.status !== "closed" && item.status !== "cancelled").length + data.registerEntries.filter((entry) => ["wcr", "rfi", "rfa", "inspection_request", "punch_list"].includes(entry.register_type) && !["closed", "approved", "cancelled"].includes(entry.status)).length}
+            counts={{
+              inspections: data.inspections.length,
+              issues: data.findings.filter((item) => item.finding_type !== "ncr" && !["closed", "cancelled"].includes(item.status)).length,
+              ncr: data.findings.filter((item) => item.finding_type === "ncr" && !["closed", "cancelled"].includes(item.status)).length,
+              hse: data.hseEvents.length,
+              photos: data.visualCaptures.filter((capture) => capture.capture_type === "photo" && capture.status === "active").length,
+              deliveries: data.registerEntries.filter((entry) => entry.register_type === "delivery").length,
+              agreements: data.registerEntries.filter((entry) => entry.register_type === "agreement").length,
+              deadlines: data.findings.filter((item) => item.due_at && !["closed", "cancelled"].includes(item.status)).length
+                + data.registerEntries.filter((entry) => entry.due_at && !["closed", "approved", "cancelled"].includes(entry.status)).length,
+            }}
             modules={data.settings?.modules ?? {}}
             openQuickCamera={openQuickCamera}
-            openQuickRegister={openQuickRegister}
             openTask={openTask}
+            openFinding={openFinding}
             openRegister={openRegister}
-            openOverview={openOverview}
+            openDailyRecord={openDailyRecord}
             openActionCenter={openActionCenter}
             openRapidVerify={openRapidVerify}
             openReports={openReports}
@@ -1224,7 +1238,7 @@ function ProjectOperations({
           <div className="workspace-section-controls">
             <button className="workspace-back-button" type="button" onClick={() => switchTab("home")}><ArrowLeft size={17} /> {text("Workspace", "Werkruimte")}</button>
             <div className="workspace-current-module" aria-live="polite">
-              <span>{text("Current module", "Huidige module")}</span>
+              <span>{projectName} · {buildingName}</span>
               <strong>{activeSectionLabel}</strong>
               <b>{activeSectionCount}</b>
             </div>
@@ -1238,6 +1252,7 @@ function ProjectOperations({
                 ))}
               </select>
             </label>
+            {canCreateRecord && !activeInspection ? <button className="primary-button workspace-module-create" type="button" onClick={() => setShowForm((value) => !value)}><Plus size={15} /> {text("New", "Nieuw")}</button> : null}
           </div>
         </>
       )}
@@ -1344,24 +1359,28 @@ function ProjectOperations({
 
       {tab === "findings" ? (
         <section className="operation-panel">
+          <div className="finding-scope-switch" role="tablist" aria-label={text("Quality record type", "Type kwaliteitsregistratie")}>
+            <button className={findingScope === "issue" ? "active" : ""} type="button" role="tab" aria-selected={findingScope === "issue"} onClick={() => openFinding("issue")}><AlertTriangle size={16} /><span><strong>{text("Issues", "Issues")}</strong><small>{text("Coordination, risk and workmanship follow-up", "Coördinatie, risico en uitvoeringsopvolging")}</small></span><b>{data.findings.filter((item) => item.finding_type !== "ncr").length}</b></button>
+            <button className={findingScope === "ncr" ? "active" : ""} type="button" role="tab" aria-selected={findingScope === "ncr"} onClick={() => openFinding("ncr")}><FileCheck2 size={16} /><span><strong>NCR</strong><small>{text("Formal non-conformance and verified close-out", "Formele afwijking en geverifieerde afsluiting")}</small></span><b>{data.findings.filter((item) => item.finding_type === "ncr").length}</b></button>
+          </div>
           <div className="punchlist-command">
             <div className="punchlist-stages">
               {[
-                [text("Open", "Open"), data.findings.filter((item) => ["draft", "open", "assigned"].includes(item.status)).length],
-                [text("In progress", "In uitvoering"), data.findings.filter((item) => ["in_progress", "reopened", "rejected"].includes(item.status)).length],
-                [text("Ready for verification", "Gereed voor verificatie"), data.findings.filter((item) => item.status === "ready_for_verification").length],
-                [text("Verified", "Geverifieerd"), data.findings.filter((item) => item.status === "closed").length],
+                [text("Open", "Open"), scopedFindings.filter((item) => ["draft", "open", "assigned"].includes(item.status)).length],
+                [text("In progress", "In uitvoering"), scopedFindings.filter((item) => ["in_progress", "reopened", "rejected"].includes(item.status)).length],
+                [text("Ready for verification", "Gereed voor verificatie"), scopedFindings.filter((item) => item.status === "ready_for_verification").length],
+                [text("Verified", "Geverifieerd"), scopedFindings.filter((item) => item.status === "closed").length],
               ].map(([label, count], index) => <div className={index === 2 ? "attention" : index === 3 ? "complete" : ""} key={String(label)}><span>{index + 1}</span><strong>{count}</strong><small>{label}</small></div>)}
             </div>
             <div className="punchlist-cycle-card">
               <span><RotateCcw size={19} /></span>
               <div><strong>{text("Contractor-to-supervisor review cycle", "Reviewcyclus aannemer naar supervisor")}</strong><p>{text("The contractor marks work ready with evidence. A supervisor verifies, closes or reopens it with a reason. The history remains intact.", "De aannemer meldt werk gereed met bewijs. Een supervisor verifieert, sluit of heropent het met reden. De historie blijft intact.")}</p></div>
-              <button className="secondary-button" type="button" onClick={() => setTab("visual")}><RotateCcw size={14} /> {text("Open 360° evidence", "Open 360°-bewijs")}</button>
+              <div className="button-row"><button className="secondary-button" type="button" onClick={() => setTab("visual")}><Camera size={14} /> {text("Open normal photo", "Open normale foto")}</button><button className="secondary-button" type="button" onClick={() => setTab("visual")}><RotateCcw size={14} /> {text("Open 360° image", "Open 360°-beeld")}</button></div>
             </div>
           </div>
           {showForm ? (
             <div className="operation-form snap-assign-form">
-              <div className="operation-form-heading"><div><span className="record-number">{text("Snap & assign", "Foto & toewijzen")}</span><h2>{text("Record finding / NCR", "Bevinding / NCR registreren")}</h2></div>{!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}</div>
+              <div className="operation-form-heading"><div><span className="record-number">{findingScope === "ncr" ? text("Formal non-conformance", "Formele afwijking") : text("Issue management", "Issuebeheer")}</span><h2>{findingScope === "ncr" ? text("Create NCR", "NCR registreren") : text("Create issue", "Issue registreren")}</h2></div>{!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}</div>
               <label className="finding-photo-capture">
                 <Camera size={22} />
                 <span><strong>{findingPhotos.length ? text(`${findingPhotos.length} photos stacked for this issue`, `${findingPhotos.length} foto’s gestapeld voor dit probleem`) : text("Take or choose issue photos", "Maak of kies probleemfoto’s")}</strong><small>{text("Tap again to add another photo. Project, building, date and time are linked automatically.", "Tik opnieuw om nog een foto toe te voegen. Project, gebouw, datum en tijd worden automatisch gekoppeld.")}</small></span>
@@ -1421,7 +1440,7 @@ function ProjectOperations({
             </div>
           ) : null}
           <FindingList
-            findings={data.findings}
+            findings={scopedFindings}
             progressUpdates={data.findingProgressUpdates}
             visualAnnotations={data.visualAnnotations}
             externalShareLinks={data.externalShareLinks ?? []}
@@ -1584,7 +1603,7 @@ function ProjectOperations({
         </section>
       ) : null}
 
-      {tab === "visual" ? <VisualEvidenceWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} parties={parties} client={client} busy={busy} run={run} initialFindingId={visualFindingId} /> : null}
+      {tab === "visual" ? <VisualEvidenceWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} parties={parties} client={client} busy={busy} run={run} initialFindingId={visualFindingId} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} /> : null}
 
       {tab === "documents" ? <ProjectDocumentsHome data={data} openDrawings={() => switchTab("drawings")} openFiles={() => switchTab("files")} openRegisters={() => switchTab("registers")} createDocument={() => openTask("registers", true)} /> : null}
 
@@ -1925,10 +1944,29 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
   ];
   const [reportChoice, setReportChoice] = useState(data.settings?.report_sections?.length ? "project" : "complete");
   const [reportView, setReportView] = useState<"create" | "workflow" | "history">("create");
+  const [historyType, setHistoryType] = useState<"all" | "daily" | "weekly" | "monthly">("all");
+  const [openHistoryId, setOpenHistoryId] = useState("");
   const [periodPreset, setPeriodPreset] = useState<"day" | "week" | "month" | "custom">("month");
   const [periodLabel, setPeriodLabel] = useState(() => text("Monthly supervision report", "Maandelijks supervisierapport"));
   const selectedReport = reportChoices.find((choice) => choice.id === reportChoice) ?? reportChoices[0];
-  const availableReportSections = reportChoices.find((choice) => choice.id === "complete")?.sections ?? selectedReport.sections;
+  const clientReportOptions: Array<{ id: string; label: string; sections: PeriodReportSection[] }> = [
+    { id: "photos", label: text("Photos", "Foto's"), sections: ["visual"] },
+    { id: "works_ongoing", label: text("Works ongoing", "Werkzaamheden gaande"), sections: ["work"] },
+    { id: "works_completed", label: text("Works completed", "Werkzaamheden afgerond"), sections: ["work"] },
+    { id: "workforce", label: "Workforce", sections: ["workforce"] },
+    { id: "delays", label: text("Delays", "Vertragingen"), sections: ["logistics"] },
+    { id: "issues", label: "Issues", sections: ["quality"] },
+    { id: "hse", label: "HSE", sections: ["hse"] },
+    { id: "materials_delivery", label: text("Materials delivery", "Materiaallevering"), sections: ["logistics"] },
+    { id: "inspections", label: text("Inspections", "Inspecties"), sections: ["quality"] },
+    { id: "technical_instructions", label: text("Technical instructions", "Technische instructies"), sections: ["instructions"] },
+    { id: "change_order", label: text("Change order · CO", "Wijzigingsopdracht · CO"), sections: ["commercial"] },
+    { id: "ncr", label: "NCR", sections: ["quality"] },
+    { id: "deadlines", label: text("Deadlines", "Deadlines"), sections: ["actions"] },
+    { id: "hse_incident", label: text("HSE incident", "HSE-incident"), sections: ["hse"] },
+    { id: "agreements_made", label: text("Agreements made", "Gemaakte afspraken"), sections: ["communications"] },
+  ];
+  const [includedClientOptions, setIncludedClientOptions] = useState(() => clientReportOptions.map((option) => option.id));
   const reportPromptLibrary = [
     text(
       "Create an executive project-management summary from the attached CODECO report. Separate facts, risks, decisions required, overdue actions and the next seven-day outlook. Do not invent missing information.",
@@ -1942,16 +1980,37 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
       "Rewrite the attached report for a client steering meeting. Preserve all figures and statuses, group actions by responsible party and finish with a decision list.",
       "Herschrijf het bijgevoegde rapport voor een stuurgroepoverleg met de klant. Behoud alle cijfers en statussen, groepeer acties per verantwoordelijke en eindig met een besluitenlijst.",
     ),
+    text(
+      "Compare the attached approved drawings, technical specifications and latest RFI/RFA log. Produce a conflict matrix with source filename, page or drawing reference, conflict, affected building, risk and required human decision. Do not resolve engineering conflicts yourself.",
+      "Vergelijk de bijgevoegde goedgekeurde tekeningen, technische specificaties en het actuele RFI/RFA-log. Maak een conflictmatrix met bronbestand, pagina- of tekeningreferentie, conflict, betrokken gebouw, risico en vereist menselijk besluit. Los technische conflicten niet zelf op.",
+    ),
+    text(
+      "Analyze the attached schedule, Works ongoing, Works completed, Delays and Deadlines exports. Identify the likely critical-path risks and prepare questions for the planner. Cite every input row used and do not invent dependencies.",
+      "Analyseer de bijgevoegde planning en exports Werkzaamheden gaande, Werkzaamheden afgerond, Vertragingen en Deadlines. Benoem waarschijnlijke kritieke-pad-risico's en stel vragen voor de planner op. Citeer elke gebruikte invoerregel en verzin geen afhankelijkheden.",
+    ),
+    text(
+      "Review the attached photo register, Issues, NCRs and inspection results. Cluster repeated observations by building and location, but keep Issues and NCRs separate. Return possible trends, missing evidence and a human verification checklist; never declare an NCR closed.",
+      "Controleer het bijgevoegde fotoregister, Issues, NCR's en inspectieresultaten. Groepeer herhaalde observaties per gebouw en locatie, maar houd Issues en NCR's gescheiden. Geef mogelijke trends, ontbrekend bewijs en een menselijke verificatiechecklist; verklaar nooit zelf een NCR gesloten.",
+    ),
+    text(
+      "Convert the attached meeting transcript into draft Agreements made. For each item provide decision, responsible party, due date, source timestamp and confidence. Mark unclear owners or dates as REQUIRED INPUT and do not create commitments automatically.",
+      "Zet het bijgevoegde vergadertranscript om in concept Gemaakte afspraken. Geef per punt besluit, verantwoordelijke partij, deadline, brontijdstip en zekerheid. Markeer onduidelijke eigenaars of datums als INVOER VEREIST en maak nooit automatisch verplichtingen aan.",
+    ),
+    text(
+      "Using the attached BOQ, Change Orders, material deliveries and progress report, prepare a draft commercial variance review. Separate contracted quantity, approved change, unapproved exposure and missing source evidence. All amounts must retain their original currency and source reference.",
+      "Maak met de bijgevoegde BOQ, wijzigingsopdrachten, materiaalleveringen en voortgangsrapportage een concept commerciële afwijkingsanalyse. Scheid gecontracteerde hoeveelheid, goedgekeurde wijziging, niet-goedgekeurde blootstelling en ontbrekend bronbewijs. Behoud bij alle bedragen de oorspronkelijke valuta en bronreferentie.",
+    ),
+    text(
+      "Review the attached HSE observations, incidents, workforce and works ongoing records for recurring control weaknesses. Return a draft toolbox-talk agenda and questions for the HSE officer. Do not diagnose injuries or replace the formal incident investigation.",
+      "Controleer de bijgevoegde HSE-observaties, incidenten, workforce en lopende werkzaamheden op terugkerende tekortkomingen in beheersmaatregelen. Geef een concept toolbox-agenda en vragen voor de HSE-functionaris. Stel geen medische diagnose en vervang het formele incidentonderzoek niet.",
+    ),
   ];
-  const [sectionOverrides, setSectionOverrides] = useState<Partial<Record<string, PeriodReportSection[]>>>({});
-  const activeSections = sectionOverrides[reportChoice] ?? selectedReport.sections;
-  const toggleReportSection = (section: PeriodReportSection) => {
-    setSectionOverrides((current) => {
-      const selected = current[reportChoice] ?? selectedReport.sections;
-      const next = selected.includes(section) ? selected.filter((item) => item !== section) : [...selected, section];
-      return { ...current, [reportChoice]: next };
-    });
-  };
+  const activeSections = [...new Set(clientReportOptions
+    .filter((option) => includedClientOptions.includes(option.id))
+    .flatMap((option) => option.sections))] as PeriodReportSection[];
+  const toggleReportSection = (sectionId: string) => setIncludedClientOptions((current) => current.includes(sectionId)
+    ? current.filter((id) => id !== sectionId)
+    : [...current, sectionId]);
   const applyDatePreset = (days: number, label: string, preset: "day" | "week") => {
     const start = new Date(`${today}T12:00:00-03:00`);
     start.setDate(start.getDate() - Math.max(0, days - 1));
@@ -1981,6 +2040,42 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
             : reportStatus === "sent"
               ? text("The formal flow is complete. Additional real recipients may be recorded here; the immutable version remains in History.", "De formele flow is afgerond. Extra werkelijke ontvangers kunnen hier worden geregistreerd; de onveranderbare versie blijft in Historie.")
               : text("This report status has no formal action available. Check History or return to Overview.", "Voor deze rapportstatus is geen formele actie beschikbaar. Controleer Historie of ga terug naar Overzicht.");
+  const dayReportArchive = (data.dayReports ?? []).map((report) => ({
+    id: `daily:${report.id}`,
+    type: "daily" as const,
+    title: report.report_number,
+    start: report.report_date,
+    end: report.report_date,
+    status: report.status,
+    count: 1,
+    completeness: report.completeness_percent,
+  }));
+  const groupedArchive = (type: "weekly" | "monthly") => {
+    const groups = new Map<string, typeof dayReportArchive>();
+    dayReportArchive.forEach((report) => {
+      const date = new Date(`${report.start}T12:00:00-03:00`);
+      let key = report.start.slice(0, 7);
+      if (type === "weekly") {
+        const day = date.getDay() || 7;
+        date.setDate(date.getDate() - day + 1);
+        key = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(date);
+      }
+      groups.set(key, [...(groups.get(key) ?? []), report]);
+    });
+    return [...groups.entries()].map(([key, reports]) => ({
+      id: `${type}:${key}`,
+      type,
+      title: type === "weekly" ? text(`Week of ${key}`, `Week van ${key}`) : text(`Month ${key}`, `Maand ${key}`),
+      start: [...reports].sort((a, b) => a.start.localeCompare(b.start))[0]?.start ?? key,
+      end: [...reports].sort((a, b) => b.end.localeCompare(a.end))[0]?.end ?? key,
+      status: reports.every((report) => ["approved", "signed", "sent"].includes(report.status)) ? "complete" : "in_progress",
+      count: reports.length,
+      completeness: Math.round(reports.reduce((sum, report) => sum + report.completeness, 0) / Math.max(1, reports.length)),
+    }));
+  };
+  const reportArchive = [...dayReportArchive, ...groupedArchive("weekly"), ...groupedArchive("monthly")]
+    .filter((report) => historyType === "all" || report.type === historyType)
+    .sort((left, right) => right.end.localeCompare(left.end));
   return (
     <>
       <header className="secondary-header report-page-header"><div><p className="eyebrow">{text("Reports", "Rapporten")}</p><h1>{text("Client reports", "Klantrapporten")}</h1><p>{text("Create the right PDF first. Formal approval and history stay available in their own clear steps.", "Maak eerst de juiste PDF. Formele goedkeuring en historie blijven beschikbaar in eigen duidelijke stappen.")}</p></div><div className="report-header-state"><span className="record-number">{reportNumber}</span><span className={`report-state-pill ${reportStatus}`}>{statusLabels[reportStatus] ?? reportStatus}</span></div></header>
@@ -2002,7 +2097,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
           <div className="period-report-types" role="radiogroup" aria-label={text("Report type", "Rapporttype")}>{reportChoices.map((choice) => <button className={reportChoice === choice.id ? "active" : ""} type="button" role="radio" aria-checked={reportChoice === choice.id} onClick={() => setReportChoice(choice.id)} key={choice.id}><strong>{choice.title}</strong><span>{choice.sections.length} {text("automatic sections", "automatische onderdelen")}</span></button>)}</div>
           <fieldset className="report-source-checklist">
             <legend>{text("Include in this report", "Opnemen in dit rapport")}</legend>
-            {availableReportSections.map((section) => <label key={section}><input type="checkbox" checked={activeSections.includes(section)} onChange={() => toggleReportSection(section)} /><span>{section.replaceAll("_", " ")}</span></label>)}
+            {clientReportOptions.map((option) => <label key={option.id}><input type="checkbox" checked={includedClientOptions.includes(option.id)} onChange={() => toggleReportSection(option.id)} /><span>{option.label}</span></label>)}
           </fieldset>
           <details className="report-prompt-library">
             <summary><MessageCircle size={15} /> {text("Prompt library for external writing review", "Promptlijst voor externe schrijfreview")}</summary>
@@ -2036,6 +2131,16 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
       ) : null}
       {reportView === "history" ? (
         <>
+          <section className="report-archive">
+            <header><div><span className="record-number">{text("Report history", "Rapporthistorie")}</span><h2>{text("All available reports", "Alle beschikbare rapporten")}</h2><p>{text("Daily records are the source of truth. Weekly and monthly entries group those same records and remain clickable.", "Dagregistraties zijn de bron. Week- en maanditems groeperen dezelfde registraties en blijven aanklikbaar.")}</p></div><label className="form-field"><span>{text("Report type", "Rapporttype")}</span><select value={historyType} onChange={(event) => setHistoryType(event.target.value as typeof historyType)}><option value="all">{text("All reports", "Alle rapporten")}</option><option value="daily">{text("Daily", "Dagrapport")}</option><option value="weekly">{text("Weekly", "Weekrapport")}</option><option value="monthly">{text("Monthly", "Maandrapport")}</option></select></label></header>
+            <div className="report-archive-list">
+              {reportArchive.map((report) => <article className={openHistoryId === report.id ? "open" : ""} key={report.id}>
+                <button type="button" onClick={() => setOpenHistoryId((current) => current === report.id ? "" : report.id)}><span className={`report-type-badge ${report.type}`}>{report.type}</span><span><strong>{report.title}</strong><small>{report.start}{report.end !== report.start ? ` → ${report.end}` : ""} · {report.count} {text("day record(s)", "dagregistratie(s)")}</small></span><span className="report-archive-progress"><b>{report.completeness}%</b><i><em style={{ width: `${report.completeness}%` }} /></i></span><ArrowRight size={15} /></button>
+                {openHistoryId === report.id ? <div className="report-archive-detail"><span>{text("Status", "Status")}: <strong>{report.status.replaceAll("_", " ")}</strong></span><span>{text("Content", "Inhoud")}: {includedClientOptions.length} {text("selected client sections", "geselecteerde klantonderdelen")}</span><ReportDownloadButtons disabled={busy} onDownloadPdf={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, report.start, report.end); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { sections: activeSections, reportTitle: report.title, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text("Archived report view downloaded.", "Rapportweergave uit de historie gedownload."))} onDownloadWord={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, report.start, report.end); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { sections: activeSections, reportTitle: report.title, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text("Archived report view downloaded as Word.", "Rapportweergave uit de historie als Word gedownload."))} /></div> : null}
+              </article>)}
+              {!reportArchive.length ? <div className="empty-list-state"><Archive size={22} /><strong>{text("No reports for this filter", "Geen rapporten voor dit filter")}</strong><span>{text("Create a daily report from Overview first.", "Maak eerst een dagrapport vanuit Overzicht.")}</span></div> : null}
+            </div>
+          </section>
           <section className="report-history-grid">
             <HistoryColumn title={text("Fixed versions", "Vastgezette versies")} empty={text("No immutable version yet.", "Nog geen immutable versie.")} rows={data.reportVersions.map((version) => <div className="history-version" key={version.id}><span>{text("Revision", "Revisie")} {version.revision} · {formatDate(version.created_at, locale)} · SHA {version.sha256.slice(0, 12)}…</span><ReportDownloadButtons disabled={busy} onDownloadPdf={() => run(async () => { const { downloadFormalReportPdf } = await import("@/lib/reports/daily-report-pdf"); await downloadFormalReportPdf(version.snapshot as FormalReportSnapshot, version.revision, version.sha256); }, text(`Formal revision ${version.revision} downloaded directly from the immutable snapshot.`, `Formele revisie ${version.revision} rechtstreeks uit de immutable snapshot gedownload.`))} onDownloadWord={() => run(async () => { const { downloadFormalReportDocx } = await import("@/lib/reports/daily-report-docx"); await downloadFormalReportDocx(version.snapshot as FormalReportSnapshot, version.revision, version.sha256); }, text(`Formal revision ${version.revision} downloaded as Word directly from the immutable snapshot.`, `Formele revisie ${version.revision} als Word rechtstreeks uit de immutable snapshot gedownload.`))} /></div>)} />
             <HistoryColumn title="Reviews" empty={text("No review decision yet.", "Nog geen reviewbesluit.")} rows={data.reportReviews.map((review) => `${statusLabels[review.decision] ?? review.decision} · ${review.comment} · ${formatDate(review.created_at, locale)}`)} />
@@ -2049,7 +2154,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
   );
 }
 
-function AdminOperations({ data, client, organizationId, projectId, projectName, reportStatus, buildingId, buildingName, parties, canManageOrganization, openUserAdmin, openProjectArea, busy, run }: { data: OperationSnapshot; client: SupabaseClient; organizationId: string; projectId: string; projectName: string; reportStatus: string; buildingId: string; buildingName: string; parties: ProjectParty[]; canManageOrganization: boolean; openUserAdmin: () => void; openProjectArea: (tab: "inspections" | "findings" | "visual") => void; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean> }) {
+function AdminOperations({ data, client, organizationId, projectId, projectName, reportStatus, buildingId, buildingName, buildings, parties, canManageOrganization, openUserAdmin, openProjectArea, openActionCenter, createProjectAction, busy, run }: { data: OperationSnapshot; client: SupabaseClient; organizationId: string; projectId: string; projectName: string; reportStatus: string; buildingId: string; buildingName: string; buildings: BuildingOption[]; parties: ProjectParty[]; canManageOrganization: boolean; openUserAdmin: () => void; openProjectArea: (tab: "inspections" | "findings" | "registers" | "visual") => void; openActionCenter: () => void; createProjectAction: () => void; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean> }) {
   const { text } = useLanguage();
   const [section, setSection] = useState<"overview" | "settings" | "structure" | "templates" | "backup">("overview");
   const [template, setTemplate] = useState({ module: "inspection", code: "", name: "", prompts: "" });
@@ -2068,7 +2173,11 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
     mediumDays: data.settings?.finding_deadlines?.medium ?? 7,
     highDays: data.settings?.finding_deadlines?.high ?? 3,
     criticalDays: data.settings?.finding_deadlines?.critical ?? 1,
-    reportSections: data.settings?.report_sections ?? [],
+    reportSections: [
+      "photos", "works_ongoing", "works_completed", "workforce", "delays", "issues", "hse",
+      "materials_delivery", "inspections", "technical_instructions", "change_order", "ncr",
+      "deadlines", "hse_incident", "agreements_made",
+    ],
     reportHeader: data.settings?.report_header ?? "",
     reportFooter: data.settings?.report_footer ?? "",
     modules: data.settings?.modules ?? {},
@@ -2082,6 +2191,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
   const openFindings = data.findings.filter((item) => !["closed", "cancelled"].includes(item.status));
   const criticalFindings = openFindings.filter((item) => item.severity === "critical" || item.severity === "high");
   const activeInspections = data.inspections.filter((item) => item.status === "planned" || item.status === "in_progress" || item.status === "failed");
+  const externalSubmissions = data.registerEntries.filter((entry) => ["rfi", "rfa", "inspection_request", "wcr"].includes(entry.register_type));
   const addTemplate = () => {
     const prompts = template.prompts.split("\n").map((value) => value.trim()).filter(Boolean);
     if (template.code.trim().length < 2 || template.name.trim().length < 3 || prompts.length === 0) return;
@@ -2102,6 +2212,15 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
           <article className="management-card"><header><div><span className="module-card-icon"><AlertTriangle size={18} /></span><div><h2>{text("Management attention", "Managementaandacht")}</h2><p>{text("Items that may block delivery or control.", "Punten die oplevering of beheersing kunnen blokkeren.")}</p></div></div></header><div className="management-attention-list">{criticalFindings.length ? criticalFindings.slice(0, 4).map((item) => <div key={item.id}><span className="risk-dot" /><span><strong>{item.title}</strong><small>{item.finding_number} · {item.status.replaceAll("_", " ")}</small></span></div>) : <div className="management-clear"><CheckCircle2 size={18} /><span><strong>{text("No high-risk findings", "Geen hoog-risico bevindingen")}</strong><small>{text("Continue monitoring open work.", "Blijf openstaand werk volgen.")}</small></span></div>}</div></article>
           <article className="management-card"><header><div><span className="module-card-icon"><Settings size={18} /></span><div><h2>{text("Management controls", "Managementbediening")}</h2><p>{text("Go directly to the area you need to manage.", "Ga direct naar het onderdeel dat je wilt beheren.")}</p></div></div></header><div className="management-control-list"><button type="button" onClick={openUserAdmin}><Users size={16} /><span><strong>{text("Team and access", "Team en toegang")}</strong><small>{text("Invite, suspend and review roles", "Uitnodigen, opschorten en rollen controleren")}</small></span></button><button type="button" onClick={() => setSection("settings")}><Settings size={16} /><span><strong>{text("Project rules", "Projectregels")}</strong><small>{text("Reporting, deadlines and retention", "Rapportage, deadlines en bewaartermijn")}</small></span></button><button type="button" onClick={() => setSection("structure")}><Wrench size={16} /><span><strong>{text("Structure and parties", "Structuur en partijen")}</strong><small>{text("Locations, contractors and consultants", "Locaties, aannemers en adviseurs")}</small></span></button><button type="button" onClick={() => setSection("backup")}><DatabaseBackup size={16} /><span><strong>{text("Continuity controls", "Continuïteitscontrole")}</strong><small>{text("Backups and restore verification", "Back-ups en herstelverificatie")}</small></span></button></div></article>
         </div>
+        <section className="external-submission-center">
+          <header><div><span className="record-number">{text("External parties", "Externe partijen")}</span><h2>{text("Submissions, decisions and task ownership", "Indieningen, besluiten en taakverdeling")}</h2><p>{text("Contractors submit RFI, RFA, IR/WIR or WCR first. The company or owner records the decision; every response remains in the document history.", "Aannemers dienen eerst RFI, RFA, IR/WIR of WCR in. Het bedrijf of de eigenaar legt het besluit vast; elk antwoord blijft in de documenthistorie.")}</p></div><div className="button-row"><button className="secondary-button" type="button" onClick={() => openProjectArea("registers")}><FileText size={15} /> {text("Record external submission", "Externe indiening registreren")}</button><button className="secondary-button" type="button" onClick={openActionCenter}><ClipboardCheck size={15} /> {text("Manage tasks", "Taken beheren")}</button><button className="primary-button" type="button" onClick={createProjectAction}><Plus size={15} /> {text("Assign follow-up", "Opvolging toewijzen")}</button></div></header>
+          <div className="external-access-summary">
+            <span><KeyRound size={17} /><strong>{text("With account", "Met account")}</strong><small>{text("Project role controls what the external party may submit and view.", "De projectrol bepaalt wat de externe partij mag indienen en zien.")}</small></span>
+            <span><Link2 size={17} /><strong>{text("Without account", "Zonder account")}</strong><small>{text("Use a revocable external evidence link; no general project access is granted.", "Gebruik een intrekbare externe bewijslink; er wordt geen algemene projecttoegang gegeven.")}</small></span>
+            <span><Archive size={17} /><strong>{externalSubmissions.length} {text("submissions", "indieningen")}</strong><small>{externalSubmissions.filter((entry) => !["approved", "closed", "cancelled"].includes(entry.status)).length} {text("require a decision", "vragen een besluit")}</small></span>
+          </div>
+          <ControlledDocumentList entries={externalSubmissions} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={text("Company / owner reviewer", "Reviewer bedrijf / eigenaar")} client={client} run={run} />
+        </section>
         <div className="management-context"><div><span>{text("Current report", "Huidig rapport")}</span><strong>{reportStatus.replaceAll("_", " ")}</strong></div><div><span>{text("Project locations", "Projectlocaties")}</span><strong>{data.locationNodes.length}</strong></div><div><span>{text("Published checklists", "Gepubliceerde checklists")}</span><strong>{data.templates.filter((item) => item.status === "published").length}</strong></div><div><span>{text("Controlled files", "Beheerde bestanden")}</span><strong>{data.files.length}</strong></div></div>
       </section> : null}
       {section === "settings" ? (
@@ -2140,7 +2259,23 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
               </div>
               <div className="click-answer-block">
                 <strong>{text("Client report sections", "Secties in klantrapport")}</strong>
-                <div className="quick-issue-presets">{["management","workforce","work","logistics","quality","hse","documents","visual","boq"].map((sectionName) => <button className={settings.reportSections.includes(sectionName) ? "active" : ""} type="button" onClick={() => setSettings({ ...settings, reportSections: settings.reportSections.includes(sectionName) ? settings.reportSections.filter((item) => item !== sectionName) : [...settings.reportSections, sectionName] })} key={sectionName}>{sectionName}</button>)}</div>
+                <div className="quick-issue-presets">{[
+                  ["photos", text("Photos", "Foto's")],
+                  ["works_ongoing", text("Works ongoing", "Werkzaamheden gaande")],
+                  ["works_completed", text("Works completed", "Werkzaamheden afgerond")],
+                  ["workforce", "Workforce"],
+                  ["delays", text("Delays", "Vertragingen")],
+                  ["issues", "Issues"],
+                  ["hse", "HSE"],
+                  ["materials_delivery", text("Materials delivery", "Materiaallevering")],
+                  ["inspections", text("Inspections", "Inspecties")],
+                  ["technical_instructions", text("Technical instructions", "Technische instructies")],
+                  ["change_order", text("Change order · CO", "Wijzigingsopdracht · CO")],
+                  ["ncr", "NCR"],
+                  ["deadlines", text("Deadlines", "Deadlines")],
+                  ["hse_incident", text("HSE incident", "HSE-incident")],
+                  ["agreements_made", text("Agreements made", "Gemaakte afspraken")],
+                ].map(([sectionName, label]) => <button className={settings.reportSections.includes(sectionName) ? "active" : ""} type="button" onClick={() => setSettings({ ...settings, reportSections: settings.reportSections.includes(sectionName) ? settings.reportSections.filter((item) => item !== sectionName) : [...settings.reportSections, sectionName] })} key={sectionName}>{label}</button>)}</div>
               </div>
               <div className="form-grid-2">
                 <label className="form-field"><span>{text("Report header", "Rapportkop")}</span><input value={settings.reportHeader} onChange={(event) => setSettings({ ...settings, reportHeader: event.target.value })} /></label>

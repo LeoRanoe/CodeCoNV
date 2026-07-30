@@ -164,6 +164,26 @@ export function RapidVerifyWorkspace({
     file.status === "available"
     && (file.mime_type === "application/pdf" || file.mime_type.startsWith("text/") || /\.(pdf|txt|md)$/i.test(file.original_name)),
   );
+  const indexExistingSources = async () => {
+    if (!client || !availableProjectFiles.length) return;
+    setBusy(true);
+    setError("");
+    try {
+      for (const projectFile of availableProjectFiles.filter((candidate) => !documents.some((document) => document.name === candidate.original_name)).slice(0, 25)) {
+        const blob = await loadProjectFileBlob(client, projectFile.id);
+        const indexed = await indexFile(new File([blob], projectFile.original_name, { type: projectFile.mime_type }));
+        setDocuments((current) => {
+          const merged = new Map(current.map((document) => [document.id, document]));
+          merged.set(indexed.id, indexed);
+          return [...merged.values()];
+        });
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : text("Existing project sources could not all be indexed.", "Niet alle bestaande projectbronnen konden worden geïndexeerd."));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const verify = () => {
     const sourceText = mode === "question" ? question : comparison;
@@ -240,6 +260,7 @@ export function RapidVerifyWorkspace({
           {availableProjectFiles.length ? (
             <div className="rapid-project-library">
               <span>{text("Available in Project Docs", "Beschikbaar in Project Docs")}</span>
+              <button className="rapid-index-all" type="button" disabled={busy || availableProjectFiles.every((file) => documents.some((document) => document.name === file.original_name))} onClick={() => void indexExistingSources()}><BookOpenCheck size={14} /><span><strong>{text("Use existing sources", "Gebruik bestaande bronnen")}</strong><small>{text("Index approved PDFs and text files", "Indexeer goedgekeurde pdf's en tekstbestanden")}</small></span></button>
               {availableProjectFiles.slice(0, 8).map((file) => {
                 const indexed = documents.some((document) => document.name === file.original_name);
                 return <button className={indexed ? "indexed" : ""} type="button" disabled={indexed || Boolean(loadingProjectFileId)} onClick={() => void addProjectFile(file)} key={file.id}><FileText size={14} /><span><strong>{file.original_name}</strong><small>{indexed ? text("Indexed", "Geïndexeerd") : text("Use as source", "Gebruik als bron")}</small></span>{loadingProjectFileId === file.id ? <Loader2 className="spin" size={13} /> : indexed ? <CheckCircle2 size={13} /> : <Plus size={13} />}</button>;

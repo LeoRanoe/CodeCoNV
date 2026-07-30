@@ -81,7 +81,8 @@ export async function POST(request: Request) {
     redirectTo,
     data: {
       display_name: input.data.displayName.trim(),
-      internal_access: true,
+      account_type: roleResult.data.scope === "project" ? "project_user" : "organization_user",
+      internal_access: roleResult.data.scope === "organization",
       must_set_password: true,
     },
   });

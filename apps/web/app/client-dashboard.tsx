@@ -8,19 +8,19 @@ import {
   Camera,
   CheckCircle2,
   ClipboardCheck,
-  CloudSun,
   FileCheck2,
   HardHat,
   LayoutDashboard,
   MapPin,
   Plus,
+  RefreshCw,
   Search,
   ShieldCheck,
   Sparkles,
   TimerReset,
   Wrench,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 
 type DashboardEntry = {
@@ -87,6 +87,7 @@ export function ClientDashboard({
   entries,
   actions,
   projectName,
+  projectLocation,
   buildingName,
   weather,
   openQuickAdd,
@@ -97,6 +98,7 @@ export function ClientDashboard({
   entries: DashboardEntry[];
   actions: DashboardAction[];
   projectName: string;
+  projectLocation: string;
   buildingName: string;
   weather: DashboardWeather;
   openQuickAdd: () => void;
@@ -106,6 +108,42 @@ export function ClientDashboard({
 }) {
   const { locale, text } = useLanguage();
   const [search, setSearch] = useState("");
+  const [liveWeather, setLiveWeather] = useState<null | {
+    temperatureC: number;
+    apparentTemperatureC: number;
+    relativeHumidityPercent: number;
+    precipitationMm: number;
+    windSpeedKph: number;
+    observedAt: string;
+    resolvedLocation: string;
+    source: string;
+  }>(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherError, setWeatherError] = useState("");
+  const loadLiveWeather = async () => {
+    setWeatherLoading(true);
+    setWeatherError("");
+    try {
+      const response = await fetch(`/api/weather/current?location=${encodeURIComponent(projectLocation)}`, { headers: { accept: "application/json" } });
+      const payload = await response.json() as Record<string, unknown>;
+      if (!response.ok) throw new Error(String(payload.error ?? "Weather unavailable"));
+      setLiveWeather(payload as typeof liveWeather);
+    } catch (error) {
+      setWeatherError(error instanceof Error ? error.message : text("Weather unavailable", "Weer niet beschikbaar"));
+    } finally {
+      setWeatherLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const initial = window.setTimeout(() => void loadLiveWeather(), 0);
+    const timer = window.setInterval(() => void loadLiveWeather(), 10 * 60 * 1000);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectLocation]);
   const openItems = actions.filter((action) => !["verified", "cancelled"].includes(action.status));
   const completedItems = actions.filter((action) => ["verified", "cancelled"].includes(action.status));
   const urgentItems = openItems.filter((action) => ["high", "critical"].includes(action.priority));
@@ -141,8 +179,8 @@ export function ClientDashboard({
       <header className="overview-hero">
         <div>
           <span className="overview-kicker"><LayoutDashboard size={15} /> {text("Live project control", "Actuele projectsturing")}</span>
-          <h1>{buildingName}</h1>
-          <p>{projectName} · {text("One operational view for today’s work, risks and evidence.", "Eén operationeel overzicht voor het werk, de risico’s en het bewijs van vandaag.")}</p>
+          <h1>{projectName}</h1>
+          <p>{buildingName} · {text("One operational view for today’s work, risks and evidence.", "Eén operationeel overzicht voor het werk, de risico’s en het bewijs van vandaag.")}</p>
         </div>
         <div className="overview-hero-actions">
           <label className="overview-search">
@@ -249,13 +287,19 @@ export function ClientDashboard({
 
         <article className="overview-panel overview-site-panel">
           <header className="overview-panel-heading">
-            <div><span>{text("Site readiness", "Locatiegereedheid")}</span><h2>{text("Conditions & location", "Condities & locatie")}</h2></div>
-            <span className="overview-weather-icon"><CloudSun size={20} /></span>
+            <div><span>{text("Live weather register", "Actueel weerregister")}</span><h2>{text("Conditions & location", "Condities & locatie")}</h2></div>
+            <button className="overview-weather-icon" type="button" onClick={() => void loadLiveWeather()} disabled={weatherLoading} aria-label={text("Refresh live weather", "Ververs actueel weer")}><RefreshCw className={weatherLoading ? "spin" : ""} size={18} /></button>
           </header>
           <div className="overview-weather">
-            <span><strong>{weather ? `${weather.temperatureC}°C` : "—"}</strong><small>{weatherLabel}</small></span>
-            <span className="overview-weather-status"><ShieldCheck size={14} /> {weather ? text("Start check recorded", "Startcontrole vastgelegd") : text("Confirm at project start", "Bevestig bij projectstart")}</span>
+            <span><strong>{liveWeather ? `${liveWeather.temperatureC}°C` : weather ? `${weather.temperatureC}°C` : "—"}</strong><small>{liveWeather ? liveWeather.resolvedLocation : weatherLabel}</small></span>
+            <span className="overview-weather-status"><ShieldCheck size={14} /> {liveWeather ? text(`Live · ${liveWeather.source}`, `Actueel · ${liveWeather.source}`) : weather ? text("Recorded start check", "Vastgelegde startcontrole") : text("Confirm at project start", "Bevestig bij projectstart")}</span>
           </div>
+          {liveWeather ? <div className="overview-weather-register">
+            <span><small>{text("Feels like", "Gevoelstemperatuur")}</small><strong>{liveWeather.apparentTemperatureC}°C</strong></span>
+            <span><small>{text("Humidity", "Luchtvochtigheid")}</small><strong>{liveWeather.relativeHumidityPercent}%</strong></span>
+            <span><small>{text("Wind", "Wind")}</small><strong>{liveWeather.windSpeedKph} km/h</strong></span>
+            <span><small>{text("Rain", "Regen")}</small><strong>{liveWeather.precipitationMm} mm</strong></span>
+          </div> : weatherError ? <p className="overview-weather-error">{weatherError}</p> : null}
           <button className="overview-plan-placeholder" type="button" onClick={openWorkspace}>
             <span className="plan-grid-lines" />
             <span className="plan-mass mass-one" />

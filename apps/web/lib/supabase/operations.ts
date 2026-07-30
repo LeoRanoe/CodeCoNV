@@ -179,6 +179,7 @@ export type ReportVersion = {
 export type ReportReview = { id: string; decision: string; comment: string; created_at: string };
 export type ReportSignature = { id: string; signer_name: string; signer_role: string; legal_level: string; signed_at: string };
 export type ReportDistribution = { id: string; recipient_name: string; recipient_address: string; channel: string; status: string; sent_at: string | null };
+export type DayReportSummary = { id: string; report_date: string; report_number: string; status: string; completeness_percent: number; created_at: string; updated_at: string };
 export type BackupRun = { id: string; run_type: string; status: string; schema_version: string; size_bytes: number | null; sha256: string | null; verified_at: string | null; created_at: string };
 
 export type ProjectSettings = {
@@ -350,6 +351,7 @@ export type OperationSnapshot = {
   reportReviews: ReportReview[];
   reportSignatures: ReportSignature[];
   reportDistributions: ReportDistribution[];
+  dayReports?: DayReportSummary[];
   backupRuns: BackupRun[];
   settings: ProjectSettings | null;
   locationNodes: LocationNode[];
@@ -418,7 +420,7 @@ export async function loadProjectOperations(
   organizationId: string,
   reportId?: string | null,
 ): Promise<OperationSnapshot> {
-  const [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, registerResult, boqProgressResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult] = await Promise.all([
+  const [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, registerResult, boqProgressResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult, dayReportResult] = await Promise.all([
     client.from("checklist_templates").select("id,project_id,module,code,name,description,version_number,status").or(`project_id.is.null,project_id.eq.${projectId}`).order("name"),
     client.from("checklist_library_templates").select("code,module,category,name,description,prompts,sort_order").eq("active", true).order("sort_order"),
     client.from("inspections").select("id,building_id,location_node_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
@@ -438,6 +440,7 @@ export async function loadProjectOperations(
     client.from("drawing_markups").select("id,drawing_file_id,page_number,markup_type,geometry,color,stroke_width,text_content,status,created_at").eq("project_id", projectId).order("created_at").limit(5000),
     client.from("media_folders").select("id,building_id,parent_id,name,folder_type,status,created_at").eq("project_id", projectId).eq("status", "active").order("name").limit(500),
     client.from("external_share_links").select("id,organization_id,project_id,building_id,source_type,source_id,source_number,title,summary,source_file_id,expires_at,revoked_at,view_count,last_viewed_at,created_by,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(500),
+    client.from("day_reports").select("id,report_date,report_number,status,completeness_percent,created_at,updated_at").eq("project_id", projectId).order("report_date", { ascending: false }).limit(1000),
   ]);
   const compatibleRegisterResult = schemaFeatureMissing(registerResult.error, "location_node_id")
     ? await client.from("project_register_entries").select("id,building_id,register_type,entry_number,title,status,occurred_at,due_at,details").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(5000)
@@ -449,7 +452,7 @@ export async function loadProjectOperations(
   const compatibleSettingsResult = legacySettingsSchema
     ? await client.from("project_settings").select("id,project_id,report_prefix,default_language,max_file_size_mb,notification_lead_hours,email_notifications_enabled,push_notifications_enabled,retention_days,branding,modules,signing_workflow").eq("project_id", projectId).maybeSingle()
     : settingsResult;
-  [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, compatibleRegisterResult, compatibleBoqProgressResult, fileResult, compatibleSettingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult].forEach((result) => fail(result.error));
+  [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, compatibleRegisterResult, compatibleBoqProgressResult, fileResult, compatibleSettingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult, dayReportResult].forEach((result) => fail(result.error));
   const templateRows = (templateResult.data ?? []) as Omit<ChecklistTemplate, "items">[];
   const itemResult = templateRows.length
     ? await client.from("checklist_items").select("id,template_id,section,prompt,response_type,required,sort_order,unit,minimum_value,maximum_value,failure_severity,guidance").in("template_id", templateRows.map((template) => template.id)).order("sort_order")
@@ -507,6 +510,7 @@ export async function loadProjectOperations(
     reportReviews: (reportFilters[1]?.data ?? []) as ReportReview[],
     reportSignatures: (reportFilters[2]?.data ?? []) as ReportSignature[],
     reportDistributions: (reportFilters[3]?.data ?? []) as ReportDistribution[],
+    dayReports: (dayReportResult.data ?? []) as DayReportSummary[],
     locationNodes: (locationResult.data ?? []) as LocationNode[],
     productionReadiness: (readinessResult.data ?? []) as ProductionReadinessItem[],
     visualCaptures: (visualCaptureResult.data ?? []) as VisualCapture[],

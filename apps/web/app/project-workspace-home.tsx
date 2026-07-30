@@ -1,27 +1,23 @@
 "use client";
 
 import {
-  Activity,
   AlertTriangle,
-  Archive,
   ArrowRight,
   BookOpenCheck,
-  CalendarDays,
+  CalendarClock,
   Camera,
   CheckCircle2,
   ClipboardCheck,
-  ClipboardList,
-  DatabaseBackup,
+  Clock3,
   FileCheck2,
   FileText,
-  FolderOpen,
-  MapPin,
-  MessageCircle,
+  HardHat,
+  MessageSquareText,
   PackageCheck,
-  Plus,
-  RotateCcw,
   Search,
+  ShieldAlert,
   ShieldCheck,
+  TimerOff,
   Users,
   Wrench,
   type LucideIcon,
@@ -30,34 +26,26 @@ import { useMemo, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 
 type WorkspaceDestination = "inspections" | "findings" | "hse" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files";
-type RegisterShortcut =
-  | "wcr"
-  | "rfi"
-  | "rfa"
-  | "inspection_request"
-  | "boq"
-  | "change_order"
-  | "submittal"
-  | "meeting"
-  | "equipment"
-  | "delivery"
-  | "test";
+type RegisterShortcut = "change_order" | "delivery" | "technical_instruction" | "agreement";
+type DailyShortcut = "works_ongoing" | "works_completed" | "workforce" | "delay";
 
 type ProjectWorkspaceHomeProps = {
-  inspectionCount: number;
-  openFindingCount: number;
-  hseCount: number;
-  documentCount: number;
-  drawingCount: number;
-  visualCount: number;
-  fileCount: number;
-  actionCount: number;
+  counts: {
+    inspections: number;
+    issues: number;
+    ncr: number;
+    hse: number;
+    photos: number;
+    deliveries: number;
+    agreements: number;
+    deadlines: number;
+  };
   modules: Record<string, boolean>;
   openQuickCamera: () => void;
-  openQuickRegister: () => void;
   openTask: (destination: WorkspaceDestination, create?: boolean) => void;
+  openFinding: (scope: "issue" | "ncr", create?: boolean) => void;
   openRegister: (type: RegisterShortcut) => void;
-  openOverview: () => void;
+  openDailyRecord: (type: DailyShortcut) => void;
   openActionCenter: () => void;
   openRapidVerify: () => void;
   openReports: () => void;
@@ -76,20 +64,13 @@ type WorkspaceTile = {
 };
 
 export function ProjectWorkspaceHome({
-  inspectionCount,
-  openFindingCount,
-  hseCount,
-  documentCount,
-  drawingCount,
-  visualCount,
-  fileCount,
-  actionCount,
+  counts,
   modules,
   openQuickCamera,
-  openQuickRegister,
   openTask,
+  openFinding,
   openRegister,
-  openOverview,
+  openDailyRecord,
   openActionCenter,
   openRapidVerify,
   openReports,
@@ -101,252 +82,140 @@ export function ProjectWorkspaceHome({
 
   const tiles = useMemo<WorkspaceTile[]>(() => [
     {
-      id: "daily-log",
-      label: text("Daily log", "Daglog"),
-      copy: text("Today, attendance and site questions", "Vandaag, aanwezigheid en dagvragen"),
-      icon: CalendarDays,
-      tone: "orange",
-      action: openOverview,
-    },
-    {
-      id: "actions",
-      label: text("Action center", "Actiecentrum"),
-      copy: text("All assigned follow-up in one list", "Alle toegewezen opvolging in één lijst"),
-      icon: ClipboardList,
+      id: "photos",
+      label: text("Photos", "Foto's"),
+      copy: text("Capture, classify and mark a finding", "Maken, koppelen en een bevinding markeren"),
+      icon: Camera,
       tone: "blue",
-      count: actionCount,
-      action: openActionCenter,
+      count: counts.photos,
+      module: "visual_evidence",
+      action: openQuickCamera,
     },
     {
-      id: "inspections",
-      label: text("Inspections", "Inspecties"),
-      copy: text("Approved checklists and results", "Goedgekeurde checklists en resultaten"),
-      icon: ClipboardCheck,
-      tone: "purple",
-      count: inspectionCount,
-      module: "inspections",
-      action: () => openTask("inspections"),
+      id: "works-ongoing",
+      label: text("Works ongoing", "Werkzaamheden gaande"),
+      copy: text("Work in progress visible to the owner", "Lopend werk zichtbaar voor de eigenaar"),
+      icon: HardHat,
+      tone: "orange",
+      action: () => openDailyRecord("works_ongoing"),
+    },
+    {
+      id: "works-completed",
+      label: text("Works completed", "Werkzaamheden afgerond"),
+      copy: text("Completed work with date and context", "Afgerond werk met datum en context"),
+      icon: CheckCircle2,
+      tone: "green",
+      action: () => openDailyRecord("works_completed"),
+    },
+    {
+      id: "workforce",
+      label: text("Workforce", "Workforce"),
+      copy: text("Attendance by contractor and trade", "Bezetting per aannemer en vakdiscipline"),
+      icon: Users,
+      tone: "teal",
+      action: () => openDailyRecord("workforce"),
+    },
+    {
+      id: "delays",
+      label: text("Delays", "Vertragingen"),
+      copy: text("Cause, time lost and schedule effect", "Oorzaak, tijdverlies en planningimpact"),
+      icon: TimerOff,
+      tone: "orange",
+      action: () => openDailyRecord("delay"),
     },
     {
       id: "issues",
-      label: text("Issues / NCR", "Issues / NCR"),
-      copy: text("Record, assign and verify defects", "Vastleggen, toewijzen en verifiëren"),
+      label: text("Issues", "Issues"),
+      copy: text("Coordination issues, risks and follow-up", "Coördinatiepunten, risico's en opvolging"),
       icon: AlertTriangle,
       tone: "orange",
-      count: openFindingCount,
+      count: counts.issues,
       module: "quality",
-      action: () => openTask("findings"),
-    },
-    {
-      id: "punchlist",
-      label: "Punchlist",
-      copy: text("Contractor close-out and supervisor review", "Gereedmelding aannemer en controle supervisor"),
-      icon: CheckCircle2,
-      tone: "green",
-      count: openFindingCount,
-      module: "quality",
-      action: () => openTask("findings"),
+      action: () => openFinding("issue"),
     },
     {
       id: "hse",
-      label: text("HSE / incidents", "HSE / incidenten"),
-      copy: text("Observations, near misses and stop work", "Observaties, near misses en werkstop"),
+      label: "HSE",
+      copy: text("Safety observations and controls", "Veiligheidsobservaties en maatregelen"),
       icon: ShieldCheck,
-      tone: "orange",
-      count: hseCount,
+      tone: "green",
+      count: counts.hse,
       module: "hse",
       action: () => openTask("hse"),
     },
     {
-      id: "wcr",
-      label: "WCR",
-      copy: text("Work completion request", "Gereedmelding werk"),
-      icon: FileCheck2,
-      tone: "teal",
-      module: "documents",
-      action: () => openRegister("wcr"),
-    },
-    {
-      id: "rfi",
-      label: "RFI",
-      copy: text("Request for information", "Informatieverzoek"),
-      icon: MessageCircle,
-      tone: "blue",
-      module: "documents",
-      action: () => openRegister("rfi"),
-    },
-    {
-      id: "rfa",
-      label: "RFA",
-      copy: text("Request for approval", "Goedkeuringsverzoek"),
+      id: "materials-delivery",
+      label: text("Materials delivery", "Materiaallevering"),
+      copy: text("Quantity, condition and certificates", "Hoeveelheid, staat en certificaten"),
       icon: PackageCheck,
-      tone: "purple",
-      module: "documents",
-      action: () => openRegister("rfa"),
-    },
-    {
-      id: "wir",
-      label: "WIR",
-      copy: text("Work inspection request", "Werkinspectieverzoek"),
-      icon: ClipboardCheck,
-      tone: "purple",
-      module: "documents",
-      action: () => openRegister("inspection_request"),
-    },
-    {
-      id: "change-orders",
-      label: text("Change orders", "Wijzigingen / CO"),
-      copy: text("Controlled scope changes", "Beheerde scopewijzigingen"),
-      icon: Activity,
-      tone: "orange",
-      module: "documents",
-      action: () => openRegister("change_order"),
-    },
-    {
-      id: "submittals",
-      label: "Submittals",
-      copy: text("Submitted material and document review", "Beoordeling van ingediende stukken"),
-      icon: Archive,
       tone: "teal",
-      module: "documents",
-      action: () => openRegister("submittal"),
-    },
-    {
-      id: "meetings",
-      label: text("Meetings", "Vergaderingen"),
-      copy: text("Decisions, minutes and follow-up", "Besluiten, notulen en opvolging"),
-      icon: Users,
-      tone: "blue",
-      module: "documents",
-      action: () => openRegister("meeting"),
-    },
-    {
-      id: "equipment",
-      label: text("Equipment", "Materieel"),
-      copy: text("Availability, checks and downtime", "Beschikbaarheid, controles en uitval"),
-      icon: Wrench,
-      tone: "slate",
-      module: "documents",
-      action: () => openRegister("equipment"),
-    },
-    {
-      id: "deliveries",
-      label: text("Deliveries", "Leveringen"),
-      copy: text("Materials, quantities and certificates", "Materialen, aantallen en certificaten"),
-      icon: PackageCheck,
-      tone: "green",
-      module: "documents",
+      count: counts.deliveries,
       action: () => openRegister("delivery"),
     },
     {
-      id: "tests",
-      label: text("Tests & measurements", "Tests & metingen"),
-      copy: text("Results, tolerance and evidence", "Resultaten, tolerantie en bewijs"),
-      icon: FileCheck2,
-      tone: "blue",
-      module: "documents",
-      action: () => openRegister("test"),
-    },
-    {
-      id: "documents",
-      label: "Project Docs",
-      copy: text("Drawings, specifications and contracts", "Tekeningen, specificaties en contracten"),
-      icon: FolderOpen,
-      tone: "teal",
-      count: documentCount,
-      module: "documents",
-      action: () => openTask("documents"),
-    },
-    {
-      id: "drawings",
-      label: text("Drawings & pins", "Tekeningen & pins"),
-      copy: text("Open the plan and link exact positions", "Open de plattegrond en koppel posities"),
-      icon: MapPin,
-      tone: "orange",
-      count: drawingCount,
-      module: "documents",
-      action: () => openTask("drawings"),
-    },
-    {
-      id: "photos",
-      label: text("Photos & folders", "Foto’s & mappen"),
-      copy: text("Evidence filed automatically by day", "Bewijs automatisch per dag geordend"),
-      icon: Camera,
-      tone: "blue",
-      count: fileCount,
-      module: "visual_evidence",
-      action: () => openTask("files"),
-    },
-    {
-      id: "visual-evidence",
-      label: text("360° evidence", "360°-bewijs"),
-      copy: text("Interactive tours with linked issues", "Interactieve tours met gekoppelde punten"),
-      icon: RotateCcw,
+      id: "inspections",
+      label: text("Inspections", "Inspecties"),
+      copy: text("Checklist, result and supporting evidence", "Checklist, resultaat en onderbouwend bewijs"),
+      icon: ClipboardCheck,
       tone: "purple",
-      count: visualCount,
-      module: "visual_evidence",
-      action: () => openTask("visual"),
+      count: counts.inspections,
+      module: "inspections",
+      action: () => openTask("inspections"),
     },
     {
-      id: "boq",
-      label: "BOQ / Finance",
-      copy: text("Import quantities and measured progress", "Importeer hoeveelheden en voortgang"),
-      icon: DatabaseBackup,
-      tone: "green",
-      module: "documents",
-      action: () => openRegister("boq"),
-    },
-    {
-      id: "field-tools",
-      label: text("Field tools", "Veldtools"),
-      copy: text("Notes, agreements and instructions", "Notities, afspraken en instructies"),
+      id: "technical-instructions",
+      label: text("Technical instructions", "Technische instructies"),
+      copy: text("Controlled instruction with deadline", "Beheerde instructie met deadline"),
       icon: Wrench,
-      tone: "slate",
-      module: "documents",
-      action: () => openTask("tools"),
+      tone: "blue",
+      action: () => openRegister("technical_instruction"),
     },
     {
-      id: "rapid-verify",
-      label: "Rapid Verify",
-      copy: text("Check questions against project sources", "Toets vragen aan projectbronnen"),
-      icon: BookOpenCheck,
+      id: "change-order",
+      label: text("Change order · CO", "Wijzigingsopdracht · CO"),
+      copy: text("Controlled scope, cost and schedule change", "Beheerde scope-, kosten- en planningswijziging"),
+      icon: FileCheck2,
       tone: "purple",
-      action: openRapidVerify,
+      action: () => openRegister("change_order"),
     },
     {
-      id: "reports",
-      label: text("Client reports", "Klantrapporten"),
-      copy: text("Daily, weekly and monthly output", "Dag-, week- en maandrapportage"),
-      icon: FileText,
-      tone: "teal",
-      action: openReports,
+      id: "ncr",
+      label: "NCR",
+      copy: text("Formal non-conformance and close-out", "Formele afwijking met correctie en afsluiting"),
+      icon: ShieldAlert,
+      tone: "orange",
+      count: counts.ncr,
+      module: "quality",
+      action: () => openFinding("ncr"),
     },
     {
-      id: "management",
-      label: text("Team & directory", "Team & directory"),
-      copy: text("People, roles and project settings", "Mensen, rollen en projectinstellingen"),
-      icon: Users,
+      id: "deadlines",
+      label: text("Deadlines", "Deadlines"),
+      copy: text("Due actions, overdue items and escalations", "Open acties, achterstanden en escalaties"),
+      icon: CalendarClock,
       tone: "slate",
-      action: openManagement,
+      count: counts.deadlines,
+      action: openActionCenter,
     },
-  ], [
-    actionCount,
-    documentCount,
-    drawingCount,
-    fileCount,
-    hseCount,
-    inspectionCount,
-    openActionCenter,
-    openFindingCount,
-    openManagement,
-    openOverview,
-    openRapidVerify,
-    openRegister,
-    openReports,
-    openTask,
-    text,
-    visualCount,
-  ]);
+    {
+      id: "hse-incident",
+      label: text("HSE incident", "HSE-incident"),
+      copy: text("Incident, near miss or stop-work record", "Incident, near miss of werkstop registreren"),
+      icon: ShieldAlert,
+      tone: "orange",
+      module: "hse",
+      action: () => openTask("hse", true),
+    },
+    {
+      id: "agreements-made",
+      label: text("Agreements made", "Gemaakte afspraken"),
+      copy: text("Decision, owner, deadline and audit trail", "Besluit, eigenaar, deadline en historie"),
+      icon: MessageSquareText,
+      tone: "blue",
+      count: counts.agreements,
+      action: () => openRegister("agreement"),
+    },
+  ], [counts, openActionCenter, openDailyRecord, openFinding, openQuickCamera, openRegister, openTask, text]);
 
   const visibleTiles = tiles.filter((tile) => {
     if (!moduleEnabled(tile.module)) return false;
@@ -358,33 +227,22 @@ export function ProjectWorkspaceHome({
     <section className="workspace-launcher" aria-labelledby="workspace-launcher-title">
       <div className="workspace-launcher-toolbar">
         <div>
-          <span>{text("Project tools", "Projecttools")}</span>
-          <h2 id="workspace-launcher-title">{text("Choose what you want to do", "Kies wat je wilt doen")}</h2>
-          <p>{text("Every tile opens the real project workflow with the current project, building and audit context.", "Elke tegel opent de echte projectworkflow met het huidige project, gebouw en auditcontext.")}</p>
+          <span>{text("Project workspace", "Projectwerkruimte")}</span>
+          <h2 id="workspace-launcher-title">{text("Field records and project control", "Veldregistratie en projectsturing")}</h2>
+          <p>{text("The workspace follows the client's reporting structure. Formal contractor submissions are handled under Management.", "De werkruimte volgt de rapportstructuur van de klant. Formele aannemersindieningen worden onder Management afgehandeld.")}</p>
         </div>
-        <div className="workspace-launcher-actions">
-          <label className="workspace-launcher-search">
-            <Search size={16} />
-            <span className="sr-only">{text("Search project tools", "Zoek projecttools")}</span>
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={text("Search tools", "Zoek tools")} />
-          </label>
-          <button className="secondary-button" type="button" onClick={openQuickRegister}><Plus size={16} /> {text("Other record", "Andere registratie")}</button>
-          <button className="primary-button" type="button" onClick={openQuickCamera}><Camera size={16} /> {text("Take photo", "Foto maken")}</button>
-        </div>
+        <label className="workspace-launcher-search">
+          <Search size={16} />
+          <span className="sr-only">{text("Search workspace", "Doorzoek werkruimte")}</span>
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={text("Search workspace", "Zoek in werkruimte")} />
+        </label>
       </div>
 
-      <div className="workspace-launcher-grid">
+      <div className="workspace-launcher-grid client-workspace-grid">
         {visibleTiles.map((tile) => {
           const Icon = tile.icon;
           return (
-            <button
-              className={`workspace-launcher-tile tone-${tile.tone}`}
-              type="button"
-              onClick={tile.action}
-              aria-label={tile.label}
-              data-workspace-destination={tile.id}
-              key={tile.id}
-            >
+            <button className={`workspace-launcher-tile tone-${tile.tone}`} type="button" onClick={tile.action} data-workspace-destination={tile.id} key={tile.id}>
               <span className="workspace-launcher-icon"><Icon size={23} /></span>
               {typeof tile.count === "number" ? <span className="workspace-launcher-count">{tile.count}</span> : null}
               <strong>{tile.label}</strong>
@@ -395,13 +253,16 @@ export function ProjectWorkspaceHome({
         })}
       </div>
 
-      {!visibleTiles.length ? (
-        <div className="workspace-launcher-empty">
-          <Search size={22} />
-          <div><strong>{text("No tool found", "Geen tool gevonden")}</strong><p>{text("Try another name or clear the search.", "Probeer een andere naam of wis de zoekopdracht.")}</p></div>
-          <button className="secondary-button" type="button" onClick={() => setQuery("")}>{text("Clear search", "Zoekopdracht wissen")}</button>
-        </div>
-      ) : null}
+      {!visibleTiles.length ? <div className="workspace-launcher-empty"><Search size={22} /><div><strong>{text("No workspace item found", "Geen werkruimte-item gevonden")}</strong><p>{text("Try another term.", "Probeer een andere zoekterm.")}</p></div><button className="secondary-button" type="button" onClick={() => setQuery("")}>{text("Clear", "Wissen")}</button></div> : null}
+
+      <div className="workspace-support-strip" aria-label={text("Supporting project tools", "Ondersteunende projecttools")}>
+        <span><Clock3 size={15} /> {text("Supporting tools", "Ondersteunende tools")}</span>
+        <button type="button" onClick={openRapidVerify}><BookOpenCheck size={15} /> Rapid Verify</button>
+        <button type="button" onClick={() => openTask("documents")}><FileText size={15} /> Project Docs</button>
+        <button type="button" onClick={() => openTask("drawings")}><AlertTriangle size={15} /> {text("Drawings & pins", "Tekeningen & pins")}</button>
+        <button type="button" onClick={openReports}><FileText size={15} /> {text("Reports", "Rapporten")}</button>
+        <button type="button" onClick={openManagement}><Users size={15} /> {text("Submissions & management", "Indieningen & management")}</button>
+      </div>
     </section>
   );
 }

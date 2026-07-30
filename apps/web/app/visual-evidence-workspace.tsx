@@ -47,6 +47,8 @@ type VisualEvidenceWorkspaceProps = {
   busy: boolean;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
   initialFindingId?: string;
+  initialFiles?: File[];
+  onInitialFilesConsumed?: () => void;
 };
 
 const emptyIssue = {
@@ -55,6 +57,7 @@ const emptyIssue = {
   description: "",
   severity: "medium" as Finding["severity"],
   responsiblePartyId: "",
+  disposition: "to_be_corrected" as "validated" | "to_be_corrected" | "alternative_solution",
 };
 
 function degrees(value: number | null) {
@@ -81,7 +84,7 @@ function imageDimensions(file: File) {
   });
 }
 
-export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingName, buildings, reportId, parties, client, busy, run, initialFindingId }: VisualEvidenceWorkspaceProps) {
+export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingName, buildings, reportId, parties, client, busy, run, initialFindingId, initialFiles = [], onInitialFilesConsumed }: VisualEvidenceWorkspaceProps) {
   const { text } = useLanguage();
   const maxFileSizeBytes = (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024;
   const captures = data.visualCaptures.filter((capture) => capture.status === "active");
@@ -121,12 +124,15 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     description: initialFinding.description,
     severity: initialFinding.severity,
     responsiblePartyId: initialFinding.responsible_party_id ?? "",
+    disposition: "to_be_corrected" as const,
   } : emptyIssue);
   const [existingFindingId, setExistingFindingId] = useState(initialFinding?.id ?? "");
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(initialAnnotation?.id ?? null);
   const [captureBuildingId, setCaptureBuildingId] = useState(() => initialFinding?.building_id ?? resolveDefaultBuildingId(buildings, buildingId));
   const captureBuildingName = buildings.find((building) => building.id === captureBuildingId)?.name ?? buildingName;
   const existingFinding = data.findings.find((finding) => finding.id === existingFindingId) ?? null;
+  const initialFileHandled = useRef(false);
+  const [cameraHandoff, setCameraHandoff] = useState(false);
 
   const stageImage = (selected: File | null, type: VisualCapture["capture_type"]) => {
     setFile(selected);
@@ -146,6 +152,19 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     }));
     setShowUpload(true);
   };
+
+  useEffect(() => {
+    if (initialFileHandled.current || !initialFiles.length) return;
+    initialFileHandled.current = true;
+    const handoff = window.setTimeout(() => {
+      stageImage(initialFiles[0], "photo");
+      setCameraHandoff(true);
+      onInitialFilesConsumed?.();
+    }, 0);
+    return () => window.clearTimeout(handoff);
+    // stageImage intentionally runs once for the camera hand-off.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFiles, onInitialFilesConsumed]);
 
   const tour = (() => {
     if (!activeCapture?.tour_name) return [];
@@ -253,8 +272,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
             pitch: point.mode === "spherical" ? point.pitch : null,
             findingType: issue.findingType,
             title: issue.title,
-            description: issue.description,
-            severity: issue.severity,
+            description: `[${issue.disposition.replaceAll("_", " ")}] ${issue.description}`,
+            severity: issue.disposition === "validated" ? "low" : issue.disposition === "alternative_solution" ? "high" : issue.severity,
             responsiblePartyId: issue.responsiblePartyId,
           }),
       existingFinding
@@ -292,6 +311,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       </div>
 
       {existingFinding ? <div className="operation-alert success visual-finding-link-banner"><CircleDot size={18} /><div><strong>{text(`Selected issue: ${existingFinding.finding_number}`, `Geselecteerd issue: ${existingFinding.finding_number}`)} · {existingFinding.title}</strong><span>{text("Choose a visual image and click the exact problem location. The pointer and issue will then remain linked.", "Kies een beeld en klik op de exacte probleemlocatie. De pointer en het issue blijven daarna gekoppeld.")}</span></div></div> : null}
+      {cameraHandoff && showUpload ? <div className="operation-alert success visual-camera-handoff"><Camera size={18} /><div><strong>{text("Step 1 of 2 · confirm and save this photo", "Stap 1 van 2 · bevestig en sla deze foto op")}</strong><span>{text("After saving, the photo opens here. Click the exact location to create or link an Issue or NCR.", "Na opslaan opent de foto hier. Klik op de exacte locatie om een Issue of NCR te maken of te koppelen.")}</span></div></div> : null}
 
       {!isStorageGatewayConfigured ? <div className="operation-alert warning"><ShieldCheck size={18} /><div><strong>{text("Private image storage must be connected", "Private beeldopslag moet worden gekoppeld")}</strong><span>{text("Connect a private Vercel Blob store to enable authorized uploads and viewing.", "Koppel een private Vercel Blob-store om geautoriseerde uploads en weergave mogelijk te maken.")}</span></div></div> : null}
 
@@ -508,11 +528,13 @@ function IssueForm({ point, capture, issue, setIssue, findings, annotations, exi
           description: finding.description,
           severity: finding.severity,
           responsiblePartyId: finding.responsible_party_id ?? "",
+          disposition: "to_be_corrected",
         } : emptyIssue);
       }}><option value="">{text("Create a new issue", "Maak een nieuw issue")}</option>{availableFindings.map((finding) => <option value={finding.id} key={finding.id}>{finding.finding_number} · {finding.title}</option>)}</select></label>
       {existingFinding ? <div className="operation-alert success"><CircleDot size={18} /><div><strong>{existingFinding.finding_number} · {existingFinding.title}</strong><span>{text("This pointer will be added to the existing formal issue.", "Deze pointer wordt aan het bestaande formele issue toegevoegd.")}</span></div></div> : <>
         <div className="quick-issue-presets" aria-label={text("Choose a common issue", "Kies een veelvoorkomend probleem")}>{issuePresets.map((preset) => <button className={issue.title === preset.title ? "active" : ""} type="button" onClick={() => setIssue({ ...issue, ...preset })} key={preset.title}>{preset.title}</button>)}</div>
         <label className="form-field"><span>{text("Issue type", "Probleemtype")}</span><select value={issue.findingType} onChange={(event) => setIssue({ ...issue, findingType: event.target.value as Finding["finding_type"] })}><option value="observation">{text("Observation", "Observatie")}</option><option value="deficiency">{text("Deficiency", "Tekortkoming")}</option><option value="deviation">{text("Deviation", "Afwijking")}</option><option value="ncr">NCR</option><option value="improvement">{text("Improvement opportunity", "Verbeterkans")}</option></select></label>
+        <label className="form-field"><span>{text("Marker classification · color", "Markerclassificatie · kleur")}</span><select value={issue.disposition} onChange={(event) => setIssue({ ...issue, disposition: event.target.value as typeof issue.disposition })}><option value="validated">{text("Validated · green", "Gevalideerd · groen")}</option><option value="to_be_corrected">{text("To be corrected · orange", "Te corrigeren · oranje")}</option><option value="alternative_solution">{text("Alternative solution required · red", "Alternatieve oplossing nodig · rood")}</option></select></label>
         <label className="form-field"><span>{text("Severity", "Ernst")}</span><select value={issue.severity} onChange={(event) => setIssue({ ...issue, severity: event.target.value as Finding["severity"] })}><option value="low">{text("Low · 14 days", "Laag · 14 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label>
         <label className="form-field"><span>{text("Title", "Titel")}</span><input value={issue.title} onChange={(event) => setIssue({ ...issue, title: event.target.value })} placeholder={text("Choose above or type a short title.", "Kies hierboven of typ een korte titel.")} /></label>
         <label className="form-field"><span>{text("Responsible party", "Verantwoordelijke partij")}</span><select value={issue.responsiblePartyId} onChange={(event) => setIssue({ ...issue, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>

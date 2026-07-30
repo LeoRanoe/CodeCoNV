@@ -377,7 +377,7 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
         },
         {
           title: text("Roles and access", "Rollen en toegang"),
-          copy: text("Administrators invite internal users, assign organization or project roles and suspend access. Field users see only projects and records permitted by their role; never share one personal account.", "Beheerders nodigen interne gebruikers uit, wijzen organisatie- of projectrollen toe en schorten toegang op. Veldgebruikers zien alleen projecten en registraties die hun rol toestaat; deel nooit één persoonlijk account."),
+          copy: text("Administrators invite employees or external project users, assign organization or project roles and suspend access. Every user sees only projects and records permitted by their role; never share one personal account.", "Beheerders nodigen medewerkers of externe projectgebruikers uit, wijzen organisatie- of projectrollen toe en schorten toegang op. Iedere gebruiker ziet alleen projecten en registraties die de rol toestaat; deel nooit één persoonlijk account."),
         },
         {
           title: text("Project rules", "Projectregels"),

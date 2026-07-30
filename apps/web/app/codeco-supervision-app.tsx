@@ -61,7 +61,7 @@ import { ensureDailyBackup } from "@/lib/backups/client";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import { currentPushState, enablePushNotifications, type PushState } from "@/lib/notifications/push-client";
-import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
+import { syncOfflineUploads } from "@/lib/offline/upload-queue";
 import { cacheProjectDay, cacheWorkspace, getCachedProjectDay, getCachedWorkspace } from "@/lib/offline/workspace-cache";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
@@ -913,66 +913,12 @@ export function CodecoSupervisionApp() {
       setToast(text("Choose a project and building before taking a field photo.", "Kies eerst een project en gebouw voordat je een veldfoto maakt."));
       return;
     }
-    setToast(text("Securing photo on this device…", "Foto veiligstellen op dit apparaat…"));
-    try {
-      for (const photo of captured) {
-        const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
-        await queueOfflineUpload({
-          projectId: selectedProject.id,
-          buildingId: selectedBuilding.id,
-          reportId: dayQuery.data?.report?.id ? String(dayQuery.data.report.id) : null,
-          folderId: null,
-          folderName: text("Daily progress", "Dagvoortgang"),
-          kind: "photo",
-          file: prepared.blob,
-          fileName: prepared.fileName,
-          mimeType: prepared.mimeType,
-          title: `${text("Site photo", "Terreinfoto")} · ${new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(photo.lastModified || Date.now()))}`,
-          locationLabel: selectedBuilding.name,
-          capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
-          originalSize: photo.size,
-          queuedSize: prepared.blob.size,
-          compressed: prepared.compressed,
-        });
-      }
-      setPendingQuickPhotos([]);
-      if (navigator.onLine && supabase) {
-        try {
-          await forceSyncOfflineUploads(supabase, selectedProject.id, {
-            paused: text(
-              "The connection changed before central photo confirmation. The photo remains safe on this device. In Photos & folders, check the connection and tap Sync now.",
-              "De verbinding veranderde vóór de centrale fotobevestiging. De foto blijft veilig op dit apparaat. Controleer in Foto’s & mappen de verbinding en tik op Nu synchroniseren.",
-            ),
-            failed: (pendingCount) => text(
-              `${pendingCount} photo upload(s) could not be confirmed centrally. They remain safe on this device. In Photos & folders, check the connection and tap Sync now.`,
-              `${pendingCount} foto-upload(s) konden niet centraal worden bevestigd. Ze blijven veilig op dit apparaat. Controleer in Foto’s & mappen de verbinding en tik op Nu synchroniseren.`,
-            ),
-          });
-          await Promise.all([
-            queryClient.invalidateQueries({ queryKey: ["project-operations", selectedProject.id] }),
-            queryClient.invalidateQueries({ queryKey: ["workspace"] }),
-          ]).catch(() => undefined);
-          setToast(text(
-            "Photo stored centrally and linked to Daily progress.",
-            "Foto centraal opgeslagen en gekoppeld aan Dagvoortgang.",
-          ));
-        } catch (error) {
-          setToast(error instanceof Error ? error.message : text(
-            "Central confirmation is still waiting. The photo remains safe on this device. Open Photos & folders and tap Sync now.",
-            "De centrale bevestiging wacht nog. De foto blijft veilig op dit apparaat. Open Foto’s & mappen en tik op Nu synchroniseren.",
-          ));
-        }
-      } else {
-        setToast(text(
-          "Photo secured on this device. It will synchronize when the connection returns.",
-          "Foto veilig op dit apparaat. De foto synchroniseert zodra de verbinding terug is.",
-        ));
-      }
-    } catch {
-      setPendingQuickPhotos((current) => [...current, ...captured]);
-      setToast(text("Local device storage was unavailable. Keep this screen open while the photo is transferred.", "Lokale apparaatopslag was niet beschikbaar. Houd dit scherm open terwijl de foto wordt overgezet."));
-    }
-    setInitialProjectTab("files");
+    setPendingQuickPhotos(captured);
+    setToast(text(
+      "Photo ready. Confirm its project context, save it, then click the image to place a finding.",
+      "Foto klaar. Bevestig de projectcontext, sla op en klik daarna op de foto om een bevinding te plaatsen.",
+    ));
+    setInitialProjectTab("visual");
     setActiveNav("project");
     setModal(null);
   };
@@ -1000,6 +946,25 @@ export function CodecoSupervisionApp() {
     setEntryBuildingId(resolveDefaultBuildingId(selectedProject?.buildings ?? [], selectedBuilding?.id));
     setEntryLocationNodeId("");
     setModal(type === "action" ? "action_create" : "entry");
+  };
+
+  const openWorkspaceDailyRecord = (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => {
+    if (type === "workforce") {
+      if (projectStartAnswers) setModal("one_tap_log");
+      else if (selectedBuilding) openBuildingStart(selectedBuilding);
+      return;
+    }
+    const isDelay = type === "delay";
+    setSelectedType(isDelay ? "delay" : "activity");
+    setDescription(type === "works_ongoing"
+      ? text("Work is ongoing", "Werkzaamheden zijn gaande")
+      : type === "works_completed"
+        ? text("Work completed", "Werkzaamheden afgerond")
+        : text("Delay recorded", "Vertraging geregistreerd"));
+    setLocation(selectedBuilding?.name ?? "");
+    setEntryBuildingId(resolveDefaultBuildingId(selectedProject?.buildings ?? [], selectedBuilding?.id));
+    setEntryLocationNodeId("");
+    setModal("entry");
   };
 
   const saveEntry = async () => {
@@ -1355,13 +1320,18 @@ export function CodecoSupervisionApp() {
 
       <div className="main-shell">
         <header className="topbar">
-          <div className="breadcrumb" aria-label={text("Current work context", "Huidige werkcontext")}>
+          <button
+            className="breadcrumb"
+            type="button"
+            aria-label={text(`Switch building. ${selectedProject?.buildings.length ?? 0} buildings in this project.`, `Gebouw wisselen. ${selectedProject?.buildings.length ?? 0} gebouwen in dit project.`)}
+            onClick={() => setModal("switch_building")}
+          >
             <span>{text("My projects", "Mijn projecten")}</span>
             <ChevronRight size={13} />
             <span>{projectName}</span>
             <ChevronRight size={13} />
             <strong>{buildingName}</strong>
-          </div>
+          </button>
           <div className="top-actions">
             <LanguageSwitcher compact />
             <span className={`storage-state ${syncState}`} title={storageStatus}>{syncState === "error" || !isOnline ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />} <span>{storageStatus}</span></span>
@@ -1382,6 +1352,7 @@ export function CodecoSupervisionApp() {
               toggleTodo={toggleTodo}
               openReport={() => setModal("report")}
               projectName={projectName}
+              projectLocation={selectedProject?.location ?? "Paramaribo, Suriname"}
               buildingName={buildingName}
               attendanceTotal={projectAttendanceTotal}
               projectStartAnswers={projectStartAnswers}
@@ -1434,6 +1405,7 @@ export function CodecoSupervisionApp() {
               onInitialCameraFilesConsumed={() => setPendingQuickPhotos([])}
               openQuickCamera={openQuickAdd}
               openQuickRegister={() => setModal("quick")}
+              openDailyRecord={openWorkspaceDailyRecord}
               projectActions={dayActions}
               openProjectAction={(actionId) => {
                 const action = dayActions.find((item) => item.id === actionId);
@@ -1446,7 +1418,6 @@ export function CodecoSupervisionApp() {
                 setInitialProjectTab(tab);
                 setActiveNav("project");
               }}
-              openOverview={() => navigate("vandaag")}
               openActionCenter={() => navigate("acties")}
               openRapidVerify={() => navigate("verify")}
               openReports={() => navigate("rapporten")}
@@ -1529,6 +1500,25 @@ export function CodecoSupervisionApp() {
               <button type="button" onClick={() => setMobileMenuOpen(false)} aria-label={text("Close", "Sluiten")}><X size={19} /></button>
             </header>
             <div className="mobile-module-grid">
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  setModal("switch_building");
+                }}
+              >
+                <span><Building2 size={19} /></span>
+                <span>
+                  <strong>{text("Buildings", "Gebouwen")}</strong>
+                  <small>
+                    {text(
+                      `${selectedProject?.buildings.length ?? 0} in this project · switch or add`,
+                      `${selectedProject?.buildings.length ?? 0} in dit project · wisselen of toevoegen`,
+                    )}
+                  </small>
+                </span>
+                <ChevronRight size={17} />
+              </button>
               {localizedNavigation.filter((item) => ["projectdocs", "punchlist", "verify", "rapporten", "meer"].includes(item.id)).map((item) => {
                 const Icon = item.icon;
                 const descriptions: Record<string, string> = {
@@ -1952,7 +1942,7 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
         <div className="auth-heading">
           <p className="eyebrow">{text("Internal CODECO workspace", "Interne CODECO-werkruimte")}</p>
           <h1>{text("Welcome back", "Welkom terug")}</h1>
-          <p>{text("Only employees invited by an organization administrator can sign in.", "Alleen medewerkers die door een organisatiebeheerder zijn uitgenodigd kunnen aanmelden.")}</p>
+          <p>{text("Only project users invited by an organization administrator can sign in.", "Alleen projectgebruikers die door een organisatiebeheerder zijn uitgenodigd kunnen aanmelden.")}</p>
         </div>
         <form className="access-form" onSubmit={handleSubmit(submit)} noValidate>
           <label className="form-field"><span>{text("Email address", "E-mailadres")}</span><input type="email" autoComplete="email" {...register("email")} />{errors.email ? <small className="field-error">{errors.email.message}</small> : null}</label>
@@ -2472,6 +2462,7 @@ function TodayView({
   openReport,
   showCritical,
   projectName,
+  projectLocation,
   buildingName,
   attendanceTotal,
   projectStartAnswers,
@@ -2503,6 +2494,7 @@ function TodayView({
   openReport: () => void;
   showCritical: () => void;
   projectName: string;
+  projectLocation: string;
   buildingName: string;
   attendanceTotal: number;
   projectStartAnswers: ProjectStartAnswers | null;
@@ -2548,6 +2540,7 @@ function TodayView({
         entries={entries}
         actions={actions}
         projectName={projectName}
+        projectLocation={projectLocation}
         buildingName={buildingName}
         weather={projectStartAnswers ? { temperatureC: projectStartAnswers.temperatureC, weatherCondition: projectStartAnswers.weatherCondition } : null}
         openQuickAdd={openQuickAdd}
@@ -2880,7 +2873,7 @@ function SecondaryView({
     { title: "Dashboard", copy: text("KPIs, trends and source data", "KPI’s, trends en brongegevens"), icon: Gauge },
     { title: text("Tomorrow's plan", "Planning morgen"), copy: text("Activities, risks and inspections", "Activiteiten, risico’s en inspecties"), icon: CalendarDays },
     { title: text("Project settings", "Projectinstellingen"), copy: text("Locations, parties and configuration", "Locaties, partijen en configuratie"), icon: Settings },
-    ...(canManageMembers ? [{ title: text("Users and access", "Gebruikers en toegang"), copy: text("Invite internal accounts and assign roles", "Interne accounts uitnodigen en rollen toewijzen"), icon: Users, action: openUserAdmin }] : []),
+    ...(canManageMembers ? [{ title: text("Users and access", "Gebruikers en toegang"), copy: text("Invite employees or external parties and assign roles", "Medewerkers of externe partijen uitnodigen en rollen toewijzen"), icon: Users, action: openUserAdmin }] : []),
   ];
   return (
     <>
@@ -2993,7 +2986,7 @@ function UserAdminModal({
 
   const submit = async (answers: InternalUserInviteAnswers) => {
     if (selectedRole?.scope === "project" && !answers.projectId) {
-      setInviteError(text("Choose the project this employee may access.", "Kies het project waarop deze medewerker toegang krijgt."));
+      setInviteError(text("Choose the project this user may access.", "Kies het project waarop deze gebruiker toegang krijgt."));
       return;
     }
     setBusy(true);
@@ -3021,7 +3014,7 @@ function UserAdminModal({
       return;
     }
     if (selectedRole?.scope === "project" && !getValues("projectId")) {
-      setInviteError(text("Choose the project this employee may access.", "Kies het project waarop deze medewerker toegang krijgt."));
+      setInviteError(text("Choose the project this user may access.", "Kies het project waarop deze gebruiker toegang krijgt."));
       return;
     }
     if (await trigger(["roleCode", "projectId"])) setInviteStep(3);
@@ -3051,7 +3044,7 @@ function UserAdminModal({
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal user-admin-modal" role="dialog" aria-modal="true" aria-labelledby="user-admin-title">
         <header className="modal-header">
-          <div><p className="eyebrow">{text("Team management", "Teambeheer")}</p><h2 id="user-admin-title">{text("Users and access", "Gebruikers en toegang")}</h2><p>{text("Invite colleagues and keep project access clear.", "Nodig collega’s uit en houd projecttoegang overzichtelijk.")}</p></div>
+          <div><p className="eyebrow">{text("Access management", "Toegangsbeheer")}</p><h2 id="user-admin-title">{text("Users and access", "Gebruikers en toegang")}</h2><p>{text("Invite employees or external project parties and keep access explicit.", "Nodig medewerkers of externe projectpartijen uit en houd de toegang expliciet.")}</p></div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <div className="modal-body user-admin-body">
@@ -3061,26 +3054,26 @@ function UserAdminModal({
           </div>
           {activePanel === "invite" ? <section className="invite-panel" aria-labelledby="invite-heading">
             <div className="invite-progress" aria-label={text(`Step ${inviteStep} of 3`, `Stap ${inviteStep} van 3`)}>
-              {[text("Colleague", "Collega"), text("Access", "Toegang"), text("Check", "Controleren")].map((label, index) => <span className={inviteStep >= index + 1 ? "active" : ""} key={label}><i>{inviteStep > index + 1 ? <Check size={12} /> : index + 1}</i>{label}</span>)}
+              {[text("Person", "Persoon"), text("Access", "Toegang"), text("Check", "Controleren")].map((label, index) => <span className={inviteStep >= index + 1 ? "active" : ""} key={label}><i>{inviteStep > index + 1 ? <Check size={12} /> : index + 1}</i>{label}</span>)}
             </div>
-            <div className="section-heading"><span className="module-card-icon"><UserPlus size={18} /></span><span><h3 id="invite-heading">{text("Invite employee", "Medewerker uitnodigen")}</h3><p>{text("The employee receives a personal email link and then sets a password.", "De medewerker ontvangt een persoonlijke e-maillink en stelt daarna zelf een wachtwoord in.")}</p></span></div>
+            <div className="section-heading"><span className="module-card-icon"><UserPlus size={18} /></span><span><h3 id="invite-heading">{text("Invite project user", "Projectgebruiker uitnodigen")}</h3><p>{text("Invite an employee, contractor, consultant or owner with a personal login and a project-scoped role.", "Nodig een medewerker, aannemer, adviseur of eigenaar uit met een persoonlijke login en projectgebonden rol.")}</p></span></div>
             {success ? <div className="invite-success" role="status"><span><CheckCircle2 size={24} /></span><div><h3>{text("Invitation is on its way", "Uitnodiging is onderweg")}</h3><p>{text(`${invitedEmail} receives a secure link to set a password. The account remains marked as invited until the first sign-in.`, `${invitedEmail} ontvangt een beveiligde link om een wachtwoord in te stellen. Tot de eerste aanmelding blijft het account als uitgenodigd gemarkeerd.`)}</p><div className="button-row"><button className="primary-button" type="button" onClick={startAnotherInvite}><UserPlus size={15} /> {text("Invite another", "Nog iemand uitnodigen")}</button><button className="ghost-button" type="button" onClick={() => setActivePanel("members")}>{text("View access", "Toegang bekijken")} <ArrowRight size={14} /></button></div></div></div> : <form className={`invite-flow step-${inviteStep}`} onSubmit={handleSubmit(submit)} noValidate>
               <input type="hidden" {...register("organizationId")} />
               {inviteStep === 1 ? <div className="form-grid"><label className="form-field"><span>{text("Full name *", "Volledige naam *")}</span><input autoFocus autoComplete="name" placeholder={text("e.g. Jane Doe", "bijv. Jane Doe")} {...register("displayName")} />{errors.displayName ? <small className="field-error">{errors.displayName.message}</small> : null}</label><label className="form-field"><span>{text("Business email address *", "Zakelijk e-mailadres *")}</span><input type="email" autoComplete="email" placeholder="naam@bedrijf.com" {...register("email")} />{errors.email ? <small className="field-error">{errors.email.message}</small> : null}</label></div> : null}
-              <label className="form-field"><span>{text("Role *", "Rol *")}</span><select {...register("roleCode")} disabled={!access?.roles.length}><option value="">{text("Choose a role", "Kies een rol")}</option>{access?.roles.map((role) => <option value={role.code} key={role.id}>{role.name} · {role.scope === "organization" ? text("entire organization", "hele organisatie") : text("project", "project")}</option>)}</select>{errors.roleCode ? <small className="field-error">{errors.roleCode.message}</small> : null}</label>
+              <label className="form-field"><span>{text("Role *", "Rol *")}</span><select {...register("roleCode")} disabled={!access?.roles.length}><option value="">{text("Choose a role", "Kies een rol")}</option>{access?.roles.map((role) => <option value={role.code} key={role.id}>{role.name} · {role.scope === "organization" ? text("entire organization", "hele organisatie") : text("project · suitable for external parties", "project · geschikt voor externe partijen")}</option>)}</select>{errors.roleCode ? <small className="field-error">{errors.roleCode.message}</small> : null}</label>
               {selectedRole?.scope === "project" ? <label className="form-field"><span>Project *</span><select {...register("projectId")}><option value="">{text("Choose a project", "Kies een project")}</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.code} · {project.name}</option>)}</select>{errors.projectId ? <small className="field-error">{errors.projectId.message}</small> : null}</label> : <div className="scope-note"><ShieldCheck size={16} /><span><strong>{text("Organization-wide access", "Organisatiebrede toegang")}</strong><small>{text("This role applies to all current projects in the organization.", "Deze rol geldt voor alle huidige projecten binnen de organisatie.")}</small></span></div>}
-              {inviteStep === 3 ? <><dl className="invite-summary"><div><dt>{text("Colleague", "Collega")}</dt><dd>{displayName}<small>{email}</small></dd></div><div><dt>{text("Role", "Rol")}</dt><dd>{selectedRole?.name}</dd></div><div><dt>{text("Access", "Toegang")}</dt><dd>{selectedRole?.scope === "organization" ? text("All projects in the organization", "Alle projecten in de organisatie") : selectedInviteProject ? `${selectedInviteProject.code} · ${selectedInviteProject.name}` : text("No project selected", "Geen project geselecteerd")}</dd></div></dl><div className="invitation-explainer"><ShieldCheck size={17} /><span><strong>{text("What happens next?", "Wat gebeurt hierna?")}</strong>{text("The colleague opens the personal email link, sets a password and can then access only the scope shown above.", "De collega opent de persoonlijke e-maillink, stelt een wachtwoord in en krijgt daarna alleen toegang tot de scope hierboven.")}</span></div></> : null}
+              {inviteStep === 3 ? <><dl className="invite-summary"><div><dt>{text("Project user", "Projectgebruiker")}</dt><dd>{displayName}<small>{email}</small></dd></div><div><dt>{text("Role", "Rol")}</dt><dd>{selectedRole?.name}</dd></div><div><dt>{text("Access", "Toegang")}</dt><dd>{selectedRole?.scope === "organization" ? text("All projects in the organization", "Alle projecten in de organisatie") : selectedInviteProject ? `${selectedInviteProject.code} · ${selectedInviteProject.name}` : text("No project selected", "Geen project geselecteerd")}</dd></div></dl><div className="invitation-explainer"><ShieldCheck size={17} /><span><strong>{text("What happens next?", "Wat gebeurt hierna?")}</strong>{text("The invited person opens the personal email link, sets a password and can then access only the scope shown above.", "De uitgenodigde persoon opent de persoonlijke e-maillink, stelt een wachtwoord in en krijgt daarna alleen toegang tot de scope hierboven.")}</span></div></> : null}
               {inviteError ? <p className="access-message error full" role="alert">{inviteError}</p> : null}
               <div className="invite-actions">{inviteStep > 1 ? <button className="ghost-button" type="button" onClick={() => setInviteStep(inviteStep === 3 ? 2 : 1)}><ArrowLeft size={14} /> {text("Back", "Terug")}</button> : <span />}{inviteStep < 3 ? <button className="primary-button" type="button" disabled={loading || Boolean(loadError)} onClick={() => void continueInvite()}>{text("Continue", "Doorgaan")} <ArrowRight size={15} /></button> : <button className="primary-button" type="submit" disabled={busy || loading || Boolean(loadError)}>{busy ? <Loader2 className="spin" size={15} /> : <UserPlus size={15} />}{text("Send invitation", "Uitnodiging versturen")}</button>}</div>
             </form>}
           </section> : null}
 
           {activePanel === "members" ? <section className="internal-members" aria-labelledby="members-heading">
-            <div className="member-list-heading"><span><h3 id="members-heading">{text("Internal accounts", "Interne accounts")}</h3><p>{access?.members.length ?? 0} {text("account(s) with organization or project access", "account(s) met organisatie- of projecttoegang")}</p></span>{loadError ? <button className="ghost-button" type="button" onClick={reload}>{text("Reload", "Opnieuw laden")}</button> : null}</div>
+            <div className="member-list-heading"><span><h3 id="members-heading">{text("Project accounts", "Projectaccounts")}</h3><p>{access?.members.length ?? 0} {text("account(s) with organization or project access", "account(s) met organisatie- of projecttoegang")}</p></span>{loadError ? <button className="ghost-button" type="button" onClick={reload}>{text("Reload", "Opnieuw laden")}</button> : null}</div>
             {loading ? <div className="empty-list-state"><Loader2 className="spin" size={22} /><strong>{text("Loading accounts", "Accounts laden")}</strong><span>{text("Roles and project access are being verified.", "Rollen en projecttoegang worden gecontroleerd.")}</span></div> : null}
             {loadError ? <p className="access-message error" role="alert">{loadError}</p> : null}
             {memberError ? <p className="access-message error" role="alert">{memberError}</p> : null}
-            {!loading && !loadError && access?.members.length === 0 ? <div className="empty-list-state"><Users size={22} /><strong>{text("No accounts yet", "Nog geen accounts")}</strong><span>{text("Send the first internal invitation above.", "Verstuur hierboven de eerste interne uitnodiging.")}</span></div> : null}
+            {!loading && !loadError && access?.members.length === 0 ? <div className="empty-list-state"><Users size={22} /><strong>{text("No accounts yet", "Nog geen accounts")}</strong><span>{text("Send the first project invitation above.", "Verstuur hierboven de eerste projectuitnodiging.")}</span></div> : null}
             <div className="member-list">
               {access?.members.map((member) => {
                 const roles = [

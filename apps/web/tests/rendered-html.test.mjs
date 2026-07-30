@@ -170,7 +170,7 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(app, /signInWithPassword/);
   assert.doesNotMatch(app, /\.auth\.signUp\(/);
   assert.doesNotMatch(app, />Account maken</);
-  assert.match(app, /Alleen medewerkers die door een organisatiebeheerder zijn uitgenodigd/);
+  assert.match(app, /Alleen projectgebruikers die door een organisatiebeheerder zijn uitgenodigd/);
   assert.match(app, /Gebruikers en toegang/);
   assert.match(app, /UserAdminModal/);
   assert.match(operationalWorkspace, /Managementoverzicht/);
@@ -585,7 +585,7 @@ test("implements the customer video workflows without external accounts", async 
   assert.match(app, /OneTapDailyLogModal/);
   assert.match(app, /changeCount\(row\.id, 1\)/);
   assert.match(app, /Dictate notes|Notities dicteren/);
-  assert.match(operations, /Snap & assign|Foto & toewijzen/);
+  assert.match(operations, /Issue management|Issuebeheer/);
   assert.match(operations, /findingGroup/);
   assert.match(offlineQueue, /createFinding/);
   assert.match(offlineQueue, /relationship: "before"/);
@@ -600,7 +600,7 @@ test("implements the customer video workflows without external accounts", async 
   assert.match(storageUploadRoute, /allowOverwrite: repeatedReservation/);
   assert.match(media, /flaky connection must never prevent the local evidence copy/);
   assert.match(media, /Remove this unsynchronized field file/);
-  assert.match(app, /Photo secured on this device/);
+  assert.match(app, /Photo ready[\s\S]*click the image to place a finding/);
   assert.match(app, /syncOfflineUploads/);
   assert.match(sharePage, /ExternalShareActions/);
   assert.match(shareActions, /ready_for_verification/);
@@ -611,7 +611,7 @@ test("implements the customer video workflows without external accounts", async 
   assert.match(migration, /create table public\.external_share_responses/);
   assert.match(migration, /external[\s\S]{0,80}completion means "ready for CODECO verification"/);
   assert.match(migration, /grant execute on function public\.submit_external_share_response[\s\S]*to service_role/);
-  assert.doesNotMatch(`${app}\n${operations}\n${shareActions}`, /\bSMS\b|\bAI\b/i);
+  assert.doesNotMatch(`${app}\n${operations}\n${shareActions}`, /\bSMS\b/i);
 });
 
 test("minimizes repetitive field typing with controlled quick choices", async () => {
@@ -652,11 +652,14 @@ test("keeps the project workspace mobile-first and task driven", async () => {
   assert.match(operations, /projectSectionGroups/);
   assert.match(operations, /workspace-current-module/);
   assert.match(operations, /Point and shoot[\s\S]*linked automatically/);
-  assert.match(workspaceHome, /openRegister\("wcr"\)/);
-  assert.match(workspaceHome, /openRegister\("rfi"\)/);
-  assert.match(workspaceHome, /openRegister\("rfa"\)/);
-  assert.match(workspaceHome, /openRegister\("inspection_request"\)/);
-  assert.match(workspaceHome, /openRegister\("boq"\)/);
+  assert.match(workspaceHome, /works_ongoing/);
+  assert.match(workspaceHome, /works_completed/);
+  assert.match(workspaceHome, /openFinding\("issue"\)/);
+  assert.match(workspaceHome, /openFinding\("ncr"\)/);
+  assert.match(workspaceHome, /openRegister\("technical_instruction"\)/);
+  assert.match(workspaceHome, /openRegister\("change_order"\)/);
+  assert.match(workspaceHome, /agreements-made/);
+  assert.doesNotMatch(workspaceHome, /openRegister\("(wcr|rfi|rfa|inspection_request)"\)/);
   assert.match(workspaceHome, /openTask\("documents"\)/);
   assert.match(styles, /\.workspace-task-hub/);
   assert.match(styles, /\.workspace-desktop-tabs\s*\{\s*display: none/);
@@ -709,4 +712,42 @@ test("ships automatic project weather, anchor checklists and stacked issue photo
   assert.match(migration, /'LIB-103'/);
   assert.match(migration, /AUTO_WEATHER/);
   assert.match(migration, /projects_install_codeco_anchor_checklists/);
+});
+
+test("hardens controlled external submissions and restores WCR end to end", async () => {
+  const migration = await readFile(
+    new URL("../../../supabase/migrations/202607300001_external_submission_roles_and_wcr.sql", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(migration, /'submissions\.read'/);
+  assert.match(migration, /'submissions\.review'/);
+  assert.match(migration, /when 'contractor' then array\['submissions\.read','files\.read'\]/);
+  assert.match(migration, /when 'client' then array\['submissions\.read','submissions\.review'/);
+  assert.match(migration, /register_type in \([\s\S]*'wcr'[\s\S]*'rfi'[\s\S]*'rfa'[\s\S]*'inspection_request'/);
+  assert.match(migration, /when 'wcr' then char_length/);
+  assert.match(migration, /security definer/);
+  assert.match(migration, /has_project_permission\(v_entry\.project_id, 'submissions\.review'\)/);
+  assert.match(migration, /grant execute on function public\.respond_to_controlled_project_document[\s\S]*to authenticated/);
+});
+
+test("treats every project as a multi-building workspace", async () => {
+  const [app, data, migration, dailyPdf, periodPdf] = await Promise.all([
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/data.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202607260005_multi_building_daily_reports.sql", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/daily-report-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/period-report-pdf.tsx", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(app, /additionalBuildings/);
+  assert.match(app, /BuildingSwitcherModal/);
+  assert.match(app, /setModal\("switch_building"\)/);
+  assert.match(app, /buildings\.length[\s\S]*in this project/);
+  assert.match(data, /createBuilding/);
+  assert.match(data, /client\.rpc\("create_building"/);
+  assert.match(migration, /create or replace function public\.create_building/);
+  assert.match(migration, /unique \(day_report_id, building_id\)/);
+  assert.match(dailyPdf, /snapshot\.buildings/);
+  assert.match(periodPdf, /buildingById/);
 });
