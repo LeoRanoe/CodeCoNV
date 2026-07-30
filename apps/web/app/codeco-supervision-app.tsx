@@ -110,10 +110,12 @@ import {
   saveProjectStart,
   saveSiteRegistration,
   setInternalUserAccessStatus,
+  setUserProjectRole,
   submitReportForReview,
   transitionProjectAction,
   type ActionUpdate,
   type InternalAccessSnapshot,
+  type InternalMember,
   type ProjectAction,
   type ProjectDaySnapshot,
   type ProjectParty,
@@ -592,8 +594,25 @@ export function CodecoSupervisionApp() {
   const internalAccessQuery = useQuery({
     queryKey: ["internal-access", activeOrganizationId],
     queryFn: () => loadInternalAccess(supabase as SupabaseClient, activeOrganizationId!),
-    enabled: Boolean(supabase && session && activeOrganizationId && canManageMembers && modal === "user_admin"),
+    enabled: Boolean(
+      supabase
+      && session
+      && activeOrganizationId
+      && canManageMembers
+      && (modal === "user_admin" || modal === "action_create" || activeNav === "meer"),
+    ),
   });
+  const companyEmployees = useMemo(() => {
+    const employeeProjectRoles = new Set(["supervisor", "lead_supervisor", "project_manager", "quality_hse_manager"]);
+    return (internalAccessQuery.data?.members ?? []).filter((member) => (
+      member.membershipStatus === "active"
+      && member.accessStatus === "active"
+      && (
+        member.organizationRoles.length > 0
+        || member.projectRoles.some((role) => role.projectId === selectedProject?.id && employeeProjectRoles.has(role.roleCode))
+      )
+    ));
+  }, [internalAccessQuery.data?.members, selectedProject?.id]);
 
   const dayQuery = useQuery({
     queryKey: ["project-day", selectedProject?.id, reportDate],
@@ -1040,6 +1059,7 @@ export function CodecoSupervisionApp() {
       inspectionCount: 0,
       technicalInstructionCount: 0,
       changeOrderCount: 0,
+      agreementCount: 0,
       photoCount: 0,
       todayPlannedWork: [],
     };
@@ -1397,6 +1417,7 @@ export function CodecoSupervisionApp() {
               reportStatus={String(dayQuery.data?.report?.status ?? "draft")}
               projectStartAnswers={projectStartAnswers}
               currentUserName={currentUserName}
+              companyEmployees={companyEmployees}
               parties={dayQuery.data?.parties ?? []}
               canManageOrganization={canManageMembers}
               openUserAdmin={() => setModal("user_admin")}
@@ -1568,6 +1589,7 @@ export function CodecoSupervisionApp() {
       {modal === "action_create" && selectedProject && selectedBuilding ? (
         <ActionCreateModal
           parties={dayQuery.data?.parties ?? []}
+          employees={companyEmployees}
           projectName={projectName}
           buildingName={buildingName}
           buildings={selectedProject.buildings}
@@ -1823,6 +1845,15 @@ export function CodecoSupervisionApp() {
             const saved = await runSynced(
               () => setInternalUserAccessStatus(supabase, activeOrganizationId, userId, nextStatus, reason),
               nextStatus === "active" ? "Interne toegang opnieuw geactiveerd." : nextStatus === "suspended" ? "Interne toegang tijdelijk opgeschort." : "Interne toegang definitief ingetrokken.",
+            );
+            if (!saved) return false;
+            await internalAccessQuery.refetch();
+            return true;
+          }}
+          changeProjectRole={async (userId, projectId, roleCode, reason) => {
+            const saved = await runSynced(
+              () => setUserProjectRole(supabase, { organizationId: activeOrganizationId, userId, projectId, roleCode, reason }),
+              "Projectrechten aangepast en in de auditgeschiedenis vastgelegd.",
             );
             if (!saved) return false;
             await internalAccessQuery.refetch();
@@ -2202,8 +2233,9 @@ function ContextSelection({
     issues: total.issues + project.issueCount,
     ncr: total.ncr + project.ncrCount,
     inspections: total.inspections + project.inspectionCount,
+    agreements: total.agreements + project.agreementCount,
     today: total.today + project.buildings.reduce((count, building) => count + building.todayPlannedWork.length, 0),
-  }), { projects: 0, actions: 0, issues: 0, ncr: 0, inspections: 0, today: 0 });
+  }), { projects: 0, actions: 0, issues: 0, ncr: 0, inspections: 0, agreements: 0, today: 0 });
   return (
     <div className="context-shell">
       <header className="context-topbar">
@@ -2230,8 +2262,9 @@ function ContextSelection({
           <div><span>Issues</span><strong>{portfolio.issues}</strong></div>
           <div><span>NCR</span><strong>{portfolio.ncr}</strong></div>
           <div><span>{text("Inspections", "Inspecties")}</span><strong>{portfolio.inspections}</strong></div>
+          <div><span>{text("Agreements", "Afspraken")}</span><strong>{portfolio.agreements}</strong></div>
         </section>
-        <section className="project-selection-grid">
+        <section className={`project-selection-grid ${projects.length === 1 ? "single-project" : ""}`}>
           {projects.map((project) => (
             <button className="project-selection-card" type="button" onClick={() => chooseProject(project)} key={project.id}>
               <span className="selection-card-top">
@@ -2246,6 +2279,7 @@ function ContextSelection({
                 <span><b>{project.inspectionCount}</b>{text("Inspections", "Inspecties")}</span>
                 <span><b>{project.technicalInstructionCount}</b>TI</span>
                 <span><b>{project.changeOrderCount}</b>CO</span>
+                <span><b>{project.agreementCount}</b>{text("Agreements", "Afspraken")}</span>
               </span>
               <span className="selection-progress"><span style={{ width: `${project.progress}%` }} /><em>{project.progress}% {text("progress", "voortgang")}</em></span>
               <span className="selection-action">{text("Open dashboard", "Dashboard openen")} <ArrowRight size={14} /></span>
@@ -2919,7 +2953,7 @@ function NotificationsModal({ client, notifications, loading, close, markRead }:
       <section className="modal notifications-modal" role="dialog" aria-modal="true" aria-labelledby="notifications-title">
         <header className="modal-header"><div><h2 id="notifications-title">{text("Push notifications and deadlines", "Pushmeldingen en deadlines")}</h2><p>{text("Automatic device notifications from actions, findings and report reviews, with an auditable copy in this inbox.", "Automatische apparaatmeldingen uit acties, bevindingen en rapportreviews, met een auditeerbare kopie in deze inbox.")}</p></div><button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button></header>
         <div className="modal-body notification-list">
-          <div className={`push-activation ${pushState}`}><Bell size={19} /><span><strong>{pushState === "active" ? text("Push is active on this device", "Push is actief op dit apparaat") : pushState === "blocked" ? text("Push is blocked in browser settings", "Push is geblokkeerd in de browserinstellingen") : pushState === "unsupported" ? text("This browser does not support push", "Deze browser ondersteunt geen push") : text("Activate push on this device", "Activeer push op dit apparaat")}</strong><small>{text("Deadlines are generated automatically from fixed project rules.", "Deadlines worden automatisch uit vaste projectregels gegenereerd.")}</small></span>{pushState === "inactive" ? <button className="primary-button" type="button" disabled={pushBusy} onClick={() => void activatePush()}>{pushBusy ? <Loader2 className="spin" size={15} /> : <Bell size={15} />}{text("Activate", "Activeren")}</button> : null}</div>
+          <div className={`push-activation ${pushState}`}><Bell size={19} /><span><strong>{pushState === "active" ? text("Push is active on this device", "Push is actief op dit apparaat") : pushState === "blocked" ? text("Push is blocked in browser settings", "Push is geblokkeerd in de browserinstellingen") : pushState === "unsupported" ? text("This browser does not support push", "Deze browser ondersteunt geen push") : text("Activate push on this device", "Activeer push op dit apparaat")}</strong><small>{pushState === "active" ? text("Use Test push to verify the complete browser, subscription and delivery chain.", "Gebruik Test push om de volledige browser-, registratie- en afleverketen te controleren.") : text("Deadlines are generated automatically from fixed project rules.", "Deadlines worden automatisch uit vaste projectregels gegenereerd.")}</small></span>{pushState === "inactive" || pushState === "active" ? <button className={pushState === "active" ? "secondary-button" : "primary-button"} type="button" disabled={pushBusy} onClick={() => void activatePush()}>{pushBusy ? <Loader2 className="spin" size={15} /> : <Bell size={15} />}{pushState === "active" ? text("Test push", "Test push") : text("Activate", "Activeren")}</button> : null}</div>
           {pushError ? <div className="operation-alert error">{pushError}</div> : null}
           {loading ? <div className="empty-list-state"><Loader2 className="spin" size={22} /><strong>{text("Loading notifications", "Meldingen laden")}</strong><span>{text("Deadlines are checked using fixed rules.", "Deadlines worden regelgestuurd gecontroleerd.")}</span></div> : null}
           {!loading && notifications.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No notifications", "Geen meldingen")}</strong><span>{text("There are no open personal reminders.", "Er zijn geen openstaande persoonlijke herinneringen.")}</span></div> : null}
@@ -2947,6 +2981,7 @@ function UserAdminModal({
   invite,
   currentUserId,
   changeStatus,
+  changeProjectRole,
 }: {
   close: () => void;
   organizationId: string;
@@ -2958,6 +2993,7 @@ function UserAdminModal({
   invite: (answers: InternalUserInviteAnswers) => Promise<boolean>;
   currentUserId: string;
   changeStatus: (userId: string, nextStatus: "active" | "suspended" | "revoked", reason: string) => Promise<boolean>;
+  changeProjectRole: (userId: string, projectId: string, roleCode: string, reason: string) => Promise<boolean>;
 }) {
   const { language, text } = useLanguage();
   const localizedInternalUserInviteSchema = useMemo(() => createInternalUserInviteSchema(language), [language]);
@@ -2969,6 +3005,7 @@ function UserAdminModal({
   const [invitedEmail, setInvitedEmail] = useState("");
   const [memberError, setMemberError] = useState("");
   const [memberAction, setMemberAction] = useState<{ userId: string; nextStatus: "active" | "suspended" | "revoked"; reason: string } | null>(null);
+  const [roleEdit, setRoleEdit] = useState<{ userId: string; projectId: string; roleCode: string; reason: string } | null>(null);
   const { register, handleSubmit, control, reset, setValue, trigger, getValues, formState: { errors } } = useForm<InternalUserInviteAnswers>({
     resolver: zodResolver(localizedInternalUserInviteSchema),
     defaultValues: { organizationId, displayName: "", email: "", roleCode: "", projectId: "" },
@@ -2979,10 +3016,34 @@ function UserAdminModal({
   const projectId = useWatch({ control, name: "projectId" });
   const selectedRole = access?.roles.find((role) => role.code === roleCode);
   const selectedInviteProject = projects.find((project) => project.id === projectId);
+  const projectRoles = access?.roles.filter((role) => role.scope === "project") ?? [];
+  const defaultProjectRole = projectRoles.find((role) => role.code === "external_guest") ?? projectRoles[0];
+  const roleAccessCopy: Record<string, [string, string]> = {
+    external_guest: [
+      "No general project access. Receives only explicitly shared, revocable evidence links.",
+      "Geen algemene projecttoegang. Ontvangt alleen expliciet gedeelde, intrekbare bewijslinks.",
+    ],
+    contractor: [
+      "May submit controlled external records and supporting files; cannot manage the company team or approve its own submission.",
+      "Mag gecontroleerde externe indieningen en bijlagen aanleveren; kan het bedrijfsteam niet beheren en de eigen indiening niet goedkeuren.",
+    ],
+    client: [
+      "May view approved reports and review controlled external submissions; cannot edit field records.",
+      "Mag goedgekeurde rapporten bekijken en gecontroleerde externe indieningen beoordelen; kan veldregistraties niet wijzigen.",
+    ],
+    supervisor: [
+      "Company employee access to field records, inspections, actions and reports for the selected project.",
+      "Toegang voor een eigen medewerker tot veldregistraties, inspecties, acties en rapporten van het gekozen project.",
+    ],
+  };
+  const selectedRoleCopy = roleAccessCopy[selectedRole?.code ?? ""] ?? [
+    "Permissions are limited to the centrally controlled role shown here.",
+    "Rechten zijn beperkt tot de centraal beheerde rol die hier wordt getoond.",
+  ];
 
   useEffect(() => {
-    if (!roleCode && access?.roles[0]) setValue("roleCode", access.roles[0].code);
-  }, [access, roleCode, setValue]);
+    if (!roleCode && defaultProjectRole) setValue("roleCode", defaultProjectRole.code);
+  }, [defaultProjectRole, roleCode, setValue]);
 
   const submit = async (answers: InternalUserInviteAnswers) => {
     if (selectedRole?.scope === "project" && !answers.projectId) {
@@ -3000,7 +3061,7 @@ function UserAdminModal({
     if (saved) {
       setInvitedEmail(answers.email);
       setSuccess(text(`The personal invitation for ${answers.email} was sent.`, `De persoonlijke uitnodiging voor ${answers.email} is verzonden.`));
-      reset({ organizationId, displayName: "", email: "", roleCode: roleCode || access?.roles[0]?.code || "", projectId: "" });
+      reset({ organizationId, displayName: "", email: "", roleCode: defaultProjectRole?.code || "", projectId: "" });
     } else {
       setInviteError(text("The invitation was not completed. Review the message and try again.", "De uitnodiging is niet voltooid. Bekijk de melding en probeer opnieuw."));
     }
@@ -3040,6 +3101,20 @@ function UserAdminModal({
     setBusy(false);
   };
 
+  const confirmProjectRole = async () => {
+    if (!roleEdit || roleEdit.reason.trim().length < 5) return;
+    setBusy(true);
+    setMemberError("");
+    const saved = await changeProjectRole(roleEdit.userId, roleEdit.projectId, roleEdit.roleCode, roleEdit.reason.trim());
+    if (saved) {
+      setRoleEdit(null);
+      setSuccess(text("Project rights were updated and audited.", "Projectrechten zijn aangepast en geaudit."));
+    } else {
+      setMemberError(text("The project rights could not be updated.", "De projectrechten konden niet worden aangepast."));
+    }
+    setBusy(false);
+  };
+
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal user-admin-modal" role="dialog" aria-modal="true" aria-labelledby="user-admin-title">
@@ -3060,7 +3135,8 @@ function UserAdminModal({
             {success ? <div className="invite-success" role="status"><span><CheckCircle2 size={24} /></span><div><h3>{text("Invitation is on its way", "Uitnodiging is onderweg")}</h3><p>{text(`${invitedEmail} receives a secure link to set a password. The account remains marked as invited until the first sign-in.`, `${invitedEmail} ontvangt een beveiligde link om een wachtwoord in te stellen. Tot de eerste aanmelding blijft het account als uitgenodigd gemarkeerd.`)}</p><div className="button-row"><button className="primary-button" type="button" onClick={startAnotherInvite}><UserPlus size={15} /> {text("Invite another", "Nog iemand uitnodigen")}</button><button className="ghost-button" type="button" onClick={() => setActivePanel("members")}>{text("View access", "Toegang bekijken")} <ArrowRight size={14} /></button></div></div></div> : <form className={`invite-flow step-${inviteStep}`} onSubmit={handleSubmit(submit)} noValidate>
               <input type="hidden" {...register("organizationId")} />
               {inviteStep === 1 ? <div className="form-grid"><label className="form-field"><span>{text("Full name *", "Volledige naam *")}</span><input autoFocus autoComplete="name" placeholder={text("e.g. Jane Doe", "bijv. Jane Doe")} {...register("displayName")} />{errors.displayName ? <small className="field-error">{errors.displayName.message}</small> : null}</label><label className="form-field"><span>{text("Business email address *", "Zakelijk e-mailadres *")}</span><input type="email" autoComplete="email" placeholder="naam@bedrijf.com" {...register("email")} />{errors.email ? <small className="field-error">{errors.email.message}</small> : null}</label></div> : null}
-              <label className="form-field"><span>{text("Role *", "Rol *")}</span><select {...register("roleCode")} disabled={!access?.roles.length}><option value="">{text("Choose a role", "Kies een rol")}</option>{access?.roles.map((role) => <option value={role.code} key={role.id}>{role.name} · {role.scope === "organization" ? text("entire organization", "hele organisatie") : text("project · suitable for external parties", "project · geschikt voor externe partijen")}</option>)}</select>{errors.roleCode ? <small className="field-error">{errors.roleCode.message}</small> : null}</label>
+              <label className="form-field"><span>{text("Role *", "Rol *")}</span><select {...register("roleCode")} disabled={!access?.roles.length}><option value="">{text("Choose a role", "Kies een rol")}</option><optgroup label={text("Project roles · least privilege", "Projectrollen · minimale rechten")}>{projectRoles.map((role) => <option value={role.code} key={role.id}>{role.name}</option>)}</optgroup><optgroup label={text("Organization roles · internal only", "Organisatierollen · alleen intern")}>{access?.roles.filter((role) => role.scope === "organization").map((role) => <option value={role.code} key={role.id}>{role.name}</option>)}</optgroup></select>{errors.roleCode ? <small className="field-error">{errors.roleCode.message}</small> : null}</label>
+              {selectedRole ? <div className={`role-access-preview ${selectedRole.code === "external_guest" ? "restricted" : ""}`}><KeyRound size={16} /><span><strong>{selectedRole.name} · {selectedRole.scope === "project" ? text("this project only", "alleen dit project") : text("entire organization", "hele organisatie")}</strong><small>{text(selectedRoleCopy[0], selectedRoleCopy[1])}</small></span></div> : null}
               {selectedRole?.scope === "project" ? <label className="form-field"><span>Project *</span><select {...register("projectId")}><option value="">{text("Choose a project", "Kies een project")}</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.code} · {project.name}</option>)}</select>{errors.projectId ? <small className="field-error">{errors.projectId.message}</small> : null}</label> : <div className="scope-note"><ShieldCheck size={16} /><span><strong>{text("Organization-wide access", "Organisatiebrede toegang")}</strong><small>{text("This role applies to all current projects in the organization.", "Deze rol geldt voor alle huidige projecten binnen de organisatie.")}</small></span></div>}
               {inviteStep === 3 ? <><dl className="invite-summary"><div><dt>{text("Project user", "Projectgebruiker")}</dt><dd>{displayName}<small>{email}</small></dd></div><div><dt>{text("Role", "Rol")}</dt><dd>{selectedRole?.name}</dd></div><div><dt>{text("Access", "Toegang")}</dt><dd>{selectedRole?.scope === "organization" ? text("All projects in the organization", "Alle projecten in de organisatie") : selectedInviteProject ? `${selectedInviteProject.code} · ${selectedInviteProject.name}` : text("No project selected", "Geen project geselecteerd")}</dd></div></dl><div className="invitation-explainer"><ShieldCheck size={17} /><span><strong>{text("What happens next?", "Wat gebeurt hierna?")}</strong>{text("The invited person opens the personal email link, sets a password and can then access only the scope shown above.", "De uitgenodigde persoon opent de persoonlijke e-maillink, stelt een wachtwoord in en krijgt daarna alleen toegang tot de scope hierboven.")}</span></div></> : null}
               {inviteError ? <p className="access-message error full" role="alert">{inviteError}</p> : null}
@@ -3087,6 +3163,11 @@ function UserAdminModal({
                     <span className="member-copy"><strong>{member.displayName || member.email}</strong><span>{member.email}</span><small>{roles.join(" · ") || text("No role yet", "Nog geen rol")}</small></span>
                     <span className="member-access-controls"><span className={`task-status ${member.membershipStatus === "active" && member.accessStatus === "active" ? "green" : ""}`}>{statusLabel}</span>{member.userId === currentUserId ? <small>{text("Own account", "Eigen account")}</small> : member.membershipStatus !== "revoked" ? <span>{member.membershipStatus === "suspended" ? <button className="ghost-button" type="button" disabled={busy} onClick={() => setMemberAction({ userId: member.userId, nextStatus: "active", reason: "" })}>{text("Reactivate", "Heractiveren")}</button> : <button className="ghost-button" type="button" disabled={busy} onClick={() => setMemberAction({ userId: member.userId, nextStatus: "suspended", reason: "" })}>{text("Suspend", "Opschorten")}</button>}<button className="ghost-button danger" type="button" disabled={busy} onClick={() => setMemberAction({ userId: member.userId, nextStatus: "revoked", reason: "" })}>{text("Revoke", "Intrekken")}</button></span> : null}</span>
                   </article>
+                  {member.projectRoles.map((projectRole) => <div className="member-project-permission" key={`${member.userId}:${projectRole.projectId}`}>
+                    <span><KeyRound size={14} /><span><strong>{projectRole.projectName}</strong><small>{projectRole.roleName} · {text(roleAccessCopy[projectRole.roleCode]?.[0] ?? "Controlled project role", roleAccessCopy[projectRole.roleCode]?.[1] ?? "Gecontroleerde projectrol")}</small></span></span>
+                    {member.userId !== currentUserId ? <button className="ghost-button" type="button" onClick={() => setRoleEdit({ userId: member.userId, projectId: projectRole.projectId, roleCode: projectRole.roleCode, reason: "" })}>{text("Edit rights", "Rechten aanpassen")}</button> : null}
+                  </div>)}
+                  {roleEdit?.userId === member.userId ? <div className="member-status-form role-editor"><label className="form-field"><span>{text("New project role", "Nieuwe projectrol")}</span><select value={roleEdit.roleCode} onChange={(event) => setRoleEdit({ ...roleEdit, roleCode: event.target.value })}>{projectRoles.map((role) => <option value={role.code} key={role.id}>{role.name}</option>)}</select></label><label className="form-field"><span>{text("Reason for access change *", "Reden voor rechtenwijziging *")}</span><textarea rows={2} value={roleEdit.reason} onChange={(event) => setRoleEdit({ ...roleEdit, reason: event.target.value })} placeholder={text("Stored permanently in the access audit history", "Wordt blijvend opgeslagen in de toegangs-auditgeschiedenis")} /></label><div className="button-row"><button className="ghost-button" type="button" onClick={() => setRoleEdit(null)}>{text("Cancel", "Annuleren")}</button><button className="primary-button" type="button" disabled={busy || roleEdit.reason.trim().length < 5} onClick={() => void confirmProjectRole()}><ShieldCheck size={14} /> {text("Save least-privilege role", "Sla minimale rol op")}</button></div></div> : null}
                   {memberAction?.userId === member.userId ? <div className="member-status-form"><label className="form-field"><span>{text("Reason for", "Reden voor")} {memberAction.nextStatus === "active" ? text("reactivation", "heractivering") : memberAction.nextStatus === "suspended" ? text("suspension", "opschorting") : text("permanent revocation", "definitieve intrekking")} *</span><textarea rows={2} value={memberAction.reason} onChange={(event) => setMemberAction({ ...memberAction, reason: event.target.value })} placeholder={text("At least 5 characters; stored in the audit trail", "Minimaal 5 tekens; wordt in de audittrail bewaard")} /></label><div className="button-row"><button className="ghost-button" type="button" onClick={() => setMemberAction(null)}>{text("Cancel", "Annuleren")}</button><button className="primary-button" type="button" disabled={busy || memberAction.reason.trim().length < 5} onClick={() => void confirmMemberAction()}>{busy ? <Loader2 className="spin" size={14} /> : <ShieldCheck size={14} />} {text("Confirm status", "Status bevestigen")}</button></div></div> : null}
                 </div>;
               })}
@@ -3228,6 +3309,7 @@ function EntryModal({
 
 function ActionCreateModal({
   parties,
+  employees,
   projectName,
   buildingName,
   buildings,
@@ -3239,6 +3321,7 @@ function ActionCreateModal({
   save,
 }: {
   parties: ProjectParty[];
+  employees: InternalMember[];
   projectName: string;
   buildingName: string;
   buildings: BuildingOption[];
@@ -3254,12 +3337,14 @@ function ActionCreateModal({
   const [buildingId, setBuildingId] = useState(() => resolveDefaultBuildingId(buildings, defaultBuildingId));
   const [locationNodeId, setLocationNodeId] = useState("");
   const defaultParty = parties.find((party) => party.type === "contractor")?.id ?? parties[0]?.id ?? "";
+  const defaultEmployee = employees[0]?.userId ?? "";
   const { register, handleSubmit, setValue, control, formState: { errors } } = useForm<ProjectActionAnswers>({
     resolver: zodResolver(projectActionSchema),
     defaultValues: {
       title: "",
       description: "",
       ownerPartyId: defaultParty,
+      ownerUserId: defaultEmployee,
       dueAt: defaultActionDeadline(),
       priority: "normal",
     },
@@ -3303,13 +3388,14 @@ function ActionCreateModal({
             <BuildingPicker id="action-building" buildings={buildings} value={buildingId} onChange={(next) => { setBuildingId(next); setLocationNodeId(""); }} />
             <LocationPicker id="action-location" nodes={locationNodes} buildingId={buildingId} value={locationNodeId} onChange={setLocationNodeId} requiredDepth={requiredLocationDepth} />
             <label className="form-field"><span>{text("Responsible party *", "Verantwoordelijke partij *")}</span><select {...register("ownerPartyId")} disabled={parties.length === 0}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select>{errors.ownerPartyId ? <small className="field-error">{errors.ownerPartyId.message}</small> : null}</label>
+            <label className="form-field"><span>{text("Assigned company employee *", "Toegewezen bedrijfsmedewerker *")}</span><select {...register("ownerUserId")} disabled={employees.length === 0}><option value="">{text("Choose employee", "Kies medewerker")}</option>{employees.map((employee) => <option value={employee.userId} key={employee.userId}>{employee.displayName || employee.email} · {[...employee.organizationRoles.map((role) => role.name), ...employee.projectRoles.filter((role) => role.projectId).map((role) => role.roleName)][0] ?? text("Employee", "Medewerker")}</option>)}</select>{errors.ownerUserId ? <small className="field-error">{errors.ownerUserId.message}</small> : null}{employees.length === 0 ? <small className="field-error">{text("No active company employees are available. Invite or activate one under Management → Team and access.", "Er zijn geen actieve bedrijfsmedewerkers beschikbaar. Nodig iemand uit of activeer het account via Management → Team en toegang.")}</small> : null}</label>
             <div className="form-field"><label htmlFor="action-deadline">Deadline *</label><input id="action-deadline" type="datetime-local" {...register("dueAt")} />{errors.dueAt ? <small className="field-error">{errors.dueAt.message}</small> : null}<span className="period-date-presets">{[[0, text("Today", "Vandaag")], [1, text("Tomorrow", "Morgen")], [3, text("3 days", "3 dagen")], [7, text("7 days", "7 dagen")]].map(([days, label]) => <button type="button" onClick={() => setValue("dueAt", actionDeadlineFromToday(Number(days)), { shouldDirty: true, shouldValidate: true })} key={String(label)}>{label}</button>)}</span></div>
             <label className="form-field"><span>{text("Priority", "Prioriteit")}</span><select {...register("priority")}><option value="low">{text("Low", "Laag")}</option><option value="normal">{text("Normal", "Normaal")}</option><option value="high">{text("High", "Hoog")}</option><option value="critical">{text("Critical", "Kritiek")}</option></select></label>
             <div className="action-rule-note"><ShieldCheck size={16} /><span><strong>{text("Controlled follow-up flow", "Vaste opvolgflow")}</strong><small>{text("Open → accepted → in progress → verification → closed.", "Open → geaccepteerd → in uitvoering → verificatie → gesloten.")}</small></span></div>
           </div>
           <div className="modal-actions">
             <button className="back-button" type="button" onClick={goBack}><ArrowLeft size={14} /> {text("Back", "Terug")}</button>
-            <button className="primary-button" type="submit" disabled={busy || parties.length === 0 || (requiredLocationDepth !== "building" && !locationNodeId)}>{busy ? <Loader2 className="spin" size={14} /> : <Check size={14} />} {text("Save centrally", "Centraal opslaan")}</button>
+            <button className="primary-button" type="submit" disabled={busy || parties.length === 0 || employees.length === 0 || (requiredLocationDepth !== "building" && !locationNodeId)}>{busy ? <Loader2 className="spin" size={14} /> : <Check size={14} />} {text("Save and assign", "Opslaan en toewijzen")}</button>
           </div>
         </form>
       </section>

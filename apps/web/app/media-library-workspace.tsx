@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, Download, Folder, FolderPlus, HardDrive, Image as ImageIcon, Loader2, RefreshCw, ScanLine, Trash2, Upload } from "lucide-react";
+import { Camera, Download, ExternalLink, Folder, FolderPlus, HardDrive, Image as ImageIcon, Loader2, RefreshCw, ScanLine, Trash2, Upload } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -18,7 +18,7 @@ import {
   syncOfflineUploads,
   type OfflineUpload,
 } from "@/lib/offline/upload-queue";
-import { downloadProjectFile, loadProjectFileObjectUrl } from "@/lib/storage/gateway";
+import { downloadProjectFile, loadProjectFileObjectUrl, openProjectFile } from "@/lib/storage/gateway";
 import { createMediaFolder, type FileRecord, type OperationSnapshot } from "@/lib/supabase/operations";
 
 function automaticTitle(filename: string) {
@@ -365,7 +365,7 @@ export function MediaLibraryWorkspace({
           const capture = data.visualCaptures.find((item) => item.file_id === file.id);
           const annotations = capture ? data.visualAnnotations.filter((item) => item.capture_id === capture.id && item.status === "active") : [];
           const linkedRecords = annotations.map((annotation) => data.findings.find((finding) => finding.id === annotation.finding_id)?.finding_number).filter(Boolean);
-          return <article className="media-card" key={file.id}>{file.mime_type.startsWith("image/") ? <SecureImage client={client} file={file} /> : <span className="media-file-icon"><HardDrive size={28} /></span>}<div><strong>{file.original_name}</strong><span>{libraryBuildingName} · {folder?.name ?? text("Unfiled", "Zonder map")} · {file.category} · {humanSize(file.size_bytes)}</span>{capture ? <small>{capture.capture_type === "panorama" ? "360°" : text("Photo", "Foto")} · {capture.location_label}{linkedRecords.length ? ` · ${text("Linked to", "Gekoppeld aan")} ${linkedRecords.join(", ")}` : ` · ${text("No linked finding yet", "Nog geen gekoppelde bevinding")}`}</small> : null}</div><button type="button" onClick={() => void downloadProjectFile(client, file.id, file.original_name)} aria-label={text("Download file", "Bestand downloaden")}><Download size={15} /></button></article>;
+          return <article className="media-card" key={file.id}>{file.mime_type.startsWith("image/") ? <SecureImage client={client} file={file} /> : <span className="media-file-icon"><HardDrive size={28} /></span>}<div><strong>{file.original_name}</strong><span>{libraryBuildingName} · {folder?.name ?? text("Unfiled", "Zonder map")} · {file.category} · {humanSize(file.size_bytes)}</span>{capture ? <small>{capture.capture_type === "panorama" ? "360°" : text("Photo", "Foto")} · {capture.location_label}{linkedRecords.length ? ` · ${text("Linked to", "Gekoppeld aan")} ${linkedRecords.join(", ")}` : ` · ${text("No linked finding yet", "Nog geen gekoppelde bevinding")}`}</small> : null}</div><span className="media-file-actions"><button type="button" onClick={() => void openProjectFile(client, file.id, file.original_name)} aria-label={text("Open file", "Bestand openen")}><ExternalLink size={15} /></button><button type="button" onClick={() => void downloadProjectFile(client, file.id, file.original_name)} aria-label={text("Download file", "Bestand downloaden")}><Download size={15} /></button></span></article>;
         })}
         {!files.length ? <div className="empty-list-state"><Folder size={24} /><strong>{text("This folder is empty", "Deze map is leeg")}</strong><span>{text("Take a photo or select files; they can also be queued offline.", "Maak een foto of kies bestanden; dit kan ook volledig offline.")}</span></div> : null}
       </div>

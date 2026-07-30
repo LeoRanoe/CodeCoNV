@@ -15,19 +15,23 @@ import {
   Upload,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { useLanguage } from "@/lib/i18n";
+import { openProjectFile } from "@/lib/storage/gateway";
 import type { OperationSnapshot } from "@/lib/supabase/operations";
 
 type DocumentView = "all" | "drawings" | "renders" | "boq" | "specifications" | "contracts";
 
 export function ProjectDocumentsHome({
   data,
+  client,
   openDrawings,
   openFiles,
   openRegisters,
   createDocument,
 }: {
   data: OperationSnapshot;
+  client: SupabaseClient;
   openDrawings: () => void;
   openFiles: () => void;
   openRegisters: () => void;
@@ -36,6 +40,8 @@ export function ProjectDocumentsHome({
   const { locale, text } = useLanguage();
   const [view, setView] = useState<DocumentView>("all");
   const [query, setQuery] = useState("");
+  const [openingFileId, setOpeningFileId] = useState("");
+  const [openError, setOpenError] = useState("");
   const availableFiles = data.files.filter((file) => file.status === "available");
   const drawings = availableFiles.filter((file) => file.category === "drawing");
   const renders = availableFiles.filter((file) => file.mime_type.startsWith("image/") && file.category !== "photo");
@@ -70,6 +76,22 @@ export function ProjectDocumentsHome({
     else openRegisters();
   };
 
+  const openItem = async (item: (typeof items)[number]) => {
+    if (item.source === "register") {
+      openRegisters();
+      return;
+    }
+    setOpeningFileId(item.id);
+    setOpenError("");
+    try {
+      await openProjectFile(client, item.id, item.title);
+    } catch (error) {
+      setOpenError(error instanceof Error ? error.message : text("The document could not be opened.", "Het document kon niet worden geopend."));
+    } finally {
+      setOpeningFileId("");
+    }
+  };
+
   return (
     <section className="project-documents">
       <div className="project-documents-summary">
@@ -85,13 +107,14 @@ export function ProjectDocumentsHome({
       </div>
 
       <div className="project-document-browser">
+        {openError ? <div className="operation-alert error" role="alert">{openError}</div> : null}
         <header>
           <div><h3>{tabs.find((tab) => tab.id === view)?.label}</h3><span>{items.length} {text("visible records", "zichtbare records")}</span></div>
           <label><Search size={15} /><span className="sr-only">{text("Search project documents", "Doorzoek projectdocumenten")}</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={text("Search name, type or status", "Zoek naam, type of status")} /></label>
         </header>
         <div className="project-document-list">
           {items.length ? items.slice(0, 12).map((item) => (
-            <button type="button" onClick={item.source === "file" && item.type === "drawing" ? openDrawings : item.source === "file" ? openFiles : openRegisters} key={`${item.source}:${item.id}`}>
+            <button type="button" disabled={openingFileId === item.id} onClick={() => void openItem(item)} key={`${item.source}:${item.id}`}>
               <span className={`document-type-icon ${item.type}`}>{item.source === "file" ? <FolderOpen size={18} /> : item.type === "boq" ? <DatabaseBackup size={18} /> : <FileText size={18} />}</span>
               <span><strong>{item.title}</strong><small>{item.type.replaceAll("_", " ")} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "America/Paramaribo" }).format(new Date(item.date))}</small></span>
               <span className={`document-status ${["approved", "closed", "available"].includes(item.status) ? "approved" : ""}`}>{item.status.replaceAll("_", " ")}</span>

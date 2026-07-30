@@ -751,3 +751,38 @@ test("treats every project as a multi-building workspace", async () => {
   assert.match(dailyPdf, /snapshot\.buildings/);
   assert.match(periodPdf, /buildingById/);
 });
+
+test("keeps employee assignment, editable external rights and openable document history enforceable", async () => {
+  const [app, operations, documents, media, data, storage, pushClient, roleRoute, migration] = await Promise.all([
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/project-documents-home.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/media-library-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/data.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/storage/gateway.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/notifications/push-client.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/project-role/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202607300002_company_employee_task_assignment.sql", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(app, /Assigned company employee/);
+  assert.match(app, /defaultProjectRole[\s\S]*external_guest/);
+  assert.match(app, /Edit rights|Rechten aanpassen/);
+  assert.match(app, /setUserProjectRole/);
+  assert.match(operations, /Assign and redistribute project tasks|Projecttaken toewijzen en herverdelen/);
+  assert.match(operations, /assignProjectAction/);
+  assert.match(operations, /Open record & history|Open dossier & historie/);
+  assert.match(operations, /attachment_files/);
+  assert.match(documents, /openProjectFile/);
+  assert.match(media, /Open file|Bestand openen/);
+  assert.match(storage, /export async function openProjectFile/);
+  assert.match(data, /agreementCount/);
+  assert.match(pushClient, /sameApplicationServerKey/);
+  assert.match(roleRoute, /can_manage_organization_members/);
+  assert.match(roleRoute, /audit_events/);
+  assert.match(roleRoute, /De rechtenwijziging is teruggedraaid/);
+  assert.match(migration, /create or replace function public\.assign_project_action/);
+  assert.match(migration, /create or replace function public\.set_user_project_role/);
+  assert.match(migration, /app_private\.is_company_project_employee/);
+  assert.match(migration, /insert into public\.audit_events/);
+});

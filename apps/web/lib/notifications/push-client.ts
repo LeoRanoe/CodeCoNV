@@ -24,7 +24,9 @@ export async function currentPushState(): Promise<PushState> {
   if (Notification.permission === "denied") return "blocked";
   const registration = await navigator.serviceWorker.getRegistration("/");
   const subscription = await registration?.pushManager.getSubscription();
-  return subscription ? "active" : "inactive";
+  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim();
+  if (!subscription || !publicKey) return "inactive";
+  return sameApplicationServerKey(subscription, applicationServerKey(publicKey)) ? "active" : "inactive";
 }
 
 export async function enablePushNotifications(client: SupabaseClient) {

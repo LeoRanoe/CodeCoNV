@@ -18,6 +18,7 @@ export type WorkspaceBuilding = {
   inspectionCount: number;
   technicalInstructionCount: number;
   changeOrderCount: number;
+  agreementCount: number;
   photoCount: number;
   todayPlannedWork: string[];
 };
@@ -36,6 +37,7 @@ export type WorkspaceProject = {
   inspectionCount: number;
   technicalInstructionCount: number;
   changeOrderCount: number;
+  agreementCount: number;
   buildings: WorkspaceBuilding[];
 };
 
@@ -99,6 +101,7 @@ export type ProjectAction = {
   status: "open" | "accepted" | "in_progress" | "ready_for_verification" | "verified" | "cancelled";
   building_id: string | null;
   location_node_id: string | null;
+  owner_user_id: string | null;
   owner_party_id: string | null;
   closure_reason: string | null;
   created_at: string;
@@ -289,7 +292,7 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
           .from("project_register_entries")
           .select("project_id,building_id,register_type,status")
           .in("project_id", projectIds)
-          .in("register_type", ["technical_instruction", "site_instruction", "change_order", "variation"])
+          .in("register_type", ["technical_instruction", "site_instruction", "change_order", "variation", "agreement"])
           .neq("status", "cancelled"),
         client
           .from("visual_captures")
@@ -348,6 +351,7 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
       inspectionCount: (inspectionResult.data ?? []).filter((row) => row.project_id === projectId).length,
       technicalInstructionCount: registers.filter((row) => ["technical_instruction", "site_instruction"].includes(String(row.register_type))).length,
       changeOrderCount: registers.filter((row) => ["change_order", "variation"].includes(String(row.register_type))).length,
+      agreementCount: registers.filter((row) => row.register_type === "agreement").length,
       buildings: (buildingResult.data ?? [])
         .filter((building) => building.project_id === projectId)
         .map((building) => {
@@ -366,6 +370,7 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
             inspectionCount: (inspectionResult.data ?? []).filter((row) => row.building_id === buildingId).length,
             technicalInstructionCount: buildingRegisters.filter((row) => ["technical_instruction", "site_instruction"].includes(String(row.register_type))).length,
             changeOrderCount: buildingRegisters.filter((row) => ["change_order", "variation"].includes(String(row.register_type))).length,
+            agreementCount: buildingRegisters.filter((row) => row.register_type === "agreement").length,
             photoCount: (visualResult.data ?? []).filter((row) => row.building_id === buildingId).length,
             todayPlannedWork: (dayStartResult.data ?? []).filter((row) => row.building_id === buildingId).map((row) => String(row.planned_work)),
           };
@@ -417,6 +422,34 @@ export async function setInternalUserAccessStatus(
   return result.data;
 }
 
+export async function setUserProjectRole(
+  client: SupabaseClient,
+  input: { organizationId: string; userId: string; projectId: string; roleCode: string; reason: string },
+) {
+  const result = await client.rpc("set_user_project_role", {
+    p_organization_id: input.organizationId,
+    p_user_id: input.userId,
+    p_project_id: input.projectId,
+    p_role_code: input.roleCode,
+    p_reason: input.reason,
+  });
+  if (rpcSignatureMissing(result.error, "set_user_project_role")) {
+    const response = await fetch("/api/admin/project-role", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${await validAccessToken(client)}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(input),
+    });
+    const body = await response.json().catch(() => null) as { error?: string; result?: unknown } | null;
+    if (!response.ok) throw new Error(body?.error ?? "De projectrechten konden niet worden aangepast.");
+    return body?.result;
+  }
+  fail(result.error);
+  return result.data;
+}
+
 export async function inviteInternalUser(
   client: SupabaseClient,
   input: InternalUserInviteAnswers,
@@ -450,7 +483,7 @@ export async function loadProjectDay(
     client.from("parties").select("id,name,party_type").eq("project_id", projectId).eq("active", true).order("name"),
     client
       .from("actions")
-      .select("id,action_number,title,description,due_at,priority,status,building_id,location_node_id,owner_party_id,closure_reason,created_at,updated_at")
+      .select("id,action_number,title,description,due_at,priority,status,building_id,location_node_id,owner_user_id,owner_party_id,closure_reason,created_at,updated_at")
       .eq("project_id", projectId)
       .order("due_at", { ascending: true, nullsFirst: false })
       .limit(50),
@@ -458,7 +491,7 @@ export async function loadProjectDay(
   const compatibleActionResult = schemaColumnMissing(actionResult.error, "location_node_id")
     ? await client
         .from("actions")
-        .select("id,action_number,title,description,due_at,priority,status,building_id,owner_party_id,closure_reason,created_at,updated_at")
+        .select("id,action_number,title,description,due_at,priority,status,building_id,owner_user_id,owner_party_id,closure_reason,created_at,updated_at")
         .eq("project_id", projectId)
         .order("due_at", { ascending: true, nullsFirst: false })
         .limit(50)
@@ -939,25 +972,28 @@ export async function createProjectAction(
     buildingId: string;
     locationNodeId?: string;
     ownerPartyId: string;
+    ownerUserId: string;
     title: string;
     description: string;
     dueAt: string;
     priority: ProjectAction["priority"];
   },
 ) {
-  let result = await client.rpc("create_project_action", {
+  const idempotencyKey = `action:${crypto.randomUUID()}`;
+  const result = await client.rpc("create_project_action", {
     p_project_id: input.projectId,
     p_building_id: input.buildingId,
     p_owner_party_id: input.ownerPartyId,
+    p_owner_user_id: input.ownerUserId,
     p_title: input.title,
     p_description: input.description,
     p_due_at: surinameLocalDateTimeToIso(input.dueAt),
     p_priority: input.priority,
-    p_idempotency_key: `action:${crypto.randomUUID()}`,
+    p_idempotency_key: idempotencyKey,
     p_location_node_id: input.locationNodeId || null,
   });
   if (rpcSignatureMissing(result.error, "create_project_action")) {
-    result = await client.rpc("create_project_action", {
+    const compatible = await client.rpc("create_project_action", {
       p_project_id: input.projectId,
       p_building_id: input.buildingId,
       p_owner_party_id: input.ownerPartyId,
@@ -965,8 +1001,56 @@ export async function createProjectAction(
       p_description: input.description,
       p_due_at: surinameLocalDateTimeToIso(input.dueAt),
       p_priority: input.priority,
-      p_idempotency_key: `action:${crypto.randomUUID()}`,
+      p_idempotency_key: idempotencyKey,
     });
+    fail(compatible.error);
+    const action = compatible.data as ProjectAction & { organization_id?: string; project_id?: string };
+    const assigned = await client.from("actions").update({ owner_user_id: input.ownerUserId }).eq("id", action.id).select("*").single();
+    fail(assigned.error);
+    if (action.organization_id && action.project_id) {
+      const user = await currentUser(client);
+      const history = await client.from("action_updates").insert({
+        organization_id: action.organization_id,
+        project_id: action.project_id,
+        action_id: action.id,
+        update_type: "comment",
+        message: "Actie toegewezen aan bedrijfsmedewerker.",
+        created_by: user.id,
+      });
+      fail(history.error);
+    }
+    return assigned.data as ProjectAction;
+  }
+  fail(result.error);
+  return result.data as ProjectAction;
+}
+
+export async function assignProjectAction(
+  client: SupabaseClient,
+  input: { actionId: string; ownerUserId: string; note: string },
+) {
+  const result = await client.rpc("assign_project_action", {
+    p_action_id: input.actionId,
+    p_owner_user_id: input.ownerUserId,
+    p_note: input.note,
+  });
+  if (rpcSignatureMissing(result.error, "assign_project_action")) {
+    const existing = await client.from("actions").select("id,organization_id,project_id").eq("id", input.actionId).single();
+    fail(existing.error);
+    if (!existing.data) throw new Error("De projecttaak bestaat niet meer.");
+    const assigned = await client.from("actions").update({ owner_user_id: input.ownerUserId }).eq("id", input.actionId).select("*").single();
+    fail(assigned.error);
+    const user = await currentUser(client);
+    const history = await client.from("action_updates").insert({
+      organization_id: existing.data.organization_id,
+      project_id: existing.data.project_id,
+      action_id: input.actionId,
+      update_type: "comment",
+      message: input.note,
+      created_by: user.id,
+    });
+    fail(history.error);
+    return assigned.data as ProjectAction;
   }
   fail(result.error);
   return result.data as ProjectAction;

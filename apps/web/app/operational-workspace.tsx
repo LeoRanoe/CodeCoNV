@@ -15,6 +15,7 @@ import {
   Download,
   FileCheck2,
   FileText,
+  FolderOpen,
   HardDrive,
   KeyRound,
   Link2,
@@ -64,8 +65,8 @@ import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOff
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import type { FormalReportSnapshot } from "@/lib/reports/daily-report-pdf";
 import type { PeriodReportSection } from "@/lib/reports/period-report-pdf";
-import type { ProjectParty } from "@/lib/supabase/data";
-import { isStorageGatewayConfigured, uploadProjectFile } from "@/lib/storage/gateway";
+import { assignProjectAction, type InternalMember, type ProjectParty } from "@/lib/supabase/data";
+import { isStorageGatewayConfigured, openProjectFile, uploadProjectFile } from "@/lib/storage/gateway";
 import {
   buildPeriodReportSnapshot,
   createChecklist,
@@ -252,6 +253,7 @@ export function OperationalWorkspace({
   reportStatus,
   projectStartAnswers,
   currentUserName,
+  companyEmployees,
   parties,
   canManageOrganization,
   openUserAdmin,
@@ -284,6 +286,7 @@ export function OperationalWorkspace({
   reportStatus: string;
   projectStartAnswers: ProjectStartAnswers | null;
   currentUserName: string;
+  companyEmployees: InternalMember[];
   parties: ProjectParty[];
   canManageOrganization: boolean;
   openUserAdmin: () => void;
@@ -298,7 +301,7 @@ export function OperationalWorkspace({
   openRapidVerify: () => void;
   openReports: () => void;
   openManagement: () => void;
-  projectActions?: Array<{ id: string; title: string; action_number: string; status: string; priority: string; due_at: string | null }>;
+  projectActions?: Array<{ id: string; title: string; action_number: string; status: string; priority: string; due_at: string | null; owner_user_id?: string | null }>;
   openProjectAction?: (actionId: string) => void;
   createProjectAction?: () => void;
 }) {
@@ -427,6 +430,8 @@ export function OperationalWorkspace({
           buildingId={buildingId}
           buildingName={buildingName}
           buildings={buildings}
+          companyEmployees={companyEmployees}
+          projectActions={projectActions}
           parties={parties}
           canManageOrganization={canManageOrganization}
           openUserAdmin={openUserAdmin}
@@ -1605,7 +1610,7 @@ function ProjectOperations({
 
       {tab === "visual" ? <VisualEvidenceWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} parties={parties} client={client} busy={busy} run={run} initialFindingId={visualFindingId} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} /> : null}
 
-      {tab === "documents" ? <ProjectDocumentsHome data={data} openDrawings={() => switchTab("drawings")} openFiles={() => switchTab("files")} openRegisters={() => switchTab("registers")} createDocument={() => openTask("registers", true)} /> : null}
+      {tab === "documents" ? <ProjectDocumentsHome data={data} client={client} openDrawings={() => switchTab("drawings")} openFiles={() => switchTab("files")} openRegisters={() => switchTab("registers")} createDocument={() => openTask("registers", true)} /> : null}
 
       {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} client={client} busy={busy} run={run} onOpenLinkedRecord={(recordType) => switchTab(recordType === "observation" ? "findings" : recordType === "inspection" ? "inspections" : recordType === "visual" ? "visual" : "registers")} /> : null}
 
@@ -1705,6 +1710,7 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
 }) {
   const { locale, text } = useLanguage();
   const [active, setActive] = useState<string | null>(null);
+  const [historyActive, setHistoryActive] = useState<string | null>(null);
   const [response, setResponse] = useState({
     decision: "approved",
     comments: "",
@@ -1732,9 +1738,23 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
           const entryBuildingName = buildings.find((building) => building.id === entry.building_id)?.name ?? text("Project-wide", "Projectbreed");
           const entryLocation = locationBreadcrumb(locationNodes, entry.location_node_id);
           const responseData = details.response && typeof details.response === "object" && !Array.isArray(details.response) ? details.response as Record<string, unknown> : {};
+          const attachmentFiles = Array.isArray(details.attachment_files)
+            ? details.attachment_files.filter((file): file is Record<string, unknown> => Boolean(file) && typeof file === "object" && !Array.isArray(file))
+            : [];
           return <article className="controlled-document-card" key={entry.id}>
             <div className="controlled-document-card-main"><div><span className="record-number">{entry.entry_number} · {entry.register_type.replaceAll("_", " ").toUpperCase()}</span><h3>{entry.title}</h3><p>{String(details.description ?? "")}</p><small>{entryBuildingName}{entryLocation ? ` → ${entryLocation}` : ""} · {formatDate(entry.occurred_at, locale)}{entry.due_at ? ` · ${text("due", "uiterlijk")} ${formatDate(entry.due_at, locale)}` : ""}{responseData.decision ? ` · ${String(responseData.decision).replaceAll("_", " ")}` : ""}</small></div><span className={`task-status ${entry.status === "approved" || entry.status === "closed" ? "green" : entry.status === "rejected" ? "red" : ""}`}>{entry.status.replaceAll("_", " ")}</span></div>
-            <div className="finding-actions"><ReportDownloadButtons disabled={busy} onDownloadPdf={() => import("@/lib/reports/controlled-document-pdf").then(({ downloadControlledDocumentPdf }) => downloadControlledDocumentPdf(entry))} onDownloadWord={() => import("@/lib/reports/controlled-document-docx").then(({ downloadControlledDocumentDocx }) => downloadControlledDocumentDocx(entry))} />{!["closed", "cancelled"].includes(entry.status) ? <button className="primary-button" type="button" disabled={busy} onClick={() => { setActive(active === entry.id ? null : entry.id); setResponse({ decision: entry.register_type === "technical_instruction" || entry.register_type === "change_order" ? "acknowledged" : "approved", comments: "", respondentName: currentUserName, respondentPosition: "", respondentCompany: "CODECO N.V." }); }}><FileCheck2 size={15} /> {text("Record formal response", "Leg formeel antwoord vast")}</button> : null}</div>
+            <div className="finding-actions"><button className="secondary-button" type="button" onClick={() => setHistoryActive((current) => current === entry.id ? null : entry.id)}><Archive size={15} /> {historyActive === entry.id ? text("Close record", "Sluit dossier") : text("Open record & history", "Open dossier & historie")}</button><ReportDownloadButtons disabled={busy} onDownloadPdf={() => import("@/lib/reports/controlled-document-pdf").then(({ downloadControlledDocumentPdf }) => downloadControlledDocumentPdf(entry))} onDownloadWord={() => import("@/lib/reports/controlled-document-docx").then(({ downloadControlledDocumentDocx }) => downloadControlledDocumentDocx(entry))} />{!["closed", "cancelled"].includes(entry.status) ? <button className="primary-button" type="button" disabled={busy} onClick={() => { setActive(active === entry.id ? null : entry.id); setResponse({ decision: entry.register_type === "technical_instruction" || entry.register_type === "change_order" ? "acknowledged" : "approved", comments: "", respondentName: currentUserName, respondentPosition: "", respondentCompany: "CODECO N.V." }); }}><FileCheck2 size={15} /> {text("Record formal response", "Leg formeel antwoord vast")}</button> : null}</div>
+            {historyActive === entry.id ? <section className="controlled-document-history">
+              <div><span>{text("Created / issued", "Aangemaakt / uitgegeven")}</span><strong>{formatDate(entry.occurred_at, locale)}</strong><small>{String(details.issuer_name ?? details.issued_by ?? currentUserName)} · {String(details.issuer_company ?? "CODECO N.V.")}</small></div>
+              <div><span>{text("Current status", "Huidige status")}</span><strong>{entry.status.replaceAll("_", " ")}</strong><small>{responseData.decision ? `${text("Decision", "Besluit")}: ${String(responseData.decision).replaceAll("_", " ")}` : text("No formal decision recorded yet", "Nog geen formeel besluit vastgelegd")}</small></div>
+              <div className="controlled-history-description"><span>{text("Complete content", "Volledige inhoud")}</span><p>{String(details.description ?? details.request ?? details.instruction ?? text("No description supplied.", "Geen omschrijving ingevoerd."))}</p></div>
+              {attachmentFiles.length ? <div className="controlled-history-attachments"><span>{text("Uploaded attachments", "Geüploade bijlagen")}</span>{attachmentFiles.map((file, index) => {
+                const fileId = String(file.file_id ?? "");
+                const filename = String(file.name ?? `${text("Attachment", "Bijlage")} ${index + 1}`);
+                return <button className="secondary-button" type="button" disabled={busy || !fileId} onClick={() => void run(() => openProjectFile(client, fileId, filename), text(`${filename} opened.`, `${filename} geopend.`))} key={`${fileId}:${index}`}><FolderOpen size={15} /> {filename}</button>;
+              })}</div> : <div className="controlled-history-attachments empty"><span>{text("Uploaded attachments", "Geüploade bijlagen")}</span><small>{text("No uploaded attachment is linked to this record.", "Aan dit dossier is geen geüploade bijlage gekoppeld.")}</small></div>}
+              {Object.keys(responseData).length ? <div className="controlled-history-response"><span>{text("Latest formal response", "Laatste formele reactie")}</span><strong>{String(responseData.respondent_name ?? responseData.respondentName ?? text("Recorded reviewer", "Vastgelegde reviewer"))}</strong><p>{String(responseData.comments ?? responseData.comment ?? "")}</p><small>{String(responseData.respondent_company ?? responseData.respondentCompany ?? "")}</small></div> : null}
+            </section> : null}
             {active === entry.id ? <div className="inline-transition controlled-response-form">
               <div className="form-grid-2"><label className="form-field"><span>{text("Decision / response code", "Besluit / antwoordcode")}</span><select value={response.decision} onChange={(event) => setResponse({ ...response, decision: event.target.value })}>{decisions.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label className="form-field"><span>{text("Respondent name", "Naam respondent")}</span><input value={response.respondentName} onChange={(event) => setResponse({ ...response, respondentName: event.target.value })} /></label></div>
               <div className="form-grid-2"><label className="form-field"><span>{text("Position", "Functie")}</span><input value={response.respondentPosition} onChange={(event) => setResponse({ ...response, respondentPosition: event.target.value })} /></label><label className="form-field"><span>{text("Company", "Bedrijf")}</span><input value={response.respondentCompany} onChange={(event) => setResponse({ ...response, respondentCompany: event.target.value })} /></label></div>
@@ -2154,7 +2174,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
   );
 }
 
-function AdminOperations({ data, client, organizationId, projectId, projectName, reportStatus, buildingId, buildingName, buildings, parties, canManageOrganization, openUserAdmin, openProjectArea, openActionCenter, createProjectAction, busy, run }: { data: OperationSnapshot; client: SupabaseClient; organizationId: string; projectId: string; projectName: string; reportStatus: string; buildingId: string; buildingName: string; buildings: BuildingOption[]; parties: ProjectParty[]; canManageOrganization: boolean; openUserAdmin: () => void; openProjectArea: (tab: "inspections" | "findings" | "registers" | "visual") => void; openActionCenter: () => void; createProjectAction: () => void; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean> }) {
+function AdminOperations({ data, client, organizationId, projectId, projectName, reportStatus, buildingId, buildingName, buildings, companyEmployees, projectActions, parties, canManageOrganization, openUserAdmin, openProjectArea, openActionCenter, createProjectAction, busy, run }: { data: OperationSnapshot; client: SupabaseClient; organizationId: string; projectId: string; projectName: string; reportStatus: string; buildingId: string; buildingName: string; buildings: BuildingOption[]; companyEmployees: InternalMember[]; projectActions: Array<{ id: string; title: string; action_number: string; status: string; priority: string; due_at: string | null; owner_user_id?: string | null }>; parties: ProjectParty[]; canManageOrganization: boolean; openUserAdmin: () => void; openProjectArea: (tab: "inspections" | "findings" | "registers" | "visual") => void; openActionCenter: () => void; createProjectAction: () => void; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean> }) {
   const { text } = useLanguage();
   const [section, setSection] = useState<"overview" | "settings" | "structure" | "templates" | "backup">("overview");
   const [template, setTemplate] = useState({ module: "inspection", code: "", name: "", prompts: "" });
@@ -2185,6 +2205,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
   const [location, setLocation] = useState({ type: "zone", code: "", name: "", parentId: "", description: "" });
   const [party, setParty] = useState({ type: "contractor", code: "", name: "" });
   const [libraryCategory, setLibraryCategory] = useState("all");
+  const [assignmentDrafts, setAssignmentDrafts] = useState<Record<string, string>>({});
   const fileInput = useRef<HTMLInputElement>(null);
   const latestScheduledBackup = data.backupRuns.find((item) => item.run_type === "scheduled" && item.status === "verified");
   const latestRestoreTest = data.backupRuns.find((item) => item.run_type === "restore_test" && item.status === "dry_run_passed");
@@ -2192,6 +2213,12 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
   const criticalFindings = openFindings.filter((item) => item.severity === "critical" || item.severity === "high");
   const activeInspections = data.inspections.filter((item) => item.status === "planned" || item.status === "in_progress" || item.status === "failed");
   const externalSubmissions = data.registerEntries.filter((entry) => ["rfi", "rfa", "inspection_request", "wcr"].includes(entry.register_type));
+  const assignableActions = projectActions.filter((action) => !["verified", "cancelled"].includes(action.status));
+  const employeeName = (userId: string | null | undefined) => {
+    if (!userId) return text("Not assigned", "Niet toegewezen");
+    const employee = companyEmployees.find((item) => item.userId === userId);
+    return employee?.displayName?.trim() || employee?.email || text("Unknown employee", "Onbekende medewerker");
+  };
   const addTemplate = () => {
     const prompts = template.prompts.split("\n").map((value) => value.trim()).filter(Boolean);
     if (template.code.trim().length < 2 || template.name.trim().length < 3 || prompts.length === 0) return;
@@ -2219,6 +2246,35 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
             <span><Link2 size={17} /><strong>{text("Without account", "Zonder account")}</strong><small>{text("Use a revocable external evidence link; no general project access is granted.", "Gebruik een intrekbare externe bewijslink; er wordt geen algemene projecttoegang gegeven.")}</small></span>
             <span><Archive size={17} /><strong>{externalSubmissions.length} {text("submissions", "indieningen")}</strong><small>{externalSubmissions.filter((entry) => !["approved", "closed", "cancelled"].includes(entry.status)).length} {text("require a decision", "vragen een besluit")}</small></span>
           </div>
+          <section className="company-task-assignment">
+            <header>
+              <div><span className="record-number">{text("Company employees", "Eigen medewerkers")}</span><h3>{text("Assign and redistribute project tasks", "Projecttaken toewijzen en herverdelen")}</h3><p>{text("Only active company employees are selectable. Every assignment is recorded in the immutable action history.", "Alleen actieve medewerkers van het bedrijf zijn selecteerbaar. Iedere toewijzing wordt vastgelegd in de onveranderbare actiehistorie.")}</p></div>
+              <button className="secondary-button" type="button" onClick={openUserAdmin}><Users size={15} /> {text("Manage employees", "Medewerkers beheren")}</button>
+            </header>
+            {companyEmployees.length ? (
+              <>
+                <div className="employee-workload-strip">
+                  {companyEmployees.map((employee) => {
+                    const openCount = assignableActions.filter((action) => action.owner_user_id === employee.userId).length;
+                    const projectRole = employee.projectRoles.find((role) => role.projectId === projectId);
+                    return <span key={employee.userId}><strong>{employee.displayName?.trim() || employee.email}</strong><small>{projectRole?.roleName || employee.organizationRoles[0]?.name || text("Company employee", "Bedrijfsmedewerker")} · {openCount} {text("open", "open")}</small></span>;
+                  })}
+                </div>
+                <div className="company-action-assignment-list">
+                  {assignableActions.map((action) => {
+                    const selectedUserId = assignmentDrafts[action.id] ?? action.owner_user_id ?? "";
+                    const changed = Boolean(selectedUserId) && selectedUserId !== action.owner_user_id;
+                    return <article key={action.id}>
+                      <div><span className={`priority-dot ${action.priority}`} /><span><strong>{action.title}</strong><small>{action.action_number} · {action.status.replaceAll("_", " ")} · {text("Current", "Huidig")}: {employeeName(action.owner_user_id)}</small></span></div>
+                      <label className="form-field"><span>{text("Responsible employee", "Verantwoordelijke medewerker")}</span><select value={selectedUserId} onChange={(event) => setAssignmentDrafts((current) => ({ ...current, [action.id]: event.target.value }))}><option value="">{text("Choose an employee", "Kies een medewerker")}</option>{companyEmployees.map((employee) => <option value={employee.userId} key={employee.userId}>{employee.displayName?.trim() || employee.email}</option>)}</select></label>
+                      <button className="primary-button" type="button" disabled={busy || !changed} onClick={() => void run(() => assignProjectAction(client, { actionId: action.id, ownerUserId: selectedUserId, note: "Assigned or reassigned by Management." }), text("Task assigned to the selected company employee; the history was updated.", "Taak aan de gekozen eigen medewerker toegewezen; de historie is bijgewerkt.")).then((okay) => { if (okay) setAssignmentDrafts((current) => { const next = { ...current }; delete next[action.id]; return next; }); })}>{text("Assign", "Toewijzen")}</button>
+                    </article>;
+                  })}
+                  {!assignableActions.length ? <div className="empty-list-state"><CheckCircle2 size={20} /><strong>{text("No open project tasks", "Geen open projecttaken")}</strong><span>{text("Create a follow-up task when a submission or finding requires an employee.", "Maak een opvolgtaak wanneer een indiening of bevinding een medewerker vereist.")}</span></div> : null}
+                </div>
+              </>
+            ) : <div className="operation-alert warning"><Users size={18} /><div><strong>{text("No assignable company employees", "Geen toewijsbare eigen medewerkers")}</strong><span>{text("Add an active employee with an organization role or supervisor/project manager role first.", "Voeg eerst een actieve medewerker met een organisatierol of supervisor/projectmanagerrol toe.")}</span></div></div>}
+          </section>
           <ControlledDocumentList entries={externalSubmissions} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={text("Company / owner reviewer", "Reviewer bedrijf / eigenaar")} client={client} run={run} />
         </section>
         <div className="management-context"><div><span>{text("Current report", "Huidig rapport")}</span><strong>{reportStatus.replaceAll("_", " ")}</strong></div><div><span>{text("Project locations", "Projectlocaties")}</span><strong>{data.locationNodes.length}</strong></div><div><span>{text("Published checklists", "Gepubliceerde checklists")}</span><strong>{data.templates.filter((item) => item.status === "published").length}</strong></div><div><span>{text("Controlled files", "Beheerde bestanden")}</span><strong>{data.files.length}</strong></div></div>
