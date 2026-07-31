@@ -1012,3 +1012,25 @@ test("processes the second batch of annotated screens from 31 July", async () =>
   assert.match(workspace, /recordType: "register_entry"/);
   assert.match(queue, /"registration" \| "register_entry"/);
 });
+
+test("lets a new deployment reach an installed field app", async () => {
+  const [serviceWorker, providers] = await Promise.all([
+    readFile(new URL("../public/sw.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/providers.tsx", import.meta.url), "utf8"),
+  ]);
+
+  // Documents are never served from the cache first; that is what kept a deployed
+  // change invisible on a phone that had the app installed.
+  assert.match(serviceWorker, /const CACHE = "codeco-field-shell-v2"/);
+  assert.match(serviceWorker, /const isDocument = request\.mode === "navigate"/);
+  assert.match(serviceWorker, /_rsc/);
+  assert.doesNotMatch(serviceWorker, /SHELL = \["\/supervisie"/);
+  assert.match(serviceWorker, /codeco-activate-update/);
+
+  // The page keeps sw.js out of the HTTP cache, activates a waiting worker and reloads
+  // once when that worker takes control.
+  assert.match(providers, /updateViaCache: "none"/);
+  assert.match(providers, /registration\.update\(\)/);
+  assert.match(providers, /controllerchange/);
+  assert.match(providers, /hadController/);
+});
