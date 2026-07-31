@@ -3460,15 +3460,11 @@ textarea:focus-visible {
   padding-right: 34px;
 }
 
-.building-picker-compact {
-  display: grid;
-  gap: 6px;
-}
-
-.building-picker-compact > span {
-  color: var(--ink-700);
-  font-size: 10px;
-  font-weight: 700;
+/* Building selection is a plain dropdown and must never stick to the viewport. */
+.building-picker-field {
+  position: static;
+  top: auto;
+  z-index: auto;
 }
 
 .form-field.full {
@@ -4022,8 +4018,8 @@ textarea:focus-visible {
   padding-top: 17px;
 }
 
-.project-start-form > .building-picker-compact,
-.daily-questions-body > .building-picker-compact {
+.project-start-form > .building-picker-field,
+.daily-questions-body > .building-picker-field {
   margin-bottom: 18px;
 }
 
@@ -4234,10 +4230,36 @@ textarea:focus-visible {
     padding: 0 18px;
   }
 
+  /* Mobile header carries the project name, live weather, sync state and alerts.
+     Language and settings live in the bottom-nav "More" screen, so repeating them
+     here only crowded the bar and truncated the project name to "F.. 2". */
   .breadcrumb span:first-child,
-  .breadcrumb svg:nth-of-type(1),
-  .storage-state span {
+  .breadcrumb svg,
+  .breadcrumb strong,
+  .storage-state span,
+  .topbar .language-switcher,
+  .topbar .management-button {
     display: none;
+  }
+
+  .breadcrumb {
+    min-width: 0;
+    padding-left: 0;
+  }
+
+  .breadcrumb span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .top-actions {
+    flex-shrink: 0;
+    gap: 7px;
+  }
+
+  .storage-state {
+    padding: 8px;
   }
 
   .main-content {
@@ -7941,6 +7963,65 @@ textarea:focus-visible {
 .daily-work-progress-track { background: var(--ink-100); border-radius: 999px; display: block; flex: 1; height: 6px; overflow: hidden; }
 .daily-work-progress-track i { background: var(--green); border-radius: 999px; display: block; height: 100%; }
 .daily-work-progress b { color: var(--green); font-size: 12px; font-weight: 700; min-width: 38px; text-align: right; }
+
+.management-header-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; }
+
+/* Daily log in the client's own report format: one block per report heading. */
+.modal.daily-log-modal { width: min(720px, 100%); }
+.daily-log-body { display: grid; gap: 16px; padding: 20px 26px 4px; }
+.daily-log-block {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 10px;
+  padding: 15px 16px;
+}
+.daily-log-block h3 {
+  align-items: center;
+  color: var(--ink-700);
+  display: flex;
+  font-size: 11px;
+  font-weight: 750;
+  gap: 7px;
+  letter-spacing: 0.04em;
+  margin: 0;
+  text-transform: uppercase;
+}
+.daily-log-block.weather { background: var(--blue-soft); border-color: #bcd9ef; }
+.daily-log-readout { align-items: baseline; display: flex; gap: 10px; margin: 0; }
+.daily-log-readout strong { color: var(--ink-900); font-size: 17px; }
+.daily-log-readout span { color: var(--muted); font-size: 12px; }
+.daily-log-missing { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; }
+.daily-log-missing span { color: var(--ink-700); font-size: 12px; max-width: 46ch; }
+
+.daily-log-extra { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 13px 16px; }
+.daily-log-extra summary { cursor: pointer; display: flex; font-size: 12.5px; font-weight: 650; gap: 10px; justify-content: space-between; }
+.daily-log-extra summary span { color: var(--muted); font-weight: 500; }
+.daily-log-workforce { display: grid; gap: 9px; margin: 13px 0; }
+.daily-log-workforce > div { align-items: center; display: flex; gap: 12px; justify-content: space-between; }
+.daily-log-workforce span { display: grid; }
+.daily-log-workforce small { color: var(--muted); font-size: 11px; }
+.daily-log-counter { align-items: center; display: flex; gap: 10px; }
+.daily-log-counter button {
+  background: var(--ink-50);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 17px;
+  line-height: 1;
+  min-height: 40px;
+  min-width: 40px;
+}
+.daily-log-counter button:hover { border-color: var(--green); color: var(--green); }
+.daily-log-counter b { min-width: 26px; text-align: center; }
+.daily-log-footer { flex-wrap: wrap; margin: 0; padding: 18px 26px 22px; }
+
+@media (max-width: 760px) {
+  .daily-log-body { padding: 16px 16px 4px; }
+  .daily-log-footer { padding: 16px; }
+  .daily-log-footer .button-row { width: 100%; }
+  .daily-log-footer .button-row button { flex: 1; }
+}
 
 .external-submission-notice { align-items: center; }
 .external-submission-notice button { margin-left: auto; white-space: nowrap; }

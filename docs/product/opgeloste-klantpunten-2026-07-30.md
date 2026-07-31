@@ -4,7 +4,7 @@ Uitgangspunt: `docs/product/klantfeedback-verificatie-2026-07-30.md`.
 Dit document beschrijft wat er daadwerkelijk is gewijzigd.
 
 Gecontroleerd: `npx tsc --noEmit` schoon · `npx eslint app lib` schoon ·
-`next build` slaagt · 24/24 knipseltests groen (2 nieuwe regressietests toegevoegd).
+`next build` slaagt · 25/25 knipseltests groen (3 nieuwe regressietests toegevoegd) · 0 lint-waarschuwingen.
 
 ---
 
@@ -137,6 +137,49 @@ Tijdens de flowcontrole bleek de projectrol `client` (de eigenaar/opdrachtgever)
   `files.read`, `audit.read`. Geen enkel schrijf-, verificatie- of beheerrecht erbij.
   De rol-trigger voor nieuwe organisaties is meegewijzigd.
 
+## 11. Daglog — nu het eigen dagformaat van de klant
+
+De klant wist zelf niet wat er precies mis was. Ik heb het uit hun **eigen weekrapport**
+gehaald (`WEEKLY REPORT 16-12-'24 tot 20-12-'24.docx`, TELESUR CSC). Elke dag in dat
+document bestaat uit exact deze blokken:
+
+```
+WEATHER CONDITIONS  ·  08:00-17:00
+CONSTRUCTION IN PROGRESS -> CONSTRUCTION ACTIVITY & LOCATION
+QC PERFORMED & ADVISE
+HEALTH & SAFETY ISSUES
+GENERAL ADVICE TO THE CONTRACTOR
+```
+
+**Wat er mis was:** de knop met het label **"Daglog"** opende een *bezettingsteller*
+(plus/min per discipline). Dat is workforce, niet de daglog. Het echte dagformaat zat
+verstopt in een vierstaps vragenlijst van 19 rapportsecties.
+
+**Wat er nu is** (`app/daily-log-modal.tsx`, nieuw):
+- Een scherm met precies de blokken hierboven, in dezelfde volgorde.
+- Weer en werktijden worden **getoond** uit Projectstart (al automatisch gevuld met het
+  live weer); ontbreekt de startcontrole, dan staat er een knop om die te bevestigen.
+- Aanklikbare standaardkeuzes per blok en dicteren op elk tekstveld.
+- Werk afgerond + voortgangsschuif, vertraging met urenverlies, planning morgen.
+- Bezetting en foto's blijven beschikbaar, maar als **uitklapbaar onderdeel** in plaats
+  van de hele daglog.
+- Opslaan schrijft de echte `day_closeouts`-registratie, dus dagrapport, periode-PDF en
+  de module Dagwerk tonen daarna dezelfde feiten. Voorheen werd het een losse notitie.
+- Ontbrekende verplichte velden worden vooraf benoemd in plaats van bij het opslaan te falen.
+
+De oude `OneTapDailyLogModal` en twee bijbehorende hulpcomponenten zijn verwijderd.
+
+## 12. Mobiele header en gebouwkeuze
+
+- **Header was te vol.** Op de telefoon stonden breadcrumb, weer, taal, synchronisatie,
+  instellingen en meldingen naast elkaar; de projectnaam werd afgekapt tot `F.. 2`.
+  De header toont nu **projectnaam - weer - synchronisatie - meldingen**. Taal en
+  instellingen zaten al in de onderbalk onder *Meer*; de taalkeuze is daar expliciet
+  toegevoegd aan de Managementkop zodat hij op mobiel vindbaar blijft.
+- **Gebouwkeuze is nu altijd een dropdown.** De variant met een knoppenrij groeide mee
+  met elk gebouw en duwde de rest van het formulier weg. De dropdown is bovendien
+  expliciet `position: static`, hij plakt nergens aan de bovenkant.
+
 ---
 
 ## Wat nog open staat
@@ -146,7 +189,7 @@ Tijdens de flowcontrole bleek de projectrol `client` (de eigenaar/opdrachtgever)
 | **Deployen** | De klant kijkt nog naar een build van vóór 12:36. Zonder deploy verandert er voor hem niets. |
 | **Migraties uitvoeren** | 202607300004, 05 en 06 zijn **niet lokaal uitgevoerd**: Docker draait niet op deze machine. De SQL is met de hand nagelopen tegen het bestaande schema, maar moet nog tegen een echte database aan. |
 | **E2E-suite** | Slaat over zonder `CODECO_E2E_EMAIL` / `CODECO_E2E_PASSWORD`; in deze sessie dus niet gedraaid. |
-| **"Daglog klopt niet"** | Bewust niet geraden. Er zijn drie ingangen (snel daglog, dagvragen, dagwerktegels) die naar verschillende tabellen schrijven. Vraag de klant om één concreet voorbeeld: welk veld, welke datum, welke waarde is fout. |
+| **"Daglog klopt niet"** | Opgelost, zie punt 11: herbouwd naar het dagformaat uit het eigen weekrapport van de klant. |
 | **Rapid Verify** | Blijft trefwoordzoeken op PDF/tekst zonder OCR. Semantische analyse staat als prompt in `externe-ai-promptlijst.md`. |
 
 ## Aanbevolen acceptatievolgorde

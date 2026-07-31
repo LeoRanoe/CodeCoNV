@@ -20,7 +20,7 @@ import {
   TimerReset,
   Wrench,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 import { useLiveProjectWeather } from "@/lib/weather-client";
 

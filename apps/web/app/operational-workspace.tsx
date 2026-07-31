@@ -61,7 +61,7 @@ import {
 } from "@/lib/forms/controlled-project-documents";
 import { externalShareUrl } from "@/lib/external-share/token.mjs";
 import type { ProjectStartAnswers } from "@/lib/forms/daily-report";
-import { useLanguage } from "@/lib/i18n";
+import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 import { cacheProjectSnapshot, getCachedProjectSnapshot } from "@/lib/offline/project-cache";
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload } from "@/lib/offline/upload-queue";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
@@ -272,7 +272,6 @@ export function OperationalWorkspace({
   initialCameraFiles = [],
   onInitialCameraFilesConsumed,
   openQuickCamera,
-  openQuickRegister,
   openDailyRecord,
   openProjectArea,
   openActionCenter,
@@ -307,7 +306,6 @@ export function OperationalWorkspace({
   initialCameraFiles?: File[];
   onInitialCameraFilesConsumed?: () => void;
   openQuickCamera: () => void;
-  openQuickRegister: () => void;
   openDailyRecord: (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => void;
   openProjectArea: (tab: "inspections" | "findings" | "documents" | "registers" | "visual" | "drawings" | "files" | "submissions") => void;
   openActionCenter: () => void;
@@ -399,7 +397,6 @@ export function OperationalWorkspace({
           initialCameraFiles={initialCameraFiles}
           onInitialCameraFilesConsumed={onInitialCameraFilesConsumed}
           openQuickCamera={openQuickCamera}
-          openQuickRegister={openQuickRegister}
           openDailyRecord={openDailyRecord}
           openActionCenter={openActionCenter}
           openRapidVerify={openRapidVerify}
@@ -412,7 +409,6 @@ export function OperationalWorkspace({
           data={query.data}
           actions={projectActions}
           projectName={projectName}
-          buildingName={buildingName}
           openAction={(actionId) => openProjectAction?.(actionId)}
           createAction={() => createProjectAction?.()}
           openProjectArea={(tab) => openProjectArea(tab)}
@@ -480,7 +476,6 @@ function ProjectOperations({
   initialCameraFiles,
   onInitialCameraFilesConsumed,
   openQuickCamera,
-  openQuickRegister,
   openDailyRecord,
   openActionCenter,
   openRapidVerify,
@@ -507,7 +502,6 @@ function ProjectOperations({
   initialCameraFiles: File[];
   onInitialCameraFilesConsumed?: () => void;
   openQuickCamera: () => void;
-  openQuickRegister: () => void;
   openDailyRecord: (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => void;
   openActionCenter: () => void;
   openRapidVerify: () => void;
@@ -2309,7 +2303,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
   };
   return (
     <>
-      <header className="secondary-header"><div><p className="eyebrow">{text("Management workspace", "Managementwerkruimte")} · {projectName}</p><h1>{section === "overview" ? text("Management overview", "Managementoverzicht") : text("Administration and control", "Beheer en controle")}</h1><p>{text("Decisions, access, project standards and continuity in one place.", "Besluiten, toegang, projectstandaarden en continuïteit op één plek.")}</p></div>{canManageOrganization ? <button className="primary-button" type="button" onClick={openUserAdmin}><Users size={15} /> {text("Manage team", "Team beheren")}</button> : null}</header>
+      <header className="secondary-header"><div><p className="eyebrow">{text("Management workspace", "Managementwerkruimte")} · {projectName}</p><h1>{section === "overview" ? text("Management overview", "Managementoverzicht") : text("Administration and control", "Beheer en controle")}</h1><p>{text("Decisions, access, project standards and continuity in one place.", "Besluiten, toegang, projectstandaarden en continuïteit op één plek.")}</p></div><div className="management-header-actions">{/* The top bar drops the language switch on phones, so it lives here. */}<LanguageSwitcher />{canManageOrganization ? <button className="primary-button" type="button" onClick={openUserAdmin}><Users size={15} /> {text("Manage team", "Team beheren")}</button> : null}</div></header>
       <div className="operation-tabs admin-tabs">{[["overview", text("Overview", "Overzicht")], ["settings", text("Team & rules", "Team & regels")], ["structure", text("Project setup", "Projectinrichting")], ["templates", text("Quality standards", "Kwaliteitsstandaarden")], ["backup", text("Backup & continuity", "Back-up & continuïteit")]].map(([id, label]) => <button className={section === id ? "active" : ""} type="button" onClick={() => setSection(id as typeof section)} key={id}>{label}</button>)}</div>
       {section === "overview" ? <section className="management-overview">
         <div className="management-kpis">

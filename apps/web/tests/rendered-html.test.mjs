@@ -571,8 +571,9 @@ test("tracks product-plan and CODECO compliance explicitly", async () => {
 });
 
 test("implements the customer video workflows without external accounts", async () => {
-  const [app, operations, offlineQueue, storageGateway, storageUploadRoute, media, sharePage, shareActions, responseRoute, uploadRoute, migration] = await Promise.all([
+  const [app, dailyLog, operations, offlineQueue, storageGateway, storageUploadRoute, media, sharePage, shareActions, responseRoute, uploadRoute, migration] = await Promise.all([
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/offline/upload-queue.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/storage/gateway.ts", import.meta.url), "utf8"),
@@ -585,9 +586,14 @@ test("implements the customer video workflows without external accounts", async 
     readFile(new URL("../../../supabase/migrations/202607230001_customer_demo_workflows.sql", import.meta.url), "utf8"),
   ]);
 
-  assert.match(app, /OneTapDailyLogModal/);
-  assert.match(app, /changeCount\(row\.id, 1\)/);
-  assert.match(app, /Dictate notes|Notities dicteren/);
+  // The one-tap workforce counter was replaced by the client's own daily log format.
+  assert.match(app, /DailyLogModal/);
+  assert.match(dailyLog, /Construction activity & location|Bouwactiviteit & locatie/);
+  assert.match(dailyLog, /QC performed & advice|QC uitgevoerd & advies/);
+  assert.match(dailyLog, /Health & safety issues|Gezondheid & veiligheid/);
+  assert.match(dailyLog, /General advice to the contractor|Algemeen advies aan de aannemer/);
+  assert.match(dailyLog, /daily-log-counter/);
+  assert.match(dailyLog, /DictateButton/);
   assert.match(operations, /Issue management|Issuebeheer/);
   assert.match(operations, /findingGroup/);
   assert.match(offlineQueue, /createFinding/);
@@ -858,4 +864,34 @@ test("makes photo linkage, punch-list marker colours and report topics real", as
   assert.match(periodDocx, /topics\.has\("materials_delivery"\)/);
   assert.match(periodDocx, /topics\.has\("delays"\)/);
   assert.match(operationalWorkspace, /topics: activeTopics/);
+});
+
+test("uses the client's own daily log format, a building dropdown and a calm mobile header", async () => {
+  const [dailyLog, app, picker, styles] = await Promise.all([
+    readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/building-picker.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // The daily log mirrors the day blocks of the client's own weekly report and writes
+  // the real closeout, so reports and the Daily work module show the same facts.
+  assert.match(dailyLog, /Weather conditions|Weersomstandigheden/);
+  assert.match(dailyLog, /Construction activity & location|Bouwactiviteit & locatie/);
+  assert.match(dailyLog, /QC performed & advice|QC uitgevoerd & advies/);
+  assert.match(dailyLog, /Health & safety issues|Gezondheid & veiligheid/);
+  assert.match(dailyLog, /General advice to the contractor|Algemeen advies aan de aannemer/);
+  assert.match(dailyLog, /workOngoing: log\.constructionActivity/);
+  assert.match(dailyLog, /communication: log\.adviceToContractor/);
+  assert.match(app, /saveDailyCloseout\(supabase, \{/);
+  assert.doesNotMatch(app, /OneTapDailyLogModal/);
+
+  // Buildings are always a dropdown, never a growing row of buttons, and never sticky.
+  assert.match(picker, /<select id=\{id\}/);
+  assert.doesNotMatch(picker, /building-picker-compact/);
+  assert.match(styles, /\.building-picker-field \{[\s\S]*?position: static/);
+
+  // The phone header keeps project, weather, sync and alerts; language and settings
+  // live in the bottom-nav "More" screen instead of crowding the bar.
+  assert.match(styles, /\.topbar \.language-switcher,\s*\n\s*\.topbar \.management-button \{\s*\n\s*display: none/);
 });

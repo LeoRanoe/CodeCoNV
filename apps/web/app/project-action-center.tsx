@@ -57,7 +57,6 @@ export function ProjectActionCenter({
   data,
   actions,
   projectName,
-  buildingName,
   openAction,
   createAction,
   openProjectArea,
@@ -65,7 +64,6 @@ export function ProjectActionCenter({
   data: OperationSnapshot;
   actions: ProjectActionItem[];
   projectName: string;
-  buildingName: string;
   openAction: (actionId: string) => void;
   createAction: () => void;
   openProjectArea: (tab: "findings" | "registers" | "drawings") => void;

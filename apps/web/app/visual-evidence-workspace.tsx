@@ -342,6 +342,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           <div className="operation-form-heading"><div><span className="record-number">{text("New visual evidence", "Nieuw visueel bewijs")}</span><h2>{captureForm.type === "panorama" ? text("Upload 360° camera image", "Upload 360°-camerabeeld") : text("Photo ready to save", "Foto klaar om op te slaan")}</h2></div><span className="experimental-badge">{captureForm.type === "panorama" ? text("360° camera source", "360°-camerabron") : text("Point & shoot", "Richten & klaar")}</span></div>
           {captureForm.type === "photo" && filePreviewUrl ? (
             <div className="visual-photo-preview">
+              {/* A local blob URL cannot pass through the Next image optimizer. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={filePreviewUrl} alt={text("Captured photo preview", "Voorbeeld van gemaakte foto")} />
             </div>
           ) : null}

@@ -53,6 +53,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { ClientDashboard } from "@/app/client-dashboard";
+import { DailyLogModal } from "@/app/daily-log-modal";
 import { LiveWeatherChip } from "@/app/live-weather-chip";
 import { LocationPicker, locationBreadcrumb, type ProjectLocationOption } from "@/app/location-picker";
 import { FieldGuide } from "@/app/field-guide";
@@ -1427,7 +1428,6 @@ export function CodecoSupervisionApp() {
               initialCameraFiles={pendingQuickPhotos}
               onInitialCameraFilesConsumed={() => setPendingQuickPhotos([])}
               openQuickCamera={openQuickAdd}
-              openQuickRegister={() => setModal("quick")}
               openDailyRecord={openWorkspaceDailyRecord}
               projectActions={dayActions}
               openProjectAction={(actionId) => {
@@ -1788,44 +1788,48 @@ export function CodecoSupervisionApp() {
         />
       ) : null}
       {modal === "one_tap_log" && selectedProject && selectedBuilding ? (
-        <OneTapDailyLogModal
-          initialRows={attendance}
-          disciplines={configuredDisciplines}
-          defaultShiftStart={configuredShiftStart}
-          defaultShiftEnd={configuredShiftEnd}
+        <DailyLogModal
           buildings={selectedProject.buildings}
           defaultBuildingId={selectedBuilding.id}
-          day={dayQuery.data}
           buildingName={buildingName}
           projectStartAnswers={projectStartAnswers}
+          initialCloseout={dailyCloseoutAnswers}
+          attendanceRows={attendance}
+          disciplines={configuredDisciplines}
+          parties={dayQuery.data?.parties ?? []}
+          busy={syncState === "saving"}
           close={() => setModal(null)}
-          openDetailedLog={() => {
+          openProjectStart={() => {
+            setModal(null);
+            openProjectStartForAllBuildings();
+          }}
+          openFullQuestionnaire={() => {
             setModal(null);
             openBuildingCloseout(selectedBuilding);
           }}
-          save={async (notes, rows, logBuildingId, photos) => {
+          save={async ({ buildingId: logBuildingId, answers, attendance: rows, photos }) => {
             const saved = await runSynced(async () => {
               const report = dayQuery.data?.report ?? await createOrGetReport(supabase, selectedProject.id, reportDate);
-              await saveAttendance(supabase, {
+              // The day log is the client's own daily record, so it writes the real
+              // closeout instead of a loose note. Reports and Daily work stay in sync.
+              await saveDailyCloseout(supabase, {
                 report,
                 projectId: selectedProject.id,
                 buildingId: logBuildingId,
-                rows: rows.map((row) => ({
-                  partyId: row.partyId,
-                  discipline: row.discipline,
-                  count: row.count,
-                  shiftStart: row.shiftStart,
-                  shiftEnd: row.shiftEnd,
-                })),
+                answers,
               });
-              if (notes.trim()) {
-                await saveSiteRegistration(supabase, {
+              if (rows.length) {
+                await saveAttendance(supabase, {
+                  report,
                   projectId: selectedProject.id,
                   buildingId: logBuildingId,
-                  type: "note",
-                  title: text("One-tap daily log", "Snel daglog"),
-                  description: notes.trim(),
-                  priority: "normal",
+                  rows: rows.map((row) => ({
+                    partyId: row.partyId,
+                    discipline: row.discipline,
+                    count: row.count,
+                    shiftStart: row.shiftStart,
+                    shiftEnd: row.shiftEnd,
+                  })),
                 });
               }
               if (photos.length) {
@@ -1866,8 +1870,12 @@ export function CodecoSupervisionApp() {
                 }
               }
               return true;
-            }, text("Daily log saved: context, headcount, notes and photos are linked automatically.", "Daglog opgeslagen: context, bezetting, notities en foto’s zijn automatisch gekoppeld."));
+            }, text("Daily log saved and linked to today's report.", "Daglog opgeslagen en aan het dagrapport van vandaag gekoppeld."));
             if (!saved) return;
+            if (logBuildingId === selectedBuilding.id) {
+              setDailyCloseoutAnswers(answers);
+              setCompletedTodos((current) => Array.from(new Set([...current, 2, 3])));
+            }
             setModal(null);
             await queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] });
           }}
@@ -3707,205 +3715,6 @@ function AttendanceModal({
       </section>
     </div>
   );
-}
-
-function OneTapDailyLogModal({
-  initialRows,
-  disciplines,
-  defaultShiftStart,
-  defaultShiftEnd,
-  buildings,
-  defaultBuildingId,
-  day,
-  buildingName,
-  projectStartAnswers,
-  close,
-  openDetailedLog,
-  save,
-}: {
-  initialRows: AttendanceRow[];
-  disciplines: string[];
-  defaultShiftStart: string;
-  defaultShiftEnd: string;
-  buildings: BuildingOption[];
-  defaultBuildingId: string;
-  day: Pick<ProjectDaySnapshot, "attendance" | "parties"> | undefined;
-  buildingName: string;
-  projectStartAnswers: ProjectStartAnswers | null;
-  close: () => void;
-  openDetailedLog: () => void;
-  save: (notes: string, rows: AttendanceRow[], buildingId: string, photos: File[]) => void | Promise<void>;
-}) {
-  const { text } = useLanguage();
-  const [notes, setNotes] = useState("");
-  const [buildingId, setBuildingId] = useState(() => resolveDefaultBuildingId(buildings, defaultBuildingId));
-  const [rows, setRows] = useState(initialRows);
-  const [photos, setPhotos] = useState<File[]>([]);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const addPhotos = (files: FileList | null) => {
-    const captured = Array.from(files ?? []).filter((file) => file.type.startsWith("image/"));
-    if (captured.length) setPhotos((current) => [...current, ...captured]);
-  };
-  const [workforcePartyId, setWorkforcePartyId] = useState(() => initialRows[0]?.partyId ?? day?.parties[0]?.id ?? "");
-  const [workforceDiscipline, setWorkforceDiscipline] = useState(() => disciplines[0] ?? "");
-  const total = rows.reduce((sum, row) => sum + row.count, 0);
-  const chosenBuildingName = buildings.find((building) => building.id === buildingId)?.name ?? buildingName;
-
-  const switchBuilding = (nextBuildingId: string) => {
-    setBuildingId(nextBuildingId);
-    if (nextBuildingId === defaultBuildingId) {
-      setRows(initialRows);
-      return;
-    }
-    setRows(day ? attendanceRowsForBuilding(day, nextBuildingId, text("Unknown party", "Onbekende partij"), defaultShiftStart, defaultShiftEnd) : initialRows);
-  };
-
-  const changeCount = (id: string, delta: number) => {
-    setRows((current) => current.map((row) => row.id === id ? { ...row, count: Math.max(0, row.count + delta) } : row));
-  };
-  const addTradeCount = (discipline: string) => {
-    const party = day?.parties.find((item) => item.id === workforcePartyId);
-    if (!party) return;
-    setRows((current) => {
-      const existing = current.find((row) => row.partyId === party.id && row.discipline === discipline);
-      if (existing) return current.map((row) => row.id === existing.id ? { ...row, count: row.count + 1 } : row);
-      return [...current, {
-        id: `new:${party.id}:${discipline}`,
-        partyId: party.id,
-        party: party.name,
-        discipline,
-        count: 1,
-        shiftStart: defaultShiftStart,
-        shiftEnd: defaultShiftEnd,
-      }];
-    });
-  };
-  const noteOptions = [
-    text("Work is proceeding according to plan.", "Werk verloopt volgens planning."),
-    text("All scheduled inspections passed.", "Alle geplande inspecties zijn akkoord."),
-    text("A delivery was received and checked.", "Een levering is ontvangen en gecontroleerd."),
-    text("Work is delayed and requires follow-up.", "Werk loopt vertraging op en vraagt opvolging."),
-    text("A safety point was recorded separately.", "Een veiligheidspunt is apart geregistreerd."),
-  ];
-  const weather = projectStartAnswers
-    ? `${projectStartAnswers.temperatureC}°C · ${({
-      sunny: text("Sunny", "Zonnig"),
-      partly_cloudy: text("Partly cloudy", "Licht bewolkt"),
-      cloudy: text("Cloudy", "Bewolkt"),
-      rain: text("Rain", "Regen"),
-      heavy_rain: text("Heavy rain", "Zware regen"),
-    })[projectStartAnswers.weatherCondition]}`
-    : text("Start the workday to load weather", "Start de werkdag om het weer te laden");
-
-  const toggleOption = (option: string) => {
-    setNotes((current) => current.includes(option)
-      ? current.replace(option, "").replace(/\s{2,}/g, " ").trim()
-      : `${current}${current ? " " : ""}${option}`);
-  };
-
-  return (
-    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
-      <section className="modal report-modal one-tap-log-modal" role="dialog" aria-modal="true" aria-labelledby="one-tap-log-title">
-        <header className="modal-header">
-          <div><span className="record-number">{text("Daily log", "Daglog")}</span><h2 id="one-tap-log-title">{text("Record the workforce quickly or complete the full client log", "Registreer snel de workforce of vul het volledige klantdaglog in")}</h2></div>
-          <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
-        </header>
-        <div className="modal-body one-tap-log-body">
-          <div className="daily-log-mode-switch" role="group" aria-label={text("Daily log mode", "Daglogmodus")}>
-            <button className="active" type="button" aria-pressed="true"><Users size={17} /><span><strong>{text("Quick entry", "Snelle registratie")}</strong><small>{text("Workforce and short site notes", "Workforce en korte bouwplaatsnotities")}</small></span></button>
-            <button type="button" onClick={openDetailedLog}><ClipboardCheck size={17} /><span><strong>{text("Complete client log", "Volledig klantdaglog")}</strong><small>{text("All requested daily report sections", "Alle gevraagde dagrapportonderdelen")}</small></span></button>
-          </div>
-
-          <details className="client-daily-log-coverage">
-            <summary>{text("What does the complete client log contain?", "Wat bevat het volledige klantdaglog?")}</summary>
-            <div>
-              <span><Wrench size={15} /><strong>{text("Work & progress", "Werk & voortgang")}</strong><small>{text("Performed work, ongoing work, percentage and tomorrow", "Uitgevoerd werk, lopend werk, percentage en morgen")}</small></span>
-              <span><ClipboardCheck size={15} /><strong>{text("Quality", "Kwaliteit")}</strong><small>{text("Inspections, issues, NCR and tests", "Inspecties, issues, NCR en testen")}</small></span>
-              <span><ShieldCheck size={15} /><strong>HSE</strong><small>{text("Safety events, risks and measures", "Veiligheidsgebeurtenissen, risico’s en maatregelen")}</small></span>
-              <span><PackageCheck size={15} /><strong>{text("Site logistics", "Bouwplaatslogistiek")}</strong><small>{text("Deliveries, equipment and delays", "Leveringen, materieel en vertragingen")}</small></span>
-              <span><FileText size={15} /><strong>{text("Instructions & decisions", "Instructies & besluiten")}</strong><small>{text("TI, CO, agreements and communication", "TI, CO, afspraken en communicatie")}</small></span>
-              <span><Camera size={15} /><strong>{text("Evidence", "Bewijs")}</strong><small>{text("Photos, attachments and automatic date/time", "Foto’s, bijlagen en automatische datum/tijd")}</small></span>
-            </div>
-            <button className="secondary-button" type="button" onClick={openDetailedLog}><ClipboardCheck size={15} /> {text("Open complete client log", "Open volledig klantdaglog")}</button>
-          </details>
-
-          <div className="one-tap-context">
-            <span><MapPin size={17} /><small>{text("Location", "Locatie")}</small><strong>{chosenBuildingName}</strong></span>
-            <span><CloudSun size={17} /><small>{text("Weather", "Weer")}</small><strong>{weather}</strong></span>
-            <span><Users size={17} /><small>{text("Headcount", "Bezetting")}</small><strong>{total}</strong></span>
-          </div>
-          <BuildingPicker id="one-tap-building" buildings={buildings} value={buildingId} onChange={switchBuilding} />
-          <section className="one-tap-workforce" aria-labelledby="one-tap-workforce-title">
-            <header><span><Users size={17} /></span><div><h3 id="one-tap-workforce-title">{text("Workforce by trade", "Workforce / bezetting per vak")}</h3><p>{text("Choose the actual construction trade and adjust today's headcount.", "Kies het werkelijke bouwvak en pas het aantal aanwezigen van vandaag aan.")}</p></div><strong>{total}</strong></header>
-            {rows.length ? (
-              <>
-                <div className="one-tap-workforce-add">
-                  <label><span>{text("Party", "Partij")}</span><select value={workforcePartyId} onChange={(event) => setWorkforcePartyId(event.target.value)}>{day?.parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
-                  <label><span>{text("Trade", "Bouwvak")}</span><select value={workforceDiscipline} onChange={(event) => setWorkforceDiscipline(event.target.value)}>{disciplines.map((discipline) => <option value={discipline} key={discipline}>{discipline}</option>)}</select></label>
-                  <button className="secondary-button one-tap-trade-add" type="button" disabled={!workforcePartyId || !workforceDiscipline} onClick={() => addTradeCount(workforceDiscipline)}><Plus size={14} /> {text("Add person", "Persoon toevoegen")}</button>
-                </div>
-                <div className="attendance-list compact">
-                  {rows.map((row) => (
-                    <div className="attendance-row" key={row.id}>
-                      <span className="attendance-party">
-                        <strong>{row.discipline}</strong>
-                        <small>{row.party} · {row.shiftStart}–{row.shiftEnd}</small>
-                      </span>
-                      <span className="counter-control">
-                        <button type="button" onClick={() => changeCount(row.id, -1)} aria-label={text(`One fewer ${row.discipline}`, `Eén ${row.discipline} minder`)}><Minus size={14} /></button>
-                        <strong>{row.count}</strong>
-                        <button type="button" onClick={() => changeCount(row.id, 1)} aria-label={text(`One more ${row.discipline}`, `Eén ${row.discipline} meer`)}><Plus size={14} /></button>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div className="empty-list-state"><Users size={22} /><strong>{text("No project parties configured", "Nog geen projectpartijen ingericht")}</strong><span>{text("An administrator must add the contractor and subcontractors under Management → Structure and parties before workforce can be recorded.", "Een beheerder moet eerst de aannemer en onderaannemers toevoegen via Management → Structuur en partijen voordat workforce kan worden geregistreerd.")}</span></div>
-            )}
-          </section>
-          <div className="one-tap-photos">
-            <div><span className="record-number">{text("Evidence", "Bewijs")}</span><h3>{text("Add today's photos", "Voeg foto’s van vandaag toe")}</h3></div>
-            <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotos(event.currentTarget.files); event.currentTarget.value = ""; }} />
-            <button className="secondary-button" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={16} /> {photos.length ? text(`${photos.length} photo(s) added`, `${photos.length} foto('s) toegevoegd`) : text("Take photo", "Foto maken")}</button>
-            {photos.length ? <OneTapPhotoStack files={photos} onRemove={(index) => setPhotos((current) => current.filter((_, currentIndex) => currentIndex !== index))} /> : null}
-          </div>
-          <div className="one-tap-note">
-            <div><span className="record-number">{text("Short site notes", "Korte bouwplaatsnotities")}</span><h3>{text("Choose what applies today", "Kies wat vandaag van toepassing is")}</h3></div>
-            <div className="quick-issue-presets">
-              {noteOptions.map((option) => <button className={notes.includes(option) ? "active" : ""} type="button" onClick={() => toggleOption(option)} key={option}>{option}</button>)}
-            </div>
-            <label className="form-field"><span>{text("Notes · optional", "Notities · optioneel")}</span><textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder={text("Choose an option above or dictate.", "Kies hierboven een optie of dicteer.")} /><DictateButton label={text("Dictate notes", "Notities dicteren")} onText={(transcript) => setNotes((current) => appendDictation(current, transcript))} /></label>
-          </div>
-          <div className="modal-actions">
-            <span className="form-note"><CheckCircle2 size={13} /> {text("Project, building, date and report are linked automatically.", "Project, gebouw, datum en rapport worden automatisch gekoppeld.")}</span>
-            <button className="primary-button" type="button" onClick={() => void save(notes, rows, buildingId, photos)}><Check size={15} /> {text("Save daily log", "Daglog opslaan")}</button>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function OneTapPhotoStack({ files, onRemove }: { files: File[]; onRemove: (index: number) => void }) {
-  const { text } = useLanguage();
-  return (
-    <div className="finding-photo-stack" aria-label={text("Photos added to this daily log", "Foto’s bij dit daglog")}>
-      {files.map((file, index) => (
-        <article key={`${file.name}:${file.size}:${file.lastModified}`}>
-          <OneTapPhotoPreview file={file} />
-          <span><strong>{index + 1}</strong><small>{file.name}</small></span>
-          <button type="button" onClick={() => onRemove(index)} aria-label={text(`Remove photo ${index + 1}`, `Verwijder foto ${index + 1}`)}><X size={14} /></button>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function OneTapPhotoPreview({ file }: { file: File }) {
-  const [source] = useState(() => URL.createObjectURL(file));
-  useEffect(() => () => URL.revokeObjectURL(source), [source]);
-  return <NextImage src={source} alt="" width={160} height={110} unoptimized />;
 }
 
 function DailyQuestionsModal({

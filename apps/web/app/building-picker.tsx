@@ -33,28 +33,8 @@ export function BuildingPicker({
   const fieldLabel = label ?? text("Building", "Gebouw");
   const options = allowAll ? [{ id: ALL_BUILDINGS, name: text("All buildings", "Alle gebouwen") }, ...buildings] : buildings;
 
-  // Few enough options to pick with one tap; a full dropdown just adds an extra step and takes more room.
-  if (options.length <= 5) {
-    return (
-      <div className="building-picker-compact">
-        <span>{fieldLabel}</span>
-        <div className="quick-issue-presets">
-          {options.map((option) => (
-            <button
-              className={option.id === value ? "active" : ""}
-              type="button"
-              disabled={disabled}
-              onClick={() => onChange(option.id)}
-              key={option.id}
-            >
-              {option.name}
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
+  // Always a dropdown: a row of buttons grows with every building and pushed the
+  // rest of the form off screen on a phone. It must never stick to the viewport.
   return (
     <label className="form-field building-picker-field" htmlFor={id}>
       <span>{fieldLabel}</span>
