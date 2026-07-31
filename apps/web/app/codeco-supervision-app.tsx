@@ -31,6 +31,7 @@ import {
   MessageSquareText,
   Minus,
   PackageCheck,
+  PenLine,
   Plus,
   RefreshCw,
   Ruler,
@@ -52,6 +53,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { ALL_BUILDINGS, BuildingMultiPicker, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
+import { SketchPad } from "@/app/sketch-pad";
 import { ClientDashboard } from "@/app/client-dashboard";
 import { DailyLogModal } from "@/app/daily-log-modal";
 import { LiveWeatherChip } from "@/app/live-weather-chip";
@@ -532,6 +534,8 @@ export function CodecoSupervisionApp() {
   const [description, setDescription] = useState("");
   // A proposed description must vanish on the first keystroke instead of staying behind.
   const [descriptionSuggested, setDescriptionSuggested] = useState(false);
+  // Same answer, readable from a speech-recognition callback that captured an older render.
+  const descriptionSuggestedRef = useRef(false);
   const [location, setLocation] = useState("");
   const [priority, setPriority] = useState("normal");
   const [entryBuildingIds, setEntryBuildingIds] = useState<string[]>([]);
@@ -539,6 +543,8 @@ export function CodecoSupervisionApp() {
   const [entryDrawingId, setEntryDrawingId] = useState("");
   const [entryWorkPackage, setEntryWorkPackage] = useState(workPackageOptions[0].en);
   const [entryPhotos, setEntryPhotos] = useState<File[]>([]);
+  // Set while the supervisor is on the drawing screen with a field record still open.
+  const [entryDraftParked, setEntryDraftParked] = useState(false);
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
   const [completedTodos, setCompletedTodos] = useState<number[]>([]);
@@ -972,6 +978,20 @@ export function CodecoSupervisionApp() {
   const writeDescription = (value: string, suggested = false) => {
     setDescription(value);
     setDescriptionSuggested(suggested && value.length > 0);
+    descriptionSuggestedRef.current = suggested && value.length > 0;
+  };
+
+  /**
+   * Speech recognition keeps calling back with the handler it captured when dictation
+   * started, so the decision cannot depend on values from that render. The ref answers
+   * "is the text still only a proposal?" at the moment each sentence arrives: the first
+   * sentence replaces the proposal, every following one is added to it.
+   */
+  const dictateDescription = (transcript: string) => {
+    const replacing = descriptionSuggestedRef.current;
+    descriptionSuggestedRef.current = false;
+    setDescriptionSuggested(false);
+    setDescription((current) => appendDictation(replacing ? "" : current, transcript));
   };
 
   const openQuickAdd = () => {
@@ -989,6 +1009,7 @@ export function CodecoSupervisionApp() {
     setEntryDrawingId("");
     setEntryWorkPackage(workPackageOptions[0].en);
     setEntryPhotos([]);
+    setEntryDraftParked(false);
   };
 
   const receiveQuickCameraPhoto = async (files: FileList | null) => {
@@ -1088,6 +1109,7 @@ export function CodecoSupervisionApp() {
       });
     }
     setEntryPhotos([]);
+    setEntryDraftParked(false);
     setModal(null);
     await queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] });
   };
@@ -1731,6 +1753,7 @@ export function CodecoSupervisionApp() {
           priority={priority}
           workPackage={entryWorkPackage}
           setDescription={writeDescription}
+          dictateDescription={dictateDescription}
           setWorkPackage={setEntryWorkPackage}
           setLocation={setLocation}
           setPriority={setPriority}
@@ -1742,6 +1765,7 @@ export function CodecoSupervisionApp() {
             const captured = Array.from(files ?? []).filter((file) => file.type.startsWith("image/"));
             if (captured.length) setEntryPhotos((current) => [...current, ...captured]);
           }}
+          addSketch={(file) => setEntryPhotos((current) => [...current, file])}
           removePhoto={(index) => setEntryPhotos((current) => current.filter((_, position) => position !== index))}
           projectName={projectName}
           buildingName={buildingName}
@@ -1756,6 +1780,7 @@ export function CodecoSupervisionApp() {
           setDrawingId={setEntryDrawingId}
           openDrawings={() => {
             setModal(null);
+            setEntryDraftParked(true);
             setInitialProjectTab("drawings");
             setActiveNav("project");
           }}
@@ -2124,6 +2149,15 @@ export function CodecoSupervisionApp() {
         />
       ) : null}
 
+      {/* Opening a drawing leaves the record behind. This bar is the way back to it, so
+          the half-filled record is never lost on the drawing screen. */}
+      {entryDraftParked && modal !== "entry" ? (
+        <div className="entry-resume-bar" role="status">
+          <span><strong>{text("Your field record is still open", "Je veldregistratie staat nog open")}</strong><small>{description.trim() || text("No description yet", "Nog geen omschrijving")}</small></span>
+          <button className="primary-button" type="button" onClick={() => { setEntryDraftParked(false); setModal("entry"); }}><ArrowLeft size={14} /> {text("Back to the record", "Terug naar de registratie")}</button>
+          <button className="entry-resume-dismiss" type="button" onClick={() => setEntryDraftParked(false)} aria-label={text("Discard this record", "Deze registratie laten vallen")}><X size={14} /></button>
+        </div>
+      ) : null}
       {toast ? <div className={`toast ${syncState === "error" ? "error" : ""}`} role={syncState === "error" ? "alert" : "status"} aria-live={syncState === "error" ? "assertive" : "polite"}>{syncState === "error" ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />} {toast}</div> : null}
     </div>
   );
@@ -3460,6 +3494,7 @@ function EntryModal({
   priority,
   workPackage,
   setDescription,
+  dictateDescription,
   setWorkPackage,
   setLocation,
   setPriority,
@@ -3468,6 +3503,7 @@ function EntryModal({
   save,
   photos,
   addPhotos,
+  addSketch,
   removePhoto,
   projectName,
   buildingName,
@@ -3491,6 +3527,7 @@ function EntryModal({
   priority: string;
   workPackage: string;
   setDescription: (value: string, suggested?: boolean) => void;
+  dictateDescription: (transcript: string) => void;
   setWorkPackage: (value: string) => void;
   setLocation: (value: string) => void;
   setPriority: (value: string) => void;
@@ -3499,6 +3536,7 @@ function EntryModal({
   save: () => void;
   photos: File[];
   addPhotos: (files: FileList | null) => void;
+  addSketch: (file: File) => void;
   removePhoto: (index: number) => void;
   projectName: string;
   buildingName: string;
@@ -3517,6 +3555,7 @@ function EntryModal({
 }) {
   const { language, locale, text } = useLanguage();
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [sketching, setSketching] = useState(false);
   const photoPreviews = useMemo(() => photos.map((photo) => URL.createObjectURL(photo)), [photos]);
   useEffect(() => () => photoPreviews.forEach((preview) => URL.revokeObjectURL(preview)), [photoPreviews]);
   const title = (language === "en" ? entryTitlesEnglish : entryTitles)[selectedType] ?? text("Record", "Registratie");
@@ -3557,7 +3596,10 @@ function EntryModal({
           <div className="form-grid">
             {descriptionChoices.length ? <div className="quick-issue-presets full" aria-label={text("Choose a standard description", "Kies een standaardomschrijving")}>{descriptionChoices.map((choice) => <button className={description.trim() === choice ? "active" : ""} type="button" onClick={() => setDescription(description.trim() === choice ? "" : choice)} key={choice}>{choice}</button>)}</div> : null}
             <div className="form-field full">
-              <label htmlFor="description">{text("Short description *", "Korte omschrijving *")}</label>
+              <div className="field-label-row">
+                <label htmlFor="description">{text("Short description *", "Korte omschrijving *")}</label>
+                {description ? <button className="field-clear-button" type="button" onClick={() => setDescription("")} aria-label={text("Clear the description", "Omschrijving wissen")}><X size={13} /> {text("Clear", "Wissen")}</button> : null}
+              </div>
               {/* A proposed text is a suggestion, never a leftover: typing replaces it in
                   one go and the clear button empties the field without selecting text. */}
               <textarea
@@ -3571,8 +3613,9 @@ function EntryModal({
                 onFocus={(event) => { if (descriptionSuggested) event.currentTarget.select(); }}
                 placeholder={text("Choose above, dictate, or type what happened.", "Kies hierboven, dicteer of typ wat er is gebeurd.")}
               />
-              {description ? <button className="field-clear-button" type="button" onClick={() => setDescription("")} aria-label={text("Clear the description", "Omschrijving wissen")}><X size={13} /> {text("Clear", "Wissen")}</button> : null}
-              <DictateButton onText={(transcript) => setDescription(appendDictation(descriptionSuggested ? "" : description, transcript))} />
+              {/* Dictation replaces the proposed text and then keeps adding to what was
+                  already said, instead of asking the supervisor to clean up by hand. */}
+              <DictateButton onText={dictateDescription} />
             </div>
             {buildings.length > 1
               ? <BuildingMultiPicker
@@ -3627,7 +3670,11 @@ function EntryModal({
               {/* The camera opens here. Sending the supervisor to the photo workspace lost
                   the half-filled record, which is what the client reported. */}
               <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple onChange={(event) => { addPhotos(event.target.files); event.target.value = ""; }} />
-              <button className="ghost-button" type="button" style={{ justifyContent: "center", minHeight: 50 }} onClick={() => cameraInputRef.current?.click()}><Camera size={16} /> {photos.length ? text(`Add another photo · ${photos.length} added`, `Nog een foto toevoegen · ${photos.length} toegevoegd`) : text("Take or choose a photo", "Maak of kies een foto")}</button>
+              <div className="evidence-button-row">
+                <button className="ghost-button" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={16} /> {photos.length ? text(`Add another photo · ${photos.length} added`, `Nog een foto toevoegen · ${photos.length} toegevoegd`) : text("Take or choose a photo", "Maak of kies een foto")}</button>
+                <button className="ghost-button" type="button" onClick={() => setSketching(true)}><PenLine size={16} /> {text("Make a sketch", "Schets maken")}</button>
+              </div>
+              {sketching ? <SketchPad close={() => setSketching(false)} save={(file) => { addSketch(file); setSketching(false); }} /> : null}
               {photos.length ? (
                 <div className="entry-photo-strip">
                   {photoPreviews.map((preview, index) => (

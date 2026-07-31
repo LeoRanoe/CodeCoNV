@@ -921,7 +921,9 @@ test("processes the five annotated field screens from 31 July", async () => {
   // the first keystroke, a record can cover several buildings, work packages are the
   // ones from the client's daily report, drawings are selectable as the exact location,
   // and the camera opens inside the record instead of on another page.
-  assert.match(i18n, /codeco-language"\) === "en" \? "en" : "nl"/);
+  // Only a language picked in the switcher counts; devices that never chose open in Dutch.
+  assert.match(i18n, /const chosenLanguageKey = "codeco-language-choice"/);
+  assert.match(i18n, /chosen === "en" \|\| chosen === "nl" \? chosen : "nl"/);
   assert.match(app, /descriptionSuggested/);
   assert.match(app, /if \(descriptionSuggested\) event\.currentTarget\.select\(\)/);
   assert.match(app, /field-clear-button/);
@@ -1082,4 +1084,42 @@ test("processes the third batch of annotated screens from 31 July", async () => 
   assert.match(styles, /\.check-field\.controlled-document-signature/);
   assert.match(workspace, /Send to contractor|Naar aannemer sturen/);
   assert.match(workspace, /const contractorMessage =/);
+});
+
+test("fixes what the client saw on the deployed build", async () => {
+  const [app, workspace, i18n, sketch, styles] = await Promise.all([
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/i18n.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/sketch-pad.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // Dictation replaces the proposed text once and then keeps adding to what was said.
+  // The decision is read from a ref because speech callbacks keep an older closure.
+  assert.match(app, /const dictateDescription = \(transcript: string\) => \{/);
+  assert.match(app, /descriptionSuggestedRef/);
+  assert.match(app, /setDescription\(\(current\) => appendDictation\(replacing \? "" : current, transcript\)\)/);
+  assert.match(app, /<DictateButton onText=\{dictateDescription\} \/>/);
+
+  // Clear sits in the label row, so it no longer stretches across the field and collides
+  // with the dictate button anchored to the bottom of that field.
+  assert.match(app, /field-label-row/);
+  assert.match(styles, /\.field-label-row \{[\s\S]*?display: flex/);
+  assert.match(styles, /\.field-clear-button \{[\s\S]*?justify-self: start/);
+
+  // Opening a drawing parks the record and offers the way back.
+  assert.match(app, /entryDraftParked/);
+  assert.match(app, /Back to the record|Terug naar de registratie/);
+  assert.match(styles, /\.entry-resume-bar/);
+
+  // A device that never picked a language opens in Dutch, also after using the app before.
+  assert.match(i18n, /codeco-language-choice/);
+
+  // Sketching by hand, saved as a photo along the existing evidence road.
+  assert.match(sketch, /export function SketchPad/);
+  assert.match(sketch, /image\/png/);
+  assert.match(app, /Make a sketch|Schets maken/);
+  assert.match(workspace, /Make a sketch|Schets maken/);
+  assert.match(styles, /\.sketch-canvas/);
 });

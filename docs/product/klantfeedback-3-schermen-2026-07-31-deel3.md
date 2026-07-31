@@ -128,3 +128,68 @@ controle versoepelt — dat is een aparte, te testen wijziging.
    controleren dat de regel rood is en hoeveelheid toont.
 4. Een technische instructie maken: alleen onderwerp, omschrijving, discipline, aan-wie,
    deadline; ondertekenen; opslaan; daarna *Naar aannemer sturen* en de PDF downloaden.
+
+---
+
+# Naronde op de deploy — 31 juli 2026
+
+De klant heeft de gedeployde build op zijn telefoon bekeken (IMG_7103 en IMG_7104). Drie
+dingen kwamen daaruit, plus twee punten die ik eerder had laten liggen.
+
+## Kapotte UI onder het omschrijvingsveld — mijn fout
+
+`.form-field` is een grid. De knop *Wissen* die ik onder het tekstvak plaatste rekte
+daardoor over de volle breedte uit, en de dicteerknop staat `position: absolute; bottom: 7px`
+in datzelfde veld — die kwam dus bovenop die balk te liggen, half buiten het scherm.
+*Wissen* staat nu in de labelregel naast *Korte omschrijving*, en kleine inline-knoppen
+krijgen `justify-self: start` zodat ze nooit meer als volle balk uitrekken.
+
+## Dicteren wist de voorgestelde tekst niet
+
+Echte bug, en de reden was subtiel: `SpeechRecognition.onresult` wordt één keer gezet en
+houdt de callback vast uit de render waarin het dicteren startte. Mijn controle "is dit nog
+een voorstel?" las daardoor steeds dezelfde oude waarde. Dat betekende bovendien dat een
+tweede gedicteerde zin de eerste overschreef.
+
+`dictateDescription()` leest die vraag nu uit een ref en werkt de tekst bij met een
+functionele update: de eerste zin vervangt het voorstel, elke volgende zin wordt eraan
+toegevoegd. Geen handwerk meer.
+
+## De tekening bracht je niet terug
+
+"Wanneer ik een tekening opmaakt breng het mij naar een ander scherm maar het brengt mij
+niet terug." De halfingevulde registratie bleef wel in het geheugen staan, maar er was geen
+weg terug. Er staat nu een balk onderaan het scherm — boven de onderbalk op mobiel — met de
+omschrijving en een knop **Terug naar de registratie**, plus een kruisje om de registratie
+te laten vallen.
+
+## Taal: apparaten die al Engels hadden
+
+De standaardtaal stond op Nederlands, maar op zijn telefoon bleef de app Engels. De reden:
+in dat toestel stond `codeco-language = en` uit de tijd dat Engels de standaard was —
+niemand had dat gekozen, het was wat de app deed. Alleen een taal die in de taalkeuze wordt
+aangeklikt geldt nu als keuze (`codeco-language-choice`); toestellen zonder die keuze openen
+in het Nederlands en houden daarna wat de supervisor kiest.
+
+## Schetsje maken — nu wel gebouwd
+
+`app/sketch-pad.tsx` (nieuw): wit vel, vier penkleuren, pendikte, ongedaan maken en wissen.
+De schets verlaat het blok als gewone PNG-foto, dus hij loopt over dezelfde weg als al het
+andere bewijs: gekoppeld aan de registratie of het registeritem en zichtbaar in *Foto's &
+mappen*. Beschikbaar bij de veldregistratie (naast *Maak of kies een foto*) en bij elk
+registeritem, dus ook bij de technische instructie.
+
+## "Waarom is dit scherm anders?" — eerste concrete stap
+
+Het issuescherm begon met vier statustellers en de reviewcyclus-kaart; de andere modules
+beginnen met het formulier. Die tellers staan nu **onder** het formulier. Elke module opent
+daarmee hetzelfde: kop → invoerformulier → overzicht en lijst.
+
+## Wat hierna nog open staat
+
+| Punt | Status |
+| --- | --- |
+| **Eén invoerpatroon voor alle modules** | Volgorde is nu overal gelijk (formulier eerst). De velden zelf verschillen nog per module omdat de klantformulieren verschillen; verder gelijktrekken is een ontwerpkeuze die ik niet in zijn plaats maak. |
+| **Verstuurde TI vastleggen** | De WhatsApp-knop opent het bericht; vastleggen dát er verstuurd is vraagt een migratie op `external_share_links.source_type`. |
+| **Getekende handtekening op het document zelf** | De ondertekening is nu naam + moment. Het schetsblok kan een krabbel maken, maar die hangt als foto aan het document, niet in de ondertekeningsregel. |
+| **Current Status letterlijk als in het Excel** | Nog te bevestigen met de klant. |

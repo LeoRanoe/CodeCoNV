@@ -23,6 +23,7 @@ import {
   MapPin,
   MessageCircle,
   PackageCheck,
+  PenLine,
   Plus,
   RotateCcw,
   Settings,
@@ -39,6 +40,7 @@ import NextImage from "next/image";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
+import { SketchPad } from "@/app/sketch-pad";
 import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { VisualEvidenceWorkspace } from "@/app/visual-evidence-workspace";
@@ -589,6 +591,7 @@ function ProjectOperations({
   const [registerPhotos, setRegisterPhotos] = useState<File[]>([]);
   const [registerPhotoCaptions, setRegisterPhotoCaptions] = useState<string[]>([]);
   const [registerPhotoError, setRegisterPhotoError] = useState("");
+  const [registerSketching, setRegisterSketching] = useState(false);
   const requiredLocationDepth = data.settings?.required_location_depth ?? "building";
   const exactLocationRequired = requiredLocationDepth !== "building";
   const registerContextLabel = registerBuildingId === ALL_BUILDINGS
@@ -1453,21 +1456,6 @@ function ProjectOperations({
 
       {tab === "findings" || tab === "ncr" ? (
         <section className="operation-panel">
-          <div className="punchlist-command">
-            <div className="punchlist-stages">
-              {[
-                [text("Open", "Open"), scopedFindings.filter((item) => ["draft", "open", "assigned"].includes(item.status)).length],
-                [text("In progress", "In uitvoering"), scopedFindings.filter((item) => ["in_progress", "reopened", "rejected"].includes(item.status)).length],
-                [text("Ready for verification", "Gereed voor verificatie"), scopedFindings.filter((item) => item.status === "ready_for_verification").length],
-                [text("Verified", "Geverifieerd"), scopedFindings.filter((item) => item.status === "closed").length],
-              ].map(([label, count], index) => <div className={index === 2 ? "attention" : index === 3 ? "complete" : ""} key={String(label)}><span>{index + 1}</span><strong>{count}</strong><small>{label}</small></div>)}
-            </div>
-            <div className="punchlist-cycle-card">
-              <span><RotateCcw size={19} /></span>
-              <div><strong>{text("Contractor-to-supervisor review cycle", "Reviewcyclus aannemer naar supervisor")}</strong><p>{text("The contractor marks work ready with evidence. A supervisor verifies, closes or reopens it with a reason. The history remains intact.", "De aannemer meldt werk gereed met bewijs. Een supervisor verifieert, sluit of heropent het met reden. De historie blijft intact.")}</p></div>
-              <div className="button-row"><button className="secondary-button" type="button" onClick={() => setTab("visual")}><Camera size={14} /> {text("Open normal photo", "Open normale foto")}</button><button className="secondary-button" type="button" onClick={() => setTab("visual")}><RotateCcw size={14} /> {text("Open 360° image", "Open 360°-beeld")}</button></div>
-            </div>
-          </div>
           {showForm ? (
             <div className="operation-form snap-assign-form">
               <div className="operation-form-heading"><div><span className="record-number">{findingScope === "ncr" ? text("Formal non-conformance", "Formele afwijking") : text("Issue management", "Issuebeheer")}</span><h2>{findingScope === "ncr" ? text("Create NCR", "NCR registreren") : text("Create issue", "Issue registreren")}</h2></div>{!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}</div>
@@ -1533,6 +1521,21 @@ function ProjectOperations({
               <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Probleem indienen")}</button>
             </div>
           ) : null}
+          <div className="punchlist-command">
+            <div className="punchlist-stages">
+              {[
+                [text("Open", "Open"), scopedFindings.filter((item) => ["draft", "open", "assigned"].includes(item.status)).length],
+                [text("In progress", "In uitvoering"), scopedFindings.filter((item) => ["in_progress", "reopened", "rejected"].includes(item.status)).length],
+                [text("Ready for verification", "Gereed voor verificatie"), scopedFindings.filter((item) => item.status === "ready_for_verification").length],
+                [text("Verified", "Geverifieerd"), scopedFindings.filter((item) => item.status === "closed").length],
+              ].map(([label, count], index) => <div className={index === 2 ? "attention" : index === 3 ? "complete" : ""} key={String(label)}><span>{index + 1}</span><strong>{count}</strong><small>{label}</small></div>)}
+            </div>
+            <div className="punchlist-cycle-card">
+              <span><RotateCcw size={19} /></span>
+              <div><strong>{text("Contractor-to-supervisor review cycle", "Reviewcyclus aannemer naar supervisor")}</strong><p>{text("The contractor marks work ready with evidence. A supervisor verifies, closes or reopens it with a reason. The history remains intact.", "De aannemer meldt werk gereed met bewijs. Een supervisor verifieert, sluit of heropent het met reden. De historie blijft intact.")}</p></div>
+              <div className="button-row"><button className="secondary-button" type="button" onClick={() => setTab("visual")}><Camera size={14} /> {text("Open normal photo", "Open normale foto")}</button><button className="secondary-button" type="button" onClick={() => setTab("visual")}><RotateCcw size={14} /> {text("Open 360° image", "Open 360°-beeld")}</button></div>
+            </div>
+          </div>
           <FindingList
             data={data}
             client={client}
@@ -1768,6 +1771,8 @@ function ProjectOperations({
                 <span><strong>{registerPhotos.length ? text(`${registerPhotos.length} photos ready`, `${registerPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{text("Tap again for another photo. Every image is linked to this register item.", "Tik opnieuw voor nog een foto. Elk beeld wordt aan dit registeritem gekoppeld.")}</small></span>
                 <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setRegisterPhotos, setRegisterPhotoError); event.currentTarget.value = ""; }} />
               </label>
+              <button className="ghost-button sketch-open-button" type="button" onClick={() => setRegisterSketching(true)}><PenLine size={15} /> {text("Make a sketch", "Schets maken")}</button>
+              {registerSketching ? <SketchPad close={() => setRegisterSketching(false)} save={(file) => { setRegisterPhotos((current) => [...current, file]); setRegisterSketching(false); }} /> : null}
               {registerPhotos.length ? <FindingPhotoStack
                 files={registerPhotos}
                 captions={registerPhotoCaptions}

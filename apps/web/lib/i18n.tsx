@@ -24,8 +24,16 @@ function subscribeLanguage(callback: () => void) {
 
 // CODECO works in Dutch on site. English stays available, but it is a deliberate
 // choice now instead of what everybody gets on a fresh device or after clearing data.
+//
+// Devices that used the app before Dutch became the default carry an "en" value that
+// nobody ever chose: it was simply what the app started in. Only a language picked in
+// the switcher counts as a choice, so those devices open in Dutch and stay in whatever
+// the supervisor picks afterwards.
+const chosenLanguageKey = "codeco-language-choice";
+
 function languageSnapshot(): AppLanguage {
-  return window.localStorage.getItem("codeco-language") === "en" ? "en" : "nl";
+  const chosen = window.localStorage.getItem(chosenLanguageKey);
+  return chosen === "en" || chosen === "nl" ? chosen : "nl";
 }
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
@@ -39,6 +47,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     language,
     locale: language === "en" ? "en-US" : "nl-NL",
     setLanguage: (nextLanguage) => {
+      window.localStorage.setItem(chosenLanguageKey, nextLanguage);
       window.localStorage.setItem("codeco-language", nextLanguage);
       window.dispatchEvent(new Event("codeco-language-change"));
     },
