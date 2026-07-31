@@ -50,7 +50,7 @@ import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
-import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { ALL_BUILDINGS, BuildingMultiPicker, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { ClientDashboard } from "@/app/client-dashboard";
 import { DailyLogModal } from "@/app/daily-log-modal";
@@ -179,6 +179,9 @@ type QuickType = {
 type ProjectContext = WorkspaceProject;
 type BuildingContext = WorkspaceBuilding;
 
+/** An uploaded project drawing, used to point a field record at the right plan. */
+type ProjectDrawingOption = { id: string; name: string; buildingId: string | null };
+
 const constructionWorkOptions = [
   { en: "Site preparation", nl: "Bouwplaatsinrichting" },
   { en: "Excavation and earthwork", nl: "Ontgraving en grondwerk" },
@@ -192,6 +195,37 @@ const constructionWorkOptions = [
   { en: "Plumbing installation", nl: "Sanitaire installatie" },
   { en: "Perform finishing work", nl: "Afwerking uitvoeren" },
   { en: "Testing and inspection", nl: "Testen en inspecteren" },
+];
+
+/**
+ * Work packages for a field record. Three options (structural work, installations,
+ * finishing) never matched a real site day, so the client asked for the packages that
+ * their own daily report distinguishes — from site setup to handover.
+ */
+const workPackageOptions = [
+  { en: "Site setup and temporary works", nl: "Bouwplaatsinrichting en tijdelijke voorzieningen" },
+  { en: "Survey and setting out", nl: "Uitzetwerk en metingen" },
+  { en: "Demolition and clearing", nl: "Sloop- en opruimwerk" },
+  { en: "Earthworks and excavation", nl: "Grondwerk en ontgraving" },
+  { en: "Piling and foundations", nl: "Heiwerk en fundering" },
+  { en: "Formwork and scaffolding", nl: "Bekisting en steigerwerk" },
+  { en: "Concrete and rebar", nl: "Beton en wapening" },
+  { en: "Masonry", nl: "Metselwerk" },
+  { en: "Steel structure", nl: "Staalconstructie" },
+  { en: "Roof structure and roofing", nl: "Dakconstructie en dakbedekking" },
+  { en: "Carpentry, doors and windows", nl: "Timmerwerk, deuren en ramen" },
+  { en: "Facade and cladding", nl: "Gevel en gevelbekleding" },
+  { en: "Electrical installation", nl: "Elektrotechnische installatie" },
+  { en: "Mechanical installation and HVAC", nl: "Mechanische installatie en HVAC" },
+  { en: "Plumbing and sanitary", nl: "Loodgieterswerk en sanitair" },
+  { en: "Drainage and sewerage", nl: "Riolering en afwatering" },
+  { en: "Plastering and screed", nl: "Stucwerk en vloerafwerking" },
+  { en: "Tiling", nl: "Tegelwerk" },
+  { en: "Painting and finishing", nl: "Schilderwerk en afwerking" },
+  { en: "Paving, roads and site works", nl: "Bestrating, wegen en terreinwerk" },
+  { en: "Landscaping", nl: "Terreininrichting en groen" },
+  { en: "Testing, commissioning and handover", nl: "Testen, inbedrijfstelling en oplevering" },
+  { en: "Other work package", nl: "Ander werkpakket" },
 ];
 
 type AttendanceRow = {
@@ -496,10 +530,15 @@ export function CodecoSupervisionApp() {
   const [pendingQuickPhotos, setPendingQuickPhotos] = useState<File[]>([]);
   const [externalSubmissionIntent, setExternalSubmissionIntent] = useState(false);
   const [description, setDescription] = useState("");
-  const [location, setLocation] = useState("Floor 3 · East zone");
+  // A proposed description must vanish on the first keystroke instead of staying behind.
+  const [descriptionSuggested, setDescriptionSuggested] = useState(false);
+  const [location, setLocation] = useState("");
   const [priority, setPriority] = useState("normal");
-  const [entryBuildingId, setEntryBuildingId] = useState<string>("");
+  const [entryBuildingIds, setEntryBuildingIds] = useState<string[]>([]);
   const [entryLocationNodeId, setEntryLocationNodeId] = useState("");
+  const [entryDrawingId, setEntryDrawingId] = useState("");
+  const [entryWorkPackage, setEntryWorkPackage] = useState(workPackageOptions[0].en);
+  const [entryPhotos, setEntryPhotos] = useState<File[]>([]);
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
   const [completedTodos, setCompletedTodos] = useState<number[]>([]);
@@ -662,6 +701,29 @@ export function CodecoSupervisionApp() {
         .order("sort_order");
       if (result.error) throw result.error;
       return result.data as ProjectLocationOption[];
+    },
+    enabled: Boolean(supabase && session && selectedProject),
+  });
+
+  /**
+   * The drawings of this project, so a record can name the plan it belongs to instead of
+   * only a floor or a room. Reading `files` directly keeps this cheap next to the full
+   * project snapshot the workspace loads.
+   */
+  const projectDrawingsQuery = useQuery({
+    queryKey: ["project-drawings", selectedProject?.id],
+    queryFn: async () => {
+      const result = await (supabase as SupabaseClient)
+        .from("files")
+        .select("id,building_id,original_name,created_at")
+        .eq("project_id", selectedProject!.id)
+        .eq("category", "drawing")
+        .eq("status", "available")
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (result.error) throw result.error;
+      return (result.data as Array<{ id: string; building_id: string | null; original_name: string }>)
+        .map((file) => ({ id: file.id, name: file.original_name, buildingId: file.building_id })) satisfies ProjectDrawingOption[];
     },
     enabled: Boolean(supabase && session && selectedProject),
   });
@@ -903,10 +965,30 @@ export function CodecoSupervisionApp() {
     }
   };
 
+  /**
+   * Every description change goes through here so the app knows whether the text was
+   * proposed (a preset or a quick action) or typed by the supervisor.
+   */
+  const writeDescription = (value: string, suggested = false) => {
+    setDescription(value);
+    setDescriptionSuggested(suggested && value.length > 0);
+  };
+
   const openQuickAdd = () => {
-    setDescription("");
+    writeDescription("");
     setLocation(selectedBuilding?.name ?? "");
     quickCameraInputRef.current?.click();
+  };
+
+  const prepareEntry = (type: string) => {
+    setSelectedType(type);
+    const defaultBuildingId = resolveDefaultBuildingId(selectedProject?.buildings ?? [], selectedBuilding?.id);
+    setEntryBuildingIds(defaultBuildingId ? [defaultBuildingId] : []);
+    setLocation(selectedProject?.buildings.find((building) => building.id === defaultBuildingId)?.name ?? "");
+    setEntryLocationNodeId("");
+    setEntryDrawingId("");
+    setEntryWorkPackage(workPackageOptions[0].en);
+    setEntryPhotos([]);
   };
 
   const receiveQuickCameraPhoto = async (files: FileList | null) => {
@@ -945,9 +1027,8 @@ export function CodecoSupervisionApp() {
       setModal(null);
       return;
     }
-    setSelectedType(type);
-    setEntryBuildingId(resolveDefaultBuildingId(selectedProject?.buildings ?? [], selectedBuilding?.id));
-    setEntryLocationNodeId("");
+    prepareEntry(type);
+    writeDescription("");
     setModal(type === "action" ? "action_create" : "entry");
   };
 
@@ -957,39 +1038,113 @@ export function CodecoSupervisionApp() {
       return;
     }
     const isDelay = type === "delay";
-    setSelectedType(isDelay ? "delay" : "activity");
-    setDescription(type === "works_ongoing"
+    prepareEntry(isDelay ? "delay" : "activity");
+    writeDescription(type === "works_ongoing"
       ? text("Work is ongoing", "Werkzaamheden zijn gaande")
       : type === "works_completed"
         ? text("Work completed", "Werkzaamheden afgerond")
-        : text("Delay recorded", "Vertraging geregistreerd"));
+        : text("Delay recorded", "Vertraging geregistreerd"), true);
     setLocation(selectedBuilding?.name ?? "");
-    setEntryBuildingId(resolveDefaultBuildingId(selectedProject?.buildings ?? [], selectedBuilding?.id));
-    setEntryLocationNodeId("");
     setModal("entry");
   };
 
   const saveEntry = async () => {
     if (!description.trim() || !supabase || !selectedProject || !selectedBuilding) return;
     const priorityMap: Record<string, string> = { low: "low", normal: "normal", high: "high", critical: "critical" };
-    const targetBuildings = entryBuildingId === ALL_BUILDINGS
-      ? selectedProject.buildings
-      : [selectedProject.buildings.find((building) => building.id === entryBuildingId) ?? selectedBuilding];
+    const targetBuildings = selectedProject.buildings.filter((building) => entryBuildingIds.includes(building.id));
+    if (!targetBuildings.length) targetBuildings.push(selectedBuilding);
+    const singleBuilding = targetBuildings.length === 1;
+    const workPackageLabel = workPackageOptions.find((option) => option.en === entryWorkPackage);
+    const workPackageNote = workPackageLabel && !["finding", "hse", "action"].includes(selectedType)
+      ? ` · ${text(workPackageLabel.en, workPackageLabel.nl)}`
+      : "";
     const saved = await runSynced(
       () => Promise.all(targetBuildings.map((entryBuilding) => saveSiteRegistration(supabase, {
         projectId: selectedProject.id,
         buildingId: entryBuilding.id,
-        locationNodeId: entryBuildingId === ALL_BUILDINGS ? "" : entryLocationNodeId,
+        locationNodeId: singleBuilding ? entryLocationNodeId : "",
         type: selectedType,
         title: description.trim(),
-        description: `${location} · ${description.trim()}`,
+        description: `${singleBuilding ? location || entryBuilding.name : entryBuilding.name} · ${description.trim()}${workPackageNote}`,
         priority: priorityMap[priority] ?? "normal",
       }))),
-      text(`${entryTitles[selectedType]} was saved centrally and linked to the daily report.`, `${entryTitles[selectedType]} is centraal opgeslagen en aan het dagrapport gekoppeld.`),
+      text(`${entryTitlesEnglish[selectedType]} was saved centrally and linked to the daily report.`, `${entryTitles[selectedType]} is centraal opgeslagen en aan het dagrapport gekoppeld.`),
     );
     if (!saved) return;
+    // Photos taken inside the record ride along with it: they are queued for the first
+    // target building and linked to that registration, so evidence keeps its origin.
+    if (entryPhotos.length) {
+      const registration = (Array.isArray(saved) ? saved[0] : saved) as { id?: string; day_report_id?: string } | null;
+      await queueEntryPhotos({
+        photos: entryPhotos,
+        projectId: selectedProject.id,
+        buildingId: targetBuildings[0].id,
+        buildingLabel: singleBuilding ? location || targetBuildings[0].name : targetBuildings[0].name,
+        locationNodeId: singleBuilding ? entryLocationNodeId : "",
+        organizationId: selectedProject.organizationId,
+        registrationId: registration?.id ?? "",
+        reportId: registration?.day_report_id ?? null,
+        title: description.trim(),
+      });
+    }
+    setEntryPhotos([]);
     setModal(null);
     await queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] });
+  };
+
+  /**
+   * Field photos never block a saved record: they are queued locally first and then
+   * synchronized, exactly like the daily log and the photo workspace do.
+   */
+  const queueEntryPhotos = async (input: {
+    photos: File[];
+    projectId: string;
+    buildingId: string;
+    buildingLabel: string;
+    locationNodeId: string;
+    organizationId: string;
+    registrationId: string;
+    reportId: string | null;
+    title: string;
+  }) => {
+    if (!supabase) return;
+    for (const photo of input.photos) {
+      const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
+      await queueOfflineUpload({
+        projectId: input.projectId,
+        buildingId: input.buildingId,
+        reportId: input.reportId,
+        folderId: null,
+        folderName: text("Field records", "Veldregistraties"),
+        kind: "photo",
+        file: prepared.blob,
+        fileName: prepared.fileName,
+        mimeType: prepared.mimeType,
+        title: input.title.slice(0, 120),
+        description: "",
+        locationLabel: input.buildingLabel,
+        locationNodeId: input.locationNodeId || null,
+        capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
+        originalSize: photo.size,
+        queuedSize: prepared.blob.size,
+        compressed: prepared.compressed,
+        recordLink: input.registrationId
+          ? { organizationId: input.organizationId, recordType: "registration", recordId: input.registrationId, relationship: "evidence" }
+          : null,
+      });
+    }
+    if (navigator.onLine) {
+      await forceSyncOfflineUploads(supabase, input.projectId, {
+        paused: text(
+          "The connection changed before central photo confirmation. The photos remain safe on this device. Open Photos & folders and tap Sync now.",
+          "De verbinding veranderde vóór de centrale fotobevestiging. De foto’s blijven veilig op dit apparaat. Open Foto’s & mappen en tik op Nu synchroniseren.",
+        ),
+        failed: (pendingCount) => text(
+          `${pendingCount} photo upload(s) could not be confirmed centrally. They remain safe on this device. Open Photos & folders and tap Sync now.`,
+          `${pendingCount} foto-upload(s) konden niet centraal worden bevestigd. Ze blijven veilig op dit apparaat. Open Foto’s & mappen en tik op Nu synchroniseren.`,
+        ),
+      });
+    }
   };
 
   const toggleTodo = (id: number) => {
@@ -1572,23 +1727,40 @@ export function CodecoSupervisionApp() {
         <EntryModal
           selectedType={selectedType}
           description={description}
+          descriptionSuggested={descriptionSuggested}
           priority={priority}
-          setDescription={setDescription}
+          workPackage={entryWorkPackage}
+          setDescription={writeDescription}
+          setWorkPackage={setEntryWorkPackage}
           setLocation={setLocation}
           setPriority={setPriority}
           goBack={() => setModal("quick")}
           close={() => setModal(null)}
           save={saveEntry}
-          openPhoto={() => chooseType("photo")}
+          photos={entryPhotos}
+          addPhotos={(files) => {
+            const captured = Array.from(files ?? []).filter((file) => file.type.startsWith("image/"));
+            if (captured.length) setEntryPhotos((current) => [...current, ...captured]);
+          }}
+          removePhoto={(index) => setEntryPhotos((current) => current.filter((_, position) => position !== index))}
           projectName={projectName}
           buildingName={buildingName}
           buildings={selectedProject.buildings}
-          buildingId={entryBuildingId}
-          setBuildingId={(next) => { setEntryBuildingId(next); setEntryLocationNodeId(""); }}
+          buildingIds={entryBuildingIds}
+          setBuildingIds={(next) => { setEntryBuildingIds(next); setEntryLocationNodeId(""); setEntryDrawingId(""); }}
           locationNodes={projectLocationsQuery.data ?? []}
           locationNodeId={entryLocationNodeId}
           setLocationNodeId={setEntryLocationNodeId}
+          drawings={projectDrawingsQuery.data ?? []}
+          drawingId={entryDrawingId}
+          setDrawingId={setEntryDrawingId}
+          openDrawings={() => {
+            setModal(null);
+            setInitialProjectTab("drawings");
+            setActiveNav("project");
+          }}
           requiredLocationDepth={projectConfigurationQuery.data?.required_location_depth ?? "building"}
+          busy={syncState === "saving"}
         />
       ) : null}
       {modal === "action_create" && selectedProject && selectedBuilding ? (
@@ -1836,7 +2008,7 @@ export function CodecoSupervisionApp() {
                 const reportId = String(report.id);
                 const logBuildingName = selectedProject.buildings.find((building) => building.id === logBuildingId)?.name ?? buildingName;
                 for (const photo of photos) {
-                  const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
+                  const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
                   await queueOfflineUpload({
                     projectId: selectedProject.id,
                     buildingId: logBuildingId,
@@ -1847,11 +2019,12 @@ export function CodecoSupervisionApp() {
                     file: prepared.blob,
                     fileName: prepared.fileName,
                     mimeType: prepared.mimeType,
-                    title: text("Field photo", "Veldfoto"),
+                    // The name the supervisor typed is what the report shows.
+                    title: photo.caption.trim().slice(0, 120) || text("Field photo", "Veldfoto"),
                     description: "",
                     locationLabel: logBuildingName,
-                    capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
-                    originalSize: photo.size,
+                    capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
+                    originalSize: photo.file.size,
                     queuedSize: prepared.blob.size,
                     compressed: prepared.compressed,
                   });
@@ -2285,15 +2458,6 @@ function ContextSelection({
 }) {
   const { text } = useLanguage();
   const [showProjectSetup, setShowProjectSetup] = useState(false);
-  const portfolio = projects.reduce((total, project) => ({
-    projects: total.projects + 1,
-    actions: total.actions + project.openIssues,
-    issues: total.issues + project.issueCount,
-    ncr: total.ncr + project.ncrCount,
-    inspections: total.inspections + project.inspectionCount,
-    agreements: total.agreements + project.agreementCount,
-    today: total.today + project.buildings.reduce((count, building) => count + building.todayPlannedWork.length, 0),
-  }), { projects: 0, actions: 0, issues: 0, ncr: 0, inspections: 0, agreements: 0, today: 0 });
   return (
     <div className="context-shell">
       <header className="context-topbar">
@@ -2313,23 +2477,18 @@ function ContextSelection({
           <div><p className="eyebrow">{text("My projects", "Mijn projecten")}</p><h1>{text("Where will you work today?", "Waar ga je vandaag werken?")}</h1><p>{text("Select a project to open its dashboard. Every building in the project is available from there.", "Kies een project om het dashboard te openen. Alle gebouwen van het project zijn daar direct beschikbaar.")}</p></div>
           <button className="primary-button portfolio-cta" type="button" onClick={() => setShowProjectSetup(true)}><Plus size={15} /> {text("New configured project", "Nieuw geconfigureerd project")}</button>
         </section>
-        <section className="portfolio-dashboard" aria-label={text("Portfolio overview", "Portfolio-overzicht")}>
-          <div className="tone-blue"><span className="portfolio-stat-icon"><Building2 size={16} /></span><span className="portfolio-stat-copy"><small>{text("Active projects", "Actieve projecten")}</small><strong>{portfolio.projects}</strong></span></div>
-          <div className="tone-green"><span className="portfolio-stat-icon"><CalendarDays size={16} /></span><span className="portfolio-stat-copy"><small>{text("Today's plans", "Planning vandaag")}</small><strong>{portfolio.today}</strong></span></div>
-          <div className="tone-amber"><span className="portfolio-stat-icon"><ClipboardCheck size={16} /></span><span className="portfolio-stat-copy"><small>{text("Open actions", "Open acties")}</small><strong>{portfolio.actions}</strong></span></div>
-          <div className="tone-red"><span className="portfolio-stat-icon"><AlertTriangle size={16} /></span><span className="portfolio-stat-copy"><small>Issues</small><strong>{portfolio.issues}</strong></span></div>
-          <div className="tone-red"><span className="portfolio-stat-icon"><FileCheck2 size={16} /></span><span className="portfolio-stat-copy"><small>NCR</small><strong>{portfolio.ncr}</strong></span></div>
-          <div className="tone-green"><span className="portfolio-stat-icon"><ShieldCheck size={16} /></span><span className="portfolio-stat-copy"><small>{text("Inspections", "Inspecties")}</small><strong>{portfolio.inspections}</strong></span></div>
-          <div className="tone-blue"><span className="portfolio-stat-icon"><FileText size={16} /></span><span className="portfolio-stat-copy"><small>{text("Agreements", "Afspraken")}</small><strong>{portfolio.agreements}</strong></span></div>
-        </section>
+        {/* No portfolio counters here: this screen only has to answer "which project am I
+            working on today?". The numbers live in the project dashboard, in context. */}
         <section className={`project-selection-grid ${projects.length === 1 ? "single-project" : ""}`}>
           {projects.map((project) => (
             <button className="project-selection-card" type="button" onClick={() => chooseProject(project)} key={project.id}>
               <span className="selection-card-top">
-                <span className="selection-icon"><Building2 size={21} /></span>
                 <span className="project-code">{project.code}</span>
               </span>
-              <span className="selection-copy"><strong>{project.name}</strong><small><MapPin size={12} /> {project.location}</small></span>
+              <span className="selection-copy">
+                <strong><span className="selection-icon"><Building2 size={18} /></span> {project.name}</strong>
+                <small><MapPin size={12} /> {project.location}</small>
+              </span>
               <span className="selection-meta"><span>{project.buildings.length} {text("buildings", "gebouwen")}</span><span>{project.openIssues} {text("open actions", "open acties")}</span></span>
               <span className="project-register-metrics" aria-label={text("Project register totals", "Totalen projectregisters")}>
                 <span><b>{project.issueCount}</b>{text("Issues", "Issues")}</span>
@@ -3291,49 +3450,76 @@ function QuickAddModal({ close, chooseType }: { close: () => void; chooseType: (
 function EntryModal({
   selectedType,
   description,
+  descriptionSuggested,
   priority,
+  workPackage,
   setDescription,
+  setWorkPackage,
   setLocation,
   setPriority,
   goBack,
   close,
   save,
-  openPhoto,
+  photos,
+  addPhotos,
+  removePhoto,
   projectName,
   buildingName,
   buildings,
-  buildingId,
-  setBuildingId,
+  buildingIds,
+  setBuildingIds,
   locationNodes,
   locationNodeId,
   setLocationNodeId,
+  drawings,
+  drawingId,
+  setDrawingId,
+  openDrawings,
   requiredLocationDepth,
+  busy,
 }: {
   selectedType: string;
   description: string;
+  /** The text was proposed by the app, not typed. It must disappear on the first keystroke. */
+  descriptionSuggested: boolean;
   priority: string;
-  setDescription: (value: string) => void;
+  workPackage: string;
+  setDescription: (value: string, suggested?: boolean) => void;
+  setWorkPackage: (value: string) => void;
   setLocation: (value: string) => void;
   setPriority: (value: string) => void;
   goBack: () => void;
   close: () => void;
   save: () => void;
-  openPhoto: () => void;
+  photos: File[];
+  addPhotos: (files: FileList | null) => void;
+  removePhoto: (index: number) => void;
   projectName: string;
   buildingName: string;
   buildings: BuildingOption[];
-  buildingId: string;
-  setBuildingId: (value: string) => void;
+  buildingIds: string[];
+  setBuildingIds: (value: string[]) => void;
   locationNodes: ProjectLocationOption[];
   locationNodeId: string;
   setLocationNodeId: (value: string) => void;
+  drawings: ProjectDrawingOption[];
+  drawingId: string;
+  setDrawingId: (value: string) => void;
+  openDrawings: () => void;
   requiredLocationDepth: "building" | "floor" | "room" | "element";
+  busy: boolean;
 }) {
   const { language, locale, text } = useLanguage();
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const photoPreviews = useMemo(() => photos.map((photo) => URL.createObjectURL(photo)), [photos]);
+  useEffect(() => () => photoPreviews.forEach((preview) => URL.revokeObjectURL(preview)), [photoPreviews]);
   const title = (language === "en" ? entryTitlesEnglish : entryTitles)[selectedType] ?? text("Record", "Registratie");
-  const chosenBuildingName = buildingId === ALL_BUILDINGS
+  const singleBuildingId = buildingIds.length === 1 ? buildingIds[0] : "";
+  const chosenBuildingName = buildingIds.length === buildings.length && buildings.length > 1
     ? text("All buildings", "Alle gebouwen")
-    : buildings.find((building) => building.id === buildingId)?.name ?? buildingName;
+    : buildingIds.length > 1
+      ? buildings.filter((building) => buildingIds.includes(building.id)).map((building) => building.name).join(" + ")
+      : buildings.find((building) => building.id === singleBuildingId)?.name ?? buildingName;
   const needsPriority = selectedType === "finding" || selectedType === "hse" || selectedType === "action";
   const choices: Record<string, string[]> = {
     activity: [text("Work started as planned.", "Werk volgens planning gestart."), text("Work completed as planned.", "Werk volgens planning afgerond."), text("Work continues tomorrow.", "Werk wordt morgen voortgezet.")],
@@ -3345,6 +3531,15 @@ function EntryModal({
     delay: [text("Delay due to weather.", "Vertraging door weersomstandigheden."), text("Delay due to late delivery.", "Vertraging door te late levering."), text("Delay due to equipment failure.", "Vertraging door materieelstoring.")],
   };
   const descriptionChoices = choices[selectedType] ?? [];
+  const buildingDrawings = drawings.filter((drawing) => !singleBuildingId || !drawing.buildingId || drawing.buildingId === singleBuildingId);
+  const locationRequired = Boolean(singleBuildingId) && requiredLocationDepth !== "building";
+  const describeLocation = (nodeId: string, drawing: string) => {
+    const parts = [chosenBuildingName];
+    if (nodeId) parts.push(locationBreadcrumb(locationNodes, nodeId));
+    const drawingName = drawings.find((item) => item.id === drawing)?.name;
+    if (drawingName) parts.push(text(`drawing ${drawingName}`, `tekening ${drawingName}`));
+    return parts.filter(Boolean).join(" → ");
+  };
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal" role="dialog" aria-modal="true" aria-labelledby="entry-title">
@@ -3354,14 +3549,58 @@ function EntryModal({
         </header>
         <div className="modal-body">
           <div className="form-grid">
-            {descriptionChoices.length ? <div className="quick-issue-presets full" aria-label={text("Choose a standard description", "Kies een standaardomschrijving")}>{descriptionChoices.map((choice) => <button className={description === choice ? "active" : ""} type="button" onClick={() => setDescription(choice)} key={choice}>{choice}</button>)}</div> : null}
+            {descriptionChoices.length ? <div className="quick-issue-presets full" aria-label={text("Choose a standard description", "Kies een standaardomschrijving")}>{descriptionChoices.map((choice) => <button className={description.trim() === choice ? "active" : ""} type="button" onClick={() => setDescription(description.trim() === choice ? "" : choice)} key={choice}>{choice}</button>)}</div> : null}
             <div className="form-field full">
               <label htmlFor="description">{text("Short description *", "Korte omschrijving *")}</label>
-              <textarea id="description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder={text("Choose above; only add an exceptional detail.", "Kies hierboven; voeg alleen een uitzonderlijk detail toe.")} />
-              <DictateButton onText={(transcript) => setDescription(appendDictation(description, transcript))} />
+              {/* A proposed text is a suggestion, never a leftover: typing replaces it in
+                  one go and the clear button empties the field without selecting text. */}
+              <textarea
+                className={descriptionSuggested ? "suggested-value" : ""}
+                id="description"
+                value={description}
+                onChange={(event) => setDescription(descriptionSuggested
+                  // Typing over a proposal replaces it, wherever the caret happened to be.
+                  ? event.target.value.replace(description, "").trim() || event.target.value.trim()
+                  : event.target.value)}
+                onFocus={(event) => { if (descriptionSuggested) event.currentTarget.select(); }}
+                placeholder={text("Choose above, dictate, or type what happened.", "Kies hierboven, dicteer of typ wat er is gebeurd.")}
+              />
+              {description ? <button className="field-clear-button" type="button" onClick={() => setDescription("")} aria-label={text("Clear the description", "Omschrijving wissen")}><X size={13} /> {text("Clear", "Wissen")}</button> : null}
+              <DictateButton onText={(transcript) => setDescription(appendDictation(descriptionSuggested ? "" : description, transcript))} />
             </div>
-            <BuildingPicker id="entry-building" buildings={buildings} value={buildingId} onChange={setBuildingId} allowAll />
-            {buildingId !== ALL_BUILDINGS ? <LocationPicker id="entry-location" nodes={locationNodes} buildingId={buildingId} value={locationNodeId} onChange={(next) => { setLocationNodeId(next); setLocation(next ? `${chosenBuildingName} → ${locationBreadcrumb(locationNodes, next)}` : chosenBuildingName); }} requiredDepth={requiredLocationDepth} /> : null}
+            {buildings.length > 1
+              ? <BuildingMultiPicker
+                id="entry-building"
+                buildings={buildings}
+                value={buildingIds}
+                onChange={(next) => {
+                  setBuildingIds(next);
+                  setLocation(next.length === 1 ? buildings.find((building) => building.id === next[0])?.name ?? "" : "");
+                }}
+              />
+              : null}
+            {singleBuildingId ? (
+              <>
+                <LocationPicker
+                  id="entry-location"
+                  nodes={locationNodes}
+                  buildingId={singleBuildingId}
+                  value={locationNodeId}
+                  onChange={(next) => { setLocationNodeId(next); setLocation(describeLocation(next, drawingId)); }}
+                  requiredDepth={requiredLocationDepth}
+                />
+                <div className="form-field">
+                  <label htmlFor="entry-drawing">{text("Location on drawing", "Locatie op tekening")}</label>
+                  <select id="entry-drawing" value={drawingId} onChange={(event) => { setDrawingId(event.target.value); setLocation(describeLocation(locationNodeId, event.target.value)); }}>
+                    <option value="">{text("No drawing selected", "Geen tekening gekozen")}</option>
+                    {buildingDrawings.map((drawing) => <option value={drawing.id} key={drawing.id}>{drawing.name}</option>)}
+                  </select>
+                  {buildingDrawings.length
+                    ? <button className="field-inline-link" type="button" onClick={openDrawings}><MapPin size={12} /> {text("Open the drawing to place a pin", "Open de tekening om een pin te plaatsen")}</button>
+                    : <small>{text("No drawing has been uploaded for this building yet. Upload the PDF under Project Docs.", "Voor dit gebouw is nog geen tekening geüpload. Upload de PDF bij Project Docs.")}</small>}
+                </div>
+              </>
+            ) : null}
             {needsPriority ? (
               <div className="form-field">
                 <label htmlFor="priority">{text("Priority", "Prioriteit")}</label>
@@ -3372,18 +3611,34 @@ function EntryModal({
             ) : (
               <div className="form-field">
                 <label htmlFor="work-package">{text("Work package", "Werkpakket")}</label>
-                <select id="work-package"><option>{text("Structural work", "Ruwbouw")}</option><option>{text("Installations", "Installaties")}</option><option>{text("Finishing", "Afwerking")}</option></select>
+                <select id="work-package" value={workPackage} onChange={(event) => setWorkPackage(event.target.value)}>
+                  {workPackageOptions.map((option) => <option value={option.en} key={option.en}>{language === "en" ? option.en : option.nl}</option>)}
+                </select>
               </div>
             )}
             <div className="form-field full">
               <label>{text("Add evidence", "Bewijs toevoegen")}</label>
-              <button className="ghost-button" type="button" style={{ justifyContent: "center", minHeight: 50 }} onClick={openPhoto}><Camera size={16} /> {text("Take or choose a photo", "Maak of kies een foto")}</button>
+              {/* The camera opens here. Sending the supervisor to the photo workspace lost
+                  the half-filled record, which is what the client reported. */}
+              <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple onChange={(event) => { addPhotos(event.target.files); event.target.value = ""; }} />
+              <button className="ghost-button" type="button" style={{ justifyContent: "center", minHeight: 50 }} onClick={() => cameraInputRef.current?.click()}><Camera size={16} /> {photos.length ? text(`Add another photo · ${photos.length} added`, `Nog een foto toevoegen · ${photos.length} toegevoegd`) : text("Take or choose a photo", "Maak of kies een foto")}</button>
+              {photos.length ? (
+                <div className="entry-photo-strip">
+                  {photoPreviews.map((preview, index) => (
+                    <span key={preview}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={preview} alt={photos[index].name} />
+                      <button type="button" onClick={() => removePhoto(index)} aria-label={text(`Remove ${photos[index].name}`, `Verwijder ${photos[index].name}`)}><X size={12} /></button>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
               <span className="form-note"><CheckCircle2 size={12} /> {text("Time, author, project and building are recorded automatically.", "Tijd, maker, project en gebouw worden automatisch vastgelegd.")}</span>
             </div>
           </div>
           <div className="modal-actions">
             <button className="back-button" type="button" onClick={goBack}><ArrowLeft size={14} /> {text("Back", "Terug")}</button>
-            <button className="primary-button" type="button" onClick={save} disabled={!description.trim() || (buildingId !== ALL_BUILDINGS && requiredLocationDepth !== "building" && !locationNodeId)}>{text("Save and include", "Opslaan en opnemen")} <Check size={14} /></button>
+            <button className="primary-button" type="button" onClick={save} disabled={busy || !description.trim() || !buildingIds.length || (locationRequired && !locationNodeId)}>{busy ? <Loader2 className="spin" size={14} /> : null} {text("Save and include", "Opslaan en opnemen")} <Check size={14} /></button>
           </div>
         </div>
       </section>

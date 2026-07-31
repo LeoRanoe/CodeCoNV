@@ -895,3 +895,55 @@ test("uses the client's own daily log format, a building dropdown and a calm mob
   // live in the bottom-nav "More" screen instead of crowding the bar.
   assert.match(styles, /\.topbar \.language-switcher,\s*\n\s*\.topbar \.management-button \{\s*\n\s*display: none/);
 });
+
+test("processes the five annotated field screens from 31 July", async () => {
+  const [app, dailyLog, picker, dashboard, i18n, queue, styles] = await Promise.all([
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/building-picker.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/client-dashboard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/i18n.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/offline/upload-queue.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // Screen 1: the project picker only picks a project. No portfolio counters.
+  assert.doesNotMatch(app, /portfolio-dashboard/);
+  assert.doesNotMatch(styles, /\.portfolio-dashboard/);
+  assert.match(app, /selection-copy[\s\S]{0,180}selection-icon/);
+
+  // Screen 2: a smaller project header, and photos are called photos.
+  assert.match(styles, /\.overview-hero h1 \{[\s\S]*?font-size: clamp\(1\.15rem/);
+  assert.match(dashboard, /label=\{text\("Pictures", "Foto's"\)\}/);
+  assert.doesNotMatch(dashboard, /text\("Evidence", "Bewijs"\)/);
+
+  // Screens 3 and 6: Dutch is the default again, a proposed description disappears on
+  // the first keystroke, a record can cover several buildings, work packages are the
+  // ones from the client's daily report, drawings are selectable as the exact location,
+  // and the camera opens inside the record instead of on another page.
+  assert.match(i18n, /codeco-language"\) === "en" \? "en" : "nl"/);
+  assert.match(app, /descriptionSuggested/);
+  assert.match(app, /if \(descriptionSuggested\) event\.currentTarget\.select\(\)/);
+  assert.match(app, /field-clear-button/);
+  assert.match(app, /BuildingMultiPicker/);
+  assert.match(picker, /export function BuildingMultiPicker/);
+  assert.match(app, /workPackageOptions/);
+  assert.match(app, /Piling and foundations/);
+  assert.match(app, /Location on drawing|Locatie op tekening/);
+  assert.match(app, /project-drawings/);
+  assert.match(app, /ref=\{cameraInputRef\}[^>]*capture="environment"/);
+  assert.match(app, /entry-photo-strip/);
+  assert.doesNotMatch(app, /openPhoto=\{\(\) => chooseType\("photo"\)\}/);
+  assert.match(app, /recordType: "registration"/);
+  assert.match(queue, /"inspection" \| "hse" \| "registration"/);
+  assert.match(queue, /ensureVisualCapture/);
+
+  // Screen 5: photos of the day can be named and removed, and the workforce block has
+  // the standard sentences about manning levels.
+  assert.match(dailyLog, /export type DailyLogPhoto/);
+  assert.match(dailyLog, /Photo name for the report|Fotonaam voor het rapport/);
+  assert.match(dailyLog, /daily-log-photo-remove/);
+  assert.match(dailyLog, /workforceNoteChoices/);
+  assert.match(dailyLog, /Too few workers|Onvoldoende arbeiders/);
+  assert.match(app, /photo\.caption\.trim\(\)\.slice\(0, 120\)/);
+});

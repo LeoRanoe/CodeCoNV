@@ -1078,14 +1078,16 @@ textarea:focus-visible {
   justify-content: space-between;
 }
 
+/* The icon belongs next to the project name, not floating on its own above the card. */
 .selection-icon {
-  display: grid;
-  width: 44px;
-  height: 44px;
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
   place-items: center;
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--signal-soft);
   color: var(--signal-dark);
+  vertical-align: middle;
 }
 
 .project-code {
@@ -1108,7 +1110,10 @@ textarea:focus-visible {
 }
 
 .selection-copy strong {
+  align-items: center;
+  display: flex;
   font-size: 21px;
+  gap: 10px;
   line-height: 1.15;
   letter-spacing: -0.025em;
 }
@@ -3512,6 +3517,138 @@ textarea:focus-visible {
   margin-top: 4px;
   color: var(--green);
   font-size: 9px;
+}
+
+/* A proposed text reads as a proposal, and one keystroke replaces it. */
+.form-field textarea.suggested-value {
+  background: #f7fbfa;
+  color: var(--ink-600);
+  font-style: italic;
+}
+
+.field-clear-button {
+  align-items: center;
+  align-self: flex-start;
+  background: #f4f7f7;
+  border: 1px solid var(--ink-200);
+  border-radius: 999px;
+  color: var(--ink-600);
+  display: inline-flex;
+  font-size: 10px;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 5px 10px;
+}
+
+.field-clear-button:hover {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.field-inline-link {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: var(--signal-dark);
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 700;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 0;
+  text-align: left;
+}
+
+/* One record can cover several buildings, so the buildings are checkboxes. */
+.building-multi-picker {
+  border: 1px solid var(--ink-200);
+  border-radius: 10px;
+  padding: 10px 12px 12px;
+}
+
+.building-multi-picker legend {
+  color: var(--ink-700);
+  font-size: 10px;
+  font-weight: 680;
+  padding: 0 4px;
+}
+
+.building-multi-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.building-multi-options label {
+  align-items: center;
+  background: #f4f7f7;
+  border: 1px solid var(--ink-200);
+  border-radius: 999px;
+  color: var(--ink-700);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  gap: 7px;
+  min-height: 38px;
+  padding: 7px 13px;
+}
+
+.building-multi-options label.active {
+  background: var(--green-soft);
+  border-color: #7fbead;
+  color: var(--green);
+  font-weight: 700;
+}
+
+.building-multi-options input {
+  accent-color: var(--green);
+  height: 16px;
+  margin: 0;
+  min-height: 0;
+  width: 16px;
+}
+
+.building-multi-picker small {
+  color: var(--muted);
+  display: block;
+  font-size: 10px;
+  margin-top: 8px;
+}
+
+/* Photos taken inside a record stay visible before saving, and can be removed. */
+.entry-photo-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.entry-photo-strip > span {
+  display: block;
+  position: relative;
+}
+
+.entry-photo-strip img {
+  border: 1px solid var(--ink-200);
+  border-radius: 9px;
+  height: 68px;
+  object-fit: cover;
+  width: 68px;
+}
+
+.entry-photo-strip button {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: 999px;
+  color: var(--red);
+  display: grid;
+  height: 22px;
+  justify-content: center;
+  position: absolute;
+  right: -6px;
+  top: -6px;
+  width: 22px;
 }
 
 .modal-actions {
@@ -7429,48 +7566,6 @@ textarea:focus-visible {
 .work-option-grid { display: flex; flex-wrap: wrap; gap: 7px; }
 .work-option-grid button { align-items: center; background: #f3f7f7; border: 1px solid var(--border); border-radius: 999px; color: var(--text); display: inline-flex; gap: 6px; padding: 8px 11px; }
 .work-option-grid button.active { background: var(--green-soft); border-color: #86c1b0; color: var(--green); font-weight: 700; }
-.portfolio-dashboard {
-  background: linear-gradient(160deg, #16313b, #10262f);
-  border-radius: 16px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 12px 30px rgba(10, 28, 42, 0.18);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 20px;
-  padding: 16px;
-}
-.portfolio-dashboard > div {
-  align-items: center;
-  background: rgba(255, 255, 255, 0.045);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
-  display: flex;
-  flex: 1 1 150px;
-  gap: 11px;
-  min-width: 150px;
-  padding: 12px 14px;
-  transition: background 0.15s ease, transform 0.15s ease;
-}
-.portfolio-dashboard > div:hover {
-  background: rgba(255, 255, 255, 0.08);
-  transform: translateY(-1px);
-}
-.portfolio-stat-icon {
-  align-items: center;
-  border-radius: 10px;
-  display: grid;
-  flex: 0 0 auto;
-  height: 34px;
-  justify-content: center;
-  width: 34px;
-}
-.portfolio-stat-copy { display: grid; gap: 3px; min-width: 0; }
-.portfolio-dashboard small { color: #a9bcc3; font-size: 10px; font-weight: 620; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
-.portfolio-dashboard strong { color: #fff; font-size: 22px; line-height: 1.1; }
-.portfolio-dashboard .tone-blue .portfolio-stat-icon { background: rgba(79, 156, 224, 0.18); color: #7db8ee; }
-.portfolio-dashboard .tone-green .portfolio-stat-icon { background: rgba(29, 168, 137, 0.2); color: #5fd9b8; }
-.portfolio-dashboard .tone-amber .portfolio-stat-icon { background: rgba(240, 165, 0, 0.2); color: #ffc04d; }
-.portfolio-dashboard .tone-red .portfolio-stat-icon { background: rgba(224, 87, 76, 0.2); color: #ff9088; }
 .primary-button.portfolio-cta {
   border-radius: 999px;
   box-shadow: 0 10px 26px rgba(240, 116, 0, 0.28);
@@ -7489,9 +7584,6 @@ textarea:focus-visible {
 .building-today-plan small { color: #5d6870; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 760px) {
   .building-register-metrics { grid-template-columns: repeat(3, 1fr); }
-}
-@media (max-width: 480px) {
-  .portfolio-dashboard > div { flex: 1 1 calc(50% - 10px); min-width: 0; }
 }
 .push-activation { align-items: center; background: #f3f7f7; border: 1px solid var(--border); border-radius: 11px; display: grid; gap: 10px; grid-template-columns: auto 1fr auto; padding: 12px; }
 .push-activation.active { background: var(--green-soft); border-color: #90c7b7; color: var(--green); }
@@ -8021,11 +8113,41 @@ textarea:focus-visible {
 .daily-log-counter b { min-width: 26px; text-align: center; }
 .daily-log-footer { flex-wrap: wrap; margin: 0; padding: 18px 26px 22px; }
 
+/* Every photo of the day gets a thumbnail and a name; the report needs both. */
+.daily-log-photo-list { display: grid; gap: 9px; margin-top: 12px; }
+.daily-log-photo-list > div {
+  align-items: center;
+  background: #f6f9f9;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 11px;
+  grid-template-columns: 62px 1fr auto;
+  padding: 9px;
+}
+.daily-log-photo-list img { border-radius: 8px; height: 62px; object-fit: cover; width: 62px; }
+.daily-log-photo-list .form-field { gap: 4px; margin: 0; }
+.daily-log-photo-list .form-field span { font-size: 10.5px; }
+.daily-log-photo-remove {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--red);
+  display: grid;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+}
+.daily-log-photo-remove:hover { border-color: var(--red); }
+
 @media (max-width: 760px) {
   .daily-log-body { padding: 16px 16px 4px; }
   .daily-log-footer { padding: 16px; }
   .daily-log-footer .button-row { width: 100%; }
   .daily-log-footer .button-row button { flex: 1; }
+  .daily-log-photo-list > div { grid-template-columns: 52px 1fr auto; }
+  .daily-log-photo-list img { height: 52px; width: 52px; }
 }
 
 .external-submission-notice { align-items: center; }
@@ -9985,9 +10107,9 @@ button {
   border-radius: 18px;
   box-shadow: var(--panel-shadow);
   display: flex;
-  gap: 24px;
+  gap: 20px;
   justify-content: space-between;
-  padding: 20px 22px;
+  padding: 14px 18px;
 }
 
 .overview-kicker {
@@ -10001,12 +10123,14 @@ button {
   text-transform: uppercase;
 }
 
+/* The project name is a header, not a poster: it may never push the working blocks
+   below the fold on a tablet. */
 .overview-hero h1 {
   color: #14201c;
-  font-size: clamp(1.65rem, 2.6vw, 2.25rem);
-  letter-spacing: -.035em;
-  line-height: 1.05;
-  margin: 7px 0 6px;
+  font-size: clamp(1.15rem, 1.7vw, 1.5rem);
+  letter-spacing: -.028em;
+  line-height: 1.12;
+  margin: 5px 0 4px;
 }
 
 .overview-hero p {

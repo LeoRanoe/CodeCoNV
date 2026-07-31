@@ -53,7 +53,8 @@ export type OfflineUpload = {
   findingGroup?: OfflineFindingGroup | null;
   recordLink?: {
     organizationId: string;
-    recordType: "inspection" | "hse";
+    /** A registration link keeps a photo taken inside a field record attached to it. */
+    recordType: "inspection" | "hse" | "registration";
     recordId: string;
     relationship: "evidence";
   } | null;
@@ -159,6 +160,31 @@ export type OfflineSyncFailureMessages = {
   failed: (pendingCount: number) => string;
 };
 const projectSyncLocks = new Map<string, Promise<OfflineSyncResult>>();
+
+/** Creates the visual capture for an uploaded image once, so a retry never duplicates it. */
+async function ensureVisualCapture(client: SupabaseClient, upload: OfflineUpload, fileId: string) {
+  const existingCapture = await client
+    .from("visual_captures")
+    .select("id")
+    .eq("file_id", fileId)
+    .maybeSingle();
+  if (existingCapture.error) throw existingCapture.error;
+  if (existingCapture.data) return;
+  await createVisualCapture(client, {
+    projectId: upload.projectId,
+    buildingId: upload.buildingId,
+    dayReportId: upload.reportId,
+    fileId,
+    locationNodeId: upload.locationNodeId || undefined,
+    captureType: upload.kind === "panorama" ? "panorama" : "photo",
+    title: upload.title,
+    description: upload.description,
+    locationLabel: upload.locationLabel,
+    tourName: upload.tourName || undefined,
+    tourOrder: upload.tourOrder ?? null,
+    capturedAt: upload.capturedAt,
+  });
+}
 
 async function syncOfflineUploadsUnlocked(
   client: SupabaseClient,
@@ -287,29 +313,13 @@ async function syncOfflineUploadsUnlocked(
           recordId: upload.recordLink.recordId,
           relationship: upload.recordLink.relationship,
         });
-      } else if (upload.kind === "photo" || upload.kind === "panorama") {
-        const existingCapture = await client
-          .from("visual_captures")
-          .select("id")
-          .eq("file_id", stored.fileId)
-          .maybeSingle();
-        if (existingCapture.error) throw existingCapture.error;
-        if (!existingCapture.data) {
-          await createVisualCapture(client, {
-            projectId: upload.projectId,
-            buildingId: upload.buildingId,
-            dayReportId: upload.reportId,
-            fileId: stored.fileId,
-            locationNodeId: upload.locationNodeId || undefined,
-            captureType: upload.kind === "panorama" ? "panorama" : "photo",
-            title: upload.title,
-            description: upload.description,
-            locationLabel: upload.locationLabel,
-            tourName: upload.tourName || undefined,
-            tourOrder: upload.tourOrder ?? null,
-            capturedAt: upload.capturedAt,
-          });
+        // A photo taken inside a field record is also site evidence, so it has to show up
+        // in Photos & folders with its context instead of only hanging off the record.
+        if (upload.recordLink.recordType === "registration" && (upload.kind === "photo" || upload.kind === "panorama")) {
+          await ensureVisualCapture(client, upload, stored.fileId);
         }
+      } else if (upload.kind === "photo" || upload.kind === "panorama") {
+        await ensureVisualCapture(client, upload, stored.fileId);
       }
       await idbDelete("uploads", upload.id);
       options.onItem?.(upload, "done");

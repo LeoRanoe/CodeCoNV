@@ -22,12 +22,14 @@ function subscribeLanguage(callback: () => void) {
   };
 }
 
+// CODECO works in Dutch on site. English stays available, but it is a deliberate
+// choice now instead of what everybody gets on a fresh device or after clearing data.
 function languageSnapshot(): AppLanguage {
-  return window.localStorage.getItem("codeco-language") === "nl" ? "nl" : "en";
+  return window.localStorage.getItem("codeco-language") === "en" ? "en" : "nl";
 }
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const language = useSyncExternalStore<AppLanguage>(subscribeLanguage, languageSnapshot, () => "en");
+  const language = useSyncExternalStore<AppLanguage>(subscribeLanguage, languageSnapshot, () => "nl");
 
   useEffect(() => {
     document.documentElement.lang = language;

@@ -168,7 +168,7 @@ export function ClientDashboard({
         <MetricCard icon={<FileCheck2 size={21} />} label={text("Open follow-up", "Open opvolging")} value={openItems.length} detail={`${urgentItems.length} ${text("high priority", "hoge prioriteit")}`} tone="teal" onClick={openActions} />
         <MetricCard icon={<AlertTriangle size={21} />} label={text("Quality issues", "Kwaliteitspunten")} value={issues.length} detail={text("Findings and NCRs", "Bevindingen en NCR's")} tone="orange" onClick={openActions} />
         <MetricCard icon={<ClipboardCheck size={21} />} label={text("Inspections", "Inspecties")} value={inspections.length} detail={text("Recorded in this report", "In dit rapport vastgelegd")} tone="blue" onClick={openWorkspace} />
-        <MetricCard icon={<Camera size={21} />} label={text("Evidence", "Bewijs")} value={photoEntries.length} detail={text("Photos linked to context", "Foto's met projectcontext")} tone="violet" onClick={openQuickAdd} />
+        <MetricCard icon={<Camera size={21} />} label={text("Pictures", "Foto's")} value={photoEntries.length} detail={text("Photos linked to context", "Foto's met projectcontext")} tone="violet" onClick={openQuickAdd} />
       </div>
 
       <div className="overview-primary-grid">

@@ -44,3 +44,62 @@ export function BuildingPicker({
     </label>
   );
 }
+
+/**
+ * One field record often covers more than one building — the same delay or the same
+ * ongoing work. Checkboxes keep that explicit and stay readable on a phone, where a
+ * native multi-select needs ctrl-click nobody has.
+ */
+export function BuildingMultiPicker({
+  id,
+  buildings,
+  value,
+  onChange,
+  label,
+  hint,
+}: {
+  id: string;
+  buildings: BuildingOption[];
+  value: string[];
+  onChange: (buildingIds: string[]) => void;
+  label?: string;
+  hint?: string;
+}) {
+  const { text } = useLanguage();
+  if (buildings.length < 2) return null;
+  const allSelected = value.length === buildings.length;
+  const toggle = (buildingId: string) => {
+    const selected = new Set(value);
+    if (selected.has(buildingId)) selected.delete(buildingId);
+    else selected.add(buildingId);
+    // Never leave the record without a building; the last checkbox stays on.
+    if (!selected.size) return;
+    onChange(buildings.filter((building) => selected.has(building.id)).map((building) => building.id));
+  };
+
+  return (
+    <fieldset className="form-field building-multi-picker" id={id}>
+      <legend>{label ?? text("Buildings", "Gebouwen")}</legend>
+      <div className="building-multi-options">
+        <label className={allSelected ? "active" : ""}>
+          <input
+            type="checkbox"
+            checked={allSelected}
+            onChange={() => onChange(allSelected ? [buildings[0].id] : buildings.map((building) => building.id))}
+          />
+          <span>{text("All buildings", "Alle gebouwen")}</span>
+        </label>
+        {buildings.map((building) => (
+          <label className={value.includes(building.id) ? "active" : ""} key={building.id}>
+            <input type="checkbox" checked={value.includes(building.id)} onChange={() => toggle(building.id)} />
+            <span>{building.name}</span>
+          </label>
+        ))}
+      </div>
+      <small>{hint ?? text(
+        "Choose one building, several, or all of them. The record is saved once per selected building.",
+        "Kies één gebouw, meerdere of alle. De registratie wordt per gekozen gebouw opgeslagen.",
+      )}</small>
+    </fieldset>
+  );
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import { Camera, CloudSun, HardHat, Loader2, ShieldCheck, TimerOff, Users, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { useLanguage } from "@/lib/i18n";
@@ -14,6 +14,15 @@ export type DailyLogAttendanceRow = {
   count: number;
   shiftStart: string;
   shiftEnd: string;
+};
+
+/**
+ * A photo plus the name the supervisor gives it. Without a name a day with eight photos
+ * ends up in the report as eight numbered files nobody can place afterwards.
+ */
+export type DailyLogPhoto = {
+  file: File;
+  caption: string;
 };
 
 /**
@@ -61,14 +70,14 @@ export function DailyLogModal({
     buildingId: string;
     answers: DailyCloseoutAnswers;
     attendance: DailyLogAttendanceRow[];
-    photos: File[];
+    photos: DailyLogPhoto[];
   }) => void | Promise<void>;
 }) {
   const { text } = useLanguage();
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [buildingId, setBuildingId] = useState(() => resolveDefaultBuildingId(buildings, defaultBuildingId));
   const [rows, setRows] = useState(attendanceRows);
-  const [photos, setPhotos] = useState<File[]>([]);
+  const [photos, setPhotos] = useState<DailyLogPhoto[]>([]);
   const [showWorkforce, setShowWorkforce] = useState(false);
 
   const [log, setLog] = useState(() => ({
@@ -103,14 +112,27 @@ export function DailyLogModal({
     text("Deliver missing documents", "Ontbrekende documenten aanleveren"),
     text("Improve site housekeeping", "Verbeter de orde op de bouwplaats"),
   ];
+  const workforceNoteChoices = [
+    text("Too few workers for the planned work.", "Onvoldoende arbeiders voor het geplande werk."),
+    text("More workers can be deployed on this activity.", "Er kunnen meer arbeiders op deze activiteit worden ingezet."),
+    text("Workforce is sufficient for the planned work.", "De bezetting is voldoende voor het geplande werk."),
+    text("Key discipline was absent today.", "Een belangrijke discipline was vandaag afwezig."),
+    text("Workers arrived late on site.", "Arbeiders zijn te laat op de bouwplaats gekomen."),
+    text("Extra shift or overtime is needed to stay on schedule.", "Extra dienst of overwerk nodig om op planning te blijven."),
+  ];
 
   const setCount = (index: number, delta: number) => setRows((current) =>
     current.map((row, rowIndex) => rowIndex === index ? { ...row, count: Math.max(0, row.count + delta) } : row));
 
   const addPhotos = (files: FileList | null) => {
     const captured = Array.from(files ?? []).filter((file) => file.type.startsWith("image/"));
-    if (captured.length) setPhotos((current) => [...current, ...captured]);
+    if (captured.length) setPhotos((current) => [...current, ...captured.map((file) => ({ file, caption: "" }))]);
   };
+  const setCaption = (index: number, caption: string) => setPhotos((current) =>
+    current.map((photo, photoIndex) => photoIndex === index ? { ...photo, caption } : photo));
+  const removePhoto = (index: number) => setPhotos((current) => current.filter((_, photoIndex) => photoIndex !== index));
+  const photoPreviews = useMemo(() => photos.map((photo) => URL.createObjectURL(photo.file)), [photos]);
+  useEffect(() => () => photoPreviews.forEach((preview) => URL.revokeObjectURL(preview)), [photoPreviews]);
 
   const attendanceTotal = rows.reduce((sum, row) => sum + row.count, 0);
   // The database requires a full closeout record; these blocks are the ones the client
@@ -286,8 +308,46 @@ export function DailyLogModal({
               {!rows.length ? <p className="form-helper">{text("No workforce rows yet. Add parties and disciplines under Management.", "Nog geen bezettingsregels. Voeg partijen en disciplines toe onder Management.")}</p> : null}
               {disciplines.length && parties.length ? null : <p className="form-helper">{text("Configure project parties and disciplines to record workforce here.", "Configureer projectpartijen en disciplines om hier bezetting vast te leggen.")}</p>}
             </div>
+
+            {/* Counting people is not the same as judging the manning level. These notes are
+                the sentences the client wants in the report about the workforce. */}
+            <div className="quick-issue-presets" aria-label={text("Standard notes about the workforce", "Standaardnotities over de bezetting")}>
+              {workforceNoteChoices.map((choice) => (
+                <button
+                  className={log.adviceToContractor.includes(choice) ? "active" : ""}
+                  type="button"
+                  onClick={() => setLog((current) => ({
+                    ...current,
+                    adviceToContractor: current.adviceToContractor.includes(choice)
+                      ? current.adviceToContractor.replace(choice, "").replace(/\s{2,}/g, " ").trim()
+                      : appendDictation(current.adviceToContractor, choice),
+                  }))}
+                  key={choice}
+                >{choice}</button>
+              ))}
+            </div>
+
             <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple onChange={(event) => { addPhotos(event.target.files); event.target.value = ""; }} />
             <button className="secondary-button" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={15} /> {text("Add photo", "Foto toevoegen")}</button>
+            {photos.length ? (
+              <div className="daily-log-photo-list">
+                {photos.map((photo, index) => (
+                  <div key={photoPreviews[index]}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={photoPreviews[index]} alt={photo.file.name} />
+                    <label className="form-field">
+                      <span>{text("Photo name for the report", "Fotonaam voor het rapport")}</span>
+                      <input
+                        value={photo.caption}
+                        onChange={(event) => setCaption(index, event.target.value)}
+                        placeholder={text("For example: rebar column line B", "Bijvoorbeeld: wapening kolom lijn B")}
+                      />
+                    </label>
+                    <button className="daily-log-photo-remove" type="button" onClick={() => removePhoto(index)} aria-label={text(`Remove ${photo.file.name}`, `Verwijder ${photo.file.name}`)}><X size={13} /></button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </details>
 
           {problems.length ? (

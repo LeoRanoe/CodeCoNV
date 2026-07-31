@@ -734,7 +734,7 @@ export async function linkFileToRecord(
     organizationId: string;
     projectId: string;
     fileId: string;
-    recordType: "finding" | "action" | "inspection" | "hse";
+    recordType: "finding" | "action" | "inspection" | "hse" | "registration";
     recordId: string;
     relationship?: "attachment" | "before" | "after" | "evidence";
   },
