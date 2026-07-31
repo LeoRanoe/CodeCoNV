@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
+import { useLiveProjectWeather } from "@/lib/weather-client";
 
 type DashboardEntry = {
   id: string;
@@ -110,42 +111,8 @@ export function ClientDashboard({
 }) {
   const { locale, text } = useLanguage();
   const [search, setSearch] = useState("");
-  const [liveWeather, setLiveWeather] = useState<null | {
-    temperatureC: number;
-    apparentTemperatureC: number;
-    relativeHumidityPercent: number;
-    precipitationMm: number;
-    windSpeedKph: number;
-    observedAt: string;
-    resolvedLocation: string;
-    source: string;
-  }>(null);
-  const [weatherLoading, setWeatherLoading] = useState(false);
-  const [weatherError, setWeatherError] = useState("");
-  const loadLiveWeather = async () => {
-    setWeatherLoading(true);
-    setWeatherError("");
-    try {
-      const response = await fetch(`/api/weather/current?location=${encodeURIComponent(projectLocation)}`, { headers: { accept: "application/json" } });
-      const payload = await response.json() as Record<string, unknown>;
-      if (!response.ok) throw new Error(String(payload.error ?? "Weather unavailable"));
-      setLiveWeather(payload as typeof liveWeather);
-    } catch (error) {
-      setWeatherError(error instanceof Error ? error.message : text("Weather unavailable", "Weer niet beschikbaar"));
-    } finally {
-      setWeatherLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const initial = window.setTimeout(() => void loadLiveWeather(), 0);
-    const timer = window.setInterval(() => void loadLiveWeather(), 10 * 60 * 1000);
-    return () => {
-      window.clearTimeout(initial);
-      window.clearInterval(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectLocation]);
+  // Shared with the top bar so both show the same reading from one request.
+  const { weather: liveWeather, error: weatherError, loading: weatherLoading, reload: loadLiveWeather } = useLiveProjectWeather(projectLocation);
   const openItems = actions.filter((action) => !["verified", "cancelled"].includes(action.status));
   const completedItems = actions.filter((action) => ["verified", "cancelled"].includes(action.status));
   const urgentItems = openItems.filter((action) => ["high", "critical"].includes(action.priority));
@@ -291,7 +258,7 @@ export function ClientDashboard({
         <article className="overview-panel overview-site-panel">
           <header className="overview-panel-heading">
             <div><span>{text("Live weather register", "Actueel weerregister")}</span><h2>{text("Conditions & location", "Condities & locatie")}</h2></div>
-            <button className="overview-weather-icon" type="button" onClick={() => void loadLiveWeather()} disabled={weatherLoading} aria-label={text("Refresh live weather", "Ververs actueel weer")}><RefreshCw className={weatherLoading ? "spin" : ""} size={18} /></button>
+            <button className="overview-weather-icon" type="button" onClick={loadLiveWeather} disabled={weatherLoading} aria-label={text("Refresh live weather", "Ververs actueel weer")}><RefreshCw className={weatherLoading ? "spin" : ""} size={18} /></button>
           </header>
           <div className="overview-weather">
             <span><strong>{liveWeather ? `${liveWeather.temperatureC}°C` : weather ? `${weather.temperatureC}°C` : "—"}</strong><small>{liveWeather ? liveWeather.resolvedLocation : weatherLabel}</small></span>

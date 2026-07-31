@@ -45,6 +45,8 @@ type DrawingWorkspaceProps = {
   client: SupabaseClient;
   busy: boolean;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
+  /** Preselects "observation" plus this finding, so an issue can be pinned straight from its card. */
+  initialFindingId?: string;
   onOpenLinkedRecord: (recordType: DrawingPin["linked_record_type"], recordId: string) => void;
 };
 
@@ -85,7 +87,7 @@ const pinTypeClass: Record<DrawingPin["linked_record_type"], string> = {
   visual: "cyan",
 };
 
-export function DrawingWorkspace({ data, projectId, buildingId, buildings, client, busy, run, onOpenLinkedRecord }: DrawingWorkspaceProps) {
+export function DrawingWorkspace({ data, projectId, buildingId, buildings, client, busy, run, initialFindingId = "", onOpenLinkedRecord }: DrawingWorkspaceProps) {
   const { language, text } = useLanguage();
   const maxFileSizeBytes = (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024;
   const drawings = data.files.filter((file) => file.category === "drawing" && file.status === "available" && supportedDrawingMimeTypes.includes(file.mime_type));
@@ -96,8 +98,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
   const [pageCount, setPageCount] = useState(1);
   const [point, setPoint] = useState<PinPoint | null>(null);
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
-  const [linkType, setLinkType] = useState<DrawingPin["linked_record_type"]>("rfi");
-  const [linkedRecordId, setLinkedRecordId] = useState("");
+  const [linkType, setLinkType] = useState<DrawingPin["linked_record_type"]>(initialFindingId ? "observation" : "rfi");
+  const [linkedRecordId, setLinkedRecordId] = useState(initialFindingId);
   const [note, setNote] = useState("");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -141,6 +143,22 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
       .map((capture) => ({ id: capture.id, number: capture.capture_type === "panorama" ? "360" : "PHOTO", title: capture.title, meta: capture.location_label }));
   }, [data.files, data.findings, data.inspections, data.registerEntries, data.visualCaptures, linkType]);
   const selectedRecordId = linkOptions.some((option) => option.id === linkedRecordId) ? linkedRecordId : linkOptions[0]?.id ?? "";
+
+  const incomingFinding = initialFindingId ? data.findings.find((finding) => finding.id === initialFindingId) ?? null : null;
+  const incomingPin = incomingFinding
+    ? data.drawingPins.find((pin) => pin.linked_record_type === "observation" && pin.linked_record_id === incomingFinding.id && pin.status === "active") ?? null
+    : null;
+
+  // Jump straight to the drawing and page that already carries this issue.
+  const incomingPinHandled = useRef("");
+  useEffect(() => {
+    if (!incomingPin || incomingPinHandled.current === incomingPin.id) return;
+    incomingPinHandled.current = incomingPin.id;
+    setActiveDrawingId(incomingPin.drawing_file_id);
+    setPageNumber(incomingPin.page_number);
+    setSelectedPinId(incomingPin.id);
+    setPoint(null);
+  }, [incomingPin]);
 
   const selectDrawing = (drawingId: string) => {
     setActiveDrawingId(drawingId);
@@ -207,6 +225,20 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
           <p>{text("Upload a PDF or drawing image, choose a page and link an exact location to an RFI, submittal, document, observation, inspection or site image.", "Upload een PDF of tekeningsafbeelding, kies een pagina en koppel een exacte locatie aan een RFI, submittal, document, observatie, inspectie of terreinbeeld.")}</p>
         </div>
       </div>
+
+      {incomingFinding ? (
+        <div className="operation-alert success drawing-finding-handoff">
+          <MapPin size={18} />
+          <div>
+            <strong>{incomingPin
+              ? text(`${incomingFinding.finding_number} is already on a drawing`, `${incomingFinding.finding_number} staat al op een tekening`)
+              : text(`Place ${incomingFinding.finding_number} on a drawing`, `Plaats ${incomingFinding.finding_number} op een tekening`)}</strong>
+            <span>{incomingPin
+              ? text("The drawing and page below already show this issue.", "De tekening en pagina hieronder tonen dit issue al.")
+              : text("The link is preset to this issue. Choose the drawing and page, then click the exact location.", "De koppeling staat al op dit issue. Kies de tekening en pagina en klik daarna op de exacte locatie.")}</span>
+          </div>
+        </div>
+      ) : null}
 
       <div className="drawing-upload-strip">
         <BuildingPicker id="drawing-upload-building" buildings={buildings} value={uploadBuildingId} onChange={setUploadBuildingId} />

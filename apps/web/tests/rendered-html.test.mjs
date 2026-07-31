@@ -320,7 +320,8 @@ test("implements the handwritten client PDF as required workflows without AI or 
   assert.match(dataLayer, /work_ongoing/);
   assert.match(operationalWorkspace, /Upload contract, technische specificatie of bijlage/);
   assert.match(operationalWorkspace, /uploadProjectFile/);
-  assert.match(operationalWorkspace, /Koppel visuele pointer/);
+  assert.match(operationalWorkspace, /Markeer op foto \/ 360°/);
+  assert.match(operationalWorkspace, /Plaats op tekening/);
   assert.match(visualWorkspace, /Koppel pointer aan issue/);
   assert.match(operations, /linkVisualAnnotationToFinding/);
   assert.match(visualLinkMigration, /create_visual_annotation_for_finding/);
@@ -648,12 +649,14 @@ test("keeps the project workspace mobile-first and task driven", async () => {
 
   assert.match(app, /useState<"home"[\s\S]*>\("home"\)/);
   assert.match(app, /openQuickCamera=\{openQuickAdd\}/);
-  assert.match(operations, /What do you need to do now\?|Wat wil je nu doen\?/);
-  assert.match(operations, /workspace-camera-action/);
   assert.match(operations, /mobile-workspace-section-select/);
   assert.match(operations, /projectSectionGroups/);
   assert.match(operations, /workspace-current-module/);
-  assert.match(operations, /Point and shoot[\s\S]*linked automatically/);
+  // The workspace start screen is the client's fifteen-tile launcher, not a hidden legacy hub.
+  assert.match(operations, /<ProjectWorkspaceHome/);
+  assert.doesNotMatch(operations, /workspace-task-hub/);
+  assert.match(workspaceHome, /workspace-launcher-grid/);
+  assert.match(workspaceHome, /openQuickCamera/);
   assert.match(workspaceHome, /works_ongoing/);
   assert.match(workspaceHome, /works_completed/);
   assert.match(workspaceHome, /openFinding\("issue"\)/);
@@ -790,4 +793,69 @@ test("keeps employee assignment, editable external rights and openable document 
   assert.match(migration, /create or replace function public\.set_user_project_role/);
   assert.match(migration, /app_private\.is_company_project_employee/);
   assert.match(migration, /insert into public\.audit_events/);
+});
+
+test("makes photo linkage, punch-list marker colours and report topics real", async () => {
+  const [operations, media, visual, drawings, operationalWorkspace, periodPdf, periodDocx, styles, markerMigration, historyMigration, originHelper] = await Promise.all([
+    readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/media-library-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/visual-evidence-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/drawing-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/period-report-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/period-report-docx.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202607300004_visual_marker_disposition_and_building.sql", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202607300005_controlled_document_response_history.sql", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/file-origins.ts", import.meta.url), "utf8"),
+  ]);
+
+  // A photo must show which record it belongs to; file_links was written but never read.
+  assert.match(operations, /client\.from\("file_links"\)\.select/);
+  assert.match(operations, /fileLinks\?: FileLink\[\]/);
+  assert.match(originHelper, /export function createFileOriginResolver/);
+  assert.match(originHelper, /export function filesForRecord/);
+  assert.match(media, /media-origin-chips/);
+  assert.match(media, /originFilter/);
+  assert.match(operationalWorkspace, /RecordPhotoStrip/);
+  assert.match(styles, /\.media-origin-chip/);
+  assert.match(styles, /\.record-photo-strip/);
+
+  // Marker colour follows the client's punch list, not severity, and is stored as data.
+  assert.match(visual, /function markerTone/);
+  assert.match(visual, /visual-marker \$\{markerTone\(annotation\)\}/);
+  assert.match(styles, /\.visual-marker\.alternative-solution/);
+  assert.match(operations, /p_disposition: input\.disposition/);
+  assert.match(operations, /p_building_id: input\.buildingId/);
+  assert.match(markerMigration, /visual_annotations_disposition_check/);
+  assert.match(markerMigration, /Building does not belong to this project/);
+  assert.match(visual, /BuildingPicker id="marker-building"/);
+  // The classification must no longer be smuggled into the description text.
+  assert.doesNotMatch(visual, /\[\$\{issue\.disposition\.replaceAll/);
+
+  // An issue can be pinned on a drawing straight from its own card.
+  assert.match(operationalWorkspace, /linkDrawing=\{\(finding\) =>/);
+  assert.match(drawings, /initialFindingId/);
+  assert.match(drawings, /drawing-finding-handoff/);
+
+  // Controlled submissions keep every decision instead of overwriting the last one.
+  assert.match(historyMigration, /response_history/);
+  assert.doesNotMatch(historyMigration, /jsonb_set\(\s*v_entry\.details,\s*'\{response\}'/);
+  assert.match(operationalWorkspace, /controlled-history-timeline/);
+  assert.match(styles, /\.controlled-history-timeline/);
+
+  // WCR, RFI, RFA and WIR belong to Management, never to the supervision workspace.
+  assert.match(operationalWorkspace, /externalSubmissionRegisterTypes/);
+  assert.doesNotMatch(operationalWorkspace, /<strong>WCR<\/strong>/);
+  assert.doesNotMatch(operationalWorkspace, /<strong>WIR<\/strong>/);
+
+  // Every one of the fifteen client subjects changes the generated document on its own.
+  assert.match(periodPdf, /export type PeriodReportTopic/);
+  assert.match(periodPdf, /topics\.has\("works_ongoing"\)/);
+  assert.match(periodPdf, /topics\.has\("works_completed"\)/);
+  assert.match(periodPdf, /topics\.has\("ncr"\)/);
+  assert.match(periodPdf, /topics\.has\("hse_incident"\)/);
+  assert.match(periodDocx, /topics\.has\("materials_delivery"\)/);
+  assert.match(periodDocx, /topics\.has\("delays"\)/);
+  assert.match(operationalWorkspace, /topics: activeTopics/);
 });

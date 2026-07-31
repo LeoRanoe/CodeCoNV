@@ -12,7 +12,22 @@ import type { PeriodReportSnapshot } from "@/lib/supabase/operations";
 
 export type PeriodReportSection = "management" | "workforce" | "work" | "quality" | "hse" | "actions" | "logistics" | "instructions" | "commercial" | "communications" | "requests" | "boq" | "visual" | "documents" | "environment" | "buildings";
 export const allPeriodReportSections: PeriodReportSection[] = ["management", "workforce", "work", "quality", "hse", "actions", "logistics", "instructions", "commercial", "communications", "requests", "boq", "visual", "documents", "environment", "buildings"];
-export type PeriodReportOptions = { sections?: PeriodReportSection[]; reportTitle?: string; headerText?: string | null; footerText?: string | null };
+
+/**
+ * The fifteen client-facing report subjects. Sections decide which pages exist;
+ * topics decide which individual blocks appear, so every checkbox in "Include in
+ * this report" changes the output on its own.
+ */
+export type PeriodReportTopic =
+  | "photos" | "works_ongoing" | "works_completed" | "workforce" | "delays"
+  | "issues" | "hse" | "materials_delivery" | "inspections" | "technical_instructions"
+  | "change_order" | "ncr" | "deadlines" | "hse_incident" | "agreements_made";
+export const allPeriodReportTopics: PeriodReportTopic[] = ["photos", "works_ongoing", "works_completed", "workforce", "delays", "issues", "hse", "materials_delivery", "inspections", "technical_instructions", "change_order", "ncr", "deadlines", "hse_incident", "agreements_made"];
+
+/** HSE event types that count as an incident rather than a routine observation. */
+export const hseIncidentTypes = ["incident", "near_miss", "stop_work"];
+
+export type PeriodReportOptions = { sections?: PeriodReportSection[]; topics?: PeriodReportTopic[]; reportTitle?: string; headerText?: string | null; footerText?: string | null };
 
 const styles = StyleSheet.create({
   page: { backgroundColor: "#ffffff", color: "#20252b", fontFamily: "Helvetica", fontSize: 9, paddingBottom: 42, paddingHorizontal: 34, paddingTop: 88 },
@@ -135,6 +150,7 @@ function ReportBrand({ label, logoSource }: { label: string; logoSource: string 
 export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/codeco-logo-pdf.png" }: { snapshot: PeriodReportSnapshot; options?: PeriodReportOptions; logoSource?: string }) {
   const projectName = value(snapshot.project, "name", "CODECO-project");
   const sections = new Set(options.sections?.length ? options.sections : allPeriodReportSections);
+  const topics = new Set(options.topics?.length ? options.topics : allPeriodReportTopics);
   const buildings = snapshot.buildings ?? [];
   const locationNodes = snapshot.location_nodes ?? [];
   const buildingById = new Map(buildings.map((building) => [value(building, "id"), value(building, "name")]));
@@ -164,6 +180,10 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
   const hseEvents = withContext(snapshot.hse_events);
   const register = (type: string) => registerEntries.filter((entry) => value(entry, "register_type") === type);
   const openFindings = findings.filter((entry) => !["closed", "cancelled"].includes(value(entry, "status")));
+  const issueFindings = findings.filter((entry) => value(entry, "finding_type") !== "ncr");
+  const ncrFindings = findings.filter((entry) => value(entry, "finding_type") === "ncr");
+  const hseIncidents = hseEvents.filter((entry) => hseIncidentTypes.includes(value(entry, "event_type")));
+  const hseObservations = hseEvents.filter((entry) => !hseIncidentTypes.includes(value(entry, "event_type")));
   const attendanceTotal = snapshot.attendance.reduce((total, entry) => total + Number(entry.headcount ?? 0), 0);
   const workforce = Object.entries(snapshot.attendance.reduce<Record<string, number>>((groups, entry) => {
     const discipline = value(entry, "discipline", "Onbekend");
@@ -189,6 +209,10 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
   });
   const progressByFinding = new Map<string, Record<string, unknown>>();
   findingProgressUpdates.forEach((progress) => progressByFinding.set(value(progress, "finding_id"), progress));
+  const withProgress = (rows: Array<Record<string, unknown>>) => rows.map((finding) => {
+    const progress = progressByFinding.get(value(finding, "id"));
+    return { ...finding, details: { ...nested(finding, "details"), disposition: progress ? value(progress, "disposition") : value(nested(finding, "issue_management"), "disposition"), progress_percent: progress ? value(progress, "progress_percent") : "0", inspected_at: progress ? value(progress, "inspected_at") : "" } };
+  });
   const averageProgress = findingProgressUpdates.length
     ? Math.round(findingProgressUpdates.reduce((total, progress) => total + Number(progress.progress_percent ?? 0), 0) / findingProgressUpdates.length)
     : 0;
@@ -240,7 +264,7 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
           ].map(([number, label]) => <View style={styles.stat} key={String(label)}><Text style={styles.statNumber}>{number}</Text><Text style={styles.statLabel}>{label}</Text></View>)}
         </View></> : null}
 
-        {sections.has("workforce") ? <><Text style={styles.heading}>Bezetting per discipline</Text>
+        {sections.has("workforce") && topics.has("workforce") ? <><Text style={styles.heading}>Bezetting per discipline</Text>
         {workforce.length ? <>
           {workforce.slice(0, 6).map(([discipline, count]) => <View style={styles.row} key={discipline}><Text style={styles.rowNumber}>{count}</Text><Text style={styles.rowTitle}>{discipline}</Text></View>)}
           {workforce.length > 6 ? <Text style={styles.empty}>Nog {workforce.length - 6} disciplines staan in de bronregistraties.</Text> : null}
@@ -259,7 +283,8 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
             <Text style={styles.dailyDate}>{formatDate(value(report, "report_date"))} | {value(report, "report_number")} | {humanizeToken(value(report, "status"))}</Text>
             <Text style={styles.dailySummary}>{closeout ? value(closeout, "day_summary", "Geen dagsamenvatting") : "Dagafsluiting nog niet bevestigd"}</Text>
             {start ? <Text style={styles.dailyDetail}>Weer: {value(start, "weather_condition")} · {value(start, "temperature_c")} °C · wind {value(start, "wind_condition")} | Werkuren: {value(start, "shift_start")}–{value(start, "shift_end")} | Gepland: {value(start, "planned_work")}</Text> : null}
-            {closeout ? <Text style={styles.dailyDetail}>Lopend: {value(closeout, "work_ongoing", "-")} | Afgerond: {value(closeout, "work_performed", "-")} | Voortgang: {value(closeout, "progress_percent", "0")}% | Morgen: {value(closeout, "tomorrow_plan", "-")}</Text> : null}
+            {closeout && topics.has("works_ongoing") ? <Text style={styles.dailyDetail}>Lopend: {value(closeout, "work_ongoing", "-")} | Morgen: {value(closeout, "tomorrow_plan", "-")}</Text> : null}
+            {closeout && topics.has("works_completed") ? <Text style={styles.dailyDetail}>Afgerond: {value(closeout, "work_performed", "-")} | Voortgang: {value(closeout, "progress_percent", "0")}%</Text> : null}
             {closeout ? <Text style={styles.dailyDetail}>QC: {value(closeout, "inspection_result")} · {value(closeout, "quality_details", "geen afwijking")} | HSE: {value(closeout, "hse_event")} · {value(closeout, "hse_details", "geen bijzonderheden")} | Advies/besluit: {value(closeout, "communication", "-")}</Text> : null}
           </View>;
         }) : <Text style={styles.empty}>Geen dagrapporten in deze periode.</Text>}
@@ -269,29 +294,33 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
 
       <Page size="A4" style={styles.page}>
         <ReportBrand label="KWALITEIT EN VEILIGHEID" logoSource={logoSource} />
-        {sections.has("quality") ? <><Text style={styles.heading}>Lessons learned / corrigerende standaard</Text><RecordRows rows={lessonsLearned} empty="Nog geen issuegebonden lessons learned in deze periode." /><Text style={styles.heading}>Inspecties</Text><RecordRows rows={inspections} /><Text style={styles.heading}>Issue control, bevindingen, afwijkingen en NCR</Text><RecordRows rows={findings.map((finding) => {
-          const progress = progressByFinding.get(value(finding, "id"));
-          return { ...finding, details: { disposition: progress ? value(progress, "disposition") : "", progress_percent: progress ? value(progress, "progress_percent") : "0", inspected_at: progress ? value(progress, "inspected_at") : "" } };
-        })} /></> : null}
-        {sections.has("hse") ? <><Text style={styles.heading}>HSE, incidenten en near misses</Text><RecordRows rows={hseEvents} /></> : null}
+        {sections.has("quality") ? <>
+          {topics.has("issues") || topics.has("ncr") ? <><Text style={styles.heading}>Lessons learned / corrigerende standaard</Text><RecordRows rows={lessonsLearned} empty="Nog geen issuegebonden lessons learned in deze periode." /></> : null}
+          {topics.has("inspections") ? <><Text style={styles.heading}>Inspecties</Text><RecordRows rows={inspections} /></> : null}
+          {topics.has("issues") ? <><Text style={styles.heading}>Issue control en bevindingen</Text><RecordRows rows={withProgress(issueFindings)} empty="Geen issues in deze periode." /></> : null}
+          {topics.has("ncr") ? <><Text style={styles.heading}>NCR - formele afwijkingen</Text><RecordRows rows={withProgress(ncrFindings)} empty="Geen NCR in deze periode." /></> : null}
+        </> : null}
+        {sections.has("hse") && topics.has("hse") ? <><Text style={styles.heading}>HSE-observaties en maatregelen</Text><RecordRows rows={hseObservations} empty="Geen HSE-observatie in deze periode." /></> : null}
+        {sections.has("hse") && topics.has("hse_incident") ? <><Text style={styles.heading}>HSE-incidenten, near misses en werkstops</Text><RecordRows rows={hseIncidents} empty="Geen HSE-incident in deze periode." /></> : null}
         {sections.has("environment") ? <><Text style={styles.heading}>Milieu, social en housekeeping</Text><RecordRows rows={register("environmental_report")} empty="Geen milieurapport of housekeepingobservatie in deze periode." /></> : null}
-        {sections.has("actions") ? <><Text style={styles.heading}>Open deadlines en acties</Text><RecordRows rows={snapshot.open_actions} /></> : null}
+        {sections.has("actions") && topics.has("deadlines") ? <><Text style={styles.heading}>Open deadlines en acties</Text><RecordRows rows={snapshot.open_actions} /></> : null}
         <Text style={styles.footer} fixed>CODECO Supervisie | kwaliteit en HSE</Text>
       </Page>
 
       <Page size="A4" style={styles.page}>
         <ReportBrand label="PROJECTLOGS" logoSource={logoSource} />
-        {sections.has("logistics") ? <><Text style={styles.heading}>Materialen en leveringen</Text><RecordRows rows={register("delivery")} /><Text style={styles.heading}>Vertragingen</Text><RecordRows rows={register("delay")} /></> : null}
-        {sections.has("instructions") ? <><Text style={styles.heading}>Technische instructies</Text><RecordRows rows={[...register("technical_instruction"), ...register("site_instruction")]} /></> : null}
-        {sections.has("commercial") ? <><Text style={styles.heading}>Change orders en meer-/minderwerk</Text><RecordRows rows={[...register("change_order"), ...register("variation")]} /></> : null}
-        {sections.has("communications") ? <><Text style={styles.heading}>Afspraken, communicatie en besluiten</Text><RecordRows rows={[...register("agreement"), ...register("communication"), ...register("meeting")]} /></> : null}
+        {sections.has("logistics") && topics.has("materials_delivery") ? <><Text style={styles.heading}>Materialen en leveringen</Text><RecordRows rows={register("delivery")} /></> : null}
+        {sections.has("logistics") && topics.has("delays") ? <><Text style={styles.heading}>Vertragingen</Text><RecordRows rows={register("delay")} /></> : null}
+        {sections.has("instructions") && topics.has("technical_instructions") ? <><Text style={styles.heading}>Technische instructies</Text><RecordRows rows={[...register("technical_instruction"), ...register("site_instruction")]} /></> : null}
+        {sections.has("commercial") && topics.has("change_order") ? <><Text style={styles.heading}>Change orders en meer-/minderwerk</Text><RecordRows rows={[...register("change_order"), ...register("variation")]} /></> : null}
+        {sections.has("communications") && topics.has("agreements_made") ? <><Text style={styles.heading}>Afspraken, communicatie en besluiten</Text><RecordRows rows={[...register("agreement"), ...register("communication"), ...register("meeting")]} /></> : null}
         {sections.has("requests") ? <><Text style={styles.heading}>RFA, RFI en inspectieverzoeken</Text><RecordRows rows={[...register("rfa"), ...register("rfi"), ...register("inspection_request")]} /></> : null}
         {sections.has("documents") ? <><Text style={styles.heading}>Document control matrix</Text><RecordRows rows={controlledDocuments} empty="Geen beheerde klantdocumenten in deze periode." /></> : null}
         {sections.has("boq") ? <><Text style={styles.heading}>BOQ, voortgang en declaraties</Text><RecordRows rows={[...register("boq"), ...register("declaration"), ...register("cost")]} /></> : null}
         <Text style={styles.footer} fixed>CODECO Supervisie | projectlogs</Text>
       </Page>
 
-      {sections.has("visual") ? <Page size="A4" style={styles.page}>
+      {sections.has("visual") && topics.has("photos") ? <Page size="A4" style={styles.page}>
         <ReportBrand label="VISUEEL PROJECTDOSSIER" logoSource={logoSource} />
         <Text style={styles.heading}>Foto&apos;s en 360°-camerabeelden</Text>
         <RecordRows rows={snapshot.visual_captures} />

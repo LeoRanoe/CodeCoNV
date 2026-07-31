@@ -59,6 +59,8 @@ const emptyIssue = {
   severity: "medium" as Finding["severity"],
   responsiblePartyId: "",
   disposition: "to_be_corrected" as "validated" | "to_be_corrected" | "alternative_solution",
+  /** Empty means "same building as the photo". One image can cover more than one building. */
+  buildingId: "",
 };
 
 function degrees(value: number | null) {
@@ -126,7 +128,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     description: initialFinding.description,
     severity: initialFinding.severity,
     responsiblePartyId: initialFinding.responsible_party_id ?? "",
-    disposition: "to_be_corrected" as const,
+    disposition: (initialFinding.issue_management?.disposition ?? "to_be_corrected") as typeof emptyIssue["disposition"],
+    buildingId: initialFinding.building_id,
   } : emptyIssue);
   const [existingFindingId, setExistingFindingId] = useState(initialFinding?.id ?? "");
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(initialAnnotation?.id ?? null);
@@ -289,9 +292,11 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
             pitch: point.mode === "spherical" ? point.pitch : null,
             findingType: issue.findingType,
             title: issue.title,
-            description: `[${issue.disposition.replaceAll("_", " ")}] ${issue.description}`,
-            severity: issue.disposition === "validated" ? "low" : issue.disposition === "alternative_solution" ? "high" : issue.severity,
+            description: issue.description,
+            severity: issue.severity,
             responsiblePartyId: issue.responsiblePartyId,
+            buildingId: issue.buildingId || captureBuildingId,
+            disposition: issue.disposition,
           }),
       existingFinding
         ? text(`Marker linked to ${existingFinding.finding_number}.`, `Marker gekoppeld aan ${existingFinding.finding_number}.`)
@@ -379,7 +384,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
             ) : null}
           </div>
           <aside className="visual-issue-panel">
-            {point && activeCapture ? <IssueForm point={point} capture={activeCapture} issue={issue} setIssue={setIssue} findings={data.findings} annotations={data.visualAnnotations} existingFindingId={existingFindingId} setExistingFindingId={setExistingFindingId} parties={parties} busy={busy} save={() => void saveIssue()} cancel={() => { setPoint(null); setIssue(emptyIssue); setExistingFindingId(""); }} /> : selectedAnnotation && selectedFinding ? <AnnotationDetails annotation={selectedAnnotation} finding={selectedFinding} /> : <div className="visual-panel-empty"><ScanLine size={24} /><strong>{text("Select or place a marker", "Selecteer of plaats een marker")}</strong><span>{text("The exact image position and the formal finding remain linked.", "De exacte beeldpositie en de formele bevinding blijven gekoppeld.")}</span></div>}
+            {point && activeCapture ? <IssueForm point={point} capture={activeCapture} issue={issue} setIssue={setIssue} findings={data.findings} annotations={data.visualAnnotations} existingFindingId={existingFindingId} setExistingFindingId={setExistingFindingId} parties={parties} buildings={buildings} captureBuildingId={captureBuildingId} busy={busy} save={() => void saveIssue()} cancel={() => { setPoint(null); setIssue(emptyIssue); setExistingFindingId(""); }} /> : selectedAnnotation && selectedFinding ? <AnnotationDetails annotation={selectedAnnotation} finding={selectedFinding} /> : <div className="visual-panel-empty"><ScanLine size={24} /><strong>{text("Select or place a marker", "Selecteer of plaats een marker")}</strong><span>{text("The exact image position and the formal finding remain linked.", "De exacte beeldpositie en de formele bevinding blijven gekoppeld.")}</span></div>}
           </aside>
         </div>
       ) : <div className="empty-list-state visual-empty"><Camera size={24} /><strong>{text("No visual evidence yet", "Nog geen visueel bewijs")}</strong><span>{text("Start with a standard photo, or add a dedicated 360° camera export for an interactive site tour.", "Start met een gewone foto of voeg een export uit een speciale 360°-camera toe voor een interactieve terreinrondgang.")}</span></div>}
@@ -429,12 +434,24 @@ function PhotoAnnotationViewer({ imageUrl, title, annotations, pendingPoint, onP
         {/* The original aspect ratio is preserved so normalized marker coordinates stay exact. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={imageUrl} alt={title} onError={() => setImageFailed(true)} />
-        {annotations.map((annotation, index) => annotation.x_ratio !== null && annotation.y_ratio !== null ? <button className={`visual-marker ${annotation.severity}`} style={{ left: `${Number(annotation.x_ratio) * 100}%`, top: `${Number(annotation.y_ratio) * 100}%` }} type="button" aria-label={`${annotation.title} · ${annotation.severity}`} onClick={(event) => { event.stopPropagation(); onSelectAnnotation(annotation.id); }} key={annotation.id}>{index + 1}</button> : null)}
+        {annotations.map((annotation, index) => annotation.x_ratio !== null && annotation.y_ratio !== null ? <button className={`visual-marker ${markerTone(annotation)}`} style={{ left: `${Number(annotation.x_ratio) * 100}%`, top: `${Number(annotation.y_ratio) * 100}%` }} type="button" aria-label={`${annotation.title} · ${annotation.severity}`} onClick={(event) => { event.stopPropagation(); onSelectAnnotation(annotation.id); }} key={annotation.id}>{index + 1}</button> : null)}
         {pendingPoint ? <span className="visual-marker pending" style={{ left: `${pendingPoint.xRatio * 100}%`, top: `${pendingPoint.yRatio * 100}%` }}><Plus size={13} /></span> : null}
       </div>
       <button className="viewer-center-action" type="button" onClick={() => onPoint({ mode: "photo", xRatio: 0.5, yRatio: 0.5 })}><CircleDot size={15} /> {text("Place marker at image center", "Plaats marker in midden")}</button>
     </div>
   );
+}
+
+/**
+ * Marker colour follows the client's punch-list classification, not severity:
+ * Validate = green, To be corrected = orange, Need an alternative solution = red.
+ * Markers created before the classification shipped fall back to severity.
+ */
+function markerTone(annotation: VisualAnnotation) {
+  if (annotation.disposition === "validated") return "validated";
+  if (annotation.disposition === "to_be_corrected") return "to-be-corrected";
+  if (annotation.disposition === "alternative_solution") return "alternative-solution";
+  return annotation.severity;
 }
 
 function PanoramaViewer({ imageUrl, annotations, pendingPoint, onPoint, onSelectAnnotation }: { imageUrl: string; annotations: VisualAnnotation[]; pendingPoint: Extract<VisualPoint, { mode: "spherical" }> | null; onPoint: (point: VisualPoint) => void; onSelectAnnotation: (annotationId: string) => void }) {
@@ -518,7 +535,7 @@ function panoramaMarkers(annotations: VisualAnnotation[], pendingPoint: Extract<
   const markers: import("@photo-sphere-viewer/markers-plugin").MarkerConfig[] = annotations.flatMap((annotation, index) => annotation.yaw === null || annotation.pitch === null ? [] : [{
     id: annotation.id,
     position: { yaw: Number(annotation.yaw), pitch: Number(annotation.pitch) },
-    html: `<span class="panorama-marker-dot ${annotation.severity}">${index + 1}</span>`,
+    html: `<span class="panorama-marker-dot ${markerTone(annotation)}">${index + 1}</span>`,
     size: { width: 34, height: 34 },
     anchor: "center center",
     className: "panorama-marker-shell",
@@ -527,7 +544,7 @@ function panoramaMarkers(annotations: VisualAnnotation[], pendingPoint: Extract<
   return markers;
 }
 
-function IssueForm({ point, capture, issue, setIssue, findings, annotations, existingFindingId, setExistingFindingId, parties, busy, save, cancel }: { point: VisualPoint; capture: VisualCapture; issue: typeof emptyIssue; setIssue: (issue: typeof emptyIssue) => void; findings: Finding[]; annotations: VisualAnnotation[]; existingFindingId: string; setExistingFindingId: (id: string) => void; parties: ProjectParty[]; busy: boolean; save: () => void; cancel: () => void }) {
+function IssueForm({ point, capture, issue, setIssue, findings, annotations, existingFindingId, setExistingFindingId, parties, buildings, captureBuildingId, busy, save, cancel }: { point: VisualPoint; capture: VisualCapture; issue: typeof emptyIssue; setIssue: (issue: typeof emptyIssue) => void; findings: Finding[]; annotations: VisualAnnotation[]; existingFindingId: string; setExistingFindingId: (id: string) => void; parties: ProjectParty[]; buildings: BuildingOption[]; captureBuildingId: string; busy: boolean; save: () => void; cancel: () => void }) {
   const { text } = useLanguage();
   const existingFinding = findings.find((finding) => finding.id === existingFindingId) ?? null;
   const availableFindings = findings.filter((finding) => finding.id === existingFindingId || !annotations.some((annotation) => annotation.finding_id === finding.id && annotation.status === "active"));
@@ -550,13 +567,15 @@ function IssueForm({ point, capture, issue, setIssue, findings, annotations, exi
           description: finding.description,
           severity: finding.severity,
           responsiblePartyId: finding.responsible_party_id ?? "",
-          disposition: "to_be_corrected",
+          disposition: finding.issue_management?.disposition ?? "to_be_corrected",
+          buildingId: finding.building_id,
         } : emptyIssue);
       }}><option value="">{text("Create a new issue", "Maak een nieuw issue")}</option>{availableFindings.map((finding) => <option value={finding.id} key={finding.id}>{finding.finding_number} · {finding.title}</option>)}</select></label>
       {existingFinding ? <div className="operation-alert success"><CircleDot size={18} /><div><strong>{existingFinding.finding_number} · {existingFinding.title}</strong><span>{text("This pointer will be added to the existing formal issue.", "Deze pointer wordt aan het bestaande formele issue toegevoegd.")}</span></div></div> : <>
         <div className="quick-issue-presets" aria-label={text("Choose a common issue", "Kies een veelvoorkomend probleem")}>{issuePresets.map((preset) => <button className={issue.title === preset.title ? "active" : ""} type="button" onClick={() => setIssue({ ...issue, ...preset })} key={preset.title}>{preset.title}</button>)}</div>
         <label className="form-field"><span>{text("Issue type", "Probleemtype")}</span><select value={issue.findingType} onChange={(event) => setIssue({ ...issue, findingType: event.target.value as Finding["finding_type"] })}><option value="observation">{text("Observation", "Observatie")}</option><option value="deficiency">{text("Deficiency", "Tekortkoming")}</option><option value="deviation">{text("Deviation", "Afwijking")}</option><option value="ncr">NCR</option><option value="improvement">{text("Improvement opportunity", "Verbeterkans")}</option></select></label>
         <label className="form-field"><span>{text("Marker classification · color", "Markerclassificatie · kleur")}</span><select value={issue.disposition} onChange={(event) => setIssue({ ...issue, disposition: event.target.value as typeof issue.disposition })}><option value="validated">{text("Validated · green", "Gevalideerd · groen")}</option><option value="to_be_corrected">{text("To be corrected · orange", "Te corrigeren · oranje")}</option><option value="alternative_solution">{text("Alternative solution required · red", "Alternatieve oplossing nodig · rood")}</option></select></label>
+        <BuildingPicker id="marker-building" buildings={buildings} value={issue.buildingId || captureBuildingId} onChange={(next) => setIssue({ ...issue, buildingId: next })} />
         <label className="form-field"><span>{text("Severity", "Ernst")}</span><select value={issue.severity} onChange={(event) => setIssue({ ...issue, severity: event.target.value as Finding["severity"] })}><option value="low">{text("Low · 14 days", "Laag · 14 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label>
         <label className="form-field"><span>{text("Title", "Titel")}</span><input value={issue.title} onChange={(event) => setIssue({ ...issue, title: event.target.value })} placeholder={text("Choose above or type a short title.", "Kies hierboven of typ een korte titel.")} /></label>
         <label className="form-field"><span>{text("Responsible party", "Verantwoordelijke partij")}</span><select value={issue.responsiblePartyId} onChange={(event) => setIssue({ ...issue, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>

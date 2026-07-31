@@ -151,7 +151,7 @@ export function ProjectActionCenter({
   return (
     <section className="action-center">
       <header className="action-center-hero">
-        <div><span>{projectName} · {buildingName}</span><h1>{text("Action center", "Actiecentrum")}</h1><p>{text("One live worklist for assigned actions, quality findings and formal requests.", "Eén actuele werklijst voor toegewezen acties, kwaliteitspunten en formele verzoeken.")}</p></div>
+        <div><span>{projectName}</span><h1>{text("Action center", "Actiecentrum")}</h1><p>{text("One live worklist for assigned actions, quality findings and formal requests.", "Eén actuele werklijst voor toegewezen acties, kwaliteitspunten en formele verzoeken.")}</p></div>
         <button className="primary-button" type="button" onClick={createAction}><Plus size={15} /> {text("New action", "Nieuwe actie")}</button>
       </header>
 

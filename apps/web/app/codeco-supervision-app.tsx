@@ -53,6 +53,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { ClientDashboard } from "@/app/client-dashboard";
+import { LiveWeatherChip } from "@/app/live-weather-chip";
 import { LocationPicker, locationBreadcrumb, type ProjectLocationOption } from "@/app/location-picker";
 import { FieldGuide } from "@/app/field-guide";
 import { OperationalWorkspace } from "@/app/operational-workspace";
@@ -492,6 +493,7 @@ export function CodecoSupervisionApp() {
   const quickCameraInputRef = useRef<HTMLInputElement>(null);
   const dailyBackupCheckRef = useRef("");
   const [pendingQuickPhotos, setPendingQuickPhotos] = useState<File[]>([]);
+  const [externalSubmissionIntent, setExternalSubmissionIntent] = useState(false);
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("Floor 3 · East zone");
   const [priority, setPriority] = useState("normal");
@@ -997,6 +999,9 @@ export function CodecoSupervisionApp() {
 
   const navigate = (next: NavKey) => {
     if (next === "project") setInitialProjectTab("home");
+    // Any deliberate navigation ends the Management submission hand-off, so the
+    // workspace never stays unlocked for contractor document types.
+    setExternalSubmissionIntent(false);
     setMobileMenuOpen(false);
     setActiveNav(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1350,6 +1355,7 @@ export function CodecoSupervisionApp() {
             <strong>{buildingContextLabel}</strong>
           </button>
           <div className="top-actions">
+            <LiveWeatherChip location={selectedProject?.location ?? ""} />
             <LanguageSwitcher compact />
             <span className={`storage-state ${syncState}`} title={storageStatus}>{syncState === "error" || !isOnline ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />} <span>{storageStatus}</span></span>
             <button className={`icon-button management-button ${activeNav === "meer" ? "active" : ""}`} type="button" aria-label={text("Open management and settings", "Open beheer en instellingen")} title={text("Management and settings", "Beheer en instellingen")} onClick={() => navigate("meer")}><Settings size={17} /></button>
@@ -1417,6 +1423,7 @@ export function CodecoSupervisionApp() {
               canManageOrganization={canManageMembers}
               openUserAdmin={() => setModal("user_admin")}
               initialProjectTab={activeNav === "projectdocs" ? "documents" : activeNav === "punchlist" ? "findings" : initialProjectTab}
+              externalSubmissionIntent={externalSubmissionIntent}
               initialCameraFiles={pendingQuickPhotos}
               onInitialCameraFilesConsumed={() => setPendingQuickPhotos([])}
               openQuickCamera={openQuickAdd}
@@ -1431,7 +1438,10 @@ export function CodecoSupervisionApp() {
               }}
               createProjectAction={() => setModal("action_create")}
               openProjectArea={(tab) => {
-                setInitialProjectTab(tab);
+                // "submissions" is Management deliberately unlocking the contractor
+                // document types; every other destination is a normal workspace module.
+                setExternalSubmissionIntent(tab === "submissions");
+                setInitialProjectTab(tab === "submissions" ? "registers" : tab);
                 setActiveNav("project");
               }}
               openActionCenter={() => navigate("acties")}

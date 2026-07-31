@@ -36,12 +36,13 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { VisualEvidenceWorkspace } from "@/app/visual-evidence-workspace";
+import { DailyWorkRegister, type DailyWorkView } from "@/app/daily-work-register";
 import { DrawingWorkspace } from "@/app/drawing-workspace";
 import { FieldTools } from "@/app/field-tools";
 import { MediaLibraryWorkspace } from "@/app/media-library-workspace";
@@ -65,9 +66,10 @@ import { cacheProjectSnapshot, getCachedProjectSnapshot } from "@/lib/offline/pr
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload } from "@/lib/offline/upload-queue";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import type { FormalReportSnapshot } from "@/lib/reports/daily-report-pdf";
-import type { PeriodReportSection } from "@/lib/reports/period-report-pdf";
+import type { PeriodReportSection, PeriodReportTopic } from "@/lib/reports/period-report-pdf";
 import { assignProjectAction, type InternalMember, type ProjectParty } from "@/lib/supabase/data";
-import { isStorageGatewayConfigured, openProjectFile, uploadProjectFile } from "@/lib/storage/gateway";
+import { isStorageGatewayConfigured, loadProjectFileObjectUrl, openProjectFile, uploadProjectFile } from "@/lib/storage/gateway";
+import { createFileOriginResolver, filesForRecord, type FileOriginKind, type FileOriginResolver } from "@/lib/supabase/file-origins";
 import {
   buildPeriodReportSnapshot,
   createChecklist,
@@ -96,6 +98,7 @@ import {
   transitionFinding,
   updateProductionReadiness,
   validateBackupDryRun,
+  type FileRecord,
   type Finding,
   type ChecklistItem,
   type Inspection,
@@ -104,7 +107,7 @@ import {
 } from "@/lib/supabase/operations";
 
 type WorkspaceMode = "project" | "actions" | "verify" | "reports" | "admin";
-type ProjectTab = "home" | "inspections" | "findings" | "hse" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files";
+type ProjectTab = "home" | "inspections" | "findings" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files";
 
 const findingStatusLabels: Record<string, string> = {
   draft: "Concept",
@@ -173,6 +176,12 @@ const registerLabels: Record<string, string> = {
   specification: "Technische specificatie",
   environmental_report: "Milieurapport (ER)",
 };
+
+/**
+ * Controlled documents an external party submits and the company or owner approves.
+ * They live under Management, never as a workspace record you create yourself.
+ */
+const externalSubmissionRegisterTypes = ["wcr", "rfi", "rfa", "inspection_request"];
 
 const registerLabelsEnglish: Record<string, string> = {
   equipment: "Equipment", delivery: "Delivery", test: "Test / measurement", variation: "Variation",
@@ -259,6 +268,7 @@ export function OperationalWorkspace({
   canManageOrganization,
   openUserAdmin,
   initialProjectTab = "home",
+  externalSubmissionIntent = false,
   initialCameraFiles = [],
   onInitialCameraFilesConsumed,
   openQuickCamera,
@@ -292,12 +302,14 @@ export function OperationalWorkspace({
   canManageOrganization: boolean;
   openUserAdmin: () => void;
   initialProjectTab?: ProjectTab;
+  /** Set when Management sends the user here to record a contractor submission. */
+  externalSubmissionIntent?: boolean;
   initialCameraFiles?: File[];
   onInitialCameraFilesConsumed?: () => void;
   openQuickCamera: () => void;
   openQuickRegister: () => void;
   openDailyRecord: (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => void;
-  openProjectArea: (tab: "inspections" | "findings" | "documents" | "registers" | "visual" | "drawings" | "files") => void;
+  openProjectArea: (tab: "inspections" | "findings" | "documents" | "registers" | "visual" | "drawings" | "files" | "submissions") => void;
   openActionCenter: () => void;
   openRapidVerify: () => void;
   openReports: () => void;
@@ -366,7 +378,7 @@ export function OperationalWorkspace({
       {notice ? <div className="operation-alert success"><CheckCircle2 size={17} /> {notice}</div> : null}
       {mode === "project" ? (
         <ProjectOperations
-          key={`${projectId}:${initialProjectTab}`}
+          key={`${projectId}:${initialProjectTab}:${externalSubmissionIntent}`}
           data={query.data}
           organizationId={organizationId}
           reportId={reportId}
@@ -383,6 +395,7 @@ export function OperationalWorkspace({
           busy={busy}
           run={run}
           initialTab={initialProjectTab}
+          externalSubmissionIntent={externalSubmissionIntent}
           initialCameraFiles={initialCameraFiles}
           onInitialCameraFilesConsumed={onInitialCameraFilesConsumed}
           openQuickCamera={openQuickCamera}
@@ -473,6 +486,7 @@ function ProjectOperations({
   openRapidVerify,
   openReports,
   openManagement,
+  externalSubmissionIntent = false,
 }: {
   data: OperationSnapshot;
   organizationId: string;
@@ -499,14 +513,25 @@ function ProjectOperations({
   openRapidVerify: () => void;
   openReports: () => void;
   openManagement: () => void;
+  externalSubmissionIntent?: boolean;
 }) {
   const { language, locale, text } = useLanguage();
-  const registerNames = language === "en" ? registerLabelsEnglish : registerLabels;
+  const allRegisterNames = language === "en" ? registerLabelsEnglish : registerLabels;
+  // WCR, RFI, RFA and WIR are contractor submissions. They are filled in by the external
+  // party and decided by the company or owner under Management, so the supervision
+  // workspace must not offer them as something you create here.
+  const registerNames = externalSubmissionIntent
+    ? allRegisterNames
+    : Object.fromEntries(
+      Object.entries(allRegisterNames).filter(([type]) => !externalSubmissionRegisterTypes.includes(type)),
+    );
   const issueDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(new Date());
   const issueTime = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Paramaribo" }).format(new Date());
   const [tab, setTab] = useState<ProjectTab>(initialTab);
   const [findingScope, setFindingScope] = useState<"issue" | "ncr">("issue");
   const [visualFindingId, setVisualFindingId] = useState("");
+  const [drawingFindingId, setDrawingFindingId] = useState("");
+  const [dailyWorkView, setDailyWorkView] = useState<DailyWorkView>("works_ongoing");
   const [showForm, setShowForm] = useState(false);
   const [activeInspection, setActiveInspection] = useState<Inspection | null>(null);
   const [inspectionTitle, setInspectionTitle] = useState("");
@@ -1100,6 +1125,7 @@ function ProjectOperations({
     ["inspections", text("Inspections", "Inspecties"), data.inspections.length],
     ["findings", text("Findings / NCR", "Bevindingen / NCR"), data.findings.filter((item) => item.status !== "closed").length],
     ["hse", "HSE", data.hseEvents.length],
+    ["daily", text("Daily work", "Dagwerk"), (data.dailyWork ?? []).length],
     ["documents", "Project Docs", data.files.filter((file) => file.status === "available").length + data.registerEntries.filter((entry) => ["document", "drawing", "specification", "contract", "boq"].includes(entry.register_type)).length],
     ["registers", text("Formal documents & registers", "Formele documenten & registers"), data.registerEntries.length],
     ["visual", text("Visual evidence", "Visueel bewijs"), data.visualCaptures.length],
@@ -1110,6 +1136,7 @@ function ProjectOperations({
     inspections: moduleEnabled("inspections"),
     findings: moduleEnabled("quality"),
     hse: moduleEnabled("hse"),
+    daily: true,
     documents: moduleEnabled("documents"),
     registers: moduleEnabled("documents"),
     visual: moduleEnabled("visual_evidence"),
@@ -1122,7 +1149,7 @@ function ProjectOperations({
   const projectSectionGroups = [
     {
       label: text("Field control", "Veldcontrole"),
-      sections: projectSections.filter(([id]) => ["inspections", "findings", "hse"].includes(id)),
+      sections: projectSections.filter(([id]) => ["inspections", "findings", "hse", "daily"].includes(id)),
     },
     {
       label: text("Documents & approvals", "Documenten & goedkeuring"),
@@ -1139,7 +1166,7 @@ function ProjectOperations({
     <>
       {tab === "home" ? <header className="secondary-header workspace-header home">
         <div>
-          <p className="eyebrow">{projectName} · {buildingName}</p>
+          <p className="eyebrow">{projectName}</p>
           <h1>{text("Workspace", "Werkruimte")}</h1>
           <p>{text("Choose one task. Project context and filing are handled automatically.", "Kies één taak. Projectcontext en ordening worden automatisch geregeld.")}</p>
         </div>
@@ -1165,86 +1192,19 @@ function ProjectOperations({
             openFinding={openFinding}
             openRegister={openRegister}
             openDailyRecord={openDailyRecord}
+            openDailyWork={(view) => { setDailyWorkView(view); switchTab("daily"); }}
             openActionCenter={openActionCenter}
             openRapidVerify={openRapidVerify}
             openReports={openReports}
             openManagement={openManagement}
           />
-        <section className="workspace-task-hub feedback-mode" aria-hidden="true" hidden>
-          <div className="workspace-feedback-grid">
-            <button type="button" onClick={openQuickCamera}><span className="photo"><Camera size={22} /></span><strong>{text("Take photo", "Foto maken")}</strong><small>{text("Description and daily filing", "Omschrijving en dagordening")}</small></button>
-            <button type="button" onClick={() => openTask("inspections", true)}><span className="inspection"><ClipboardCheck size={22} /></span><strong>{text("Inspection", "Inspectie")}</strong><small>{data.inspections.length} {text("recorded", "geregistreerd")}</small></button>
-            <button type="button" onClick={() => openTask("findings", true)}><span className="issue"><AlertTriangle size={22} /></span><strong>{text("Issue / NCR", "Issue / NCR")}</strong><small>{data.findings.filter((item) => item.status !== "closed").length} open</small></button>
-            <button type="button" onClick={() => openTask("registers", true)}><span className="wcr"><FileCheck2 size={22} /></span><strong>WCR</strong><small>{text("Work completion request", "Werkcontroleverzoek")}</small></button>
-            <button type="button" onClick={() => openTask("registers", true)}><span className="rfi"><MessageCircle size={22} /></span><strong>RFI</strong><small>{text("Request for information", "Informatieverzoek")}</small></button>
-            <button type="button" onClick={() => openTask("registers", true)}><span className="rfa"><PackageCheck size={22} /></span><strong>RFA</strong><small>{text("Request for approval", "Goedkeuringsverzoek")}</small></button>
-            <button type="button" onClick={() => openTask("registers", true)}><span className="wir"><ShieldCheck size={22} /></span><strong>WIR</strong><small>{text("Work inspection request", "Werkinspectieverzoek")}</small></button>
-            <button type="button" onClick={() => openTask("hse", true)}><span className="hse"><ShieldCheck size={22} /></span><strong>HSE</strong><small>{data.hseEvents.length} {text("events", "meldingen")}</small></button>
-            <button type="button" onClick={() => openTask("findings", true)}><span className="punch"><CheckCircle2 size={22} /></span><strong>Punchlist</strong><small>{text("Contractor and supervision", "Contractor en supervisie")}</small></button>
-            <button type="button" onClick={() => openTask("drawings")}><span className="drawing"><MapPin size={22} /></span><strong>{text("Drawing & pins", "Tekening & pins")}</strong><small>{data.files.filter((file) => file.category === "drawing").length} {text("drawings", "tekeningen")}</small></button>
-            <button type="button" onClick={() => openTask("registers")}><span className="docs"><Archive size={22} /></span><strong>Project Docs</strong><small>{data.registerEntries.length} {text("documents", "documenten")}</small></button>
-            <button type="button" onClick={() => openTask("registers", true)}><span className="boq"><DatabaseBackup size={22} /></span><strong>BOQ / Finance</strong><small>{text("Import and progress", "Import en voortgang")}</small></button>
-            <button type="button" onClick={() => openTask("visual")}><span className="visual"><RotateCcw size={22} /></span><strong>360° {text("evidence", "bewijs")}</strong><small>{data.visualCaptures.length} {text("captures", "opnamen")}</small></button>
-            <button type="button" onClick={() => openTask("files")}><span className="files"><HardDrive size={22} /></span><strong>{text("Photo folders", "Fotomappen")}</strong><small>{data.files.length} {text("files", "bestanden")}</small></button>
-            <button type="button" onClick={() => openTask("tools")}><span className="tools"><Wrench size={22} /></span><strong>{text("Field tools", "Veldtools")}</strong><small>{text("Notes and agreements", "Notities en afspraken")}</small></button>
-          </div>
-          <div className="workspace-task-heading">
-            <span><Wrench size={22} /></span>
-            <div><p>{text("One task at a time", "Eén taak tegelijk")}</p><h2 id="workspace-task-title">{text("What do you need to do now?", "Wat wil je nu doen?")}</h2></div>
-          </div>
-
-          {moduleEnabled("visual_evidence") ? <button className="workspace-camera-action" type="button" onClick={openQuickCamera}>
-            <span><Camera size={25} /></span>
-            <span><strong>{text("Take a photo", "Foto maken")}</strong><small>{text("Point and shoot · project, building, time and folder are linked automatically", "Richten en maken · project, gebouw, tijd en map worden automatisch gekoppeld")}</small></span>
-          </button> : null}
-
-          <div className="workspace-primary-actions">
-            {moduleEnabled("inspections") ? <button className="workspace-task-action inspection" type="button" onClick={() => openTask("inspections", true)}>
-              <ClipboardCheck size={22} />
-              <strong>{text("Start inspection", "Start inspectie")}</strong>
-              <small>{text("Recommended checklist is ready", "Aanbevolen checklist staat klaar")}</small>
-            </button> : null}
-            {moduleEnabled("quality") ? <button className="workspace-task-action finding" type="button" onClick={() => openTask("findings", true)}>
-              <AlertTriangle size={22} />
-              <strong>{text("Report issue", "Meld probleem")}</strong>
-              <small>{text("Stack photos and assign directly", "Stapel foto’s en wijs direct toe")}</small>
-            </button> : null}
-          </div>
-
-          <button className="workspace-register-action" type="button" onClick={openQuickRegister}>
-            <Plus size={20} />
-            <span><strong>{text("Other field record", "Andere veldregistratie")}</strong><small>{text("Activity, delivery, measurement, delay or action", "Activiteit, levering, meting, vertraging of actie")}</small></span>
-          </button>
-
-          {moduleEnabled("documents") ? <button className="workspace-drawing-action" type="button" onClick={() => openTask("drawings")}>
-            <FileText size={21} />
-            <span><strong>{text("Open drawing and place a pin", "Open tekening en plaats een pin")}</strong><small>{text("Link RFI, document, observation or inspection to the exact location", "Koppel RFI, document, observatie of inspectie aan de exacte locatie")}</small></span>
-          </button> : null}
-
-          <details className="workspace-more-actions">
-            <summary>{text("More field tasks", "Meer veldtaken")}<span>{text("HSE, folders, 360° and documents", "HSE, mappen, 360° en documenten")}</span></summary>
-            <div className="workspace-more-grid">
-              <button type="button" onClick={() => openTask("hse", true)}><ShieldCheck size={18} /><span><strong>HSE</strong><small>{text("Safety event", "Veiligheidsmelding")}</small></span></button>
-              <button type="button" onClick={() => openTask("files")}><Camera size={18} /><span><strong>{text("Photo folders", "Fotomappen")}</strong><small>{text("All evidence", "Alle bewijzen")}</small></span></button>
-              <button type="button" onClick={() => openTask("visual")}><RotateCcw size={18} /><span><strong>{text("360° evidence", "360° bewijs")}</strong><small>{text("Upload panorama", "Panorama uploaden")}</small></span></button>
-              <button type="button" onClick={() => openTask("registers", true)}><Archive size={18} /><span><strong>{text("Formal documents", "Formele documenten")}</strong><small>RFI · RFA · IR · TI · CO</small></span></button>
-              <button type="button" onClick={() => openTask("tools")}><Wrench size={18} /><span><strong>{text("Field tools", "Veldtools")}</strong><small>{text("Notes and agreements", "Notities en afspraken")}</small></span></button>
-            </div>
-          </details>
-
-          <div className="workspace-automation-strip" aria-label={text("Automatic field support", "Automatische veldondersteuning")}>
-            <span><CloudSun size={16} /><small>{text("Weather prefilled", "Weer vooraf ingevuld")}</small></span>
-            <span><CheckCircle2 size={16} /><small>{text("Numbers assigned", "Nummers toegekend")}</small></span>
-            <span><WifiOff size={16} /><small>{text("Photos queue offline", "Foto’s wachten offline")}</small></span>
-          </div>
-        </section>
         </>
       ) : (
         <>
           <div className="workspace-section-controls">
             <button className="workspace-back-button" type="button" onClick={() => switchTab("home")}><ArrowLeft size={17} /> {text("Workspace", "Werkruimte")}</button>
             <div className="workspace-current-module" aria-live="polite">
-              <span>{projectName} · {buildingName}</span>
+              <span>{projectName}</span>
               <strong>{activeSectionLabel}</strong>
               <b>{activeSectionCount}</b>
             </div>
@@ -1446,6 +1406,9 @@ function ProjectOperations({
             </div>
           ) : null}
           <FindingList
+            data={data}
+            client={client}
+            run={run}
             findings={scopedFindings}
             progressUpdates={data.findingProgressUpdates}
             visualAnnotations={data.visualAnnotations}
@@ -1482,6 +1445,10 @@ function ProjectOperations({
             linkVisual={(finding) => {
               setVisualFindingId(finding.id);
               switchTab("visual");
+            }}
+            linkDrawing={(finding) => {
+              setDrawingFindingId(finding.id);
+              switchTab("drawings");
             }}
           />
         </section>
@@ -1604,16 +1571,44 @@ function ProjectOperations({
             client={client}
           />
           <div className="register-summary-grid">{Object.entries(registerNames).map(([type, label]) => <div className="register-summary" key={type}><strong>{data.registerEntries.filter((entry) => entry.register_type === type).length}</strong><span>{label}</span></div>)}</div>
-          <ControlledDocumentList entries={data.registerEntries.filter((entry) => isControlledDocumentType(entry.register_type))} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={currentUserName} client={client} run={run} />
-          <RecordList empty={text("No additional project registers yet.", "Nog geen aanvullende projectregisters.")} rows={data.registerEntries.filter((entry) => !isControlledDocumentType(entry.register_type) && entry.register_type !== "boq").map((entry) => ({ id: entry.id, icon: Wrench, title: entry.title, meta: `${entry.entry_number} · ${recordContextLabel(entry.building_id, entry.location_node_id)} · ${registerNames[entry.register_type] ?? entry.register_type} · ${formatDate(entry.occurred_at, locale)}`, status: entry.status, tone: entry.status === "closed" || entry.status === "approved" ? "green" : "" }))} />
+          {externalSubmissionIntent ? (
+            <div className="operation-alert success external-submission-notice">
+              <Users size={18} />
+              <div>
+                <strong>{text("Recording a contractor submission", "Aannemersindiening vastleggen")}</strong>
+                <span>{text("WCR, RFI, RFA and WIR are unlocked here because you came from Management. The decision is recorded there too.", "WCR, RFI, RFA en WIR zijn hier vrijgegeven omdat je vanuit Management komt. Het besluit leg je daar ook vast.")}</span>
+              </div>
+              <button className="secondary-button" type="button" onClick={openManagement}>{text("Back to Management", "Terug naar Management")}</button>
+            </div>
+          ) : (
+          <div className="operation-alert external-submission-notice">
+            <Users size={18} />
+            <div>
+              <strong>{text("WCR, RFI, RFA and WIR are not created here", "WCR, RFI, RFA en WIR maak je hier niet aan")}</strong>
+              <span>{text("The contractor submits them first; the company or owner records the decision under Management.", "De aannemer dient ze eerst in; het bedrijf of de eigenaar legt het besluit vast onder Management.")}</span>
+            </div>
+            <button className="secondary-button" type="button" onClick={openManagement}>{text("Open submissions", "Open indieningen")}</button>
+          </div>
+          )}
+          <ControlledDocumentList entries={data.registerEntries.filter((entry) => isControlledDocumentType(entry.register_type) && (externalSubmissionIntent || !externalSubmissionRegisterTypes.includes(entry.register_type)))} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={currentUserName} client={client} run={run} />
+          <RecordList empty={text("No additional project registers yet.", "Nog geen aanvullende projectregisters.")} rows={data.registerEntries.filter((entry) => !isControlledDocumentType(entry.register_type) && entry.register_type !== "boq").map((entry) => ({ id: entry.id, icon: Wrench, title: entry.title, meta: `${entry.entry_number} · ${recordContextLabel(entry.building_id, entry.location_node_id)} · ${registerNames[entry.register_type] ?? allRegisterNames[entry.register_type] ?? entry.register_type} · ${formatDate(entry.occurred_at, locale)}`, status: entry.status, tone: entry.status === "closed" || entry.status === "approved" ? "green" : "" }))} />
         </section>
       ) : null}
+
+      {tab === "daily" ? <DailyWorkRegister
+        records={data.dailyWork ?? []}
+        dayReports={data.dayReports ?? []}
+        buildings={buildings}
+        view={dailyWorkView}
+        onViewChange={setDailyWorkView}
+        onRecord={(view) => openDailyRecord(view === "delays" ? "delay" : view)}
+      /> : null}
 
       {tab === "visual" ? <VisualEvidenceWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} parties={parties} client={client} busy={busy} run={run} initialFindingId={visualFindingId} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} /> : null}
 
       {tab === "documents" ? <ProjectDocumentsHome data={data} client={client} openDrawings={() => switchTab("drawings")} openFiles={() => switchTab("files")} openRegisters={() => switchTab("registers")} createDocument={() => openTask("registers", true)} /> : null}
 
-      {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} client={client} busy={busy} run={run} onOpenLinkedRecord={(recordType) => switchTab(recordType === "observation" ? "findings" : recordType === "inspection" ? "inspections" : recordType === "visual" ? "visual" : "registers")} /> : null}
+      {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} client={client} busy={busy} run={run} initialFindingId={drawingFindingId} onOpenLinkedRecord={(recordType) => switchTab(recordType === "observation" ? "findings" : recordType === "inspection" ? "inspections" : recordType === "visual" ? "visual" : "registers")} /> : null}
 
       {tab === "tools" ? <FieldTools data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} parties={parties} reportId={reportId} client={client} busy={busy} run={run} /> : null}
 
@@ -1739,6 +1734,11 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
           const entryBuildingName = buildings.find((building) => building.id === entry.building_id)?.name ?? text("Project-wide", "Projectbreed");
           const entryLocation = locationBreadcrumb(locationNodes, entry.location_node_id);
           const responseData = details.response && typeof details.response === "object" && !Array.isArray(details.response) ? details.response as Record<string, unknown> : {};
+          // Every recorded decision, oldest first. Falls back to the single current
+          // response for records answered before the history log shipped.
+          const responseHistory = (Array.isArray(details.response_history)
+            ? details.response_history.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+            : Object.keys(responseData).length ? [responseData] : []);
           const attachmentFiles = Array.isArray(details.attachment_files)
             ? details.attachment_files.filter((file): file is Record<string, unknown> => Boolean(file) && typeof file === "object" && !Array.isArray(file))
             : [];
@@ -1754,7 +1754,21 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
                 const filename = String(file.name ?? `${text("Attachment", "Bijlage")} ${index + 1}`);
                 return <button className="secondary-button" type="button" disabled={busy || !fileId} onClick={() => void run(() => openProjectFile(client, fileId, filename), text(`${filename} opened.`, `${filename} geopend.`))} key={`${fileId}:${index}`}><FolderOpen size={15} /> {filename}</button>;
               })}</div> : <div className="controlled-history-attachments empty"><span>{text("Uploaded attachments", "Geüploade bijlagen")}</span><small>{text("No uploaded attachment is linked to this record.", "Aan dit dossier is geen geüploade bijlage gekoppeld.")}</small></div>}
-              {Object.keys(responseData).length ? <div className="controlled-history-response"><span>{text("Latest formal response", "Laatste formele reactie")}</span><strong>{String(responseData.respondent_name ?? responseData.respondentName ?? text("Recorded reviewer", "Vastgelegde reviewer"))}</strong><p>{String(responseData.comments ?? responseData.comment ?? "")}</p><small>{String(responseData.respondent_company ?? responseData.respondentCompany ?? "")}</small></div> : null}
+              <div className="controlled-history-timeline">
+                <span>{text("Complete decision history", "Volledige besluithistorie")}</span>
+                {responseHistory.length ? <ol>
+                  {responseHistory.map((item, index) => (
+                    <li key={String(item.idempotency_key ?? item.responded_at ?? index)}>
+                      <b className={`decision-dot ${String(item.decision ?? "")}`} />
+                      <div>
+                        <strong>{decisions.find(([value]) => value === item.decision)?.[1] ?? String(item.decision ?? text("Response", "Reactie")).replaceAll("_", " ")}</strong>
+                        <small>{String(item.respondent_name ?? item.respondentName ?? text("Recorded reviewer", "Vastgelegde reviewer"))}{item.respondent_company || item.respondentCompany ? ` · ${String(item.respondent_company ?? item.respondentCompany)}` : ""}{item.responded_at ? ` · ${formatDate(String(item.responded_at), locale)}` : ""}</small>
+                        <p>{String(item.comments ?? item.comment ?? "")}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol> : <small>{text("No formal decision has been recorded yet.", "Er is nog geen formeel besluit vastgelegd.")}</small>}
+              </div>
             </section> : null}
             {active === entry.id ? <div className="inline-transition controlled-response-form">
               <div className="form-grid-2"><label className="form-field"><span>{text("Decision / response code", "Besluit / antwoordcode")}</span><select value={response.decision} onChange={(event) => setResponse({ ...response, decision: event.target.value })}>{decisions.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label className="form-field"><span>{text("Respondent name", "Naam respondent")}</span><input value={response.respondentName} onChange={(event) => setResponse({ ...response, respondentName: event.target.value })} /></label></div>
@@ -1791,7 +1805,66 @@ function FindingPhotoPreview({ file }: { file: File }) {
   return <NextImage src={source} alt="" width={160} height={110} unoptimized />;
 }
 
-function FindingList({ findings, progressUpdates, visualAnnotations, externalShareLinks, projectName, projectCode, buildings, locationNodes, currentUserName, parties, busy, transition, recordProgress, share, revoke, linkVisual }: {
+function StoredPhotoThumbnail({ client, file }: { client: SupabaseClient; file: FileRecord }) {
+  const [source, setSource] = useState("");
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    let objectUrl = "";
+    void loadProjectFileObjectUrl(client, file.id).then((url) => {
+      objectUrl = url;
+      if (active) setSource(url);
+      else URL.revokeObjectURL(url);
+    }).catch(() => {
+      if (active) setFailed(true);
+    });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [client, file.id]);
+  if (failed || !file.mime_type.startsWith("image/")) return <span className="record-photo-fallback"><FolderOpen size={17} /></span>;
+  // Private object URLs cannot pass through the Next image optimizer.
+  // eslint-disable-next-line @next/next/no-img-element
+  return source ? <img src={source} alt={file.original_name} loading="lazy" onError={() => setFailed(true)} /> : <span className="record-photo-fallback"><Loader2 className="spin" size={16} /></span>;
+}
+
+/**
+ * Shows every stored photo that belongs to one record, so evidence is visible from
+ * the record itself. Thumbnails are fetched only after the user opens the strip:
+ * a register of a hundred findings would otherwise start hundreds of secure
+ * downloads on first paint.
+ */
+function RecordPhotoStrip({ data, client, kind, recordId, resolver, busy, run }: { data: OperationSnapshot; client: SupabaseClient; kind: FileOriginKind; recordId: string; resolver: FileOriginResolver; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean> }) {
+  const { text } = useLanguage();
+  const [open, setOpen] = useState(false);
+  const files = filesForRecord(data, kind, recordId, resolver);
+  if (!files.length) return null;
+  const label = `${files.length} ${text(files.length === 1 ? "linked photo" : "linked photos", files.length === 1 ? "gekoppelde foto" : "gekoppelde foto's")}`;
+  return (
+    <section className="record-photo-strip" aria-label={text("Photos linked to this record", "Foto's gekoppeld aan dit record")}>
+      <header>
+        <button className="record-photo-toggle" type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+          <Camera size={15} /> <span>{label}</span>
+        </button>
+      </header>
+      {open ? (
+        <div>
+          {files.slice(0, 12).map((file) => (
+            <button type="button" disabled={busy} onClick={() => void run(() => openProjectFile(client, file.id, file.original_name), text(`${file.original_name} opened.`, `${file.original_name} geopend.`))} title={file.original_name} key={file.id}>
+              <StoredPhotoThumbnail client={client} file={file} />
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function FindingList({ data, client, run, findings, progressUpdates, visualAnnotations, externalShareLinks, projectName, projectCode, buildings, locationNodes, currentUserName, parties, busy, transition, recordProgress, share, revoke, linkVisual, linkDrawing }: {
+  data: OperationSnapshot;
+  client: SupabaseClient;
+  run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
   findings: Finding[];
   progressUpdates: OperationSnapshot["findingProgressUpdates"];
   visualAnnotations: OperationSnapshot["visualAnnotations"];
@@ -1808,9 +1881,11 @@ function FindingList({ findings, progressUpdates, visualAnnotations, externalSha
   share: (finding: Finding) => Promise<{ shareId: string; url: string; expiresAt: string } | null>;
   revoke: (shareId: string) => Promise<boolean>;
   linkVisual: (finding: Finding) => void;
+  linkDrawing: (finding: Finding) => void;
 }) {
   const { language, locale, text } = useLanguage();
   const statusLabels = language === "en" ? findingStatusLabelsEnglish : findingStatusLabels;
+  const fileOriginResolver = useMemo(() => createFileOriginResolver(data), [data]);
   const [active, setActive] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [measure, setMeasure] = useState("");
@@ -1858,6 +1933,7 @@ function FindingList({ findings, progressUpdates, visualAnnotations, externalSha
         const nextStatus = next[finding.status];
         const latestProgress = progressUpdates.find((item) => item.finding_id === finding.id);
         const visualAnnotation = visualAnnotations.find((item) => item.finding_id === finding.id && item.status === "active");
+        const drawingPin = data.drawingPins.find((pin) => pin.linked_record_type === "observation" && pin.linked_record_id === finding.id && pin.status === "active");
         const issue = finding.issue_management ?? {};
         const recordBuildingName = findingBuildingName(finding);
         const recordLocation = locationBreadcrumb(locationNodes, finding.location_node_id);
@@ -1871,7 +1947,8 @@ function FindingList({ findings, progressUpdates, visualAnnotations, externalSha
           <article className="finding-card" key={finding.id}>
             <div className="finding-card-main"><span className={`record-severity ${finding.severity}`}>{finding.severity}</span><div><span className="record-number">{finding.finding_number} · {finding.finding_type.toUpperCase()}</span><h3>{finding.title}</h3><p>{finding.description}</p>{issue.action_steps ? <p className="finding-required-action"><strong>{text("Required action:", "Vereiste actie:")}</strong> {issue.action_steps}</p> : null}<small>{recordBuildingName}{recordLocation ? ` → ${recordLocation}` : ""} · Deadline {formatDate(finding.due_at, locale)}{latestProgress ? ` · ${text("progress", "voortgang")} ${latestProgress.progress_percent}% · ${latestProgress.disposition.replaceAll("_", " ")}` : ""}{finding.verified_at ? ` · ${text("verified", "geverifieerd")} ${formatDate(finding.verified_at, locale)}` : ""}</small></div><span className={`task-status ${finding.status === "closed" ? "green" : finding.severity === "critical" ? "red" : ""}`}>{statusLabels[finding.status] ?? finding.status}</span></div>
             <div className="finding-actions">
-              <button className="secondary-button" type="button" onClick={() => linkVisual(finding)}><MapPin size={16} /> {visualAnnotation ? text("View visual pointer", "Bekijk visuele pointer") : text("Link visual pointer", "Koppel visuele pointer")}</button>
+              <button className="secondary-button" type="button" onClick={() => linkVisual(finding)}><Camera size={16} /> {visualAnnotation ? text("View photo marker", "Bekijk fotomarker") : text("Mark on photo / 360°", "Markeer op foto / 360°")}</button>
+              <button className="secondary-button" type="button" onClick={() => linkDrawing(finding)}><MapPin size={16} /> {drawingPin ? text("View on drawing", "Bekijk op tekening") : text("Place on drawing", "Plaats op tekening")}</button>
               <button className="external-party-button" type="button" disabled={busy || creatingShareFor === finding.id} onClick={() => void createShare(finding)}>
                 {creatingShareFor === finding.id ? <Loader2 className="spin" size={17} /> : <MessageCircle size={17} />}
                 <span><strong>{text("Send to external party", "Stuur naar externe partij")}</strong><small>{text("WhatsApp link · no account needed", "WhatsApp-link · geen account nodig")}</small></span>
@@ -1880,6 +1957,7 @@ function FindingList({ findings, progressUpdates, visualAnnotations, externalSha
               {!["closed", "cancelled", "rejected"].includes(finding.status) ? <button className="secondary-button" type="button" onClick={() => { setProgressActive(progressActive === finding.id ? null : finding.id); setProgressPercent(String(latestProgress?.progress_percent ?? 0)); setProgressDisposition(latestProgress?.disposition ?? issue.disposition ?? "to_be_corrected"); }}>{text("Record inspection progress", "Inspectievoortgang vastleggen")}</button> : null}
               {nextStatus ? <button className="secondary-button" type="button" onClick={() => setActive(active === finding.id ? null : finding.id)}>{nextStatus === "closed" ? text("Verify", "Verifiëren") : nextStatus === "ready_for_verification" ? text("Mark repair ready", "Herstel gereedmelden") : text("Update status", "Status bijwerken")}</button> : null}
             </div>
+            <RecordPhotoStrip data={data} client={client} kind="finding" recordId={finding.id} resolver={fileOriginResolver} busy={busy} run={run} />
             {activeExternalShares.length ? (
               <section className="active-external-shares" aria-label={text("Active external links", "Actieve externe links")}>
                 <header><Link2 size={16} /><span><strong>{text(`${activeExternalShares.length} active external link${activeExternalShares.length === 1 ? "" : "s"}`, `${activeExternalShares.length} actieve externe link${activeExternalShares.length === 1 ? "" : "s"}`)}</strong><small>{text("The raw link is shown only once when it is created. It can always be revoked here.", "De ruwe link wordt alleen bij het aanmaken getoond. Intrekken kan hier altijd.")}</small></span></header>
@@ -2029,6 +2107,9 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
   const activeSections = [...new Set(clientReportOptions
     .filter((option) => includedClientOptions.includes(option.id))
     .flatMap((option) => option.sections))] as PeriodReportSection[];
+  // Sections decide which pages exist; topics decide which blocks appear inside them,
+  // so unticking one subject always changes the document.
+  const activeTopics = includedClientOptions as PeriodReportTopic[];
   const toggleReportSection = (sectionId: string) => setIncludedClientOptions((current) => current.includes(sectionId)
     ? current.filter((id) => id !== sectionId)
     : [...current, sectionId]);
@@ -2132,8 +2213,8 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
             variant="prominent"
             className="report-create-button"
             disabled={busy || !activeSections.length || !period.start || !period.end || period.end < period.start}
-            onDownloadPdf={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, period.start, period.end); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { sections: activeSections, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded.`, `${periodLabel} voor ${projectName} gedownload.`))}
-            onDownloadWord={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, period.start, period.end); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { sections: activeSections, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded as Word.`, `${periodLabel} voor ${projectName} als Word gedownload.`))}
+            onDownloadPdf={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, period.start, period.end); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded.`, `${periodLabel} voor ${projectName} gedownload.`))}
+            onDownloadWord={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, period.start, period.end); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded as Word.`, `${periodLabel} voor ${projectName} als Word gedownload.`))}
           />
         </section>
       ) : null}
@@ -2157,7 +2238,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
             <div className="report-archive-list">
               {reportArchive.map((report) => <article className={openHistoryId === report.id ? "open" : ""} key={report.id}>
                 <button type="button" onClick={() => setOpenHistoryId((current) => current === report.id ? "" : report.id)}><span className={`report-type-badge ${report.type}`}>{report.type}</span><span><strong>{report.title}</strong><small>{report.start}{report.end !== report.start ? ` → ${report.end}` : ""} · {report.count} {text("day record(s)", "dagregistratie(s)")}</small></span><span className="report-archive-progress"><b>{report.completeness}%</b><i><em style={{ width: `${report.completeness}%` }} /></i></span><ArrowRight size={15} /></button>
-                {openHistoryId === report.id ? <div className="report-archive-detail"><span>{text("Status", "Status")}: <strong>{report.status.replaceAll("_", " ")}</strong></span><span>{text("Content", "Inhoud")}: {includedClientOptions.length} {text("selected client sections", "geselecteerde klantonderdelen")}</span><ReportDownloadButtons disabled={busy} onDownloadPdf={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, report.start, report.end); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { sections: activeSections, reportTitle: report.title, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text("Archived report view downloaded.", "Rapportweergave uit de historie gedownload."))} onDownloadWord={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, report.start, report.end); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { sections: activeSections, reportTitle: report.title, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text("Archived report view downloaded as Word.", "Rapportweergave uit de historie als Word gedownload."))} /></div> : null}
+                {openHistoryId === report.id ? <div className="report-archive-detail"><span>{text("Status", "Status")}: <strong>{report.status.replaceAll("_", " ")}</strong></span><span>{text("Content", "Inhoud")}: {text("complete record for this period", "volledige registratie over deze periode")}</span><ReportDownloadButtons disabled={busy} onDownloadPdf={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, report.start, report.end); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { reportTitle: report.title, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text("Archived report view downloaded.", "Rapportweergave uit de historie gedownload."))} onDownloadWord={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, report.start, report.end); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { reportTitle: report.title, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text("Archived report view downloaded as Word.", "Rapportweergave uit de historie als Word gedownload."))} /></div> : null}
               </article>)}
               {!reportArchive.length ? <div className="empty-list-state"><Archive size={22} /><strong>{text("No reports for this filter", "Geen rapporten voor dit filter")}</strong><span>{text("Create a daily report from Overview first.", "Maak eerst een dagrapport vanuit Overzicht.")}</span></div> : null}
             </div>
@@ -2175,7 +2256,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
   );
 }
 
-function AdminOperations({ data, client, organizationId, projectId, projectName, reportStatus, buildingId, buildingName, buildings, companyEmployees, projectActions, parties, canManageOrganization, openUserAdmin, openProjectArea, openActionCenter, createProjectAction, busy, run }: { data: OperationSnapshot; client: SupabaseClient; organizationId: string; projectId: string; projectName: string; reportStatus: string; buildingId: string; buildingName: string; buildings: BuildingOption[]; companyEmployees: InternalMember[]; projectActions: Array<{ id: string; title: string; action_number: string; status: string; priority: string; due_at: string | null; owner_user_id?: string | null }>; parties: ProjectParty[]; canManageOrganization: boolean; openUserAdmin: () => void; openProjectArea: (tab: "inspections" | "findings" | "registers" | "visual") => void; openActionCenter: () => void; createProjectAction: () => void; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean> }) {
+function AdminOperations({ data, client, organizationId, projectId, projectName, reportStatus, buildingId, buildingName, buildings, companyEmployees, projectActions, parties, canManageOrganization, openUserAdmin, openProjectArea, openActionCenter, createProjectAction, busy, run }: { data: OperationSnapshot; client: SupabaseClient; organizationId: string; projectId: string; projectName: string; reportStatus: string; buildingId: string; buildingName: string; buildings: BuildingOption[]; companyEmployees: InternalMember[]; projectActions: Array<{ id: string; title: string; action_number: string; status: string; priority: string; due_at: string | null; owner_user_id?: string | null }>; parties: ProjectParty[]; canManageOrganization: boolean; openUserAdmin: () => void; openProjectArea: (tab: "inspections" | "findings" | "registers" | "visual" | "submissions") => void; openActionCenter: () => void; createProjectAction: () => void; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean> }) {
   const { text } = useLanguage();
   const [section, setSection] = useState<"overview" | "settings" | "structure" | "templates" | "backup">("overview");
   const [structureBuildingId, setStructureBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
@@ -2242,7 +2323,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
           <article className="management-card"><header><div><span className="module-card-icon"><Settings size={18} /></span><div><h2>{text("Management controls", "Managementbediening")}</h2><p>{text("Go directly to the area you need to manage.", "Ga direct naar het onderdeel dat je wilt beheren.")}</p></div></div></header><div className="management-control-list"><button type="button" onClick={openUserAdmin}><Users size={16} /><span><strong>{text("Team and access", "Team en toegang")}</strong><small>{text("Invite, suspend and review roles", "Uitnodigen, opschorten en rollen controleren")}</small></span></button><button type="button" onClick={() => setSection("settings")}><Settings size={16} /><span><strong>{text("Project rules", "Projectregels")}</strong><small>{text("Reporting, deadlines and retention", "Rapportage, deadlines en bewaartermijn")}</small></span></button><button type="button" onClick={() => setSection("structure")}><Wrench size={16} /><span><strong>{text("Structure and parties", "Structuur en partijen")}</strong><small>{text("Locations, contractors and consultants", "Locaties, aannemers en adviseurs")}</small></span></button><button type="button" onClick={() => setSection("backup")}><DatabaseBackup size={16} /><span><strong>{text("Continuity controls", "Continuïteitscontrole")}</strong><small>{text("Backups and restore verification", "Back-ups en herstelverificatie")}</small></span></button></div></article>
         </div>
         <section className="external-submission-center">
-          <header><div><span className="record-number">{text("External parties", "Externe partijen")}</span><h2>{text("Submissions, decisions and task ownership", "Indieningen, besluiten en taakverdeling")}</h2><p>{text("Contractors submit RFI, RFA, IR/WIR or WCR first. The company or owner records the decision; every response remains in the document history.", "Aannemers dienen eerst RFI, RFA, IR/WIR of WCR in. Het bedrijf of de eigenaar legt het besluit vast; elk antwoord blijft in de documenthistorie.")}</p></div><div className="button-row"><button className="secondary-button" type="button" onClick={() => openProjectArea("registers")}><FileText size={15} /> {text("Record external submission", "Externe indiening registreren")}</button><button className="secondary-button" type="button" onClick={openActionCenter}><ClipboardCheck size={15} /> {text("Manage tasks", "Taken beheren")}</button><button className="primary-button" type="button" onClick={createProjectAction}><Plus size={15} /> {text("Assign follow-up", "Opvolging toewijzen")}</button></div></header>
+          <header><div><span className="record-number">{text("External parties", "Externe partijen")}</span><h2>{text("Submissions, decisions and task ownership", "Indieningen, besluiten en taakverdeling")}</h2><p>{text("Contractors submit RFI, RFA, IR/WIR or WCR first. The company or owner records the decision; every response remains in the document history.", "Aannemers dienen eerst RFI, RFA, IR/WIR of WCR in. Het bedrijf of de eigenaar legt het besluit vast; elk antwoord blijft in de documenthistorie.")}</p></div><div className="button-row"><button className="secondary-button" type="button" onClick={() => openProjectArea("submissions")}><FileText size={15} /> {text("Record external submission", "Externe indiening registreren")}</button><button className="secondary-button" type="button" onClick={openActionCenter}><ClipboardCheck size={15} /> {text("Manage tasks", "Taken beheren")}</button><button className="primary-button" type="button" onClick={createProjectAction}><Plus size={15} /> {text("Assign follow-up", "Opvolging toewijzen")}</button></div></header>
           <div className="external-access-summary">
             <span><KeyRound size={17} /><strong>{text("With account", "Met account")}</strong><small>{text("Project role controls what the external party may submit and view.", "De projectrol bepaalt wat de externe partij mag indienen en zien.")}</small></span>
             <span><Link2 size={17} /><strong>{text("Without account", "Zonder account")}</strong><small>{text("Use a revocable external evidence link; no general project access is granted.", "Gebruik een intrekbare externe bewijslink; er wordt geen algemene projecttoegang gegeven.")}</small></span>

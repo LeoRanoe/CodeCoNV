@@ -25,7 +25,7 @@ import {
 import { useMemo, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 
-type WorkspaceDestination = "inspections" | "findings" | "hse" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files";
+type WorkspaceDestination = "inspections" | "findings" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files";
 type RegisterShortcut = "change_order" | "delivery" | "technical_instruction" | "agreement";
 type DailyShortcut = "works_ongoing" | "works_completed" | "workforce" | "delay";
 
@@ -46,6 +46,7 @@ type ProjectWorkspaceHomeProps = {
   openFinding: (scope: "issue" | "ncr", create?: boolean) => void;
   openRegister: (type: RegisterShortcut) => void;
   openDailyRecord: (type: DailyShortcut) => void;
+  openDailyWork: (view: "works_ongoing" | "works_completed" | "delays") => void;
   openActionCenter: () => void;
   openRapidVerify: () => void;
   openReports: () => void;
@@ -71,6 +72,7 @@ export function ProjectWorkspaceHome({
   openFinding,
   openRegister,
   openDailyRecord,
+  openDailyWork,
   openActionCenter,
   openRapidVerify,
   openReports,
@@ -97,7 +99,7 @@ export function ProjectWorkspaceHome({
       copy: text("Work in progress visible to the owner", "Lopend werk zichtbaar voor de eigenaar"),
       icon: HardHat,
       tone: "orange",
-      action: () => openDailyRecord("works_ongoing"),
+      action: () => openDailyWork("works_ongoing"),
     },
     {
       id: "works-completed",
@@ -105,7 +107,7 @@ export function ProjectWorkspaceHome({
       copy: text("Completed work with date and context", "Afgerond werk met datum en context"),
       icon: CheckCircle2,
       tone: "green",
-      action: () => openDailyRecord("works_completed"),
+      action: () => openDailyWork("works_completed"),
     },
     {
       id: "workforce",
@@ -121,7 +123,7 @@ export function ProjectWorkspaceHome({
       copy: text("Cause, time lost and schedule effect", "Oorzaak, tijdverlies en planningimpact"),
       icon: TimerOff,
       tone: "orange",
-      action: () => openDailyRecord("delay"),
+      action: () => openDailyWork("delays"),
     },
     {
       id: "issues",
@@ -215,7 +217,7 @@ export function ProjectWorkspaceHome({
       count: counts.agreements,
       action: () => openRegister("agreement"),
     },
-  ], [counts, openActionCenter, openDailyRecord, openFinding, openQuickCamera, openRegister, openTask, text]);
+  ], [counts, openActionCenter, openDailyRecord, openDailyWork, openFinding, openQuickCamera, openRegister, openTask, text]);
 
   const visibleTiles = tiles.filter((tile) => {
     if (!moduleEnabled(tile.module)) return false;

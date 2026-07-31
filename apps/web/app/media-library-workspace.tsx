@@ -20,6 +20,7 @@ import {
   type OfflineUpload,
 } from "@/lib/offline/upload-queue";
 import { downloadProjectFile, loadProjectFileObjectUrl, openProjectFile } from "@/lib/storage/gateway";
+import { createFileOriginResolver, type FileOriginKind } from "@/lib/supabase/file-origins";
 import { createMediaFolder, type FileRecord, type OperationSnapshot } from "@/lib/supabase/operations";
 
 function automaticTitle(filename: string) {
@@ -104,8 +105,31 @@ export function MediaLibraryWorkspace({
   const [pendingCapture, setPendingCapture] = useState<File[]>([]);
   const [libraryBuildingId, setLibraryBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const libraryBuildingName = buildings.find((building) => building.id === libraryBuildingId)?.name ?? buildingName;
+  const [originFilter, setOriginFilter] = useState<"all" | FileOriginKind>("all");
   const folders = useMemo(() => data.mediaFolders.filter((folder) => !folder.building_id || folder.building_id === libraryBuildingId), [libraryBuildingId, data.mediaFolders]);
-  const files = useMemo(() => data.files.filter((file) => file.status === "available" && (!file.building_id || file.building_id === libraryBuildingId) && (folderId === "all" || (folderId === "unfiled" ? !file.folder_id : file.folder_id === folderId))), [libraryBuildingId, data.files, folderId]);
+  const originResolver = useMemo(() => createFileOriginResolver(data), [data]);
+  const folderFiles = useMemo(() => data.files.filter((file) => file.status === "available" && (!file.building_id || file.building_id === libraryBuildingId) && (folderId === "all" || (folderId === "unfiled" ? !file.folder_id : file.folder_id === folderId))), [libraryBuildingId, data.files, folderId]);
+  const files = useMemo(() => folderFiles.filter((file) => {
+    if (originFilter === "all") return true;
+    const origins = originResolver.origins(file.id);
+    if (originFilter === "unlinked") return origins.length === 0;
+    return origins.some((origin) => origin.kind === originFilter);
+  }), [folderFiles, originFilter, originResolver]);
+  const originFilters: Array<{ id: "all" | FileOriginKind; label: string }> = [
+    { id: "all", label: text("All", "Alles") },
+    { id: "finding", label: text("Issue / NCR", "Issue / NCR") },
+    { id: "inspection", label: text("Inspections", "Inspecties") },
+    { id: "hse", label: "HSE" },
+    { id: "register", label: text("Registers", "Registers") },
+    { id: "visual", label: text("Visual evidence", "Visueel bewijs") },
+    { id: "unlinked", label: text("Not linked yet", "Nog niet gekoppeld") },
+  ];
+  const originCount = (id: "all" | FileOriginKind) => folderFiles.filter((file) => {
+    if (id === "all") return true;
+    const origins = originResolver.origins(file.id);
+    if (id === "unlinked") return origins.length === 0;
+    return origins.some((origin) => origin.kind === id);
+  }).length;
   const standardFolderNames = kind === "photo"
     ? [text("Daily progress", "Dagvoortgang"), text("Inspections", "Inspecties"), text("Findings", "Bevindingen"), "HSE", text("Deliveries", "Leveringen"), text("360° tours", "360°-rondgangen")]
     : [text("Approved drawings", "Goedgekeurde tekeningen"), text("Revisions", "Revisies"), text("As-built", "As-built")];
@@ -361,15 +385,22 @@ export function MediaLibraryWorkspace({
 
       {queue.length ? <div className="offline-queue"><div><strong>{queue.length} {text("upload(s) waiting", "upload(s) wachten")}</strong><span>{!online ? text("They synchronize automatically when the connection returns.", "Ze synchroniseren automatisch zodra de verbinding terug is.") : savingData && connectionIsMetered() ? text("Automatic sync is paused on this metered connection.", "Automatische synchronisatie is gepauzeerd op deze databundel.") : text("Automatic synchronization is active.", "Automatische synchronisatie is actief.")}</span></div><button className="secondary-button" type="button" disabled={!online || syncing} onClick={() => void run(() => synchronize(true, true), text("Offline uploads synchronized.", "Offline uploads gesynchroniseerd."))}>{syncing ? <Loader2 className="spin" size={15} /> : <RefreshCw size={15} />} {text("Sync now", "Nu synchroniseren")}</button><div className="offline-queue-list">{queue.map((upload) => <span className={upload.lastError ? "failed" : ""} key={upload.id}><ImageIcon size={14} /><b>{upload.fileName}</b><small title={upload.lastError ?? undefined}>{upload.lastError ? text("Sync failed · tap Sync now", "Sync mislukt · tik op Nu synchroniseren") : humanSize(upload.queuedSize)}{!upload.lastError && upload.compressed ? ` · ${Math.round((1 - upload.queuedSize / upload.originalSize) * 100)}% bespaard` : ""}</small><button type="button" aria-label={text("Remove queued upload", "Verwijder wachtende upload")} onClick={() => { if (window.confirm(text("Remove this unsynchronized field file from this device?", "Dit niet-gesynchroniseerde veldbestand van dit apparaat verwijderen?"))) void removeOfflineUpload(upload.id).then(reloadQueue); }}><Trash2 size={14} /></button></span>)}</div></div> : null}
 
+      <div className="media-origin-bar" role="group" aria-label={text("Filter photos by what they belong to", "Filter foto's op waar ze bij horen")}>
+        {originFilters.map((filter) => (
+          <button className={originFilter === filter.id ? "active" : ""} type="button" onClick={() => setOriginFilter(filter.id)} key={filter.id}>
+            {filter.label} <b>{originCount(filter.id)}</b>
+          </button>
+        ))}
+      </div>
+
       <div className="media-gallery">
         {files.map((file) => {
           const folder = data.mediaFolders.find((item) => item.id === file.folder_id);
           const capture = data.visualCaptures.find((item) => item.file_id === file.id);
-          const annotations = capture ? data.visualAnnotations.filter((item) => item.capture_id === capture.id && item.status === "active") : [];
-          const linkedRecords = annotations.map((annotation) => data.findings.find((finding) => finding.id === annotation.finding_id)?.finding_number).filter(Boolean);
-          return <article className="media-card" key={file.id}>{file.mime_type.startsWith("image/") ? <SecureImage client={client} file={file} /> : <span className="media-file-icon"><HardDrive size={28} /></span>}<div><strong>{file.original_name}</strong><span>{libraryBuildingName} · {folder?.name ?? text("Unfiled", "Zonder map")} · {file.category} · {humanSize(file.size_bytes)}</span>{capture ? <small>{capture.capture_type === "panorama" ? "360°" : text("Photo", "Foto")} · {capture.location_label}{linkedRecords.length ? ` · ${text("Linked to", "Gekoppeld aan")} ${linkedRecords.join(", ")}` : ` · ${text("No linked finding yet", "Nog geen gekoppelde bevinding")}`}</small> : null}</div><span className="media-file-actions"><button type="button" onClick={() => void openProjectFile(client, file.id, file.original_name)} aria-label={text("Open file", "Bestand openen")}><ExternalLink size={15} /></button><button type="button" onClick={() => void downloadProjectFile(client, file.id, file.original_name)} aria-label={text("Download file", "Bestand downloaden")}><Download size={15} /></button></span></article>;
+          const origins = originResolver.origins(file.id);
+          return <article className="media-card" key={file.id}>{file.mime_type.startsWith("image/") ? <SecureImage client={client} file={file} /> : <span className="media-file-icon"><HardDrive size={28} /></span>}<div><strong>{file.original_name}</strong><span>{libraryBuildingName} · {folder?.name ?? text("Unfiled", "Zonder map")} · {file.category} · {humanSize(file.size_bytes)}</span>{capture ? <small>{capture.capture_type === "panorama" ? "360°" : text("Photo", "Foto")} · {capture.location_label}</small> : null}<span className="media-origin-chips">{origins.length ? origins.map((origin) => <em className={`media-origin-chip tone-${origin.kind}`} title={origin.title} key={`${origin.kind}:${origin.recordId}`}>{origin.number || origin.kind}</em>) : <em className="media-origin-chip tone-unlinked">{text("Not linked to a record yet", "Nog niet aan een record gekoppeld")}</em>}</span></div><span className="media-file-actions"><button type="button" onClick={() => void openProjectFile(client, file.id, file.original_name)} aria-label={text("Open file", "Bestand openen")}><ExternalLink size={15} /></button><button type="button" onClick={() => void downloadProjectFile(client, file.id, file.original_name)} aria-label={text("Download file", "Bestand downloaden")}><Download size={15} /></button></span></article>;
         })}
-        {!files.length ? <div className="empty-list-state"><Folder size={24} /><strong>{text("This folder is empty", "Deze map is leeg")}</strong><span>{text("Take a photo or select files; they can also be queued offline.", "Maak een foto of kies bestanden; dit kan ook volledig offline.")}</span></div> : null}
+        {!files.length ? <div className="empty-list-state"><Folder size={24} /><strong>{originFilter === "all" ? text("This folder is empty", "Deze map is leeg") : text("No photo matches this filter", "Geen foto voldoet aan dit filter")}</strong><span>{originFilter === "all" ? text("Take a photo or select files; they can also be queued offline.", "Maak een foto of kies bestanden; dit kan ook volledig offline.") : text("Choose another link filter to see the rest of this folder.", "Kies een ander koppelfilter om de rest van deze map te zien.")}</span></div> : null}
       </div>
     </section>
   );

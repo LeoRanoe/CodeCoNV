@@ -161,6 +161,37 @@ export type ExternalShareLink = {
   created_at: string;
 };
 
+export type FileLinkRecordType =
+  | "registration" | "inspection" | "inspection_response" | "finding" | "finding_update"
+  | "hse" | "action" | "report" | "document" | "register_entry";
+
+export type FileLink = {
+  id: string;
+  file_id: string;
+  record_type: FileLinkRecordType;
+  record_id: string;
+  relationship: "attachment" | "before" | "after" | "evidence" | "original" | "annotation" | "certificate" | "preview";
+  created_at: string;
+};
+
+/**
+ * One confirmed day closeout, used to browse Works ongoing, Works completed and
+ * Delays over time instead of only recording them.
+ */
+export type DailyWorkRecord = {
+  id: string;
+  building_id: string;
+  day_report_id: string;
+  day_summary: string;
+  work_ongoing: string | null;
+  work_performed: string;
+  progress_percent: number;
+  delay_cause: string;
+  delay_hours: number;
+  tomorrow_plan: string;
+  created_at: string;
+};
+
 export type RevokeExternalShareResult = {
   share_id: string;
   revoked_at: string;
@@ -272,6 +303,8 @@ export type VisualAnnotation = {
   title: string;
   description: string;
   severity: "low" | "medium" | "high" | "critical";
+  /** Punch-list classification that drives the marker colour. Optional on snapshots cached before it shipped. */
+  disposition?: "validated" | "to_be_corrected" | "alternative_solution";
   status: "active" | "void";
   created_at: string;
 };
@@ -363,6 +396,10 @@ export type OperationSnapshot = {
   mediaFolders: MediaFolder[];
   // Optional only for offline snapshots cached before link management shipped.
   externalShareLinks?: ExternalShareLink[];
+  // Optional only for offline snapshots cached before file linking became visible.
+  fileLinks?: FileLink[];
+  // Optional only for offline snapshots cached before daily work became browsable.
+  dailyWork?: DailyWorkRecord[];
   _offlineCached?: boolean;
   _offlineSavedAt?: string;
 };
@@ -420,7 +457,7 @@ export async function loadProjectOperations(
   organizationId: string,
   reportId?: string | null,
 ): Promise<OperationSnapshot> {
-  const [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, registerResult, boqProgressResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult, dayReportResult] = await Promise.all([
+  const [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, registerResult, boqProgressResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult, dayReportResult, fileLinkResult, dailyWorkResult] = await Promise.all([
     client.from("checklist_templates").select("id,project_id,module,code,name,description,version_number,status").or(`project_id.is.null,project_id.eq.${projectId}`).order("name"),
     client.from("checklist_library_templates").select("code,module,category,name,description,prompts,sort_order").eq("active", true).order("sort_order"),
     client.from("inspections").select("id,building_id,location_node_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
@@ -435,12 +472,14 @@ export async function loadProjectOperations(
     client.from("location_nodes").select("id,building_id,parent_id,node_type,code,name,description,status").eq("project_id", projectId).order("sort_order").limit(500),
     client.from("production_readiness_items").select("id,code,category,title,description,owner_hint,blocking,status,evidence,completed_at,sort_order").eq("organization_id", organizationId).order("sort_order"),
     client.from("visual_captures").select("id,building_id,file_id,location_node_id,day_report_id,capture_type,title,description,location_label,tour_name,tour_order,captured_at,status,created_at").eq("project_id", projectId).order("captured_at", { ascending: false }).limit(250),
-    client.from("visual_annotations").select("id,capture_id,finding_id,coordinate_mode,x_ratio,y_ratio,yaw,pitch,title,description,severity,status,created_at").eq("project_id", projectId).order("created_at").limit(1000),
+    client.from("visual_annotations").select("id,capture_id,finding_id,coordinate_mode,x_ratio,y_ratio,yaw,pitch,title,description,severity,disposition,status,created_at").eq("project_id", projectId).order("created_at").limit(1000),
     client.from("drawing_pins").select("id,drawing_file_id,page_number,x_ratio,y_ratio,linked_record_type,linked_record_id,linked_record_number,linked_record_title,note,status,created_at").eq("project_id", projectId).order("created_at").limit(2000),
     client.from("drawing_markups").select("id,drawing_file_id,page_number,markup_type,geometry,color,stroke_width,text_content,status,created_at").eq("project_id", projectId).order("created_at").limit(5000),
     client.from("media_folders").select("id,building_id,parent_id,name,folder_type,status,created_at").eq("project_id", projectId).eq("status", "active").order("name").limit(500),
     client.from("external_share_links").select("id,organization_id,project_id,building_id,source_type,source_id,source_number,title,summary,source_file_id,expires_at,revoked_at,view_count,last_viewed_at,created_by,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(500),
     client.from("day_reports").select("id,report_date,report_number,status,completeness_percent,created_at,updated_at").eq("project_id", projectId).order("report_date", { ascending: false }).limit(1000),
+    client.from("file_links").select("id,file_id,record_type,record_id,relationship,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(5000),
+    client.from("day_closeouts").select("id,building_id,day_report_id,day_summary,work_ongoing,work_performed,progress_percent,delay_cause,delay_hours,tomorrow_plan,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(400),
   ]);
   const compatibleRegisterResult = schemaFeatureMissing(registerResult.error, "location_node_id")
     ? await client.from("project_register_entries").select("id,building_id,register_type,entry_number,title,status,occurred_at,due_at,details").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(5000)
@@ -448,11 +487,18 @@ export async function loadProjectOperations(
   const compatibleBoqProgressResult = schemaFeatureMissing(boqProgressResult.error, "boq_progress_updates")
     ? { data: [], error: null }
     : boqProgressResult;
+  // File links only enrich the UI. A snapshot must still load when a role cannot read them.
+  const compatibleFileLinkResult = fileLinkResult.error ? { data: [], error: null } : fileLinkResult;
+  // Daily work only enriches the workspace; a missing column must not break the snapshot.
+  const compatibleDailyWorkResult = dailyWorkResult.error ? { data: [], error: null } : dailyWorkResult;
+  const compatibleVisualAnnotationResult = schemaFeatureMissing(visualAnnotationResult.error, "disposition")
+    ? await client.from("visual_annotations").select("id,capture_id,finding_id,coordinate_mode,x_ratio,y_ratio,yaw,pitch,title,description,severity,status,created_at").eq("project_id", projectId).order("created_at").limit(1000)
+    : visualAnnotationResult;
   const legacySettingsSchema = schemaFeatureMissing(settingsResult.error, "project_settings");
   const compatibleSettingsResult = legacySettingsSchema
     ? await client.from("project_settings").select("id,project_id,report_prefix,default_language,max_file_size_mb,notification_lead_hours,email_notifications_enabled,push_notifications_enabled,retention_days,branding,modules,signing_workflow").eq("project_id", projectId).maybeSingle()
     : settingsResult;
-  [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, compatibleRegisterResult, compatibleBoqProgressResult, fileResult, compatibleSettingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult, dayReportResult].forEach((result) => fail(result.error));
+  [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, compatibleRegisterResult, compatibleBoqProgressResult, fileResult, compatibleSettingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, compatibleVisualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult, dayReportResult].forEach((result) => fail(result.error));
   const templateRows = (templateResult.data ?? []) as Omit<ChecklistTemplate, "items">[];
   const itemResult = templateRows.length
     ? await client.from("checklist_items").select("id,template_id,section,prompt,response_type,required,sort_order,unit,minimum_value,maximum_value,failure_severity,guidance").in("template_id", templateRows.map((template) => template.id)).order("sort_order")
@@ -514,11 +560,13 @@ export async function loadProjectOperations(
     locationNodes: (locationResult.data ?? []) as LocationNode[],
     productionReadiness: (readinessResult.data ?? []) as ProductionReadinessItem[],
     visualCaptures: (visualCaptureResult.data ?? []) as VisualCapture[],
-    visualAnnotations: (visualAnnotationResult.data ?? []) as VisualAnnotation[],
+    visualAnnotations: (compatibleVisualAnnotationResult.data ?? []) as VisualAnnotation[],
     drawingPins: (drawingPinResult.data ?? []) as DrawingPin[],
     drawingMarkups: (drawingMarkupResult.data ?? []) as DrawingMarkup[],
     mediaFolders: (mediaFolderResult.data ?? []) as MediaFolder[],
     externalShareLinks: (externalShareResult.data ?? []) as ExternalShareLink[],
+    fileLinks: (compatibleFileLinkResult.data ?? []) as FileLink[],
+    dailyWork: (compatibleDailyWorkResult.data ?? []) as DailyWorkRecord[],
   };
 }
 
@@ -1065,6 +1113,9 @@ export async function createVisualAnnotationFinding(client: SupabaseClient, inpu
   description: string;
   severity: Finding["severity"];
   responsiblePartyId?: string;
+  /** Building the marker belongs to; may differ from the building the photo was filed under. */
+  buildingId?: string;
+  disposition?: "validated" | "to_be_corrected" | "alternative_solution";
 }) {
   const result = await client.rpc("create_visual_annotation_finding", {
     p_capture_id: input.captureId,
@@ -1079,6 +1130,8 @@ export async function createVisualAnnotationFinding(client: SupabaseClient, inpu
     p_severity: input.severity,
     p_responsible_party_id: input.responsiblePartyId || null,
     p_idempotency_key: `visual-annotation:${crypto.randomUUID()}`,
+    p_building_id: input.buildingId || null,
+    p_disposition: input.disposition || "to_be_corrected",
   });
   fail(result.error);
   return result.data as VisualAnnotation;

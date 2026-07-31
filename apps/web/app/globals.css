@@ -1885,6 +1885,23 @@ textarea:focus-visible {
   background: var(--signal);
 }
 
+/* Live weather stays visible in every module, not only on the overview. */
+.live-weather-chip {
+  align-items: center;
+  background: var(--blue-soft);
+  border: 1px solid #bcd9ef;
+  border-radius: 9px;
+  color: var(--blue);
+  cursor: pointer;
+  display: flex;
+  font-size: 11px;
+  font-weight: 700;
+  gap: 6px;
+  padding: 8px 10px;
+}
+.live-weather-chip:hover { border-color: var(--blue); }
+.live-weather-chip.attention { background: var(--signal-soft); border-color: #f5cfa8; color: var(--signal-dark); }
+
 .storage-state {
   display: flex;
   align-items: center;
@@ -6996,6 +7013,15 @@ textarea:focus-visible {
 .panorama-marker-dot.critical { background: var(--red); }
 .visual-marker.low,
 .panorama-marker-dot.low { background: var(--green); }
+
+/* Punch-list classification colours (B1-MOH scheme). These win over severity. */
+.visual-marker.validated,
+.panorama-marker-dot.validated { background: var(--green); }
+.visual-marker.to-be-corrected,
+.panorama-marker-dot.to-be-corrected { background: #d36f25; }
+.visual-marker.alternative-solution,
+.panorama-marker-dot.alternative-solution { background: var(--red); }
+
 .visual-marker.pending,
 .panorama-marker-dot.pending {
   background: var(--blue);
@@ -7286,6 +7312,75 @@ textarea:focus-visible {
 .media-card > div { display: grid; gap: 3px; min-width: 0; padding: 11px; }
 .media-card > div strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .media-card > div span { color: var(--muted); font-size: 11px; }
+
+/* Photo linkage: which record does this image belong to? */
+.media-origin-bar { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 12px; }
+.media-origin-bar button {
+  align-items: center;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 6px;
+  padding: 7px 13px;
+}
+.media-origin-bar button b { color: var(--ink-500); font-size: 11px; font-weight: 700; }
+.media-origin-bar button:hover { border-color: var(--green); color: var(--green); }
+.media-origin-bar button.active { background: var(--green); border-color: var(--green); color: #fff; }
+.media-origin-bar button.active b { color: rgba(255, 255, 255, 0.82); }
+
+.media-origin-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.media-origin-chip {
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  padding: 3px 7px;
+}
+.media-origin-chip.tone-finding { background: var(--signal-soft); border-color: #f5cfa8; color: var(--signal-dark); }
+.media-origin-chip.tone-inspection { background: var(--blue-soft); border-color: #bcd9ef; color: var(--blue); }
+.media-origin-chip.tone-hse { background: var(--green-soft); border-color: #b6ded2; color: var(--green); }
+.media-origin-chip.tone-register { background: var(--ink-50); border-color: var(--ink-200); color: var(--ink-700); }
+.media-origin-chip.tone-visual { background: var(--yellow-soft); border-color: #ecd79a; color: #8a5c00; }
+.media-origin-chip.tone-action { background: var(--ink-50); border-color: var(--ink-200); color: var(--ink-700); }
+.media-origin-chip.tone-unlinked { background: var(--ink-50); border-color: var(--ink-200); color: var(--ink-500); font-weight: 600; }
+
+/* Evidence shown from the record side, so a finding is never a photoless text card. */
+.record-photo-strip { border-top: 1px solid var(--border); display: grid; gap: 8px; margin-top: 12px; padding-top: 12px; }
+.record-photo-toggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 6px;
+  padding: 0;
+}
+.record-photo-toggle:hover { color: var(--green); }
+.record-photo-strip > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.record-photo-strip button {
+  background: var(--ink-50);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  cursor: pointer;
+  height: 62px;
+  overflow: hidden;
+  padding: 0;
+  width: 82px;
+}
+.record-photo-strip button:hover { border-color: var(--green); }
+.record-photo-strip img { height: 100%; object-fit: cover; width: 100%; }
+.record-photo-fallback { align-items: center; color: var(--ink-400); display: flex; height: 100%; justify-content: center; width: 100%; }
+
 .media-file-actions { align-self: center; display: flex; padding-right: 6px; }
 .media-file-actions button { background: transparent; border: 0; color: var(--green); cursor: pointer; padding: 8px; }
 .media-file-actions button:hover { background: var(--green-soft); border-radius: 7px; }
@@ -7780,6 +7875,75 @@ textarea:focus-visible {
 .controlled-history-attachments { align-items: center; display: flex !important; flex-wrap: wrap; }
 .controlled-history-attachments > span { flex: 0 0 100%; }
 .controlled-history-attachments.empty { display: grid !important; }
+
+/* Append-only decision log: every response stays visible, oldest first. */
+.controlled-history-timeline { grid-column: 1 / -1; }
+.controlled-history-timeline ol { display: grid; gap: 9px; list-style: none; margin: 7px 0 0; padding: 0; }
+.controlled-history-timeline li { align-items: start; display: grid; gap: 9px; grid-template-columns: auto 1fr; }
+.controlled-history-timeline li > div { display: grid; gap: 2px; }
+.controlled-history-timeline .decision-dot {
+  background: var(--ink-300);
+  border-radius: 50%;
+  height: 9px;
+  margin-top: 4px;
+  width: 9px;
+}
+.controlled-history-timeline .decision-dot.approved,
+.controlled-history-timeline .decision-dot.conditionally_approved,
+.controlled-history-timeline .decision-dot.approved_with_comments,
+.controlled-history-timeline .decision-dot.completed,
+.controlled-history-timeline .decision-dot.closed { background: var(--green); }
+.controlled-history-timeline .decision-dot.rejected,
+.controlled-history-timeline .decision-dot.correct_and_resubmit { background: var(--red); }
+.controlled-history-timeline .decision-dot.clarification_needed { background: var(--signal); }
+
+/* Daily work: the owner browses what runs, what is done and where time was lost. */
+.daily-work-register { display: grid; gap: 14px; }
+.daily-work-heading { align-items: end; display: flex; flex-wrap: wrap; gap: 14px; justify-content: space-between; }
+.daily-work-heading h2 { font-size: 19px; margin: 3px 0 4px; }
+.daily-work-heading p { color: var(--muted); font-size: 12.5px; margin: 0; max-width: 62ch; }
+.daily-work-header-actions { align-items: end; display: flex; flex-wrap: wrap; gap: 10px; }
+
+.daily-work-tabs { display: grid; gap: 9px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.daily-work-tabs button {
+  align-items: center;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  text-align: left;
+}
+.daily-work-tabs button span { display: grid; gap: 1px; }
+.daily-work-tabs button small { color: var(--muted); font-size: 11px; }
+.daily-work-tabs button:hover { border-color: var(--green); }
+.daily-work-tabs button.active { background: var(--green-soft); border-color: var(--green); color: var(--green); }
+.daily-work-tabs button.active small { color: var(--green); }
+
+.daily-work-list { display: grid; gap: 10px; }
+.daily-work-list article {
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+}
+.daily-work-list article header { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; }
+.daily-work-date { align-items: center; color: var(--ink-700); display: flex; font-size: 12px; font-weight: 700; gap: 6px; }
+.daily-work-building { background: var(--ink-50); border-radius: 6px; color: var(--muted); font-size: 11px; font-weight: 600; padding: 3px 8px; }
+.daily-work-list article p { color: var(--text); font-size: 13.5px; line-height: 1.5; margin: 0; }
+.daily-work-list article small { color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+.daily-work-progress { align-items: center; display: flex; gap: 9px; }
+.daily-work-progress-track { background: var(--ink-100); border-radius: 999px; display: block; flex: 1; height: 6px; overflow: hidden; }
+.daily-work-progress-track i { background: var(--green); border-radius: 999px; display: block; height: 100%; }
+.daily-work-progress b { color: var(--green); font-size: 12px; font-weight: 700; min-width: 38px; text-align: right; }
+
+.external-submission-notice { align-items: center; }
+.external-submission-notice button { margin-left: auto; white-space: nowrap; }
 .finding-required-action {
   background: #f4f7f7;
   border-left: 3px solid var(--green);
