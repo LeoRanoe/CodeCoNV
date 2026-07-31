@@ -87,7 +87,7 @@ export function DictateButton({
       aria-label={listening ? stopLabel : startLabel}
       title={listening ? stopLabel : startLabel}
     >
-      {listening ? <MicOff size={13} /> : <Mic size={13} />}
+      {listening ? <MicOff size={18} /> : <Mic size={18} />}
     </button>
   );
 }
