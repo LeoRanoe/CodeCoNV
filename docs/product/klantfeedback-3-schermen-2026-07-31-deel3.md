@@ -25,18 +25,34 @@ module). Sinds deel 2 staat het formulier direct open bij het openen van de modu
   (*Issues* en *NCR*), elk met eigen aantal. Het scherm zelf is daarmee, zoals de klant
   schreef, uitsluitend voor issue-invoer. NCR's blijven bereikbaar — ze zijn niet verdwenen,
   alleen niet meer vermengd met de issue-invoer.
-- **"Graag de kolommen van de Excel opnemen hier."** Het werkblad **B1-MOH** van de klant
-  werkt met: Subject · Description · Validate / To be corrected / Need an alternative
-  solution · Action · Responsible from contractor · Issuance date · Initial completion date ·
-  daarna een voortgangs-% per inspectiedatum. In het formulier:
-  - *Onderwerp* en *Omschrijving* stonden weggeklapt onder "Andere probleeminformatie" en
-    staan nu als eerste twee velden in de hoofdstroom;
-  - *Uitgiftedatum* is nieuw (`issuance_date` in het issue-management-veld);
-  - "Verwachte oplosdatum" heet nu **Eerste opleverdatum**, zoals in het werkblad;
-  - "Verantwoordelijke partij" heet nu **Verantwoordelijke bij aannemer**;
-  - beoordeling (gevalideerd / te corrigeren / alternatieve oplossing) en de actie stonden
-    er al; het voortgangs-% per inspectiedatum ook, via *Voortgang vastleggen* op de kaart.
-  - Het gebouw mag nu ook *Alle gebouwen* zijn.
+- **"Graag de kolommen van de Excel opnemen hier."** Eerst verwerkt op basis van de
+  punchlist **B1-MOH**; dat was het verkeerde bestand. Na terugkijken is de bron het
+  eigen sjabloon van de klant: `tmp/client_context/xls_conversion/Issue_Management_Template_Codeco.xlsx`,
+  blad **Issues_Tracking_Log**, kopregel 8. Die kolommen zijn nu één op één aangehouden,
+  met de namen van de klant:
+
+  | Excel-kolom | In de app |
+  | --- | --- |
+  | A · No. | automatisch issuenummer (`Q-2026-0007`) |
+  | B · Current Status | de statusstroom van de app (open → in uitvoering → gereed voor verificatie → geverifieerd) |
+  | C · Priority | *Priority* — Critical / High / Medium / Low, met de deadline per niveau |
+  | D · Issue Description | *Issue Description*, staat nu vooraan in plaats van weggeklapt |
+  | E · Assigned To Owner | *Assigned To Owner* |
+  | F · Expected Resolution Date | *Expected Resolution Date* |
+  | G · Escalation Required (Y/N) | *Escalation Required (Y/N)* |
+  | H · Impact Summary | *Impact* met keuzechips plus vrij veld |
+  | I · Action Steps | *Vereiste opvolging* met keuzechips plus vrij veld |
+  | J · Issue Type | *Issue Type* — Informational / Procedural / System / Other, in die volgorde |
+  | K · Date Identified | *Date Identified* (nieuw veld) |
+  | L · Entered By | automatisch: de ingelogde gebruiker, staat als regel onder het formulier |
+  | M · Actual Resolution Date | automatisch bij verificatie (`verified_at`) |
+  | N · Final Resolution & Rationale | *Final Resolution & Rationale* bij het afronden van het issue |
+
+  De dropdownwaarden komen uit de datavalidatie van het werkblad zelf
+  (`Open,Work In Progress,Closed` · `Critical,High,Medium,Low` · `Yes,No` ·
+  `Informational, Procedural, System, Other`). Het gebouw mag ook *Alle gebouwen* zijn.
+  De beoordeling gevalideerd / te corrigeren / alternatieve oplossing blijft staan: die
+  komt uit de punchlist en staat niet in dit sjabloon, maar de klant gebruikt beide.
 
 ## #9 Projectregister
 
@@ -101,6 +117,7 @@ controle versoepelt — dat is een aparte, te testen wijziging.
 | **Verstuurde TI vastleggen** | De WhatsApp-knop opent het bericht; er wordt nog niet vastgelegd dát er verstuurd is. Een beveiligde deellink zoals bij issues vraagt een migratie: `external_share_links.source_type` kent nog geen registeritem. |
 | **Ondertekening is een bevestiging, geen getekende krabbel** | Naam + moment worden vastgelegd. Een met de vinger getekende handtekening is nieuw werk (canvas + bestand). |
 | **E2E-suite** | Slaat over zonder `CODECO_E2E_EMAIL` / `CODECO_E2E_PASSWORD`. |
+| **Current Status letterlijk overnemen** | De app heeft een rijkere statusstroom dan de drie van het werkblad (Open / Work In Progress / Closed). Die stroom is bewust behouden; bij export naar het Excel-formaat kunnen de app-statussen op die drie worden teruggebracht. Aan de klant te bevestigen. |
 
 ## Aanbevolen acceptatievolgorde
 

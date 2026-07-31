@@ -556,7 +556,7 @@ function ProjectOperations({
     expectedResolutionDate: "",
     sourceCatalogSubject: "",
     // The issue list of the client has its own issuance date column.
-    issuanceDate: "",
+    dateIdentified: "",
   });
   const [findingPhotos, setFindingPhotos] = useState<File[]>([]);
   const [findingPhotoError, setFindingPhotoError] = useState("");
@@ -1010,7 +1010,7 @@ function ProjectOperations({
                 disposition: findingForm.disposition,
                 expectedResolutionDate: findingForm.expectedResolutionDate,
                 sourceCatalogSubject: findingForm.sourceCatalogSubject,
-        issuanceDate: findingForm.issuanceDate,
+        dateIdentified: findingForm.dateIdentified,
                 locationNodeId: findingLocationNodeId || undefined,
               },
             },
@@ -1025,7 +1025,7 @@ function ProjectOperations({
       setFindingForm({
         type: "deficiency", title: "", description: "", severity: "medium", responsiblePartyId: "",
         issueType: "quality", impactSummary: "", actionSteps: "", escalationRequired: false,
-        disposition: "to_be_corrected", expectedResolutionDate: "", sourceCatalogSubject: "", issuanceDate: "",
+        disposition: "to_be_corrected", expectedResolutionDate: "", sourceCatalogSubject: "", dateIdentified: "",
       });
       setFindingPhotos([]);
       setFindingPhotoError("");
@@ -1500,15 +1500,15 @@ function ProjectOperations({
               }}><option value="">{text("Choose only when applicable", "Kies alleen indien van toepassing")}</option>{issueCatalogPresets.map((preset) => <option value={preset.subject} key={preset.subject}>{preset.subject}</option>)}</select><small>{text("The historic spreadsheet is used as a quick-entry catalog; choosing an item does not mark it as an active project issue until you submit it.", "Het historische spreadsheet is een snelinvoercatalogus; een keuze wordt pas een actief projectpunt nadat je het indient.")}</small></label>
               <div className="form-grid-2">
                 <label className="form-field"><span>{text("Type", "Type")}</span><select value={findingForm.type} onChange={(event) => setFindingForm({ ...findingForm, type: event.target.value })}><option value="observation">{text("Observation", "Observatie")}</option><option value="deficiency">{text("Deficiency", "Tekortkoming")}</option><option value="deviation">{text("Deviation", "Afwijking")}</option><option value="ncr">NCR</option><option value="improvement">{text("Improvement opportunity", "Verbeterkans")}</option></select></label>
-                <label className="form-field"><span>{text("Severity", "Ernst")}</span><select value={findingForm.severity} onChange={(event) => setFindingForm({ ...findingForm, severity: event.target.value })}><option value="low">{text("Low · 14 days", "Laag · 14 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label>
+                <label className="form-field"><span>{text("Priority", "Priority")}</span><select value={findingForm.severity} onChange={(event) => setFindingForm({ ...findingForm, severity: event.target.value })}><option value="low">{text("Low · 14 days", "Low · 14 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label>
               </div>
               <div className="form-grid-2">
-                <label className="form-field"><span>{text("Issue type", "Soort issue")}</span><select value={findingForm.issueType} onChange={(event) => setFindingForm({ ...findingForm, issueType: event.target.value })}><option value="quality">{text("Quality / workmanship", "Kwaliteit / uitvoering")}</option><option value="informational">{text("Informational", "Informatief")}</option><option value="procedural">{text("Procedural", "Procedureel")}</option><option value="system">{text("System / installation", "Systeem / installatie")}</option><option value="other">{text("Other", "Overig")}</option></select></label>
+                <label className="form-field"><span>{text("Issue type", "Issue Type")}</span><select value={findingForm.issueType} onChange={(event) => setFindingForm({ ...findingForm, issueType: event.target.value })}><option value="informational">Informational</option><option value="procedural">Procedural</option><option value="system">System</option><option value="other">Other</option><option value="quality">{text("Quality / workmanship", "Kwaliteit / uitvoering")}</option></select></label>
                 <label className="form-field"><span>{text("Disposition", "Beoordeling")}</span><select value={findingForm.disposition} onChange={(event) => setFindingForm({ ...findingForm, disposition: event.target.value as typeof findingForm.disposition })}><option value="validated">{text("Validated", "Gevalideerd")}</option><option value="to_be_corrected">{text("To be corrected", "Te corrigeren")}</option><option value="alternative_solution">{text("Alternative solution required", "Alternatieve oplossing nodig")}</option></select></label>
               </div>
               <div className="form-grid">
-                <label className="form-field"><span>{text("Subject", "Onderwerp")}</span><input value={findingForm.title} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} placeholder={text("Short subject, as in your issue list", "Kort onderwerp, zoals in je issuelijst")} /></label>
-                <label className="form-field"><span>{text("Description", "Omschrijving")}</span><textarea rows={3} value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} /></label>
+                <label className="form-field"><span>{text("Issue title · used as the log line", "Issuetitel · wordt de regel in het log")}</span><input value={findingForm.title} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} placeholder={text("Short title for the issue log", "Korte titel voor het issuelog")} /></label>
+                <label className="form-field"><span>{text("Issue description", "Issue Description")}</span><textarea rows={3} value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} /></label>
               </div>
               <div className="click-answer-block"><strong>{text("Impact", "Impact")}</strong><div className="quick-issue-presets">{findingImpactPresets.map((option) => <button className={findingForm.impactSummary === option ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, impactSummary: option })} key={option}>{option}</button>)}</div></div>
               <div className="click-answer-block"><strong>{text("Required follow-up", "Vereiste opvolging")}</strong><div className="quick-issue-presets">{findingActionPresets.map((option) => <button className={findingForm.actionSteps === option ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, actionSteps: option })} key={option}>{option}</button>)}</div></div>
@@ -1520,13 +1520,14 @@ function ProjectOperations({
                 </div>
               </details>
               <div className="form-grid-2">
-                <label className="form-field"><span>{text("Issuance date", "Uitgiftedatum")}</span><input type="date" value={findingForm.issuanceDate} onChange={(event) => setFindingForm({ ...findingForm, issuanceDate: event.target.value })} /></label>
-                <label className="form-field"><span>{text("Initial completion date", "Eerste opleverdatum")}</span><input type="date" value={findingForm.expectedResolutionDate} onChange={(event) => setFindingForm({ ...findingForm, expectedResolutionDate: event.target.value })} /></label>
+                <label className="form-field"><span>{text("Date identified", "Date Identified")}</span><input type="date" value={findingForm.dateIdentified} onChange={(event) => setFindingForm({ ...findingForm, dateIdentified: event.target.value })} /></label>
+                <label className="form-field"><span>{text("Expected resolution date", "Expected Resolution Date")}</span><input type="date" value={findingForm.expectedResolutionDate} onChange={(event) => setFindingForm({ ...findingForm, expectedResolutionDate: event.target.value })} /></label>
               </div>
-              <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required", "Escalatie vereist")}</label>
+              <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required (Y/N)", "Escalation Required (Y/N)")}</label>
+              <p className="form-helper">{text(`Entered by ${currentUserName} · the ID, current status and actual resolution date are kept by the app itself.`, `Entered By ${currentUserName} · het ID, de status en de Actual Resolution Date houdt de app zelf bij.`)}</p>
               <div className="form-grid-2">
                 <BuildingPicker id="finding-building" buildings={buildings} value={findingBuildingId} onChange={(next) => { setFindingBuildingId(next); setFindingLocationNodeId(""); }} allowAll />
-                <label className="form-field"><span>{text("Responsible from contractor", "Verantwoordelijke bij aannemer")}</span><select value={findingForm.responsiblePartyId} onChange={(event) => setFindingForm({ ...findingForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Nog niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
+                <label className="form-field"><span>{text("Assigned to owner", "Assigned To Owner")}</span><select value={findingForm.responsiblePartyId} onChange={(event) => setFindingForm({ ...findingForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Nog niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
               </div>
               <LocationPicker id="finding-location" nodes={data.locationNodes} buildingId={findingBuildingId} value={findingLocationNodeId} onChange={setFindingLocationNodeId} requiredDepth={requiredLocationDepth} />
               <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Probleem indienen")}</button>
@@ -2309,7 +2310,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
             ) : null}
             {active === finding.id && nextStatus ? (
               <div className="inline-transition">
-                {nextStatus === "ready_for_verification" ? <><div className="quick-issue-presets" aria-label={text("Choose the completed measure", "Kies de uitgevoerde maatregel")}>{measureChoices.map((choice) => <button className={measure === choice ? "active" : ""} type="button" onClick={() => setMeasure(choice)} key={choice}>{choice}</button>)}</div><label className="form-field"><span>{text("Final measure", "Definitieve maatregel")}</span><textarea rows={2} value={measure} onChange={(event) => setMeasure(event.target.value)} /><DictateButton onText={(transcript) => setMeasure((current) => appendDictation(current, transcript))} /></label></> : null}
+                {nextStatus === "ready_for_verification" ? <><div className="quick-issue-presets" aria-label={text("Choose the completed measure", "Kies de uitgevoerde maatregel")}>{measureChoices.map((choice) => <button className={measure === choice ? "active" : ""} type="button" onClick={() => setMeasure(choice)} key={choice}>{choice}</button>)}</div><label className="form-field"><span>{text("Final resolution & rationale", "Final Resolution & Rationale")}</span><textarea rows={2} value={measure} onChange={(event) => setMeasure(event.target.value)} /><DictateButton onText={(transcript) => setMeasure((current) => appendDictation(current, transcript))} /></label></> : null}
                 <div className="quick-issue-presets" aria-label={text("Choose a status note", "Kies een statusnotitie")}>{(noteChoices[nextStatus] ?? []).map((choice) => <button className={note === choice ? "active" : ""} type="button" onClick={() => setNote(choice)} key={choice}>{choice}</button>)}</div>
                 <label className="form-field"><span>{nextStatus === "closed" ? text("Verification finding", "Verificatiebevinding") : text("Comment", "Toelichting")}</span><textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} /><DictateButton onText={(transcript) => setNote((current) => appendDictation(current, transcript))} /></label>
                 <button className="primary-button" type="button" disabled={busy || note.trim().length < 2 || (nextStatus === "ready_for_verification" && measure.trim().length < 3)} onClick={() => void transition(finding, nextStatus, note, measure).then((okay) => { if (okay) { setActive(null); setNote(""); setMeasure(""); } })}>{text("Confirm human status change", "Bevestig menselijke statuswijziging")}</button>

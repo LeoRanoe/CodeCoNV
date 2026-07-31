@@ -19,7 +19,7 @@ export type QueuedFindingDraft = {
   disposition?: "validated" | "to_be_corrected" | "alternative_solution";
   expectedResolutionDate?: string;
   sourceCatalogSubject?: string;
-  issuanceDate?: string;
+  dateIdentified?: string;
   locationNodeId?: string;
 };
 
@@ -257,7 +257,7 @@ async function syncOfflineUploadsUnlocked(
             disposition: draft.disposition,
             expectedResolutionDate: draft.expectedResolutionDate,
             sourceCatalogSubject: draft.sourceCatalogSubject,
-            issuanceDate: draft.issuanceDate,
+            dateIdentified: draft.dateIdentified,
             locationNodeId: draft.locationNodeId || upload.locationNodeId || undefined,
             idempotencyKey: `offline-finding:${upload.findingGroup.id}`,
           });
@@ -295,7 +295,7 @@ async function syncOfflineUploadsUnlocked(
           disposition: upload.findingDraft.disposition,
           expectedResolutionDate: upload.findingDraft.expectedResolutionDate,
           sourceCatalogSubject: upload.findingDraft.sourceCatalogSubject,
-          issuanceDate: upload.findingDraft.issuanceDate,
+          dateIdentified: upload.findingDraft.dateIdentified,
           locationNodeId: upload.findingDraft.locationNodeId || upload.locationNodeId || undefined,
           idempotencyKey: `offline-finding:${upload.id}`,
         });

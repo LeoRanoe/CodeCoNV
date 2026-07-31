@@ -1049,12 +1049,17 @@ test("processes the third batch of annotated screens from 31 July", async () => 
   assert.doesNotMatch(styles, /\.finding-scope-switch/);
   assert.match(workspace, /const findingScope: "issue" \| "ncr" = tab === "ncr"/);
 
-  // The issue form carries the columns of the client's own issue list.
-  assert.match(workspace, /text\("Subject", "Onderwerp"\)/);
-  assert.match(workspace, /text\("Issuance date", "Uitgiftedatum"\)/);
-  assert.match(workspace, /text\("Initial completion date", "Eerste opleverdatum"\)/);
-  assert.match(workspace, /Responsible from contractor|Verantwoordelijke bij aannemer/);
-  assert.match(operations, /issuance_date: input\.issuanceDate/);
+  // The issue form uses the columns of the client's own Issue Management Template
+  // (Issues_Tracking_Log), with their names, not a summary of another worksheet.
+  assert.match(workspace, /text\("Issue description", "Issue Description"\)/);
+  assert.match(workspace, /text\("Date identified", "Date Identified"\)/);
+  assert.match(workspace, /text\("Expected resolution date", "Expected Resolution Date"\)/);
+  assert.match(workspace, /text\("Assigned to owner", "Assigned To Owner"\)/);
+  assert.match(workspace, /Escalation Required \(Y\/N\)/);
+  assert.match(workspace, /Final Resolution & Rationale/);
+  assert.match(workspace, /<option value="informational">Informational<\/option>/);
+  assert.match(operations, /date_identified: input\.dateIdentified/);
+  assert.doesNotMatch(workspace, /Initial completion date|Eerste opleverdatum/);
 
   // A register item can be about general material, and a delivery is judged and counted.
   assert.match(workspace, /Building · or general material|Gebouw · of algemeen materiaal/);
