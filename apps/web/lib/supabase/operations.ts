@@ -722,6 +722,8 @@ export async function createFinding(client: SupabaseClient, input: {
   disposition?: "validated" | "to_be_corrected" | "alternative_solution";
   expectedResolutionDate?: string;
   sourceCatalogSubject?: string;
+  /** Explicit issuance date from the client's issue list; falls back to today. */
+  issuanceDate?: string;
   locationNodeId?: string;
   idempotencyKey?: string;
 }) {
@@ -747,6 +749,7 @@ export async function createFinding(client: SupabaseClient, input: {
       disposition: input.disposition || "to_be_corrected",
       expected_resolution_date: input.expectedResolutionDate || null,
       source_catalog_subject: input.sourceCatalogSubject || null,
+      issuance_date: input.issuanceDate || null,
       location_node_id: input.locationNodeId || null,
     },
   });

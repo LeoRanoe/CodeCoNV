@@ -20,6 +20,9 @@ export type ControlledDocumentDraft = {
   requestedTo: string;
   /** Who draws the document up. Empty means the signed-in user. */
   issuerName: string;
+  /** Set when the author signs the document; kept with the moment of signing. */
+  signedBy: string;
+  signedAt: string;
   issuerPosition: string;
   issuerCompany: string;
   discipline: string;
@@ -64,6 +67,8 @@ export const emptyControlledDocumentDraft: ControlledDocumentDraft = {
   revision: "0",
   requestedTo: "",
   issuerName: "",
+  signedBy: "",
+  signedAt: "",
   issuerPosition: "Construction Supervisor",
   issuerCompany: "CODECO N.V.",
   discipline: "architectural",
@@ -117,8 +122,13 @@ export function createControlledDocumentDetails(
     related_reference: draft.relatedReference.trim(),
     reference_documents: draft.referenceDocuments.trim(),
     attachments: draft.attachments.trim(),
-    reason: draft.reason.trim(),
-    required_action: draft.requiredAction,
+    // The client's form does not ask for these two, but a technical instruction is
+    // invalid in the database without them: derive instead of prompt.
+    reason: draft.reason.trim() || draft.details.trim(),
+    required_action: draft.requiredAction || "proceed",
+    signed_by: draft.signedBy.trim(),
+    signed_by_position: draft.signedBy.trim() ? draft.issuerPosition.trim() : "",
+    signed_at: draft.signedAt || null,
     schedule_impact: draft.scheduleImpact,
     cost_impact: draft.costImpact,
     impact_explanation: draft.impactExplanation.trim(),

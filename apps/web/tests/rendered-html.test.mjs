@@ -999,7 +999,7 @@ test("processes the second batch of annotated screens from 31 July", async () =>
   assert.match(workspace, /documentIssuerOptions/);
   assert.match(workspace, /technical_instruction: \[\],/);
   assert.doesNotMatch(workspace, /Replacing generator of Central Lab/);
-  assert.match(workspace, /allowAll=\{controlledRegister\}/);
+  assert.match(workspace, /Building · or project-wide|Gebouw · of projectbreed/);
   assert.match(workspace, /registerRecordBuildingId/);
   assert.match(operations, /buildingId: string \| null;/);
 
@@ -1033,4 +1033,48 @@ test("lets a new deployment reach an installed field app", async () => {
   assert.match(providers, /registration\.update\(\)/);
   assert.match(providers, /controllerchange/);
   assert.match(providers, /hadController/);
+});
+
+test("processes the third batch of annotated screens from 31 July", async () => {
+  const [workspace, controlledDocuments, operations, styles] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/forms/controlled-project-documents.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // Issues and NCR are separate modules; the issue screen is for issues only.
+  assert.match(workspace, /\["ncr", "NCR"/);
+  assert.doesNotMatch(workspace, /finding-scope-switch/);
+  assert.doesNotMatch(styles, /\.finding-scope-switch/);
+  assert.match(workspace, /const findingScope: "issue" \| "ncr" = tab === "ncr"/);
+
+  // The issue form carries the columns of the client's own issue list.
+  assert.match(workspace, /text\("Subject", "Onderwerp"\)/);
+  assert.match(workspace, /text\("Issuance date", "Uitgiftedatum"\)/);
+  assert.match(workspace, /text\("Initial completion date", "Eerste opleverdatum"\)/);
+  assert.match(workspace, /Responsible from contractor|Verantwoordelijke bij aannemer/);
+  assert.match(operations, /issuance_date: input\.issuanceDate/);
+
+  // A register item can be about general material, and a delivery is judged and counted.
+  assert.match(workspace, /Building · or general material|Gebouw · of algemeen materiaal/);
+  assert.match(workspace, /registerQuantityTypes/);
+  assert.match(workspace, /Does the delivered material comply\?|Voldoet het geleverde materiaal\?/);
+  assert.match(workspace, /text\("Quantity", "Hoeveelheid"\)/);
+  assert.match(workspace, /outcome: registerOutcome \|\| null/);
+
+  // The controlled document form asks less, keeps the database valid, is signed by its
+  // author and can be sent to the contractor.
+  assert.doesNotMatch(workspace, /Issued by position|Functie opsteller/);
+  assert.doesNotMatch(workspace, /Requested to \/ recipient name/);
+  assert.doesNotMatch(workspace, /Related RFI \/ NCR \/ drawing/);
+  assert.doesNotMatch(workspace, /Reason for instruction|Reden voor instructie/);
+  assert.match(workspace, /text\("To:", "Aan:"\)/);
+  assert.match(controlledDocuments, /reason: draft\.reason\.trim\(\) \|\| draft\.details\.trim\(\)/);
+  assert.match(controlledDocuments, /required_action: draft\.requiredAction \|\| "proceed"/);
+  assert.match(controlledDocuments, /signedBy: string/);
+  assert.match(workspace, /controlled-document-signature/);
+  assert.match(styles, /\.check-field\.controlled-document-signature/);
+  assert.match(workspace, /Send to contractor|Naar aannemer sturen/);
+  assert.match(workspace, /const contractorMessage =/);
 });
