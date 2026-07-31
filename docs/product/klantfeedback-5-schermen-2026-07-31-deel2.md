@@ -77,7 +77,13 @@ Een inspectie starten kon wel, maar daarna niet meer openen: de lijst toonde hem
   niets met een levering te maken. Het zit nu in een dichtgeklapt blok
   **Meetstaat · import en voortgang** met het aantal BOQ-regels erbij. De functie is
   behouden, één tik weg — verwijderd is hij niet, want de meetstaat is elders wel nodig.
-  *Als hiermee iets anders bedoeld was, zeg het en ik pas het aan.*
+
+  Dit is een interpretatie van de aantekening; die is voor twee dingen te lezen. De andere
+  lezing — de tellers *WCR* en *RFI* onder de registertegels moeten weg — is al opgelost in
+  de ronde van 30 juli: die tegels worden nu weggefilterd in de werkruimte
+  (`externalSubmissionRegisterTypes`) en stonden alleen nog op de oude deploy waarvan de
+  schermafbeelding komt. *Submittal* staat er nog wel; die is nooit als aannemersindiening
+  aangemerkt. Zie de openstaande punten hieronder.
 
 ## #4 Daglog
 
@@ -105,6 +111,7 @@ Een inspectie starten kon wel, maar daarna niet meer openen: de lijst toonde hem
 | Punt | Status |
 | --- | --- |
 | **Deployen** | De klant kijkt naar een oudere build. Zonder deploy verandert er voor hem niets. |
+| **"Dit moet weg onder delivery!" navragen** | Verwerkt als: het BOQ-blok hoort niet open onder het registerformulier. Bij de acceptatie aan de klant vragen of dat klopt, of dat hij iets anders bedoelde (bijvoorbeeld de tegel *Submittal*). Terugdraaien of aanscherpen is een kleine wijziging. |
 | **Pin echt op de PDF zetten vanuit het formulier** | Het formulier kiest de tekening; het plaatsen van de pin op coördinaat blijft de tekeningwerkruimte. Een minikaart in het formulier zelf is een volgende stap. |
 | **Fototekst bij issues en inspecties** | De component ondersteunt het al; alleen HSE en registers gebruiken het nu. Doortrekken zodra de klant dat daar ook wil. |
 | **Werkuren per bezettingsregel** | Toegevoegde regels nemen de standaardwerktijden van het project over; per regel afwijken kan nog niet. |
