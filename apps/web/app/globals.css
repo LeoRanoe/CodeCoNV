@@ -11314,6 +11314,9 @@ button {
   .action-plan-preview { height: 180px; margin: 10px 0; }
   .secondary-header { align-items: flex-start; flex-direction: column; padding: 16px; }
   .secondary-header > .primary-button { width: 100%; }
+  .punchlist-cycle-card { grid-template-columns: 38px minmax(0, 1fr); }
+  .punchlist-cycle-card > .button-row { grid-column: 1 / -1; width: 100%; }
+  .punchlist-cycle-card > .button-row > button { flex: 1 1 auto; justify-content: center; }
 }
 
 /* Production refinement: reports, management, media and complete mobile access. */
