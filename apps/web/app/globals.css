@@ -5588,6 +5588,16 @@ textarea:focus-visible {
   background: #fff;
 }
 
+/* An unfinished record can be opened straight from the list, so a started checklist
+   can actually be filled in. */
+.record-row:has(.record-row-open) { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+.record-row-open { font-size: 11px; min-height: 36px; padding: 0 12px; white-space: nowrap; }
+
+@media (max-width: 620px) {
+  .record-row:has(.record-row-open) { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .record-row .record-row-open { grid-column: 2 / -1; justify-self: start; }
+}
+
 .record-row > div {
   display: grid;
   gap: 4px;
@@ -7912,6 +7922,41 @@ textarea:focus-visible {
   font-weight: 800;
   padding: 7px 10px;
 }
+/* The bill of quantities is its own subject; it waits behind one tap instead of sitting
+   open under whatever register item is being filled in. */
+.boq-import-section {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 13px 16px;
+}
+.boq-import-section > summary {
+  cursor: pointer;
+  display: flex;
+  font-size: 12.5px;
+  font-weight: 650;
+  gap: 10px;
+  justify-content: space-between;
+}
+.boq-import-section > summary span { color: var(--muted); font-weight: 500; }
+.boq-import-section[open] > summary { margin-bottom: 13px; }
+.boq-import-section .boq-import-card { border: 0; box-shadow: none; padding: 0; }
+
+/* The head of the controlled paper form: project, scope, issue moment and author. */
+.controlled-document-context {
+  background: #fbfcfc;
+  border: 1px solid var(--ink-200);
+  border-radius: 13px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  padding: 13px 15px;
+}
+.controlled-document-context > div { display: grid; gap: 2px; min-width: 0; }
+.controlled-document-context small { color: var(--ink-500); font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.controlled-document-context strong { color: var(--ink-900); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; }
+.controlled-document-context span { color: var(--ink-600); font-size: 10px; }
+
 .controlled-document-dates {
   background: #f6faf9;
   border: 1px solid #bfd9d1;
@@ -8113,6 +8158,33 @@ textarea:focus-visible {
 .daily-log-counter b { min-width: 26px; text-align: center; }
 .daily-log-footer { flex-wrap: wrap; margin: 0; padding: 18px 26px 22px; }
 
+/* Add the trade that is on site, instead of a fixed row per project party. */
+.daily-log-workforce-add {
+  align-items: end;
+  display: grid;
+  gap: 9px;
+  grid-template-columns: 1fr 1fr auto;
+  margin: 13px 0 4px;
+}
+.daily-log-workforce-add .form-field { gap: 4px; margin: 0; }
+.daily-log-row-remove {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--red);
+  display: grid;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+}
+.daily-log-row-remove:hover { border-color: var(--red); }
+
+@media (max-width: 620px) {
+  .daily-log-workforce-add { grid-template-columns: 1fr 1fr; }
+  .daily-log-workforce-add button { grid-column: 1 / -1; }
+}
+
 /* Every photo of the day gets a thumbnail and a name; the report needs both. */
 .daily-log-photo-list { display: grid; gap: 9px; margin-top: 12px; }
 .daily-log-photo-list > div {
@@ -8311,6 +8383,13 @@ textarea:focus-visible {
   right: 0;
 }
 .finding-photo-stack article > span strong { background: var(--signal); border-radius: 999px; display: grid; flex: 0 0 auto; font-size: 8px; height: 17px; place-items: center; width: 17px; }
+/* With a caption the photo needs room for the text, so the tile grows and the field
+   sits under the image instead of over it. */
+.finding-photo-stack.with-captions { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+.finding-photo-stack.with-captions article { min-height: 0; }
+.finding-photo-stack .photo-caption-field { display: grid; gap: 3px; margin: 0; padding: 8px 9px 9px; }
+.finding-photo-stack .photo-caption-field span { color: var(--ink-600); font-size: 9px; font-weight: 700; }
+.finding-photo-stack .photo-caption-field input { font-size: 11px; min-height: 36px; }
 .finding-photo-stack article > span small { font-size: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .finding-photo-stack article > button {
   align-items: center;

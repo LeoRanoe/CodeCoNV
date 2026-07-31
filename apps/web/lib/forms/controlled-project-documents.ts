@@ -18,6 +18,8 @@ export type ControlledDocumentDraft = {
   dueDate: string;
   revision: string;
   requestedTo: string;
+  /** Who draws the document up. Empty means the signed-in user. */
+  issuerName: string;
   issuerPosition: string;
   issuerCompany: string;
   discipline: string;
@@ -61,6 +63,7 @@ export const emptyControlledDocumentDraft: ControlledDocumentDraft = {
   dueDate: "",
   revision: "0",
   requestedTo: "",
+  issuerName: "",
   issuerPosition: "Construction Supervisor",
   issuerCompany: "CODECO N.V.",
   discipline: "architectural",
@@ -105,7 +108,7 @@ export function createControlledDocumentDetails(
     issue_date: issueDate,
     due_date: draft.dueDate || null,
     revision: draft.revision.trim() || "0",
-    issued_by: context.currentUserName,
+    issued_by: draft.issuerName.trim() || context.currentUserName,
     issuer_position: draft.issuerPosition.trim(),
     issuer_company: draft.issuerCompany.trim(),
     requested_to: draft.requestedTo.trim(),

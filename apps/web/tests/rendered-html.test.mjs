@@ -947,3 +947,68 @@ test("processes the five annotated field screens from 31 July", async () => {
   assert.match(dailyLog, /Too few workers|Onvoldoende arbeiders/);
   assert.match(app, /photo\.caption\.trim\(\)\.slice\(0, 120\)/);
 });
+
+test("processes the second batch of annotated screens from 31 July", async () => {
+  const [app, dailyLog, workspace, picker, locationPicker, operations, queue, controlledDocuments, styles] = await Promise.all([
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/building-picker.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/location-picker.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/offline/upload-queue.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/forms/controlled-project-documents.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // Daily log: several buildings at once, and workforce rows are added instead of a
+  // fixed counter row for every project party.
+  assert.match(dailyLog, /BuildingMultiPicker/);
+  assert.match(dailyLog, /buildingIds: string\[\]/);
+  assert.match(dailyLog, /addWorkforceRow/);
+  assert.match(dailyLog, /Add person|Persoon toevoegen/);
+  assert.match(app, /for \(const logBuildingId of targetBuildingIds\)/);
+  assert.doesNotMatch(app, /Quick workforce entry or the complete client log/);
+  assert.match(picker, /export function BuildingMultiPicker/);
+
+  // An empty location field is noise: it stays away until a location tree exists.
+  assert.match(locationPicker, /if \(!available\.length && !depthRequired\) return null/);
+
+  // Opening a module shows its entry form right away.
+  assert.match(workspace, /setShowForm\(true\);\s*\n\s*setActiveInspection\(null\)/);
+
+  // HSE: no second Type dropdown next to the situation chips, and every evidence photo
+  // can carry the text that says what it shows.
+  assert.match(workspace, /hsePhotoCaptions/);
+  assert.match(workspace, /captions\?: string\[\]/);
+  assert.match(workspace, /what does it show\?|wat is te zien\?/);
+  assert.match(styles, /\.finding-photo-stack\.with-captions/);
+
+  // A started checklist can be reopened from the list and completed.
+  assert.match(operations, /export async function loadInspectionResponses/);
+  assert.match(workspace, /const resumeInspection = async/);
+  assert.match(workspace, /Fill in checklist|Checklist invullen/);
+  assert.match(styles, /\.record-row-open/);
+
+  // Controlled documents: project information and dates on top, a chosen author, an
+  // optional project-wide scope, a drawing reference and no foreign example presets.
+  assert.match(workspace, /controlled-document-context/);
+  assert.match(styles, /\.controlled-document-context/);
+  assert.match(controlledDocuments, /issuerName: string/);
+  assert.match(controlledDocuments, /issued_by: draft\.issuerName\.trim\(\) \|\| context\.currentUserName/);
+  assert.match(workspace, /documentIssuerOptions/);
+  assert.match(workspace, /technical_instruction: \[\],/);
+  assert.doesNotMatch(workspace, /Replacing generator of Central Lab/);
+  assert.match(workspace, /allowAll=\{controlledRegister\}/);
+  assert.match(workspace, /registerRecordBuildingId/);
+  assert.match(operations, /buildingId: string \| null;/);
+
+  // The bill of quantities no longer sits open under the register form.
+  assert.match(workspace, /boq-import-section/);
+  assert.match(styles, /\.boq-import-section/);
+
+  // Register items carry site photos, linked to the register entry.
+  assert.match(workspace, /register-photo-capture/);
+  assert.match(workspace, /recordType: "register_entry"/);
+  assert.match(queue, /"registration" \| "register_entry"/);
+});

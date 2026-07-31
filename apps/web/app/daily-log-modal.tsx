@@ -2,7 +2,7 @@
 
 import { Camera, CloudSun, HardHat, Loader2, ShieldCheck, TimerOff, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { BuildingMultiPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { useLanguage } from "@/lib/i18n";
 import type { DailyCloseoutAnswers, ProjectStartAnswers } from "@/lib/forms/daily-report";
@@ -67,7 +67,7 @@ export function DailyLogModal({
   openProjectStart: () => void;
   openFullQuestionnaire: () => void;
   save: (input: {
-    buildingId: string;
+    buildingIds: string[];
     answers: DailyCloseoutAnswers;
     attendance: DailyLogAttendanceRow[];
     photos: DailyLogPhoto[];
@@ -75,8 +75,15 @@ export function DailyLogModal({
 }) {
   const { text } = useLanguage();
   const cameraInputRef = useRef<HTMLInputElement>(null);
-  const [buildingId, setBuildingId] = useState(() => resolveDefaultBuildingId(buildings, defaultBuildingId));
-  const [rows, setRows] = useState(attendanceRows);
+  // One day can cover several buildings; the log is written once per chosen building.
+  const [buildingIds, setBuildingIds] = useState<string[]>(() => {
+    const resolved = resolveDefaultBuildingId(buildings, defaultBuildingId);
+    return resolved ? [resolved] : [];
+  });
+  const buildingId = buildingIds[0] ?? resolveDefaultBuildingId(buildings, defaultBuildingId);
+  // Only rows with a recorded headcount; a row per project party was noise on site.
+  const [rows, setRows] = useState(() => attendanceRows.filter((row) => row.count > 0));
+  const [newRow, setNewRow] = useState(() => ({ partyId: parties[0]?.id ?? "", discipline: disciplines[0] ?? "" }));
   const [photos, setPhotos] = useState<DailyLogPhoto[]>([]);
   const [showWorkforce, setShowWorkforce] = useState(false);
 
@@ -123,6 +130,28 @@ export function DailyLogModal({
 
   const setCount = (index: number, delta: number) => setRows((current) =>
     current.map((row, rowIndex) => rowIndex === index ? { ...row, count: Math.max(0, row.count + delta) } : row));
+
+  /** Adds the trade that is actually on site today, or focuses the row that exists. */
+  const addWorkforceRow = () => {
+    const party = parties.find((item) => item.id === newRow.partyId);
+    if (!party || !newRow.discipline) return;
+    setRows((current) => {
+      const existing = current.findIndex((row) => row.partyId === party.id && row.discipline === newRow.discipline);
+      if (existing >= 0) {
+        return current.map((row, rowIndex) => rowIndex === existing ? { ...row, count: row.count + 1 } : row);
+      }
+      const template = attendanceRows.find((row) => row.partyId === party.id);
+      return [...current, {
+        partyId: party.id,
+        party: party.name,
+        discipline: newRow.discipline,
+        count: 1,
+        shiftStart: template?.shiftStart ?? "07:00",
+        shiftEnd: template?.shiftEnd ?? "16:00",
+      }];
+    });
+  };
+  const removeWorkforceRow = (index: number) => setRows((current) => current.filter((_, rowIndex) => rowIndex !== index));
 
   const addPhotos = (files: FileList | null) => {
     const captured = Array.from(files ?? []).filter((file) => file.type.startsWith("image/"));
@@ -181,7 +210,16 @@ export function DailyLogModal({
         </header>
 
         <div className="daily-log-body">
-          <BuildingPicker id="daily-log-building" buildings={buildings} value={buildingId} onChange={setBuildingId} />
+          <BuildingMultiPicker
+            id="daily-log-building"
+            buildings={buildings}
+            value={buildingIds}
+            onChange={setBuildingIds}
+            hint={text(
+              "Choose every building this day applies to. The log is saved once per building.",
+              "Kies elk gebouw waarvoor deze dag geldt. De log wordt per gebouw opgeslagen.",
+            )}
+          />
 
           <section className="daily-log-block weather">
             <h3><CloudSun size={16} /> {text("Weather conditions", "Weersomstandigheden")}</h3>
@@ -294,6 +332,25 @@ export function DailyLogModal({
 
           <details className="daily-log-extra" open={showWorkforce} onToggle={(event) => setShowWorkforce(event.currentTarget.open)}>
             <summary>{text("Workforce and photos", "Bezetting en foto's")}<span>{attendanceTotal} {text("people", "personen")} · {photos.length} {text("photos", "foto's")}</span></summary>
+            {/* Add the trade that is really on site instead of counting down a fixed row
+                for every project party, which is what the client crossed out. */}
+            {disciplines.length && parties.length ? (
+              <div className="daily-log-workforce-add">
+                <label className="form-field">
+                  <span>{text("Party", "Partij")}</span>
+                  <select value={newRow.partyId} onChange={(event) => setNewRow({ ...newRow, partyId: event.target.value })}>
+                    {parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}
+                  </select>
+                </label>
+                <label className="form-field">
+                  <span>{text("Trade", "Discipline")}</span>
+                  <select value={newRow.discipline} onChange={(event) => setNewRow({ ...newRow, discipline: event.target.value })}>
+                    {disciplines.map((discipline) => <option value={discipline} key={discipline}>{discipline}</option>)}
+                  </select>
+                </label>
+                <button className="secondary-button" type="button" onClick={addWorkforceRow}>+ {text("Add person", "Persoon toevoegen")}</button>
+              </div>
+            ) : <p className="form-helper">{text("Configure project parties and disciplines to record workforce here.", "Configureer projectpartijen en disciplines om hier bezetting vast te leggen.")}</p>}
             <div className="daily-log-workforce">
               {rows.map((row, index) => (
                 <div key={`${row.partyId}:${row.discipline}`}>
@@ -302,11 +359,11 @@ export function DailyLogModal({
                     <button type="button" onClick={() => setCount(index, -1)} aria-label={text(`One less ${row.discipline}`, `Eén ${row.discipline} minder`)}>−</button>
                     <b>{row.count}</b>
                     <button type="button" onClick={() => setCount(index, 1)} aria-label={text(`One more ${row.discipline}`, `Eén ${row.discipline} meer`)}>+</button>
+                    <button className="daily-log-row-remove" type="button" onClick={() => removeWorkforceRow(index)} aria-label={text(`Remove ${row.discipline}`, `Verwijder ${row.discipline}`)}><X size={13} /></button>
                   </div>
                 </div>
               ))}
-              {!rows.length ? <p className="form-helper">{text("No workforce rows yet. Add parties and disciplines under Management.", "Nog geen bezettingsregels. Voeg partijen en disciplines toe onder Management.")}</p> : null}
-              {disciplines.length && parties.length ? null : <p className="form-helper">{text("Configure project parties and disciplines to record workforce here.", "Configureer projectpartijen en disciplines om hier bezetting vast te leggen.")}</p>}
+              {!rows.length ? <p className="form-helper">{text("No workforce recorded yet. Add the trades that are on site today.", "Nog geen bezetting vastgelegd. Voeg de disciplines toe die vandaag op de bouwplaats zijn.")}</p> : null}
             </div>
 
             {/* Counting people is not the same as judging the manning level. These notes are
@@ -364,7 +421,7 @@ export function DailyLogModal({
           <button className="ghost-button" type="button" onClick={openFullQuestionnaire}>{text("Open the full daily questions", "Open de volledige dagvragen")}</button>
           <div className="button-row">
             <button className="secondary-button" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
-            <button className="primary-button" type="button" disabled={busy || problems.length > 0} onClick={() => void save({ buildingId, answers, attendance: rows, photos })}>
+            <button className="primary-button" type="button" disabled={busy || problems.length > 0} onClick={() => void save({ buildingIds, answers, attendance: rows, photos })}>
               {busy ? <Loader2 className="spin" size={15} /> : null} {text("Save daily log", "Daglog opslaan")}
             </button>
           </div>

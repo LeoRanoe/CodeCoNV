@@ -658,6 +658,32 @@ export async function startInspection(client: SupabaseClient, input: { projectId
   return { ...(result.data as Inspection), location_node_id: (result.data as Inspection).location_node_id ?? input.locationNodeId ?? null };
 }
 
+/**
+ * The answers already stored for one inspection, so a checklist that was left open can be
+ * continued instead of started over. Returns an empty map when nothing was saved yet.
+ */
+export async function loadInspectionResponses(client: SupabaseClient, inspectionId: string) {
+  const result = await client
+    .from("inspection_responses")
+    .select("checklist_item_id,result,numeric_value,text_value,notes")
+    .eq("inspection_id", inspectionId)
+    .limit(500);
+  fail(result.error);
+  const rows = (result.data ?? []) as Array<{
+    checklist_item_id: string;
+    result: string;
+    numeric_value: number | null;
+    text_value: string | null;
+    notes: string | null;
+  }>;
+  return Object.fromEntries(rows.map((row) => [row.checklist_item_id, {
+    result: row.result,
+    notes: row.notes ?? "",
+    numericValue: row.numeric_value ?? undefined,
+    textValue: row.text_value ?? undefined,
+  }]));
+}
+
 export async function finishInspection(
   client: SupabaseClient,
   inspection: Inspection,
@@ -734,7 +760,7 @@ export async function linkFileToRecord(
     organizationId: string;
     projectId: string;
     fileId: string;
-    recordType: "finding" | "action" | "inspection" | "hse" | "registration";
+    recordType: "finding" | "action" | "inspection" | "hse" | "registration" | "register_entry";
     recordId: string;
     relationship?: "attachment" | "before" | "after" | "evidence";
   },
@@ -802,11 +828,11 @@ export async function createHseEvent(client: SupabaseClient, input: { projectId:
   return { ...(result.data as HseEvent), location_node_id: (result.data as HseEvent).location_node_id ?? input.locationNodeId ?? null };
 }
 
-export async function createRegisterEntry(client: SupabaseClient, input: { projectId: string; buildingId: string; locationNodeId?: string; reportId?: string | null; type: string; title: string; responsiblePartyId?: string; dueAt?: string | null; details: Record<string, unknown> }) {
+export async function createRegisterEntry(client: SupabaseClient, input: { projectId: string; buildingId: string | null; locationNodeId?: string; reportId?: string | null; type: string; title: string; responsiblePartyId?: string; dueAt?: string | null; details: Record<string, unknown> }) {
   const reportId = await ensureProjectDayReport(client, input.projectId, input.reportId);
   const result = await client.rpc("create_project_register_entry", {
     p_project_id: input.projectId,
-    p_building_id: input.buildingId,
+    p_building_id: input.buildingId || null,
     p_day_report_id: reportId,
     p_register_type: input.type,
     p_title: input.title,

@@ -1979,39 +1979,44 @@ export function CodecoSupervisionApp() {
             setModal(null);
             openBuildingCloseout(selectedBuilding);
           }}
-          save={async ({ buildingId: logBuildingId, answers, attendance: rows, photos }) => {
+          save={async ({ buildingIds: logBuildingIds, answers, attendance: rows, photos }) => {
+            const targetBuildingIds = logBuildingIds.length ? logBuildingIds : [selectedBuilding.id];
+            const primaryBuildingId = targetBuildingIds[0];
             const saved = await runSynced(async () => {
               const report = dayQuery.data?.report ?? await createOrGetReport(supabase, selectedProject.id, reportDate);
               // The day log is the client's own daily record, so it writes the real
               // closeout instead of a loose note. Reports and Daily work stay in sync.
-              await saveDailyCloseout(supabase, {
-                report,
-                projectId: selectedProject.id,
-                buildingId: logBuildingId,
-                answers,
-              });
-              if (rows.length) {
-                await saveAttendance(supabase, {
+              // One day can cover several buildings; each one gets its own closeout.
+              for (const logBuildingId of targetBuildingIds) {
+                await saveDailyCloseout(supabase, {
                   report,
                   projectId: selectedProject.id,
                   buildingId: logBuildingId,
-                  rows: rows.map((row) => ({
-                    partyId: row.partyId,
-                    discipline: row.discipline,
-                    count: row.count,
-                    shiftStart: row.shiftStart,
-                    shiftEnd: row.shiftEnd,
-                  })),
+                  answers,
                 });
+                if (rows.length) {
+                  await saveAttendance(supabase, {
+                    report,
+                    projectId: selectedProject.id,
+                    buildingId: logBuildingId,
+                    rows: rows.map((row) => ({
+                      partyId: row.partyId,
+                      discipline: row.discipline,
+                      count: row.count,
+                      shiftStart: row.shiftStart,
+                      shiftEnd: row.shiftEnd,
+                    })),
+                  });
+                }
               }
               if (photos.length) {
                 const reportId = String(report.id);
-                const logBuildingName = selectedProject.buildings.find((building) => building.id === logBuildingId)?.name ?? buildingName;
+                const logBuildingName = selectedProject.buildings.find((building) => building.id === primaryBuildingId)?.name ?? buildingName;
                 for (const photo of photos) {
                   const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
                   await queueOfflineUpload({
                     projectId: selectedProject.id,
-                    buildingId: logBuildingId,
+                    buildingId: primaryBuildingId,
                     reportId,
                     folderId: null,
                     folderName: text("Daily progress", "Dagvoortgang"),
@@ -2045,7 +2050,7 @@ export function CodecoSupervisionApp() {
               return true;
             }, text("Daily log saved and linked to today's report.", "Daglog opgeslagen en aan het dagrapport van vandaag gekoppeld."));
             if (!saved) return;
-            if (logBuildingId === selectedBuilding.id) {
+            if (targetBuildingIds.includes(selectedBuilding.id)) {
               setDailyCloseoutAnswers(answers);
               setCompletedTodos((current) => Array.from(new Set([...current, 2, 3])));
             }
@@ -2830,7 +2835,8 @@ function TodayView({
 
       <section className="overview-shortcuts" aria-label={text("Quick routes", "Directe routes")}>
         <button className="overview-shortcut primary" type="button" onClick={openQuickAdd}><span><Camera size={18} /></span><strong>{text("Take a photo", "Foto maken")}</strong><small>{text("Project, building, time and folder automatic", "Project, gebouw, tijd en map automatisch")}</small><ArrowRight size={16} /></button>
-        <button className="overview-shortcut" type="button" onClick={openOneTapLog}><span><ClipboardCheck size={18} /></span><strong>{text("Daily log", "Daglog")}</strong><small>{text("Quick workforce entry or the complete client log", "Snelle workforce-invoer of het volledige klantdaglog")}</small><ArrowRight size={16} /></button>
+        {/* One route, one meaning: the day's log in the client's own report format. */}
+        <button className="overview-shortcut" type="button" onClick={openOneTapLog}><span><ClipboardCheck size={18} /></span><strong>{text("Daily log", "Daglog")}</strong><small>{text("Today's log in your own report format", "De dag van vandaag in je eigen rapportformaat")}</small><ArrowRight size={16} /></button>
         <button className="overview-shortcut mobile-redundant" type="button" onClick={openActions}><span><ClipboardCheck size={18} /></span><strong>{text("Open actions", "Acties openen")}</strong><small>{text(`${actions.filter((action) => action.status !== "verified" && action.status !== "cancelled").length} require follow-up`, `${actions.filter((action) => action.status !== "verified" && action.status !== "cancelled").length} vragen opvolging`)}</small><ArrowRight size={16} /></button>
         <button className="overview-shortcut mobile-redundant" type="button" onClick={canManageMembers ? openSettings : openWorkspace}><span>{canManageMembers ? <Settings size={18} /> : <LayoutDashboard size={18} />}</span><strong>{canManageMembers ? text("Manage workspace", "Werkruimte beheren") : text("Open project workspace", "Projectwerkruimte openen")}</strong><small>{canManageMembers ? text("Users, rules and project structure", "Gebruikers, regels en projectstructuur") : text("Inspections, findings and files", "Inspecties, bevindingen en bestanden")}</small><ArrowRight size={16} /></button>
       </section>

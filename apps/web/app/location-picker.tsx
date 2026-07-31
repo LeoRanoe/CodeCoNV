@@ -54,6 +54,9 @@ export function LocationPicker({
     [buildingId, nodes],
   );
   const depthRequired = requiredDepth !== "building";
+  // Without a location tree this field can only say "no deeper location" and repeat that
+  // no tree exists. That is noise in every form, so it stays away until it can be used.
+  if (!available.length && !depthRequired) return null;
   const depthLabel = {
     building: text("Building only", "Alleen gebouw"),
     floor: text("floor", "verdieping"),

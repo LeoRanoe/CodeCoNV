@@ -37,7 +37,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
@@ -84,6 +84,7 @@ import {
   finishInspection,
   importProjectBoq,
   installChecklistLibraryTemplate,
+  loadInspectionResponses,
   loadProjectOperations,
   recordDistribution,
   recordBoqProgress,
@@ -388,6 +389,7 @@ export function OperationalWorkspace({
           buildings={buildings}
           projectStartAnswers={projectStartAnswers}
           currentUserName={currentUserName}
+          companyEmployees={companyEmployees}
           parties={parties}
           client={client}
           busy={busy}
@@ -468,6 +470,7 @@ function ProjectOperations({
   buildings,
   projectStartAnswers,
   currentUserName,
+  companyEmployees,
   parties,
   client,
   busy,
@@ -494,6 +497,7 @@ function ProjectOperations({
   buildings: BuildingOption[];
   projectStartAnswers: ProjectStartAnswers | null;
   currentUserName: string;
+  companyEmployees: InternalMember[];
   parties: ProjectParty[];
   client: SupabaseClient;
   busy: boolean;
@@ -526,8 +530,9 @@ function ProjectOperations({
   const [visualFindingId, setVisualFindingId] = useState("");
   const [drawingFindingId, setDrawingFindingId] = useState("");
   const [dailyWorkView, setDailyWorkView] = useState<DailyWorkView>("works_ongoing");
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(initialTab !== "home");
   const [activeInspection, setActiveInspection] = useState<Inspection | null>(null);
+  const [inspectionResumeError, setInspectionResumeError] = useState("");
   const [inspectionTitle, setInspectionTitle] = useState("");
   const [inspectionTemplateId, setInspectionTemplateId] = useState("");
   const [inspectionAnswers, setInspectionAnswers] = useState<Record<string, InspectionAnswer>>({});
@@ -551,6 +556,8 @@ function ProjectOperations({
   const [findingPhotoError, setFindingPhotoError] = useState("");
   const [hseForm, setHseForm] = useState({ type: "unsafe_condition", title: "", description: "", severity: "medium", immediateMeasure: "", confidential: false });
   const [hsePhotos, setHsePhotos] = useState<File[]>([]);
+  // One short text per evidence photo, in the same order as the photos themselves.
+  const [hsePhotoCaptions, setHsePhotoCaptions] = useState<string[]>([]);
   const [hsePhotoError, setHsePhotoError] = useState("");
   const [registerForm, setRegisterForm] = useState<ControlledDocumentDraft>({ ...emptyControlledDocumentDraft });
   const [registerFiles, setRegisterFiles] = useState<File[]>([]);
@@ -569,8 +576,26 @@ function ProjectOperations({
   const [inspectionFilterBuildingId, setInspectionFilterBuildingId] = useState("");
   const [inspectionFilterLocationNodeId, setInspectionFilterLocationNodeId] = useState("");
   const [inspectionFilterDate, setInspectionFilterDate] = useState("");
+  const [registerDrawingId, setRegisterDrawingId] = useState("");
+  const [registerPhotos, setRegisterPhotos] = useState<File[]>([]);
+  const [registerPhotoCaptions, setRegisterPhotoCaptions] = useState<string[]>([]);
+  const [registerPhotoError, setRegisterPhotoError] = useState("");
   const requiredLocationDepth = data.settings?.required_location_depth ?? "building";
   const exactLocationRequired = requiredLocationDepth !== "building";
+  const registerContextLabel = registerBuildingId === ALL_BUILDINGS
+    ? text("Whole project · all buildings", "Hele project · alle gebouwen")
+    : buildings.find((building) => building.id === registerBuildingId)?.name ?? buildingName;
+  // Drawings of the chosen building, so a controlled document can point at the plan it
+  // belongs to instead of only naming a floor.
+  const registerDrawings = data.files.filter((file) => (
+    file.category === "drawing"
+    && file.status === "available"
+    && (!file.building_id || file.building_id === registerBuildingId)
+  ));
+  const documentIssuerOptions = Array.from(new Set([
+    currentUserName,
+    ...companyEmployees.map((employee) => employee.displayName?.trim() || employee.email),
+  ].filter(Boolean)));
   const recordContextLabel = (recordBuildingId: string | null, locationNodeId?: string | null) => {
     const recordBuilding = buildings.find((building) => building.id === recordBuildingId)?.name
       ?? text("Project-wide", "Projectbreed");
@@ -674,10 +699,9 @@ function ProjectOperations({
     agreement: [
       { title: text("Site agreement", "Afspraak op locatie"), details: text("The parties agreed the described action and deadline.", "Partijen hebben de beschreven actie en deadline afgesproken.") },
     ],
-    technical_instruction: [
-      { title: "Replacing generator of Central Lab", details: "Move the generator from Central Lab to the new location behind Building B8-4. Use the attached slab detail and DWG of the new generator location.", reason: "Relocation of the existing Central Lab generator.", requiredAction: "proceed", attachments: "Slab detail and DWG · 1 page" },
-      { title: text("Execution instruction", "Uitvoeringsinstructie"), details: text("Execute the described measure according to the approved documents.", "Voer de beschreven maatregel uit volgens de goedgekeurde documenten.") },
-    ],
+    // A technical instruction is always project-specific. Example presets from another
+    // project only had to be deleted again, so this form starts empty.
+    technical_instruction: [],
     change_order: [
       { title: "Wall thickness Building 1–8", details: "Adjust the wall thicknesses according to the attached drawings for Buildings 1 through 8.", attachments: "Approved wall-thickness drawings" },
       { title: text("Change pending approval", "Wijziging wacht op goedkeuring"), details: text("The proposed change must be reviewed before execution.", "De voorgestelde wijziging moet vóór uitvoering worden beoordeeld.") },
@@ -701,7 +725,9 @@ function ProjectOperations({
 
   const switchTab = (next: ProjectTab) => {
     setTab(next);
-    setShowForm(false);
+    // Opening a module means you came to record something: the entry form is there
+    // right away. "New" stays as the toggle to get it out of the way.
+    setShowForm(true);
     setActiveInspection(null);
   };
 
@@ -761,6 +787,35 @@ function ProjectOperations({
         ];
       })));
       setShowForm(false);
+    }
+  };
+
+  /**
+   * Reopens a checklist that is still open. Without this an inspection could be started
+   * but never filled in: the list only showed it as "in progress".
+   */
+  const resumeInspection = async (inspection: Inspection) => {
+    const template = data.templates.find((item) => item.id === inspection.template_id);
+    if (!template) {
+      setInspectionResumeError(text(
+        "The checklist of this inspection is no longer published for this project.",
+        "De checklist van deze inspectie is niet meer gepubliceerd voor dit project.",
+      ));
+      return;
+    }
+    setInspectionResumeError("");
+    setActiveInspection(inspection);
+    setShowForm(false);
+    setInspectionAnswers(Object.fromEntries(template.items.map((item) => [item.id, { result: "", notes: "" }])));
+    try {
+      const stored = await loadInspectionResponses(client, inspection.id);
+      // Keep every checkpoint present, then lay the saved answers over it.
+      setInspectionAnswers((current) => ({ ...current, ...stored }));
+    } catch {
+      setInspectionResumeError(text(
+        "Earlier answers could not be loaded. Answer the checkpoints again before completing.",
+        "Eerdere antwoorden konden niet worden geladen. Vul de controlepunten opnieuw in vóór afronden.",
+      ));
     }
   };
 
@@ -980,8 +1035,9 @@ function ProjectOperations({
         if (hsePhotos.length) {
           const folderName = "HSE";
           const folderId = existingMediaFolderId(folderName, hseBuildingId);
-          for (const photo of hsePhotos) {
+          for (const [photoIndex, photo] of hsePhotos.entries()) {
             const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
+            const caption = hsePhotoCaptions[photoIndex]?.trim() ?? "";
             await queueOfflineUpload({
               projectId,
               buildingId: hseBuildingId,
@@ -992,8 +1048,9 @@ function ProjectOperations({
               file: prepared.blob,
               fileName: prepared.fileName,
               mimeType: prepared.mimeType,
-              title: hseForm.title,
-              description: hseForm.description,
+              // The photo's own text wins; the record title is only the fallback.
+              title: caption || hseForm.title,
+              description: caption ? `${caption} · ${hseForm.description}` : hseForm.description,
               locationLabel: hseBuildingName,
               locationNodeId: hseLocationNodeId || null,
               capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
@@ -1011,6 +1068,7 @@ function ProjectOperations({
     if (okay) {
       setHseForm({ type: "unsafe_condition", title: "", description: "", severity: "medium", immediateMeasure: "", confidential: false });
       setHsePhotos([]);
+      setHsePhotoCaptions([]);
       setHsePhotoError("");
       setHseLocationNodeId("");
       setShowForm(false);
@@ -1019,7 +1077,14 @@ function ProjectOperations({
 
   const addRegisterEntry = async () => {
     if (registerForm.title.trim().length < 3) return;
-    const registerBuildingName = buildings.find((building) => building.id === registerBuildingId)?.name ?? buildingName;
+    // A controlled document may apply to the whole project; then it has no building.
+    const projectWideRegister = registerBuildingId === ALL_BUILDINGS;
+    const registerRecordBuildingId = projectWideRegister ? null : registerBuildingId;
+    const registerPhotoBuildingId = projectWideRegister ? resolveDefaultBuildingId(buildings, buildingId) : registerBuildingId;
+    const registerBuildingName = projectWideRegister
+      ? registerContextLabel
+      : buildings.find((building) => building.id === registerBuildingId)?.name ?? buildingName;
+    const selectedDrawing = registerDrawings.find((drawing) => drawing.id === registerDrawingId);
     const baseDetails = controlledRegister
       ? createControlledDocumentDetails(registerForm, {
           projectName,
@@ -1035,7 +1100,7 @@ function ProjectOperations({
         for (const file of registerFiles) {
           const uploaded = await uploadProjectFile(client, {
             projectId,
-            buildingId: registerBuildingId,
+            buildingId: registerPhotoBuildingId,
             category: "document",
             file,
           });
@@ -1049,7 +1114,7 @@ function ProjectOperations({
         }
         const entry = await createRegisterEntry(client, {
           projectId,
-          buildingId: registerBuildingId,
+          buildingId: registerRecordBuildingId,
           locationNodeId: registerLocationNodeId,
           reportId: effectiveReportId,
           type: registerForm.type,
@@ -1059,12 +1124,44 @@ function ProjectOperations({
           details: {
             ...baseDetails,
             attachment_files: uploadedFiles,
+            drawing_file_id: selectedDrawing?.id ?? null,
+            drawing_name: selectedDrawing?.original_name ?? null,
           },
         });
+        // Site photos belong to a register item as much as documents do.
+        if (registerPhotos.length) {
+          const folderName = text("Register evidence", "Registerbewijs");
+          const folderId = existingMediaFolderId(folderName, registerPhotoBuildingId);
+          for (const [photoIndex, photo] of registerPhotos.entries()) {
+            const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
+            const caption = registerPhotoCaptions[photoIndex]?.trim() ?? "";
+            await queueOfflineUpload({
+              projectId,
+              buildingId: registerPhotoBuildingId,
+              reportId: effectiveReportId,
+              folderId,
+              folderName,
+              kind: "photo",
+              file: prepared.blob,
+              fileName: prepared.fileName,
+              mimeType: prepared.mimeType,
+              title: caption || `${entry.entry_number} · ${registerForm.title.trim()}`.slice(0, 120),
+              description: caption,
+              locationLabel: registerBuildingName,
+              locationNodeId: registerLocationNodeId || null,
+              capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
+              originalSize: photo.size,
+              queuedSize: prepared.blob.size,
+              compressed: prepared.compressed,
+              recordLink: { organizationId, recordType: "register_entry", recordId: entry.id, relationship: "evidence" },
+            });
+          }
+          if (navigator.onLine) await syncQueuedEvidenceNow();
+        }
         if (registerForm.type === "punch_list") {
           await createFinding(client, {
             projectId,
-            buildingId: registerBuildingId,
+            buildingId: registerPhotoBuildingId,
             locationNodeId: registerLocationNodeId,
             reportId: effectiveReportId,
             type: "deficiency",
@@ -1084,6 +1181,10 @@ function ProjectOperations({
     if (okay) {
       setRegisterForm({ ...emptyControlledDocumentDraft });
       setRegisterFiles([]);
+      setRegisterPhotos([]);
+      setRegisterPhotoCaptions([]);
+      setRegisterPhotoError("");
+      setRegisterDrawingId("");
       setRegisterLocationNodeId("");
       setShowForm(false);
     }
@@ -1306,6 +1407,9 @@ function ProjectOperations({
               <button className="secondary-button" type="button" onClick={() => { setInspectionFilterBuildingId(""); setInspectionFilterLocationNodeId(""); setInspectionFilterDate(""); }}>{text("Clear filters", "Wis filters")}</button>
             </div>
           </div>
+          {inspectionResumeError ? <p className="field-error" role="alert">{inspectionResumeError}</p> : null}
+          {/* An inspection that is still open can be opened again from this list, so a
+              started checklist can actually be filled in and completed. */}
           <RecordList empty={text("No inspections match these filters.", "Geen inspecties gevonden met deze filters.")} rows={filteredInspections.map((inspection) => ({
             id: inspection.id,
             icon: ClipboardCheck,
@@ -1313,6 +1417,17 @@ function ProjectOperations({
             meta: `${inspection.inspection_number} · ${recordContextLabel(inspection.building_id, inspection.location_node_id)} · ${formatDate(inspection.completed_at ?? inspection.started_at, locale)}`,
             status: inspection.status.replaceAll("_", " "),
             tone: inspection.status === "passed" ? "green" : inspection.status === "failed" ? "red" : "",
+            open: ["planned", "in_progress", "ready_for_reinspection", "failed"].includes(inspection.status)
+              ? {
+                label: activeInspection?.id === inspection.id
+                  ? text("Open below", "Staat hieronder")
+                  : text("Fill in checklist", "Checklist invullen"),
+                onOpen: () => {
+                  void resumeInspection(inspection);
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                },
+              }
+              : undefined,
           }))} />
         </section>
       ) : null}
@@ -1453,14 +1568,14 @@ function ProjectOperations({
           {showForm ? (
             <div className="operation-form">
               <h2>{text("HSE observation or incident", "HSE-observatie of incident")}</h2>
+              {/* The situation chips already set the type. A second Type dropdown next to
+                  them said the same thing twice, so it moved into the manual block below. */}
               <div className="quick-issue-presets" aria-label={text("Choose a standard HSE record", "Kies een standaard HSE-registratie")}>{hsePresets.map((preset) => <button className={hseForm.title === preset.title ? "active" : ""} type="button" onClick={() => setHseForm({ ...hseForm, ...preset })} key={preset.title}>{preset.title}</button>)}</div>
-              <div className="form-grid-2">
-                <label className="form-field"><span>{text("Type", "Type")}</span><select value={hseForm.type} onChange={(event) => setHseForm({ ...hseForm, type: event.target.value })}><option value="positive_observation">{text("Positive observation", "Positieve observatie")}</option><option value="unsafe_act">{text("Unsafe act", "Onveilige handeling")}</option><option value="unsafe_condition">{text("Unsafe condition", "Onveilige situatie")}</option><option value="near_miss">Near miss</option><option value="incident">Incident</option><option value="stop_work">Stop work</option><option value="toolbox">Toolbox meeting</option></select></label>
-                <label className="form-field"><span>{text("Severity", "Ernst")}</span><select value={hseForm.severity} onChange={(event) => setHseForm({ ...hseForm, severity: event.target.value })}><option value="low">{text("Low", "Laag")}</option><option value="medium">{text("Medium", "Middel")}</option><option value="high">{text("High", "Hoog")}</option><option value="critical">{text("Critical", "Kritiek")}</option></select></label>
-              </div>
+              <label className="form-field"><span>{text("Severity", "Ernst")}</span><select value={hseForm.severity} onChange={(event) => setHseForm({ ...hseForm, severity: event.target.value })}><option value="low">{text("Low", "Laag")}</option><option value="medium">{text("Medium", "Middel")}</option><option value="high">{text("High", "Hoog")}</option><option value="critical">{text("Critical", "Kritiek")}</option></select></label>
               <details className="optional-text-entry">
                 <summary>{text("Different HSE situation", "Andere HSE-situatie")}</summary>
                 <div className="form-grid">
+                  <label className="form-field"><span>{text("Type", "Type")}</span><select value={hseForm.type} onChange={(event) => setHseForm({ ...hseForm, type: event.target.value })}><option value="positive_observation">{text("Positive observation", "Positieve observatie")}</option><option value="unsafe_act">{text("Unsafe act", "Onveilige handeling")}</option><option value="unsafe_condition">{text("Unsafe condition", "Onveilige situatie")}</option><option value="near_miss">Near miss</option><option value="incident">Incident</option><option value="stop_work">Stop work</option><option value="toolbox">Toolbox meeting</option></select></label>
                   <label className="form-field"><span>{text("Title", "Titel")}</span><input value={hseForm.title} onChange={(event) => setHseForm({ ...hseForm, title: event.target.value })} /></label>
                   <label className="form-field"><span>{text("What was observed?", "Wat is waargenomen?")}</span><textarea value={hseForm.description} onChange={(event) => setHseForm({ ...hseForm, description: event.target.value })} rows={3} /><DictateButton onText={(transcript) => setHseForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} /></label>
                   <label className="form-field"><span>{text("Immediate measure", "Directe maatregel")}</span><textarea value={hseForm.immediateMeasure} onChange={(event) => setHseForm({ ...hseForm, immediateMeasure: event.target.value })} rows={2} /><DictateButton onText={(transcript) => setHseForm((current) => ({ ...current, immediateMeasure: appendDictation(current.immediateMeasure, transcript) }))} /></label>
@@ -1471,7 +1586,19 @@ function ProjectOperations({
                 <span><strong>{hsePhotos.length ? text(`${hsePhotos.length} evidence photos ready`, `${hsePhotos.length} bewijsfoto’s klaar`) : text("Take HSE evidence photo", "Maak HSE-bewijsfoto")}</strong><small>{text("Tap again to stack situation and control-measure photos.", "Tik opnieuw om situatie- en maatregelfoto’s te stapelen.")}</small></span>
                 <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setHsePhotos, setHsePhotoError); event.currentTarget.value = ""; }} />
               </label>
-              {hsePhotos.length ? <FindingPhotoStack files={hsePhotos} onRemove={(index) => setHsePhotos((current) => current.filter((_, currentIndex) => currentIndex !== index))} /> : null}
+              {hsePhotos.length ? <FindingPhotoStack
+                files={hsePhotos}
+                captions={hsePhotoCaptions}
+                onCaption={(index, caption) => setHsePhotoCaptions((current) => {
+                  const next = [...current];
+                  next[index] = caption;
+                  return next;
+                })}
+                onRemove={(index) => {
+                  setHsePhotos((current) => current.filter((_, currentIndex) => currentIndex !== index));
+                  setHsePhotoCaptions((current) => current.filter((_, currentIndex) => currentIndex !== index));
+                }}
+              /> : null}
               {hsePhotoError ? <p className="field-error" role="alert">{hsePhotoError}</p> : null}
               <BuildingPicker id="hse-building" buildings={buildings} value={hseBuildingId} onChange={(next) => { setHseBuildingId(next); setHseLocationNodeId(""); }} />
               <LocationPicker id="hse-location" nodes={data.locationNodes} buildingId={hseBuildingId} value={hseLocationNodeId} onChange={setHseLocationNodeId} requiredDepth={requiredLocationDepth} />
@@ -1487,11 +1614,40 @@ function ProjectOperations({
         <section className="operation-panel">
           {showForm ? (
             <div className={`operation-form ${controlledRegister ? "wide controlled-document-form" : ""}`}>
-              <div className="operation-form-heading"><div><span className="record-number">{controlledRegister ? text("Client-controlled form", "Klantgestuurd formulier") : text("Project register", "Projectregister")}</span><h2>{controlledRegister ? registerNames[registerForm.type] : text("Add project register item", "Projectregister aanvullen")}</h2></div>{controlledRegister ? <span className="controlled-document-badge">{projectCode} · {buildings.find((building) => building.id === registerBuildingId)?.name ?? buildingName}</span> : null}</div>
+              <div className="operation-form-heading"><div><span className="record-number">{controlledRegister ? text("Client-controlled form", "Klantgestuurd formulier") : text("Project register", "Projectregister")}</span><h2>{controlledRegister ? registerNames[registerForm.type] : text("Add project register item", "Projectregister aanvullen")}</h2></div>{controlledRegister ? <span className="controlled-document-badge">{projectCode} · {registerContextLabel}</span> : null}</div>
+              {/* A controlled document starts with the project information and the dates:
+                  that is the head of the paper form the client hands out. */}
+              {controlledRegister ? (
+                <>
+                <section className="controlled-document-context" aria-label={text("Project information", "Projectinformatie")}>
+                  <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
+                  <div><small>{text("Applies to", "Geldt voor")}</small><strong>{registerContextLabel}</strong><span>{registerLocationNodeId ? locationBreadcrumb(data.locationNodes, registerLocationNodeId) : text("Building level", "Gebouwniveau")}</span></div>
+                  <div><small>{text("Issue date and time", "Uitgiftedatum en -tijd")}</small><strong>{issueDate}</strong><span>{issueTime}</span></div>
+                  <div><small>{text("Drawn up by", "Opgemaakt door")}</small><strong>{registerForm.issuerName.trim() || currentUserName}</strong><span>{registerForm.issuerPosition || text("Position not set", "Functie niet ingevuld")}</span></div>
+                </section>
+                  <section className="controlled-document-dates" aria-label={text("Document dates", "Documentdatums")}>
+                    <header><FileCheck2 size={17} /><div><strong>{registerForm.type === "technical_instruction" ? text("Technical instruction dates", "Datums technische instructie") : text("Document dates", "Documentdatums")}</strong><small>{text("The issue date and time come from the controlled project context; the deadline is selected explicitly.", "De uitgiftedatum en -tijd komen uit de gecontroleerde projectcontext; de deadline wordt expliciet gekozen.")}</small></div></header>
+                    <div className="form-grid">
+                      <label className="form-field"><span>{text("Issue date · automatic", "Uitgiftedatum · automatisch")}</span><input type="date" value={issueDate} readOnly /></label>
+                      <label className="form-field"><span>{text("Issue time · automatic", "Uitgiftetijd · automatisch")}</span><input type="time" value={issueTime} readOnly /></label>
+                      <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction deadline / required by", "Deadline instructie / uitvoeren uiterlijk") : text("Response / information required by", "Antwoord / informatie nodig uiterlijk")}</span><input type="date" min={issueDate} value={registerForm.dueDate} onChange={(event) => setRegisterForm({ ...registerForm, dueDate: event.target.value })} /></label>
+                    </div>
+                  </section>
+                </>
+              ) : null}
               <div className="form-grid-2">
-                <BuildingPicker id="register-building" buildings={buildings} value={registerBuildingId} onChange={(next) => { setRegisterBuildingId(next); setRegisterLocationNodeId(""); }} />
-                <LocationPicker id="register-location" nodes={data.locationNodes} buildingId={registerBuildingId} value={registerLocationNodeId} onChange={setRegisterLocationNodeId} requiredDepth={requiredLocationDepth} />
+                <BuildingPicker id="register-building" buildings={buildings} value={registerBuildingId} onChange={(next) => { setRegisterBuildingId(next); setRegisterLocationNodeId(""); }} allowAll={controlledRegister} label={controlledRegister ? text("Building · or project-wide", "Gebouw · of projectbreed") : undefined} />
+                <LocationPicker id="register-location" nodes={data.locationNodes} buildingId={registerBuildingId} value={registerLocationNodeId} onChange={setRegisterLocationNodeId} requiredDepth={registerBuildingId === ALL_BUILDINGS ? "building" : requiredLocationDepth} />
                 <label className="form-field"><span>{text("Register / document format", "Register / documentformaat")}</span><select value={registerForm.type} onChange={(event) => setRegisterForm({ ...emptyControlledDocumentDraft, type: event.target.value })}>{Object.entries(registerNames).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+                {registerBuildingId !== ALL_BUILDINGS && registerDrawings.length ? (
+                  <label className="form-field"><span>{text("Location on drawing", "Locatie op tekening")}</span>
+                    <select value={registerDrawingId} onChange={(event) => setRegisterDrawingId(event.target.value)}>
+                      <option value="">{text("No drawing selected", "Geen tekening gekozen")}</option>
+                      {registerDrawings.map((drawing) => <option value={drawing.id} key={drawing.id}>{drawing.original_name}</option>)}
+                    </select>
+                    <button className="field-inline-link" type="button" onClick={() => switchTab("drawings")}><MapPin size={12} /> {text("Open the drawing to place a pin", "Open de tekening om een pin te plaatsen")}</button>
+                  </label>
+                ) : null}
               </div>
               {activeRegisterPresets.length ? <div className="quick-issue-presets" aria-label={text("Choose a standard register item", "Kies een standaard registeritem")}>{activeRegisterPresets.map((preset) => <button className={registerForm.title === preset.title ? "active" : ""} type="button" onClick={() => setRegisterForm({ ...registerForm, ...preset })} key={preset.title}>{preset.title}</button>)}</div> : null}
               {controlledRegister ? (
@@ -1509,16 +1665,21 @@ function ProjectOperations({
                 </details>
               )}
               {controlledRegister ? <>
-                <section className="controlled-document-dates" aria-label={text("Document dates", "Documentdatums")}>
-                  <header><FileCheck2 size={17} /><div><strong>{registerForm.type === "technical_instruction" ? text("Technical instruction dates", "Datums technische instructie") : text("Document dates", "Documentdatums")}</strong><small>{text("The issue date and time come from the controlled project context; the deadline is selected explicitly.", "De uitgiftedatum en -tijd komen uit de gecontroleerde projectcontext; de deadline wordt expliciet gekozen.")}</small></div></header>
-                  <div className="form-grid">
-                    <label className="form-field"><span>{text("Issue date · automatic", "Uitgiftedatum · automatisch")}</span><input type="date" value={issueDate} readOnly /></label>
-                    <label className="form-field"><span>{text("Issue time · automatic", "Uitgiftetijd · automatisch")}</span><input type="time" value={issueTime} readOnly /></label>
-                    <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction deadline / required by", "Deadline instructie / uitvoeren uiterlijk") : text("Response / information required by", "Antwoord / informatie nodig uiterlijk")}</span><input type="date" min={issueDate} value={registerForm.dueDate} onChange={(event) => setRegisterForm({ ...registerForm, dueDate: event.target.value })} /></label>
-                  </div>
-                </section>
                 <label className="form-field"><span>{text("Revision", "Revisie")}</span><input value={registerForm.revision} onChange={(event) => setRegisterForm({ ...registerForm, revision: event.target.value })} /></label>
-                <div className="form-grid-2"><label className="form-field"><span>{text("Issued by position", "Functie opsteller")}</span><input value={registerForm.issuerPosition} onChange={(event) => setRegisterForm({ ...registerForm, issuerPosition: event.target.value })} /></label><label className="form-field"><span>{text("Issued by company", "Bedrijf opsteller")}</span><input value={registerForm.issuerCompany} onChange={(event) => setRegisterForm({ ...registerForm, issuerCompany: event.target.value })} /></label></div>
+                {/* Who draws the document up is a choice, not always the person logged in. */}
+                <div className="form-grid-2">
+                  <label className="form-field"><span>{text("Drawn up by", "Opgemaakt door")}</span>
+                    <select value={documentIssuerOptions.includes(registerForm.issuerName.trim() || currentUserName) ? registerForm.issuerName.trim() || currentUserName : "__other__"} onChange={(event) => setRegisterForm({ ...registerForm, issuerName: event.target.value === "__other__" ? "" : event.target.value })}>
+                      {documentIssuerOptions.map((name) => <option value={name} key={name}>{name}</option>)}
+                      <option value="__other__">{text("Someone else · type the name", "Iemand anders · naam typen")}</option>
+                    </select>
+                  </label>
+                  {documentIssuerOptions.includes(registerForm.issuerName.trim() || currentUserName)
+                    ? null
+                    : <label className="form-field"><span>{text("Name of the author", "Naam van de opsteller")}</span><input value={registerForm.issuerName} onChange={(event) => setRegisterForm({ ...registerForm, issuerName: event.target.value })} /></label>}
+                  <label className="form-field"><span>{text("Issued by position", "Functie opsteller")}</span><input value={registerForm.issuerPosition} onChange={(event) => setRegisterForm({ ...registerForm, issuerPosition: event.target.value })} /></label>
+                  <label className="form-field"><span>{text("Issued by company", "Bedrijf opsteller")}</span><input value={registerForm.issuerCompany} onChange={(event) => setRegisterForm({ ...registerForm, issuerCompany: event.target.value })} /></label>
+                </div>
                 <div className="form-grid-2"><label className="form-field"><span>{text("Involved project party", "Betrokken projectpartij")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => { const party = parties.find((item) => item.id === event.target.value); setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value, requestedTo: party?.name ?? "" }); }}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name} · {party.type}</option>)}</select></label><label className="form-field"><span>{text("Requested to / recipient name", "Gericht aan / ontvanger")}</span><input value={registerForm.requestedTo} onChange={(event) => setRegisterForm({ ...registerForm, requestedTo: event.target.value })} /></label></div>
                 <div className="form-grid-2"><label className="form-field"><span>{text("Related RFI / NCR / drawing", "Gerelateerde RFI / NCR / tekening")}</span><input value={registerForm.relatedReference} onChange={(event) => setRegisterForm({ ...registerForm, relatedReference: event.target.value })} /></label><label className="form-field"><span>{text("Reference documents", "Referentiedocumenten")}</span><input value={registerForm.referenceDocuments} onChange={(event) => setRegisterForm({ ...registerForm, referenceDocuments: event.target.value })} /></label></div>
                 <label className="form-field"><span>{text("Attachments and page count", "Bijlagen en aantal pagina's")}</span><input value={registerForm.attachments} onChange={(event) => setRegisterForm({ ...registerForm, attachments: event.target.value })} /></label>
@@ -1545,25 +1706,52 @@ function ProjectOperations({
                 {registerForm.type === "environmental_report" ? <><div className="form-grid-2"><label className="form-field"><span>{text("Period start", "Periode start")}</span><input type="date" value={registerForm.periodStart} onChange={(event) => setRegisterForm({ ...registerForm, periodStart: event.target.value })} /></label><label className="form-field"><span>{text("Period end", "Periode einde")}</span><input type="date" value={registerForm.periodEnd} onChange={(event) => setRegisterForm({ ...registerForm, periodEnd: event.target.value })} /></label></div><div className="form-grid-2"><label className="form-field"><span>{text("Lost hours", "Verloren uren")}</span><input type="number" min="0" value={registerForm.lostHours} onChange={(event) => setRegisterForm({ ...registerForm, lostHours: event.target.value })} /></label><label className="form-field"><span>{text("Reason for lost hours", "Reden verloren uren")}</span><input value={registerForm.lostHoursReason} onChange={(event) => setRegisterForm({ ...registerForm, lostHoursReason: event.target.value })} /></label></div></> : null}
                 <div className="operation-alert warning"><FileCheck2 size={17} /><div><strong>{text("Numbering and metadata are automatic", "Nummering en metadata zijn automatisch")}</strong><span>{text("Project, building, issue date, author and audit history are filled from the current context. Approval, acknowledgement and signature remain explicit human actions.", "Project, gebouw, uitgiftedatum, opsteller en auditgeschiedenis komen uit de actuele context. Goedkeuring, ontvangst en ondertekening blijven expliciete menselijke acties.")}</span></div></div>
               </> : <label className="form-field"><span>{text("Involved party", "Betrokken partij")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>}
-              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerForm.title.trim().length < 3 || !controlledFormReady} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : text("Save register item", "Registeritem opslaan")}</button>
+              {/* Every register item can carry site photos, with the text that says what
+                  the photo shows. Documents alone were not enough for the client. */}
+              <label className="finding-photo-capture register-photo-capture">
+                <Camera size={22} />
+                <span><strong>{registerPhotos.length ? text(`${registerPhotos.length} photos ready`, `${registerPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{text("Tap again for another photo. Every image is linked to this register item.", "Tik opnieuw voor nog een foto. Elk beeld wordt aan dit registeritem gekoppeld.")}</small></span>
+                <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setRegisterPhotos, setRegisterPhotoError); event.currentTarget.value = ""; }} />
+              </label>
+              {registerPhotos.length ? <FindingPhotoStack
+                files={registerPhotos}
+                captions={registerPhotoCaptions}
+                onCaption={(index, caption) => setRegisterPhotoCaptions((current) => {
+                  const next = [...current];
+                  next[index] = caption;
+                  return next;
+                })}
+                onRemove={(index) => {
+                  setRegisterPhotos((current) => current.filter((_, currentIndex) => currentIndex !== index));
+                  setRegisterPhotoCaptions((current) => current.filter((_, currentIndex) => currentIndex !== index));
+                }}
+              /> : null}
+              {registerPhotoError ? <p className="field-error" role="alert">{registerPhotoError}</p> : null}
+              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && registerBuildingId !== ALL_BUILDINGS && !registerLocationNodeId) || registerForm.title.trim().length < 3 || !controlledFormReady} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : text("Save register item", "Registeritem opslaan")}</button>
             </div>
           ) : null}
-          <div className="boq-import-card">
-            <div><span className="record-number">{text("BOQ import and progress", "BOQ-import en voortgang")}</span><h2>{text("Import the bill of quantities as a controlled project log", "Importeer de meetstaat als gecontroleerd projectlog")}</h2><p>{text("CSV columns: code, description, quantity, unit, unit rate, contract value and progress percentage. The complete import is atomic: an invalid row stores nothing.", "CSV-kolommen: code, omschrijving, hoeveelheid, eenheid, eenheidsprijs, contractbedrag en voortgangspercentage. De volledige import is atomisch: bij een ongeldige rij wordt niets opgeslagen.")}</p></div>
-            <BuildingPicker id="boq-building" buildings={buildings} value={boqBuildingId} onChange={setBoqBuildingId} />
-            <div className="boq-import-actions"><button className="secondary-button" type="button" onClick={downloadBoqCsvTemplate}><Download size={15} /> {text("Download CSV template", "Download CSV-sjabloon")}</button><label className="secondary-button file-button"><Upload size={15} /> {text("Choose BOQ file", "Kies BOQ-bestand")}<input type="file" accept="text/csv,.csv" hidden onChange={(event) => void inspectBoqFile(event.target.files?.[0] ?? null)} /></label><button className="primary-button" type="button" disabled={busy || !boqItems.length} onClick={() => void importBoq()}><PackageCheck size={15} /> {text("Import BOQ", "Importeer BOQ")}</button></div>
-            {boqFile ? <span className="boq-file-summary"><strong>{boqFile.name}</strong>{boqItems.length ? ` · ${boqItems.length} ${text("validated rows", "gevalideerde regels")}` : ""}</span> : null}
-            {boqError ? <span className="field-error">{boqError}</span> : null}
-            {boqItems.length ? <div className="boq-preview"><span>{text("First validated lines", "Eerste gevalideerde regels")}</span>{boqItems.slice(0, 5).map((item) => <div key={`${item.code}:${item.source_row}`}><strong>{item.code}</strong><span>{item.description}</span><small>{item.quantity ?? "-"} {item.unit} · {item.progress_percent}%</small></div>)}</div> : null}
-          </div>
-          <BoqProgressRegister
-            entries={data.registerEntries.filter((entry) => entry.register_type === "boq")}
-            updates={data.boqProgressUpdates}
-            buildings={buildings}
-            busy={busy}
-            run={run}
-            client={client}
-          />
+          {/* The bill of quantities has nothing to do with a delivery or any other
+              register item you are filling in, so it no longer sits open underneath the
+              form. It stays one tap away. */}
+          <details className="boq-import-section">
+            <summary>{text("Bill of quantities · import and progress", "Meetstaat · import en voortgang")}<span>{data.registerEntries.filter((entry) => entry.register_type === "boq").length} {text("BOQ lines", "BOQ-regels")}</span></summary>
+            <div className="boq-import-card">
+              <div><span className="record-number">{text("BOQ import and progress", "BOQ-import en voortgang")}</span><h2>{text("Import the bill of quantities as a controlled project log", "Importeer de meetstaat als gecontroleerd projectlog")}</h2><p>{text("CSV columns: code, description, quantity, unit, unit rate, contract value and progress percentage. The complete import is atomic: an invalid row stores nothing.", "CSV-kolommen: code, omschrijving, hoeveelheid, eenheid, eenheidsprijs, contractbedrag en voortgangspercentage. De volledige import is atomisch: bij een ongeldige rij wordt niets opgeslagen.")}</p></div>
+              <BuildingPicker id="boq-building" buildings={buildings} value={boqBuildingId} onChange={setBoqBuildingId} />
+              <div className="boq-import-actions"><button className="secondary-button" type="button" onClick={downloadBoqCsvTemplate}><Download size={15} /> {text("Download CSV template", "Download CSV-sjabloon")}</button><label className="secondary-button file-button"><Upload size={15} /> {text("Choose BOQ file", "Kies BOQ-bestand")}<input type="file" accept="text/csv,.csv" hidden onChange={(event) => void inspectBoqFile(event.target.files?.[0] ?? null)} /></label><button className="primary-button" type="button" disabled={busy || !boqItems.length} onClick={() => void importBoq()}><PackageCheck size={15} /> {text("Import BOQ", "Importeer BOQ")}</button></div>
+              {boqFile ? <span className="boq-file-summary"><strong>{boqFile.name}</strong>{boqItems.length ? ` · ${boqItems.length} ${text("validated rows", "gevalideerde regels")}` : ""}</span> : null}
+              {boqError ? <span className="field-error">{boqError}</span> : null}
+              {boqItems.length ? <div className="boq-preview"><span>{text("First validated lines", "Eerste gevalideerde regels")}</span>{boqItems.slice(0, 5).map((item) => <div key={`${item.code}:${item.source_row}`}><strong>{item.code}</strong><span>{item.description}</span><small>{item.quantity ?? "-"} {item.unit} · {item.progress_percent}%</small></div>)}</div> : null}
+            </div>
+            <BoqProgressRegister
+              entries={data.registerEntries.filter((entry) => entry.register_type === "boq")}
+              updates={data.boqProgressUpdates}
+              buildings={buildings}
+              busy={busy}
+              run={run}
+              client={client}
+            />
+          </details>
           <div className="register-summary-grid">{Object.entries(registerNames).map(([type, label]) => <div className="register-summary" key={type}><strong>{data.registerEntries.filter((entry) => entry.register_type === type).length}</strong><span>{label}</span></div>)}</div>
           {externalSubmissionIntent ? (
             <div className="operation-alert success external-submission-notice">
@@ -1777,15 +1965,40 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
   );
 }
 
-function FindingPhotoStack({ files, onRemove }: { files: File[]; onRemove: (index: number) => void }) {
+/**
+ * Photos waiting to be saved. With `captions` every photo also gets the short text that
+ * explains what it shows; the file name alone means nothing in a report.
+ */
+function FindingPhotoStack({
+  files,
+  onRemove,
+  captions,
+  onCaption,
+}: {
+  files: File[];
+  onRemove: (index: number) => void;
+  captions?: string[];
+  onCaption?: (index: number, caption: string) => void;
+}) {
   const { text } = useLanguage();
 
   return (
-    <div className="finding-photo-stack" aria-label={text("Photos attached to this issue", "Foto’s bij dit probleem")}>
+    <div className={`finding-photo-stack ${onCaption ? "with-captions" : ""}`} aria-label={text("Photos attached to this issue", "Foto’s bij dit probleem")}>
       {files.map((file, index) => (
         <article key={`${file.name}:${file.size}:${file.lastModified}`}>
           <FindingPhotoPreview file={file} />
-          <span><strong>{index + 1}</strong><small>{file.name}</small></span>
+          {onCaption ? (
+            <label className="form-field photo-caption-field">
+              <span>{text(`Photo ${index + 1} · what does it show?`, `Foto ${index + 1} · wat is te zien?`)}</span>
+              <input
+                value={captions?.[index] ?? ""}
+                onChange={(event) => onCaption(index, event.target.value)}
+                placeholder={text("For example: unsecured opening on level 2", "Bijvoorbeeld: onbeveiligde opening op niveau 2")}
+              />
+            </label>
+          ) : (
+            <span><strong>{index + 1}</strong><small>{file.name}</small></span>
+          )}
           <button type="button" onClick={() => onRemove(index)} aria-label={text(`Remove photo ${index + 1}`, `Verwijder foto ${index + 1}`)}><X size={14} /></button>
         </article>
       ))}
@@ -2595,10 +2808,20 @@ function MfaSecurityCard({ client }: { client: SupabaseClient }) {
   );
 }
 
-function RecordList({ empty, rows }: { empty: string; rows: Array<{ id: string; icon: typeof ClipboardCheck; title: string; meta: string; status: string; tone: string }> }) {
+function RecordList({ empty, rows }: { empty: string; rows: Array<{ id: string; icon: typeof ClipboardCheck; title: string; meta: string; status: string; tone: string; open?: { label: string; onOpen: () => void } }> }) {
   const { text } = useLanguage();
   if (!rows.length) return <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No records", "Geen registraties")}</strong><span>{empty}</span></div>;
-  return <div className="record-stack">{rows.map((row) => { const Icon = row.icon; return <article className="record-row" key={row.id}><span className="action-icon"><Icon size={18} /></span><div><strong>{row.title}</strong><span>{row.meta}</span></div><span className={`task-status ${row.tone}`}>{row.status}</span></article>; })}</div>;
+  return <div className="record-stack">{rows.map((row) => {
+    const Icon = row.icon;
+    return (
+      <article className="record-row" key={row.id}>
+        <span className="action-icon"><Icon size={18} /></span>
+        <div><strong>{row.title}</strong><span>{row.meta}</span></div>
+        {row.open ? <button className="secondary-button record-row-open" type="button" onClick={row.open.onOpen}>{row.open.label}</button> : null}
+        <span className={`task-status ${row.tone}`}>{row.status}</span>
+      </article>
+    );
+  })}</div>;
 }
 
 function HistoryColumn({ title, empty, rows }: { title: string; empty: string; rows: React.ReactNode[] }) {

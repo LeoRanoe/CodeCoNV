@@ -54,7 +54,7 @@ export type OfflineUpload = {
   recordLink?: {
     organizationId: string;
     /** A registration link keeps a photo taken inside a field record attached to it. */
-    recordType: "inspection" | "hse" | "registration";
+    recordType: "inspection" | "hse" | "registration" | "register_entry";
     recordId: string;
     relationship: "evidence";
   } | null;
@@ -315,7 +315,7 @@ async function syncOfflineUploadsUnlocked(
         });
         // A photo taken inside a field record is also site evidence, so it has to show up
         // in Photos & folders with its context instead of only hanging off the record.
-        if (upload.recordLink.recordType === "registration" && (upload.kind === "photo" || upload.kind === "panorama")) {
+        if (["registration", "register_entry"].includes(upload.recordLink.recordType) && (upload.kind === "photo" || upload.kind === "panorama")) {
           await ensureVisualCapture(client, upload, stored.fileId);
         }
       } else if (upload.kind === "photo" || upload.kind === "panorama") {
