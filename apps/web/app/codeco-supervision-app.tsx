@@ -53,7 +53,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { ALL_BUILDINGS, BuildingMultiPicker, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
-import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
+import { photoEvidenceLine, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
+import { appendPhotoDetail } from "@/app/photo-markup";
 import { SketchPad } from "@/app/sketch-pad";
 import { ClientDashboard } from "@/app/client-dashboard";
 import { DailyLogModal } from "@/app/daily-log-modal";
@@ -509,7 +510,7 @@ function attendanceRowsForBuilding(
 }
 
 export function CodecoSupervisionApp() {
-  const { locale, text } = useLanguage();
+  const { language, locale, text } = useLanguage();
   const supabase = getSupabaseBrowserClient();
   const queryClient = useQueryClient();
   const [session, setSession] = useState<Session | null>(null);
@@ -543,7 +544,7 @@ export function CodecoSupervisionApp() {
   const [entryLocationNodeId, setEntryLocationNodeId] = useState("");
   const [entryDrawingId, setEntryDrawingId] = useState("");
   const [entryWorkPackage, setEntryWorkPackage] = useState(workPackageOptions[0].en);
-  const [entryPhotos, setEntryPhotos] = useState<File[]>([]);
+  const [entryPhotos, setEntryPhotos] = useState<PhotoEvidence[]>([]);
   // Set while the supervisor is on the drawing screen with a field record still open.
   const [entryDraftParked, setEntryDraftParked] = useState(false);
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
@@ -1120,7 +1121,7 @@ export function CodecoSupervisionApp() {
    * synchronized, exactly like the daily log and the photo workspace do.
    */
   const queueEntryPhotos = async (input: {
-    photos: File[];
+    photos: PhotoEvidence[];
     projectId: string;
     buildingId: string;
     buildingLabel: string;
@@ -1132,7 +1133,10 @@ export function CodecoSupervisionApp() {
   }) => {
     if (!supabase) return;
     for (const photo of input.photos) {
-      const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
+      const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
+      // The photo's own words win over the record title, and its own location over the
+      // record's, so the photo register can be read without opening the registration.
+      const photoTitle = photo.details.title.trim() || input.title.trim();
       await queueOfflineUpload({
         projectId: input.projectId,
         buildingId: input.buildingId,
@@ -1143,12 +1147,12 @@ export function CodecoSupervisionApp() {
         file: prepared.blob,
         fileName: prepared.fileName,
         mimeType: prepared.mimeType,
-        title: input.title.slice(0, 120),
-        description: "",
+        title: photoTitle.slice(0, 120),
+        description: [photoEvidenceLine(photo, language), photo.details.description.trim()].filter(Boolean).join("\n"),
         locationLabel: input.buildingLabel,
-        locationNodeId: input.locationNodeId || null,
-        capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
-        originalSize: photo.size,
+        locationNodeId: photo.details.locationNodeId || input.locationNodeId || null,
+        capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
+        originalSize: photo.original.size,
         queuedSize: prepared.blob.size,
         compressed: prepared.compressed,
         recordLink: input.registrationId
@@ -1762,13 +1766,12 @@ export function CodecoSupervisionApp() {
           close={() => setModal(null)}
           save={saveEntry}
           photos={entryPhotos}
+          setPhotos={setEntryPhotos}
           addPhotos={(files) => {
             const captured = Array.from(files ?? []).filter((file) => file.type.startsWith("image/"));
-            if (captured.length) setEntryPhotos((current) => [...current, ...captured]);
+            if (captured.length) setEntryPhotos((current) => [...current, ...captured.map((file) => toPhotoEvidence(file))]);
           }}
-          addSketch={(file) => setEntryPhotos((current) => [...current, file])}
-          replacePhoto={(index, file) => setEntryPhotos((current) => current.map((photo, position) => position === index ? file : photo))}
-          removePhoto={(index) => setEntryPhotos((current) => current.filter((_, position) => position !== index))}
+          addSketch={(file) => setEntryPhotos((current) => [...current, toPhotoEvidence(file, { category: "overview" })])}
           projectName={projectName}
           buildingName={buildingName}
           buildings={selectedProject.buildings}
@@ -2051,12 +2054,13 @@ export function CodecoSupervisionApp() {
                     file: prepared.blob,
                     fileName: prepared.fileName,
                     mimeType: prepared.mimeType,
-                    // The name the supervisor typed is what the report shows.
-                    title: photo.caption.trim().slice(0, 120) || text("Field photo", "Veldfoto"),
-                    description: "",
+                    // The words the supervisor gave the photo are what the report shows.
+                    title: photo.details.title.trim().slice(0, 120) || text("Field photo", "Veldfoto"),
+                    description: photoUploadDescription(photo, "", language),
                     locationLabel: logBuildingName,
+                    locationNodeId: photo.details.locationNodeId || null,
                     capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
-                    originalSize: photo.file.size,
+                    originalSize: photo.original.size,
                     queuedSize: prepared.blob.size,
                     compressed: prepared.compressed,
                   });
@@ -3504,10 +3508,9 @@ function EntryModal({
   close,
   save,
   photos,
+  setPhotos,
   addPhotos,
   addSketch,
-  replacePhoto,
-  removePhoto,
   projectName,
   buildingName,
   buildings,
@@ -3537,11 +3540,10 @@ function EntryModal({
   goBack: () => void;
   close: () => void;
   save: () => void;
-  photos: File[];
+  photos: PhotoEvidence[];
+  setPhotos: (photos: PhotoEvidence[]) => void;
   addPhotos: (files: FileList | null) => void;
   addSketch: (file: File) => void;
-  replacePhoto: (index: number, file: File) => void;
-  removePhoto: (index: number) => void;
   projectName: string;
   buildingName: string;
   buildings: BuildingOption[];
@@ -3560,10 +3562,6 @@ function EntryModal({
   const { language, locale, text } = useLanguage();
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [sketching, setSketching] = useState(false);
-  const [markupIndex, setMarkupIndex] = useState(-1);
-  // Counted per photo, not per position: removing one photo must not move the badge of another.
-  const [markerCounts, setMarkerCounts] = useState<Map<File, number>>(() => new Map());
-  const markupPhoto = markupIndex >= 0 ? photos[markupIndex] ?? null : null;
   // What this record already knows about the project is offered inside the marking pad, so a
   // marker can say which building, floor, room and work package it belongs to.
   const markupContext = useMemo(() => ({
@@ -3572,8 +3570,6 @@ function EntryModal({
     locations: locationNodes.map((node) => ({ id: node.id, label: locationBreadcrumb(locationNodes, node.id), buildingId: node.building_id })),
     workPackages: workPackageOptions.map((option) => (language === "en" ? option.en : option.nl)),
   }), [buildingIds, buildings, language, locationNodes]);
-  const photoPreviews = useMemo(() => photos.map((photo) => URL.createObjectURL(photo)), [photos]);
-  useEffect(() => () => photoPreviews.forEach((preview) => URL.revokeObjectURL(preview)), [photoPreviews]);
   const title = (language === "en" ? entryTitlesEnglish : entryTitles)[selectedType] ?? text("Record", "Registratie");
   const singleBuildingId = buildingIds.length === 1 ? buildingIds[0] : "";
   const chosenBuildingName = buildingIds.length === buildings.length && buildings.length > 1
@@ -3691,45 +3687,15 @@ function EntryModal({
                 <button className="ghost-button" type="button" onClick={() => setSketching(true)}><PenLine size={16} /> {text("Make a sketch", "Schets maken")}</button>
               </div>
               {sketching ? <SketchPad close={() => setSketching(false)} save={(file) => { addSketch(file); setSketching(false); }} /> : null}
-              {photos.length ? (
-                <>
-                  {/* The photo is not the end of the evidence: the supervisor has to be able to
-                      point at the problem on the picture itself, right here in the record. */}
-                  <div className="entry-photo-strip">
-                    {photoPreviews.map((preview, index) => (
-                      <span key={preview}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={preview}
-                          alt={photos[index].name}
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => setMarkupIndex(index)}
-                          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setMarkupIndex(index); } }}
-                        />
-                        <button type="button" onClick={() => removePhoto(index)} aria-label={text(`Remove ${photos[index].name}`, `Verwijder ${photos[index].name}`)}><X size={12} /></button>
-                        <MarkPhotoButton compact markerCount={markerCounts.get(photos[index])} onClick={() => setMarkupIndex(index)} />
-                      </span>
-                    ))}
-                  </div>
-                  <span className="form-note"><MapPin size={12} /> {text("Tap a photo to mark the problem on the picture itself.", "Tik op een foto om het probleem op de foto zelf aan te wijzen.")}</span>
-                </>
-              ) : null}
-              {markupPhoto ? (
-                <PhotoMarkupPad
-                  file={markupPhoto}
-                  context={markupContext}
-                  close={() => setMarkupIndex(-1)}
-                  save={({ file, report, markerCount }) => {
-                    replacePhoto(markupIndex, file);
-                    setMarkerCounts((current) => new Map(current).set(file, markerCount));
-                    // The written detail lands in the record itself, so the register says the
-                    // same thing as the picture.
-                    if (report) setDescription(appendPhotoDetail(description, `${text("Marked on photo:", "Op de foto gemarkeerd:")}\n${report}`));
-                    setMarkupIndex(-1);
-                  }}
-                />
-              ) : null}
+              {/* A photo is not finished when it is taken: it carries its own words, its
+                  category, its location and the direction it was taken from, and it can be
+                  marked on the picture itself. */}
+              <PhotoEvidenceList
+                photos={photos}
+                setPhotos={setPhotos}
+                markupContext={markupContext}
+                onDetail={(report) => setDescription(appendPhotoDetail(description, `${text("Marked on photo:", "Op de foto gemarkeerd:")}\n${report}`))}
+              />
               <span className="form-note"><CheckCircle2 size={12} /> {text("Time, author, project and building are recorded automatically.", "Tijd, maker, project en gebouw worden automatisch vastgelegd.")}</span>
             </div>
           </div>

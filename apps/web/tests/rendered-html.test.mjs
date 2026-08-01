@@ -897,9 +897,10 @@ test("uses the client's own daily log format, a building dropdown and a calm mob
 });
 
 test("processes the five annotated field screens from 31 July", async () => {
-  const [app, dailyLog, picker, dashboard, i18n, queue, styles] = await Promise.all([
+  const [app, dailyLog, evidence, picker, dashboard, i18n, queue, styles] = await Promise.all([
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/photo-evidence.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/building-picker.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/client-dashboard.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/i18n.tsx", import.meta.url), "utf8"),
@@ -934,7 +935,9 @@ test("processes the five annotated field screens from 31 July", async () => {
   assert.match(app, /Location on drawing|Locatie op tekening/);
   assert.match(app, /project-drawings/);
   assert.match(app, /ref=\{cameraInputRef\}[^>]*capture="environment"/);
-  assert.match(app, /entry-photo-strip/);
+  // A photo in a record still shows up under it, now through the shared photo block that
+  // also carries the photo's own words.
+  assert.match(app, /<PhotoEvidenceList/);
   assert.doesNotMatch(app, /openPhoto=\{\(\) => chooseType\("photo"\)\}/);
   assert.match(app, /recordType: "registration"/);
   assert.match(queue, /"inspection" \| "hse" \| "registration"/);
@@ -943,18 +946,20 @@ test("processes the five annotated field screens from 31 July", async () => {
   // Screen 5: photos of the day can be named and removed, and the workforce block has
   // the standard sentences about manning levels.
   assert.match(dailyLog, /export type DailyLogPhoto/);
-  assert.match(dailyLog, /Photo name for the report|Fotonaam voor het rapport/);
-  assert.match(dailyLog, /daily-log-photo-remove/);
+  assert.match(dailyLog, /<PhotoEvidenceList/);
+  assert.match(evidence, /What is on this photo\?|Wat staat er op deze foto\?/);
+  assert.match(evidence, /photo-evidence-remove/);
   assert.match(dailyLog, /workforceNoteChoices/);
   assert.match(dailyLog, /Too few workers|Onvoldoende arbeiders/);
-  assert.match(app, /photo\.caption\.trim\(\)\.slice\(0, 120\)/);
+  assert.match(app, /photo\.details\.title\.trim\(\)\.slice\(0, 120\)/);
 });
 
 test("processes the second batch of annotated screens from 31 July", async () => {
-  const [app, dailyLog, workspace, picker, locationPicker, operations, queue, controlledDocuments, styles] = await Promise.all([
+  const [app, dailyLog, workspace, evidence, picker, locationPicker, operations, queue, controlledDocuments, styles] = await Promise.all([
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/photo-evidence.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/building-picker.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/location-picker.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
@@ -981,10 +986,11 @@ test("processes the second batch of annotated screens from 31 July", async () =>
 
   // HSE: no second Type dropdown next to the situation chips, and every evidence photo
   // can carry the text that says what it shows.
-  assert.match(workspace, /hsePhotoCaptions/);
-  assert.match(workspace, /captions\?: string\[\]/);
-  assert.match(workspace, /what does it show\?|wat is te zien\?/);
-  assert.match(styles, /\.finding-photo-stack\.with-captions/);
+  // Every evidence photo carries the text that says what it shows — now the same fields in
+  // every module instead of a caption in two of them.
+  assert.match(workspace, /photos=\{hsePhotos\}/);
+  assert.match(evidence, /Description · what is visible|Toelichting · wat is te zien/);
+  assert.match(styles, /\.photo-evidence-fields/);
 
   // A started checklist can be reopened from the list and completed.
   assert.match(operations, /export async function loadInspectionResponses/);

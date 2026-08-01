@@ -1,10 +1,11 @@
 "use client";
 
 import { Camera, CloudSun, HardHat, Loader2, ShieldCheck, TimerOff, Users, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { BuildingMultiPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
-import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
+import { PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
+import { appendPhotoDetail } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
 import type { DailyCloseoutAnswers, ProjectStartAnswers } from "@/lib/forms/daily-report";
 
@@ -18,13 +19,10 @@ export type DailyLogAttendanceRow = {
 };
 
 /**
- * A photo plus the name the supervisor gives it. Without a name a day with eight photos
- * ends up in the report as eight numbered files nobody can place afterwards.
+ * A photo plus everything the supervisor said about it. Without those words a day with eight
+ * photos ends up in the report as eight numbered files nobody can place afterwards.
  */
-export type DailyLogPhoto = {
-  file: File;
-  caption: string;
-};
+export type DailyLogPhoto = PhotoEvidence;
 
 /**
  * The client's own daily log, taken from their weekly report (TELESUR CSC).
@@ -156,25 +154,8 @@ export function DailyLogModal({
 
   const addPhotos = (files: FileList | null) => {
     const captured = Array.from(files ?? []).filter((file) => file.type.startsWith("image/"));
-    if (captured.length) setPhotos((current) => [...current, ...captured.map((file) => ({ file, caption: "" }))]);
+    if (captured.length) setPhotos((current) => [...current, ...captured.map((file) => toPhotoEvidence(file))]);
   };
-  const setCaption = (index: number, caption: string) => setPhotos((current) =>
-    current.map((photo, photoIndex) => photoIndex === index ? { ...photo, caption } : photo));
-  const removePhoto = (index: number) => setPhotos((current) => current.filter((_, photoIndex) => photoIndex !== index));
-  /**
-   * A marked photo replaces the photo it was made from, and the markings become the photo
-   * name when the supervisor has not written one yet — the report then says what is wrong
-   * without any retyping.
-   */
-  const applyMarkup = (index: number, file: File, summary: string) => setPhotos((current) =>
-    current.map((photo, photoIndex) => photoIndex === index
-      ? { file, caption: photo.caption.trim() || summary }
-      : photo));
-  const photoPreviews = useMemo(() => photos.map((photo) => URL.createObjectURL(photo.file)), [photos]);
-  useEffect(() => () => photoPreviews.forEach((preview) => URL.revokeObjectURL(preview)), [photoPreviews]);
-  const [markupIndex, setMarkupIndex] = useState(-1);
-  const [markerCounts, setMarkerCounts] = useState<Map<File, number>>(() => new Map());
-  const markupPhoto = markupIndex >= 0 ? photos[markupIndex] ?? null : null;
 
   const attendanceTotal = rows.reduce((sum, row) => sum + row.count, 0);
   // The database requires a full closeout record; these blocks are the ones the client
@@ -399,52 +380,18 @@ export function DailyLogModal({
 
             <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple onChange={(event) => { addPhotos(event.target.files); event.target.value = ""; }} />
             <button className="secondary-button" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={15} /> {text("Add photo", "Foto toevoegen")}</button>
-            {photos.length ? (
-              <div className="daily-log-photo-list">
-                {photos.map((photo, index) => (
-                  <div key={photoPreviews[index]}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={photoPreviews[index]}
-                      alt={photo.file.name}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setMarkupIndex(index)}
-                      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setMarkupIndex(index); } }}
-                    />
-                    <label className="form-field">
-                      <span>{text("Photo name for the report", "Fotonaam voor het rapport")}</span>
-                      <input
-                        value={photo.caption}
-                        onChange={(event) => setCaption(index, event.target.value)}
-                        placeholder={text("For example: rebar column line B", "Bijvoorbeeld: wapening kolom lijn B")}
-                      />
-                    </label>
-                    <MarkPhotoButton compact markerCount={markerCounts.get(photo.file)} onClick={() => setMarkupIndex(index)} />
-                    <button className="daily-log-photo-remove" type="button" onClick={() => removePhoto(index)} aria-label={text(`Remove ${photo.file.name}`, `Verwijder ${photo.file.name}`)}><X size={13} /></button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            {markupPhoto ? (
-              <PhotoMarkupPad
-                file={markupPhoto.file}
-                close={() => setMarkupIndex(-1)}
-                context={{
-                  buildings: buildings.map((building) => ({ id: building.id, label: building.name })),
-                  defaultBuildingId: buildingId,
-                  parties: parties.map((party) => ({ id: party.id, label: party.name })),
-                }}
-                save={({ file, summary, report, markerCount }) => {
-                  applyMarkup(markupIndex, file, summary);
-                  setMarkerCounts((current) => new Map(current).set(file, markerCount));
-                  // The detail behind the photo belongs in the quality block of the log, where
-                  // the report reads it back out.
-                  if (report) setLog((current) => ({ ...current, qcPerformed: appendPhotoDetail(current.qcPerformed, report) }));
-                  setMarkupIndex(-1);
-                }}
-              />
-            ) : null}
+            {/* One photo block, the same as everywhere else: the picture, the way into
+                marking, and the words that belong to it. */}
+            <PhotoEvidenceList
+              photos={photos}
+              setPhotos={setPhotos}
+              markupContext={{
+                buildings: buildings.map((building) => ({ id: building.id, label: building.name })),
+                defaultBuildingId: buildingId,
+                parties: parties.map((party) => ({ id: party.id, label: party.name })),
+              }}
+              onDetail={(report) => setLog((current) => ({ ...current, qcPerformed: appendPhotoDetail(current.qcPerformed, report) }))}
+            />
           </details>
 
           {problems.length ? (

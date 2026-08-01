@@ -6,7 +6,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
-import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
+import { photoFiles, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
+import { appendPhotoDetail } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
 import {
   compressFieldPhoto,
@@ -27,20 +28,6 @@ import { createMediaFolder, type FileRecord, type OperationSnapshot } from "@/li
 function automaticTitle(filename: string) {
   const title = filename.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
   return title.length >= 3 ? title.slice(0, 160) : `Opname ${new Intl.DateTimeFormat("nl-SR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date())}`;
-}
-
-/** A photo that is still on this device, shown large enough to recognize before marking it. */
-function PendingCaptureThumbnail({ file, onOpen }: { file: File; onOpen: () => void }) {
-  const { text } = useLanguage();
-  const [source] = useState(() => URL.createObjectURL(file));
-  useEffect(() => () => URL.revokeObjectURL(source), [source]);
-  return (
-    <button type="button" onClick={onOpen} aria-label={text(`Mark on ${file.name}`, `Markeer op ${file.name}`)}>
-      {/* A local blob URL cannot pass through the Next image optimizer. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={source} alt="" />
-    </button>
-  );
 }
 
 function humanSize(bytes: number) {
@@ -104,7 +91,7 @@ export function MediaLibraryWorkspace({
   onInitialFilesConsumed?: () => void;
   open360Upload: () => void;
 }) {
-  const { text } = useLanguage();
+  const { language, text } = useLanguage();
   const queryClient = useQueryClient();
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -117,10 +104,7 @@ export function MediaLibraryWorkspace({
   const [syncing, setSyncing] = useState(false);
   const [fieldError, setFieldError] = useState("");
   const [photoDescription, setPhotoDescription] = useState("");
-  const [pendingCapture, setPendingCapture] = useState<File[]>([]);
-  const [markupIndex, setMarkupIndex] = useState(-1);
-  const [markerCounts, setMarkerCounts] = useState<Map<File, number>>(() => new Map());
-  const markupCapture = markupIndex >= 0 ? pendingCapture[markupIndex] ?? null : null;
+  const [pendingCapture, setPendingCapture] = useState<PhotoEvidence[]>([]);
   const [libraryBuildingId, setLibraryBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const libraryBuildingName = buildings.find((building) => building.id === libraryBuildingId)?.name ?? buildingName;
   const [originFilter, setOriginFilter] = useState<"all" | FileOriginKind>("all");
@@ -205,6 +189,8 @@ export function MediaLibraryWorkspace({
     selected: FileList | File[] | null,
     preferredFolderName?: string,
     descriptionOverride?: string,
+    /** The words a photo carries of its own, when it was described before being filed. */
+    detailsFor?: (file: File) => { title?: string; description?: string; locationNodeId?: string | null } | undefined,
   ) => {
     if (!selected?.length) return;
     setFieldError("");
@@ -252,9 +238,10 @@ export function MediaLibraryWorkspace({
           file: prepared.blob,
           fileName: prepared.fileName,
           mimeType: prepared.mimeType,
-          title: automaticTitle(file.name),
-          description: descriptionOverride?.trim() || photoDescription.trim() || undefined,
+          title: detailsFor?.(file)?.title?.trim() || automaticTitle(file.name),
+          description: detailsFor?.(file)?.description?.trim() || descriptionOverride?.trim() || photoDescription.trim() || undefined,
           locationLabel: libraryBuildingName,
+          locationNodeId: detailsFor?.(file)?.locationNodeId ?? null,
           capturedAt: new Date(file.lastModified || Date.now()).toISOString(),
           originalSize: file.size,
           queuedSize: prepared.blob.size,
@@ -288,7 +275,7 @@ export function MediaLibraryWorkspace({
     const captured = [...initialFiles];
     const captureTimer = window.setTimeout(() => {
       onInitialFilesConsumed?.();
-      setPendingCapture(captured);
+      setPendingCapture(captured.map((file) => toPhotoEvidence(file)));
     }, 0);
     return () => window.clearTimeout(captureTimer);
   }, [initialFiles, onInitialFilesConsumed]);
@@ -302,13 +289,22 @@ export function MediaLibraryWorkspace({
       day: "2-digit",
     }).format(new Date());
     await addFiles(
-      pendingCapture,
+      photoFiles(pendingCapture),
       `${text("Daily progress", "Dagvoortgang")} · ${dayKey}`,
       photoDescription,
+      (file) => {
+        const photo = pendingCapture.find((entry) => entry.file === file);
+        if (!photo) return undefined;
+        return {
+          title: photo.details.title,
+          description: photoUploadDescription(photo, photoDescription, language),
+          locationNodeId: photo.details.locationNodeId || null,
+        };
+      },
     );
     setPendingCapture([]);
     setPhotoDescription("");
-  }, [addFiles, pendingCapture, photoDescription, text]);
+  }, [addFiles, language, pendingCapture, photoDescription, text]);
 
   const addFolder = async (name: string) => {
     let createdFolderId = "";
@@ -350,7 +346,7 @@ export function MediaLibraryWorkspace({
           <button className={kind === "drawing" ? "active" : ""} type="button" onClick={() => setKind("drawing")}><HardDrive size={16} /> {text("Drawing", "Tekening")}</button>
         </div>
         <div className="quick-issue-presets media-folder-presets" aria-label={text("Choose a photo folder", "Kies een fotomap")}>{standardFolderNames.map((name) => { const folder = folders.find((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase()); return <button className={Boolean(folder && folderId === folder.id) ? "active" : ""} type="button" disabled={busy} onClick={() => folder ? setFolderId(folder.id) : void addFolder(name)} key={name}><Folder size={13} /> {name}</button>; })}</div>
-        <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { setPendingCapture(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
+        <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { setPendingCapture(Array.from(event.target.files ?? []).map((file) => toPhotoEvidence(file))); event.target.value = ""; }} />
         <input
           ref={importInputRef}
           hidden
@@ -359,7 +355,7 @@ export function MediaLibraryWorkspace({
           accept={kind === "photo" ? "image/jpeg,image/png,image/webp" : "application/pdf,image/jpeg,image/png,image/webp,.dwg"}
           onChange={(event) => {
             const selected = Array.from(event.target.files ?? []);
-            if (kind === "photo") setPendingCapture(selected);
+            if (kind === "photo") setPendingCapture(selected.map((file) => toPhotoEvidence(file)));
             else void addFiles(selected);
             event.target.value = "";
           }}
@@ -374,39 +370,25 @@ export function MediaLibraryWorkspace({
             <div className="media-capture-review-heading">
               <span><Camera size={18} /></span>
               <div>
-                <strong>{pendingCapture.length === 1 ? pendingCapture[0]?.name : `${pendingCapture.length} ${text("photos", "foto's")}`}</strong>
-                <small>{text("Add a short description before saving. The photo is filed under today's date.", "Voeg vóór het opslaan een korte omschrijving toe. De foto wordt onder de datum van vandaag bewaard.")}</small>
+                <strong>{pendingCapture.length === 1 ? pendingCapture[0]?.original.name : `${pendingCapture.length} ${text("photos", "foto's")}`}</strong>
+                <small>{text("Describe each photo before saving. Each one is filed under today's date with its own words.", "Beschrijf elke foto vóór het opslaan. Elke foto wordt met haar eigen tekst onder de datum van vandaag bewaard.")}</small>
               </div>
             </div>
-            {/* Marking happens before the photo leaves the device, so what is stored centrally
-                is already the picture that shows the problem. */}
-            <div className="media-capture-thumbs">
-              {pendingCapture.map((photo, index) => (
-                <span key={`${photo.name}:${photo.size}:${photo.lastModified}`}>
-                  <PendingCaptureThumbnail file={photo} onOpen={() => setMarkupIndex(index)} />
-                  <MarkPhotoButton compact markerCount={markerCounts.get(photo)} onClick={() => setMarkupIndex(index)} />
-                </span>
-              ))}
-            </div>
-            {markupCapture ? (
-              <PhotoMarkupPad
-                file={markupCapture}
-                context={{
-                  buildings: buildings.map((building) => ({ id: building.id, label: building.name })),
-                  defaultBuildingId: libraryBuildingId,
-                  locations: data.locationNodes.map((node) => ({ id: node.id, label: `${node.code} · ${node.name}`, buildingId: node.building_id })),
-                }}
-                close={() => setMarkupIndex(-1)}
-                save={({ file, report, markerCount }) => {
-                  setPendingCapture((current) => current.map((photo, index) => index === markupIndex ? file : photo));
-                  setMarkerCounts((current) => new Map(current).set(file, markerCount));
-                  if (report) setPhotoDescription((current) => appendPhotoDetail(current, report));
-                  setMarkupIndex(-1);
-                }}
-              />
-            ) : null}
+            {/* Marking and describing happen before the photo leaves the device, so what is
+                stored centrally already says what it is and where it belongs. */}
+            <PhotoEvidenceList
+              photos={pendingCapture}
+              setPhotos={setPendingCapture}
+              markupContext={{
+                buildings: buildings.map((building) => ({ id: building.id, label: building.name })),
+                defaultBuildingId: libraryBuildingId,
+                locations: data.locationNodes.map((node) => ({ id: node.id, label: `${node.code} · ${node.name}`, buildingId: node.building_id })),
+              }}
+              onDetail={(report) => setPhotoDescription((current) => appendPhotoDetail(current, report))}
+            />
+            {/* Applies to every photo that was not given its own words above. */}
             <label className="form-field">
-              <span>{text("Photo description", "Foto-omschrijving")}</span>
+              <span>{text("Description for all of them together · optional", "Omschrijving voor alle foto's samen · optioneel")}</span>
               <textarea
                 value={photoDescription}
                 onChange={(event) => setPhotoDescription(event.target.value)}
@@ -416,7 +398,7 @@ export function MediaLibraryWorkspace({
               <DictateButton onText={(transcript) => setPhotoDescription((current) => appendDictation(current, transcript))} />
             </label>
             <div className="media-capture-review-actions">
-              <button className="secondary-button" type="button" onClick={() => { setPendingCapture([]); setPhotoDescription(""); setMarkupIndex(-1); }}>{text("Discard", "Verwijderen")}</button>
+              <button className="secondary-button" type="button" onClick={() => { setPendingCapture([]); setPhotoDescription(""); }}>{text("Discard", "Verwijderen")}</button>
               <button className="primary-button" type="button" disabled={busy} onClick={() => void savePendingCapture()}><Upload size={15} /> {text("Save with date", "Opslaan met datum")}</button>
             </div>
           </div>

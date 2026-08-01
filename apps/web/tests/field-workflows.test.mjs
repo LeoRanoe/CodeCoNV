@@ -113,9 +113,49 @@ test("writes what was marked on a photo back into the record's own words", () =>
   assert.deepEqual(Object.keys(photoMarkupToneColors), ["to_be_corrected", "alternative_solution", "validated"]);
 });
 
+test("gives every attached photo its own words, category, location and direction", async () => {
+  const [evidence, entry, dailyLog, operations, media, css] = await Promise.all([
+    readFile(new URL("../app/photo-evidence.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/media-library-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // §4.16 of the client's product plan: category, location, direction and description per
+  // photo, next to the picture instead of drawn on it.
+  for (const field of [/What is on this photo\?/, /Description · what is visible/, /Category/, /Exact location/, /Facing direction/]) {
+    assert.match(evidence, field);
+  }
+  // §4.16 also: the original photo is always kept, so marking never destroys it.
+  assert.match(evidence, /original: File;/);
+  assert.match(evidence, /Restore original/);
+  assert.match(evidence, /photo\.id === id \? \{ \.\.\.photo, file: photo\.original, markerCount: 0 \}/);
+
+  // One photo block for every module; the client asked for one way of working, not five.
+  for (const [name, source] of [["entry record", entry], ["daily log", dailyLog], ["issues, inspections, HSE and register", operations], ["photo library", media]]) {
+    assert.match(source, /<PhotoEvidenceList/, `${name} must use the shared photo block`);
+    assert.match(source, /toPhotoEvidence\(/, `${name} must wrap a taken photo so it carries its own words`);
+  }
+  assert.equal(operations.match(/<PhotoEvidenceList/g)?.length, 4);
+  // The old one-off stacks are gone rather than left behind next to the shared block.
+  assert.doesNotMatch(operations, /FindingPhotoStack/);
+  assert.doesNotMatch(entry, /entry-photo-strip/);
+  assert.doesNotMatch(dailyLog, /daily-log-photo-list/);
+
+  // The photo's own words travel into the register, not the record's title for all of them.
+  assert.match(evidence, /export function photoUploadDescription/);
+  assert.equal(operations.match(/photoUploadDescription\(photo,/g)?.length, 4);
+
+  // A phone zooms in on a field below 16px; that guard has to beat every component rule.
+  assert.match(css, /@media \(max-width: 860px\), \(pointer: coarse\)[\s\S]{0,400}font-size: max\(16px, 1em\) !important/);
+});
+
 test("offers marking on the photo everywhere a photo can be attached", async () => {
-  const [markup, entry, dailyLog, operations, media, visual, css] = await Promise.all([
+  const [markup, evidencePad, entry, dailyLog, operations, media, visual, css] = await Promise.all([
     readFile(new URL("../app/photo-markup.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/photo-evidence.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
@@ -125,21 +165,21 @@ test("offers marking on the photo everywhere a photo can be attached", async () 
   ]);
 
   // The client reported that marking existed but was not reachable from the forms. Every
-  // screen that can attach a photo has to open the same marking pad.
-  for (const [name, source] of [["entry record", entry], ["daily log", dailyLog], ["issues, inspections, HSE and register", operations], ["photo library", media], ["visual evidence", visual]]) {
-    assert.match(source, /from "@\/app\/photo-markup"/, `${name} must import the photo marking pad`);
-    assert.match(source, /<PhotoMarkupPad/, `${name} must open the photo marking pad`);
-    assert.match(source, /<MarkPhotoButton/, `${name} must show the way into marking`);
+  // screen that can attach a photo reaches the same marking pad — through the shared photo
+  // block, or directly where the photo has its own full form already.
+  for (const [name, source] of [["entry record", entry], ["daily log", dailyLog], ["issues, inspections, HSE and register", operations], ["photo library", media]]) {
+    assert.match(source, /<PhotoEvidenceList/, `${name} must reach the marking pad through the shared photo block`);
+    assert.match(source, /markupContext=\{/, `${name} must tell the marking pad about the project`);
   }
-  // All four photo stacks in the operational workspace hand a replacement back, and know
-  // which buildings, rooms and parties the marker can be attached to.
-  assert.equal(operations.match(/onReplace=\{\(index, file\)/g)?.length, 4);
+  assert.match(visual, /<PhotoMarkupPad/);
+  assert.match(visual, /<MarkPhotoButton/);
+  assert.match(visual, /\bcontext=\{/);
+  // The shared block is the only place the pad is opened for the forms.
+  assert.match(evidencePad, /<PhotoMarkupPad/);
+  // Every one of the four operational photo blocks knows which buildings, rooms and parties
+  // a marker can be attached to; issues, HSE and registers also take the written detail.
   assert.equal(operations.match(/markupContext=\{\{ \.\.\.markupOptions/g)?.length, 4);
-  // Issues, HSE and register items get the full written detail in their own description.
   assert.equal(operations.match(/onDetail=\{\(report\)/g)?.length, 3);
-  for (const [name, source] of [["entry record", entry], ["daily log", dailyLog], ["photo library", media], ["visual evidence", visual]]) {
-    assert.match(source, /\bcontext=\{/, `${name} must tell the marking pad about the project`);
-  }
 
   // A marker carries more than a pin: words, severity, and where it belongs.
   for (const field of [/Full description/, /Severity/, /Where does this belong\?/, /Responsible party/, /Work package/, /Floor \/ room \/ element/]) {

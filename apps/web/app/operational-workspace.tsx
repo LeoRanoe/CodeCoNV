@@ -40,7 +40,8 @@ import NextImage from "next/image";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
-import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad, type PhotoMarkupContext } from "@/app/photo-markup";
+import { photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
+import { appendPhotoDetail } from "@/app/photo-markup";
 import { SketchPad } from "@/app/sketch-pad";
 import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
@@ -543,8 +544,7 @@ function ProjectOperations({
   const [inspectionTitle, setInspectionTitle] = useState("");
   const [inspectionTemplateId, setInspectionTemplateId] = useState("");
   const [inspectionAnswers, setInspectionAnswers] = useState<Record<string, InspectionAnswer>>({});
-  const [inspectionPhotos, setInspectionPhotos] = useState<File[]>([]);
-  const [inspectionPhotoCaptions, setInspectionPhotoCaptions] = useState<string[]>([]);
+  const [inspectionPhotos, setInspectionPhotos] = useState<PhotoEvidence[]>([]);
   const [inspectionPhotoError, setInspectionPhotoError] = useState("");
   const [findingForm, setFindingForm] = useState({
     type: "deficiency",
@@ -562,12 +562,11 @@ function ProjectOperations({
     // The issue list of the client has its own issuance date column.
     dateIdentified: "",
   });
-  const [findingPhotos, setFindingPhotos] = useState<File[]>([]);
+  const [findingPhotos, setFindingPhotos] = useState<PhotoEvidence[]>([]);
   const [findingPhotoError, setFindingPhotoError] = useState("");
   const [hseForm, setHseForm] = useState({ type: "unsafe_condition", title: "", description: "", severity: "medium", immediateMeasure: "", confidential: false });
-  const [hsePhotos, setHsePhotos] = useState<File[]>([]);
+  const [hsePhotos, setHsePhotos] = useState<PhotoEvidence[]>([]);
   // One short text per evidence photo, in the same order as the photos themselves.
-  const [hsePhotoCaptions, setHsePhotoCaptions] = useState<string[]>([]);
   const [hsePhotoError, setHsePhotoError] = useState("");
   const [registerForm, setRegisterForm] = useState<ControlledDocumentDraft>({ ...emptyControlledDocumentDraft });
   const [registerFiles, setRegisterFiles] = useState<File[]>([]);
@@ -590,8 +589,7 @@ function ProjectOperations({
   const [registerOutcome, setRegisterOutcome] = useState("");
   const [registerQuantity, setRegisterQuantity] = useState("");
   const [registerUnit, setRegisterUnit] = useState("");
-  const [registerPhotos, setRegisterPhotos] = useState<File[]>([]);
-  const [registerPhotoCaptions, setRegisterPhotoCaptions] = useState<string[]>([]);
+  const [registerPhotos, setRegisterPhotos] = useState<PhotoEvidence[]>([]);
   const [registerPhotoError, setRegisterPhotoError] = useState("");
   const [registerSketching, setRegisterSketching] = useState(false);
   // Everything this workspace already knows about the project is offered inside the marking
@@ -878,9 +876,9 @@ function ProjectOperations({
           const folderName = text("Inspections", "Inspecties");
           const photoBuildingId = activeInspection.building_id;
           const folderId = existingMediaFolderId(folderName, photoBuildingId);
-          for (const [photoIndex, photo] of inspectionPhotos.entries()) {
-            const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
-            const caption = inspectionPhotoCaptions[photoIndex]?.trim() ?? "";
+          for (const photo of inspectionPhotos) {
+            const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
+            const caption = photo.details.title.trim();
             await queueOfflineUpload({
               projectId,
               buildingId: photoBuildingId,
@@ -893,11 +891,11 @@ function ProjectOperations({
               mimeType: prepared.mimeType,
               // The photo's own text wins; the checklist title is only the fallback.
               title: caption || activeInspection.title,
-              description: caption || undefined,
+              description: photoUploadDescription(photo, "", language),
               locationLabel: buildings.find((building) => building.id === photoBuildingId)?.name ?? buildingName,
-              locationNodeId: activeInspection.location_node_id,
-              capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
-              originalSize: photo.size,
+              locationNodeId: photo.details.locationNodeId || activeInspection.location_node_id,
+              capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
+              originalSize: photo.original.size,
               queuedSize: prepared.blob.size,
               compressed: prepared.compressed,
               recordLink: { organizationId, recordType: "inspection", recordId: activeInspection.id, relationship: "evidence" },
@@ -913,7 +911,6 @@ function ProjectOperations({
       setInspectionTitle("");
       setInspectionLocationNodeId("");
       setInspectionPhotos([]);
-      setInspectionPhotoCaptions([]);
       setInspectionPhotoError("");
     }
   };
@@ -936,7 +933,7 @@ function ProjectOperations({
 
   const addPhotosToStack = (
     files: FileList | null,
-    setFiles: Dispatch<SetStateAction<File[]>>,
+    setFiles: Dispatch<SetStateAction<PhotoEvidence[]>>,
     setError: Dispatch<SetStateAction<string>>,
   ) => {
     if (!files) return;
@@ -952,8 +949,11 @@ function ProjectOperations({
       setError("");
     }
     setFiles((current) => {
-      const keyed = new Map(current.map((file) => [`${file.name}:${file.size}:${file.lastModified}`, file]));
-      valid.forEach((file) => keyed.set(`${file.name}:${file.size}:${file.lastModified}`, file));
+      const keyed = new Map(current.map((photo) => [`${photo.original.name}:${photo.original.size}:${photo.original.lastModified}`, photo]));
+      valid.forEach((file) => {
+        const key = `${file.name}:${file.size}:${file.lastModified}`;
+        if (!keyed.has(key)) keyed.set(key, toPhotoEvidence(file));
+      });
       return [...keyed.values()].slice(0, 12);
     });
   };
@@ -990,7 +990,9 @@ function ProjectOperations({
         const findingFolderId = existingMediaFolderId(folderName, findingBuildingId);
         const groupId = crypto.randomUUID();
         for (const photo of findingPhotos) {
-          const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
+          const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
+          // The photo's own words win over the record's; without them the register shows a
+          // dozen identical titles for one issue.
           await queueOfflineUpload({
             projectId,
             buildingId: findingBuildingId,
@@ -1001,12 +1003,12 @@ function ProjectOperations({
             file: prepared.blob,
             fileName: prepared.fileName,
             mimeType: prepared.mimeType,
-            title: findingForm.title,
-            description: findingForm.description,
+            title: photo.details.title.trim() || findingForm.title,
+            description: photoUploadDescription(photo, findingForm.description, language),
             locationLabel: findingBuildingName,
-            locationNodeId: findingLocationNodeId || null,
-            capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
-            originalSize: photo.size,
+            locationNodeId: photo.details.locationNodeId || findingLocationNodeId || null,
+            capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
+            originalSize: photo.original.size,
             queuedSize: prepared.blob.size,
             compressed: prepared.compressed,
             findingGroup: {
@@ -1060,9 +1062,9 @@ function ProjectOperations({
         if (hsePhotos.length) {
           const folderName = "HSE";
           const folderId = existingMediaFolderId(folderName, hseBuildingId);
-          for (const [photoIndex, photo] of hsePhotos.entries()) {
-            const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
-            const caption = hsePhotoCaptions[photoIndex]?.trim() ?? "";
+          for (const photo of hsePhotos) {
+            const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
+            const caption = photo.details.title.trim();
             await queueOfflineUpload({
               projectId,
               buildingId: hseBuildingId,
@@ -1075,11 +1077,11 @@ function ProjectOperations({
               mimeType: prepared.mimeType,
               // The photo's own text wins; the record title is only the fallback.
               title: caption || hseForm.title,
-              description: caption ? `${caption} · ${hseForm.description}` : hseForm.description,
+              description: photoUploadDescription(photo, hseForm.description, language),
               locationLabel: hseBuildingName,
-              locationNodeId: hseLocationNodeId || null,
-              capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
-              originalSize: photo.size,
+              locationNodeId: photo.details.locationNodeId || hseLocationNodeId || null,
+              capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
+              originalSize: photo.original.size,
               queuedSize: prepared.blob.size,
               compressed: prepared.compressed,
               recordLink: { organizationId, recordType: "hse", recordId: event.id, relationship: "evidence" },
@@ -1093,7 +1095,6 @@ function ProjectOperations({
     if (okay) {
       setHseForm({ type: "unsafe_condition", title: "", description: "", severity: "medium", immediateMeasure: "", confidential: false });
       setHsePhotos([]);
-      setHsePhotoCaptions([]);
       setHsePhotoError("");
       setHseLocationNodeId("");
       setShowForm(false);
@@ -1162,9 +1163,9 @@ function ProjectOperations({
         if (registerPhotos.length) {
           const folderName = text("Register evidence", "Registerbewijs");
           const folderId = existingMediaFolderId(folderName, registerPhotoBuildingId);
-          for (const [photoIndex, photo] of registerPhotos.entries()) {
-            const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
-            const caption = registerPhotoCaptions[photoIndex]?.trim() ?? "";
+          for (const photo of registerPhotos) {
+            const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
+            const caption = photo.details.title.trim();
             await queueOfflineUpload({
               projectId,
               buildingId: registerPhotoBuildingId,
@@ -1176,11 +1177,11 @@ function ProjectOperations({
               fileName: prepared.fileName,
               mimeType: prepared.mimeType,
               title: caption || `${entry.entry_number} · ${registerForm.title.trim()}`.slice(0, 120),
-              description: caption,
+              description: photoUploadDescription(photo, "", language),
               locationLabel: registerBuildingName,
-              locationNodeId: registerLocationNodeId || null,
-              capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
-              originalSize: photo.size,
+              locationNodeId: photo.details.locationNodeId || registerLocationNodeId || null,
+              capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
+              originalSize: photo.original.size,
               queuedSize: prepared.blob.size,
               compressed: prepared.compressed,
               recordLink: { organizationId, recordType: "register_entry", recordId: entry.id, relationship: "evidence" },
@@ -1215,7 +1216,6 @@ function ProjectOperations({
       setRegisterQuantity("");
       setRegisterUnit("");
       setRegisterPhotos([]);
-      setRegisterPhotoCaptions([]);
       setRegisterPhotoError("");
       setRegisterDrawingId("");
       setRegisterLocationNodeId("");
@@ -1402,21 +1402,11 @@ function ProjectOperations({
                 <span><strong>{inspectionPhotos.length ? text(`${inspectionPhotos.length} evidence photos ready`, `${inspectionPhotos.length} bewijsfoto’s klaar`) : text("Take inspection evidence photo", "Maak inspectiebewijsfoto")}</strong><small>{text("Tap again for another photo. Every image is linked to this inspection.", "Tik opnieuw voor nog een foto. Elk beeld wordt aan deze inspectie gekoppeld.")}</small></span>
                 <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setInspectionPhotos, setInspectionPhotoError); event.currentTarget.value = ""; }} />
               </label>
-              {inspectionPhotos.length ? <FindingPhotoStack
-                files={inspectionPhotos}
+              <PhotoEvidenceList
+                photos={inspectionPhotos}
+                setPhotos={setInspectionPhotos}
                 markupContext={{ ...markupOptions, defaultBuildingId: activeInspection.building_id }}
-                onReplace={(index, file) => setInspectionPhotos((current) => current.map((photo, currentIndex) => currentIndex === index ? file : photo))}
-                captions={inspectionPhotoCaptions}
-                onCaption={(index, caption) => setInspectionPhotoCaptions((current) => {
-                  const next = [...current];
-                  next[index] = caption;
-                  return next;
-                })}
-                onRemove={(index) => {
-                  setInspectionPhotos((current) => current.filter((_, currentIndex) => currentIndex !== index));
-                  setInspectionPhotoCaptions((current) => current.filter((_, currentIndex) => currentIndex !== index));
-                }}
-              /> : null}
+              />
               {inspectionPhotoError ? <p className="field-error" role="alert">{inspectionPhotoError}</p> : null}
               <div className="form-actions checklist-sticky-actions"><button className="secondary-button" type="button" onClick={() => setActiveInspection(null)}>{text("Complete later", "Later afronden")}</button><button className="primary-button" type="button" disabled={busy || activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))} onClick={() => void submitInspection()}>{busy ? <Loader2 className="spin" size={15} /> : <FileCheck2 size={15} />} {text("Complete inspection", "Inspectie afronden")}</button></div>
             </div>
@@ -1491,13 +1481,12 @@ function ProjectOperations({
                 <span><strong>{findingPhotos.length ? text(`${findingPhotos.length} photos stacked for this issue`, `${findingPhotos.length} foto’s gestapeld voor dit probleem`) : text("Take or choose issue photos", "Maak of kies probleemfoto’s")}</strong><small>{text("Tap again to add another photo. Project, building, date and time are linked automatically.", "Tik opnieuw om nog een foto toe te voegen. Project, gebouw, datum en tijd worden automatisch gekoppeld.")}</small></span>
                 <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
               </label>
-              {findingPhotos.length ? <FindingPhotoStack
-                files={findingPhotos}
+              <PhotoEvidenceList
+                photos={findingPhotos}
+                setPhotos={setFindingPhotos}
                 markupContext={{ ...markupOptions, defaultBuildingId: findingBuildingId }}
-                onReplace={(index, file) => setFindingPhotos((current) => current.map((photo, currentIndex) => currentIndex === index ? file : photo))}
                 onDetail={(report) => setFindingForm((current) => ({ ...current, description: appendPhotoDetail(current.description, report) }))}
-                onRemove={(index) => setFindingPhotos((current) => current.filter((_, currentIndex) => currentIndex !== index))}
-              /> : null}
+              />
               {findingPhotoError ? <p className="field-error" role="alert">{findingPhotoError}</p> : null}
               <div className="quick-issue-presets" aria-label={text("Common issue choices", "Veelvoorkomende problemen")}>
                 {findingPresets.map((preset) => <button className={findingForm.title === preset.title ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, title: preset.title, description: preset.description, type: preset.title === text("Safety risk", "Veiligheidsrisico") ? "observation" : "deficiency", severity: preset.title === text("Safety risk", "Veiligheidsrisico") ? "high" : findingForm.severity })} key={preset.title}>{preset.title}</button>)}
@@ -1641,22 +1630,12 @@ function ProjectOperations({
                 <span><strong>{hsePhotos.length ? text(`${hsePhotos.length} evidence photos ready`, `${hsePhotos.length} bewijsfoto’s klaar`) : text("Take HSE evidence photo", "Maak HSE-bewijsfoto")}</strong><small>{text("Tap again to stack situation and control-measure photos.", "Tik opnieuw om situatie- en maatregelfoto’s te stapelen.")}</small></span>
                 <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setHsePhotos, setHsePhotoError); event.currentTarget.value = ""; }} />
               </label>
-              {hsePhotos.length ? <FindingPhotoStack
-                files={hsePhotos}
+              <PhotoEvidenceList
+                photos={hsePhotos}
+                setPhotos={setHsePhotos}
                 markupContext={{ ...markupOptions, defaultBuildingId: hseBuildingId }}
-                onReplace={(index, file) => setHsePhotos((current) => current.map((photo, currentIndex) => currentIndex === index ? file : photo))}
                 onDetail={(report) => setHseForm((current) => ({ ...current, description: appendPhotoDetail(current.description, report) }))}
-                captions={hsePhotoCaptions}
-                onCaption={(index, caption) => setHsePhotoCaptions((current) => {
-                  const next = [...current];
-                  next[index] = caption;
-                  return next;
-                })}
-                onRemove={(index) => {
-                  setHsePhotos((current) => current.filter((_, currentIndex) => currentIndex !== index));
-                  setHsePhotoCaptions((current) => current.filter((_, currentIndex) => currentIndex !== index));
-                }}
-              /> : null}
+              />
               {hsePhotoError ? <p className="field-error" role="alert">{hsePhotoError}</p> : null}
               <BuildingPicker id="hse-building" buildings={buildings} value={hseBuildingId} onChange={(next) => { setHseBuildingId(next); setHseLocationNodeId(""); }} />
               <LocationPicker id="hse-location" nodes={data.locationNodes} buildingId={hseBuildingId} value={hseLocationNodeId} onChange={setHseLocationNodeId} requiredDepth={requiredLocationDepth} />
@@ -1808,23 +1787,13 @@ function ProjectOperations({
                 <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setRegisterPhotos, setRegisterPhotoError); event.currentTarget.value = ""; }} />
               </label>
               <button className="ghost-button sketch-open-button" type="button" onClick={() => setRegisterSketching(true)}><PenLine size={15} /> {text("Make a sketch", "Schets maken")}</button>
-              {registerSketching ? <SketchPad close={() => setRegisterSketching(false)} save={(file) => { setRegisterPhotos((current) => [...current, file]); setRegisterSketching(false); }} /> : null}
-              {registerPhotos.length ? <FindingPhotoStack
-                files={registerPhotos}
+              {registerSketching ? <SketchPad close={() => setRegisterSketching(false)} save={(file) => { setRegisterPhotos((current) => [...current, toPhotoEvidence(file, { category: "overview" })]); setRegisterSketching(false); }} /> : null}
+              <PhotoEvidenceList
+                photos={registerPhotos}
+                setPhotos={setRegisterPhotos}
                 markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId === ALL_BUILDINGS ? "" : registerBuildingId }}
-                onReplace={(index, file) => setRegisterPhotos((current) => current.map((photo, currentIndex) => currentIndex === index ? file : photo))}
                 onDetail={(report) => setRegisterForm((current) => ({ ...current, details: appendPhotoDetail(current.details, report) }))}
-                captions={registerPhotoCaptions}
-                onCaption={(index, caption) => setRegisterPhotoCaptions((current) => {
-                  const next = [...current];
-                  next[index] = caption;
-                  return next;
-                })}
-                onRemove={(index) => {
-                  setRegisterPhotos((current) => current.filter((_, currentIndex) => currentIndex !== index));
-                  setRegisterPhotoCaptions((current) => current.filter((_, currentIndex) => currentIndex !== index));
-                }}
-              /> : null}
+              />
               {registerPhotoError ? <p className="field-error" role="alert">{registerPhotoError}</p> : null}
               <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && registerBuildingId !== ALL_BUILDINGS && !registerLocationNodeId) || registerForm.title.trim().length < 3 || !controlledFormReady} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : text("Save register item", "Registeritem opslaan")}</button>
             </div>
@@ -2109,89 +2078,6 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
  * Photos waiting to be saved. With `captions` every photo also gets the short text that
  * explains what it shows; the file name alone means nothing in a report.
  */
-/**
- * Every stacked photo can be marked on the picture itself. The client's supervisors take the
- * photo first and only then realise they have to point at what is wrong, so the way in has to
- * be here, next to the photo, and not in a separate workspace that loses the half-filled form.
- */
-function FindingPhotoStack({
-  files,
-  onRemove,
-  onReplace,
-  onDetail,
-  markupContext,
-  captions,
-  onCaption,
-}: {
-  files: File[];
-  onRemove: (index: number) => void;
-  onReplace?: (index: number, file: File) => void;
-  /** Receives the full written detail of what was marked, for the form's own description. */
-  onDetail?: (report: string) => void;
-  markupContext?: PhotoMarkupContext;
-  captions?: string[];
-  onCaption?: (index: number, caption: string) => void;
-}) {
-  const { text } = useLanguage();
-  const [markupIndex, setMarkupIndex] = useState(-1);
-  const [markerCounts, setMarkerCounts] = useState<Map<File, number>>(() => new Map());
-  const markupFile = markupIndex >= 0 ? files[markupIndex] ?? null : null;
-
-  return (
-    <div className={`finding-photo-stack ${onCaption ? "with-captions" : ""}`} aria-label={text("Photos attached to this issue", "Foto’s bij dit probleem")}>
-      {files.map((file, index) => (
-        <article key={`${file.name}:${file.size}:${file.lastModified}`}>
-          <div className="finding-photo-frame">
-            {onReplace ? (
-              <button
-                className="finding-photo-open"
-                type="button"
-                onClick={() => setMarkupIndex(index)}
-                aria-label={text(`Mark on photo ${index + 1}`, `Markeer op foto ${index + 1}`)}
-              ><FindingPhotoPreview file={file} /></button>
-            ) : <FindingPhotoPreview file={file} />}
-            {onCaption ? null : <span><strong>{index + 1}</strong><small>{file.name}</small></span>}
-          </div>
-          {onCaption ? (
-            <label className="form-field photo-caption-field">
-              <span>{text(`Photo ${index + 1} · what does it show?`, `Foto ${index + 1} · wat is te zien?`)}</span>
-              <input
-                value={captions?.[index] ?? ""}
-                onChange={(event) => onCaption(index, event.target.value)}
-                placeholder={text("For example: unsecured opening on level 2", "Bijvoorbeeld: onbeveiligde opening op niveau 2")}
-              />
-            </label>
-          ) : null}
-          {onReplace ? <MarkPhotoButton compact markerCount={markerCounts.get(file)} onClick={() => setMarkupIndex(index)} /> : null}
-          <button className="finding-photo-remove" type="button" onClick={() => onRemove(index)} aria-label={text(`Remove photo ${index + 1}`, `Verwijder foto ${index + 1}`)}><X size={14} /></button>
-        </article>
-      ))}
-      {markupFile && onReplace ? (
-        <PhotoMarkupPad
-          file={markupFile}
-          context={markupContext}
-          close={() => setMarkupIndex(-1)}
-          save={({ file, summary, report, markerCount }) => {
-            onReplace(markupIndex, file);
-            setMarkerCounts((current) => new Map(current).set(file, markerCount));
-            // What was marked becomes the words under the photo, unless the supervisor
-            // already wrote something better there.
-            if (summary && onCaption && !(captions?.[markupIndex] ?? "").trim()) onCaption(markupIndex, summary);
-            if (report) onDetail?.(report);
-            setMarkupIndex(-1);
-          }}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-function FindingPhotoPreview({ file }: { file: File }) {
-  const [source] = useState(() => URL.createObjectURL(file));
-  useEffect(() => () => URL.revokeObjectURL(source), [source]);
-  return <NextImage src={source} alt="" width={160} height={110} unoptimized />;
-}
-
 function StoredPhotoThumbnail({ client, file }: { client: SupabaseClient; file: FileRecord }) {
   const [source, setSource] = useState("");
   const [failed, setFailed] = useState(false);
