@@ -4,7 +4,7 @@ import { Camera, CloudSun, HardHat, Loader2, ShieldCheck, TimerOff, Users, X } f
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BuildingMultiPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
-import { MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
+import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
 import type { DailyCloseoutAnswers, ProjectStartAnswers } from "@/lib/forms/daily-report";
 
@@ -430,9 +430,17 @@ export function DailyLogModal({
               <PhotoMarkupPad
                 file={markupPhoto.file}
                 close={() => setMarkupIndex(-1)}
-                save={({ file, summary, markerCount }) => {
+                context={{
+                  buildings: buildings.map((building) => ({ id: building.id, label: building.name })),
+                  defaultBuildingId: buildingId,
+                  parties: parties.map((party) => ({ id: party.id, label: party.name })),
+                }}
+                save={({ file, summary, report, markerCount }) => {
                   applyMarkup(markupIndex, file, summary);
                   setMarkerCounts((current) => new Map(current).set(file, markerCount));
+                  // The detail behind the photo belongs in the quality block of the log, where
+                  // the report reads it back out.
+                  if (report) setLog((current) => ({ ...current, qcPerformed: appendPhotoDetail(current.qcPerformed, report) }));
                   setMarkupIndex(-1);
                 }}
               />

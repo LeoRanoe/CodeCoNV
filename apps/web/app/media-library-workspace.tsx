@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
-import { MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
+import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
 import {
   compressFieldPhoto,
@@ -391,11 +391,16 @@ export function MediaLibraryWorkspace({
             {markupCapture ? (
               <PhotoMarkupPad
                 file={markupCapture}
+                context={{
+                  buildings: buildings.map((building) => ({ id: building.id, label: building.name })),
+                  defaultBuildingId: libraryBuildingId,
+                  locations: data.locationNodes.map((node) => ({ id: node.id, label: `${node.code} · ${node.name}`, buildingId: node.building_id })),
+                }}
                 close={() => setMarkupIndex(-1)}
-                save={({ file, summary, markerCount }) => {
+                save={({ file, report, markerCount }) => {
                   setPendingCapture((current) => current.map((photo, index) => index === markupIndex ? file : photo));
                   setMarkerCounts((current) => new Map(current).set(file, markerCount));
-                  if (summary) setPhotoDescription((current) => appendDictation(current, summary));
+                  if (report) setPhotoDescription((current) => appendPhotoDetail(current, report));
                   setMarkupIndex(-1);
                 }}
               />

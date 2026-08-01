@@ -53,7 +53,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { ALL_BUILDINGS, BuildingMultiPicker, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
-import { MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
+import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
 import { SketchPad } from "@/app/sketch-pad";
 import { ClientDashboard } from "@/app/client-dashboard";
 import { DailyLogModal } from "@/app/daily-log-modal";
@@ -3564,6 +3564,14 @@ function EntryModal({
   // Counted per photo, not per position: removing one photo must not move the badge of another.
   const [markerCounts, setMarkerCounts] = useState<Map<File, number>>(() => new Map());
   const markupPhoto = markupIndex >= 0 ? photos[markupIndex] ?? null : null;
+  // What this record already knows about the project is offered inside the marking pad, so a
+  // marker can say which building, floor, room and work package it belongs to.
+  const markupContext = useMemo(() => ({
+    buildings: buildings.map((building) => ({ id: building.id, label: building.name })),
+    defaultBuildingId: buildingIds.length === 1 ? buildingIds[0] : "",
+    locations: locationNodes.map((node) => ({ id: node.id, label: locationBreadcrumb(locationNodes, node.id), buildingId: node.building_id })),
+    workPackages: workPackageOptions.map((option) => (language === "en" ? option.en : option.nl)),
+  }), [buildingIds, buildings, language, locationNodes]);
   const photoPreviews = useMemo(() => photos.map((photo) => URL.createObjectURL(photo)), [photos]);
   useEffect(() => () => photoPreviews.forEach((preview) => URL.revokeObjectURL(preview)), [photoPreviews]);
   const title = (language === "en" ? entryTitlesEnglish : entryTitles)[selectedType] ?? text("Record", "Registratie");
@@ -3710,11 +3718,14 @@ function EntryModal({
               {markupPhoto ? (
                 <PhotoMarkupPad
                   file={markupPhoto}
+                  context={markupContext}
                   close={() => setMarkupIndex(-1)}
-                  save={({ file, summary, markerCount }) => {
+                  save={({ file, report, markerCount }) => {
                     replacePhoto(markupIndex, file);
                     setMarkerCounts((current) => new Map(current).set(file, markerCount));
-                    if (summary) dictateDescription(text(`Marked on photo: ${summary}`, `Op de foto gemarkeerd: ${summary}`));
+                    // The written detail lands in the record itself, so the register says the
+                    // same thing as the picture.
+                    if (report) setDescription(appendPhotoDetail(description, `${text("Marked on photo:", "Op de foto gemarkeerd:")}\n${report}`));
                     setMarkupIndex(-1);
                   }}
                 />

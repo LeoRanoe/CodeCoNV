@@ -11,6 +11,8 @@ import {
   markupCanvasSize,
   markupScale,
   normalizedImagePoint,
+  photoMarkupPlacement,
+  photoMarkupReport,
   photoMarkupSummary,
   photoMarkupToneColors,
   validatePanoramaDimensions,
@@ -69,6 +71,39 @@ test("writes what was marked on a photo back into the record's own words", () =>
   );
   assert.equal(photoMarkupSummary([{ label: "" }, {}]), "");
 
+  // Where a marking belongs; missing parts are left out instead of printed as a dash.
+  assert.equal(
+    photoMarkupPlacement({ buildingName: "Main building", locationLabel: "2e verdieping", element: "kolom lijn B", workPackage: "Beton" }),
+    "Main building → 2e verdieping → kolom lijn B → Beton",
+  );
+  assert.equal(photoMarkupPlacement({ buildingName: "  ", locationLabel: "Dak" }), "Dak");
+  assert.equal(photoMarkupPlacement({}), "");
+
+  // The full detail block: number, title, severity, where it belongs, who is responsible and
+  // the sentences the supervisor spoke or typed.
+  const report = photoMarkupReport(
+    [
+      {
+        label: "Scheur of beschadiging",
+        description: "Scheur over de volle hoogte; herstellen en laten herkeuren.",
+        severity: "high",
+        buildingName: "Main building",
+        locationLabel: "2e verdieping",
+        responsiblePartyName: "Aannemer B",
+      },
+      { label: "", description: "" },
+      { label: "Afwerking", severity: "low" },
+    ],
+    { severityLabels: { high: "Hoog", low: "Laag" }, responsibleLabel: "Verantwoordelijke" },
+  );
+  assert.equal(
+    report,
+    "1. Scheur of beschadiging · Hoog · Main building → 2e verdieping · Verantwoordelijke: Aannemer B\n"
+    + "Scheur over de volle hoogte; herstellen en laten herkeuren.\n"
+    + "3. Afwerking · Laag",
+  );
+  assert.equal(photoMarkupReport([{ label: "  " }]), "");
+
   // A marked photo replaces the photo it came from instead of piling up new names.
   assert.equal(markedPhotoName("IMG_7112.jpeg"), "IMG_7112-marked.jpg");
   assert.equal(markedPhotoName("IMG_7112-marked.jpg"), "IMG_7112-marked.jpg");
@@ -96,8 +131,34 @@ test("offers marking on the photo everywhere a photo can be attached", async () 
     assert.match(source, /<PhotoMarkupPad/, `${name} must open the photo marking pad`);
     assert.match(source, /<MarkPhotoButton/, `${name} must show the way into marking`);
   }
-  // All four photo stacks in the operational workspace hand a replacement back.
+  // All four photo stacks in the operational workspace hand a replacement back, and know
+  // which buildings, rooms and parties the marker can be attached to.
   assert.equal(operations.match(/onReplace=\{\(index, file\)/g)?.length, 4);
+  assert.equal(operations.match(/markupContext=\{\{ \.\.\.markupOptions/g)?.length, 4);
+  // Issues, HSE and register items get the full written detail in their own description.
+  assert.equal(operations.match(/onDetail=\{\(report\)/g)?.length, 3);
+  for (const [name, source] of [["entry record", entry], ["daily log", dailyLog], ["photo library", media], ["visual evidence", visual]]) {
+    assert.match(source, /\bcontext=\{/, `${name} must tell the marking pad about the project`);
+  }
+
+  // A marker carries more than a pin: words, severity, and where it belongs.
+  for (const field of [/Full description/, /Severity/, /Where does this belong\?/, /Responsible party/, /Work package/, /Floor \/ room \/ element/]) {
+    assert.match(markup, field);
+  }
+  // Draw, arrow, frame and text are offered next to the marker tool.
+  for (const tool of ['{ id: "pen"', '{ id: "arrow"', '{ id: "box"', '{ id: "text"']) {
+    assert.ok(markup.includes(tool), `the marking pad must offer ${tool}`);
+  }
+
+  // The colour chips choose the colour of the next marking. They must never recolour a marker
+  // that is already on the photo: that silently reclassified a marker while drawing a frame.
+  assert.match(markup, /onClick=\{\(\) => setTone\(option\)\}/);
+  assert.doesNotMatch(markup, /setTone\(option\);\s*\n\s*if \(activeMarker\)/);
+  // Tools and photo are pinned together, under a header that does not cover the picture; the
+  // sticky header used to sit on top of the photo and swallow taps meant for it.
+  assert.match(markup, /className="photo-markup-pinned"/);
+  assert.match(css, /\.photo-markup-modal \.modal-header \{ position: static/);
+  assert.match(css, /\.photo-markup-pinned \{[\s\S]{0,200}position: sticky/);
 
   // Dragging the pen must not turn into dragging the photo, which cancels the stroke.
   assert.match(markup, /draggable=\{false\}/);

@@ -1,26 +1,113 @@
 "use client";
 
-import { Check, Loader2, MapPin, PenLine, Trash2, Undo2, X } from "lucide-react";
+import {
+  ArrowUpRight,
+  Check,
+  Loader2,
+  MapPin,
+  PenLine,
+  Square,
+  Trash2,
+  Type as TypeIcon,
+  Undo2,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { useLanguage } from "@/lib/i18n";
 import {
   markedPhotoName,
   markupCanvasSize,
   markupScale,
   normalizedImagePoint,
+  photoMarkupPlacement,
+  photoMarkupReport,
   photoMarkupSummary,
   photoMarkupToneColors,
 } from "@/lib/images/field-image.mjs";
 
 type MarkerTone = "to_be_corrected" | "alternative_solution" | "validated";
-type Marker = { id: string; xRatio: number; yRatio: number; label: string; tone: MarkerTone };
-type Stroke = { tone: MarkerTone; points: Array<{ x: number; y: number }> };
+type Severity = "low" | "medium" | "high" | "critical";
+type Point = { x: number; y: number };
 
-/** The marked photo plus the written list of what was marked on it. */
-export type PhotoMarkupResult = { file: File; summary: string; markerCount: number };
+type Marker = {
+  id: string;
+  xRatio: number;
+  yRatio: number;
+  tone: MarkerTone;
+  label: string;
+  description: string;
+  severity: Severity;
+  buildingId: string;
+  locationNodeId: string;
+  element: string;
+  workPackage: string;
+  responsiblePartyId: string;
+};
+
+type Shape =
+  | { id: string; kind: "pen"; tone: MarkerTone; width: number; points: Point[] }
+  | { id: string; kind: "arrow"; tone: MarkerTone; width: number; from: Point; to: Point }
+  | { id: string; kind: "box"; tone: MarkerTone; width: number; from: Point; to: Point }
+  | { id: string; kind: "text"; tone: MarkerTone; at: Point; value: string };
+
+type Tool = "marker" | "pen" | "arrow" | "box" | "text";
+
+/** A choice the surrounding screen already knows about, offered inside the marking pad. */
+export type MarkupOption = { id: string; label: string; buildingId?: string };
+
+/**
+ * What the screen around the pad can tell it about the project. Everything is optional: a
+ * screen that does not know the rooms simply does not show the room field.
+ */
+export type PhotoMarkupContext = {
+  buildings?: MarkupOption[];
+  defaultBuildingId?: string;
+  locations?: MarkupOption[];
+  parties?: MarkupOption[];
+  workPackages?: string[];
+};
+
+/** One marking, in words, exactly as it is numbered on the photo. */
+export type PhotoMarkupNote = {
+  number: number;
+  label: string;
+  description: string;
+  tone: MarkerTone;
+  severity: Severity;
+  buildingId: string;
+  buildingName: string;
+  locationNodeId: string;
+  locationLabel: string;
+  element: string;
+  workPackage: string;
+  responsiblePartyId: string;
+  responsiblePartyName: string;
+  xRatio: number;
+  yRatio: number;
+};
+
+export type PhotoMarkupResult = {
+  file: File;
+  /** One line, for a caption field. */
+  summary: string;
+  /** The full numbered detail, for a description field. */
+  report: string;
+  notes: PhotoMarkupNote[];
+  markerCount: number;
+};
 
 function newId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * The detail of a marked photo is a numbered block, not a sentence, so it is appended on its
+ * own lines instead of running into whatever the supervisor already wrote.
+ */
+export function appendPhotoDetail(current: string, block: string) {
+  if (!block.trim()) return current;
+  return current.trim() ? `${current.trim()}\n\n${block.trim()}` : block.trim();
 }
 
 function loadImage(url: string) {
@@ -32,39 +119,67 @@ function loadImage(url: string) {
   });
 }
 
+function emptyMarker(tone: MarkerTone, point: Point, buildingId: string): Marker {
+  return {
+    id: newId(),
+    xRatio: point.x,
+    yRatio: point.y,
+    tone,
+    label: "",
+    description: "",
+    severity: "medium",
+    buildingId,
+    locationNodeId: "",
+    element: "",
+    workPackage: "",
+    responsiblePartyId: "",
+  };
+}
+
 /**
  * Marking a photo is the fastest way a supervisor can say what is wrong: tap the spot on the
- * picture, pick or type what is wrong there, done. The markings are burnt into the photo
- * itself, so the picture keeps its meaning in a report, an e-mail or a printed punch list —
- * no viewer, no database record and no connection required. The written list comes back with
- * the file so the record's own text stays in step with what the picture shows.
+ * picture, say what is wrong there, where it belongs and who has to fix it. The drawing is
+ * burnt into the photo itself, so the picture keeps its meaning in a report, an e-mail or a
+ * printed punch list — no viewer, no database record and no connection required. The written
+ * detail comes back with the file so the record's own text stays in step with the picture.
  */
 export function PhotoMarkupPad({
   file,
   close,
   save,
-  busyLabel,
+  context = {},
 }: {
   file: File;
   close: () => void;
   save: (result: PhotoMarkupResult) => void;
-  busyLabel?: string;
+  context?: PhotoMarkupContext;
 }) {
   const { text } = useLanguage();
   const imageRef = useRef<HTMLImageElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
-  const drawingRef = useRef(false);
-  const [mode, setMode] = useState<"mark" | "draw">("mark");
+  const drawingRef = useRef<{ id: string; moved: boolean } | null>(null);
+  const draggingMarkerRef = useRef<{ id: string; moved: boolean } | null>(null);
+  const [tool, setTool] = useState<Tool>("marker");
   const [tone, setTone] = useState<MarkerTone>("to_be_corrected");
+  const [penWidth, setPenWidth] = useState(4);
   const [markers, setMarkers] = useState<Marker[]>([]);
-  const [strokes, setStrokes] = useState<Stroke[]>([]);
-  const [activeMarkerId, setActiveMarkerId] = useState("");
+  const [shapes, setShapes] = useState<Shape[]>([]);
+  const [history, setHistory] = useState<Array<{ kind: "marker" | "shape"; id: string }>>([]);
+  const [selected, setSelected] = useState<{ kind: "marker" | "shape"; id: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const previewUrl = useMemo(() => URL.createObjectURL(file), [file]);
   useEffect(() => () => URL.revokeObjectURL(previewUrl), [previewUrl]);
 
-  const activeMarker = markers.find((marker) => marker.id === activeMarkerId) ?? null;
+  const buildings = useMemo(() => context.buildings ?? [], [context.buildings]);
+  const parties = useMemo(() => context.parties ?? [], [context.parties]);
+  const workPackages = context.workPackages ?? [];
+  const defaultBuildingId = context.defaultBuildingId ?? (buildings.length === 1 ? buildings[0].id : "");
+  const activeMarker = selected?.kind === "marker" ? markers.find((marker) => marker.id === selected.id) ?? null : null;
+  const activeText = selected?.kind === "shape"
+    ? shapes.find((shape) => shape.id === selected.id && shape.kind === "text") as Extract<Shape, { kind: "text" }> | undefined ?? null
+    : null;
+
   const labelPresets = [
     text("Crack or damage", "Scheur of beschadiging"),
     text("Work incomplete", "Werk niet volledig"),
@@ -78,14 +193,44 @@ export function PhotoMarkupPad({
     alternative_solution: text("Alternative solution", "Andere oplossing"),
     validated: text("Approved", "Goedgekeurd"),
   };
+  const severityLabels: Record<Severity, string> = {
+    low: text("Low · 14 days", "Laag · 14 dagen"),
+    medium: text("Medium · 7 days", "Middel · 7 dagen"),
+    high: text("High · 3 days", "Hoog · 3 dagen"),
+    critical: text("Critical · 1 day", "Kritiek · 1 dag"),
+  };
+  const shortSeverity: Record<Severity, string> = {
+    low: text("Low", "Laag"),
+    medium: text("Medium", "Middel"),
+    high: text("High", "Hoog"),
+    critical: text("Critical", "Kritiek"),
+  };
 
-  // The freehand lines live on top of the photo at the size the photo happens to be shown,
-  // so they are stored as ratios and repainted whenever that size changes.
+  const describeMarker = useCallback((marker: Marker, index: number): PhotoMarkupNote => ({
+    number: index + 1,
+    label: marker.label.trim(),
+    description: marker.description.trim(),
+    tone: marker.tone,
+    severity: marker.severity,
+    buildingId: marker.buildingId,
+    buildingName: buildings.find((building) => building.id === marker.buildingId)?.label ?? "",
+    locationNodeId: marker.locationNodeId,
+    locationLabel: (context.locations ?? []).find((location) => location.id === marker.locationNodeId)?.label ?? "",
+    element: marker.element.trim(),
+    workPackage: marker.workPackage,
+    responsiblePartyId: marker.responsiblePartyId,
+    responsiblePartyName: parties.find((party) => party.id === marker.responsiblePartyId)?.label ?? "",
+    xRatio: marker.xRatio,
+    yRatio: marker.yRatio,
+  }), [buildings, context.locations, parties]);
+
+  // The drawing lives on top of the photo at the size the photo happens to be shown, so every
+  // point is stored as a ratio and repainted whenever that size changes.
   const paintOverlay = useCallback(() => {
     const canvas = overlayRef.current;
     const image = imageRef.current;
-    const context = canvas?.getContext("2d");
-    if (!canvas || !image || !context) return;
+    const context2d = canvas?.getContext("2d");
+    if (!canvas || !image || !context2d) return;
     const rect = image.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
     const ratio = Math.min(window.devicePixelRatio || 1, 2);
@@ -95,20 +240,14 @@ export function PhotoMarkupPad({
     }
     canvas.style.width = `${rect.width}px`;
     canvas.style.height = `${rect.height}px`;
-    context.setTransform(ratio, 0, 0, ratio, 0, 0);
-    context.clearRect(0, 0, rect.width, rect.height);
-    context.lineCap = "round";
-    context.lineJoin = "round";
-    context.lineWidth = Math.max(3, Math.round(Math.min(rect.width, rect.height) * 0.01));
-    for (const stroke of strokes) {
-      if (stroke.points.length < 2) continue;
-      context.strokeStyle = photoMarkupToneColors[stroke.tone];
-      context.beginPath();
-      context.moveTo(stroke.points[0].x * rect.width, stroke.points[0].y * rect.height);
-      for (const point of stroke.points.slice(1)) context.lineTo(point.x * rect.width, point.y * rect.height);
-      context.stroke();
-    }
-  }, [strokes]);
+    context2d.setTransform(ratio, 0, 0, ratio, 0, 0);
+    context2d.clearRect(0, 0, rect.width, rect.height);
+    drawShapes(context2d, shapes, rect.width, rect.height, {
+      strokeScale: Math.min(rect.width, rect.height) / 400,
+      fontSize: Math.max(12, Math.round(Math.min(rect.width, rect.height) * 0.05)),
+      selectedId: selected?.kind === "shape" ? selected.id : "",
+    });
+  }, [selected, shapes]);
 
   useEffect(() => {
     paintOverlay();
@@ -128,70 +267,101 @@ export function PhotoMarkupPad({
     return normalizedImagePoint(clientX, clientY, image.getBoundingClientRect());
   };
 
-  const addMarker = (clientX: number, clientY: number) => {
-    const point = ratioFrom(clientX, clientY);
-    const marker: Marker = { id: newId(), xRatio: point.x, yRatio: point.y, label: "", tone };
+  const remember = (kind: "marker" | "shape", id: string) => setHistory((current) => [...current, { kind, id }]);
+
+  const addMarker = (point: Point) => {
+    const marker = emptyMarker(tone, point, defaultBuildingId);
     setMarkers((current) => [...current, marker]);
-    setActiveMarkerId(marker.id);
+    remember("marker", marker.id);
+    setSelected({ kind: "marker", id: marker.id });
   };
 
-  const startStroke = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (mode !== "draw") return;
+  const addText = (point: Point) => {
+    const shape: Shape = { id: newId(), kind: "text", tone, at: point, value: "" };
+    setShapes((current) => [...current, shape]);
+    remember("shape", shape.id);
+    setSelected({ kind: "shape", id: shape.id });
+  };
+
+  const startOnStage = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (draggingMarkerRef.current) return;
+    if (tool === "marker" || tool === "text") return;
     // Without this the browser starts dragging the photo as an image, which cancels the
     // pointer stream and cuts the line off after a few millimetres.
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    drawingRef.current = true;
     const point = ratioFrom(event.clientX, event.clientY);
-    setStrokes((current) => [...current, { tone, points: [{ x: point.x, y: point.y }] }]);
+    const id = newId();
+    const shape: Shape = tool === "pen"
+      ? { id, kind: "pen", tone, width: penWidth, points: [point] }
+      : { id, kind: tool, tone, width: penWidth, from: point, to: point };
+    drawingRef.current = { id, moved: false };
+    setShapes((current) => [...current, shape]);
+    setSelected(null);
   };
 
-  const extendStroke = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!drawingRef.current) return;
+  const moveOnStage = (event: React.PointerEvent<HTMLElement>) => {
     const point = ratioFrom(event.clientX, event.clientY);
-    setStrokes((current) => {
-      if (!current.length) return current;
-      const last = current[current.length - 1];
-      return [...current.slice(0, -1), { ...last, points: [...last.points, { x: point.x, y: point.y }] }];
-    });
+    const dragging = draggingMarkerRef.current;
+    if (dragging) {
+      dragging.moved = true;
+      setMarkers((current) => current.map((marker) => marker.id === dragging.id ? { ...marker, xRatio: point.x, yRatio: point.y } : marker));
+      return;
+    }
+    const drawing = drawingRef.current;
+    if (!drawing) return;
+    drawing.moved = true;
+    setShapes((current) => current.map((shape) => {
+      if (shape.id !== drawing.id) return shape;
+      if (shape.kind === "pen") return { ...shape, points: [...shape.points, point] };
+      if (shape.kind === "arrow" || shape.kind === "box") return { ...shape, to: point };
+      return shape;
+    }));
   };
 
-  const endStroke = () => {
-    drawingRef.current = false;
-    // A tap that never moved is a dot, not a line; it would only add invisible clutter.
-    setStrokes((current) => current.filter((stroke) => stroke.points.length > 1));
+  const endOnStage = () => {
+    const dragging = draggingMarkerRef.current;
+    if (dragging) {
+      draggingMarkerRef.current = null;
+      if (!dragging.moved) setSelected({ kind: "marker", id: dragging.id });
+      return;
+    }
+    const drawing = drawingRef.current;
+    drawingRef.current = null;
+    if (!drawing) return;
+    // A tap that never moved is not a line; it would only add invisible clutter.
+    if (drawing.moved) remember("shape", drawing.id);
+    else setShapes((current) => current.filter((shape) => shape.id !== drawing.id));
   };
 
   const undo = () => {
-    if (mode === "draw" && strokes.length) {
-      setStrokes((current) => current.slice(0, -1));
-      return;
-    }
-    if (markers.length) {
-      const removed = markers[markers.length - 1];
-      setMarkers((current) => current.slice(0, -1));
-      if (activeMarkerId === removed.id) setActiveMarkerId("");
-      return;
-    }
-    setStrokes((current) => current.slice(0, -1));
+    const last = history[history.length - 1];
+    if (!last) return;
+    setHistory((current) => current.slice(0, -1));
+    if (last.kind === "marker") setMarkers((current) => current.filter((marker) => marker.id !== last.id));
+    else setShapes((current) => current.filter((shape) => shape.id !== last.id));
+    if (selected?.id === last.id) setSelected(null);
   };
 
   const clearAll = () => {
     setMarkers([]);
-    setStrokes([]);
-    setActiveMarkerId("");
+    setShapes([]);
+    setHistory([]);
+    setSelected(null);
   };
 
-  const updateActiveMarker = (patch: Partial<Marker>) => {
-    setMarkers((current) => current.map((marker) => marker.id === activeMarkerId ? { ...marker, ...patch } : marker));
+  const patchMarker = (id: string, patch: Partial<Marker>) => setMarkers((current) =>
+    current.map((marker) => marker.id === id ? { ...marker, ...patch } : marker));
+
+  const removeSelected = () => {
+    if (!selected) return;
+    if (selected.kind === "marker") setMarkers((current) => current.filter((marker) => marker.id !== selected.id));
+    else setShapes((current) => current.filter((shape) => shape.id !== selected.id));
+    setHistory((current) => current.filter((entry) => entry.id !== selected.id));
+    setSelected(null);
   };
 
-  const removeActiveMarker = () => {
-    setMarkers((current) => current.filter((marker) => marker.id !== activeMarkerId));
-    setActiveMarkerId("");
-  };
-
-  /** Burn the markings into the picture itself, at the resolution of the original photo. */
+  /** Burn the drawing into the picture itself, at the resolution of the original photo. */
   const flatten = async () => {
     setBusy(true);
     setError("");
@@ -201,76 +371,88 @@ export function PhotoMarkupPad({
       const canvas = document.createElement("canvas");
       canvas.width = size.width;
       canvas.height = size.height;
-      const context = canvas.getContext("2d");
-      if (!size.width || !context) throw new Error("unreadable-image");
-      context.drawImage(image, 0, 0, size.width, size.height);
+      const context2d = canvas.getContext("2d");
+      if (!size.width || !context2d) throw new Error("unreadable-image");
+      context2d.drawImage(image, 0, 0, size.width, size.height);
       const metrics = markupScale(size.width, size.height);
 
-      context.lineCap = "round";
-      context.lineJoin = "round";
-      context.lineWidth = metrics.strokeWidth;
-      for (const stroke of strokes) {
-        if (stroke.points.length < 2) continue;
-        context.strokeStyle = photoMarkupToneColors[stroke.tone];
-        context.beginPath();
-        context.moveTo(stroke.points[0].x * size.width, stroke.points[0].y * size.height);
-        for (const point of stroke.points.slice(1)) context.lineTo(point.x * size.width, point.y * size.height);
-        context.stroke();
-      }
+      drawShapes(context2d, shapes, size.width, size.height, {
+        strokeScale: Math.min(size.width, size.height) / 400,
+        fontSize: metrics.fontSize,
+        selectedId: "",
+      });
 
-      context.textAlign = "center";
-      context.textBaseline = "middle";
-      context.font = `700 ${metrics.fontSize}px system-ui, sans-serif`;
+      context2d.textAlign = "center";
+      context2d.textBaseline = "middle";
+      context2d.font = `700 ${metrics.fontSize}px system-ui, sans-serif`;
       markers.forEach((marker, index) => {
         const x = marker.xRatio * size.width;
         const y = marker.yRatio * size.height;
-        context.beginPath();
-        context.arc(x, y, metrics.markerRadius, 0, Math.PI * 2);
-        context.fillStyle = photoMarkupToneColors[marker.tone];
-        context.fill();
-        context.lineWidth = Math.max(2, Math.round(metrics.markerRadius * 0.16));
-        context.strokeStyle = "#ffffff";
-        context.stroke();
-        context.fillStyle = "#ffffff";
-        context.fillText(String(index + 1), x, y + metrics.fontSize * 0.04);
+        context2d.beginPath();
+        context2d.arc(x, y, metrics.markerRadius, 0, Math.PI * 2);
+        context2d.fillStyle = photoMarkupToneColors[marker.tone];
+        context2d.fill();
+        context2d.lineWidth = Math.max(2, Math.round(metrics.markerRadius * 0.16));
+        context2d.strokeStyle = "#ffffff";
+        context2d.stroke();
+        context2d.fillStyle = "#ffffff";
+        context2d.fillText(String(index + 1), x, y + metrics.fontSize * 0.04);
       });
 
-      // The legend keeps the picture readable on its own: number, colour and the words the
-      // supervisor typed, printed on the photo instead of only in a database field.
-      const lines = markers
-        .map((marker, index) => ({ marker, index }))
-        .filter((entry) => entry.marker.label.trim().length > 0);
+      // The legend keeps the picture readable on its own: number, colour, what is wrong, how
+      // serious it is and where it belongs — printed on the photo, not only in a database.
+      const notes = markers.map(describeMarker);
+      const lines = notes
+        .filter((note) => note.label || note.description)
+        .map((note) => ({
+          tone: note.tone,
+          text: [
+            `${note.number}. ${note.label || note.description}`,
+            shortSeverity[note.severity],
+            photoMarkupPlacement(note),
+          ].filter((part) => part.length > 0).join(" · "),
+        }));
       if (lines.length) {
         const lineHeight = Math.round(metrics.legendFontSize * 1.65);
         const padding = Math.round(metrics.legendFontSize * 0.7);
         const bandHeight = lines.length * lineHeight + padding * 2;
-        context.fillStyle = "rgba(12, 20, 17, 0.72)";
-        context.fillRect(0, size.height - bandHeight, size.width, bandHeight);
-        context.textAlign = "left";
-        context.font = `600 ${metrics.legendFontSize}px system-ui, sans-serif`;
-        lines.forEach((entry, row) => {
+        context2d.fillStyle = "rgba(12, 20, 17, 0.72)";
+        context2d.fillRect(0, size.height - bandHeight, size.width, bandHeight);
+        context2d.textAlign = "left";
+        context2d.font = `600 ${metrics.legendFontSize}px system-ui, sans-serif`;
+        lines.forEach((line, row) => {
           const baseline = size.height - bandHeight + padding + row * lineHeight + lineHeight / 2;
           const dotRadius = Math.round(metrics.legendFontSize * 0.42);
           const dotX = padding + dotRadius;
-          context.beginPath();
-          context.arc(dotX, baseline, dotRadius, 0, Math.PI * 2);
-          context.fillStyle = photoMarkupToneColors[entry.marker.tone];
-          context.fill();
-          context.fillStyle = "#ffffff";
-          const label = `${entry.index + 1}. ${entry.marker.label.trim()}`;
+          context2d.beginPath();
+          context2d.arc(dotX, baseline, dotRadius, 0, Math.PI * 2);
+          context2d.fillStyle = photoMarkupToneColors[line.tone];
+          context2d.fill();
+          context2d.fillStyle = "#ffffff";
           const room = size.width - (dotX + dotRadius + padding) - padding;
-          let printed = label;
-          while (printed.length > 4 && context.measureText(printed).width > room) {
+          let printed = line.text;
+          while (printed.length > 4 && context2d.measureText(printed).width > room) {
             printed = `${printed.slice(0, -2).trimEnd()}…`;
           }
-          context.fillText(printed, dotX + dotRadius + padding / 2, baseline);
+          context2d.fillText(printed, dotX + dotRadius + padding / 2, baseline);
         });
       }
 
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
       if (!blob) throw new Error("unreadable-image");
-      const marked = new File([blob], markedPhotoName(file.name), { type: "image/jpeg", lastModified: Date.now() });
-      save({ file: marked, summary: photoMarkupSummary(markers), markerCount: markers.length });
+      // The marked photo keeps the moment the picture was taken, not the moment it was marked,
+      // so the evidence stays in the order the site was walked.
+      const marked = new File([blob], markedPhotoName(file.name), { type: "image/jpeg", lastModified: file.lastModified });
+      save({
+        file: marked,
+        summary: photoMarkupSummary(markers.map((marker) => ({ label: marker.label }))),
+        report: photoMarkupReport(notes, {
+          severityLabels: shortSeverity,
+          responsibleLabel: text("Responsible", "Verantwoordelijke"),
+        }),
+        notes,
+        markerCount: markers.length,
+      });
     } catch {
       setError(text(
         "The markings could not be saved onto this photo. The original photo stays attached.",
@@ -281,7 +463,16 @@ export function PhotoMarkupPad({
     }
   };
 
-  const empty = !markers.length && !strokes.length;
+  const empty = !markers.length && !shapes.length;
+  const markerLocations = (context.locations ?? []).filter((location) =>
+    !location.buildingId || !activeMarker?.buildingId || location.buildingId === activeMarker.buildingId);
+  const tools: Array<{ id: Tool; label: string; icon: typeof MapPin }> = [
+    { id: "marker", label: text("Marker", "Marker"), icon: MapPin },
+    { id: "pen", label: text("Draw", "Tekenen"), icon: PenLine },
+    { id: "arrow", label: text("Arrow", "Pijl"), icon: ArrowUpRight },
+    { id: "box", label: text("Frame", "Kader"), icon: Square },
+    { id: "text", label: text("Text", "Tekst"), icon: TypeIcon },
+  ];
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
@@ -290,41 +481,58 @@ export function PhotoMarkupPad({
           <div>
             <p className="eyebrow">{text("Mark on the photo", "Markeren op de foto")}</p>
             <h2 id="photo-markup-title">{text("Tap the photo where the problem is", "Tik op de foto waar het probleem zit")}</h2>
-            <p>{text("Every tap places a numbered marker you can name. The markers are saved into the photo itself.", "Elke tik plaatst een genummerde marker die je een naam geeft. De markers worden in de foto zelf opgeslagen.")}</p>
+            <p>{text("Place a numbered marker, draw an arrow or a frame, and write what is wrong, where it belongs and who has to fix it.", "Plaats een genummerde marker, teken een pijl of kader, en schrijf op wat er mis is, waar het bij hoort en wie het moet oplossen.")}</p>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
 
-        <div className="photo-markup-toolbar">
+        <div className="modal-body photo-markup-body">
+          {/* Tools and photo stay pinned together while the detail below them is filled in.
+              Typing on a phone scrolls the field into place, and the picture being described
+              must not disappear off-screen while that happens. */}
+          <div className="photo-markup-pinned">
+          <div className="photo-markup-toolbar">
           <div className="photo-markup-modes" role="group" aria-label={text("Marking tool", "Markeergereedschap")}>
-            <button className={mode === "mark" ? "active" : ""} type="button" onClick={() => setMode("mark")}><MapPin size={15} /> {text("Place marker", "Marker plaatsen")}</button>
-            <button className={mode === "draw" ? "active" : ""} type="button" onClick={() => { setMode("draw"); setActiveMarkerId(""); }}><PenLine size={15} /> {text("Draw", "Tekenen")}</button>
+            {tools.map((entry) => {
+              const Icon = entry.icon;
+              return <button className={tool === entry.id ? "active" : ""} type="button" onClick={() => setTool(entry.id)} key={entry.id}><Icon size={15} /> {entry.label}</button>;
+            })}
           </div>
-          <div className="photo-markup-tones" role="group" aria-label={text("Marker classification", "Markerclassificatie")}>
+          {/* The colour of what gets placed next. It deliberately never recolours something
+              that is already on the photo: each marking keeps its own classification, which is
+              changed in its own panel. */}
+          <div className="photo-markup-tones" role="group" aria-label={text("Colour for the next marking", "Kleur voor de volgende markering")}>
             {(Object.keys(toneLabels) as MarkerTone[]).map((option) => (
               <button
                 className={tone === option ? "active" : ""}
                 type="button"
                 style={{ ["--markup-tone" as string]: photoMarkupToneColors[option] }}
-                onClick={() => { setTone(option); if (activeMarker) updateActiveMarker({ tone: option }); }}
+                onClick={() => setTone(option)}
                 key={option}
               >{toneLabels[option]}</button>
             ))}
           </div>
           <div className="photo-markup-history">
-            <button className="ghost-button" type="button" onClick={undo} disabled={empty}><Undo2 size={15} /> {text("Undo", "Ongedaan maken")}</button>
+            <label className="photo-markup-width">
+              <PenLine size={14} />
+              <input type="range" min={2} max={12} step={1} value={penWidth} onChange={(event) => setPenWidth(Number(event.target.value))} aria-label={text("Line thickness", "Lijndikte")} />
+            </label>
+            <button className="ghost-button" type="button" onClick={undo} disabled={!history.length}><Undo2 size={15} /> {text("Undo", "Ongedaan maken")}</button>
             <button className="ghost-button" type="button" onClick={clearAll} disabled={empty}><Trash2 size={15} /> {text("Clear", "Wissen")}</button>
           </div>
-        </div>
-
-        <div className="modal-body photo-markup-body">
+          </div>
           <div
-            className={`photo-markup-stage ${mode}`}
-            onPointerDown={startStroke}
-            onPointerMove={extendStroke}
-            onPointerUp={endStroke}
-            onPointerCancel={endStroke}
-            onClick={(event) => { if (mode === "mark" && event.target === imageRef.current) addMarker(event.clientX, event.clientY); }}
+            className={`photo-markup-stage ${tool}`}
+            onPointerDown={startOnStage}
+            onPointerMove={moveOnStage}
+            onPointerUp={endOnStage}
+            onPointerCancel={endOnStage}
+            onClick={(event) => {
+              if (event.target !== imageRef.current) return;
+              const point = ratioFrom(event.clientX, event.clientY);
+              if (tool === "marker") addMarker(point);
+              else if (tool === "text") addText(point);
+            }}
           >
             {/* A local blob URL cannot pass through the Next image optimizer. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -335,41 +543,54 @@ export function PhotoMarkupPad({
               draggable={false}
               onLoad={paintOverlay}
               onDragStart={(event) => event.preventDefault()}
-              role={mode === "mark" ? "button" : undefined}
-              tabIndex={mode === "mark" ? 0 : undefined}
-              aria-label={mode === "mark" ? text("Photo. Tap to place a marker.", "Foto. Tik om een marker te plaatsen.") : undefined}
+              role={tool === "marker" || tool === "text" ? "button" : undefined}
+              tabIndex={tool === "marker" || tool === "text" ? 0 : undefined}
+              aria-label={tool === "marker" ? text("Photo. Tap to place a marker.", "Foto. Tik om een marker te plaatsen.") : tool === "text" ? text("Photo. Tap to place a text.", "Foto. Tik om tekst te plaatsen.") : undefined}
               onKeyDown={(event) => {
-                if (mode !== "mark" || (event.key !== "Enter" && event.key !== " ")) return;
+                if (event.key !== "Enter" && event.key !== " ") return;
+                if (tool !== "marker" && tool !== "text") return;
                 event.preventDefault();
-                const rect = event.currentTarget.getBoundingClientRect();
-                addMarker(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                const center = { x: 0.5, y: 0.5 };
+                if (tool === "marker") addMarker(center);
+                else addText(center);
               }}
             />
             <canvas className="photo-markup-overlay" ref={overlayRef} />
             {markers.map((marker, index) => (
               <button
-                className={`photo-markup-marker ${marker.id === activeMarkerId ? "active" : ""}`}
+                className={`photo-markup-marker ${selected?.id === marker.id ? "active" : ""}`}
                 style={{ left: `${marker.xRatio * 100}%`, top: `${marker.yRatio * 100}%`, ["--markup-tone" as string]: photoMarkupToneColors[marker.tone] }}
                 type="button"
-                onClick={(event) => { event.stopPropagation(); setActiveMarkerId(marker.id); setMode("mark"); }}
+                // A marker can be dragged to the exact spot after it has been placed.
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  event.preventDefault();
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  draggingMarkerRef.current = { id: marker.id, moved: false };
+                }}
+                onPointerMove={(event) => { if (draggingMarkerRef.current?.id === marker.id) moveOnStage(event); }}
+                onPointerUp={(event) => { event.stopPropagation(); endOnStage(); }}
+                onPointerCancel={endOnStage}
+                onClick={(event) => { event.stopPropagation(); setSelected({ kind: "marker", id: marker.id }); }}
                 aria-label={marker.label.trim() || `${text("Marker", "Marker")} ${index + 1}`}
                 key={marker.id}
               >{index + 1}</button>
             ))}
+          </div>
           </div>
 
           {activeMarker ? (
             <div className="photo-markup-editor">
               <div className="photo-markup-editor-heading">
                 <span className="record-number">{text("Marker", "Marker")} {markers.findIndex((marker) => marker.id === activeMarker.id) + 1}</span>
-                <button className="field-clear-button" type="button" onClick={removeActiveMarker}><Trash2 size={13} /> {text("Remove marker", "Marker verwijderen")}</button>
+                <button className="field-clear-button" type="button" onClick={removeSelected}><Trash2 size={13} /> {text("Remove marker", "Marker verwijderen")}</button>
               </div>
               <div className="quick-issue-presets" aria-label={text("Choose what is wrong here", "Kies wat hier mis is")}>
                 {labelPresets.map((preset) => (
                   <button
                     className={activeMarker.label === preset ? "active" : ""}
                     type="button"
-                    onClick={() => updateActiveMarker({ label: activeMarker.label === preset ? "" : preset })}
+                    onClick={() => patchMarker(activeMarker.id, { label: activeMarker.label === preset ? "" : preset })}
                     key={preset}
                   >{preset}</button>
                 ))}
@@ -378,18 +599,145 @@ export function PhotoMarkupPad({
                 <span>{text("What is wrong at this spot?", "Wat is er mis op deze plek?")}</span>
                 <input
                   value={activeMarker.label}
-                  onChange={(event) => updateActiveMarker({ label: event.target.value })}
+                  onChange={(event) => patchMarker(activeMarker.id, { label: event.target.value })}
                   placeholder={text("Choose above or type it in a few words.", "Kies hierboven of typ het in een paar woorden.")}
                   autoFocus
                 />
               </label>
+              <label className="form-field">
+                <span>{text("Full description · what, how much, what has to happen", "Volledige omschrijving · wat, hoeveel, wat moet er gebeuren")}</span>
+                <textarea
+                  rows={3}
+                  value={activeMarker.description}
+                  onChange={(event) => patchMarker(activeMarker.id, { description: event.target.value })}
+                  placeholder={text("For example: three anchors missing on the left column; refit and have it re-inspected.", "Bijvoorbeeld: drie ankers ontbreken op de linkerkolom; opnieuw plaatsen en laten herkeuren.")}
+                />
+                <DictateButton onText={(transcript) => patchMarker(activeMarker.id, { description: appendDictation(activeMarker.description, transcript) })} />
+              </label>
+              <div className="form-grid-2">
+                <label className="form-field">
+                  <span>{text("Severity", "Ernst")}</span>
+                  <select value={activeMarker.severity} onChange={(event) => patchMarker(activeMarker.id, { severity: event.target.value as Severity })}>
+                    {(Object.keys(severityLabels) as Severity[]).map((option) => <option value={option} key={option}>{severityLabels[option]}</option>)}
+                  </select>
+                </label>
+                <label className="form-field">
+                  <span>{text("Classification · colour", "Classificatie · kleur")}</span>
+                  <select value={activeMarker.tone} onChange={(event) => patchMarker(activeMarker.id, { tone: event.target.value as MarkerTone })}>
+                    {(Object.keys(toneLabels) as MarkerTone[]).map((option) => <option value={option} key={option}>{toneLabels[option]}</option>)}
+                  </select>
+                </label>
+              </div>
+              {/* Where the marking belongs. Only the parts this screen actually knows about. */}
+              {buildings.length || markerLocations.length || workPackages.length || parties.length ? (
+                <fieldset className="photo-markup-placement">
+                  <legend>{text("Where does this belong?", "Waar hoort dit bij?")}</legend>
+                  <div className="form-grid-2">
+                    {buildings.length > 1 ? (
+                      <label className="form-field">
+                        <span>{text("Building", "Gebouw")}</span>
+                        <select value={activeMarker.buildingId} onChange={(event) => patchMarker(activeMarker.id, { buildingId: event.target.value, locationNodeId: "" })}>
+                          <option value="">{text("Not specified", "Niet aangegeven")}</option>
+                          {buildings.map((building) => <option value={building.id} key={building.id}>{building.label}</option>)}
+                        </select>
+                      </label>
+                    ) : null}
+                    {markerLocations.length ? (
+                      <label className="form-field">
+                        <span>{text("Floor / room / element", "Verdieping / ruimte / element")}</span>
+                        <select value={activeMarker.locationNodeId} onChange={(event) => patchMarker(activeMarker.id, { locationNodeId: event.target.value })}>
+                          <option value="">{text("Not specified", "Niet aangegeven")}</option>
+                          {markerLocations.map((location) => <option value={location.id} key={location.id}>{location.label}</option>)}
+                        </select>
+                      </label>
+                    ) : null}
+                    {workPackages.length ? (
+                      <label className="form-field">
+                        <span>{text("Work package", "Werkpakket")}</span>
+                        <select value={activeMarker.workPackage} onChange={(event) => patchMarker(activeMarker.id, { workPackage: event.target.value })}>
+                          <option value="">{text("Not specified", "Niet aangegeven")}</option>
+                          {workPackages.map((option) => <option value={option} key={option}>{option}</option>)}
+                        </select>
+                      </label>
+                    ) : null}
+                    {parties.length ? (
+                      <label className="form-field">
+                        <span>{text("Responsible party", "Verantwoordelijke partij")}</span>
+                        <select value={activeMarker.responsiblePartyId} onChange={(event) => patchMarker(activeMarker.id, { responsiblePartyId: event.target.value })}>
+                          <option value="">{text("Not assigned", "Niet toegewezen")}</option>
+                          {parties.map((party) => <option value={party.id} key={party.id}>{party.label}</option>)}
+                        </select>
+                      </label>
+                    ) : null}
+                    <label className="form-field">
+                      <span>{text("Exact spot · own words", "Exacte plek · eigen woorden")}</span>
+                      <input
+                        value={activeMarker.element}
+                        onChange={(event) => patchMarker(activeMarker.id, { element: event.target.value })}
+                        placeholder={text("For example: column line B, 2nd floor", "Bijvoorbeeld: kolom lijn B, 2e verdieping")}
+                      />
+                    </label>
+                  </div>
+                </fieldset>
+              ) : null}
+            </div>
+          ) : activeText ? (
+            <div className="photo-markup-editor">
+              <div className="photo-markup-editor-heading">
+                <span className="record-number">{text("Text on the photo", "Tekst op de foto")}</span>
+                <button className="field-clear-button" type="button" onClick={removeSelected}><Trash2 size={13} /> {text("Remove text", "Tekst verwijderen")}</button>
+              </div>
+              <label className="form-field">
+                <span>{text("What should the photo say here?", "Wat moet de foto hier zeggen?")}</span>
+                <input
+                  value={activeText.value}
+                  onChange={(event) => setShapes((current) => current.map((shape) => shape.id === activeText.id && shape.kind === "text" ? { ...shape, value: event.target.value } : shape))}
+                  placeholder={text("For example: 3 anchors missing", "Bijvoorbeeld: 3 ankers ontbreken")}
+                  autoFocus
+                />
+              </label>
+              <label className="form-field">
+                <span>{text("Classification · colour", "Classificatie · kleur")}</span>
+                <select
+                  value={activeText.tone}
+                  onChange={(event) => setShapes((current) => current.map((shape) => shape.id === activeText.id ? { ...shape, tone: event.target.value as MarkerTone } : shape))}
+                >
+                  {(Object.keys(toneLabels) as MarkerTone[]).map((option) => <option value={option} key={option}>{toneLabels[option]}</option>)}
+                </select>
+              </label>
             </div>
           ) : (
-            <p className="photo-markup-hint">
-              {mode === "mark"
-                ? text("Tap the photo to place a marker, then say what is wrong there.", "Tik op de foto om een marker te plaatsen en zeg daarna wat er mis is.")
-                : text("Drag over the photo to circle or point at the problem.", "Sleep over de foto om het probleem te omcirkelen of aan te wijzen.")}
-            </p>
+            <>
+              <p className="photo-markup-hint">
+                {tool === "marker"
+                  ? text("Tap the photo to place a marker, then write what is wrong and where it belongs. Drag a marker to move it.", "Tik op de foto om een marker te plaatsen en schrijf daarna wat er mis is en waar het bij hoort. Sleep een marker om hem te verplaatsen.")
+                  : tool === "text"
+                    ? text("Tap the photo where the text has to stand.", "Tik op de foto waar de tekst moet staan.")
+                    : tool === "box"
+                      ? text("Drag a frame around the area the problem covers.", "Sleep een kader om het gebied waar het probleem zich uitstrekt.")
+                      : tool === "arrow"
+                        ? text("Drag from where you start to what you are pointing at.", "Sleep van je startpunt naar wat je aanwijst.")
+                        : text("Drag over the photo to circle or underline the problem.", "Sleep over de foto om het probleem te omcirkelen of te onderstrepen.")}
+              </p>
+              {markers.length ? (
+                <ol className="photo-markup-list" aria-label={text("Markings on this photo", "Markeringen op deze foto")}>
+                  {markers.map((marker, index) => {
+                    const note = describeMarker(marker, index);
+                    return (
+                      <li key={marker.id}>
+                        <button type="button" onClick={() => setSelected({ kind: "marker", id: marker.id })}>
+                          <span className="photo-markup-list-number" style={{ ["--markup-tone" as string]: photoMarkupToneColors[marker.tone] }}>{index + 1}</span>
+                          <span>
+                            <strong>{note.label || text("No description yet", "Nog geen omschrijving")}</strong>
+                            <small>{[shortSeverity[marker.severity], photoMarkupPlacement(note)].filter(Boolean).join(" · ")}</small>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : null}
+            </>
           )}
           {error ? <p className="field-error" role="alert">{error}</p> : null}
         </div>
@@ -398,12 +746,77 @@ export function PhotoMarkupPad({
           <button className="secondary-button" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
           <button className="primary-button" type="button" disabled={busy || empty} onClick={() => void flatten()}>
             {busy ? <Loader2 className="spin" size={15} /> : <Check size={15} />}
-            {busy ? busyLabel ?? text("Saving markings…", "Markeringen opslaan…") : text("Save markings on the photo", "Markeringen op de foto opslaan")}
+            {busy ? text("Saving markings…", "Markeringen opslaan…") : text("Save markings on the photo", "Markeringen op de foto opslaan")}
           </button>
         </footer>
       </section>
     </div>
   );
+}
+
+/** One drawing routine for the live overlay and for the flattened photo, so they match. */
+function drawShapes(
+  context: CanvasRenderingContext2D,
+  shapes: Shape[],
+  width: number,
+  height: number,
+  options: { strokeScale: number; fontSize: number; selectedId: string },
+) {
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  for (const shape of shapes) {
+    context.strokeStyle = photoMarkupToneColors[shape.tone];
+    context.fillStyle = photoMarkupToneColors[shape.tone];
+    if (shape.kind === "text") {
+      const value = shape.value.trim();
+      if (!value) continue;
+      context.font = `700 ${options.fontSize}px system-ui, sans-serif`;
+      context.textAlign = "left";
+      context.textBaseline = "middle";
+      const metrics = context.measureText(value);
+      const padding = options.fontSize * 0.42;
+      const boxHeight = options.fontSize + padding * 2;
+      const left = Math.min(shape.at.x * width, Math.max(0, width - metrics.width - padding * 2));
+      const top = shape.at.y * height - boxHeight / 2;
+      context.fillStyle = photoMarkupToneColors[shape.tone];
+      context.beginPath();
+      context.roundRect(left, top, metrics.width + padding * 2, boxHeight, padding);
+      context.fill();
+      context.fillStyle = "#ffffff";
+      context.fillText(value, left + padding, top + boxHeight / 2);
+      continue;
+    }
+    context.lineWidth = Math.max(1, shape.width * options.strokeScale);
+    if (shape.kind === "pen") {
+      if (shape.points.length < 2) continue;
+      context.beginPath();
+      context.moveTo(shape.points[0].x * width, shape.points[0].y * height);
+      for (const point of shape.points.slice(1)) context.lineTo(point.x * width, point.y * height);
+      context.stroke();
+      continue;
+    }
+    const fromX = shape.from.x * width;
+    const fromY = shape.from.y * height;
+    const toX = shape.to.x * width;
+    const toY = shape.to.y * height;
+    if (shape.kind === "box") {
+      context.strokeRect(Math.min(fromX, toX), Math.min(fromY, toY), Math.abs(toX - fromX), Math.abs(toY - fromY));
+      continue;
+    }
+    context.beginPath();
+    context.moveTo(fromX, fromY);
+    context.lineTo(toX, toY);
+    context.stroke();
+    // The head is drawn as a filled triangle so it stays sharp at any photo resolution.
+    const angle = Math.atan2(toY - fromY, toX - fromX);
+    const headLength = Math.max(context.lineWidth * 3.4, 10);
+    context.beginPath();
+    context.moveTo(toX, toY);
+    context.lineTo(toX - headLength * Math.cos(angle - Math.PI / 7), toY - headLength * Math.sin(angle - Math.PI / 7));
+    context.lineTo(toX - headLength * Math.cos(angle + Math.PI / 7), toY - headLength * Math.sin(angle + Math.PI / 7));
+    context.closePath();
+    context.fill();
+  }
 }
 
 /**

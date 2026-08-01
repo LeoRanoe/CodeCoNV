@@ -96,6 +96,60 @@ export function photoMarkupSummary(markers) {
 }
 
 /**
+ * @typedef {object} PhotoMarkupNoteInput
+ * @property {string} [label]
+ * @property {string} [description]
+ * @property {string} [severity]
+ * @property {string} [buildingName]
+ * @property {string} [locationLabel]
+ * @property {string} [element]
+ * @property {string} [workPackage]
+ * @property {string} [responsiblePartyName]
+ */
+
+/**
+ * Where a marking belongs, in one readable line: the building, the room, the element and the
+ * work package it was found in. Empty parts are left out instead of printed as a dash.
+ *
+ * @param {PhotoMarkupNoteInput} note
+ */
+export function photoMarkupPlacement(note) {
+  return [note.buildingName, note.locationLabel, note.element, note.workPackage]
+    .map((part) => (part ?? "").trim())
+    .filter((part) => part.length > 0)
+    .join(" → ");
+}
+
+/**
+ * The full written record of what was marked on a photo. One block per marker: the number as
+ * it is drawn on the picture, the title, how serious it is, where it belongs, who is
+ * responsible, and the sentences the supervisor spoke or typed. This is the text that ends up
+ * in the record itself, so the file and the register keep saying the same thing.
+ *
+ * @param {PhotoMarkupNoteInput[]} notes
+ * @param {{ severityLabels?: Record<string, string>, responsibleLabel?: string }} [labels]
+ */
+export function photoMarkupReport(notes, labels = {}) {
+  const severityLabels = labels.severityLabels ?? {};
+  return notes
+    .map((note, index) => ({ note, number: index + 1 }))
+    .filter((entry) => (entry.note.label ?? "").trim() || (entry.note.description ?? "").trim())
+    .map((entry) => {
+      const heading = [
+        `${entry.number}. ${(entry.note.label ?? "").trim() || "—"}`,
+        severityLabels[entry.note.severity ?? ""] ?? "",
+        photoMarkupPlacement(entry.note),
+        (entry.note.responsiblePartyName ?? "").trim()
+          ? `${labels.responsibleLabel ?? "Responsible"}: ${(entry.note.responsiblePartyName ?? "").trim()}`
+          : "",
+      ].filter((part) => part.length > 0).join(" · ");
+      const description = (entry.note.description ?? "").trim();
+      return description ? `${heading}\n${description}` : heading;
+    })
+    .join("\n");
+}
+
+/**
  * A marked photo keeps the name of the photo it came from, so the same picture is not filed
  * twice under two unrelated names.
  *

@@ -40,7 +40,7 @@ import NextImage from "next/image";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
-import { MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
+import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad, type PhotoMarkupContext } from "@/app/photo-markup";
 import { SketchPad } from "@/app/sketch-pad";
 import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
@@ -544,6 +544,7 @@ function ProjectOperations({
   const [inspectionTemplateId, setInspectionTemplateId] = useState("");
   const [inspectionAnswers, setInspectionAnswers] = useState<Record<string, InspectionAnswer>>({});
   const [inspectionPhotos, setInspectionPhotos] = useState<File[]>([]);
+  const [inspectionPhotoCaptions, setInspectionPhotoCaptions] = useState<string[]>([]);
   const [inspectionPhotoError, setInspectionPhotoError] = useState("");
   const [findingForm, setFindingForm] = useState({
     type: "deficiency",
@@ -593,6 +594,13 @@ function ProjectOperations({
   const [registerPhotoCaptions, setRegisterPhotoCaptions] = useState<string[]>([]);
   const [registerPhotoError, setRegisterPhotoError] = useState("");
   const [registerSketching, setRegisterSketching] = useState(false);
+  // Everything this workspace already knows about the project is offered inside the marking
+  // pad, so a marker on a photo can say which building, floor, room and party it belongs to.
+  const markupOptions = useMemo(() => ({
+    buildings: buildings.map((building) => ({ id: building.id, label: building.name })),
+    locations: data.locationNodes.map((node) => ({ id: node.id, label: locationBreadcrumb(data.locationNodes, node.id), buildingId: node.building_id })),
+    parties: parties.map((party) => ({ id: party.id, label: party.name })),
+  }), [buildings, data.locationNodes, parties]);
   const requiredLocationDepth = data.settings?.required_location_depth ?? "building";
   const exactLocationRequired = requiredLocationDepth !== "building";
   const registerContextLabel = registerBuildingId === ALL_BUILDINGS
@@ -870,8 +878,9 @@ function ProjectOperations({
           const folderName = text("Inspections", "Inspecties");
           const photoBuildingId = activeInspection.building_id;
           const folderId = existingMediaFolderId(folderName, photoBuildingId);
-          for (const photo of inspectionPhotos) {
+          for (const [photoIndex, photo] of inspectionPhotos.entries()) {
             const prepared = await compressFieldPhoto(photo, dataSaverEnabled());
+            const caption = inspectionPhotoCaptions[photoIndex]?.trim() ?? "";
             await queueOfflineUpload({
               projectId,
               buildingId: photoBuildingId,
@@ -882,7 +891,9 @@ function ProjectOperations({
               file: prepared.blob,
               fileName: prepared.fileName,
               mimeType: prepared.mimeType,
-              title: activeInspection.title,
+              // The photo's own text wins; the checklist title is only the fallback.
+              title: caption || activeInspection.title,
+              description: caption || undefined,
               locationLabel: buildings.find((building) => building.id === photoBuildingId)?.name ?? buildingName,
               locationNodeId: activeInspection.location_node_id,
               capturedAt: new Date(photo.lastModified || Date.now()).toISOString(),
@@ -902,6 +913,7 @@ function ProjectOperations({
       setInspectionTitle("");
       setInspectionLocationNodeId("");
       setInspectionPhotos([]);
+      setInspectionPhotoCaptions([]);
       setInspectionPhotoError("");
     }
   };
@@ -1392,8 +1404,18 @@ function ProjectOperations({
               </label>
               {inspectionPhotos.length ? <FindingPhotoStack
                 files={inspectionPhotos}
+                markupContext={{ ...markupOptions, defaultBuildingId: activeInspection.building_id }}
                 onReplace={(index, file) => setInspectionPhotos((current) => current.map((photo, currentIndex) => currentIndex === index ? file : photo))}
-                onRemove={(index) => setInspectionPhotos((current) => current.filter((_, currentIndex) => currentIndex !== index))}
+                captions={inspectionPhotoCaptions}
+                onCaption={(index, caption) => setInspectionPhotoCaptions((current) => {
+                  const next = [...current];
+                  next[index] = caption;
+                  return next;
+                })}
+                onRemove={(index) => {
+                  setInspectionPhotos((current) => current.filter((_, currentIndex) => currentIndex !== index));
+                  setInspectionPhotoCaptions((current) => current.filter((_, currentIndex) => currentIndex !== index));
+                }}
               /> : null}
               {inspectionPhotoError ? <p className="field-error" role="alert">{inspectionPhotoError}</p> : null}
               <div className="form-actions checklist-sticky-actions"><button className="secondary-button" type="button" onClick={() => setActiveInspection(null)}>{text("Complete later", "Later afronden")}</button><button className="primary-button" type="button" disabled={busy || activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))} onClick={() => void submitInspection()}>{busy ? <Loader2 className="spin" size={15} /> : <FileCheck2 size={15} />} {text("Complete inspection", "Inspectie afronden")}</button></div>
@@ -1471,7 +1493,9 @@ function ProjectOperations({
               </label>
               {findingPhotos.length ? <FindingPhotoStack
                 files={findingPhotos}
+                markupContext={{ ...markupOptions, defaultBuildingId: findingBuildingId }}
                 onReplace={(index, file) => setFindingPhotos((current) => current.map((photo, currentIndex) => currentIndex === index ? file : photo))}
+                onDetail={(report) => setFindingForm((current) => ({ ...current, description: appendPhotoDetail(current.description, report) }))}
                 onRemove={(index) => setFindingPhotos((current) => current.filter((_, currentIndex) => currentIndex !== index))}
               /> : null}
               {findingPhotoError ? <p className="field-error" role="alert">{findingPhotoError}</p> : null}
@@ -1619,7 +1643,9 @@ function ProjectOperations({
               </label>
               {hsePhotos.length ? <FindingPhotoStack
                 files={hsePhotos}
+                markupContext={{ ...markupOptions, defaultBuildingId: hseBuildingId }}
                 onReplace={(index, file) => setHsePhotos((current) => current.map((photo, currentIndex) => currentIndex === index ? file : photo))}
+                onDetail={(report) => setHseForm((current) => ({ ...current, description: appendPhotoDetail(current.description, report) }))}
                 captions={hsePhotoCaptions}
                 onCaption={(index, caption) => setHsePhotoCaptions((current) => {
                   const next = [...current];
@@ -1785,7 +1811,9 @@ function ProjectOperations({
               {registerSketching ? <SketchPad close={() => setRegisterSketching(false)} save={(file) => { setRegisterPhotos((current) => [...current, file]); setRegisterSketching(false); }} /> : null}
               {registerPhotos.length ? <FindingPhotoStack
                 files={registerPhotos}
+                markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId === ALL_BUILDINGS ? "" : registerBuildingId }}
                 onReplace={(index, file) => setRegisterPhotos((current) => current.map((photo, currentIndex) => currentIndex === index ? file : photo))}
+                onDetail={(report) => setRegisterForm((current) => ({ ...current, details: appendPhotoDetail(current.details, report) }))}
                 captions={registerPhotoCaptions}
                 onCaption={(index, caption) => setRegisterPhotoCaptions((current) => {
                   const next = [...current];
@@ -2090,12 +2118,17 @@ function FindingPhotoStack({
   files,
   onRemove,
   onReplace,
+  onDetail,
+  markupContext,
   captions,
   onCaption,
 }: {
   files: File[];
   onRemove: (index: number) => void;
   onReplace?: (index: number, file: File) => void;
+  /** Receives the full written detail of what was marked, for the form's own description. */
+  onDetail?: (report: string) => void;
+  markupContext?: PhotoMarkupContext;
   captions?: string[];
   onCaption?: (index: number, caption: string) => void;
 }) {
@@ -2136,13 +2169,15 @@ function FindingPhotoStack({
       {markupFile && onReplace ? (
         <PhotoMarkupPad
           file={markupFile}
+          context={markupContext}
           close={() => setMarkupIndex(-1)}
-          save={({ file, summary, markerCount }) => {
+          save={({ file, summary, report, markerCount }) => {
             onReplace(markupIndex, file);
             setMarkerCounts((current) => new Map(current).set(file, markerCount));
             // What was marked becomes the words under the photo, unless the supervisor
             // already wrote something better there.
             if (summary && onCaption && !(captions?.[markupIndex] ?? "").trim()) onCaption(markupIndex, summary);
+            if (report) onDetail?.(report);
             setMarkupIndex(-1);
           }}
         />

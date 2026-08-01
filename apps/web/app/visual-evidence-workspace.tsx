@@ -17,7 +17,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
-import { MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
+import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
 import { fieldPhotoMimeTypes, normalizedImagePoint, validatePanoramaDimensions } from "@/lib/images/field-image.mjs";
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload } from "@/lib/offline/upload-queue";
@@ -367,11 +367,17 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           {markingPhoto && file ? (
             <PhotoMarkupPad
               file={file}
+              context={{
+                buildings: buildings.map((building) => ({ id: building.id, label: building.name })),
+                defaultBuildingId: captureBuildingId,
+                locations: data.locationNodes.map((node) => ({ id: node.id, label: `${node.code} · ${node.name}`, buildingId: node.building_id })),
+                parties: parties.map((party) => ({ id: party.id, label: party.name })),
+              }}
               close={() => setMarkingPhoto(false)}
-              save={({ file: marked, summary, markerCount }) => {
+              save={({ file: marked, report, markerCount }) => {
                 setFile(marked);
                 setPhotoMarkerCount(markerCount);
-                if (summary) setCaptureForm((current) => ({ ...current, description: appendDictation(current.description, summary) }));
+                if (report) setCaptureForm((current) => ({ ...current, description: appendPhotoDetail(current.description, report) }));
                 setMarkingPhoto(false);
               }}
             />
