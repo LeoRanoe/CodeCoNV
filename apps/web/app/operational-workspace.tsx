@@ -28,6 +28,7 @@ import {
   RotateCcw,
   Settings,
   ShieldCheck,
+  Smartphone,
   Users,
   Upload,
   WifiOff,
@@ -214,6 +215,19 @@ function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "The operation was not completed.";
 }
 
+/**
+ * Not every contractor uses WhatsApp; on site an SMS is what always arrives. Both open
+ * the phone's own app with the message ready, so no number is stored in the project.
+ */
+function openWhatsApp(message: string) {
+  window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+}
+
+function openSms(message: string) {
+  // "?&body=" is the form both iOS and Android accept without a recipient.
+  window.location.href = `sms:?&body=${encodeURIComponent(message)}`;
+}
+
 async function copyToClipboard(value: string) {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(value);
@@ -276,6 +290,7 @@ export function OperationalWorkspace({
   openUserAdmin,
   initialProjectTab = "home",
   externalSubmissionIntent = false,
+  actionCenterView = "work",
   initialCameraFiles = [],
   onInitialCameraFilesConsumed,
   openQuickCamera,
@@ -310,12 +325,14 @@ export function OperationalWorkspace({
   initialProjectTab?: ProjectTab;
   /** Set when Management sends the user here to record a contractor submission. */
   externalSubmissionIntent?: boolean;
+  /** Which view of the action centre to open: the worklist or the deadlines. */
+  actionCenterView?: "work" | "deadlines";
   initialCameraFiles?: File[];
   onInitialCameraFilesConsumed?: () => void;
   openQuickCamera: () => void;
   openDailyRecord: (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => void;
-  openProjectArea: (tab: "inspections" | "findings" | "documents" | "registers" | "visual" | "drawings" | "files" | "submissions") => void;
-  openActionCenter: () => void;
+  openProjectArea: (tab: "inspections" | "findings" | "ncr" | "documents" | "registers" | "visual" | "drawings" | "files" | "submissions") => void;
+  openActionCenter: (view?: "work" | "deadlines") => void;
   openRapidVerify: () => void;
   openReports: () => void;
   openManagement: () => void;
@@ -417,6 +434,7 @@ export function OperationalWorkspace({
           data={query.data}
           actions={projectActions}
           projectName={projectName}
+          initialView={actionCenterView}
           openAction={(actionId) => openProjectAction?.(actionId)}
           createAction={() => createProjectAction?.()}
           openProjectArea={(tab) => openProjectArea(tab)}
@@ -513,7 +531,7 @@ function ProjectOperations({
   onInitialCameraFilesConsumed?: () => void;
   openQuickCamera: () => void;
   openDailyRecord: (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => void;
-  openActionCenter: () => void;
+  openActionCenter: (view?: "work" | "deadlines") => void;
   openRapidVerify: () => void;
   openReports: () => void;
   openManagement: () => void;
@@ -667,6 +685,12 @@ function ProjectOperations({
     ? activeTemplate.items.filter((item) => checklistItemAnswered(item, inspectionAnswers[item.id])).length
     : 0;
   const online = typeof navigator === "undefined" ? true : navigator.onLine;
+  // Every form says the same thing about a photo, because a photo works the same in
+  // every form: tap it to describe it, mark it or throw it away.
+  const photoCaptureHint = text(
+    "Tap again for another photo. Tap a photo in the list to describe, mark or remove it.",
+    "Tik opnieuw voor nog een foto. Tik op een foto in de lijst om te omschrijven, markeren of verwijderen.",
+  );
   const scopedFindings = data.findings.filter((finding) => findingScope === "ncr"
     ? finding.finding_type === "ncr"
     : finding.finding_type !== "ncr");
@@ -1006,14 +1030,22 @@ function ProjectOperations({
 
   const addFinding = async () => {
     if (findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3) return;
-    const findingBuildingName = buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName;
+    // A finding always belongs to a building in the database. "All buildings" therefore
+    // means the same record in every building, exactly as the daily log and the field
+    // notes already do it; before this it produced an error on saving.
+    const projectWideFinding = findingBuildingId === ALL_BUILDINGS;
+    const findingBuildingIds = projectWideFinding ? buildings.map((building) => building.id) : [findingBuildingId];
+    const findingPhotoBuildingId = projectWideFinding ? resolveDefaultBuildingId(buildings, buildingId) : findingBuildingId;
+    const findingBuildingName = projectWideFinding
+      ? text("All buildings", "Alle gebouwen")
+      : buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName;
     // The module decides what is created here. Without this an NCR opened from the
     // module switcher would be stored as an ordinary deficiency and vanish from the
     // NCR list it was entered in.
     const findingType = findingScope === "ncr" ? "ncr" : findingForm.type === "ncr" ? "deficiency" : findingForm.type;
     const draft = {
       projectId,
-      buildingId: findingBuildingId,
+      buildingId: findingBuildingIds[0] ?? findingBuildingId,
       type: findingType,
       title: findingForm.title,
       description: findingForm.description,
@@ -1032,7 +1064,7 @@ function ProjectOperations({
       remarks: findingForm.remarks,
       signedBy: findingForm.signedBy,
       signedAt: findingForm.signedAt,
-      locationNodeId: findingLocationNodeId,
+      locationNodeId: projectWideFinding ? "" : findingLocationNodeId,
     };
     // The record itself is created first whenever there is a connection. That is what
     // makes the link to the contractor available the moment the NCR is submitted; the
@@ -1045,10 +1077,16 @@ function ProjectOperations({
       const effectiveReportId = await ensureProjectDayReport(client, projectId, reportId);
       // Without photos there is nothing to queue, so the record is created here even
       // when the connection is gone: the failure has to be visible, not silent.
-      if (navigator.onLine || !findingPhotos.length) created = await createFinding(client, { ...draft, reportId: effectiveReportId });
+      if (navigator.onLine || !findingPhotos.length) {
+        for (const targetBuildingId of findingBuildingIds) {
+          const record = await createFinding(client, { ...draft, buildingId: targetBuildingId, reportId: effectiveReportId });
+          // The photos hang under the first record; the others carry the same words.
+          if (!created) created = record;
+        }
+      }
       if (findingPhotos.length) {
         const folderName = text("Findings", "Bevindingen");
-        const findingFolderId = existingMediaFolderId(folderName, findingBuildingId);
+        const findingFolderId = existingMediaFolderId(folderName, findingPhotoBuildingId);
         const groupId = crypto.randomUUID();
         for (const photo of findingPhotos) {
           const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
@@ -1056,7 +1094,7 @@ function ProjectOperations({
           // dozen identical titles for one issue.
           await queueOfflineUpload({
             projectId,
-            buildingId: findingBuildingId,
+            buildingId: findingPhotoBuildingId,
             reportId: effectiveReportId,
             folderId: findingFolderId,
             folderName,
@@ -1067,7 +1105,7 @@ function ProjectOperations({
             title: photo.details.title.trim() || findingForm.title,
             description: photoUploadDescription(photo, findingForm.description, language),
             locationLabel: findingBuildingName,
-            locationNodeId: photo.details.locationNodeId || findingLocationNodeId || null,
+            locationNodeId: photo.details.locationNodeId || (projectWideFinding ? null : findingLocationNodeId) || null,
             capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
             originalSize: photo.original.size,
             queuedSize: prepared.blob.size,
@@ -1099,7 +1137,7 @@ function ProjectOperations({
                 remarks: findingForm.remarks,
                 signedBy: findingForm.signedBy,
                 signedAt: findingForm.signedAt,
-                locationNodeId: findingLocationNodeId || undefined,
+                locationNodeId: (projectWideFinding ? "" : findingLocationNodeId) || undefined,
               },
             },
           });
@@ -1126,20 +1164,32 @@ function ProjectOperations({
 
   const addHse = async () => {
     if (hseForm.title.trim().length < 3 || hseForm.description.trim().length < 3) return;
-    const hseBuildingName = buildings.find((building) => building.id === hseBuildingId)?.name ?? buildingName;
+    // The same building choice as every other field record, and it has to work: an HSE
+    // event needs a building, so "all buildings" writes the event in each of them.
+    const projectWideHse = hseBuildingId === ALL_BUILDINGS;
+    const hseBuildingIds = projectWideHse ? buildings.map((building) => building.id) : [hseBuildingId];
+    const hsePhotoBuildingId = projectWideHse ? resolveDefaultBuildingId(buildings, buildingId) : hseBuildingId;
+    const hseBuildingName = projectWideHse
+      ? text("All buildings", "Alle gebouwen")
+      : buildings.find((building) => building.id === hseBuildingId)?.name ?? buildingName;
     const okay = await run(
       async () => {
         const effectiveReportId = await ensureProjectDayReport(client, projectId, reportId);
-        const event = await createHseEvent(client, { projectId, buildingId: hseBuildingId, locationNodeId: hseLocationNodeId, reportId: effectiveReportId, ...hseForm });
-        if (hsePhotos.length) {
+        let event: Awaited<ReturnType<typeof createHseEvent>> | null = null;
+        for (const targetBuildingId of hseBuildingIds) {
+          const recorded = await createHseEvent(client, { projectId, buildingId: targetBuildingId, locationNodeId: projectWideHse ? "" : hseLocationNodeId, reportId: effectiveReportId, ...hseForm });
+          // The photos hang under the first event; the others carry the same words.
+          if (!event) event = recorded;
+        }
+        if (hsePhotos.length && event) {
           const folderName = "HSE";
-          const folderId = existingMediaFolderId(folderName, hseBuildingId);
+          const folderId = existingMediaFolderId(folderName, hsePhotoBuildingId);
           for (const photo of hsePhotos) {
             const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
             const caption = photo.details.title.trim();
             await queueOfflineUpload({
               projectId,
-              buildingId: hseBuildingId,
+              buildingId: hsePhotoBuildingId,
               reportId: effectiveReportId,
               folderId,
               folderName,
@@ -1151,7 +1201,7 @@ function ProjectOperations({
               title: caption || hseForm.title,
               description: photoUploadDescription(photo, hseForm.description, language),
               locationLabel: hseBuildingName,
-              locationNodeId: photo.details.locationNodeId || hseLocationNodeId || null,
+              locationNodeId: photo.details.locationNodeId || (projectWideHse ? null : hseLocationNodeId) || null,
               capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
               originalSize: photo.original.size,
               queuedSize: prepared.blob.size,
@@ -1480,7 +1530,7 @@ function ProjectOperations({
               </div>
               <label className="finding-photo-capture inspection-photo-capture">
                 <Camera size={22} />
-                <span><strong>{inspectionPhotos.length ? text(`${inspectionPhotos.length} evidence photos ready`, `${inspectionPhotos.length} bewijsfoto’s klaar`) : text("Take inspection evidence photo", "Maak inspectiebewijsfoto")}</strong><small>{text("Tap again for another photo. Every image is linked to this inspection.", "Tik opnieuw voor nog een foto. Elk beeld wordt aan deze inspectie gekoppeld.")}</small></span>
+                <span><strong>{inspectionPhotos.length ? text(`${inspectionPhotos.length} photos ready`, `${inspectionPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
                 <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setInspectionPhotos, setInspectionPhotoError); event.currentTarget.value = ""; }} />
               </label>
               <PhotoEvidenceList
@@ -1569,7 +1619,7 @@ function ProjectOperations({
               ) : null}
               <label className="finding-photo-capture">
                 <Camera size={22} />
-                <span><strong>{findingPhotos.length ? text(`${findingPhotos.length} photos stacked for this issue`, `${findingPhotos.length} foto’s gestapeld voor dit probleem`) : text("Take or choose issue photos", "Maak of kies probleemfoto’s")}</strong><small>{text("Tap again to add another photo. Project, building, date and time are linked automatically.", "Tik opnieuw om nog een foto toe te voegen. Project, gebouw, datum en tijd worden automatisch gekoppeld.")}</small></span>
+                <span><strong>{findingPhotos.length ? text(`${findingPhotos.length} photos ready`, `${findingPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
                 <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
               </label>
               <PhotoEvidenceList
@@ -1672,7 +1722,7 @@ function ProjectOperations({
                   <div className="operation-alert warning"><RotateCcw size={17} /><div><strong>{text("The contractor fills in the correction", "De aannemer vult de correctie in")}</strong><span>{text("After submitting you send this NCR to the contractor with one tap. The contractor fills in the proposed corrective action and sends it back; the quality-control close-out stays with CODECO.", "Na indienen stuur je deze NCR met één tik naar de aannemer. De aannemer vult de voorgestelde correctieve actie in en stuurt die terug; de eindcontrole blijft bij CODECO.")}</span></div></div>
                 </>
               ) : null}
-              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : findingScope === "ncr" ? text("Submit NCR", "NCR indienen") : text("Submit issue", "Probleem indienen")}</button>
+              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && findingBuildingId !== ALL_BUILDINGS && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : findingScope === "ncr" ? text("Submit NCR", "NCR indienen") : text("Submit issue", "Probleem indienen")}</button>
             </div>
           ) : null}
           {/* Submitting is not the end of an NCR: the contractor has to receive it and
@@ -1762,19 +1812,21 @@ function ProjectOperations({
               </details>
               <label className="finding-photo-capture hse-photo-capture">
                 <Camera size={22} />
-                <span><strong>{hsePhotos.length ? text(`${hsePhotos.length} evidence photos ready`, `${hsePhotos.length} bewijsfoto’s klaar`) : text("Take HSE evidence photo", "Maak HSE-bewijsfoto")}</strong><small>{text("Tap again to stack situation and control-measure photos.", "Tik opnieuw om situatie- en maatregelfoto’s te stapelen.")}</small></span>
+                <span><strong>{hsePhotos.length ? text(`${hsePhotos.length} photos ready`, `${hsePhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
                 <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setHsePhotos, setHsePhotoError); event.currentTarget.value = ""; }} />
               </label>
               <PhotoEvidenceList
                 photos={hsePhotos}
                 setPhotos={setHsePhotos}
-                markupContext={{ ...markupOptions, defaultBuildingId: hseBuildingId }}
+                markupContext={{ ...markupOptions, defaultBuildingId: hseBuildingId === ALL_BUILDINGS ? "" : hseBuildingId }}
               />
               {hsePhotoError ? <p className="field-error" role="alert">{hsePhotoError}</p> : null}
-              <BuildingPicker id="hse-building" buildings={buildings} value={hseBuildingId} onChange={(next) => { setHseBuildingId(next); setHseLocationNodeId(""); }} />
-              <LocationPicker id="hse-location" nodes={data.locationNodes} buildingId={hseBuildingId} value={hseLocationNodeId} onChange={setHseLocationNodeId} requiredDepth={requiredLocationDepth} />
+              <div className="form-grid-2">
+                <BuildingPicker id="hse-building" buildings={buildings} value={hseBuildingId} onChange={(next) => { setHseBuildingId(next); setHseLocationNodeId(""); }} allowAll />
+                <LocationPicker id="hse-location" nodes={data.locationNodes} buildingId={hseBuildingId} value={hseLocationNodeId} onChange={setHseLocationNodeId} requiredDepth={hseBuildingId === ALL_BUILDINGS ? "building" : requiredLocationDepth} />
+              </div>
               <label className="check-field"><input type="checkbox" checked={hseForm.confidential} onChange={(event) => setHseForm({ ...hseForm, confidential: event.target.checked })} /> {text("Restrict this sensitive incident to authorized HSE roles", "Beperk dit gevoelige incident tot bevoegde HSE-rollen")}</label>
-              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !hseLocationNodeId) || hseForm.title.trim().length < 3 || hseForm.description.trim().length < 3} onClick={() => void addHse()}><ShieldCheck size={15} /> {text("Save HSE record", "HSE-registratie opslaan")}</button>
+              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && hseBuildingId !== ALL_BUILDINGS && !hseLocationNodeId) || hseForm.title.trim().length < 3 || hseForm.description.trim().length < 3} onClick={() => void addHse()}><ShieldCheck size={15} /> {text("Save HSE record", "HSE-registratie opslaan")}</button>
             </div>
           ) : null}
           <RecordList empty={text("No formal HSE records yet.", "Nog geen formele HSE-registraties.")} rows={data.hseEvents.map((event) => ({ id: event.id, icon: ShieldCheck, title: event.confidential ? `${event.title} · ${text("confidential", "vertrouwelijk")}` : event.title, meta: `${event.event_number} · ${recordContextLabel(event.building_id, event.location_node_id)} · ${event.event_type.replaceAll("_", " ")} · ${formatDate(event.occurred_at, locale)}`, status: event.status.replaceAll("_", " "), tone: event.severity === "critical" ? "red" : event.status === "closed" ? "green" : "" }))} />
@@ -1952,7 +2004,7 @@ function ProjectOperations({
                   the photo shows. Documents alone were not enough for the client. */}
               <label className="finding-photo-capture register-photo-capture">
                 <Camera size={22} />
-                <span><strong>{registerPhotos.length ? text(`${registerPhotos.length} photos ready`, `${registerPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{text("Tap again for another photo. Every image is linked to this register item.", "Tik opnieuw voor nog een foto. Elk beeld wordt aan dit registeritem gekoppeld.")}</small></span>
+                <span><strong>{registerPhotos.length ? text(`${registerPhotos.length} photos ready`, `${registerPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
                 <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setRegisterPhotos, setRegisterPhotoError); event.currentTarget.value = ""; }} />
               </label>
               <button className="ghost-button sketch-open-button" type="button" onClick={() => setRegisterSketching(true)}><PenLine size={15} /> {text("Make a sketch", "Schets maken")}</button>
@@ -2202,7 +2254,8 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
             <div className="finding-actions"><button className="secondary-button" type="button" onClick={() => setHistoryActive((current) => current === entry.id ? null : entry.id)}><Archive size={15} /> {historyActive === entry.id ? text("Close record", "Sluit dossier") : text("Open record & history", "Open dossier & historie")}</button>
             {/* Send the document to the contractor over WhatsApp. The formal PDF or Word
                 file stays the attachment; this is the message that announces it. */}
-            <button className="whatsapp-button" type="button" onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(contractorMessage(entry))}`, "_blank", "noopener,noreferrer")}><MessageCircle size={16} /> {text("Send to contractor", "Naar aannemer sturen")}</button>
+            <button className="whatsapp-button" type="button" onClick={() => openWhatsApp(contractorMessage(entry))}><MessageCircle size={16} /> {text("Send to contractor", "Naar aannemer sturen")}</button>
+            <button className="secondary-button" type="button" onClick={() => openSms(contractorMessage(entry))}><Smartphone size={15} /> {text("Send as SMS", "Als SMS sturen")}</button>
             <ReportDownloadButtons disabled={busy} onDownloadPdf={() => import("@/lib/reports/controlled-document-pdf").then(({ downloadControlledDocumentPdf }) => downloadControlledDocumentPdf(entry))} onDownloadWord={() => import("@/lib/reports/controlled-document-docx").then(({ downloadControlledDocumentDocx }) => downloadControlledDocumentDocx(entry))} />{!["closed", "cancelled"].includes(entry.status) ? <button className="primary-button" type="button" disabled={busy} onClick={() => { setActive(active === entry.id ? null : entry.id); setResponse({ decision: entry.register_type === "technical_instruction" || entry.register_type === "change_order" ? "acknowledged" : "approved", comments: "", respondentName: currentUserName, respondentPosition: "", respondentCompany: "CODECO N.V." }); }}><FileCheck2 size={15} /> {text("Record formal response", "Leg formeel antwoord vast")}</button> : null}</div>
             {historyActive === entry.id ? <section className="controlled-document-history">
               <div><span>{text("Created / issued", "Aangemaakt / uitgegeven")}</span><strong>{formatDate(entry.occurred_at, locale)}</strong><small>{String(details.issuer_name ?? details.issued_by ?? currentUserName)} · {String(details.issuer_company ?? "CODECO N.V.")}</small></div>
@@ -2360,7 +2413,8 @@ function SubmittedRecordShare({ finding, scope, projectName, projectCode, buildi
           {feedback ? <p className="external-share-feedback" role="status">{feedback}</p> : null}
           <div className="submitted-record-share-actions">
             <button className="secondary-button" type="button" onClick={() => void copyToClipboard(link.url).then(() => setFeedback(text("Link copied.", "Link gekopieerd."))).catch((error) => setFeedback(messageFrom(error)))}><Copy size={16} /> {text("Copy link", "Kopieer link")}</button>
-            <button className="whatsapp-button" type="button" onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(message(link))}`, "_blank", "noopener,noreferrer")}><MessageCircle size={17} /> {text("Open WhatsApp and send", "Open WhatsApp en stuur")}</button>
+            <button className="whatsapp-button" type="button" onClick={() => openWhatsApp(message(link))}><MessageCircle size={17} /> {text("Open WhatsApp and send", "Open WhatsApp en stuur")}</button>
+            <button className="secondary-button" type="button" onClick={() => openSms(message(link))}><Smartphone size={16} /> {text("Send as SMS", "Als SMS sturen")}</button>
           </div>
         </>
       ) : (
@@ -2530,7 +2584,8 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
                 {shareFeedback ? <p className="external-share-feedback" role="status">{shareFeedback}</p> : null}
                 <div className="external-share-preflight-actions">
                   <button className="secondary-button" type="button" onClick={() => void copyToClipboard(externalShare.url).then(() => setShareFeedback(text("Link copied.", "Link gekopieerd."))).catch((error) => setShareFeedback(messageFrom(error)))}><Copy size={16} /> {text("Copy link", "Kopieer link")}</button>
-                  <button className="whatsapp-button" type="button" onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(externalMessage(finding, externalShare))}`, "_blank", "noopener,noreferrer")}><MessageCircle size={17} /> {text("Open WhatsApp and send", "Open WhatsApp en stuur")}</button>
+                  <button className="whatsapp-button" type="button" onClick={() => openWhatsApp(externalMessage(finding, externalShare))}><MessageCircle size={17} /> {text("Open WhatsApp and send", "Open WhatsApp en stuur")}</button>
+                  <button className="secondary-button" type="button" onClick={() => openSms(externalMessage(finding, externalShare))}><Smartphone size={16} /> {text("Send as SMS", "Als SMS sturen")}</button>
                   <button className="revoke-share-button" type="button" onClick={() => setRevokeConfirmId(externalShare.shareId)}><X size={16} /> {text("Revoke link", "Link intrekken")}</button>
                 </div>
               </section>

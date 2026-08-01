@@ -3,6 +3,7 @@
 import {
   AlertTriangle,
   ArrowRight,
+  CalendarClock,
   CheckCircle2,
   ClipboardCheck,
   FileCheck2,
@@ -27,8 +28,15 @@ type ProjectActionItem = {
 };
 
 type ActionType = "all" | "action" | "wcr" | "rfi" | "rfa" | "wir" | "issue" | "punchlist" | "document";
-/** The page is reached as "Deadlines", so the buckets are deadline buckets. */
-type StateFilter = "overdue" | "week" | "later" | "none" | "all";
+/**
+ * The action centre is one page with two ways of looking at the same worklist: by the
+ * state the work is in, and by the deadline it has to meet. The client asked for the
+ * action centre; the deadline tile of the workspace opens the same page on its
+ * deadline view.
+ */
+export type ActionCenterView = "work" | "deadlines";
+type WorkFilter = "open" | "urgent" | "verification" | "all";
+type DeadlineFilter = "overdue" | "week" | "later" | "none" | "all";
 
 type UnifiedItem = {
   id: string;
@@ -41,17 +49,23 @@ type UnifiedItem = {
   /** The deadline itself. A record without one is never given a substitute date. */
   dueAt: string | null;
   meta: string;
+  /** For a finding: the finding type, so an NCR opens in the NCR module. */
+  recordKind?: string;
   action?: ProjectActionItem;
 };
 
 const settledStatuses = new Set(["closed", "verified", "approved", "cancelled", "rejected", "completed"]);
+const urgentPriorities = new Set(["high", "critical", "urgent"]);
 
 const dayInMilliseconds = 24 * 60 * 60 * 1000;
 
-/** Whole days between today and the deadline: negative is overdue, 0 is today. */
+/**
+ * Whole days between today and the deadline: negative is overdue, 0 is today. The day is
+ * the day on site — a phone in another timezone must not turn "today" into "yesterday".
+ */
 function daysUntil(dueAt: string) {
-  const startOfDay = (value: Date) => Date.UTC(value.getFullYear(), value.getMonth(), value.getDate());
-  return Math.round((startOfDay(new Date(dueAt)) - startOfDay(new Date())) / dayInMilliseconds);
+  const siteDay = (value: Date) => Date.parse(`${new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(value)}T00:00:00Z`);
+  return Math.round((siteDay(new Date(dueAt)) - siteDay(new Date())) / dayInMilliseconds);
 }
 
 function typeIcon(type: UnifiedItem["type"]) {
@@ -67,6 +81,7 @@ export function ProjectActionCenter({
   data,
   actions,
   projectName,
+  initialView = "work",
   openAction,
   createAction,
   openProjectArea,
@@ -74,13 +89,17 @@ export function ProjectActionCenter({
   data: OperationSnapshot;
   actions: ProjectActionItem[];
   projectName: string;
+  /** "deadlines" when the workspace deadline tile opened this page. */
+  initialView?: ActionCenterView;
   openAction: (actionId: string) => void;
   createAction: () => void;
-  openProjectArea: (tab: "findings" | "registers" | "drawings") => void;
+  openProjectArea: (tab: "findings" | "ncr" | "registers" | "drawings") => void;
 }) {
   const { locale, text } = useLanguage();
+  const [view, setView] = useState<ActionCenterView>(initialView);
   const [typeFilter, setTypeFilter] = useState<ActionType>("all");
-  const [stateFilter, setStateFilter] = useState<StateFilter>("overdue");
+  const [workFilter, setWorkFilter] = useState<WorkFilter>("open");
+  const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>("overdue");
   const [search, setSearch] = useState("");
 
   const items = useMemo<UnifiedItem[]>(() => {
@@ -108,6 +127,7 @@ export function ProjectActionCenter({
       // every record look like it had a deadline it never had.
       dueAt: finding.due_at,
       meta: finding.finding_type.replaceAll("_", " "),
+      recordKind: finding.finding_type,
     }));
     // Everything with a deadline belongs on a deadline page: contractor submissions as
     // well as the controlled documents CODECO issues itself.
@@ -138,19 +158,25 @@ export function ProjectActionCenter({
   }, [actions, data.findings, data.registerEntries, text]);
 
   const isOpen = (item: UnifiedItem) => !settledStatuses.has(item.status);
+  const isUrgent = (item: UnifiedItem) => urgentPriorities.has(item.priority);
   // A deadline only counts while the record is still open; a closed record with a date
   // in the past is not an arrear.
   const overdue = (item: UnifiedItem) => isOpen(item) && Boolean(item.dueAt) && daysUntil(item.dueAt as string) < 0;
   const withinWeek = (item: UnifiedItem) => isOpen(item) && Boolean(item.dueAt) && daysUntil(item.dueAt as string) >= 0 && daysUntil(item.dueAt as string) <= 7;
   const later = (item: UnifiedItem) => isOpen(item) && Boolean(item.dueAt) && daysUntil(item.dueAt as string) > 7;
   const withoutDeadline = (item: UnifiedItem) => isOpen(item) && !item.dueAt;
+  const matchesWorkFilter = (item: UnifiedItem) => workFilter === "all"
+    || workFilter === "open" && isOpen(item)
+    || workFilter === "urgent" && isOpen(item) && (isUrgent(item) || overdue(item))
+    || workFilter === "verification" && item.status === "ready_for_verification";
+  const matchesDeadlineFilter = (item: UnifiedItem) => deadlineFilter === "all"
+    || deadlineFilter === "overdue" && overdue(item)
+    || deadlineFilter === "week" && withinWeek(item)
+    || deadlineFilter === "later" && later(item)
+    || deadlineFilter === "none" && withoutDeadline(item);
   const visibleItems = items.filter((item) => {
     const matchesType = typeFilter === "all" || item.type === typeFilter;
-    const matchesState = stateFilter === "all"
-      || stateFilter === "overdue" && overdue(item)
-      || stateFilter === "week" && withinWeek(item)
-      || stateFilter === "later" && later(item)
-      || stateFilter === "none" && withoutDeadline(item);
+    const matchesState = view === "deadlines" ? matchesDeadlineFilter(item) : matchesWorkFilter(item);
     const term = search.trim().toLocaleLowerCase(locale);
     const matchesSearch = !term || `${item.title} ${item.reference} ${item.type} ${item.status}`.toLocaleLowerCase(locale).includes(term);
     return matchesType && matchesState && matchesSearch;
@@ -181,26 +207,46 @@ export function ProjectActionCenter({
 
   const openItem = (item: UnifiedItem) => {
     if (item.source === "action" && item.action) openAction(item.action.id);
-    else if (item.source === "finding") openProjectArea("findings");
+    // An NCR lives in its own module; sending the user to Issues would be a dead end.
+    else if (item.source === "finding") openProjectArea(item.recordKind === "ncr" ? "ncr" : "findings");
     else openProjectArea("registers");
   };
 
   return (
     <section className="action-center">
       <header className="action-center-hero">
-        <div><span>{projectName}</span><h1>{text("Deadlines", "Deadlines")}</h1><p>{text("Every open action, finding, NCR and formal document that carries a deadline, the closest one first.", "Elke openstaande actie, bevinding, NCR en formeel document met een deadline, de eerstvolgende bovenaan.")}</p></div>
+        <div><span>{projectName}</span><h1>{text("Action center", "Actiecentrum")}</h1><p>{view === "deadlines"
+          ? text("Every open record that has to be met by a date, the closest deadline first.", "Elke openstaande registratie met een datum die gehaald moet worden, de eerstvolgende deadline bovenaan.")
+          : text("One live worklist for assigned actions, quality findings and formal requests.", "Eén actuele werklijst voor toegewezen acties, kwaliteitspunten en formele verzoeken.")}</p></div>
         <button className="primary-button" type="button" onClick={createAction}><Plus size={15} /> {text("New action", "Nieuwe actie")}</button>
       </header>
 
-      <div className="action-center-summary deadline-summary">
-        {([
-          ["overdue", text("Overdue", "Te laat"), items.filter(overdue).length],
-          ["week", text("Within 7 days", "Binnen 7 dagen"), items.filter(withinWeek).length],
-          ["later", text("Later", "Later"), items.filter(later).length],
-          ["none", text("No deadline", "Geen deadline"), items.filter(withoutDeadline).length],
-          ["all", text("All records", "Alle registraties"), items.length],
-        ] as Array<[StateFilter, string, number]>).map(([id, label, count]) => <button className={`${stateFilter === id ? "active" : ""}${id === "overdue" && count ? " overdue" : ""}`} type="button" onClick={() => setStateFilter(id)} key={id}><strong>{count}</strong><span>{label}</span></button>)}
+      {/* One page, two ways of looking at the same worklist. */}
+      <div className="action-center-views" role="tablist" aria-label={text("Action center view", "Weergave actiecentrum")}>
+        <button className={view === "work" ? "active" : ""} type="button" role="tab" aria-selected={view === "work"} onClick={() => setView("work")}><ClipboardCheck size={15} /> {text("Worklist", "Werklijst")}</button>
+        <button className={view === "deadlines" ? "active" : ""} type="button" role="tab" aria-selected={view === "deadlines"} onClick={() => setView("deadlines")}><CalendarClock size={15} /> {text("Deadlines", "Deadlines")}<span>{items.filter(overdue).length}</span></button>
       </div>
+
+      {view === "deadlines" ? (
+        <div className="action-center-summary deadline-summary">
+          {([
+            ["overdue", text("Overdue", "Te laat"), items.filter(overdue).length],
+            ["week", text("Within 7 days", "Binnen 7 dagen"), items.filter(withinWeek).length],
+            ["later", text("Later", "Later"), items.filter(later).length],
+            ["none", text("No deadline", "Geen deadline"), items.filter(withoutDeadline).length],
+            ["all", text("All records", "Alle registraties"), items.length],
+          ] as Array<[DeadlineFilter, string, number]>).map(([id, label, count]) => <button className={`${deadlineFilter === id ? "active" : ""}${id === "overdue" && count ? " overdue" : ""}`} type="button" onClick={() => setDeadlineFilter(id)} key={id}><strong>{count}</strong><span>{label}</span></button>)}
+        </div>
+      ) : (
+        <div className="action-center-summary">
+          {([
+            ["open", text("Open", "Open"), items.filter(isOpen).length],
+            ["urgent", text("Urgent or overdue", "Urgent of te laat"), items.filter((item) => isOpen(item) && (isUrgent(item) || overdue(item))).length],
+            ["verification", text("Awaiting verification", "Wacht op verificatie"), items.filter((item) => item.status === "ready_for_verification").length],
+            ["all", text("All records", "Alle registraties"), items.length],
+          ] as Array<[WorkFilter, string, number]>).map(([id, label, count]) => <button className={workFilter === id ? "active" : ""} type="button" onClick={() => setWorkFilter(id)} key={id}><strong>{count}</strong><span>{label}</span></button>)}
+        </div>
+      )}
 
       <div className="action-center-layout">
         <div className="action-center-worklist">
@@ -220,7 +266,7 @@ export function ProjectActionCenter({
                 <span className={`document-status ${settledStatuses.has(item.status) ? "approved" : ""}`}>{item.status.replaceAll("_", " ")}</span>
                 <ArrowRight size={15} />
               </button>
-            )) : <div className="action-center-empty"><Filter size={24} /><div><strong>{stateFilter === "overdue" ? text("Nothing is overdue", "Niets is te laat") : text("No records match this view", "Geen registraties in deze weergave")}</strong><p>{text("Choose another deadline group or create the first assigned action.", "Kies een andere deadlinegroep of maak de eerste toegewezen actie.")}</p></div><button className="secondary-button" type="button" onClick={() => { setTypeFilter("all"); setStateFilter("all"); setSearch(""); }}>{text("Clear filters", "Wis filters")}</button></div>}
+            )) : <div className="action-center-empty"><Filter size={24} /><div><strong>{view === "deadlines" && deadlineFilter === "overdue" ? text("Nothing is overdue", "Niets is te laat") : text("No records match this view", "Geen registraties in deze weergave")}</strong><p>{text("Choose another group or create the first assigned action.", "Kies een andere groep of maak de eerste toegewezen actie.")}</p></div><button className="secondary-button" type="button" onClick={() => { setTypeFilter("all"); setWorkFilter("all"); setDeadlineFilter("all"); setSearch(""); }}>{text("Clear filters", "Wis filters")}</button></div>}
           </div>
         </div>
 

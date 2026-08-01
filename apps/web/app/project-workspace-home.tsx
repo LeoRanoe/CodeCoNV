@@ -47,7 +47,7 @@ type ProjectWorkspaceHomeProps = {
   openRegister: (type: RegisterShortcut) => void;
   openDailyRecord: (type: DailyShortcut) => void;
   openDailyWork: (view: "works_ongoing" | "works_completed" | "delays") => void;
-  openActionCenter: () => void;
+  openActionCenter: (view?: "work" | "deadlines") => void;
   openRapidVerify: () => void;
   openReports: () => void;
   openManagement: () => void;
@@ -197,7 +197,8 @@ export function ProjectWorkspaceHome({
       icon: CalendarClock,
       tone: "slate",
       count: counts.deadlines,
-      action: openActionCenter,
+      // The same action centre, opened on its deadline view.
+      action: () => openActionCenter("deadlines"),
     },
     {
       id: "hse-incident",

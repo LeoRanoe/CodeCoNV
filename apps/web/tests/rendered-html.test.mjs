@@ -620,7 +620,10 @@ test("implements the customer video workflows without external accounts", async 
   assert.match(migration, /create table public\.external_share_responses/);
   assert.match(migration, /external[\s\S]{0,80}completion means "ready for CODECO verification"/);
   assert.match(migration, /grant execute on function public\.submit_external_share_response[\s\S]*to service_role/);
-  assert.doesNotMatch(`${app}\n${operations}\n${shareActions}`, /\bSMS\b/i);
+  // No SMS gateway and no stored phone numbers: the client asked for a link he can send
+  // himself, so the app only opens the phone's own SMS app with the message ready.
+  assert.doesNotMatch(`${app}\n${operations}\n${shareActions}`, /twilio|messagebird|sms_gateway|sendSms\(/i);
+  assert.match(operations, /sms:\?&body=/);
 });
 
 test("minimizes repetitive field typing with controlled quick choices", async () => {
@@ -1166,7 +1169,8 @@ test("processes the annotated screens of 1 August: NCR form, agreement and deadl
   // #14A · After submitting, the link to the contractor stands where you submitted.
   assert.match(workspace, /function SubmittedRecordShare/);
   assert.match(workspace, /setSubmittedFinding\(created\)/);
-  assert.match(workspace, /if \(navigator\.onLine \|\| !findingPhotos\.length\) created = await createFinding/);
+  assert.match(workspace, /if \(navigator\.onLine \|\| !findingPhotos\.length\) \{/);
+  assert.match(workspace, /const record = await createFinding\(client, \{ \.\.\.draft, buildingId: targetBuildingId/);
   assert.match(styles, /\.submitted-record-share/);
 
   // #14 · The contractor fills the correction in through the link and sends it back.
@@ -1211,4 +1215,49 @@ test("processes the annotated screens of 1 August: NCR form, agreement and deadl
   assert.match(actionCenter, /day\(s\) overdue|dag\(en\) te laat/);
   assert.match(actionCenter, /deadline-summary/);
   assert.match(styles, /\.deadline-summary/);
+});
+
+test("keeps the action centre and makes its deadlines and choices true on site", async () => {
+  const [workspace, actionCenter, home, app, styles] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/project-action-center.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/project-workspace-home.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // The action centre keeps the name the client asked for and gains the deadline view
+  // instead of being renamed into one.
+  assert.match(actionCenter, /text\("Action center", "Actiecentrum"\)/);
+  assert.match(actionCenter, /export type ActionCenterView = "work" \| "deadlines"/);
+  assert.match(actionCenter, /action-center-views/);
+  assert.match(styles, /\.action-center-views/);
+  assert.match(actionCenter, /type WorkFilter = "open" \| "urgent" \| "verification" \| "all"/);
+  assert.match(actionCenter, /Awaiting verification|Wacht op verificatie/);
+  assert.match(actionCenter, /Urgent or overdue|Urgent of te laat/);
+  // Deadlines are counted in the day on site, and an NCR opens in the NCR module.
+  assert.match(actionCenter, /timeZone: "America\/Paramaribo" \}\)\.format\(value\)\}T00:00:00Z/);
+  assert.match(actionCenter, /openProjectArea\(item\.recordKind === "ncr" \? "ncr" : "findings"\)/);
+  // The deadline tile opens the same page on its deadline view.
+  assert.match(home, /openActionCenter\("deadlines"\)/);
+  assert.match(app, /const \[actionCenterView, setActionCenterView\]/);
+  assert.match(workspace, /initialView=\{actionCenterView\}/);
+
+  // #16 · A photo says in every form that it can be described, marked or removed.
+  assert.match(workspace, /const photoCaptureHint = text\(/);
+  assert.match(workspace, /describe, mark or remove it|omschrijven, markeren of verwijderen/);
+  assert.equal(workspace.match(/<small>\{photoCaptureHint\}<\/small>/g)?.length, 4);
+
+  // #16 · The building and location choice is the same field in every form, and
+  // "all buildings" is stored instead of failing.
+  assert.match(workspace, /BuildingPicker id="hse-building"[^/]*allowAll/);
+  assert.match(workspace, /const projectWideHse = hseBuildingId === ALL_BUILDINGS/);
+  assert.match(workspace, /const projectWideFinding = findingBuildingId === ALL_BUILDINGS/);
+  assert.match(workspace, /for \(const targetBuildingId of hseBuildingIds\)/);
+  assert.match(workspace, /for \(const targetBuildingId of findingBuildingIds\)/);
+
+  // #16 · An SMS reaches a contractor who does not use WhatsApp.
+  assert.match(workspace, /function openSms\(message: string\)/);
+  assert.match(workspace, /sms:\?&body=/);
+  assert.equal(workspace.match(/Send as SMS|Als SMS sturen/g)?.length, 6);
 });

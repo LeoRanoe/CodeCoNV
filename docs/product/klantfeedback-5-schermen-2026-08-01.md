@@ -5,7 +5,7 @@ een projectregister-scherm *Agreement* zonder nummer, #15 actiecentrum). Vervolg
 reeksen van 31 juli.
 
 Gecontroleerd: `npx tsc --noEmit` schoon · `npx eslint app lib tests next.config.ts` schoon ·
-`next build` slaagt · 35/35 knipseltests groen (1 nieuwe regressietest voor deze reeks).
+`next build` slaagt · 36/36 knipseltests groen (2 nieuwe regressietests voor deze reeks).
 
 ---
 
@@ -120,14 +120,15 @@ gelden er al voor. Wat nog van #11 en #12 openstond:
 
 ## #15 Actiecentrum — "dit is de deadline page! niet correct"
 
-Het tegeltje *Deadlines* opende het actiecentrum, en dat was geen deadlinepagina. De pagina
-heet nu **Deadlines** en gedraagt zich ernaar:
+Het tegeltje *Deadlines* opende het actiecentrum, en dat was geen deadlinepagina. Het
+actiecentrum houdt zijn naam — zie de naronde onderaan — en krijgt er een deadlineweergave
+bij die wel klopt:
 
 - **Geen vervangende datum meer.** Een bevinding zonder deadline toonde haar aanmaakdatum, een
   registeritem zijn registratiedatum. Daardoor leek alles een deadline te hebben. Alleen de
   echte deadline telt; records zonder deadline staan in hun eigen groep.
-- **Groepen in plaats van statussen**: *Te laat · Binnen 7 dagen · Later · Geen deadline ·
-  Alle registraties*. De pagina opent op *Te laat*.
+- **Groepen naast de statussen**: *Te laat · Binnen 7 dagen · Later · Geen deadline ·
+  Alle registraties*. Het tegeltje *Deadlines* opent op *Te laat*.
 - **De datum staat er in woorden bij**: "3 dag(en) te laat", "vandaag", "morgen", "over 5
   dagen". Te late regels zijn rood.
 - **Alles met een deadline staat erop.** Naast acties, bevindingen en aannemersindieningen nu
@@ -162,3 +163,61 @@ heet nu **Deadlines** en gedraagt zich ernaar:
    opslaan.
 7. Werkruimte → *Deadlines*: controleren dat de pagina op *Te laat* opent en dat elke regel
    zegt hoeveel dagen het is.
+
+---
+
+# Naronde: actiecentrum, deadlines en scherm #16
+
+## Het actiecentrum blijft het actiecentrum
+
+De vorige ronde hernoemde de pagina naar *Deadlines*. Dat was fout: het actiecentrum is
+iets wat de klant zelf heeft gevraagd, en een naam vervangen lost geen deadlineprobleem op.
+De pagina heet weer **Actiecentrum** en heeft nu twee weergaven van dezelfde werklijst:
+
+- **Werklijst** — waar het werk in staat: *Open · Urgent of te laat · Wacht op verificatie ·
+  Alle registraties*. Dit is het oorspronkelijke actiecentrum, met één verbetering: te laat
+  telt mee als urgent, want op het veld is dat hetzelfde.
+- **Deadlines** — waar de datum in zit: *Te laat · Binnen 7 dagen · Later · Geen deadline ·
+  Alle registraties*. Het tegeltje *Deadlines* in de werkruimte opent het actiecentrum direct
+  op deze weergave; via de onderbalk kom je op de werklijst.
+
+Wat er inhoudelijk niet klopte en nu wel klopt:
+
+- Een bevinding zonder deadline toonde haar aanmaakdatum en een registeritem zijn
+  registratiedatum. Alleen de echte deadline telt nu; records zonder deadline hebben een
+  eigen groep in plaats van een verzonnen datum.
+- De datum staat er in woorden bij: "3 dag(en) te laat", "vandaag", "morgen", "over 5 dagen".
+- **De dag is de dag op locatie.** De telling gebruikt de kalenderdag in Paramaribo, niet die
+  van het toestel. Een telefoon die op een andere tijdzone staat maakte van "vandaag"
+  anders "gisteren".
+- Een gesloten, geverifieerd of goedgekeurd record met een datum in het verleden telt niet
+  als achterstand.
+- Alles met een deadline staat erop: acties, bevindingen, NCR's, aannemersindieningen én de
+  beheerde documenten die CODECO zelf uitgeeft (TI, CO, ER), met een tabblad
+  *TI / CO / documenten*.
+- Tikken op een NCR opent voortaan de NCR-module. Dat was de issuemodule, waar de NCR niet
+  in staat — een doodlopende weg op het veld.
+
+## #16 HSE-scherm
+
+- **"Foto kan niet bewerkt of een omschrijving krijgen."** Elke fotoknop in de app zegt nu
+  hetzelfde en zegt wat er kan: *Maak of kies een foto* met daaronder "Tik op een foto in de
+  lijst om te omschrijven, markeren of verwijderen". De fotorij zelf opende die details al;
+  op het scherm was alleen niet te zien dát het kon.
+- **"Keuze niet uniform."** Het HSE-formulier zette *Gebouw* en *Exacte projectlocatie* onder
+  elkaar over de volle breedte en kende geen *Alle gebouwen*, terwijl de andere formulieren
+  dat wel doen. Beide velden staan nu in hetzelfde tweekolomsblok als overal, met dezelfde
+  keuzes.
+- **"Locatie keuze."** De locatiekeuze verdwijnt zolang er geen locatieboom bestaat en zodra
+  de registratie voor alle gebouwen geldt; ze komt terug zodra er verdiepingen of ruimten
+  zijn.
+- **Bijbehorende fout hersteld.** *Alle gebouwen* kon voor een bevinding of NCR wél worden
+  gekozen maar niet worden opgeslagen: een bevinding en een HSE-gebeurtenis hebben in de
+  database altijd een gebouw. Kiezen betekende dus een foutmelding bij opslaan. Nu wordt de
+  registratie per gebouw opgeslagen — dezelfde afspraak als in de daglog en de veldnotities —
+  en de foto's hangen aan de eerste ervan.
+- **"SMS link!"** Naast *Open WhatsApp en stuur* staat nu **Als SMS sturen**, op dezelfde drie
+  plekken: het paneel direct na het indienen, de kaart van een bevinding of NCR, en de kaart
+  van een beheerd document. De knop opent de sms-app van de telefoon zelf met het bericht en
+  de beveiligde link erin. Er wordt geen sms-gateway gebruikt en geen telefoonnummer
+  opgeslagen; dat blijft zoals het klantvoorstel het vroeg.

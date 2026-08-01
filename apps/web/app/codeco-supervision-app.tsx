@@ -527,11 +527,13 @@ export function CodecoSupervisionApp() {
   const [modal, setModal] = useState<ModalKey>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [selectedType, setSelectedType] = useState<string>("activity");
-  const [initialProjectTab, setInitialProjectTab] = useState<"home" | "inspections" | "findings" | "hse" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files">("home");
+  const [initialProjectTab, setInitialProjectTab] = useState<"home" | "inspections" | "findings" | "ncr" | "hse" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files">("home");
   const quickCameraInputRef = useRef<HTMLInputElement>(null);
   const dailyBackupCheckRef = useRef("");
   const [pendingQuickPhotos, setPendingQuickPhotos] = useState<File[]>([]);
   const [externalSubmissionIntent, setExternalSubmissionIntent] = useState(false);
+  /** Which view the action centre opens on; the deadline tile asks for the deadlines. */
+  const [actionCenterView, setActionCenterView] = useState<"work" | "deadlines">("work");
   const [description, setDescription] = useState("");
   // A proposed description must vanish on the first keystroke instead of staying behind.
   const [descriptionSuggested, setDescriptionSuggested] = useState(false);
@@ -1181,6 +1183,9 @@ export function CodecoSupervisionApp() {
 
   const navigate = (next: NavKey) => {
     if (next === "project") setInitialProjectTab("home");
+    // Reaching the action centre from the bar means the worklist; only the deadline
+    // tile of the workspace asks for the deadline view.
+    setActionCenterView("work");
     // Any deliberate navigation ends the Management submission hand-off, so the
     // workspace never stays unlocked for contractor document types.
     setExternalSubmissionIntent(false);
@@ -1606,6 +1611,7 @@ export function CodecoSupervisionApp() {
               openUserAdmin={() => setModal("user_admin")}
               initialProjectTab={activeNav === "projectdocs" ? "documents" : activeNav === "punchlist" ? "findings" : initialProjectTab}
               externalSubmissionIntent={externalSubmissionIntent}
+              actionCenterView={actionCenterView}
               initialCameraFiles={pendingQuickPhotos}
               onInitialCameraFilesConsumed={() => setPendingQuickPhotos([])}
               openQuickCamera={openQuickAdd}
@@ -1625,7 +1631,7 @@ export function CodecoSupervisionApp() {
                 setInitialProjectTab(tab === "submissions" ? "registers" : tab);
                 setActiveNav("project");
               }}
-              openActionCenter={() => navigate("acties")}
+              openActionCenter={(view = "work") => { navigate("acties"); setActionCenterView(view); }}
               openRapidVerify={() => navigate("verify")}
               openReports={() => navigate("rapporten")}
               openManagement={() => navigate("meer")}
