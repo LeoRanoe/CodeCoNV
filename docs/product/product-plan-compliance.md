@@ -1,10 +1,13 @@
 # Productplan-compliance — CODECO Supervisie
 
-Laatst bijgewerkt: 22-07-2026
+Laatst bijgewerkt: 01-08-2026
 Bron: `docs/productplan-constructiesupervisie-webapp.md`  
 Klantverfijning: `docs/product/client-profile-codeco.md`
 Klantbrief dagrapport: `docs/product/client-day-report-brief.md`
 Klantfeedback-audit 360°/tekeningen: `docs/product/klantfeedback-audit-2026-07-22.md`
+Klantfeedback vijf/drie schermen 31-07: `docs/product/klantfeedback-5-schermen-2026-07-31.md`, `-deel2.md`, `docs/product/klantfeedback-3-schermen-2026-07-31-deel3.md`
+Klantfeedback vijf schermen 01-08: `docs/product/klantfeedback-5-schermen-2026-08-01.md`
+Ondertekenaudit 01-08: `docs/product/ondertekenen-audit-2026-08-01.md`
 
 ## Werkwijze
 
@@ -38,9 +41,9 @@ Bij iedere functionele wijziging worden de betrokken regels en de verificatie in
 
 | ID | Eis | Status | Bewijs / eerstvolgende actie |
 | --- | --- | --- | --- |
-| WF-01 | Mijn projecten → Gebouwen → Projectstart | Conform | Eerste keuze blijft een driestapsflow; daarna wisselt de zijbalk direct van gebouw zonder terug te gaan naar de projectkeuze, en een beheerder kan een tweede of derde gebouw toevoegen via de nieuwe `create_building`-RPC |
-| WF-02 | Gekozen project en gebouw blijven zichtbaar | Conform | Context staat in kop en zijbalk; "Gebouw wisselen" wijzigt alleen de actieve gebouwcontext binnen dezelfde werkruimte, zonder de projectkeuze of ingevoerde dagdata te verliezen |
-| WF-03 | Fysieke registratie heeft verplicht een gebouw | Conform | De live invoer vereist een gekozen gebouw; samengestelde foreign keys en databaseconstraints blokkeren fysieke registraties zonder geldig projectgebouw. Projectstart, dagafsluiting en aanwezigheid zijn nu per (dagrapport, gebouw) uniek in plaats van per dagrapport, zodat elk gebouw zijn eigen antwoorden bewaart |
+| WF-01 | Mijn projecten → werkruimte → Projectstart | Conform | Op klantverzoek (27-07) is het verplichte tussenscherm "kies een gebouw" vervallen: een projectkeuze landt direct op de cockpit en Projectstart is een modal per gebouw. Een beheerder voegt een tweede of derde gebouw toe via de `create_building`-RPC |
+| WF-02 | Gekozen project blijft zichtbaar; gebouw is een keuze per registratie | Conform | De projectcontext staat in kop en zijbalk. De vaste gebouwschakelaar is vervangen door `BuildingPicker` in zeven formulierfamilies, met een expliciete keuze *Alle gebouwen*; die keuze verandert alleen het voorstel per registratie en verliest de projectkeuze of ingevoerde dagdata niet |
+| WF-03 | Fysieke registratie hoort altijd bij een gebouw | Conform | Samengestelde foreign keys en databaseconstraints blokkeren fysieke registraties zonder geldig projectgebouw. *Alle gebouwen* schrijft per gebouw een aparte registratie in plaats van een lege verwijzing (hersteld 01-08 voor bevinding, NCR en HSE). Projectstart, dagafsluiting en aanwezigheid zijn per (dagrapport, gebouw) uniek, zodat elk gebouw zijn eigen antwoorden bewaart |
 | WF-04 | Maximaal vijf primaire navigatiekeuzes | Conform | Vandaag, Project, Snel toevoegen, Acties en Meer op mobiel; desktop gebruikt dezelfde informatiestructuur |
 | WF-05 | Dagcockpit beantwoordt planning, controles, problemen, ontbrekende informatie en rapportgereedheid | Gedeeltelijk | Live centrale projectstart en dagvragen verzamelen weer, planning, bezetting, inspecties, risico's en voortgang; projectspecifieke externe planning ontbreekt nog |
 | WF-06 | Dagrapport automatisch per project en datum | Conform | De live cockpit roept de atomische RPC aan; unieke beperking `(project_id, report_date)` en idempotency voorkomen dubbele dagrapporten |
@@ -66,7 +69,7 @@ Bij iedere functionele wijziging worden de betrokken regels en de verificatie in
 | MVP-12 | Vertraging en handmatig weer | Gedeeltelijk | Projectstart en dagafsluiting vragen werkelijk weer; vertraging vraagt oorzaak en uren. Automatische weerbron en tijdblokberekening ontbreken |
 | MVP-13 | Review, PDF, ondertekening en revisies | Gedeeltelijk | Formele review/retour, immutable freeze+checksum, geauthenticeerde append-only ondertekenverklaringen, distributieregistratie en revisies met behoud van origineel werken. Juridisch ondertekenniveau en automatische verzending zijn klantbesluiten; PDF uit frozen snapshot volgt |
 | MVP-14 | Basisdashboard en registers | Gedeeltelijk | KPI's en moduleoverzicht werken; de klantlogs omvatten nu ook RFA, IR, BOQ, punch list, notitie, afspraak, technische instructie, change order, contract en specificatie. DWG-bronnen worden veilig bewaard; PDF-/afbeeldingstekeningen hebben paginaview, exacte recordpins en geaudite vrije lijnen, revisiewolken, pijlen en tekst. Uitgebreide filters/trends volgen |
-| MVP-15 | Audit, rechten en back-up | Gedeeltelijk | RLS, append-only audit, formele recordbeveiliging, 323 pgTAP-tests, productiegereedheidschecklist en handmatige export zijn aanwezig. Dagelijkse gecomprimeerde Blob-back-up, readback, SHA-verificatie, retentie en maandelijkse integriteits-dry-run zijn gebouwd; productie-uitrol en een onafhankelijke off-accountkopie blijven open |
+| MVP-15 | Audit, rechten en back-up | Gedeeltelijk | RLS, append-only audit, formele recordbeveiliging, elf pgTAP-bestanden met 420 geplande assertions, productiegereedheidschecklist en handmatige export zijn aanwezig. Dagelijkse gecomprimeerde Blob-back-up, readback, SHA-verificatie, retentie en maandelijkse integriteits-dry-run zijn gebouwd; productie-uitrol en een onafhankelijke off-accountkopie blijven open |
 | MVP-16 | Online verwerking, idempotency en hervatbare uploads | Gedeeltelijk | Online mutaties gebruiken unieke keys en atomische RPC's; uploads gaan rechtstreeks naar Vercel Blob via kort geldige, beperkte upload-URL's met voortgang. Automatisch hervatten na een volledige browser- of netwerkonderbreking is nog niet toegevoegd |
 | MVP-17 | Beheer van secties, checklists, categorieën, deadlines en huisstijl | Gedeeltelijk | Beheer-UI werkt voor projectregels, rapportprefix, pushmeldingen, herinneringstermijnen, bestandslimiet, locatiehiërarchie, partijen, 103 bibliotheekchecklists en eigen gepubliceerde checklists. Klanten kiezen rapporttype en vrije periode; huisstijlbeheer volgt |
 | MVP-18 | Dagelijkse JSON-back-up en hersteltest | Gedeeltelijk | De Vercel Cron-route, volledige organisatie-export, gzip, Blob-readback, SHA-256, inhoudscontrole en 7-dag/4-week/3-maand-retentie zijn gebouwd en getest. De productiemigratie, eerste productieback-up, onafhankelijke kopie en volledige herstelproef in een tijdelijke database zijn nog niet aantoonbaar afgerond |
@@ -120,7 +123,7 @@ Bij iedere functionele wijziging worden de betrokken regels en de verificatie in
 | TA-03 | MUI + Emotion en MUI X Community | Niet gestart | Thema en componentwrappers moeten de maatwerkprimitieven vervangen |
 | TA-04 | TanStack Query 5 | Conform | Centrale workspace- en dagdata gebruiken querycaching en gerichte invalidatie na bevestigde mutaties |
 | TA-05 | React Hook Form + Zod 4 | Conform | Projectstart en dagafsluiting gebruiken React Hook Form met Zod 4, schemaresolvers en conditionele validatie |
-| TA-06 | Supabase Auth/Postgres/Realtime met RLS | Conform | Hosted Auth/Postgres, 25 uitgerolde versioned migrations, RLS op 44 browserbereikbare tabellen, atomische RPC's en Realtime-publicatie/invalidering zijn actief. De lokaal geteste migraties 26 t/m 28 voor geplande jobs, tekeningpins en de bindende PDF-eisen wachten op productieprojecttoegang |
+| TA-06 | Supabase Auth/Postgres/Realtime met RLS | Gedeeltelijk | Hosted Auth/Postgres, 47 versioned migrations in de repository, RLS op 50 browserbereikbare tabellen, atomische RPC's en Realtime-publicatie/invalidering zijn actief. Welke migraties in productie staan is niet vanuit de repository vast te stellen; de twee migraties van 01-08 (`202608010001`, `202608010002`) wachten volgens de sessiedocumentatie nog op `supabase db push` |
 | TA-07 | Google Drive als enige bestandsopslag via Worker-gateway | Klantafwijking | Op uitdrukkelijk klantbesluit gebruikt de applicatie private Vercel Blob. Beveiligde Next.js-routes valideren Supabase JWT/RLS; uploads gebruiken kort geldige, pad- en bestandstypegebonden upload-URL's en downloads blijven server-geautoriseerd |
 | TA-08 | Bun workspaces + Turborepo + Biome | Tijdelijke afwijking | De gekozen Next.js-app gebruikt npm. GitHub Actions bewaakt inmiddels lint, productiebuild, webtests, dependency-audit, migraties, database-lint en pgTAP; een toolmigratie levert nu geen functioneel voordeel op |
 | TA-09 | Client-side PDF uit immutable snapshot | Conform | Werk-PDF komt uit bevestigde centrale data; iedere formele revisie kan apart worden gedownload en wordt uitsluitend uit haar frozen snapshot opgebouwd, met revisie, frozen tijd en volledige SHA-256 in het document |
@@ -142,9 +145,9 @@ Deze onderwerpen blijven bewust **Geblokkeerd** totdat CODECO ze formeel bevesti
 
 | ID | Regel | Status | Bewijs / eerstvolgende actie |
 | --- | --- | --- | --- |
-| SEC-01 | RLS op iedere browserbereikbare tabel, geïndexeerd en per rol getest | Conform | RLS staat op alle 44 browserbereikbare tabellen; policykolommen zijn geïndexeerd en de lokale zichtbaarheidsmatrix dekt alle acht productrollen plus een buitenstaander. Visuele records, tekeningpins en markeringen volgen actuele projectrechten en bewaakte RPC's |
+| SEC-01 | RLS op iedere browserbereikbare tabel, geïndexeerd en per rol getest | Conform | RLS staat op alle 50 browserbereikbare tabellen; policykolommen zijn geïndexeerd en de lokale zichtbaarheidsmatrix dekt alle acht productrollen plus een buitenstaander. Visuele records, tekeningpins en markeringen volgen actuele projectrechten en bewaakte RPC's |
 | SEC-02 | Service keys en opslagtokens nooit in de React-app | Conform | De browser ontvangt uitsluitend een kort geldige upload-URL voor één object. `SUPABASE_SECRET_KEY`, Blob OIDC en eventuele Blob read-write fallback blijven uitsluitend in Vercel serverroutes |
-| SEC-03 | Kritieke mutaties atomisch en idempotent | Gedeeltelijk | Dagrapport, aanwezigheid, registratie, inspectie, checklistinstallatie, BOQ-import, bevinding, HSE, tekeningmarkup, review/freeze, ondertekening, distributie, revisie, e-mailaflevering en back-upexport hebben databasebescherming. Productie-uitrol van migraties 26 t/m 28 volgt |
+| SEC-03 | Kritieke mutaties atomisch en idempotent | Gedeeltelijk | Dagrapport, aanwezigheid, registratie, inspectie, checklistinstallatie, BOQ-import, bevinding, HSE, tekeningmarkup, review/freeze, ondertekening, distributie, revisie, e-mailaflevering en back-upexport hebben databasebescherming. De pgTAP-suite dekt de RPC-ingangen, maar nog niet de takken die na 26-07 zijn toegevoegd (`proposed_correction`, `correction_signed_by`/`completion_signed_by`, dispositie van beeldmarkers, dagelijkse werkstatus); productie-uitrol van de migraties van 01-08 volgt |
 | SEC-04 | Append-only audit en immutable formele versies | Conform | Audit/history-tabellen blokkeren wijziging/verwijdering; report snapshots+SHA, reviews, signatures en distributions hebben integriteitstriggers en formele acties lopen uitsluitend via bewaakte RPC's |
 | SEC-05 | Geldige statusovergangen en bevoegde verificatie in de database | Gedeeltelijk | Dagrapport-, actie-, inspectie- en bevindingstransities plus onafhankelijke verificatie zijn database-enforced; gespecialiseerde registers wachten op klantgoedgekeurde matrices |
 | SEC-06 | Dependencycontrole zonder open productierisico's | Conform | Next.js 16.2.11, Sharp 0.35.3 en de veilige PostCSS-override zijn actief; `npm audit --omit=dev` rapporteert nul productiekwetsbaarheden. Build- en regressietests bevestigen compatibiliteit |
@@ -182,10 +185,46 @@ Deze onderwerpen blijven bewust **Geblokkeerd** totdat CODECO ze formeel bevesti
 | 22-07-2026 | Bindende PDF-specificatie plus klantcorrecties afgerond met 100 checkliststandaarden, 360°-cameraweergave, tekenmarkup, DWG-bronupload, RFA/RFI/IR/TI/CO, BOQ, klikbare werkzaamheden, zelfgekozen perioderapport, push, offline beelden/databesparing, beeldmappen en WhatsApp-links zonder AI of SMS-notificaties | MVP-03, MVP-07, MVP-10, MVP-14, MVP-17, CC-02, CC-04, CC-05, CC-11, SEC-03 |
 | 26-07-2026 | Drie klant-anchorchecklists projectspecifiek geautomatiseerd, actueel weer op projectlocatie vooraf ingevuld, secties met één tik akkoord, maximaal twaalf probleemfoto's per bevinding en een visuele first-use veldgids | CC-01, CDR-01, CDR-05, CDR-17, MVP-12, MVP-17 |
 | 24-07-2026 | Dertien laat ontvangen klantformulieren verwerkt als beheerde RFI/RFA/WIR/TI/CO/ER/NCR-documenten, B1-issuecatalogus, gedateerde issuevoortgang en uitgebreid week-/maand-/gebouwrapport uit één centrale dataset | MVP-03, MVP-07, MVP-08, MVP-13, MVP-14, CDR-04 t/m CDR-07, CDR-11, CDR-13, CDR-17, CDR-19, SEC-03 t/m SEC-05 |
+| 27-07-2026 | Verplichte gebouwkeuze tussen projectkeuze en cockpit vervallen; iedere registratie kiest zelf haar gebouw via `BuildingPicker`, met dezelfde meergebouwenuitsplitsing in het concept-PDF | WF-01, WF-02, WF-03, MVP-02 |
+| 27-07-2026 | Locatiehiërarchie, BOQ-configuratie, dagelijkse werkstatus en het koppelen van bestaand beeldmateriaal aan een bevinding | MVP-02, MVP-06, MVP-11, CC-05, CDR-04 |
+| 30-07-2026 | Klantwerkruimte en indieningsflow: externe indienerrollen, WCR, taaktoewijzing aan eigen medewerkers, beveiligde in-app documentweergave, antwoordhistorie op beheerde documenten en leesrecht voor de opdrachtgever op het dagwerk | MVP-01, MVP-08, MVP-10, MVP-14, CDR-13, SEC-01, SEC-05 |
+| 30-07-2026 | Velddoorwerking: *Alle gebouwen* als expliciete keuze, spraak-naar-tekst in tekstvelden, echte oorzaak van geweigerde pushmeldingen inclusief iOS-thuisschermvereiste, fotovoorbeeld vóór opslaan en fotovastlegging zonder projectstart | PP-01, PP-04, MVP-10, MVP-11, CDR-17 |
+| 31-07-2026 | Klantfeedback op drie reeksen geannoteerde schermen verwerkt: issue-, register- en instructieschermen, issuekolommen uit de eigen Excel van de klant, schetsblok, en een deploy die een geïnstalleerde veld-app bij de eerstvolgende herlaadbeurt bereikt | MVP-03, MVP-07, MVP-14, MVP-16, MVP-17, CC-01, CDR-05, CDR-13 |
+| 01-08-2026 | Beeldbewijs op ordegrootte van een schriftelijke bevinding: aanwijzen op de foto in elk formulier, eigen scherm per foto met titel, toelichting, categorie, gebouw, locatie en kijkrichting, tekstgereedschap en behoud van markeringen | MVP-08, MVP-11, CDR-06, CDR-17 |
+| 01-08-2026 | NCR volgens het eigen formulier van de klant, met aanbevolen actie van de ingenieur, correctievoorstel van de aannemer via de beveiligde link, sms- en WhatsApp-verzending en de bijbehorende migratie `202608010001` | MVP-08, MVP-09, CC-01, CDR-06, CDR-07, SEC-03 |
+| 01-08-2026 | Actiecentrum behouden en aangevuld met een deadlineweergave die alleen echte deadlines telt, in de kalenderdag van Paramaribo, inclusief de beheerde documenten met termijn | WF-08, MVP-10, MVP-14, CC-04, CDR-14 |
+| 01-08-2026 | Iedere vastgelegde handtekening zichtbaar op het document dat de klant uitdeelt: blok 19 in dagrapport-PDF en -Word, *Issued and signed by* op beheerde documenten, de naam van de aannemer op de NCR en ondertekening van de afspraak in beide invoerpaden, met migratie `202608010002` | PP-07, MVP-13, CDR-19, CC-09, SEC-04 |
 | 26-07-2026 | Dagrapportflow losgekoppeld van één vast gebouw: projectstart, dagafsluiting en aanwezigheid zijn per gebouw uniek in plaats van per dagrapport, een nieuwe `create_building`-RPC laat een project na oprichting groeien, rapportindiening vereist alle actieve gebouwen, de formele snapshot en PDF tonen een uitsplitsing per gebouw, en de zijbalk wisselt direct van gebouw zonder de projectcontext te verliezen | WF-01, WF-02, WF-03, WF-09, MVP-02 |
 
-## Verificatie van deze slice
+## Verificatie — 01-08-2026
 
-De lokale migratiereeks bevat nu 32 migraties. Migratie 32 met de drie anchorchecklists is foutloos toegepast op het repository-gekoppelde hosted CODECO-project. De Vercel-productieomgeving gebruikt nog Supabase-project `dljbeheogaeviokpcvca`; de app levert de drie checklists daar daarom aanvullend vanuit een ingebouwde catalogus en installeert het volledige pakket met één knop via de bestaande beveiligde checklist-RPC. Alleen de database-trigger voor volledig automatische installatie op ieder nieuw project wacht nog op een Supabase-account met projectrechten. De acht pgTAP-bestanden bevatten samen 333 geslaagde tests, naast dertien geslaagde webregressietests en een productie-audit met nul bekende kwetsbaarheden.
+Gemeten in de werkruimte op commit `504a89c`, met een schone `npm ci`:
 
-Hosted Auth blokkeert self-signup, vereist bevestigde e-mail, minimaal 12 tekens met kleine letter/hoofdletter/cijfer en ondersteunt TOTP. De native Next.js-productiebouw, strict TypeScript, ESLint, dertien webtests en `npm audit --omit=dev` met nul kwetsbaarheden slagen. GitHub Actions herhaalt deze controles en start daarnaast een lege Supabase-stack voor migratie-, schema-lint- en pgTAP-controle. Regels blijven **Gedeeltelijk** of **Geblokkeerd** waar migraties 26 t/m 28/productierun, een onafhankelijke back-upkopie, veld-UAT, e-mailprovider/domeinauthenticatie, hervatbare uploads na browserherstart, gespecialiseerde kosten-/declaratiegoedkeuring, juridisch ondertekenniveau, projectspecifieke formulieracceptatie/retentie/KPI's of aanvullende huisstijlbesluiten nog ontbreken.
+| Controle | Uitkomst |
+| --- | --- |
+| `npx next build` (productiebouw) | Slaagt; 21 routes, statisch/dynamisch zoals verwacht |
+| `npx tsc --noEmit` (strict) | Nul fouten — let op: `next-env.d.ts` wordt door de bouw gegenereerd en staat niet in de repository, dus een `tsc` vóór de eerste bouw meldt tien ontbrekende beeldmodules |
+| `npx eslint app lib tests next.config.ts` | Nul meldingen |
+| `node --test tests/rendered-html.test.mjs tests/field-workflows.test.mjs` | 37/37 geslaagd |
+| `npm audit --omit=dev` | Nul kwetsbaarheden |
+| Migratiereeks | 47 migraties, oplopend genummerd, geen dubbele tijdstempels |
+| pgTAP | Elf bestanden, samen 420 geplande assertions; niet lokaal uitvoerbaar in deze omgeving (geen Docker), GitHub Actions draait ze per push en pull request |
+| RLS | 50 tabellen met `enable row level security` |
+| Checklistbibliotheek | 100 bibliotheekstandaarden plus drie klant-anchorchecklists = 103 |
+| Hoofdnavigatie | Precies vijf primaire keuzes op mobiel (Vandaag, Project, Foto, Acties, Meer) |
+| Huisstijl | `#f07400`, `#ff8f26`, `#14151a` en `#2a2c38` in `app/globals.css`; Hind als primaire letterfamilie; productnaam **CODECO Supervisie** |
+| SEC-02 / SEC-09 | Geen `signUp`-aanroep in de app; `SUPABASE_SECRET_KEY` uitsluitend in serverroutes en `lib/storage/server.ts` |
+
+Hosted Auth blokkeert self-signup, vereist bevestigde e-mail, minimaal 12 tekens met kleine letter/hoofdletter/cijfer en ondersteunt TOTP. GitHub Actions herhaalt bouw, lint, tests en audit en start daarnaast een lege Supabase-stack voor migratie-, schema-lint- en pgTAP-controle.
+
+### Wat deze verificatie niet kan aantonen
+
+De volgende punten zijn niet vanuit de werkruimte te controleren en blijven open tot iemand ze in de omgeving zelf vaststelt:
+
+1. welke migraties in het productie-Supabase-project zijn toegepast; de twee migraties van 01-08 wachten volgens de sessiedocumentatie nog op `supabase db push`;
+2. of de laatste build op `code-co-nv.vercel.app` staat — de klantfeedback van 01-08 stelt vast dat de klant naar een oudere deploy keek;
+3. de e2e-suite (`npm run test:e2e`), die zonder `CODECO_E2E_EMAIL`/`CODECO_E2E_PASSWORD` overslaat;
+4. de eerste productieback-up, de onafhankelijke off-accountkopie en een echte herstelproef;
+5. de veld-UAT met echte supervisors, waaronder de 30-secondentest van PP-04.
+
+Regels blijven **Gedeeltelijk** of **Geblokkeerd** waar de productie-uitrol, een onafhankelijke back-upkopie, veld-UAT, e-mailprovider/domeinauthenticatie, hervatbare uploads na browserherstart, gespecialiseerde kosten-/declaratiegoedkeuring, juridisch ondertekenniveau, projectspecifieke formulieracceptatie/retentie/KPI's of aanvullende huisstijlbesluiten nog ontbreken.
