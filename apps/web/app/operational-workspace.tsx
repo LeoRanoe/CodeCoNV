@@ -40,6 +40,7 @@ import NextImage from "next/image";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
+import { MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
 import { SketchPad } from "@/app/sketch-pad";
 import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
@@ -1389,7 +1390,11 @@ function ProjectOperations({
                 <span><strong>{inspectionPhotos.length ? text(`${inspectionPhotos.length} evidence photos ready`, `${inspectionPhotos.length} bewijsfoto’s klaar`) : text("Take inspection evidence photo", "Maak inspectiebewijsfoto")}</strong><small>{text("Tap again for another photo. Every image is linked to this inspection.", "Tik opnieuw voor nog een foto. Elk beeld wordt aan deze inspectie gekoppeld.")}</small></span>
                 <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setInspectionPhotos, setInspectionPhotoError); event.currentTarget.value = ""; }} />
               </label>
-              {inspectionPhotos.length ? <FindingPhotoStack files={inspectionPhotos} onRemove={(index) => setInspectionPhotos((current) => current.filter((_, currentIndex) => currentIndex !== index))} /> : null}
+              {inspectionPhotos.length ? <FindingPhotoStack
+                files={inspectionPhotos}
+                onReplace={(index, file) => setInspectionPhotos((current) => current.map((photo, currentIndex) => currentIndex === index ? file : photo))}
+                onRemove={(index) => setInspectionPhotos((current) => current.filter((_, currentIndex) => currentIndex !== index))}
+              /> : null}
               {inspectionPhotoError ? <p className="field-error" role="alert">{inspectionPhotoError}</p> : null}
               <div className="form-actions checklist-sticky-actions"><button className="secondary-button" type="button" onClick={() => setActiveInspection(null)}>{text("Complete later", "Later afronden")}</button><button className="primary-button" type="button" disabled={busy || activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))} onClick={() => void submitInspection()}>{busy ? <Loader2 className="spin" size={15} /> : <FileCheck2 size={15} />} {text("Complete inspection", "Inspectie afronden")}</button></div>
             </div>
@@ -1464,7 +1469,11 @@ function ProjectOperations({
                 <span><strong>{findingPhotos.length ? text(`${findingPhotos.length} photos stacked for this issue`, `${findingPhotos.length} foto’s gestapeld voor dit probleem`) : text("Take or choose issue photos", "Maak of kies probleemfoto’s")}</strong><small>{text("Tap again to add another photo. Project, building, date and time are linked automatically.", "Tik opnieuw om nog een foto toe te voegen. Project, gebouw, datum en tijd worden automatisch gekoppeld.")}</small></span>
                 <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
               </label>
-              {findingPhotos.length ? <FindingPhotoStack files={findingPhotos} onRemove={(index) => setFindingPhotos((current) => current.filter((_, currentIndex) => currentIndex !== index))} /> : null}
+              {findingPhotos.length ? <FindingPhotoStack
+                files={findingPhotos}
+                onReplace={(index, file) => setFindingPhotos((current) => current.map((photo, currentIndex) => currentIndex === index ? file : photo))}
+                onRemove={(index) => setFindingPhotos((current) => current.filter((_, currentIndex) => currentIndex !== index))}
+              /> : null}
               {findingPhotoError ? <p className="field-error" role="alert">{findingPhotoError}</p> : null}
               <div className="quick-issue-presets" aria-label={text("Common issue choices", "Veelvoorkomende problemen")}>
                 {findingPresets.map((preset) => <button className={findingForm.title === preset.title ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, title: preset.title, description: preset.description, type: preset.title === text("Safety risk", "Veiligheidsrisico") ? "observation" : "deficiency", severity: preset.title === text("Safety risk", "Veiligheidsrisico") ? "high" : findingForm.severity })} key={preset.title}>{preset.title}</button>)}
@@ -1610,6 +1619,7 @@ function ProjectOperations({
               </label>
               {hsePhotos.length ? <FindingPhotoStack
                 files={hsePhotos}
+                onReplace={(index, file) => setHsePhotos((current) => current.map((photo, currentIndex) => currentIndex === index ? file : photo))}
                 captions={hsePhotoCaptions}
                 onCaption={(index, caption) => setHsePhotoCaptions((current) => {
                   const next = [...current];
@@ -1775,6 +1785,7 @@ function ProjectOperations({
               {registerSketching ? <SketchPad close={() => setRegisterSketching(false)} save={(file) => { setRegisterPhotos((current) => [...current, file]); setRegisterSketching(false); }} /> : null}
               {registerPhotos.length ? <FindingPhotoStack
                 files={registerPhotos}
+                onReplace={(index, file) => setRegisterPhotos((current) => current.map((photo, currentIndex) => currentIndex === index ? file : photo))}
                 captions={registerPhotoCaptions}
                 onCaption={(index, caption) => setRegisterPhotoCaptions((current) => {
                   const next = [...current];
@@ -2070,24 +2081,44 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
  * Photos waiting to be saved. With `captions` every photo also gets the short text that
  * explains what it shows; the file name alone means nothing in a report.
  */
+/**
+ * Every stacked photo can be marked on the picture itself. The client's supervisors take the
+ * photo first and only then realise they have to point at what is wrong, so the way in has to
+ * be here, next to the photo, and not in a separate workspace that loses the half-filled form.
+ */
 function FindingPhotoStack({
   files,
   onRemove,
+  onReplace,
   captions,
   onCaption,
 }: {
   files: File[];
   onRemove: (index: number) => void;
+  onReplace?: (index: number, file: File) => void;
   captions?: string[];
   onCaption?: (index: number, caption: string) => void;
 }) {
   const { text } = useLanguage();
+  const [markupIndex, setMarkupIndex] = useState(-1);
+  const [markerCounts, setMarkerCounts] = useState<Map<File, number>>(() => new Map());
+  const markupFile = markupIndex >= 0 ? files[markupIndex] ?? null : null;
 
   return (
     <div className={`finding-photo-stack ${onCaption ? "with-captions" : ""}`} aria-label={text("Photos attached to this issue", "Foto’s bij dit probleem")}>
       {files.map((file, index) => (
         <article key={`${file.name}:${file.size}:${file.lastModified}`}>
-          <FindingPhotoPreview file={file} />
+          <div className="finding-photo-frame">
+            {onReplace ? (
+              <button
+                className="finding-photo-open"
+                type="button"
+                onClick={() => setMarkupIndex(index)}
+                aria-label={text(`Mark on photo ${index + 1}`, `Markeer op foto ${index + 1}`)}
+              ><FindingPhotoPreview file={file} /></button>
+            ) : <FindingPhotoPreview file={file} />}
+            {onCaption ? null : <span><strong>{index + 1}</strong><small>{file.name}</small></span>}
+          </div>
           {onCaption ? (
             <label className="form-field photo-caption-field">
               <span>{text(`Photo ${index + 1} · what does it show?`, `Foto ${index + 1} · wat is te zien?`)}</span>
@@ -2097,12 +2128,25 @@ function FindingPhotoStack({
                 placeholder={text("For example: unsecured opening on level 2", "Bijvoorbeeld: onbeveiligde opening op niveau 2")}
               />
             </label>
-          ) : (
-            <span><strong>{index + 1}</strong><small>{file.name}</small></span>
-          )}
-          <button type="button" onClick={() => onRemove(index)} aria-label={text(`Remove photo ${index + 1}`, `Verwijder foto ${index + 1}`)}><X size={14} /></button>
+          ) : null}
+          {onReplace ? <MarkPhotoButton compact markerCount={markerCounts.get(file)} onClick={() => setMarkupIndex(index)} /> : null}
+          <button className="finding-photo-remove" type="button" onClick={() => onRemove(index)} aria-label={text(`Remove photo ${index + 1}`, `Verwijder foto ${index + 1}`)}><X size={14} /></button>
         </article>
       ))}
+      {markupFile && onReplace ? (
+        <PhotoMarkupPad
+          file={markupFile}
+          close={() => setMarkupIndex(-1)}
+          save={({ file, summary, markerCount }) => {
+            onReplace(markupIndex, file);
+            setMarkerCounts((current) => new Map(current).set(file, markerCount));
+            // What was marked becomes the words under the photo, unless the supervisor
+            // already wrote something better there.
+            if (summary && onCaption && !(captions?.[markupIndex] ?? "").trim()) onCaption(markupIndex, summary);
+            setMarkupIndex(-1);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

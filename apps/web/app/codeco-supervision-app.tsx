@@ -53,6 +53,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { ALL_BUILDINGS, BuildingMultiPicker, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
+import { MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
 import { SketchPad } from "@/app/sketch-pad";
 import { ClientDashboard } from "@/app/client-dashboard";
 import { DailyLogModal } from "@/app/daily-log-modal";
@@ -1766,6 +1767,7 @@ export function CodecoSupervisionApp() {
             if (captured.length) setEntryPhotos((current) => [...current, ...captured]);
           }}
           addSketch={(file) => setEntryPhotos((current) => [...current, file])}
+          replacePhoto={(index, file) => setEntryPhotos((current) => current.map((photo, position) => position === index ? file : photo))}
           removePhoto={(index) => setEntryPhotos((current) => current.filter((_, position) => position !== index))}
           projectName={projectName}
           buildingName={buildingName}
@@ -3504,6 +3506,7 @@ function EntryModal({
   photos,
   addPhotos,
   addSketch,
+  replacePhoto,
   removePhoto,
   projectName,
   buildingName,
@@ -3537,6 +3540,7 @@ function EntryModal({
   photos: File[];
   addPhotos: (files: FileList | null) => void;
   addSketch: (file: File) => void;
+  replacePhoto: (index: number, file: File) => void;
   removePhoto: (index: number) => void;
   projectName: string;
   buildingName: string;
@@ -3556,6 +3560,10 @@ function EntryModal({
   const { language, locale, text } = useLanguage();
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [sketching, setSketching] = useState(false);
+  const [markupIndex, setMarkupIndex] = useState(-1);
+  // Counted per photo, not per position: removing one photo must not move the badge of another.
+  const [markerCounts, setMarkerCounts] = useState<Map<File, number>>(() => new Map());
+  const markupPhoto = markupIndex >= 0 ? photos[markupIndex] ?? null : null;
   const photoPreviews = useMemo(() => photos.map((photo) => URL.createObjectURL(photo)), [photos]);
   useEffect(() => () => photoPreviews.forEach((preview) => URL.revokeObjectURL(preview)), [photoPreviews]);
   const title = (language === "en" ? entryTitlesEnglish : entryTitles)[selectedType] ?? text("Record", "Registratie");
@@ -3676,15 +3684,40 @@ function EntryModal({
               </div>
               {sketching ? <SketchPad close={() => setSketching(false)} save={(file) => { addSketch(file); setSketching(false); }} /> : null}
               {photos.length ? (
-                <div className="entry-photo-strip">
-                  {photoPreviews.map((preview, index) => (
-                    <span key={preview}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={preview} alt={photos[index].name} />
-                      <button type="button" onClick={() => removePhoto(index)} aria-label={text(`Remove ${photos[index].name}`, `Verwijder ${photos[index].name}`)}><X size={12} /></button>
-                    </span>
-                  ))}
-                </div>
+                <>
+                  {/* The photo is not the end of the evidence: the supervisor has to be able to
+                      point at the problem on the picture itself, right here in the record. */}
+                  <div className="entry-photo-strip">
+                    {photoPreviews.map((preview, index) => (
+                      <span key={preview}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={preview}
+                          alt={photos[index].name}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setMarkupIndex(index)}
+                          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setMarkupIndex(index); } }}
+                        />
+                        <button type="button" onClick={() => removePhoto(index)} aria-label={text(`Remove ${photos[index].name}`, `Verwijder ${photos[index].name}`)}><X size={12} /></button>
+                        <MarkPhotoButton compact markerCount={markerCounts.get(photos[index])} onClick={() => setMarkupIndex(index)} />
+                      </span>
+                    ))}
+                  </div>
+                  <span className="form-note"><MapPin size={12} /> {text("Tap a photo to mark the problem on the picture itself.", "Tik op een foto om het probleem op de foto zelf aan te wijzen.")}</span>
+                </>
+              ) : null}
+              {markupPhoto ? (
+                <PhotoMarkupPad
+                  file={markupPhoto}
+                  close={() => setMarkupIndex(-1)}
+                  save={({ file, summary, markerCount }) => {
+                    replacePhoto(markupIndex, file);
+                    setMarkerCounts((current) => new Map(current).set(file, markerCount));
+                    if (summary) dictateDescription(text(`Marked on photo: ${summary}`, `Op de foto gemarkeerd: ${summary}`));
+                    setMarkupIndex(-1);
+                  }}
+                />
               ) : null}
               <span className="form-note"><CheckCircle2 size={12} /> {text("Time, author, project and building are recorded automatically.", "Tijd, maker, project en gebouw worden automatisch vastgelegd.")}</span>
             </div>

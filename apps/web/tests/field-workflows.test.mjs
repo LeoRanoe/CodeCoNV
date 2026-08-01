@@ -7,7 +7,12 @@ import {
 } from "../lib/external-share/token.mjs";
 import {
   fieldPhotoMimeTypes,
+  markedPhotoName,
+  markupCanvasSize,
+  markupScale,
   normalizedImagePoint,
+  photoMarkupSummary,
+  photoMarkupToneColors,
   validatePanoramaDimensions,
 } from "../lib/images/field-image.mjs";
 
@@ -38,6 +43,68 @@ test("keeps image annotations within exact normalized bounds", () => {
   assert.deepEqual(normalizedImagePoint(300, 150, bounds), { x: 0.5, y: 0.5 });
   assert.deepEqual(normalizedImagePoint(-20, 999, bounds), { x: 0, y: 1 });
   assert.deepEqual(normalizedImagePoint(10, 10, { ...bounds, width: 0 }), { x: 0.5, y: 0.5 });
+});
+
+test("burns photo markings in at the resolution of the photo, not of the phone screen", () => {
+  assert.deepEqual(markupCanvasSize(1200, 900), { width: 1200, height: 900, scale: 1 });
+  const stepped = markupCanvasSize(4032, 3024);
+  assert.equal(stepped.width, 2400);
+  assert.equal(stepped.height, 1800);
+  assert.ok(stepped.scale < 1);
+  assert.deepEqual(markupCanvasSize(0, 0), { width: 0, height: 0, scale: 1 });
+
+  // Markings scale with the picture, and never shrink below a readable size on a small one.
+  const large = markupScale(2400, 1800);
+  const small = markupScale(320, 240);
+  assert.ok(large.markerRadius > small.markerRadius);
+  assert.ok(small.markerRadius >= 14);
+  assert.ok(small.strokeWidth >= 3);
+  assert.ok(small.fontSize >= 13);
+});
+
+test("writes what was marked on a photo back into the record's own words", () => {
+  assert.equal(
+    photoMarkupSummary([{ label: "Scheur of beschadiging" }, { label: "  " }, { label: "Veiligheidsrisico" }]),
+    "1. Scheur of beschadiging · 3. Veiligheidsrisico",
+  );
+  assert.equal(photoMarkupSummary([{ label: "" }, {}]), "");
+
+  // A marked photo replaces the photo it came from instead of piling up new names.
+  assert.equal(markedPhotoName("IMG_7112.jpeg"), "IMG_7112-marked.jpg");
+  assert.equal(markedPhotoName("IMG_7112-marked.jpg"), "IMG_7112-marked.jpg");
+  assert.equal(markedPhotoName(""), "photo-marked.jpg");
+
+  // The three punch-list classifications keep the colours the client already reads.
+  assert.deepEqual(Object.keys(photoMarkupToneColors), ["to_be_corrected", "alternative_solution", "validated"]);
+});
+
+test("offers marking on the photo everywhere a photo can be attached", async () => {
+  const [markup, entry, dailyLog, operations, media, visual, css] = await Promise.all([
+    readFile(new URL("../app/photo-markup.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/media-library-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/visual-evidence-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // The client reported that marking existed but was not reachable from the forms. Every
+  // screen that can attach a photo has to open the same marking pad.
+  for (const [name, source] of [["entry record", entry], ["daily log", dailyLog], ["issues, inspections, HSE and register", operations], ["photo library", media], ["visual evidence", visual]]) {
+    assert.match(source, /from "@\/app\/photo-markup"/, `${name} must import the photo marking pad`);
+    assert.match(source, /<PhotoMarkupPad/, `${name} must open the photo marking pad`);
+    assert.match(source, /<MarkPhotoButton/, `${name} must show the way into marking`);
+  }
+  // All four photo stacks in the operational workspace hand a replacement back.
+  assert.equal(operations.match(/onReplace=\{\(index, file\)/g)?.length, 4);
+
+  // Dragging the pen must not turn into dragging the photo, which cancels the stroke.
+  assert.match(markup, /draggable=\{false\}/);
+  assert.match(markup, /event\.preventDefault\(\);\n\s*event\.currentTarget\.setPointerCapture/);
+  // The markings are burnt into the picture, so it still says what is wrong outside the app.
+  assert.match(markup, /canvas\.toBlob\(resolve, "image\/jpeg", 0\.9\)/);
+  assert.match(css, /\.photo-markup-stage img \{[\s\S]{0,220}user-select: none/);
 });
 
 test("refreshes expiring API bearer tokens and preserves every field image locally", async () => {

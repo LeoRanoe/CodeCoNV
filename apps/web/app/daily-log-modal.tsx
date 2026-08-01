@@ -4,6 +4,7 @@ import { Camera, CloudSun, HardHat, Loader2, ShieldCheck, TimerOff, Users, X } f
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BuildingMultiPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
+import { MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
 import type { DailyCloseoutAnswers, ProjectStartAnswers } from "@/lib/forms/daily-report";
 
@@ -160,8 +161,20 @@ export function DailyLogModal({
   const setCaption = (index: number, caption: string) => setPhotos((current) =>
     current.map((photo, photoIndex) => photoIndex === index ? { ...photo, caption } : photo));
   const removePhoto = (index: number) => setPhotos((current) => current.filter((_, photoIndex) => photoIndex !== index));
+  /**
+   * A marked photo replaces the photo it was made from, and the markings become the photo
+   * name when the supervisor has not written one yet — the report then says what is wrong
+   * without any retyping.
+   */
+  const applyMarkup = (index: number, file: File, summary: string) => setPhotos((current) =>
+    current.map((photo, photoIndex) => photoIndex === index
+      ? { file, caption: photo.caption.trim() || summary }
+      : photo));
   const photoPreviews = useMemo(() => photos.map((photo) => URL.createObjectURL(photo.file)), [photos]);
   useEffect(() => () => photoPreviews.forEach((preview) => URL.revokeObjectURL(preview)), [photoPreviews]);
+  const [markupIndex, setMarkupIndex] = useState(-1);
+  const [markerCounts, setMarkerCounts] = useState<Map<File, number>>(() => new Map());
+  const markupPhoto = markupIndex >= 0 ? photos[markupIndex] ?? null : null;
 
   const attendanceTotal = rows.reduce((sum, row) => sum + row.count, 0);
   // The database requires a full closeout record; these blocks are the ones the client
@@ -391,7 +404,14 @@ export function DailyLogModal({
                 {photos.map((photo, index) => (
                   <div key={photoPreviews[index]}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={photoPreviews[index]} alt={photo.file.name} />
+                    <img
+                      src={photoPreviews[index]}
+                      alt={photo.file.name}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setMarkupIndex(index)}
+                      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setMarkupIndex(index); } }}
+                    />
                     <label className="form-field">
                       <span>{text("Photo name for the report", "Fotonaam voor het rapport")}</span>
                       <input
@@ -400,10 +420,22 @@ export function DailyLogModal({
                         placeholder={text("For example: rebar column line B", "Bijvoorbeeld: wapening kolom lijn B")}
                       />
                     </label>
+                    <MarkPhotoButton compact markerCount={markerCounts.get(photo.file)} onClick={() => setMarkupIndex(index)} />
                     <button className="daily-log-photo-remove" type="button" onClick={() => removePhoto(index)} aria-label={text(`Remove ${photo.file.name}`, `Verwijder ${photo.file.name}`)}><X size={13} /></button>
                   </div>
                 ))}
               </div>
+            ) : null}
+            {markupPhoto ? (
+              <PhotoMarkupPad
+                file={markupPhoto.file}
+                close={() => setMarkupIndex(-1)}
+                save={({ file, summary, markerCount }) => {
+                  applyMarkup(markupIndex, file, summary);
+                  setMarkerCounts((current) => new Map(current).set(file, markerCount));
+                  setMarkupIndex(-1);
+                }}
+              />
             ) : null}
           </details>
 

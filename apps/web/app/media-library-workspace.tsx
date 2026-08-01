@@ -6,6 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
+import { MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
 import {
   compressFieldPhoto,
@@ -26,6 +27,20 @@ import { createMediaFolder, type FileRecord, type OperationSnapshot } from "@/li
 function automaticTitle(filename: string) {
   const title = filename.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
   return title.length >= 3 ? title.slice(0, 160) : `Opname ${new Intl.DateTimeFormat("nl-SR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date())}`;
+}
+
+/** A photo that is still on this device, shown large enough to recognize before marking it. */
+function PendingCaptureThumbnail({ file, onOpen }: { file: File; onOpen: () => void }) {
+  const { text } = useLanguage();
+  const [source] = useState(() => URL.createObjectURL(file));
+  useEffect(() => () => URL.revokeObjectURL(source), [source]);
+  return (
+    <button type="button" onClick={onOpen} aria-label={text(`Mark on ${file.name}`, `Markeer op ${file.name}`)}>
+      {/* A local blob URL cannot pass through the Next image optimizer. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={source} alt="" />
+    </button>
+  );
 }
 
 function humanSize(bytes: number) {
@@ -103,6 +118,9 @@ export function MediaLibraryWorkspace({
   const [fieldError, setFieldError] = useState("");
   const [photoDescription, setPhotoDescription] = useState("");
   const [pendingCapture, setPendingCapture] = useState<File[]>([]);
+  const [markupIndex, setMarkupIndex] = useState(-1);
+  const [markerCounts, setMarkerCounts] = useState<Map<File, number>>(() => new Map());
+  const markupCapture = markupIndex >= 0 ? pendingCapture[markupIndex] ?? null : null;
   const [libraryBuildingId, setLibraryBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const libraryBuildingName = buildings.find((building) => building.id === libraryBuildingId)?.name ?? buildingName;
   const [originFilter, setOriginFilter] = useState<"all" | FileOriginKind>("all");
@@ -360,6 +378,28 @@ export function MediaLibraryWorkspace({
                 <small>{text("Add a short description before saving. The photo is filed under today's date.", "Voeg vóór het opslaan een korte omschrijving toe. De foto wordt onder de datum van vandaag bewaard.")}</small>
               </div>
             </div>
+            {/* Marking happens before the photo leaves the device, so what is stored centrally
+                is already the picture that shows the problem. */}
+            <div className="media-capture-thumbs">
+              {pendingCapture.map((photo, index) => (
+                <span key={`${photo.name}:${photo.size}:${photo.lastModified}`}>
+                  <PendingCaptureThumbnail file={photo} onOpen={() => setMarkupIndex(index)} />
+                  <MarkPhotoButton compact markerCount={markerCounts.get(photo)} onClick={() => setMarkupIndex(index)} />
+                </span>
+              ))}
+            </div>
+            {markupCapture ? (
+              <PhotoMarkupPad
+                file={markupCapture}
+                close={() => setMarkupIndex(-1)}
+                save={({ file, summary, markerCount }) => {
+                  setPendingCapture((current) => current.map((photo, index) => index === markupIndex ? file : photo));
+                  setMarkerCounts((current) => new Map(current).set(file, markerCount));
+                  if (summary) setPhotoDescription((current) => appendDictation(current, summary));
+                  setMarkupIndex(-1);
+                }}
+              />
+            ) : null}
             <label className="form-field">
               <span>{text("Photo description", "Foto-omschrijving")}</span>
               <textarea
@@ -371,7 +411,7 @@ export function MediaLibraryWorkspace({
               <DictateButton onText={(transcript) => setPhotoDescription((current) => appendDictation(current, transcript))} />
             </label>
             <div className="media-capture-review-actions">
-              <button className="secondary-button" type="button" onClick={() => { setPendingCapture([]); setPhotoDescription(""); }}>{text("Discard", "Verwijderen")}</button>
+              <button className="secondary-button" type="button" onClick={() => { setPendingCapture([]); setPhotoDescription(""); setMarkupIndex(-1); }}>{text("Discard", "Verwijderen")}</button>
               <button className="primary-button" type="button" disabled={busy} onClick={() => void savePendingCapture()}><Upload size={15} /> {text("Save with date", "Opslaan met datum")}</button>
             </div>
           </div>

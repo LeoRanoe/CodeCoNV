@@ -121,6 +121,7 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
       steps: [
         text("Tap the red Photo button at the bottom of the screen.", "Tik onderaan op de rode knop Foto."),
         text("Take the photo. Project, building, time and the Daily progress folder are linked automatically.", "Maak de foto. Project, gebouw, tijd en de map Dagvoortgang worden automatisch gekoppeld."),
+        text("Tap the photo to mark the problem on the picture itself; the markings are saved into the photo.", "Tik op de foto om het probleem op de foto zelf aan te wijzen; de markeringen worden in de foto opgeslagen."),
         text("No signal? The photo stays on this device and synchronizes when the connection returns.", "Geen bereik? De foto blijft op dit apparaat en synchroniseert zodra de verbinding terug is."),
       ],
       action: text("Open camera", "Open camera"),
@@ -215,6 +216,10 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
         {
           title: text("Several photos for one situation", "Meerdere foto’s voor één situatie"),
           copy: text("Inside an issue, inspection or HSE record, tap the evidence camera repeatedly. Up to twelve selected situation and correction photos stay stacked on that same record.", "Tik binnen een probleem, inspectie of HSE-registratie herhaaldelijk op de bewijscamera. Tot twaalf geselecteerde situatie- en herstelfoto’s blijven gestapeld bij dezelfde registratie."),
+        },
+        {
+          title: text("Mark the problem on the photo", "Het probleem op de foto aanwijzen"),
+          copy: text("Tap a photo you attached — in a record, a daily log, an issue, an inspection, an HSE entry, a register item or Photos & folders — and the marking pad opens. Tap the spot, choose or type what is wrong there and pick the colour: orange to be corrected, red needs another solution, green approved. Draw with the pen for an arrow or a circle. The numbered markers and their words are saved into the photo, so a report, an e-mail or a printout still shows what was meant.", "Tik op een foto die je hebt toegevoegd — in een registratie, dagrapport, probleem, inspectie, HSE-melding, registeritem of Foto’s & mappen — en het markeerscherm opent. Tik op de plek, kies of typ wat daar mis is en kies de kleur: oranje te corrigeren, rood andere oplossing nodig, groen goedgekeurd. Teken met de pen voor een pijl of een cirkel. De genummerde markers en hun tekst worden in de foto opgeslagen, zodat een rapport, e-mail of afdruk nog steeds toont wat bedoeld werd."),
         },
         {
           title: text("Photo folders", "Fotomappen"),

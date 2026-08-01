@@ -17,6 +17,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
+import { MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
 import { fieldPhotoMimeTypes, normalizedImagePoint, validatePanoramaDimensions } from "@/lib/images/field-image.mjs";
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload } from "@/lib/offline/upload-queue";
@@ -111,6 +112,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   const [file, setFile] = useState<File | null>(null);
   const filePreviewUrl = useMemo(() => (file ? URL.createObjectURL(file) : ""), [file]);
   const [fileError, setFileError] = useState("");
+  const [markingPhoto, setMarkingPhoto] = useState(false);
+  const [photoMarkerCount, setPhotoMarkerCount] = useState(0);
   const [cameraSourceConfirmed, setCameraSourceConfirmed] = useState(false);
   const [captureForm, setCaptureForm] = useState({
     type: "photo" as VisualCapture["capture_type"],
@@ -142,6 +145,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   const stageImage = (selected: File | null, type: VisualCapture["capture_type"]) => {
     setFile(selected);
     setFileError("");
+    setPhotoMarkerCount(0);
     setCameraSourceConfirmed(false);
     if (!selected) return;
     const automaticName = type === "photo"
@@ -167,6 +171,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   const discardCapture = () => {
     setFile(null);
     setFileError("");
+    setPhotoMarkerCount(0);
+    setMarkingPhoto(false);
     setCameraSourceConfirmed(false);
     setCameraHandoff(false);
     setShowUpload(false);
@@ -264,6 +270,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       setCaptureForm({ type: "photo", title: "", description: "", locationLabel: "", locationNodeId: "", tourName: "", tourOrder: "" });
       setFile(null);
       setFileError("");
+      setPhotoMarkerCount(0);
       setCameraSourceConfirmed(false);
       setShowUpload(false);
     }
@@ -344,8 +351,30 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
             <div className="visual-photo-preview">
               {/* A local blob URL cannot pass through the Next image optimizer. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={filePreviewUrl} alt={text("Captured photo preview", "Voorbeeld van gemaakte foto")} />
+              <img
+                src={filePreviewUrl}
+                alt={text("Captured photo preview", "Voorbeeld van gemaakte foto")}
+                role="button"
+                tabIndex={0}
+                onClick={() => setMarkingPhoto(true)}
+                onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setMarkingPhoto(true); } }}
+              />
+              {/* Marking before saving keeps the point on the picture even when the photo later
+                  travels outside the app, in a report or an e-mail. */}
+              <MarkPhotoButton markerCount={photoMarkerCount} onClick={() => setMarkingPhoto(true)} />
             </div>
+          ) : null}
+          {markingPhoto && file ? (
+            <PhotoMarkupPad
+              file={file}
+              close={() => setMarkingPhoto(false)}
+              save={({ file: marked, summary, markerCount }) => {
+                setFile(marked);
+                setPhotoMarkerCount(markerCount);
+                if (summary) setCaptureForm((current) => ({ ...current, description: appendDictation(current.description, summary) }));
+                setMarkingPhoto(false);
+              }}
+            />
           ) : null}
           <div className="form-grid-2">
             <BuildingPicker id="capture-building" buildings={buildings} value={captureBuildingId} onChange={(next) => { setCaptureBuildingId(next); setCaptureForm((current) => ({ ...current, locationNodeId: "" })); }} />
