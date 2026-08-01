@@ -1130,3 +1130,85 @@ test("fixes what the client saw on the deployed build", async () => {
   assert.match(workspace, /Make a sketch|Schets maken/);
   assert.match(styles, /\.sketch-canvas/);
 });
+
+test("processes the annotated screens of 1 August: NCR form, agreement and deadlines", async () => {
+  const [workspace, actionCenter, sharePage, shareActions, shareRoute, operations, queue, ncrPdf, ncrDocx, migration, styles] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/project-action-center.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/share/[token]/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/share/[token]/external-share-actions.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/external-share/[token]/response/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/offline/upload-queue.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/ncr-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/ncr-docx.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202608010001_ncr_contractor_correction.sql", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // #14 · The NCR module opens on its own entry form, and that form carries the boxes
+  // of the client's own non-conformance report.
+  assert.match(workspace, /const openTask = \(next: ProjectTab, createRecord = true\)/);
+  assert.match(workspace, /const openFinding = \(scope: "issue" \| "ncr", createRecord = true\)/);
+  assert.match(workspace, /ncr-form-context/);
+  assert.match(workspace, /Reference checklist \/ earlier report|Referentiechecklist \/ eerder rapport/);
+  assert.match(workspace, /Description of non-conformance|Omschrijving van de afwijking/);
+  assert.match(workspace, /Recommended action by engineer|Aanbevolen actie door de ingenieur/);
+  assert.match(workspace, /Sign as the engineer who issues this NCR|Ondertekenen als ingenieur/);
+  assert.match(workspace, /text\("Remarks", "Opmerkingen"\)/);
+  assert.match(workspace, /Contractor · receives this NCR|Aannemer · ontvangt deze NCR/);
+  assert.match(workspace, /ncr-form-boxes/);
+  assert.match(styles, /\.ncr-form-boxes/);
+  assert.match(operations, /reference_checklist: input\.referenceChecklist/);
+  assert.match(operations, /recommended_action: input\.recommendedAction/);
+  assert.match(queue, /referenceChecklist\?: string;/);
+
+  // #14A · After submitting, the link to the contractor stands where you submitted.
+  assert.match(workspace, /function SubmittedRecordShare/);
+  assert.match(workspace, /setSubmittedFinding\(created\)/);
+  assert.match(workspace, /if \(navigator\.onLine \|\| !findingPhotos\.length\) created = await createFinding/);
+  assert.match(styles, /\.submitted-record-share/);
+
+  // #14 · The contractor fills the correction in through the link and sends it back.
+  assert.match(shareActions, /"ready_for_verification" \| "issue" \| "proposed_correction"/);
+  assert.match(shareActions, /Correctie invullen/);
+  assert.match(shareActions, /Voorgestelde correctieve actie/);
+  assert.match(sharePage, /record\.record_kind === "ncr"/);
+  assert.match(sharePage, /external-ncr-instruction/);
+  assert.match(shareRoute, /proposed_correction/);
+  assert.match(shareRoute, /result\.error\?\.code === "22023"/);
+  assert.match(migration, /'ready_for_verification', 'issue', 'proposed_correction'/);
+  assert.match(migration, /proposed_correction = btrim\(p_note\)/);
+  assert.match(migration, /'record_kind', v_record_kind/);
+  assert.match(operations, /correction = ""\) \{/);
+  assert.match(ncrPdf, /PROPOSED CORRECTIVE ACTION BY CONTRACTOR/);
+  assert.match(ncrPdf, /issue\.recommended_action === "rework" \? "\[X\]"/);
+  assert.match(ncrDocx, /Proposed corrective action by contractor/);
+
+  // #13 · A change order asks the same as a technical instruction and offers no example
+  // from another project.
+  assert.match(workspace, /change_order: \[\],/);
+  assert.doesNotMatch(workspace, /Wall thickness Building 1–8/);
+  assert.match(workspace, /Change description|Omschrijving van de wijziging/);
+
+  // The agreement register is text, the two parties who made it and a signature each.
+  assert.match(workspace, /const agreementRegister = registerForm\.type === "agreement"/);
+  assert.match(workspace, /Agreement between|Afspraak tussen/);
+  assert.match(workspace, /What was agreed\?|Wat is afgesproken\?/);
+  assert.match(workspace, /agreed_between/);
+  assert.match(workspace, /agreement-signatures/);
+  assert.match(styles, /\.agreement-signatures/);
+  assert.match(workspace, /agreement: \[\],/);
+
+  // #15 · The deadline page is about deadlines: no creation date standing in for one,
+  // overdue first, and every record that carries a deadline is on it.
+  assert.match(actionCenter, /text\("Deadlines", "Deadlines"\)/);
+  assert.match(actionCenter, /function daysUntil/);
+  assert.match(actionCenter, /dueAt: finding\.due_at,/);
+  assert.doesNotMatch(actionCenter, /finding\.due_at \?\? finding\.created_at/);
+  assert.doesNotMatch(actionCenter, /entry\.due_at \?\? entry\.occurred_at/);
+  assert.match(actionCenter, /const overdue = \(item: UnifiedItem\)/);
+  assert.match(actionCenter, /day\(s\) overdue|dag\(en\) te laat/);
+  assert.match(actionCenter, /deadline-summary/);
+  assert.match(styles, /\.deadline-summary/);
+});

@@ -22,6 +22,17 @@ type SharedRecord = {
   expires_at: string;
   has_source_image: boolean;
   response_count: number;
+  /** Present once the database knows the contractor's box on the NCR form. */
+  record_kind?: string | null;
+  recommended_action?: string | null;
+  recommended_action_detail?: string | null;
+  proposed_correction?: string | null;
+};
+
+const recommendedActionLabels: Record<string, string> = {
+  rework: "Opnieuw uitvoeren",
+  repair: "Herstellen",
+  alternative: "Alternatieve oplossing ter goedkeuring",
 };
 
 function date(value: string | null) {
@@ -47,7 +58,17 @@ export default async function SharedProjectRecord({ params }: { params: Promise<
         ) : null}
         <p>{record.summary}</p>
         <div className="external-share-meta"><span><AlertTriangle size={16} /><b>Prioriteit</b>{record.severity ?? "normaal"}</span><span><CalendarDays size={16} /><b>Deadline</b>{date(record.due_at)}</span></div>
-        <ExternalShareActions token={token} sourceType={record.source_type} status={record.status} />
+        {/* An NCR asks the contractor for something specific, so the link shows what the
+            engineer recommended before it asks for the corrective action. */}
+        {record.record_kind === "ncr" ? (
+          <section className="external-ncr-instruction">
+            <span>Aanbevolen actie door de ingenieur</span>
+            <strong>{recommendedActionLabels[record.recommended_action ?? ""] ?? "Zie omschrijving"}</strong>
+            {record.recommended_action_detail ? <p>{record.recommended_action_detail}</p> : null}
+            {record.proposed_correction ? <small>Eerder ontvangen voorstel: {record.proposed_correction}</small> : null}
+          </section>
+        ) : null}
+        <ExternalShareActions token={token} sourceType={record.source_type} status={record.status} recordKind={record.record_kind ?? null} />
         <footer><CheckCircle2 size={16} /><span>Deze beveiligde link vervalt op {date(record.expires_at)}. Er is geen CODECO-account nodig; CODECO verifieert iedere gereedmelding.</span></footer>
       </section>
     </main>

@@ -1,10 +1,10 @@
 "use client";
 
-import { AlertTriangle, Camera, CheckCircle2, ImageOff, Loader2, Send, Upload } from "lucide-react";
+import { AlertTriangle, Camera, CheckCircle2, ImageOff, Loader2, PenLine, Send, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 import { compressFieldPhoto } from "@/lib/offline/upload-queue";
 
-type ResponseType = "ready_for_verification" | "issue";
+type ResponseType = "ready_for_verification" | "issue" | "proposed_correction";
 
 export function ExternalSourceImage({ token, sourceNumber }: { token: string; sourceNumber: string }) {
   const [failed, setFailed] = useState(false);
@@ -56,8 +56,11 @@ async function uploadEvidence(token: string, selected: File) {
   return upload.fileId;
 }
 
-export function ExternalShareActions({ token, sourceType, status }: { token: string; sourceType: string; status: string | null }) {
-  const [responseType, setResponseType] = useState<ResponseType>("ready_for_verification");
+export function ExternalShareActions({ token, sourceType, status, recordKind = null }: { token: string; sourceType: string; status: string | null; recordKind?: string | null }) {
+  // An NCR asks the contractor for the corrective action first; that is the box on the
+  // client's own form, and it is what this link is sent for.
+  const correctionAllowed = sourceType === "finding" && recordKind === "ncr";
+  const [responseType, setResponseType] = useState<ResponseType>(correctionAllowed ? "proposed_correction" : "ready_for_verification");
   const [note, setNote] = useState("");
   const [contactName, setContactName] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
@@ -65,7 +68,13 @@ export function ExternalShareActions({ token, sourceType, status }: { token: str
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
   const completionAllowed = sourceType === "finding" && !["ready_for_verification", "closed", "cancelled"].includes(status ?? "");
-  const choices = useMemo(() => responseType === "ready_for_verification"
+  const choices = useMemo(() => responseType === "proposed_correction"
+    ? [
+      "Wij verwijderen en herstellen het aangegeven werk volgens de instructie.",
+      "Wij voeren het werk opnieuw uit volgens de goedgekeurde tekening.",
+      "Wij stellen een alternatieve oplossing voor ter goedkeuring.",
+    ]
+    : responseType === "ready_for_verification"
     ? [
       "Werk is volledig uitgevoerd en gereed voor controle.",
       "Herstel is uitgevoerd volgens de instructie.",
@@ -105,6 +114,8 @@ export function ExternalShareActions({ token, sourceType, status }: { token: str
       if (!response.ok) throw new Error(await responseError(response));
       setDone(responseType === "ready_for_verification"
         ? "Gereedmelding ontvangen. CODECO controleert het werk voordat het definitief wordt gesloten."
+        : responseType === "proposed_correction"
+        ? "Voorgestelde correctieve actie ontvangen. CODECO beoordeelt het voorstel; de NCR blijft open tot het werk is gecontroleerd."
         : "Probleem ontvangen. De verantwoordelijke CODECO-gebruiker krijgt direct een melding.");
       setPhoto(null);
     } catch (caught) {
@@ -121,24 +132,26 @@ export function ExternalShareActions({ token, sourceType, status }: { token: str
   return (
     <section className="external-response-panel">
       <div className="external-response-tabs" role="tablist" aria-label="Reactie op werkpunt">
+        {correctionAllowed ? <button className={responseType === "proposed_correction" ? "active" : ""} type="button" onClick={() => chooseType("proposed_correction")}><PenLine size={16} /> Correctie invullen</button> : null}
         <button className={responseType === "ready_for_verification" ? "active" : ""} type="button" disabled={!completionAllowed} onClick={() => chooseType("ready_for_verification")}><CheckCircle2 size={16} /> Gereedmelden</button>
         <button className={responseType === "issue" ? "active issue" : ""} type="button" onClick={() => chooseType("issue")}><AlertTriangle size={16} /> Probleem melden</button>
       </div>
       {!completionAllowed && responseType === "ready_for_verification" ? <p className="external-response-note">Dit werkpunt is al gereedgemeld of gesloten. Je kunt nog wel een probleem terugmelden.</p> : null}
+      {responseType === "proposed_correction" ? <p className="external-response-note">Vul in wat u gaat doen om de afwijking op te lossen en stuur het terug. CODECO controleert het werk daarna op locatie.</p> : null}
       <div className="external-choice-grid">
         {choices.map((choice) => <button className={note === choice ? "active" : ""} type="button" onClick={() => setNote(choice)} key={choice}>{choice}</button>)}
       </div>
-      <label className="form-field"><span>Toelichting</span><textarea rows={3} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Kies hierboven een optie; aanpassen mag." /></label>
+      <label className="form-field"><span>{responseType === "proposed_correction" ? "Voorgestelde correctieve actie" : "Toelichting"}</span><textarea rows={3} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Kies hierboven een optie; aanpassen mag." /></label>
       <label className="external-photo-input">
         <Camera size={20} />
         <span><strong>{photo ? photo.name : "Bewijsfoto toevoegen (optioneel)"}</strong><small>De foto wordt verkleind om mobiele data te besparen.</small></span>
         <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => setPhoto(event.target.files?.[0] ?? null)} />
       </label>
-      <label className="form-field"><span>Naam (optioneel)</span><input value={contactName} onChange={(event) => setContactName(event.target.value)} autoComplete="name" /></label>
+      <label className="form-field"><span>{responseType === "proposed_correction" ? "Naam · geldt als ondertekening" : "Naam (optioneel)"}</span><input value={contactName} onChange={(event) => setContactName(event.target.value)} autoComplete="name" /></label>
       {error ? <p className="field-error" role="alert">{error}</p> : null}
       <button className={`external-submit ${responseType === "issue" ? "issue" : ""}`} type="button" disabled={busy || note.trim().length < 3 || (responseType === "ready_for_verification" && !completionAllowed)} onClick={() => void submit()}>
         {busy ? <Loader2 className="spin" size={17} /> : photo ? <Upload size={17} /> : <Send size={17} />}
-        {busy ? "Veilig verzenden…" : responseType === "ready_for_verification" ? "Markeer gereed voor controle" : "Verstuur probleem"}
+        {busy ? "Veilig verzenden…" : responseType === "proposed_correction" ? "Verstuur correctieve actie" : responseType === "ready_for_verification" ? "Markeer gereed voor controle" : "Verstuur probleem"}
       </button>
     </section>
   );

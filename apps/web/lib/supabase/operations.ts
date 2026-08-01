@@ -77,6 +77,13 @@ export type Finding = {
     disposition?: "validated" | "to_be_corrected" | "alternative_solution";
     expected_resolution_date?: string | null;
     source_catalog_subject?: string;
+    /** The boxes of the client's own non-conformance report. */
+    reference_checklist?: string;
+    recommended_action?: "rework" | "repair" | "alternative";
+    recommended_action_detail?: string;
+    remarks?: string;
+    signed_by?: string;
+    signed_at?: string | null;
   };
   verified_at: string | null;
   created_at: string;
@@ -724,6 +731,15 @@ export async function createFinding(client: SupabaseClient, input: {
   sourceCatalogSubject?: string;
   /** "Date Identified" from the client's issue log; falls back to the record date. */
   dateIdentified?: string;
+  /** The reference checklist or earlier NCR number the client writes at the top of the form. */
+  referenceChecklist?: string;
+  /** "Recommended Action by Engineer" on the client's non-conformance report. */
+  recommendedAction?: "rework" | "repair" | "alternative";
+  recommendedActionDetail?: string;
+  remarks?: string;
+  /** The engineer signs the NCR before it goes to the contractor. */
+  signedBy?: string;
+  signedAt?: string;
   locationNodeId?: string;
   idempotencyKey?: string;
 }) {
@@ -750,6 +766,12 @@ export async function createFinding(client: SupabaseClient, input: {
       expected_resolution_date: input.expectedResolutionDate || null,
       source_catalog_subject: input.sourceCatalogSubject || null,
       date_identified: input.dateIdentified || null,
+      reference_checklist: input.referenceChecklist?.trim() || "",
+      recommended_action: input.recommendedAction || null,
+      recommended_action_detail: input.recommendedActionDetail?.trim() || "",
+      remarks: input.remarks?.trim() || "",
+      signed_by: input.signedBy?.trim() || "",
+      signed_at: input.signedAt || null,
       location_node_id: input.locationNodeId || null,
     },
   });
@@ -783,13 +805,17 @@ export async function linkFileToRecord(
   fail(result.error);
 }
 
-export async function transitionFinding(client: SupabaseClient, findingId: string, nextStatus: string, note: string, finalMeasure = "") {
+/**
+ * `correction` is the contractor's proposed corrective action: the box the contractor
+ * fills in on the client's own NCR form before the repair starts.
+ */
+export async function transitionFinding(client: SupabaseClient, findingId: string, nextStatus: string, note: string, finalMeasure = "", correction = "") {
   const result = await client.rpc("transition_project_finding", {
     p_finding_id: findingId,
     p_next_status: nextStatus,
     p_note: note,
     p_cause: null,
-    p_correction: null,
+    p_correction: correction || null,
     p_final_measure: finalMeasure || null,
   });
   fail(result.error);

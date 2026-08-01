@@ -24,6 +24,12 @@ function value(result: string | null | undefined, fallback = "—") {
   return result && result.trim() ? result : fallback;
 }
 
+const recommendedActionLabels: Record<string, string> = {
+  rework: "Rework",
+  repair: "Repair",
+  alternative: "Alternative solution for approval",
+};
+
 export function buildNcrDocxDocument(finding: Finding, progress: FindingProgressUpdate | undefined, context: NcrContext, logoBytes: ArrayBuffer): Document {
   const issue = finding.issue_management ?? {};
   const resolved = finding.status === "closed";
@@ -42,21 +48,25 @@ export function buildNcrDocxDocument(finding: Finding, progress: FindingProgress
             ["Contractor / responsible party", context.responsiblePartyName],
             ["Date / due date", `${finding.created_at.slice(0, 10)} / ${finding.due_at?.slice(0, 10) ?? "—"}`],
             ["Subject", finding.title],
+            ["Reference checklist", value(issue.reference_checklist)],
             ["Severity / issue type", `${finding.severity} / ${issue.issue_type ?? finding.finding_type}`],
+            ["Remarks", value(issue.remarks)],
           ], 2),
           sectionHeading("Description of non-conformance"),
           bodyText(finding.description),
           sectionHeading("Engineer's recommended action"),
-          bodyText(value(issue.action_steps, "Rework / repair in accordance with the approved drawings and specifications.")),
-          sectionHeading("Contractor's proposed / completed corrective action"),
-          bodyText(value(finding.final_measure ?? finding.proposed_correction, "Pending contractor proposal and acknowledgement.")),
+          labelValue("Recommended", recommendedActionLabels[issue.recommended_action ?? ""] ?? "—"),
+          bodyText(value(issue.recommended_action_detail || issue.action_steps, "Rework / repair in accordance with the approved drawings and specifications.")),
+          sectionHeading("Proposed corrective action by contractor"),
+          bodyText(value(finding.proposed_correction, "Pending contractor proposal and acknowledgement.")),
+          ...(finding.final_measure ? [labelValue("Completed corrective action", finding.final_measure)] : []),
           sectionHeading("Quality control verification"),
           labelValue("Latest inspection progress", `${progress?.progress_percent ?? 0}%`),
           labelValue("Disposition", (progress?.disposition ?? issue.disposition ?? "to_be_corrected").replaceAll("_", " ")),
           labelValue("Status", finding.status.replaceAll("_", " ")),
           new Paragraph({ children: [new TextRun({ text: resolved ? "Issue resolved" : "Issue not resolved", bold: true, size: 18 })], spacing: { before: 120, after: 160 } }),
           signatureBlock([
-            ["Issued by", context.issuerName],
+            ["Issued by", issue.signed_by || context.issuerName],
             ["Received / contractor", ""],
             ["QC verification", resolved ? context.issuerName : ""],
           ]),

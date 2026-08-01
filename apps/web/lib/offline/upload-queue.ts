@@ -20,6 +20,13 @@ export type QueuedFindingDraft = {
   expectedResolutionDate?: string;
   sourceCatalogSubject?: string;
   dateIdentified?: string;
+  /** The extra boxes of the client's own NCR form travel with an offline NCR. */
+  referenceChecklist?: string;
+  recommendedAction?: "rework" | "repair" | "alternative";
+  recommendedActionDetail?: string;
+  remarks?: string;
+  signedBy?: string;
+  signedAt?: string;
   locationNodeId?: string;
 };
 
@@ -258,6 +265,12 @@ async function syncOfflineUploadsUnlocked(
             expectedResolutionDate: draft.expectedResolutionDate,
             sourceCatalogSubject: draft.sourceCatalogSubject,
             dateIdentified: draft.dateIdentified,
+            referenceChecklist: draft.referenceChecklist,
+            recommendedAction: draft.recommendedAction,
+            recommendedActionDetail: draft.recommendedActionDetail,
+            remarks: draft.remarks,
+            signedBy: draft.signedBy,
+            signedAt: draft.signedAt,
             locationNodeId: draft.locationNodeId || upload.locationNodeId || undefined,
             idempotencyKey: `offline-finding:${upload.findingGroup.id}`,
           });

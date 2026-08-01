@@ -560,9 +560,18 @@ function ProjectOperations({
     sourceCatalogSubject: "",
     // The issue list of the client has its own issuance date column.
     dateIdentified: "",
+    // The boxes of the client's own non-conformance report.
+    referenceChecklist: "",
+    recommendedAction: "" as "" | "rework" | "repair" | "alternative",
+    recommendedActionDetail: "",
+    remarks: "",
+    signedBy: "",
+    signedAt: "",
   });
   const [findingPhotos, setFindingPhotos] = useState<PhotoEvidence[]>([]);
   const [findingPhotoError, setFindingPhotoError] = useState("");
+  /** The record that was just submitted, so the link to the contractor is one tap away. */
+  const [submittedFinding, setSubmittedFinding] = useState<Finding | null>(null);
   const [hseForm, setHseForm] = useState({ type: "unsafe_condition", title: "", description: "", severity: "medium", immediateMeasure: "", confidential: false });
   const [hsePhotos, setHsePhotos] = useState<PhotoEvidence[]>([]);
   // One short text per evidence photo, in the same order as the photos themselves.
@@ -591,6 +600,10 @@ function ProjectOperations({
   const [registerPhotos, setRegisterPhotos] = useState<PhotoEvidence[]>([]);
   const [registerPhotoError, setRegisterPhotoError] = useState("");
   const [registerSketching, setRegisterSketching] = useState(false);
+  /** An agreement is text plus the two parties who made it, and who signs for them. */
+  const [agreementForm, setAgreementForm] = useState({
+    partyA: "", partyB: "", signedByA: "", signedAtA: "", signedByB: "", signedAtB: "",
+  });
   // Everything this workspace already knows about the project is offered inside the marking
   // pad, so a marker on a photo can say which building, floor, room and party it belongs to.
   const markupOptions = useMemo(() => ({
@@ -714,16 +727,14 @@ function ProjectOperations({
       { title: text("Finishing point", "Afwerkingspunt"), details: text("A finishing item remains open and must be corrected before handover.", "Een afwerkingspunt staat nog open en moet vóór oplevering worden gecorrigeerd.") },
       { title: text("Cleaning point", "Schoonmaakpunt"), details: text("The work area requires final cleaning before handover.", "De werkzone vraagt eindschoonmaak vóór oplevering.") },
     ],
-    agreement: [
-      { title: text("Site agreement", "Afspraak op locatie"), details: text("The parties agreed the described action and deadline.", "Partijen hebben de beschreven actie en deadline afgesproken.") },
-    ],
+    // An agreement is what two parties said to each other; a suggested sentence would
+    // only have to be deleted again.
+    agreement: [],
     // A technical instruction is always project-specific. Example presets from another
     // project only had to be deleted again, so this form starts empty.
     technical_instruction: [],
-    change_order: [
-      { title: "Wall thickness Building 1–8", details: "Adjust the wall thicknesses according to the attached drawings for Buildings 1 through 8.", attachments: "Approved wall-thickness drawings" },
-      { title: text("Change pending approval", "Wijziging wacht op goedkeuring"), details: text("The proposed change must be reviewed before execution.", "De voorgestelde wijziging moet vóór uitvoering worden beoordeeld.") },
-    ],
+    // A change order is project-specific for the same reason as a technical instruction.
+    change_order: [],
     environmental_report: [
       { title: text("Environmental and housekeeping inspection", "Milieu- en housekeepinginspectie"), details: text("Record construction debris, access roads, waste separation, material stacking and repeated housekeeping observations for the reporting period.", "Leg bouwafval, toegangswegen, afvalscheiding, materiaalstapeling en herhaalde housekeepingobservaties voor de rapportperiode vast.") },
     ],
@@ -740,17 +751,33 @@ function ProjectOperations({
     && (registerForm.type !== "inspection_request" || Boolean(registerForm.readyDate))
     && (registerForm.type !== "technical_instruction" || (registerForm.reason.trim().length >= 3 && Boolean(registerForm.dueDate)))
   );
+  const agreementRegister = registerForm.type === "agreement";
+  // Who the parties of an agreement can be: the own company, the signed-in supervisor
+  // and every party of this project.
+  const agreementPartyOptions = Array.from(new Set([
+    "CODECO N.V.",
+    currentUserName,
+    ...parties.map((party) => party.name),
+  ].filter(Boolean)));
+  // An agreement is written as a sentence, so its own text is also its register line.
+  const registerTitle = agreementRegister
+    ? registerForm.title.trim() || registerForm.details.trim().split(/\r?\n/)[0].slice(0, 90)
+    : registerForm.title.trim();
 
   const switchTab = (next: ProjectTab) => {
     setTab(next);
+    setSubmittedFinding(null);
     // Opening a module means you came to record something: the entry form is there
     // right away. "New" stays as the toggle to get it out of the way.
     setShowForm(true);
     setActiveInspection(null);
   };
 
-  const openTask = (next: ProjectTab, createRecord = false) => {
+  // Every way into a module is the same way: the entry form is open. Reaching NCR and
+  // then still having to press "New" was the client's own remark.
+  const openTask = (next: ProjectTab, createRecord = true) => {
     setTab(next);
+    setSubmittedFinding(null);
     setShowForm(createRecord);
     setActiveInspection(null);
   };
@@ -762,7 +789,25 @@ function ProjectOperations({
     openTask("registers", true);
   };
 
-  const openFinding = (scope: "issue" | "ncr", createRecord = false) => {
+  /**
+   * A narrow, expiring link to one record. It is used both from the list and straight
+   * after submitting, because an NCR only starts moving once the contractor has it.
+   */
+  const shareFinding = async (finding: Finding) => {
+    let sharedToken = "";
+    let shareId = "";
+    let expiresAt = "";
+    const okay = await run(async () => {
+      const created = await createExternalShareLink(client, projectId, "finding", finding.id);
+      shareId = created.share_id;
+      sharedToken = created.token;
+      expiresAt = created.expires_at;
+    }, text("Secure external link created.", "Beveiligde externe link aangemaakt."));
+    if (!okay || !shareId || !sharedToken || !expiresAt) return null;
+    return { shareId, url: externalShareUrl(window.location.origin, sharedToken), expiresAt };
+  };
+
+  const openFinding = (scope: "issue" | "ncr", createRecord = true) => {
     setFindingForm((current) => ({ ...current, type: scope === "ncr" ? "ncr" : current.type === "ncr" ? "deficiency" : current.type }));
     openTask(scope === "ncr" ? "ncr" : "findings", createRecord);
   };
@@ -962,10 +1007,14 @@ function ProjectOperations({
   const addFinding = async () => {
     if (findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3) return;
     const findingBuildingName = buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName;
+    // The module decides what is created here. Without this an NCR opened from the
+    // module switcher would be stored as an ordinary deficiency and vanish from the
+    // NCR list it was entered in.
+    const findingType = findingScope === "ncr" ? "ncr" : findingForm.type === "ncr" ? "deficiency" : findingForm.type;
     const draft = {
       projectId,
       buildingId: findingBuildingId,
-      type: findingForm.type,
+      type: findingType,
       title: findingForm.title,
       description: findingForm.description,
       severity: findingForm.severity,
@@ -977,13 +1026,26 @@ function ProjectOperations({
       disposition: findingForm.disposition,
       expectedResolutionDate: findingForm.expectedResolutionDate,
       sourceCatalogSubject: findingForm.sourceCatalogSubject,
+      referenceChecklist: findingForm.referenceChecklist,
+      recommendedAction: findingForm.recommendedAction || undefined,
+      recommendedActionDetail: findingForm.recommendedActionDetail,
+      remarks: findingForm.remarks,
+      signedBy: findingForm.signedBy,
+      signedAt: findingForm.signedAt,
       locationNodeId: findingLocationNodeId,
     };
+    // The record itself is created first whenever there is a connection. That is what
+    // makes the link to the contractor available the moment the NCR is submitted; the
+    // photos still travel over the offline queue and attach themselves to it.
+    let created: Finding | null = null;
     const success = findingPhotos.length
       ? text("Issue and photo stack secured; numbering and assignment synchronize automatically.", "Probleem en fotostapel veiliggesteld; nummering en toewijzing synchroniseren automatisch.")
       : text("Finding numbered, assigned and given a rule-driven deadline.", "Bevinding genummerd, toegewezen en van een regelgestuurde deadline voorzien.");
     const okay = await run(async () => {
       const effectiveReportId = await ensureProjectDayReport(client, projectId, reportId);
+      // Without photos there is nothing to queue, so the record is created here even
+      // when the connection is gone: the failure has to be visible, not silent.
+      if (navigator.onLine || !findingPhotos.length) created = await createFinding(client, { ...draft, reportId: effectiveReportId });
       if (findingPhotos.length) {
         const folderName = text("Findings", "Bevindingen");
         const findingFolderId = existingMediaFolderId(folderName, findingBuildingId);
@@ -1013,9 +1075,12 @@ function ProjectOperations({
             findingGroup: {
               id: groupId,
               organizationId,
+              // An already created record is only linked; without a connection the queue
+              // still creates it from this draft during synchronization.
+              findingId: created?.id,
               draft: {
                 organizationId,
-                type: findingForm.type,
+                type: findingType,
                 title: findingForm.title,
                 description: findingForm.description,
                 severity: findingForm.severity,
@@ -1027,27 +1092,35 @@ function ProjectOperations({
                 disposition: findingForm.disposition,
                 expectedResolutionDate: findingForm.expectedResolutionDate,
                 sourceCatalogSubject: findingForm.sourceCatalogSubject,
-        dateIdentified: findingForm.dateIdentified,
+                dateIdentified: findingForm.dateIdentified,
+                referenceChecklist: findingForm.referenceChecklist,
+                recommendedAction: findingForm.recommendedAction || undefined,
+                recommendedActionDetail: findingForm.recommendedActionDetail,
+                remarks: findingForm.remarks,
+                signedBy: findingForm.signedBy,
+                signedAt: findingForm.signedAt,
                 locationNodeId: findingLocationNodeId || undefined,
               },
             },
           });
         }
         if (navigator.onLine) await syncQueuedEvidenceNow();
-        return;
       }
-      await createFinding(client, { ...draft, reportId: effectiveReportId });
     }, success);
     if (okay) {
       setFindingForm({
-        type: "deficiency", title: "", description: "", severity: "medium", responsiblePartyId: "",
+        type: findingScope === "ncr" ? "ncr" : "deficiency", title: "", description: "", severity: "medium", responsiblePartyId: "",
         issueType: "quality", impactSummary: "", actionSteps: "", escalationRequired: false,
         disposition: "to_be_corrected", expectedResolutionDate: "", sourceCatalogSubject: "", dateIdentified: "",
+        referenceChecklist: "", recommendedAction: "", recommendedActionDetail: "", remarks: "", signedBy: "", signedAt: "",
       });
       setFindingPhotos([]);
       setFindingPhotoError("");
       setFindingLocationNodeId("");
       setShowForm(false);
+      // Right after submitting, the record itself offers the link to the contractor:
+      // an NCR only works when the party that must correct it actually receives it.
+      setSubmittedFinding(created);
     }
   };
 
@@ -1101,7 +1174,7 @@ function ProjectOperations({
   };
 
   const addRegisterEntry = async () => {
-    if (registerForm.title.trim().length < 3) return;
+    if (registerTitle.length < 3) return;
     // A controlled document may apply to the whole project; then it has no building.
     const projectWideRegister = registerBuildingId === ALL_BUILDINGS;
     const registerRecordBuildingId = projectWideRegister ? null : registerBuildingId;
@@ -1122,6 +1195,14 @@ function ProjectOperations({
         outcome: registerOutcome || null,
         quantity: registerQuantity.trim() ? Number(registerQuantity) : null,
         unit: registerUnit.trim() || null,
+        // An agreement carries the two parties that made it and their signatures.
+        ...(agreementRegister ? {
+          agreed_between: [agreementForm.partyA, agreementForm.partyB].filter(Boolean),
+          signed_by_first: agreementForm.signedByA || null,
+          signed_at_first: agreementForm.signedAtA || null,
+          signed_by_second: agreementForm.signedByB || null,
+          signed_at_second: agreementForm.signedAtB || null,
+        } : {}),
       };
     const okay = await run(
       async () => {
@@ -1148,7 +1229,7 @@ function ProjectOperations({
           locationNodeId: registerLocationNodeId,
           reportId: effectiveReportId,
           type: registerForm.type,
-          title: registerForm.title,
+          title: registerTitle,
           responsiblePartyId: registerForm.responsiblePartyId,
           dueAt: registerForm.dueDate || null,
           details: {
@@ -1209,7 +1290,8 @@ function ProjectOperations({
       text(`${registerNames[registerForm.type] ?? "Record"} was saved centrally and linked to the daily report.`, `${registerNames[registerForm.type] ?? "Registeritem"} centraal opgeslagen en aan het dagrapport gekoppeld.`),
     );
     if (okay) {
-      setRegisterForm({ ...emptyControlledDocumentDraft });
+      setRegisterForm({ ...emptyControlledDocumentDraft, type: registerForm.type });
+      setAgreementForm({ partyA: "", partyB: "", signedByA: "", signedAtA: "", signedByB: "", signedAtB: "" });
       setRegisterFiles([]);
       setRegisterOutcome("");
       setRegisterQuantity("");
@@ -1474,7 +1556,17 @@ function ProjectOperations({
         <section className="operation-panel">
           {showForm ? (
             <div className="operation-form snap-assign-form">
-              <div className="operation-form-heading"><div><span className="record-number">{findingScope === "ncr" ? text("Formal non-conformance", "Formele afwijking") : text("Issue management", "Issuebeheer")}</span><h2>{findingScope === "ncr" ? text("Create NCR", "NCR registreren") : text("Create issue", "Issue registreren")}</h2></div>{!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}</div>
+              <div className="operation-form-heading"><div><span className="record-number">{findingScope === "ncr" ? text("Formal non-conformance", "Formele afwijking") : text("Issue management", "Issuebeheer")}</span><h2>{findingScope === "ncr" ? text("Non-conformance report", "Non-conformance report") : text("Create issue", "Issue registreren")}</h2></div>{!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}</div>
+              {/* The head of the client's own NCR form: project, contractor, subject and
+                  the reference, with the date and the report number filled by the app. */}
+              {findingScope === "ncr" ? (
+                <section className="controlled-document-context ncr-form-context" aria-label={text("Non-conformance report header", "Kop van het non-conformance report")}>
+                  <div><small>{text("Project name and number", "Projectnaam en -nummer")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
+                  <div><small>{text("Contractor", "Aannemer")}</small><strong>{parties.find((party) => party.id === findingForm.responsiblePartyId)?.name || text("Not assigned yet", "Nog niet toegewezen")}</strong><span>{buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName}</span></div>
+                  <div><small>{text("Date", "Datum")}</small><strong>{issueDate}</strong><span>{issueTime}</span></div>
+                  <div><small>{text("Report no · automatic", "Rapportnummer · automatisch")}</small><strong>{text("On submit", "Bij indienen")}</strong><span>{findingForm.signedBy ? text("Signed", "Ondertekend") : text("Not signed yet", "Nog niet ondertekend")}</span></div>
+                </section>
+              ) : null}
               <label className="finding-photo-capture">
                 <Camera size={22} />
                 <span><strong>{findingPhotos.length ? text(`${findingPhotos.length} photos stacked for this issue`, `${findingPhotos.length} foto’s gestapeld voor dit probleem`) : text("Take or choose issue photos", "Maak of kies probleemfoto’s")}</strong><small>{text("Tap again to add another photo. Project, building, date and time are linked automatically.", "Tik opnieuw om nog een foto toe te voegen. Project, gebouw, datum en tijd worden automatisch gekoppeld.")}</small></span>
@@ -1507,7 +1599,11 @@ function ProjectOperations({
                 });
               }}><option value="">{text("Choose only when applicable", "Kies alleen indien van toepassing")}</option>{issueCatalogPresets.map((preset) => <option value={preset.subject} key={preset.subject}>{preset.subject}</option>)}</select><small>{text("The historic spreadsheet is used as a quick-entry catalog; choosing an item does not mark it as an active project issue until you submit it.", "Het historische spreadsheet is een snelinvoercatalogus; een keuze wordt pas een actief projectpunt nadat je het indient.")}</small></label>
               <div className="form-grid-2">
-                <label className="form-field"><span>{text("Type", "Type")}</span><select value={findingForm.type} onChange={(event) => setFindingForm({ ...findingForm, type: event.target.value })}><option value="observation">{text("Observation", "Observatie")}</option><option value="deficiency">{text("Deficiency", "Tekortkoming")}</option><option value="deviation">{text("Deviation", "Afwijking")}</option><option value="ncr">NCR</option><option value="improvement">{text("Improvement opportunity", "Verbeterkans")}</option></select></label>
+                {/* In the NCR module the type is the NCR itself; a dropdown that can only
+                    say "NCR" is one box too many on the client's form. */}
+                {findingScope === "ncr"
+                  ? <label className="form-field"><span>{text("Reference checklist / earlier report", "Referentiechecklist / eerder rapport")}</span><input value={findingForm.referenceChecklist} onChange={(event) => setFindingForm({ ...findingForm, referenceChecklist: event.target.value })} placeholder="NCR - 51" /></label>
+                  : <label className="form-field"><span>{text("Type", "Type")}</span><select value={findingForm.type} onChange={(event) => setFindingForm({ ...findingForm, type: event.target.value })}><option value="observation">{text("Observation", "Observatie")}</option><option value="deficiency">{text("Deficiency", "Tekortkoming")}</option><option value="deviation">{text("Deviation", "Afwijking")}</option><option value="ncr">NCR</option><option value="improvement">{text("Improvement opportunity", "Verbeterkans")}</option></select></label>}
                 <label className="form-field"><span>{text("Priority", "Priority")}</span><select value={findingForm.severity} onChange={(event) => setFindingForm({ ...findingForm, severity: event.target.value })}><option value="low">{text("Low · 14 days", "Low · 14 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label>
               </div>
               <div className="form-grid-2">
@@ -1515,9 +1611,22 @@ function ProjectOperations({
                 <label className="form-field"><span>{text("Disposition", "Beoordeling")}</span><select value={findingForm.disposition} onChange={(event) => setFindingForm({ ...findingForm, disposition: event.target.value as typeof findingForm.disposition })}><option value="validated">{text("Validated", "Gevalideerd")}</option><option value="to_be_corrected">{text("To be corrected", "Te corrigeren")}</option><option value="alternative_solution">{text("Alternative solution required", "Alternatieve oplossing nodig")}</option></select></label>
               </div>
               <div className="form-grid">
-                <label className="form-field"><span>{text("Issue title · used as the log line", "Issuetitel · wordt de regel in het log")}</span><input value={findingForm.title} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} placeholder={text("Short title for the issue log", "Korte titel voor het issuelog")} /></label>
-                <label className="form-field"><span>{text("Issue description", "Issue Description")}</span><textarea rows={3} value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} /></label>
+                <label className="form-field"><span>{findingScope === "ncr" ? text("Subject", "Onderwerp") : text("Issue title · used as the log line", "Issuetitel · wordt de regel in het log")}</span><input value={findingForm.title} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} placeholder={findingScope === "ncr" ? text("What the non-conformance is about", "Waar de afwijking over gaat") : text("Short title for the issue log", "Korte titel voor het issuelog")} /></label>
+                <label className="form-field"><span>{findingScope === "ncr" ? text("Description of non-conformance", "Omschrijving van de afwijking") : text("Issue description", "Issue Description")}</span><textarea rows={findingScope === "ncr" ? 5 : 3} value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} /></label>
               </div>
+              {/* "Recommended Action by Engineer" on the client's own NCR form: rework or
+                  repair, with the sentence that says what has to happen. */}
+              {findingScope === "ncr" ? (
+                <div className="click-answer-block ncr-recommended-action">
+                  <strong>{text("Recommended action by engineer", "Aanbevolen actie door de ingenieur")}</strong>
+                  <div className="quick-issue-presets">
+                    {([["rework", text("Rework", "Opnieuw uitvoeren")], ["repair", text("Repair", "Herstellen")], ["alternative", text("Alternative solution for approval", "Alternatieve oplossing ter goedkeuring")]] as const).map(([value, label]) => (
+                      <button className={findingForm.recommendedAction === value ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, recommendedAction: findingForm.recommendedAction === value ? "" : value })} key={value}>{label}</button>
+                    ))}
+                  </div>
+                  <label className="form-field"><span>{text("What the contractor has to do", "Wat de aannemer moet doen")}</span><textarea rows={2} value={findingForm.recommendedActionDetail} onChange={(event) => setFindingForm({ ...findingForm, recommendedActionDetail: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, recommendedActionDetail: appendDictation(current.recommendedActionDetail, transcript) }))} /></label>
+                </div>
+              ) : null}
               <div className="click-answer-block"><strong>{text("Impact", "Impact")}</strong><div className="quick-issue-presets">{findingImpactPresets.map((option) => <button className={findingForm.impactSummary === option ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, impactSummary: option })} key={option}>{option}</button>)}</div></div>
               <div className="click-answer-block"><strong>{text("Required follow-up", "Vereiste opvolging")}</strong><div className="quick-issue-presets">{findingActionPresets.map((option) => <button className={findingForm.actionSteps === option ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, actionSteps: option })} key={option}>{option}</button>)}</div></div>
               <details className="optional-text-entry">
@@ -1535,11 +1644,51 @@ function ProjectOperations({
               <p className="form-helper">{text(`Entered by ${currentUserName} · the ID, current status and actual resolution date are kept by the app itself.`, `Entered By ${currentUserName} · het ID, de status en de Actual Resolution Date houdt de app zelf bij.`)}</p>
               <div className="form-grid-2">
                 <BuildingPicker id="finding-building" buildings={buildings} value={findingBuildingId} onChange={(next) => { setFindingBuildingId(next); setFindingLocationNodeId(""); }} allowAll />
-                <label className="form-field"><span>{text("Assigned to owner", "Assigned To Owner")}</span><select value={findingForm.responsiblePartyId} onChange={(event) => setFindingForm({ ...findingForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Nog niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
+                <label className="form-field"><span>{findingScope === "ncr" ? text("Contractor · receives this NCR", "Aannemer · ontvangt deze NCR") : text("Assigned to owner", "Assigned To Owner")}</span><select value={findingForm.responsiblePartyId} onChange={(event) => setFindingForm({ ...findingForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Nog niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
               </div>
               <LocationPicker id="finding-location" nodes={data.locationNodes} buildingId={findingBuildingId} value={findingLocationNodeId} onChange={setFindingLocationNodeId} requiredDepth={requiredLocationDepth} />
-              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Probleem indienen")}</button>
+              {/* The last two boxes of the client's NCR form: free remarks and the
+                  signature of the engineer who issues it. */}
+              {findingScope === "ncr" ? (
+                <>
+                  <label className="form-field"><span>{text("Remarks", "Opmerkingen")}</span><textarea rows={2} value={findingForm.remarks} onChange={(event) => setFindingForm({ ...findingForm, remarks: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, remarks: appendDictation(current.remarks, transcript) }))} /></label>
+                  <label className="check-field controlled-document-signature">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(findingForm.signedBy)}
+                      onChange={(event) => setFindingForm({
+                        ...findingForm,
+                        signedBy: event.target.checked ? currentUserName : "",
+                        signedAt: event.target.checked ? new Date().toISOString() : "",
+                      })}
+                    />
+                    <span>
+                      <strong>{text("Sign as the engineer who issues this NCR", "Ondertekenen als ingenieur die deze NCR uitgeeft")}</strong>
+                      <small>{findingForm.signedBy
+                        ? text(`Signed by ${findingForm.signedBy} · ${formatDate(findingForm.signedAt, locale)}`, `Ondertekend door ${findingForm.signedBy} · ${formatDate(findingForm.signedAt, locale)}`)
+                        : text("The name and the moment of signing are stored with the report.", "De naam en het moment van ondertekenen worden bij het rapport opgeslagen.")}</small>
+                    </span>
+                  </label>
+                  <div className="operation-alert warning"><RotateCcw size={17} /><div><strong>{text("The contractor fills in the correction", "De aannemer vult de correctie in")}</strong><span>{text("After submitting you send this NCR to the contractor with one tap. The contractor fills in the proposed corrective action and sends it back; the quality-control close-out stays with CODECO.", "Na indienen stuur je deze NCR met één tik naar de aannemer. De aannemer vult de voorgestelde correctieve actie in en stuurt die terug; de eindcontrole blijft bij CODECO.")}</span></div></div>
+                </>
+              ) : null}
+              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : findingScope === "ncr" ? text("Submit NCR", "NCR indienen") : text("Submit issue", "Probleem indienen")}</button>
             </div>
+          ) : null}
+          {/* Submitting is not the end of an NCR: the contractor has to receive it and
+              send the correction back, so the link stands right where you submitted. */}
+          {submittedFinding ? (
+            <SubmittedRecordShare
+              finding={submittedFinding}
+              scope={findingScope}
+              projectName={projectName}
+              projectCode={projectCode}
+              buildingName={buildings.find((building) => building.id === submittedFinding.building_id)?.name ?? buildingName}
+              contractorName={parties.find((party) => party.id === submittedFinding.responsible_party_id)?.name ?? ""}
+              busy={busy}
+              share={shareFinding}
+              close={() => setSubmittedFinding(null)}
+            />
           ) : null}
           <div className="punchlist-command">
             <div className="punchlist-stages">
@@ -1571,24 +1720,12 @@ function ProjectOperations({
             currentUserName={currentUserName}
             parties={parties}
             busy={busy}
-            transition={(finding, nextStatus, note, finalMeasure) => run(() => transitionFinding(client, finding.id, nextStatus, note, finalMeasure), `Bevinding ${finding.finding_number} staat nu op ${findingStatusLabels[nextStatus] ?? nextStatus}.`)}
+            transition={(finding, nextStatus, note, finalMeasure, correction) => run(() => transitionFinding(client, finding.id, nextStatus, note, finalMeasure, correction), `Bevinding ${finding.finding_number} staat nu op ${findingStatusLabels[nextStatus] ?? nextStatus}.`)}
             recordProgress={(finding, progressPercent, disposition, note) => run(
               () => recordFindingProgress(client, { findingId: finding.id, progressPercent, disposition, note }),
               text(`Progress for ${finding.finding_number} recorded; 100% still requires verification.`, `Voortgang voor ${finding.finding_number} vastgelegd; ook 100% vraagt nog verificatie.`),
             )}
-            share={async (finding) => {
-              let sharedToken = "";
-              let shareId = "";
-              let expiresAt = "";
-              const okay = await run(async () => {
-                const created = await createExternalShareLink(client, projectId, "finding", finding.id);
-                shareId = created.share_id;
-                sharedToken = created.token;
-                expiresAt = created.expires_at;
-              }, text("Secure external link created.", "Beveiligde externe link aangemaakt."));
-              if (!okay || !shareId || !sharedToken || !expiresAt) return null;
-              return { shareId, url: externalShareUrl(window.location.origin, sharedToken), expiresAt };
-            }}
+            share={shareFinding}
             revoke={(shareId) => run(
               () => revokeExternalShareLink(client, shareId),
               text("External link revoked. A previously sent WhatsApp link no longer works.", "Externe link ingetrokken. Een eerder verstuurde WhatsApp-link werkt niet meer."),
@@ -1686,9 +1823,44 @@ function ProjectOperations({
               {activeRegisterPresets.length ? <div className="quick-issue-presets" aria-label={text("Choose a standard register item", "Kies een standaard registeritem")}>{activeRegisterPresets.map((preset) => <button className={registerForm.title === preset.title ? "active" : ""} type="button" onClick={() => setRegisterForm({ ...registerForm, ...preset })} key={preset.title}>{preset.title}</button>)}</div> : null}
               {controlledRegister ? (
                 <div className="form-grid">
-                  <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction title / reference", "Titel / referentie instructie") : text("Title / reference", "Titel / referentie")}</span><input value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} /></label>
-                  <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction description", "Omschrijving instructie") : text("Formal request / instruction / observation", "Formeel verzoek / instructie / observatie")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
+                  <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction title / reference", "Titel / referentie instructie") : registerForm.type === "change_order" ? text("Change title / reference", "Titel / referentie wijziging") : text("Title / reference", "Titel / referentie")}</span><input value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} /></label>
+                  <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction description", "Omschrijving instructie") : registerForm.type === "change_order" ? text("Change description", "Omschrijving van de wijziging") : text("Formal request / instruction / observation", "Formeel verzoek / instructie / observatie")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
                 </div>
+              ) : agreementRegister ? (
+                <>
+                  {/* An agreement is one text and the two parties who made it. Everything
+                      else on the register form is noise for this record. */}
+                  <div className="form-grid-2">
+                    <label className="form-field"><span>{text("Agreement between", "Afspraak tussen")}</span><select value={agreementForm.partyA} onChange={(event) => setAgreementForm({ ...agreementForm, partyA: event.target.value, signedByA: "", signedAtA: "" })}><option value="">{text("Choose party", "Kies partij")}</option>{agreementPartyOptions.map((name) => <option value={name} key={name}>{name}</option>)}</select></label>
+                    <label className="form-field"><span>{text("and", "en")}</span><select value={agreementForm.partyB} onChange={(event) => setAgreementForm({ ...agreementForm, partyB: event.target.value, signedByB: "", signedAtB: "" })}><option value="">{text("Choose party", "Kies partij")}</option>{agreementPartyOptions.map((name) => <option value={name} key={name}>{name}</option>)}</select></label>
+                  </div>
+                  <label className="form-field"><span>{text("What was agreed?", "Wat is afgesproken?")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
+                  <div className="agreement-signatures">
+                    {([["partyA", "signedByA", "signedAtA"], ["partyB", "signedByB", "signedAtB"]] as const).map(([partyKey, signedKey, signedAtKey]) => {
+                      const partyName = agreementForm[partyKey];
+                      return (
+                        <label className="check-field controlled-document-signature" key={partyKey}>
+                          <input
+                            type="checkbox"
+                            disabled={!partyName}
+                            checked={Boolean(agreementForm[signedKey])}
+                            onChange={(event) => setAgreementForm({
+                              ...agreementForm,
+                              [signedKey]: event.target.checked ? partyName : "",
+                              [signedAtKey]: event.target.checked ? new Date().toISOString() : "",
+                            })}
+                          />
+                          <span>
+                            <strong>{partyName ? text(`Signed for ${partyName}`, `Ondertekend namens ${partyName}`) : text("Choose a party first", "Kies eerst een partij")}</strong>
+                            <small>{agreementForm[signedKey]
+                              ? formatDate(agreementForm[signedAtKey], locale)
+                              : text("The name and the moment of signing are stored with the agreement.", "De naam en het moment van ondertekenen worden bij de afspraak opgeslagen.")}</small>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </>
               ) : (
                 <>
                 {/* A delivery, test or equipment line is judged and counted; that verdict
@@ -1775,7 +1947,7 @@ function ProjectOperations({
                   </span>
                 </label>
                 <div className="operation-alert warning"><FileCheck2 size={17} /><div><strong>{text("Numbering and metadata are automatic", "Nummering en metadata zijn automatisch")}</strong><span>{text("Project, building, issue date, author and audit history are filled from the current context. Approval, acknowledgement and signature remain explicit human actions.", "Project, gebouw, uitgiftedatum, opsteller en auditgeschiedenis komen uit de actuele context. Goedkeuring, ontvangst en ondertekening blijven expliciete menselijke acties.")}</span></div></div>
-              </> : <label className="form-field"><span>{text("Involved party", "Betrokken partij")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>}
+              </> : agreementRegister ? null : <label className="form-field"><span>{text("Involved party", "Betrokken partij")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>}
               {/* Every register item can carry site photos, with the text that says what
                   the photo shows. Documents alone were not enough for the client. */}
               <label className="finding-photo-capture register-photo-capture">
@@ -1791,7 +1963,7 @@ function ProjectOperations({
                 markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId === ALL_BUILDINGS ? "" : registerBuildingId }}
               />
               {registerPhotoError ? <p className="field-error" role="alert">{registerPhotoError}</p> : null}
-              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && registerBuildingId !== ALL_BUILDINGS && !registerLocationNodeId) || registerForm.title.trim().length < 3 || !controlledFormReady} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : text("Save register item", "Registeritem opslaan")}</button>
+              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && registerBuildingId !== ALL_BUILDINGS && !registerLocationNodeId) || registerTitle.length < 3 || !controlledFormReady} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : text("Save register item", "Registeritem opslaan")}</button>
             </div>
           ) : null}
           {/* The bill of quantities has nothing to do with a delivery or any other
@@ -2130,6 +2302,77 @@ function RecordPhotoStrip({ data, client, kind, recordId, resolver, busy, run }:
   );
 }
 
+/**
+ * The step straight after submitting: a record that a contractor must act on is sent to
+ * that contractor here, without first looking it up in the list below.
+ */
+function SubmittedRecordShare({ finding, scope, projectName, projectCode, buildingName, contractorName, busy, share, close }: {
+  finding: Finding;
+  scope: "issue" | "ncr";
+  projectName: string;
+  projectCode: string;
+  buildingName: string;
+  contractorName: string;
+  busy: boolean;
+  share: (finding: Finding) => Promise<{ shareId: string; url: string; expiresAt: string } | null>;
+  close: () => void;
+}) {
+  const { locale, text } = useLanguage();
+  const [link, setLink] = useState<{ url: string; expiresAt: string } | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const heading = scope === "ncr"
+    ? text("NCR issued · send it to the contractor", "NCR uitgegeven · stuur hem naar de aannemer")
+    : text("Issue recorded · send it to the responsible party", "Issue vastgelegd · stuur het naar de verantwoordelijke partij");
+  const message = (shared: { url: string; expiresAt: string }) => [
+    `${scope === "ncr" ? "CODECO NCR" : "CODECO werkpunt"} ${finding.finding_number}`,
+    `${projectCode} · ${projectName}${buildingName ? ` · ${buildingName}` : ""}`,
+    finding.title,
+    `Deadline: ${formatDate(finding.due_at, locale)}`,
+    "",
+    scope === "ncr"
+      ? "Open de NCR, vul de voorgestelde correctieve actie in en stuur die terug:"
+      : "Open de volledige breakdown, bronfoto en antwoordknoppen zonder account:",
+    shared.url,
+    `Link geldig tot ${formatDate(shared.expiresAt, locale)}.`,
+  ].join("\n");
+  const createLink = async () => {
+    setCreating(true);
+    setFeedback("");
+    const created = await share(finding);
+    if (created) setLink({ url: created.url, expiresAt: created.expiresAt });
+    setCreating(false);
+  };
+  return (
+    <section className="submitted-record-share" aria-label={heading}>
+      <header>
+        <span><Link2 size={18} /></span>
+        <div>
+          <strong>{heading}</strong>
+          <small>{finding.finding_number} · {finding.title}{contractorName ? ` · ${contractorName}` : ""}</small>
+        </div>
+        <button type="button" aria-label={text("Close", "Sluiten")} onClick={close}><X size={16} /></button>
+      </header>
+      {scope === "ncr" ? <p>{text("The contractor opens the link without an account, reads the recommended action and fills in the proposed corrective action. CODECO verifies and closes the NCR.", "De aannemer opent de link zonder account, leest de aanbevolen actie en vult de voorgestelde correctieve actie in. CODECO verifieert en sluit de NCR.")}</p> : null}
+      {link ? (
+        <>
+          <label><span>{text("Secure link · expires", "Beveiligde link · vervalt")} {formatDate(link.expiresAt, locale)}</span><input readOnly value={link.url} onFocus={(event) => event.currentTarget.select()} /></label>
+          {feedback ? <p className="external-share-feedback" role="status">{feedback}</p> : null}
+          <div className="submitted-record-share-actions">
+            <button className="secondary-button" type="button" onClick={() => void copyToClipboard(link.url).then(() => setFeedback(text("Link copied.", "Link gekopieerd."))).catch((error) => setFeedback(messageFrom(error)))}><Copy size={16} /> {text("Copy link", "Kopieer link")}</button>
+            <button className="whatsapp-button" type="button" onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(message(link))}`, "_blank", "noopener,noreferrer")}><MessageCircle size={17} /> {text("Open WhatsApp and send", "Open WhatsApp en stuur")}</button>
+          </div>
+        </>
+      ) : (
+        <button className="primary-button" type="button" disabled={busy || creating} onClick={() => void createLink()}>
+          {creating ? <Loader2 className="spin" size={16} /> : <MessageCircle size={16} />}
+          {scope === "ncr" ? text("Send to contractor", "Naar aannemer sturen") : text("Send to external party", "Stuur naar externe partij")}
+        </button>
+      )}
+    </section>
+  );
+}
+
 function FindingList({ data, client, run, findings, progressUpdates, visualAnnotations, externalShareLinks, projectName, projectCode, buildings, locationNodes, currentUserName, parties, busy, transition, recordProgress, share, revoke, linkVisual, linkDrawing }: {
   data: OperationSnapshot;
   client: SupabaseClient;
@@ -2145,7 +2388,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   currentUserName: string;
   parties: ProjectParty[];
   busy: boolean;
-  transition: (finding: Finding, nextStatus: string, note: string, finalMeasure: string) => Promise<boolean>;
+  transition: (finding: Finding, nextStatus: string, note: string, finalMeasure: string, correction: string) => Promise<boolean>;
   recordProgress: (finding: Finding, progressPercent: number, disposition: "validated" | "to_be_corrected" | "alternative_solution", note: string) => Promise<boolean>;
   share: (finding: Finding) => Promise<{ shareId: string; url: string; expiresAt: string } | null>;
   revoke: (shareId: string) => Promise<boolean>;
@@ -2158,6 +2401,8 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   const [active, setActive] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [measure, setMeasure] = useState("");
+  /** What the contractor proposes to do, as on the client's own NCR form. */
+  const [correction, setCorrection] = useState("");
   const [progressActive, setProgressActive] = useState<string | null>(null);
   const [progressPercent, setProgressPercent] = useState("0");
   const [progressDisposition, setProgressDisposition] = useState<"validated" | "to_be_corrected" | "alternative_solution">("to_be_corrected");
@@ -2224,8 +2469,31 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
               </button>
               <ReportDownloadButtons disabled={busy} onDownloadPdf={() => import("@/lib/reports/ncr-pdf").then(({ downloadNcrPdf }) => downloadNcrPdf(finding, latestProgress, { projectName, projectCode, buildingName: recordBuildingName, issuerName: currentUserName, responsiblePartyName: parties.find((party) => party.id === finding.responsible_party_id)?.name ?? "" }))} onDownloadWord={() => import("@/lib/reports/ncr-docx").then(({ downloadNcrDocx }) => downloadNcrDocx(finding, latestProgress, { projectName, projectCode, buildingName: recordBuildingName, issuerName: currentUserName, responsiblePartyName: parties.find((party) => party.id === finding.responsible_party_id)?.name ?? "" }))} />
               {!["closed", "cancelled", "rejected"].includes(finding.status) ? <button className="secondary-button" type="button" onClick={() => { setProgressActive(progressActive === finding.id ? null : finding.id); setProgressPercent(String(latestProgress?.progress_percent ?? 0)); setProgressDisposition(latestProgress?.disposition ?? issue.disposition ?? "to_be_corrected"); }}>{text("Record inspection progress", "Inspectievoortgang vastleggen")}</button> : null}
-              {nextStatus ? <button className="secondary-button" type="button" onClick={() => setActive(active === finding.id ? null : finding.id)}>{nextStatus === "closed" ? text("Verify", "Verifiëren") : nextStatus === "ready_for_verification" ? text("Mark repair ready", "Herstel gereedmelden") : text("Update status", "Status bijwerken")}</button> : null}
+              {nextStatus ? <button className="secondary-button" type="button" onClick={() => { setActive(active === finding.id ? null : finding.id); setCorrection(""); }}>{nextStatus === "closed" ? finding.finding_type === "ncr" ? text("Quality control · resolve", "Kwaliteitscontrole · afsluiten") : text("Verify", "Verifiëren") : nextStatus === "ready_for_verification" ? text("Mark repair ready", "Herstel gereedmelden") : finding.finding_type === "ncr" ? text("Record contractor answer", "Antwoord aannemer vastleggen") : text("Update status", "Status bijwerken")}</button> : null}
             </div>
+            {/* The three signed boxes of the client's NCR form, in the order of the form:
+                what the engineer recommends, what the contractor proposes, what quality
+                control decided. */}
+            {finding.finding_type === "ncr" ? (
+              <section className="ncr-form-boxes" aria-label={text("Non-conformance report boxes", "Vakken van het non-conformance report")}>
+                <div>
+                  <span>{text("Recommended action by engineer", "Aanbevolen actie door de ingenieur")}</span>
+                  <strong>{issue.recommended_action ? { rework: text("Rework", "Opnieuw uitvoeren"), repair: text("Repair", "Herstellen"), alternative: text("Alternative solution", "Alternatieve oplossing") }[issue.recommended_action] : text("Not chosen", "Niet gekozen")}</strong>
+                  <p>{issue.recommended_action_detail || issue.action_steps || text("No instruction recorded.", "Geen instructie vastgelegd.")}</p>
+                  <small>{issue.signed_by ? text(`Signed by ${issue.signed_by} · ${formatDate(issue.signed_at ?? null, locale)}`, `Ondertekend door ${issue.signed_by} · ${formatDate(issue.signed_at ?? null, locale)}`) : text("Not signed", "Niet ondertekend")}</small>
+                </div>
+                <div className={finding.proposed_correction ? "answered" : ""}>
+                  <span>{text("Proposed corrective action by contractor", "Voorgestelde correctieve actie door de aannemer")}</span>
+                  <p>{finding.proposed_correction || text("Waiting for the contractor's answer through the sent link.", "Wacht op het antwoord van de aannemer via de verstuurde link.")}</p>
+                </div>
+                <div className={finding.status === "closed" ? "answered" : ""}>
+                  <span>{text("Quality control", "Kwaliteitscontrole")}</span>
+                  <strong>{finding.status === "closed" ? text("Issue resolved", "Afwijking opgelost") : text("Issue not resolved", "Afwijking nog niet opgelost")}</strong>
+                  <p>{finding.final_measure || text("No verified close-out yet.", "Nog geen geverifieerde afsluiting.")}</p>
+                  {issue.remarks ? <small>{text("Remarks:", "Opmerkingen:")} {issue.remarks}</small> : null}
+                </div>
+              </section>
+            ) : null}
             <RecordPhotoStrip data={data} client={client} kind="finding" recordId={finding.id} resolver={fileOriginResolver} busy={busy} run={run} />
             {activeExternalShares.length ? (
               <section className="active-external-shares" aria-label={text("Active external links", "Actieve externe links")}>
@@ -2277,9 +2545,14 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
             {active === finding.id && nextStatus ? (
               <div className="inline-transition">
                 {nextStatus === "ready_for_verification" ? <><div className="quick-issue-presets" aria-label={text("Choose the completed measure", "Kies de uitgevoerde maatregel")}>{measureChoices.map((choice) => <button className={measure === choice ? "active" : ""} type="button" onClick={() => setMeasure(choice)} key={choice}>{choice}</button>)}</div><label className="form-field"><span>{text("Final resolution & rationale", "Final Resolution & Rationale")}</span><textarea rows={2} value={measure} onChange={(event) => setMeasure(event.target.value)} /><DictateButton onText={(transcript) => setMeasure((current) => appendDictation(current, transcript))} /></label></> : null}
+                {/* An NCR answered by phone or on paper still belongs in the same box as
+                    the answer that comes back through the link. */}
+                {finding.finding_type === "ncr" && nextStatus === "in_progress" ? (
+                  <label className="form-field"><span>{text("Proposed corrective action by contractor · optional", "Voorgestelde correctieve actie door de aannemer · optioneel")}</span><textarea rows={2} value={correction} onChange={(event) => setCorrection(event.target.value)} placeholder={finding.proposed_correction ?? text("Only needed when the contractor answered outside the app.", "Alleen nodig als de aannemer buiten de app heeft geantwoord.")} /><DictateButton onText={(transcript) => setCorrection((current) => appendDictation(current, transcript))} /></label>
+                ) : null}
                 <div className="quick-issue-presets" aria-label={text("Choose a status note", "Kies een statusnotitie")}>{(noteChoices[nextStatus] ?? []).map((choice) => <button className={note === choice ? "active" : ""} type="button" onClick={() => setNote(choice)} key={choice}>{choice}</button>)}</div>
-                <label className="form-field"><span>{nextStatus === "closed" ? text("Verification finding", "Verificatiebevinding") : text("Comment", "Toelichting")}</span><textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} /><DictateButton onText={(transcript) => setNote((current) => appendDictation(current, transcript))} /></label>
-                <button className="primary-button" type="button" disabled={busy || note.trim().length < 2 || (nextStatus === "ready_for_verification" && measure.trim().length < 3)} onClick={() => void transition(finding, nextStatus, note, measure).then((okay) => { if (okay) { setActive(null); setNote(""); setMeasure(""); } })}>{text("Confirm human status change", "Bevestig menselijke statuswijziging")}</button>
+                <label className="form-field"><span>{nextStatus === "closed" ? finding.finding_type === "ncr" ? text("Quality control · issue resolved because", "Kwaliteitscontrole · afwijking opgelost omdat") : text("Verification finding", "Verificatiebevinding") : text("Comment", "Toelichting")}</span><textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} /><DictateButton onText={(transcript) => setNote((current) => appendDictation(current, transcript))} /></label>
+                <button className="primary-button" type="button" disabled={busy || note.trim().length < 2 || (nextStatus === "ready_for_verification" && measure.trim().length < 3)} onClick={() => void transition(finding, nextStatus, note, measure, correction).then((okay) => { if (okay) { setActive(null); setNote(""); setMeasure(""); setCorrection(""); } })}>{text("Confirm human status change", "Bevestig menselijke statuswijziging")}</button>
               </div>
             ) : null}
           </article>

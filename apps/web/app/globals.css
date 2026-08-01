@@ -8252,7 +8252,8 @@ textarea:focus-visible {
 
 .external-source-image { background: #edf2f2; border-radius: 12px; max-height: 360px; object-fit: cover; width: 100%; }
 .external-response-panel { border-top: 1px solid #e0e7e8; display: grid; gap: 13px; padding-top: 16px; }
-.external-response-tabs { background: #eef3f3; border-radius: 10px; display: grid; gap: 4px; grid-template-columns: 1fr 1fr; padding: 4px; }
+/* Two tabs for a work point, three when an NCR also asks for the correction. */
+.external-response-tabs { background: #eef3f3; border-radius: 10px; display: grid; gap: 4px; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; padding: 4px; }
 .external-response-tabs button {
   align-items: center;
   background: transparent;
@@ -12638,4 +12639,81 @@ button {
   .workspace-support-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .workspace-support-strip > span { grid-column: 1 / -1; }
   .workspace-support-strip button { justify-content: flex-start; }
+}
+
+/* Feedback of 1 August: the NCR form, the agreement and the deadline page. */
+
+.ncr-form-context { margin-bottom: 2px; }
+
+.ncr-recommended-action { display: grid; gap: 9px; }
+
+.ncr-form-boxes { display: grid; gap: 9px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 10px; }
+
+.ncr-form-boxes > div {
+  background: #fbfcfb;
+  border: 1px solid var(--panel-border);
+  border-left: 3px solid #d7ddd9;
+  border-radius: 10px;
+  display: grid;
+  gap: 4px;
+  padding: 10px 11px;
+}
+
+.ncr-form-boxes > div.answered { background: #f2f9f5; border-left-color: #4f9d7c; }
+.ncr-form-boxes span { color: #6d7b74; font-size: 8px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; }
+.ncr-form-boxes strong { color: #1d2924; font-size: 11px; }
+.ncr-form-boxes p { color: #46534d; font-size: 10px; line-height: 1.45; margin: 0; }
+.ncr-form-boxes small { color: #7a8781; font-size: 9px; }
+
+.submitted-record-share {
+  background: #f2f9f5;
+  border: 1px solid #a9d3bf;
+  border-radius: 14px;
+  display: grid;
+  gap: 11px;
+  margin-bottom: 12px;
+  padding: 15px 16px;
+}
+
+.submitted-record-share > header { align-items: center; display: grid; gap: 10px; grid-template-columns: auto minmax(0, 1fr) auto; }
+.submitted-record-share > header > span { background: #dff3e8; border-radius: 9px; color: #087a38; display: grid; height: 38px; place-items: center; width: 38px; }
+.submitted-record-share > header > div { display: grid; gap: 2px; }
+.submitted-record-share > header strong { color: #24463a; font-size: 12px; }
+.submitted-record-share > header small { color: #607b70; font-size: 9px; }
+.submitted-record-share > header > button { background: #fff; border: 1px solid #d4e2dc; border-radius: 8px; color: #567067; cursor: pointer; display: grid; height: 36px; place-items: center; width: 36px; }
+.submitted-record-share > p { color: #4b675c; font-size: 10px; line-height: 1.5; margin: 0; }
+.submitted-record-share > label { display: grid; gap: 5px; }
+.submitted-record-share > label span { color: #587267; font-size: 9px; font-weight: 750; }
+.submitted-record-share > label input { background: #fff; border: 1px solid #bdd7cc; border-radius: 8px; color: #245447; font-family: var(--font-geist-mono), monospace; font-size: 9px; min-height: 42px; padding: 9px 10px; width: 100%; }
+.submitted-record-share-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.agreement-signatures { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.external-ncr-instruction {
+  background: #fff7e5;
+  border-radius: 12px;
+  display: grid;
+  gap: 4px;
+  padding: 13px 14px;
+}
+
+.external-ncr-instruction span { color: #8a6a15; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.external-ncr-instruction strong { color: #4a3a08; font-size: 15px; }
+.external-ncr-instruction p { color: #5c4a12; font-size: 13px; line-height: 1.5; margin: 0; }
+.external-ncr-instruction small { color: #7a6524; font-size: 11px; }
+
+.deadline-summary { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.deadline-summary > button.overdue strong { color: #c43d32; }
+.unified-action-list > button.overdue { background: #fff8f7; }
+.unified-action-copy small.overdue { color: #c43d32; font-weight: 800; }
+
+@media (max-width: 860px) {
+  .ncr-form-boxes,
+  .agreement-signatures { grid-template-columns: 1fr; }
+  .deadline-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 520px) {
+  .submitted-record-share-actions { display: grid; grid-template-columns: 1fr; }
+  .submitted-record-share-actions > button { justify-content: center; width: 100%; }
 }
