@@ -7,7 +7,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { photoFiles, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
-import { appendPhotoDetail } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
 import {
   compressFieldPhoto,
@@ -384,7 +383,6 @@ export function MediaLibraryWorkspace({
                 defaultBuildingId: libraryBuildingId,
                 locations: data.locationNodes.map((node) => ({ id: node.id, label: `${node.code} · ${node.name}`, buildingId: node.building_id })),
               }}
-              onDetail={(report) => setPhotoDescription((current) => appendPhotoDetail(current, report))}
             />
             {/* Applies to every photo that was not given its own words above. */}
             <label className="form-field">

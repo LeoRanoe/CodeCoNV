@@ -8,7 +8,6 @@ import {
   PenLine,
   Square,
   Trash2,
-  Type as TypeIcon,
   Undo2,
   X,
 } from "lucide-react";
@@ -48,10 +47,9 @@ type Marker = {
 type Shape =
   | { id: string; kind: "pen"; tone: MarkerTone; width: number; points: Point[] }
   | { id: string; kind: "arrow"; tone: MarkerTone; width: number; from: Point; to: Point }
-  | { id: string; kind: "box"; tone: MarkerTone; width: number; from: Point; to: Point }
-  | { id: string; kind: "text"; tone: MarkerTone; at: Point; value: string };
+  | { id: string; kind: "box"; tone: MarkerTone; width: number; from: Point; to: Point };
 
-type Tool = "marker" | "pen" | "arrow" | "box" | "text";
+type Tool = "marker" | "pen" | "arrow" | "box";
 
 /** A choice the surrounding screen already knows about, offered inside the marking pad. */
 export type MarkupOption = { id: string; label: string; buildingId?: string };
@@ -176,9 +174,6 @@ export function PhotoMarkupPad({
   const workPackages = context.workPackages ?? [];
   const defaultBuildingId = context.defaultBuildingId ?? (buildings.length === 1 ? buildings[0].id : "");
   const activeMarker = selected?.kind === "marker" ? markers.find((marker) => marker.id === selected.id) ?? null : null;
-  const activeText = selected?.kind === "shape"
-    ? shapes.find((shape) => shape.id === selected.id && shape.kind === "text") as Extract<Shape, { kind: "text" }> | undefined ?? null
-    : null;
 
   const labelPresets = [
     text("Crack or damage", "Scheur of beschadiging"),
@@ -242,8 +237,7 @@ export function PhotoMarkupPad({
     canvas.style.height = `${rect.height}px`;
     context2d.setTransform(ratio, 0, 0, ratio, 0, 0);
     context2d.clearRect(0, 0, rect.width, rect.height);
-    // Text labels are real elements on top of the photo, so they are left out here.
-    drawShapes(context2d, shapes.filter((shape) => shape.kind !== "text"), rect.width, rect.height, {
+    drawShapes(context2d, shapes, rect.width, rect.height, {
       strokeScale: Math.min(rect.width, rect.height) / 400,
       fontSize: Math.max(12, Math.round(Math.min(rect.width, rect.height) * 0.05)),
     });
@@ -276,29 +270,10 @@ export function PhotoMarkupPad({
     setSelected({ kind: "marker", id: marker.id });
   };
 
-  const addText = (point: Point) => {
-    const shape: Shape = { id: newId(), kind: "text", tone, at: point, value: "" };
-    setShapes((current) => [...current, shape]);
-    remember("shape", shape.id);
-    setSelected({ kind: "shape", id: shape.id });
-  };
-
-  /**
-   * Picking a tool is enough to start working with it. Text used to demand a tap on the photo
-   * before the field to type in appeared, which is exactly the step the client did not want:
-   * the label lands in the middle of the picture and is dragged where it belongs afterwards.
-   */
-  const chooseTool = (next: Tool) => {
-    setTool(next);
-    if (next !== "text") return;
-    const emptyLabel = shapes.find((shape) => shape.kind === "text" && !shape.value.trim());
-    if (emptyLabel) setSelected({ kind: "shape", id: emptyLabel.id });
-    else addText({ x: 0.5, y: 0.42 });
-  };
 
   const startOnStage = (event: React.PointerEvent<HTMLDivElement>) => {
     if (draggingMarkerRef.current) return;
-    if (tool === "marker" || tool === "text") return;
+    if (tool === "marker") return;
     // Without this the browser starts dragging the photo as an image, which cancels the
     // pointer stream and cuts the line off after a few millimetres.
     event.preventDefault();
@@ -319,7 +294,6 @@ export function PhotoMarkupPad({
     if (dragging) {
       dragging.moved = true;
       setMarkers((current) => current.map((marker) => marker.id === dragging.id ? { ...marker, xRatio: point.x, yRatio: point.y } : marker));
-      setShapes((current) => current.map((shape) => shape.id === dragging.id && shape.kind === "text" ? { ...shape, at: point } : shape));
       return;
     }
     const drawing = drawingRef.current;
@@ -337,10 +311,7 @@ export function PhotoMarkupPad({
     const dragging = draggingMarkerRef.current;
     if (dragging) {
       draggingMarkerRef.current = null;
-      if (!dragging.moved) {
-        const isText = shapes.some((shape) => shape.id === dragging.id && shape.kind === "text");
-        setSelected({ kind: isText ? "shape" : "marker", id: dragging.id });
-      }
+      if (!dragging.moved) setSelected({ kind: "marker", id: dragging.id });
       return;
     }
     const drawing = drawingRef.current;
@@ -415,44 +386,9 @@ export function PhotoMarkupPad({
         context2d.fillText(String(index + 1), x, y + metrics.fontSize * 0.04);
       });
 
-      // The legend keeps the picture readable on its own: number, colour, what is wrong, how
-      // serious it is and where it belongs — printed on the photo, not only in a database.
+      // Nothing but the numbers and the drawing goes onto the picture. What the numbers mean
+      // is a detail of the photo, kept beside it, so the picture stays a picture.
       const notes = markers.map(describeMarker);
-      const lines = notes
-        .filter((note) => note.label || note.description)
-        .map((note) => ({
-          tone: note.tone,
-          text: [
-            `${note.number}. ${note.label || note.description}`,
-            shortSeverity[note.severity],
-            photoMarkupPlacement(note),
-          ].filter((part) => part.length > 0).join(" · "),
-        }));
-      if (lines.length) {
-        const lineHeight = Math.round(metrics.legendFontSize * 1.65);
-        const padding = Math.round(metrics.legendFontSize * 0.7);
-        const bandHeight = lines.length * lineHeight + padding * 2;
-        context2d.fillStyle = "rgba(12, 20, 17, 0.72)";
-        context2d.fillRect(0, size.height - bandHeight, size.width, bandHeight);
-        context2d.textAlign = "left";
-        context2d.font = `600 ${metrics.legendFontSize}px system-ui, sans-serif`;
-        lines.forEach((line, row) => {
-          const baseline = size.height - bandHeight + padding + row * lineHeight + lineHeight / 2;
-          const dotRadius = Math.round(metrics.legendFontSize * 0.42);
-          const dotX = padding + dotRadius;
-          context2d.beginPath();
-          context2d.arc(dotX, baseline, dotRadius, 0, Math.PI * 2);
-          context2d.fillStyle = photoMarkupToneColors[line.tone];
-          context2d.fill();
-          context2d.fillStyle = "#ffffff";
-          const room = size.width - (dotX + dotRadius + padding) - padding;
-          let printed = line.text;
-          while (printed.length > 4 && context2d.measureText(printed).width > room) {
-            printed = `${printed.slice(0, -2).trimEnd()}…`;
-          }
-          context2d.fillText(printed, dotX + dotRadius + padding / 2, baseline);
-        });
-      }
 
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
       if (!blob) throw new Error("unreadable-image");
@@ -487,7 +423,6 @@ export function PhotoMarkupPad({
     { id: "pen", label: text("Draw", "Tekenen"), icon: PenLine },
     { id: "arrow", label: text("Arrow", "Pijl"), icon: ArrowUpRight },
     { id: "box", label: text("Frame", "Kader"), icon: Square },
-    { id: "text", label: text("Text", "Tekst"), icon: TypeIcon },
   ];
 
   return (
@@ -511,7 +446,7 @@ export function PhotoMarkupPad({
           <div className="photo-markup-modes" role="group" aria-label={text("Marking tool", "Markeergereedschap")}>
             {tools.map((entry) => {
               const Icon = entry.icon;
-              return <button className={tool === entry.id ? "active" : ""} type="button" onClick={() => chooseTool(entry.id)} key={entry.id}><Icon size={15} /> {entry.label}</button>;
+              return <button className={tool === entry.id ? "active" : ""} type="button" onClick={() => setTool(entry.id)} key={entry.id}><Icon size={15} /> {entry.label}</button>;
             })}
           </div>
           {/* The colour of what gets placed next. It deliberately never recolours something
@@ -544,10 +479,8 @@ export function PhotoMarkupPad({
             onPointerUp={endOnStage}
             onPointerCancel={endOnStage}
             onClick={(event) => {
-              if (event.target !== imageRef.current) return;
-              const point = ratioFrom(event.clientX, event.clientY);
-              if (tool === "marker") addMarker(point);
-              else if (tool === "text") addText(point);
+              if (event.target !== imageRef.current || tool !== "marker") return;
+              addMarker(ratioFrom(event.clientX, event.clientY));
             }}
           >
             {/* The frame is exactly the picture, so a marker sits where it was tapped even
@@ -562,37 +495,17 @@ export function PhotoMarkupPad({
               draggable={false}
               onLoad={paintOverlay}
               onDragStart={(event) => event.preventDefault()}
-              role={tool === "marker" || tool === "text" ? "button" : undefined}
-              tabIndex={tool === "marker" || tool === "text" ? 0 : undefined}
-              aria-label={tool === "marker" ? text("Photo. Tap to place a marker.", "Foto. Tik om een marker te plaatsen.") : tool === "text" ? text("Photo. Tap to place a text.", "Foto. Tik om tekst te plaatsen.") : undefined}
+              role={tool === "marker" ? "button" : undefined}
+              tabIndex={tool === "marker" ? 0 : undefined}
+              aria-label={tool === "marker" ? text("Photo. Tap to place a marker.", "Foto. Tik om een marker te plaatsen.") : undefined}
               onKeyDown={(event) => {
                 if (event.key !== "Enter" && event.key !== " ") return;
-                if (tool !== "marker" && tool !== "text") return;
+                if (tool !== "marker") return;
                 event.preventDefault();
-                const center = { x: 0.5, y: 0.5 };
-                if (tool === "marker") addMarker(center);
-                else addText(center);
+                addMarker({ x: 0.5, y: 0.5 });
               }}
             />
             <canvas className="photo-markup-overlay" ref={overlayRef} />
-            {shapes.map((shape) => shape.kind === "text" ? (
-              <button
-                className={`photo-markup-label ${selected?.id === shape.id ? "active" : ""} ${shape.value.trim() ? "" : "empty"}`}
-                style={{ left: `${shape.at.x * 100}%`, top: `${shape.at.y * 100}%`, ["--markup-tone" as string]: photoMarkupToneColors[shape.tone] }}
-                type="button"
-                onPointerDown={(event) => {
-                  event.stopPropagation();
-                  event.preventDefault();
-                  event.currentTarget.setPointerCapture(event.pointerId);
-                  draggingMarkerRef.current = { id: shape.id, moved: false };
-                }}
-                onPointerMove={(event) => { if (draggingMarkerRef.current?.id === shape.id) moveOnStage(event); }}
-                onPointerUp={(event) => { event.stopPropagation(); endOnStage(); }}
-                onPointerCancel={endOnStage}
-                onClick={(event) => { event.stopPropagation(); setSelected({ kind: "shape", id: shape.id }); }}
-                key={shape.id}
-              >{shape.value.trim() || text("Type the text…", "Typ de tekst…")}</button>
-            ) : null)}
             {markers.map((marker, index) => (
               <button
                 className={`photo-markup-marker ${selected?.id === marker.id ? "active" : ""}`}
@@ -719,43 +632,16 @@ export function PhotoMarkupPad({
                 </fieldset>
               ) : null}
             </div>
-          ) : activeText ? (
-            <div className="photo-markup-editor">
-              <div className="photo-markup-editor-heading">
-                <span className="record-number">{text("Text on the photo", "Tekst op de foto")}</span>
-                <button className="field-clear-button" type="button" onClick={removeSelected}><Trash2 size={13} /> {text("Remove text", "Tekst verwijderen")}</button>
-              </div>
-              <label className="form-field">
-                <span>{text("What should the photo say here?", "Wat moet de foto hier zeggen?")}</span>
-                <input
-                  value={activeText.value}
-                  onChange={(event) => setShapes((current) => current.map((shape) => shape.id === activeText.id && shape.kind === "text" ? { ...shape, value: event.target.value } : shape))}
-                  placeholder={text("For example: 3 anchors missing", "Bijvoorbeeld: 3 ankers ontbreken")}
-                  autoFocus
-                />
-              </label>
-              <label className="form-field">
-                <span>{text("Classification · colour", "Classificatie · kleur")}</span>
-                <select
-                  value={activeText.tone}
-                  onChange={(event) => setShapes((current) => current.map((shape) => shape.id === activeText.id ? { ...shape, tone: event.target.value as MarkerTone } : shape))}
-                >
-                  {(Object.keys(toneLabels) as MarkerTone[]).map((option) => <option value={option} key={option}>{toneLabels[option]}</option>)}
-                </select>
-              </label>
-            </div>
           ) : (
             <>
               <p className="photo-markup-hint">
                 {tool === "marker"
                   ? text("Tap the photo to place a marker, then write what is wrong and where it belongs. Drag a marker to move it.", "Tik op de foto om een marker te plaatsen en schrijf daarna wat er mis is en waar het bij hoort. Sleep een marker om hem te verplaatsen.")
-                  : tool === "text"
-                    ? text("Tap the photo where the text has to stand.", "Tik op de foto waar de tekst moet staan.")
-                    : tool === "box"
-                      ? text("Drag a frame around the area the problem covers.", "Sleep een kader om het gebied waar het probleem zich uitstrekt.")
-                      : tool === "arrow"
-                        ? text("Drag from where you start to what you are pointing at.", "Sleep van je startpunt naar wat je aanwijst.")
-                        : text("Drag over the photo to circle or underline the problem.", "Sleep over de foto om het probleem te omcirkelen of te onderstrepen.")}
+                  : tool === "box"
+                    ? text("Drag a frame around the area the problem covers.", "Sleep een kader om het gebied waar het probleem zich uitstrekt.")
+                    : tool === "arrow"
+                      ? text("Drag from where you start to what you are pointing at.", "Sleep van je startpunt naar wat je aanwijst.")
+                      : text("Drag over the photo to circle or underline the problem.", "Sleep over de foto om het probleem te omcirkelen of te onderstrepen.")}
               </p>
               {markers.length ? (
                 <ol className="photo-markup-list" aria-label={text("Markings on this photo", "Markeringen op deze foto")}>
@@ -805,25 +691,6 @@ function drawShapes(
   for (const shape of shapes) {
     context.strokeStyle = photoMarkupToneColors[shape.tone];
     context.fillStyle = photoMarkupToneColors[shape.tone];
-    if (shape.kind === "text") {
-      const value = shape.value.trim();
-      if (!value) continue;
-      context.font = `700 ${options.fontSize}px system-ui, sans-serif`;
-      context.textAlign = "left";
-      context.textBaseline = "middle";
-      const metrics = context.measureText(value);
-      const padding = options.fontSize * 0.42;
-      const boxHeight = options.fontSize + padding * 2;
-      const left = Math.min(shape.at.x * width, Math.max(0, width - metrics.width - padding * 2));
-      const top = shape.at.y * height - boxHeight / 2;
-      context.fillStyle = photoMarkupToneColors[shape.tone];
-      context.beginPath();
-      context.roundRect(left, top, metrics.width + padding * 2, boxHeight, padding);
-      context.fill();
-      context.fillStyle = "#ffffff";
-      context.fillText(value, left + padding, top + boxHeight / 2);
-      continue;
-    }
     context.lineWidth = Math.max(1, shape.width * options.strokeScale);
     if (shape.kind === "pen") {
       if (shape.points.length < 2) continue;

@@ -3,7 +3,7 @@
 import { Camera, Compass, RotateCcw, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
-import { MarkPhotoButton, PhotoMarkupPad, type PhotoMarkupContext } from "@/app/photo-markup";
+import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad, type PhotoMarkupContext } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
 
 /**
@@ -116,14 +116,11 @@ export function PhotoEvidenceList({
   photos,
   setPhotos,
   markupContext,
-  onDetail,
   compact = false,
 }: {
   photos: PhotoEvidence[];
   setPhotos: (photos: PhotoEvidence[]) => void;
   markupContext?: PhotoMarkupContext;
-  /** Receives the written detail of markings, for the surrounding form's own description. */
-  onDetail?: (report: string) => void;
   /** Leaves out the fields a very short form has no room for. */
   compact?: boolean;
 }) {
@@ -228,10 +225,20 @@ export function PhotoEvidenceList({
           close={() => setMarkupId("")}
           save={({ file, report, summary, markerCount }) => {
             setPhotos(photos.map((photo) => photo.id === markupPhoto.id
-              // The original is never thrown away, so the untouched picture stays available.
-              ? { ...photo, file, markerCount, details: { ...photo.details, title: photo.details.title.trim() || summary } }
+              ? {
+                  ...photo,
+                  // The original is never thrown away, so the untouched picture stays available.
+                  file,
+                  markerCount,
+                  details: {
+                    ...photo.details,
+                    title: photo.details.title.trim() || summary,
+                    // What the numbers on the picture mean belongs to the photo, next to it,
+                    // instead of being printed over the picture itself.
+                    description: appendPhotoDetail(photo.details.description, report),
+                  },
+                }
               : photo));
-            if (report) onDetail?.(report);
             setMarkupId("");
           }}
         />

@@ -41,7 +41,6 @@ import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateActio
 import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
-import { appendPhotoDetail } from "@/app/photo-markup";
 import { SketchPad } from "@/app/sketch-pad";
 import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
@@ -1485,7 +1484,6 @@ function ProjectOperations({
                 photos={findingPhotos}
                 setPhotos={setFindingPhotos}
                 markupContext={{ ...markupOptions, defaultBuildingId: findingBuildingId }}
-                onDetail={(report) => setFindingForm((current) => ({ ...current, description: appendPhotoDetail(current.description, report) }))}
               />
               {findingPhotoError ? <p className="field-error" role="alert">{findingPhotoError}</p> : null}
               <div className="quick-issue-presets" aria-label={text("Common issue choices", "Veelvoorkomende problemen")}>
@@ -1634,7 +1632,6 @@ function ProjectOperations({
                 photos={hsePhotos}
                 setPhotos={setHsePhotos}
                 markupContext={{ ...markupOptions, defaultBuildingId: hseBuildingId }}
-                onDetail={(report) => setHseForm((current) => ({ ...current, description: appendPhotoDetail(current.description, report) }))}
               />
               {hsePhotoError ? <p className="field-error" role="alert">{hsePhotoError}</p> : null}
               <BuildingPicker id="hse-building" buildings={buildings} value={hseBuildingId} onChange={(next) => { setHseBuildingId(next); setHseLocationNodeId(""); }} />
@@ -1792,7 +1789,6 @@ function ProjectOperations({
                 photos={registerPhotos}
                 setPhotos={setRegisterPhotos}
                 markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId === ALL_BUILDINGS ? "" : registerBuildingId }}
-                onDetail={(report) => setRegisterForm((current) => ({ ...current, details: appendPhotoDetail(current.details, report) }))}
               />
               {registerPhotoError ? <p className="field-error" role="alert">{registerPhotoError}</p> : null}
               <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && registerBuildingId !== ALL_BUILDINGS && !registerLocationNodeId) || registerForm.title.trim().length < 3 || !controlledFormReady} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : text("Save register item", "Registeritem opslaan")}</button>

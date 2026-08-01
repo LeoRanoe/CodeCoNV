@@ -54,7 +54,6 @@ import { useForm, useWatch } from "react-hook-form";
 import { ALL_BUILDINGS, BuildingMultiPicker, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { photoEvidenceLine, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
-import { appendPhotoDetail } from "@/app/photo-markup";
 import { SketchPad } from "@/app/sketch-pad";
 import { ClientDashboard } from "@/app/client-dashboard";
 import { DailyLogModal } from "@/app/daily-log-modal";
@@ -3694,7 +3693,6 @@ function EntryModal({
                 photos={photos}
                 setPhotos={setPhotos}
                 markupContext={markupContext}
-                onDetail={(report) => setDescription(appendPhotoDetail(description, `${text("Marked on photo:", "Op de foto gemarkeerd:")}\n${report}`))}
               />
               <span className="form-note"><CheckCircle2 size={12} /> {text("Time, author, project and building are recorded automatically.", "Tijd, maker, project en gebouw worden automatisch vastgelegd.")}</span>
             </div>

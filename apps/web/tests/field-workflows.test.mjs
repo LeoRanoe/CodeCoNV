@@ -177,16 +177,15 @@ test("offers marking on the photo everywhere a photo can be attached", async () 
   // The shared block is the only place the pad is opened for the forms.
   assert.match(evidencePad, /<PhotoMarkupPad/);
   // Every one of the four operational photo blocks knows which buildings, rooms and parties
-  // a marker can be attached to; issues, HSE and registers also take the written detail.
+  // a marker can be attached to.
   assert.equal(operations.match(/markupContext=\{\{ \.\.\.markupOptions/g)?.length, 4);
-  assert.equal(operations.match(/onDetail=\{\(report\)/g)?.length, 3);
 
   // A marker carries more than a pin: words, severity, and where it belongs.
   for (const field of [/Full description/, /Severity/, /Where does this belong\?/, /Responsible party/, /Work package/, /Floor \/ room \/ element/]) {
     assert.match(markup, field);
   }
-  // Draw, arrow, frame and text are offered next to the marker tool.
-  for (const tool of ['{ id: "pen"', '{ id: "arrow"', '{ id: "box"', '{ id: "text"']) {
+  // Draw, arrow and frame are offered next to the marker tool.
+  for (const tool of ['{ id: "pen"', '{ id: "arrow"', '{ id: "box"']) {
     assert.ok(markup.includes(tool), `the marking pad must offer ${tool}`);
   }
 
@@ -198,12 +197,13 @@ test("offers marking on the photo everywhere a photo can be attached", async () 
   assert.match(css, /\.photo-markup-pinned \{ display: grid; gap: 11px; \}/);
   assert.doesNotMatch(css, /\.photo-markup-stage \{[\s\S]{0,200}position: sticky/);
 
-  // Choosing the text tool is enough: the field to type in opens without first hunting for a
-  // spot on the photo, and the label is dragged where it belongs afterwards.
-  assert.match(markup, /const chooseTool = \(next: Tool\)/);
-  assert.match(markup, /if \(next !== "text"\) return;/);
-  assert.match(markup, /addText\(\{ x: 0\.5, y: 0\.42 \}\)/);
-  assert.match(markup, /className=\{`photo-markup-label/);
+  // Words never end up on the picture: no text tool, and no legend printed over the photo.
+  // What a number means is a detail of the photo, kept beside it.
+  assert.doesNotMatch(markup, /kind: "text"/);
+  assert.doesNotMatch(markup, /photo-markup-label/);
+  assert.doesNotMatch(markup, /legendFontSize/);
+  assert.match(markup, /type Tool = "marker" \| "pen" \| "arrow" \| "box";/);
+  assert.match(evidencePad, /description: appendPhotoDetail\(photo\.details\.description, report\)/);
 
   // Markings are positioned against the picture, not against the black bars beside a portrait
   // photo, so a marker lands exactly where it was tapped.

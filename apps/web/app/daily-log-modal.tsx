@@ -5,7 +5,6 @@ import { useRef, useState } from "react";
 import { BuildingMultiPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
-import { appendPhotoDetail } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
 import type { DailyCloseoutAnswers, ProjectStartAnswers } from "@/lib/forms/daily-report";
 
@@ -390,7 +389,6 @@ export function DailyLogModal({
                 defaultBuildingId: buildingId,
                 parties: parties.map((party) => ({ id: party.id, label: party.name })),
               }}
-              onDetail={(report) => setLog((current) => ({ ...current, qcPerformed: appendPhotoDetail(current.qcPerformed, report) }))}
             />
           </details>
 
