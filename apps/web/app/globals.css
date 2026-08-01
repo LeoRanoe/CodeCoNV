@@ -815,6 +815,10 @@ button.drawing-pin {
 html {
   background: var(--canvas);
   color: var(--ink-950);
+  /* A phone with a larger system text size inflates text on its own, which pushed toolbars
+     past the edge of the screen. Text follows the design, not the device. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
@@ -4132,17 +4136,10 @@ textarea:focus-visible {
    and the body instead of running into the rounded edge. */
 .photo-markup-modal > .modal-actions { padding-left: 26px; padding-right: 26px; }
 .photo-markup-modal > .modal-body { padding-bottom: 0; }
-/* The header does not compete with the pinned tools for the top of the screen. */
+/* Nothing in this screen is pinned: the client asked for a form that simply scrolls, so the
+   header, the tools and the photo all move with the page. */
 .photo-markup-modal .modal-header { position: static; }
-.photo-markup-pinned {
-  background: #fff;
-  display: grid;
-  gap: 11px;
-  padding-bottom: 11px;
-  position: sticky;
-  top: 0;
-  z-index: 2;
-}
+.photo-markup-pinned { display: grid; gap: 11px; }
 .photo-markup-toolbar {
   align-items: center;
   display: flex;
@@ -4174,28 +4171,50 @@ textarea:focus-visible {
 .photo-markup-tones button.active { border-color: var(--markup-tone); box-shadow: 0 0 0 1px var(--markup-tone); }
 .photo-markup-body { display: grid; gap: 12px; }
 .photo-markup-stage {
+  align-items: center;
   background: #0c1411;
   border-radius: 12px;
-  display: grid;
-  justify-items: center;
+  display: flex;
+  justify-content: center;
   overflow: hidden;
   position: relative;
   touch-action: none;
 }
+/* Markings are positioned against the picture itself, never against the black bars beside a
+   portrait photo — otherwise a marker lands somewhere else than where it was tapped. */
+.photo-markup-frame { display: inline-block; line-height: 0; max-width: 100%; position: relative; }
 .photo-markup-stage img {
   display: block;
-  grid-area: 1 / 1;
   max-height: min(56vh, 520px);
   max-width: 100%;
-  object-fit: contain;
   -webkit-user-drag: none;
   user-select: none;
 }
 .photo-markup-stage.marker img, .photo-markup-stage.text img { cursor: crosshair; }
 .photo-markup-stage.pen img, .photo-markup-stage.arrow img, .photo-markup-stage.box img { cursor: cell; }
-.photo-markup-marker { cursor: grab; touch-action: none; }
-.photo-markup-marker:active { cursor: grabbing; }
-.photo-markup-overlay { grid-area: 1 / 1; pointer-events: none; }
+.photo-markup-marker, .photo-markup-label { cursor: grab; touch-action: none; }
+.photo-markup-marker:active, .photo-markup-label:active { cursor: grabbing; }
+
+/* A text label is placed the moment the tool is chosen and dragged where it belongs. */
+.photo-markup-label {
+  background: var(--markup-tone, #f07400);
+  border-radius: 9px;
+  box-shadow: 0 3px 10px rgba(8, 20, 16, .42);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  max-width: 82%;
+  overflow: hidden;
+  padding: 6px 9px;
+  position: absolute;
+  text-overflow: ellipsis;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  z-index: 2;
+}
+.photo-markup-label.empty { opacity: .75; }
+.photo-markup-label.active { box-shadow: 0 0 0 3px rgba(255, 255, 255, .85), 0 3px 12px rgba(8, 20, 16, .5); }
+.photo-markup-overlay { inset: 0; pointer-events: none; position: absolute; }
 .photo-markup-marker {
   align-items: center;
   background: var(--markup-tone, #f07400);
@@ -4206,7 +4225,6 @@ textarea:focus-visible {
   display: flex;
   font-size: 12px;
   font-weight: 800;
-  grid-area: 1 / 1;
   height: 30px;
   justify-content: center;
   position: absolute;
@@ -4277,9 +4295,24 @@ textarea:focus-visible {
 @media (max-width: 520px) {
   .photo-markup-toolbar { gap: 7px; }
   .photo-markup-modal > .modal-actions { padding-left: 18px; padding-right: 18px; }
-  .photo-markup-modes, .photo-markup-tones, .photo-markup-history { width: 100%; }
-  .photo-markup-modes button, .photo-markup-tones button { flex: 1 1 auto; justify-content: center; }
-  .photo-markup-tones button { font-size: 10px; padding: 0 9px; }
+  /* Fixed columns instead of buttons that happen to fit: a cell can never grow past its
+     share of the row, whatever the device does to the font. */
+  .photo-markup-modes, .photo-markup-tones, .photo-markup-history {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+  .photo-markup-history { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .photo-markup-width { grid-column: 1 / -1; }
+  .photo-markup-width input { width: 100%; }
+  .photo-markup-modes button, .photo-markup-tones button, .photo-markup-history button {
+    justify-content: center;
+    min-width: 0;
+    overflow: hidden;
+    padding: 0 8px;
+    white-space: nowrap;
+  }
+  .photo-markup-tones button { font-size: 10px; gap: 4px; }
   /* A shorter photo on a phone leaves the marker's own words on the same screen. */
   .photo-markup-stage img { max-height: 38vh; }
 }

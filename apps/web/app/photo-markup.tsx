@@ -242,12 +242,12 @@ export function PhotoMarkupPad({
     canvas.style.height = `${rect.height}px`;
     context2d.setTransform(ratio, 0, 0, ratio, 0, 0);
     context2d.clearRect(0, 0, rect.width, rect.height);
-    drawShapes(context2d, shapes, rect.width, rect.height, {
+    // Text labels are real elements on top of the photo, so they are left out here.
+    drawShapes(context2d, shapes.filter((shape) => shape.kind !== "text"), rect.width, rect.height, {
       strokeScale: Math.min(rect.width, rect.height) / 400,
       fontSize: Math.max(12, Math.round(Math.min(rect.width, rect.height) * 0.05)),
-      selectedId: selected?.kind === "shape" ? selected.id : "",
     });
-  }, [selected, shapes]);
+  }, [shapes]);
 
   useEffect(() => {
     paintOverlay();
@@ -283,6 +283,19 @@ export function PhotoMarkupPad({
     setSelected({ kind: "shape", id: shape.id });
   };
 
+  /**
+   * Picking a tool is enough to start working with it. Text used to demand a tap on the photo
+   * before the field to type in appeared, which is exactly the step the client did not want:
+   * the label lands in the middle of the picture and is dragged where it belongs afterwards.
+   */
+  const chooseTool = (next: Tool) => {
+    setTool(next);
+    if (next !== "text") return;
+    const emptyLabel = shapes.find((shape) => shape.kind === "text" && !shape.value.trim());
+    if (emptyLabel) setSelected({ kind: "shape", id: emptyLabel.id });
+    else addText({ x: 0.5, y: 0.42 });
+  };
+
   const startOnStage = (event: React.PointerEvent<HTMLDivElement>) => {
     if (draggingMarkerRef.current) return;
     if (tool === "marker" || tool === "text") return;
@@ -306,6 +319,7 @@ export function PhotoMarkupPad({
     if (dragging) {
       dragging.moved = true;
       setMarkers((current) => current.map((marker) => marker.id === dragging.id ? { ...marker, xRatio: point.x, yRatio: point.y } : marker));
+      setShapes((current) => current.map((shape) => shape.id === dragging.id && shape.kind === "text" ? { ...shape, at: point } : shape));
       return;
     }
     const drawing = drawingRef.current;
@@ -323,7 +337,10 @@ export function PhotoMarkupPad({
     const dragging = draggingMarkerRef.current;
     if (dragging) {
       draggingMarkerRef.current = null;
-      if (!dragging.moved) setSelected({ kind: "marker", id: dragging.id });
+      if (!dragging.moved) {
+        const isText = shapes.some((shape) => shape.id === dragging.id && shape.kind === "text");
+        setSelected({ kind: isText ? "shape" : "marker", id: dragging.id });
+      }
       return;
     }
     const drawing = drawingRef.current;
@@ -379,7 +396,6 @@ export function PhotoMarkupPad({
       drawShapes(context2d, shapes, size.width, size.height, {
         strokeScale: Math.min(size.width, size.height) / 400,
         fontSize: metrics.fontSize,
-        selectedId: "",
       });
 
       context2d.textAlign = "center";
@@ -495,7 +511,7 @@ export function PhotoMarkupPad({
           <div className="photo-markup-modes" role="group" aria-label={text("Marking tool", "Markeergereedschap")}>
             {tools.map((entry) => {
               const Icon = entry.icon;
-              return <button className={tool === entry.id ? "active" : ""} type="button" onClick={() => setTool(entry.id)} key={entry.id}><Icon size={15} /> {entry.label}</button>;
+              return <button className={tool === entry.id ? "active" : ""} type="button" onClick={() => chooseTool(entry.id)} key={entry.id}><Icon size={15} /> {entry.label}</button>;
             })}
           </div>
           {/* The colour of what gets placed next. It deliberately never recolours something
@@ -534,6 +550,9 @@ export function PhotoMarkupPad({
               else if (tool === "text") addText(point);
             }}
           >
+            {/* The frame is exactly the picture, so a marker sits where it was tapped even
+                when a portrait photo leaves bars beside it. */}
+            <div className="photo-markup-frame">
             {/* A local blob URL cannot pass through the Next image optimizer. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -556,6 +575,24 @@ export function PhotoMarkupPad({
               }}
             />
             <canvas className="photo-markup-overlay" ref={overlayRef} />
+            {shapes.map((shape) => shape.kind === "text" ? (
+              <button
+                className={`photo-markup-label ${selected?.id === shape.id ? "active" : ""} ${shape.value.trim() ? "" : "empty"}`}
+                style={{ left: `${shape.at.x * 100}%`, top: `${shape.at.y * 100}%`, ["--markup-tone" as string]: photoMarkupToneColors[shape.tone] }}
+                type="button"
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  event.preventDefault();
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  draggingMarkerRef.current = { id: shape.id, moved: false };
+                }}
+                onPointerMove={(event) => { if (draggingMarkerRef.current?.id === shape.id) moveOnStage(event); }}
+                onPointerUp={(event) => { event.stopPropagation(); endOnStage(); }}
+                onPointerCancel={endOnStage}
+                onClick={(event) => { event.stopPropagation(); setSelected({ kind: "shape", id: shape.id }); }}
+                key={shape.id}
+              >{shape.value.trim() || text("Type the text…", "Typ de tekst…")}</button>
+            ) : null)}
             {markers.map((marker, index) => (
               <button
                 className={`photo-markup-marker ${selected?.id === marker.id ? "active" : ""}`}
@@ -576,6 +613,7 @@ export function PhotoMarkupPad({
                 key={marker.id}
               >{index + 1}</button>
             ))}
+            </div>
           </div>
           </div>
 
@@ -760,7 +798,7 @@ function drawShapes(
   shapes: Shape[],
   width: number,
   height: number,
-  options: { strokeScale: number; fontSize: number; selectedId: string },
+  options: { strokeScale: number; fontSize: number },
 ) {
   context.lineCap = "round";
   context.lineJoin = "round";

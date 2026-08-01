@@ -194,11 +194,25 @@ test("offers marking on the photo everywhere a photo can be attached", async () 
   // that is already on the photo: that silently reclassified a marker while drawing a frame.
   assert.match(markup, /onClick=\{\(\) => setTone\(option\)\}/);
   assert.doesNotMatch(markup, /setTone\(option\);\s*\n\s*if \(activeMarker\)/);
-  // Tools and photo are pinned together, under a header that does not cover the picture; the
-  // sticky header used to sit on top of the photo and swallow taps meant for it.
-  assert.match(markup, /className="photo-markup-pinned"/);
-  assert.match(css, /\.photo-markup-modal \.modal-header \{ position: static/);
-  assert.match(css, /\.photo-markup-pinned \{[\s\S]{0,200}position: sticky/);
+  // Nothing in this screen is pinned: the client asked for a form that simply scrolls.
+  assert.match(css, /\.photo-markup-pinned \{ display: grid; gap: 11px; \}/);
+  assert.doesNotMatch(css, /\.photo-markup-stage \{[\s\S]{0,200}position: sticky/);
+
+  // Choosing the text tool is enough: the field to type in opens without first hunting for a
+  // spot on the photo, and the label is dragged where it belongs afterwards.
+  assert.match(markup, /const chooseTool = \(next: Tool\)/);
+  assert.match(markup, /if \(next !== "text"\) return;/);
+  assert.match(markup, /addText\(\{ x: 0\.5, y: 0\.42 \}\)/);
+  assert.match(markup, /className=\{`photo-markup-label/);
+
+  // Markings are positioned against the picture, not against the black bars beside a portrait
+  // photo, so a marker lands exactly where it was tapped.
+  assert.match(markup, /className="photo-markup-frame"/);
+  assert.match(css, /\.photo-markup-frame \{[\s\S]{0,120}position: relative/);
+
+  // The toolbar rows are fixed columns, so no font size can push them past the screen edge.
+  assert.match(css, /\.photo-markup-modes, \.photo-markup-tones, \.photo-markup-history \{[\s\S]{0,160}grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(css, /text-size-adjust: 100%/);
 
   // Dragging the pen must not turn into dragging the photo, which cancels the stroke.
   assert.match(markup, /draggable=\{false\}/);
