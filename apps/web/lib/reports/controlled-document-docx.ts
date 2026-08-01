@@ -115,6 +115,13 @@ export function buildControlledDocumentDocx(entry: RegisterEntry, logoBytes: Arr
           ...typeSpecificDetails(type, details),
           labelValue("Reference documents", text(details, "reference_documents")),
           labelValue("Attachments / pages", text(details, "attachments")),
+          // The author signs in the app; the document that leaves the app has to show it.
+          sectionHeading("Issued and signed by"),
+          signatureBlock([
+            ["Name", text(details, "signed_by", text(details, "issued_by"))],
+            ["Position / company", [text(details, "signed_by_position", text(details, "issuer_position")), text(details, "issuer_company")].filter((item) => item !== "—" && item !== "").join(" · ")],
+            ["Date signed", text(details, "signed_at") === "—" ? "Not signed yet" : String(text(details, "signed_at")).slice(0, 10)],
+          ]),
           sectionHeading(type === "technical_instruction" || type === "change_order" ? "Contractor acknowledgement / closeout" : "Engineer / client response"),
           labelValue("Decision / status", humanizeToken(text(response, "decision", "Pending formal response"))),
           bodyText(text(response, "comments", "No response recorded yet.")),
@@ -124,7 +131,7 @@ export function buildControlledDocumentDocx(entry: RegisterEntry, logoBytes: Arr
             ["Date / signature", text(response, "response_date", "")],
           ]),
           new Paragraph({
-            children: [new TextRun({ text: "This document is generated from the controlled project register. Number, revision, project metadata and recorded response come from the central audit trail. A blank signature line is intentional until a human signatory confirms the document.", italics: true, color: "666666", size: 14 })],
+            children: [new TextRun({ text: "This document is generated from the controlled project register. Number, revision, project metadata, the author's signature and the recorded response come from the central audit trail. A signature line stays blank until that human signatory confirms the document.", italics: true, color: "666666", size: 14 })],
             spacing: { before: 200 },
           }),
         ],

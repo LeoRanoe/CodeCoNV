@@ -233,7 +233,9 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(storageFileRoute, /access: "private"/);
   assert.match(storageFileRoute, /authenticateStorageRequest/);
   assert.match(pdfReport, /CONSTRUCTIESUPERVISIE/);
-  assert.match(pdfReport, /17–19\. Foto's, bijlagen en controle/);
+  // Item 19 has its own signature block now, so 17–18 are the photos and attachments.
+  assert.match(pdfReport, /17–18\. Foto's en bijlagen/);
+  assert.match(pdfReport, /19\. Controle, naam\/functie en ondertekening/);
   assert.match(providers, /QueryClientProvider/);
 });
 
@@ -1197,10 +1199,9 @@ test("processes the annotated screens of 1 August: NCR form, agreement and deadl
 
   // The agreement register is text, the two parties who made it and a signature each.
   assert.match(workspace, /const agreementRegister = registerForm\.type === "agreement"/);
-  assert.match(workspace, /Agreement between|Afspraak tussen/);
+  assert.match(workspace, /<AgreementSignatureFields/);
   assert.match(workspace, /What was agreed\?|Wat is afgesproken\?/);
-  assert.match(workspace, /agreed_between/);
-  assert.match(workspace, /agreement-signatures/);
+  assert.match(workspace, /agreementSignatureDetails\(agreementForm\)/);
   assert.match(styles, /\.agreement-signatures/);
   assert.match(workspace, /agreement: \[\],/);
 
@@ -1260,4 +1261,58 @@ test("keeps the action centre and makes its deadlines and choices true on site",
   assert.match(workspace, /function openSms\(message: string\)/);
   assert.match(workspace, /sms:\?&body=/);
   assert.equal(workspace.match(/Send as SMS|Als SMS sturen/g)?.length, 6);
+});
+
+test("makes every recorded signature visible on the document it belongs to", async () => {
+  const [workspace, fieldTools, agreement, shareActions, operations, dailyPdf, dailyDocx, controlledPdf, controlledDocx, ncrPdf, ncrDocx, migration] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/field-tools.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/agreement-signature.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/share/[token]/external-share-actions.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/daily-report-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/daily-report-docx.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/controlled-document-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/controlled-document-docx.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/ncr-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/ncr-docx.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202608010002_signature_on_the_record.sql", import.meta.url), "utf8"),
+  ]);
+
+  // The day report of the client ends with item 19: control, name/position and signature.
+  assert.match(dailyPdf, /19\. Controle, naam\/functie en ondertekening/);
+  assert.match(dailyPdf, /function SignatureSection/);
+  assert.match(dailyPdf, /signatures\?: ReportSignatureLine\[\]/);
+  assert.match(dailyDocx, /19\. Controle, naam\/functie en ondertekening/);
+  assert.match(dailyDocx, /function signatureFields/);
+  // A version is signed after it is frozen, so the declarations travel beside it.
+  assert.match(operations, /report_signatures"\)\.select\("id,report_version_id,signer_name,signer_role,declaration/);
+  assert.match(workspace, /const signatureLines = \(versionId: string\)/);
+  assert.match(workspace, /downloadFormalReportPdf\(version\.snapshot as FormalReportSnapshot, version\.revision, version\.sha256, signatureLines\(version\.id\)\)/);
+
+  // A controlled document says who signed it, instead of only offering a blank line.
+  assert.match(controlledPdf, /ISSUED AND SIGNED BY/);
+  assert.match(controlledPdf, /text\(details, "signed_by", text\(details, "issued_by"\)\)/);
+  assert.match(controlledDocx, /Issued and signed by/);
+  assert.doesNotMatch(controlledPdf, /A blank signature line is intentional/);
+  assert.doesNotMatch(controlledDocx, /A blank signature line is intentional/);
+
+  // The contractor's name under the corrective action is that signature, and it is
+  // required, stored on the record and printed on the NCR form.
+  assert.match(shareActions, /const signatureRequired = responseType === "proposed_correction"/);
+  assert.match(shareActions, /signatureRequired && contactName\.trim\(\)\.length < 2/);
+  assert.match(migration, /'correction_signed_by', coalesce\(v_contact, ''\)/);
+  assert.match(migration, /'completion_signed_by', coalesce\(v_contact, ''\)/);
+  assert.match(operations, /correction_signed_by\?: string;/);
+  assert.match(workspace, /issue\.correction_signed_by/);
+  assert.match(ncrPdf, /issue\.correction_signed_by \|\| issue\.completion_signed_by/);
+  assert.match(ncrDocx, /Signed by contractor/);
+
+  // An agreement is signed the same way wherever it is written, and the register shows it.
+  assert.match(agreement, /export function AgreementSignatureFields/);
+  assert.match(agreement, /export function agreementSummaryLine/);
+  assert.match(workspace, /<AgreementSignatureFields options=\{agreementPartyOptions\}/);
+  assert.match(fieldTools, /<AgreementSignatureFields options=\{agreementPartyOptions\}/);
+  assert.match(fieldTools, /agreementSignatureDetails\(agreement\)/);
+  assert.match(workspace, /agreementSummaryLine\(entry\.details, text\)/);
 });

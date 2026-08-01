@@ -94,8 +94,11 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
     setError("");
   };
 
+  // The name under a corrective action is the signature on the client's NCR form, so it
+  // is not optional there.
+  const signatureRequired = responseType === "proposed_correction";
   const submit = async () => {
-    if (note.trim().length < 3) return;
+    if (note.trim().length < 3 || (signatureRequired && contactName.trim().length < 2)) return;
     setBusy(true);
     setError("");
     try {
@@ -147,9 +150,9 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
         <span><strong>{photo ? photo.name : "Bewijsfoto toevoegen (optioneel)"}</strong><small>De foto wordt verkleind om mobiele data te besparen.</small></span>
         <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => setPhoto(event.target.files?.[0] ?? null)} />
       </label>
-      <label className="form-field"><span>{responseType === "proposed_correction" ? "Naam · geldt als ondertekening" : "Naam (optioneel)"}</span><input value={contactName} onChange={(event) => setContactName(event.target.value)} autoComplete="name" /></label>
+      <label className="form-field"><span>{signatureRequired ? "Naam · geldt als ondertekening" : "Naam (optioneel)"}</span><input value={contactName} onChange={(event) => setContactName(event.target.value)} autoComplete="name" required={signatureRequired} /></label>
       {error ? <p className="field-error" role="alert">{error}</p> : null}
-      <button className={`external-submit ${responseType === "issue" ? "issue" : ""}`} type="button" disabled={busy || note.trim().length < 3 || (responseType === "ready_for_verification" && !completionAllowed)} onClick={() => void submit()}>
+      <button className={`external-submit ${responseType === "issue" ? "issue" : ""}`} type="button" disabled={busy || note.trim().length < 3 || (signatureRequired && contactName.trim().length < 2) || (responseType === "ready_for_verification" && !completionAllowed)} onClick={() => void submit()}>
         {busy ? <Loader2 className="spin" size={17} /> : photo ? <Upload size={17} /> : <Send size={17} />}
         {busy ? "Veilig verzenden…" : responseType === "proposed_correction" ? "Verstuur correctieve actie" : responseType === "ready_for_verification" ? "Markeer gereed voor controle" : "Verstuur probleem"}
       </button>

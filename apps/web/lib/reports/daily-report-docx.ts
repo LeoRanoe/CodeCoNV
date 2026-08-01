@@ -8,11 +8,27 @@ import {
   loadLogoImageBytes,
   metadataTable,
   sectionHeading,
+  signatureBlock,
 } from "@/lib/reports/docx-shared";
-import { immutableDailySnapshot, type DailyReportPdfSnapshot, type FormalReportSnapshot } from "@/lib/reports/daily-report-pdf";
+import { immutableDailySnapshot, type DailyReportPdfSnapshot, type FormalReportSnapshot, type ReportSignatureLine } from "@/lib/reports/daily-report-pdf";
 
 function section(title: string, ...body: Paragraph[]): Paragraph[] {
   return [sectionHeading(title), ...body];
+}
+
+/** Three signature columns; a role that has not signed keeps an empty line. */
+function signatureFields(signatures: ReportSignatureLine[]): Array<[string, string]> {
+  const roles = signatures.length
+    ? signatures.slice(0, 3)
+    : [
+      { name: "", role: "Supervisor", declaration: "", signedAt: "", legalLevel: "" },
+      { name: "", role: "Aannemer", declaration: "", signedAt: "", legalLevel: "" },
+      { name: "", role: "Opdrachtgever", declaration: "", signedAt: "", legalLevel: "" },
+    ];
+  return roles.map((signature) => [
+    signature.role.replaceAll("_", " "),
+    signature.name ? `${signature.name} · ${signature.signedAt.slice(0, 16).replace("T", " ")}` : "Nog niet ondertekend",
+  ]);
 }
 
 export function buildDailyReportDocxDocument(snapshot: DailyReportPdfSnapshot, logoBytes: ArrayBuffer): Document {
@@ -82,13 +98,17 @@ export function buildDailyReportDocxDocument(snapshot: DailyReportPdfSnapshot, l
             labelValue("Risico's", closeout.risks),
             labelValue("Planning morgen", closeout.tomorrowPlan),
           ),
-          ...section("17–19. Foto's, bijlagen en controle",
+          ...section("17–18. Foto's en bijlagen",
             labelValue("Foto's", closeout.photoCount),
             labelValue("Bijlagen", closeout.attachmentsConfirmed ? "Door supervisor gecontroleerd" : "Nog niet bevestigd"),
             bodyText(snapshot.formal
               ? `Dit Word-document is uitsluitend opgebouwd uit de immutable snapshot van ${snapshot.formal.frozenAt}. Volledige SHA-256: ${snapshot.formal.sha256}`
-              : "Werkversie uit bevestigde dagregistraties. Formele status en verklaringen staan in de rapporthistorie."),
+              : "Werkversie uit bevestigde dagregistraties. Formele status staat in de rapporthistorie."),
           ),
+          // Item 19 of the client's day report: control, name/position and signature.
+          sectionHeading("19. Controle, naam/functie en ondertekening"),
+          signatureBlock(signatureFields(snapshot.signatures ?? [])),
+          ...(snapshot.signatures ?? []).map((signature) => bodyText(`${signature.name} · ${signature.role.replaceAll("_", " ")}: “${signature.declaration}”`)),
           ...buildingSections,
         ],
       },
@@ -102,8 +122,8 @@ export async function downloadDailyReportDocx(snapshot: DailyReportPdfSnapshot):
   await downloadDocxBlob(doc, `${snapshot.reportNumber}.docx`);
 }
 
-export async function downloadFormalReportDocx(snapshot: FormalReportSnapshot, revision: number, sha256: string): Promise<void> {
-  const normalized = immutableDailySnapshot(snapshot, revision, sha256);
+export async function downloadFormalReportDocx(snapshot: FormalReportSnapshot, revision: number, sha256: string, signatures: ReportSignatureLine[] = []): Promise<void> {
+  const normalized = { ...immutableDailySnapshot(snapshot, revision, sha256), signatures };
   const logoBytes = await loadLogoImageBytes();
   const doc = buildDailyReportDocxDocument(normalized, logoBytes);
   await downloadDocxBlob(doc, `${normalized.reportNumber}-revisie-${revision}.docx`);

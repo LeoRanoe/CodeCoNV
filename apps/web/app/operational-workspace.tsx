@@ -39,6 +39,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { AgreementSignatureFields, agreementSignatureDetails, agreementSummaryLine, emptyAgreementSignature } from "@/app/agreement-signature";
 import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
@@ -619,9 +620,7 @@ function ProjectOperations({
   const [registerPhotoError, setRegisterPhotoError] = useState("");
   const [registerSketching, setRegisterSketching] = useState(false);
   /** An agreement is text plus the two parties who made it, and who signs for them. */
-  const [agreementForm, setAgreementForm] = useState({
-    partyA: "", partyB: "", signedByA: "", signedAtA: "", signedByB: "", signedAtB: "",
-  });
+  const [agreementForm, setAgreementForm] = useState({ ...emptyAgreementSignature });
   // Everything this workspace already knows about the project is offered inside the marking
   // pad, so a marker on a photo can say which building, floor, room and party it belongs to.
   const markupOptions = useMemo(() => ({
@@ -1246,13 +1245,7 @@ function ProjectOperations({
         quantity: registerQuantity.trim() ? Number(registerQuantity) : null,
         unit: registerUnit.trim() || null,
         // An agreement carries the two parties that made it and their signatures.
-        ...(agreementRegister ? {
-          agreed_between: [agreementForm.partyA, agreementForm.partyB].filter(Boolean),
-          signed_by_first: agreementForm.signedByA || null,
-          signed_at_first: agreementForm.signedAtA || null,
-          signed_by_second: agreementForm.signedByB || null,
-          signed_at_second: agreementForm.signedAtB || null,
-        } : {}),
+        ...(agreementRegister ? agreementSignatureDetails(agreementForm) : {}),
       };
     const okay = await run(
       async () => {
@@ -1341,7 +1334,7 @@ function ProjectOperations({
     );
     if (okay) {
       setRegisterForm({ ...emptyControlledDocumentDraft, type: registerForm.type });
-      setAgreementForm({ partyA: "", partyB: "", signedByA: "", signedAtA: "", signedByB: "", signedAtB: "" });
+      setAgreementForm({ ...emptyAgreementSignature });
       setRegisterFiles([]);
       setRegisterOutcome("");
       setRegisterQuantity("");
@@ -1880,38 +1873,10 @@ function ProjectOperations({
                 </div>
               ) : agreementRegister ? (
                 <>
-                  {/* An agreement is one text and the two parties who made it. Everything
-                      else on the register form is noise for this record. */}
-                  <div className="form-grid-2">
-                    <label className="form-field"><span>{text("Agreement between", "Afspraak tussen")}</span><select value={agreementForm.partyA} onChange={(event) => setAgreementForm({ ...agreementForm, partyA: event.target.value, signedByA: "", signedAtA: "" })}><option value="">{text("Choose party", "Kies partij")}</option>{agreementPartyOptions.map((name) => <option value={name} key={name}>{name}</option>)}</select></label>
-                    <label className="form-field"><span>{text("and", "en")}</span><select value={agreementForm.partyB} onChange={(event) => setAgreementForm({ ...agreementForm, partyB: event.target.value, signedByB: "", signedAtB: "" })}><option value="">{text("Choose party", "Kies partij")}</option>{agreementPartyOptions.map((name) => <option value={name} key={name}>{name}</option>)}</select></label>
-                  </div>
+                  {/* An agreement is one text, the two parties who made it and their
+                      signatures. The field notepad uses the very same block. */}
                   <label className="form-field"><span>{text("What was agreed?", "Wat is afgesproken?")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
-                  <div className="agreement-signatures">
-                    {([["partyA", "signedByA", "signedAtA"], ["partyB", "signedByB", "signedAtB"]] as const).map(([partyKey, signedKey, signedAtKey]) => {
-                      const partyName = agreementForm[partyKey];
-                      return (
-                        <label className="check-field controlled-document-signature" key={partyKey}>
-                          <input
-                            type="checkbox"
-                            disabled={!partyName}
-                            checked={Boolean(agreementForm[signedKey])}
-                            onChange={(event) => setAgreementForm({
-                              ...agreementForm,
-                              [signedKey]: event.target.checked ? partyName : "",
-                              [signedAtKey]: event.target.checked ? new Date().toISOString() : "",
-                            })}
-                          />
-                          <span>
-                            <strong>{partyName ? text(`Signed for ${partyName}`, `Ondertekend namens ${partyName}`) : text("Choose a party first", "Kies eerst een partij")}</strong>
-                            <small>{agreementForm[signedKey]
-                              ? formatDate(agreementForm[signedAtKey], locale)
-                              : text("The name and the moment of signing are stored with the agreement.", "De naam en het moment van ondertekenen worden bij de afspraak opgeslagen.")}</small>
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
+                  <AgreementSignatureFields options={agreementPartyOptions} value={agreementForm} onChange={setAgreementForm} />
                 </>
               ) : (
                 <>
@@ -2078,6 +2043,8 @@ function ProjectOperations({
                 registerNames[entry.register_type] ?? allRegisterNames[entry.register_type] ?? entry.register_type,
                 quantityLabel,
                 outcomeLabel,
+                // An agreement without its parties and signature is unreadable in a list.
+                entry.register_type === "agreement" ? agreementSummaryLine(entry.details, text) : "",
                 formatDate(entry.occurred_at, locale),
               ].filter(Boolean).join(" · "),
               status: entry.status,
@@ -2539,6 +2506,10 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
                 <div className={finding.proposed_correction ? "answered" : ""}>
                   <span>{text("Proposed corrective action by contractor", "Voorgestelde correctieve actie door de aannemer")}</span>
                   <p>{finding.proposed_correction || text("Waiting for the contractor's answer through the sent link.", "Wacht op het antwoord van de aannemer via de verstuurde link.")}</p>
+                  {/* The name the contractor typed under the correction is the signature. */}
+                  {finding.proposed_correction ? <small>{issue.correction_signed_by
+                    ? text(`Signed by ${issue.correction_signed_by} · ${formatDate(issue.correction_signed_at ?? null, locale)}`, `Ondertekend door ${issue.correction_signed_by} · ${formatDate(issue.correction_signed_at ?? null, locale)}`)
+                    : text("Recorded without a name", "Vastgelegd zonder naam")}</small> : null}
                 </div>
                 <div className={finding.status === "closed" ? "answered" : ""}>
                   <span>{text("Quality control", "Kwaliteitscontrole")}</span>
@@ -2625,6 +2596,19 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
   const [declaration, setDeclaration] = useState(() => text("I declare that I reviewed this fixed report version and confirmed it truthfully.", "Ik verklaar dat ik deze vastgezette rapportversie heb gecontroleerd en naar waarheid heb bevestigd."));
   const [distribution, setDistribution] = useState({ name: "", address: "", channel: "manual" });
   const [revisionReason, setRevisionReason] = useState("");
+  /**
+   * The declarations that belong to one fixed version. A version is signed after it is
+   * frozen, so they travel next to the snapshot into the PDF and the Word file.
+   */
+  const signatureLines = (versionId: string) => data.reportSignatures
+    .filter((signature) => signature.report_version_id === versionId)
+    .map((signature) => ({
+      name: signature.signer_name,
+      role: signature.signer_role,
+      declaration: signature.declaration,
+      signedAt: signature.signed_at,
+      legalLevel: signature.legal_level,
+    }));
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(new Date());
   const [period, setPeriod] = useState({ start: `${today.slice(0, 8)}01`, end: today });
   const reportChoices: Array<{ id: string; title: string; sections: PeriodReportSection[] }> = [
@@ -2841,7 +2825,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
             </div>
           </section>
           <section className="report-history-grid">
-            <HistoryColumn title={text("Fixed versions", "Vastgezette versies")} empty={text("No immutable version yet.", "Nog geen immutable versie.")} rows={data.reportVersions.map((version) => <div className="history-version" key={version.id}><span>{text("Revision", "Revisie")} {version.revision} · {formatDate(version.created_at, locale)} · SHA {version.sha256.slice(0, 12)}…</span><ReportDownloadButtons disabled={busy} onDownloadPdf={() => run(async () => { const { downloadFormalReportPdf } = await import("@/lib/reports/daily-report-pdf"); await downloadFormalReportPdf(version.snapshot as FormalReportSnapshot, version.revision, version.sha256); }, text(`Formal revision ${version.revision} downloaded directly from the immutable snapshot.`, `Formele revisie ${version.revision} rechtstreeks uit de immutable snapshot gedownload.`))} onDownloadWord={() => run(async () => { const { downloadFormalReportDocx } = await import("@/lib/reports/daily-report-docx"); await downloadFormalReportDocx(version.snapshot as FormalReportSnapshot, version.revision, version.sha256); }, text(`Formal revision ${version.revision} downloaded as Word directly from the immutable snapshot.`, `Formele revisie ${version.revision} als Word rechtstreeks uit de immutable snapshot gedownload.`))} /></div>)} />
+            <HistoryColumn title={text("Fixed versions", "Vastgezette versies")} empty={text("No immutable version yet.", "Nog geen immutable versie.")} rows={data.reportVersions.map((version) => <div className="history-version" key={version.id}><span>{text("Revision", "Revisie")} {version.revision} · {formatDate(version.created_at, locale)} · SHA {version.sha256.slice(0, 12)}…</span><ReportDownloadButtons disabled={busy} onDownloadPdf={() => run(async () => { const { downloadFormalReportPdf } = await import("@/lib/reports/daily-report-pdf"); await downloadFormalReportPdf(version.snapshot as FormalReportSnapshot, version.revision, version.sha256, signatureLines(version.id)); }, text(`Formal revision ${version.revision} downloaded directly from the immutable snapshot.`, `Formele revisie ${version.revision} rechtstreeks uit de immutable snapshot gedownload.`))} onDownloadWord={() => run(async () => { const { downloadFormalReportDocx } = await import("@/lib/reports/daily-report-docx"); await downloadFormalReportDocx(version.snapshot as FormalReportSnapshot, version.revision, version.sha256, signatureLines(version.id)); }, text(`Formal revision ${version.revision} downloaded as Word directly from the immutable snapshot.`, `Formele revisie ${version.revision} als Word rechtstreeks uit de immutable snapshot gedownload.`))} /></div>)} />
             <HistoryColumn title="Reviews" empty={text("No review decision yet.", "Nog geen reviewbesluit.")} rows={data.reportReviews.map((review) => `${statusLabels[review.decision] ?? review.decision} · ${review.comment} · ${formatDate(review.created_at, locale)}`)} />
             <HistoryColumn title={text("Declarations", "Verklaringen")} empty={text("No signing declaration yet.", "Nog geen ondertekenverklaring.")} rows={data.reportSignatures.map((signature) => `${signature.signer_name} · ${signature.signer_role} · ${formatDate(signature.signed_at, locale)}`)} />
             <HistoryColumn title={text("Distribution", "Distributie")} empty={text("No delivery recorded yet.", "Nog geen verzending geregistreerd.")} rows={data.reportDistributions.map((item) => `${item.recipient_name} · ${item.channel} · ${item.status}`)} />

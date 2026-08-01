@@ -59,6 +59,7 @@ export function buildNcrDocxDocument(finding: Finding, progress: FindingProgress
           bodyText(value(issue.recommended_action_detail || issue.action_steps, "Rework / repair in accordance with the approved drawings and specifications.")),
           sectionHeading("Proposed corrective action by contractor"),
           bodyText(value(finding.proposed_correction, "Pending contractor proposal and acknowledgement.")),
+          ...(issue.correction_signed_by ? [labelValue("Signed by contractor", `${issue.correction_signed_by} · ${String(issue.correction_signed_at ?? "").slice(0, 10)}`)] : []),
           ...(finding.final_measure ? [labelValue("Completed corrective action", finding.final_measure)] : []),
           sectionHeading("Quality control verification"),
           labelValue("Latest inspection progress", `${progress?.progress_percent ?? 0}%`),
@@ -67,7 +68,7 @@ export function buildNcrDocxDocument(finding: Finding, progress: FindingProgress
           new Paragraph({ children: [new TextRun({ text: resolved ? "Issue resolved" : "Issue not resolved", bold: true, size: 18 })], spacing: { before: 120, after: 160 } }),
           signatureBlock([
             ["Issued by", issue.signed_by || context.issuerName],
-            ["Received / contractor", ""],
+            ["Received / contractor", issue.correction_signed_by || issue.completion_signed_by || ""],
             ["QC verification", resolved ? context.issuerName : ""],
           ]),
           new Paragraph({

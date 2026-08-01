@@ -8,6 +8,15 @@ export type BuildingReportBreakdown = {
   closeout: DailyCloseoutAnswers;
 };
 
+/** A recorded signing declaration, so the report the client hands over shows it. */
+export type ReportSignatureLine = {
+  name: string;
+  role: string;
+  declaration: string;
+  signedAt: string;
+  legalLevel: string;
+};
+
 export type DailyReportPdfSnapshot = {
   reportNumber: string;
   reportDate: string;
@@ -22,6 +31,8 @@ export type DailyReportPdfSnapshot = {
   closeout: DailyCloseoutAnswers;
   formal?: { revision: number; sha256: string; frozenAt: string };
   buildings?: BuildingReportBreakdown[];
+  /** Recorded declarations. Empty means the report is not signed yet. */
+  signatures?: ReportSignatureLine[];
 };
 
 export type FormalReportSnapshot = {
@@ -62,7 +73,52 @@ const styles = StyleSheet.create({
   rowValue: { width: "70%", color: "#183646" },
   footer: { position: "absolute", bottom: 22, left: 36, right: 36, color: "#78909a", fontSize: 7, textAlign: "center" },
   confirmation: { marginTop: 10, borderTopWidth: 1, borderTopColor: "#d9e5e9", paddingTop: 8, color: "#526c77" },
+  signatureGrid: { flexDirection: "row", gap: 8, marginTop: 4 },
+  signatureCell: { borderColor: "#d9e5e9", borderWidth: 1, borderRadius: 4, padding: 8, width: "32%" },
+  signatureRole: { color: "#69828d", fontSize: 7, marginBottom: 2, textTransform: "uppercase" },
+  signatureName: { color: "#173b4b", fontSize: 9, fontWeight: 700 },
+  signatureLine: { borderBottomColor: "#8ba3ad", borderBottomWidth: 1, marginBottom: 4, marginTop: 20 },
+  signatureMeta: { color: "#69828d", fontSize: 7 },
+  declaration: { color: "#526c77", fontSize: 7.5, marginTop: 4 },
 });
+
+/**
+ * Item 19 of the client's own day report: control, name/position and signature. The
+ * declarations are recorded in the app; without this block the report that is handed
+ * over does not show that anyone signed it.
+ */
+function SignatureSection({ signatures }: { signatures: ReportSignatureLine[] }) {
+  const roles = signatures.length
+    ? signatures
+    : [
+      { name: "", role: "Supervisor", declaration: "", signedAt: "", legalLevel: "" },
+      { name: "", role: "Aannemer", declaration: "", signedAt: "", legalLevel: "" },
+      { name: "", role: "Opdrachtgever", declaration: "", signedAt: "", legalLevel: "" },
+    ];
+  return (
+    <View style={styles.section} wrap={false}>
+      <Text style={styles.sectionHeader}>19. Controle, naam/functie en ondertekening</Text>
+      <View style={styles.sectionBody}>
+        <View style={styles.signatureGrid}>
+          {roles.slice(0, 3).map((signature, index) => (
+            <View style={styles.signatureCell} key={`${signature.role}:${index}`}>
+              <Text style={styles.signatureRole}>{signature.role.replaceAll("_", " ")}</Text>
+              <View style={styles.signatureLine} />
+              <Text style={styles.signatureName}>{signature.name || " "}</Text>
+              <Text style={styles.signatureMeta}>{signature.signedAt ? `Ondertekend ${signature.signedAt.slice(0, 16).replace("T", " ")}` : "Nog niet ondertekend"}</Text>
+            </View>
+          ))}
+        </View>
+        {signatures.map((signature, index) => (
+          <Text style={styles.declaration} key={`declaration:${index}`}>
+            {signature.name} · {signature.role.replaceAll("_", " ")}: “{signature.declaration}”
+          </Text>
+        ))}
+        {signatures.length > 3 ? <Text style={styles.declaration}>{signatures.length - 3} verdere verklaringen staan in de rapporthistorie.</Text> : null}
+      </View>
+    </View>
+  );
+}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -150,11 +206,12 @@ export function DailyReportDocument({ snapshot, logoSource = "/codeco-logo-pdf.p
           <Row label="Risico's" value={closeout.risks} />
           <Row label="Planning morgen" value={closeout.tomorrowPlan} />
         </Section>
-        <Section title="17–19. Foto's, bijlagen en controle">
+        <Section title="17–18. Foto's en bijlagen">
           <Row label="Foto's" value={closeout.photoCount} />
           <Row label="Bijlagen" value={closeout.attachmentsConfirmed ? "Door supervisor gecontroleerd" : "Nog niet bevestigd"} />
-          <Text style={styles.confirmation}>{snapshot.formal ? `Deze PDF is uitsluitend opgebouwd uit de immutable snapshot van ${snapshot.formal.frozenAt}. Volledige SHA-256: ${snapshot.formal.sha256}` : "Werk-PDF uit bevestigde dagregistraties. Formele status en verklaringen staan in de rapporthistorie."}</Text>
+          <Text style={styles.confirmation}>{snapshot.formal ? `Deze PDF is uitsluitend opgebouwd uit de immutable snapshot van ${snapshot.formal.frozenAt}. Volledige SHA-256: ${snapshot.formal.sha256}` : "Werk-PDF uit bevestigde dagregistraties. Formele status staat in de rapporthistorie."}</Text>
         </Section>
+        <SignatureSection signatures={snapshot.signatures ?? []} />
 
         <Text style={styles.footer} fixed>CODECO Supervisie · gegenereerd uit centrale Supabase-data · Pagina 2 van {snapshot.buildings?.length ? 3 : 2}</Text>
       </Page>
@@ -292,8 +349,10 @@ export function immutableDailySnapshot(snapshot: FormalReportSnapshot, revision:
   };
 }
 
-export async function downloadFormalReportPdf(snapshot: FormalReportSnapshot, revision: number, sha256: string) {
-  const normalized = immutableDailySnapshot(snapshot, revision, sha256);
+export async function downloadFormalReportPdf(snapshot: FormalReportSnapshot, revision: number, sha256: string, signatures: ReportSignatureLine[] = []) {
+  // A frozen version is signed after it is frozen, so the declarations travel next to
+  // the snapshot instead of inside it.
+  const normalized = { ...immutableDailySnapshot(snapshot, revision, sha256), signatures };
   const blob = await pdf(<DailyReportDocument snapshot={normalized} />).toBlob();
   downloadBlob(blob, `${normalized.reportNumber}-revisie-${revision}.pdf`);
 }

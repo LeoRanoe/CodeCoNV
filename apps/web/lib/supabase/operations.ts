@@ -84,6 +84,11 @@ export type Finding = {
     remarks?: string;
     signed_by?: string;
     signed_at?: string | null;
+    /** The name the contractor signed the corrective action with, through the link. */
+    correction_signed_by?: string;
+    correction_signed_at?: string | null;
+    completion_signed_by?: string;
+    completion_signed_at?: string | null;
   };
   verified_at: string | null;
   created_at: string;
@@ -215,7 +220,7 @@ export type ReportVersion = {
 };
 
 export type ReportReview = { id: string; decision: string; comment: string; created_at: string };
-export type ReportSignature = { id: string; signer_name: string; signer_role: string; legal_level: string; signed_at: string };
+export type ReportSignature = { id: string; report_version_id: string; signer_name: string; signer_role: string; declaration: string; legal_level: string; signed_at: string };
 export type ReportDistribution = { id: string; recipient_name: string; recipient_address: string; channel: string; status: string; sent_at: string | null };
 export type DayReportSummary = { id: string; report_date: string; report_number: string; status: string; completeness_percent: number; created_at: string; updated_at: string };
 export type BackupRun = { id: string; run_type: string; status: string; schema_version: string; size_bytes: number | null; sha256: string | null; verified_at: string | null; created_at: string };
@@ -516,7 +521,7 @@ export async function loadProjectOperations(
     ? await Promise.all([
         client.from("report_versions").select("id,revision,sha256,snapshot,signed_at,created_at").eq("day_report_id", reportId).order("revision", { ascending: false }),
         client.from("report_reviews").select("id,decision,comment,created_at").eq("day_report_id", reportId).order("created_at", { ascending: false }),
-        client.from("report_signatures").select("id,signer_name,signer_role,legal_level,signed_at").eq("day_report_id", reportId).order("signed_at", { ascending: false }),
+        client.from("report_signatures").select("id,report_version_id,signer_name,signer_role,declaration,legal_level,signed_at").eq("day_report_id", reportId).order("signed_at", { ascending: false }),
         client.from("report_distributions").select("id,recipient_name,recipient_address,channel,status,sent_at").eq("day_report_id", reportId).order("created_at", { ascending: false }),
       ])
     : [];

@@ -3,6 +3,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Calculator, CheckCircle2, NotebookPen, Save, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
+import { AgreementSignatureFields, agreementSignatureDetails, emptyAgreementSignature } from "@/app/agreement-signature";
 import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton, speechToTextAvailable } from "@/app/dictate-button";
 import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
@@ -62,6 +63,8 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
   const currentTime = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Paramaribo" }).format(new Date());
   const emptyNote = { type: "notepad", title: "", body: "", agreementDate: today, agreementTime: currentTime, dueDate: "", responsiblePartyId: "", status: "agreed" };
   const [note, setNote] = useState(emptyNote);
+  // The same agreement record as on the register form, so it can be signed here too.
+  const [agreement, setAgreement] = useState({ ...emptyAgreementSignature });
   const [noteBuildingId, setNoteBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [noteLocationNodeId, setNoteLocationNodeId] = useState("");
   const [dictated, setDictated] = useState(false);
@@ -70,6 +73,7 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
   const [expressionResult, setExpressionResult] = useState<string>("");
   const [calculatorError, setCalculatorError] = useState("");
   const notes = data.registerEntries.filter((entry) => ["notepad", "agreement", "technical_instruction"].includes(entry.register_type));
+  const agreementPartyOptions = Array.from(new Set(["CODECO N.V.", ...parties.map((party) => party.name)].filter(Boolean)));
   const length = numeric(dimensions.length);
   const width = numeric(dimensions.width);
   const height = numeric(dimensions.height);
@@ -91,13 +95,14 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
         agreement_date: note.type === "agreement" ? note.agreementDate : null,
         agreement_time: note.type === "agreement" ? note.agreementTime : null,
         agreement_status: note.type === "agreement" ? note.status : null,
+        ...(note.type === "agreement" ? agreementSignatureDetails(agreement) : {}),
         responsible_party_name: parties.find((party) => party.id === note.responsiblePartyId)?.name ?? "",
         due_date: note.dueDate || null,
       },
     }))), note.type === "agreement"
       ? text("Agreement stored with date, time, responsible party and deadline.", "Afspraak opgeslagen met datum, tijd, verantwoordelijke partij en deadline.")
       : text("Field note stored centrally with its automatic date and time.", "Veldnotitie centraal opgeslagen met automatische datum en tijd."));
-    if (okay) { setNote({ ...emptyNote }); setNoteLocationNodeId(""); setDictated(false); }
+    if (okay) { setNote({ ...emptyNote }); setAgreement({ ...emptyAgreementSignature }); setNoteLocationNodeId(""); setDictated(false); }
   };
 
   const runExpression = () => {
@@ -120,6 +125,7 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
             <label className="form-field"><span>{text("Deadline / follow-up date", "Deadline / opvolgdatum")}</span><input type="date" min={note.agreementDate} value={note.dueDate} onChange={(event) => setNote({ ...note, dueDate: event.target.value })} /></label>
             <label className="form-field"><span>{text("Agreement status", "Status afspraak")}</span><select value={note.status} onChange={(event) => setNote({ ...note, status: event.target.value })}><option value="agreed">{text("Agreed", "Afgesproken")}</option><option value="open">{text("Open for confirmation", "Open voor bevestiging")}</option><option value="in_progress">{text("In progress", "In uitvoering")}</option><option value="completed">{text("Completed", "Afgerond")}</option></select></label>
           </div>
+          <AgreementSignatureFields options={agreementPartyOptions} value={agreement} onChange={setAgreement} />
           <div className="operation-alert"><CheckCircle2 size={17} /><div><strong>{text("Traceable agreement", "Traceerbare afspraak")}</strong><span>{text("Project, building, author and registration time are added automatically. The agreement date and deadline remain visible in reports.", "Project, gebouw, maker en registratietijd worden automatisch toegevoegd. De afspraakdatum en deadline blijven zichtbaar in rapporten.")}</span></div></div>
         </div> : null}
         <label className="form-field"><span>{text("Text", "Tekst")}</span><textarea rows={7} value={note.body} onChange={(event) => setNote({ ...note, body: event.target.value })} /><DictateButton onText={(transcript) => { setNote((current) => ({ ...current, body: appendDictation(current.body, transcript) })); setDictated(true); }} /></label>

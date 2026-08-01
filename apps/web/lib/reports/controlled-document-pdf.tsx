@@ -127,6 +127,17 @@ export function ControlledDocument({ entry, logoSource = "/codeco-logo-pdf.png" 
         {typeSpecificDetails(type, details)}
         <View style={styles.grid}><Cell label="Reference documents" value={text(details, "reference_documents")} right /><Cell label="Attachments / pages" value={text(details, "attachments")} /></View>
 
+        {/* The author signs this document in the app; the paper has to say so, otherwise
+            signing changes nothing for the party that receives it. */}
+        <Text style={styles.sectionTitle}>ISSUED AND SIGNED BY</Text>
+        <View style={styles.signatureGrid}>
+          {[
+            ["Name", text(details, "signed_by", text(details, "issued_by"))],
+            ["Position / company", [text(details, "signed_by_position", text(details, "issuer_position")), text(details, "issuer_company")].filter((item) => item !== "—" && item !== "").join(" · ")],
+            ["Date signed", text(details, "signed_at") === "—" ? "Not signed yet" : String(text(details, "signed_at")).slice(0, 10)],
+          ].map(([label, result], index) => <View style={[styles.signature, index < 2 ? styles.borderRight : {}]} key={label}><Text style={styles.label}>{label}</Text><View style={styles.signatureLine} /><Text>{result || " "}</Text></View>)}
+        </View>
+
         <View style={styles.response} wrap={false}>
           <Text style={styles.responseHeader}>{type === "technical_instruction" || type === "change_order" ? "CONTRACTOR ACKNOWLEDGEMENT / CLOSEOUT" : "ENGINEER / CLIENT RESPONSE"}</Text>
           <View style={styles.section}>
@@ -143,7 +154,7 @@ export function ControlledDocument({ entry, logoSource = "/codeco-logo-pdf.png" 
             ].map(([label, result], index) => <View style={[styles.signature, index < 2 ? styles.borderRight : {}]} key={label}><Text style={styles.label}>{label}</Text><View style={styles.signatureLine} /><Text>{result || " "}</Text></View>)}
           </View>
         </View>
-        <Text style={styles.notice}>This PDF is generated from the controlled project register. Number, revision, project metadata and recorded response come from the central audit trail. A blank signature line is intentional until a human signatory confirms the document.</Text>
+        <Text style={styles.notice}>This PDF is generated from the controlled project register. Number, revision, project metadata, the author signature and the recorded response come from the central audit trail. A signature line stays blank until that human signatory confirms the document.</Text>
         <Text style={styles.footer} fixed>CODECO N.V. · Controlled project document</Text>
       </Page>
     </Document>
