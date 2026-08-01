@@ -4070,26 +4070,61 @@ textarea:focus-visible {
   width: 100%;
 }
 
-/* One block per attached photo, the same in every screen: the picture, the way into marking,
-   and the words that belong to it — what it is, what is visible, category, location and the
-   direction it was taken from. */
-.photo-evidence-list { display: grid; gap: 10px; margin-top: 10px; }
-.photo-evidence-item {
+/* One row per attached photo, the same in every screen. The row stays small: the picture is
+   the way in, and everything that belongs to the photo opens on its own screen. */
+.photo-evidence-list { display: grid; gap: 8px; margin-top: 10px; }
+.photo-evidence-row {
+  align-items: center;
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 12px;
   display: grid;
-  gap: 12px;
-  grid-template-columns: 128px minmax(0, 1fr) auto;
-  padding: 11px;
-  position: relative;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 8px;
 }
-.photo-evidence-visual { align-content: start; display: grid; gap: 6px; justify-items: stretch; }
-.photo-evidence-thumb { border-radius: 9px; display: block; overflow: hidden; width: 100%; }
-.photo-evidence-thumb img { display: block; height: 96px; object-fit: cover; width: 100%; }
-.photo-evidence-thumb:hover img, .photo-evidence-thumb:focus-visible img { opacity: .9; }
-.photo-evidence-thumb-empty { align-items: center; background: var(--ink-50); display: flex; height: 96px; justify-content: center; }
-.photo-evidence-visual .mark-photo-button { justify-content: center; width: 100%; }
+.photo-evidence-open {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  min-width: 0;
+  text-align: left;
+  width: 100%;
+}
+.photo-evidence-open:hover .photo-evidence-thumb, .photo-evidence-open:focus-visible .photo-evidence-thumb { border-color: var(--signal, #f07400); }
+.photo-evidence-thumb {
+  border: 1px solid var(--ink-200);
+  border-radius: 9px;
+  display: block;
+  height: 56px;
+  object-fit: cover;
+  width: 64px;
+}
+.photo-evidence-row-text { display: grid; gap: 2px; min-width: 0; }
+.photo-evidence-row-text strong { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.photo-evidence-row-text small { color: var(--ink-500); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.photo-evidence-row-text em {
+  align-items: center;
+  color: var(--signal, #f07400);
+  display: flex;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  gap: 3px;
+}
+.photo-evidence-remove {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--red);
+  display: flex;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+.photo-evidence-remove:hover { border-color: var(--red); }
 .photo-evidence-restore {
   align-items: center;
   color: var(--ink-600);
@@ -4101,33 +4136,27 @@ textarea:focus-visible {
   min-height: 28px;
 }
 .photo-evidence-restore:hover { color: var(--signal, #f07400); }
-.photo-evidence-fields { display: grid; gap: 8px; min-width: 0; }
-.photo-evidence-fields .form-field { gap: 4px; margin: 0; }
-.photo-evidence-fields .form-field > span { align-items: center; color: var(--ink-600); display: flex; font-size: 10px; font-weight: 700; gap: 4px; }
-.photo-evidence-number { color: var(--ink-500); font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
-.photo-evidence-remove {
-  align-items: center;
-  align-self: start;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--red);
-  display: flex;
-  height: 30px;
-  justify-content: center;
-  width: 30px;
-}
-.photo-evidence-remove:hover { border-color: var(--red); }
 
-/* On a phone the picture and the way into marking sit on one row, with the words the photo
-   carries underneath at full width instead of squeezed into a column. */
+/* Everything that belongs to one photo, on its own screen. */
+.photo-detail-modal { display: grid; gap: 10px; max-width: 620px; padding-bottom: 20px; }
+.photo-detail-modal .modal-header { position: static; }
+.photo-detail-modal > .modal-actions { padding-left: 26px; padding-right: 26px; }
+.photo-detail-body { display: grid; gap: 12px; padding-bottom: 0; }
+.photo-detail-visual { display: grid; gap: 8px; justify-items: center; }
+.photo-detail-image {
+  background: #0c1411;
+  border-radius: 12px;
+  display: block;
+  max-height: min(42vh, 380px);
+  max-width: 100%;
+  object-fit: contain;
+}
+.photo-detail-visual-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.photo-detail-remove { color: var(--red); }
+
 @media (max-width: 640px) {
-  .photo-evidence-item { grid-template-columns: minmax(0, 1fr) auto; }
-  .photo-evidence-visual { align-items: start; grid-column: 1; grid-row: 1; grid-template-columns: 96px minmax(0, 1fr); }
-  .photo-evidence-thumb { grid-row: span 2; }
-  .photo-evidence-thumb img, .photo-evidence-thumb-empty { height: 76px; }
-  .photo-evidence-fields { grid-column: 1 / -1; grid-row: 2; }
-  .photo-evidence-fields .form-grid-2 { grid-template-columns: 1fr; }
+  .photo-detail-modal > .modal-actions { padding-left: 18px; padding-right: 18px; }
+  .photo-detail-body .form-grid-2 { grid-template-columns: 1fr; }
 }
 
 /* Marking on the photo itself: tap the spot, say what is wrong, the photo keeps the mark. */

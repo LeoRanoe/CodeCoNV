@@ -17,6 +17,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
+import { photoCategories, photoDirections, dutchDirectionLabels } from "@/app/photo-evidence";
 import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
 import { fieldPhotoMimeTypes, normalizedImagePoint, validatePanoramaDimensions } from "@/lib/images/field-image.mjs";
@@ -89,7 +90,7 @@ function imageDimensions(file: File) {
 }
 
 export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingName, buildings, reportId, parties, client, busy, run, initialFindingId, initialFiles = [], onInitialFilesConsumed }: VisualEvidenceWorkspaceProps) {
-  const { text } = useLanguage();
+  const { language, text } = useLanguage();
   const maxFileSizeBytes = (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024;
   const captures = data.visualCaptures.filter((capture) => capture.status === "active");
   const initialFinding = data.findings.find((finding) => finding.id === initialFindingId) ?? null;
@@ -121,6 +122,10 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     description: "",
     locationLabel: "",
     locationNodeId: "",
+    /** The same photo vocabulary as every other screen: what kind of picture is this. */
+    category: "",
+    /** The direction the camera was pointing, so the photo can be found back on site. */
+    direction: "",
     tourName: "",
     tourOrder: "",
   });
@@ -176,7 +181,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     setCameraSourceConfirmed(false);
     setCameraHandoff(false);
     setShowUpload(false);
-    setCaptureForm({ type: "photo", title: "", description: "", locationLabel: "", locationNodeId: "", tourName: "", tourOrder: "" });
+    setCaptureForm({ type: "photo", title: "", description: "", locationLabel: "", locationNodeId: "", category: "", direction: "", tourName: "", tourOrder: "" });
   };
 
   useEffect(() => {
@@ -239,7 +244,15 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
         fileName: prepared.fileName,
         mimeType: prepared.mimeType,
         title: captureForm.title.trim(),
-        description: captureForm.description.trim(),
+        // The category and the direction travel with the picture, so the photo register can be
+        // read without opening the capture.
+        description: [
+          [
+            photoCategories.find((option) => option.id === captureForm.category)?.[language === "en" ? "en" : "nl"] ?? "",
+            captureForm.direction ? `${text("facing", "kijkrichting")} ${language === "en" ? captureForm.direction : dutchDirectionLabels[captureForm.direction] ?? captureForm.direction}` : "",
+          ].filter(Boolean).join(" · "),
+          captureForm.description.trim(),
+        ].filter(Boolean).join("\n"),
         locationLabel: captureForm.locationLabel.trim(),
         locationNodeId: captureForm.locationNodeId || null,
         tourName: captureForm.tourName || null,
@@ -267,7 +280,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       "Beeld veilig op dit apparaat opgeslagen; centrale synchronisatie loopt automatisch.",
     ));
     if (okay) {
-      setCaptureForm({ type: "photo", title: "", description: "", locationLabel: "", locationNodeId: "", tourName: "", tourOrder: "" });
+      setCaptureForm({ type: "photo", title: "", description: "", locationLabel: "", locationNodeId: "", category: "", direction: "", tourName: "", tourOrder: "" });
       setFile(null);
       setFileError("");
       setPhotoMarkerCount(0);
@@ -387,14 +400,17 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
             <label className="form-field"><span>{text("Project location node", "Projectlocatie")}</span><select value={captureForm.locationNodeId} onChange={(event) => setCaptureForm({ ...captureForm, locationNodeId: event.target.value })}><option value="">{text("No structured location selected", "Geen gestructureerde locatie gekozen")}</option>{data.locationNodes.filter((node) => node.building_id === captureBuildingId).map((node) => <option value={node.id} key={node.id}>{node.code} · {node.name}</option>)}</select></label>
             {captureForm.type === "panorama" ? <label className="form-field"><span>{text(`360° image · JPEG, PNG or WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`, `360°-beeld · JPEG, PNG of WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`)}</span><input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" onChange={(event) => stageImage(event.currentTarget.files?.[0] ?? null, "panorama")} /></label> : <div className="visual-review-actions"><button className="secondary-button visual-retake-button" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={16} /> {text("Retake photo", "Foto opnieuw maken")}</button><button className="secondary-button visual-discard-button" type="button" onClick={discardCapture}>{text("Discard photo", "Foto verwijderen")}</button></div>}
           </div>
-          <details className="optional-text-entry">
-            <summary>{text("Adjust title, location or context", "Titel, locatie of context aanpassen")}</summary>
-            <div className="form-grid">
-              <label className="form-field"><span>{text("Title", "Titel")}</span><input value={captureForm.title} onChange={(event) => setCaptureForm({ ...captureForm, title: event.target.value })} /></label>
-              <label className="form-field"><span>{text("Room / location", "Ruimte / locatie")}</span><input value={captureForm.locationLabel} onChange={(event) => setCaptureForm({ ...captureForm, locationLabel: event.target.value })} /></label>
-              <label className="form-field"><span>{text("Context", "Context")}</span><textarea rows={2} value={captureForm.description} onChange={(event) => setCaptureForm({ ...captureForm, description: event.target.value })} /><DictateButton onText={(transcript) => setCaptureForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} /></label>
-            </div>
-          </details>
+          {/* The words that belong to this picture stand open: hiding them behind a summary
+              is what made photos arrive in the register without a description. */}
+          <div className="form-grid">
+            <label className="form-field"><span>{text("What is on this photo?", "Wat staat er op deze foto?")}</span><input value={captureForm.title} onChange={(event) => setCaptureForm({ ...captureForm, title: event.target.value })} placeholder={text("For example: rebar column line B", "Bijvoorbeeld: wapening kolom lijn B")} /></label>
+            <label className="form-field"><span>{text("Description · what is visible and why it matters", "Toelichting · wat is te zien en waarom is het belangrijk")}</span><textarea rows={3} value={captureForm.description} onChange={(event) => setCaptureForm({ ...captureForm, description: event.target.value })} placeholder={text("Describe it as you would to someone who was not there.", "Beschrijf het alsof je het uitlegt aan iemand die er niet bij was.")} /><DictateButton onText={(transcript) => setCaptureForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} /></label>
+          </div>
+          <div className="form-grid-2">
+            <label className="form-field"><span>{text("Category", "Categorie")}</span><select value={captureForm.category} onChange={(event) => setCaptureForm({ ...captureForm, category: event.target.value })}><option value="">{text("Not specified", "Niet aangegeven")}</option>{photoCategories.map((option) => <option value={option.id} key={option.id}>{language === "en" ? option.en : option.nl}</option>)}</select></label>
+            <label className="form-field"><span>{text("Facing direction", "Kijkrichting")}</span><select value={captureForm.direction} onChange={(event) => setCaptureForm({ ...captureForm, direction: event.target.value })}><option value="">{text("Not specified", "Niet aangegeven")}</option>{photoDirections.map((option) => <option value={option} key={option}>{language === "en" ? option : dutchDirectionLabels[option]}</option>)}</select></label>
+            <label className="form-field"><span>{text("Room / location in your own words", "Ruimte / locatie in eigen woorden")}</span><input value={captureForm.locationLabel} onChange={(event) => setCaptureForm({ ...captureForm, locationLabel: event.target.value })} /></label>
+          </div>
           {captureForm.type === "panorama" ? <div className="form-grid-2"><label className="form-field"><span>{text("Tour name · optional", "Tournaam · optioneel")}</span><input value={captureForm.tourName} onChange={(event) => setCaptureForm({ ...captureForm, tourName: event.target.value })} placeholder={text("Ground floor walkthrough", "Rondgang begane grond")} /></label><label className="form-field"><span>{text("Position in tour", "Volgorde in tour")}</span><input type="number" min="1" max="10000" disabled={!captureForm.tourName} value={captureForm.tourOrder} onChange={(event) => setCaptureForm({ ...captureForm, tourOrder: event.target.value })} /></label></div> : null}
           {captureForm.type === "panorama" ? <><div className="operation-alert"><ScanLine size={18} /><div><strong>{text("Dedicated 360° camera required", "Speciale 360°-camera vereist")}</strong><span>{text("Use a stitched 2:1 equirectangular export of at least 3840 × 1920 pixels from an Insta360 or equivalent 360° camera. A swept phone panorama is not accepted.", "Gebruik een gestitchte equirectangulaire 2:1-export van minimaal 3840 × 1920 pixels uit een Insta360 of gelijkwaardige 360°-camera. Een geveegde telefoonpanorama wordt niet geaccepteerd.")}</span></div></div><label className="check-field"><input type="checkbox" checked={cameraSourceConfirmed} onChange={(event) => setCameraSourceConfirmed(event.target.checked)} /> {text("I confirm this is an export from a dedicated 360° camera.", "Ik bevestig dat dit een export uit een speciale 360°-camera is.")}</label></> : null}
           {file && file.size > maxFileSizeBytes ? <p className="field-error">{text("This image exceeds the project file limit.", "Deze afbeelding is groter dan de bestandslimiet van het project.")}</p> : null}

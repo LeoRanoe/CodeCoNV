@@ -114,12 +114,13 @@ test("writes what was marked on a photo back into the record's own words", () =>
 });
 
 test("gives every attached photo its own words, category, location and direction", async () => {
-  const [evidence, entry, dailyLog, operations, media, css] = await Promise.all([
+  const [evidence, entry, dailyLog, operations, media, visualCapture, css] = await Promise.all([
     readFile(new URL("../app/photo-evidence.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/media-library-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/visual-evidence-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
 
@@ -131,7 +132,15 @@ test("gives every attached photo its own words, category, location and direction
   // §4.16 also: the original photo is always kept, so marking never destroys it.
   assert.match(evidence, /original: File;/);
   assert.match(evidence, /Restore original/);
-  assert.match(evidence, /photo\.id === id \? \{ \.\.\.photo, file: photo\.original, markerCount: 0 \}/);
+  assert.match(evidence, /onChange\(\{ \.\.\.photo, file: photo\.original, markerCount: 0 \}\)/);
+
+  // The record form stays short: a photo is one row, and everything that belongs to it opens
+  // on its own screen when the picture is tapped.
+  assert.match(evidence, /export function PhotoDetailSheet/);
+  assert.match(evidence, /className="photo-evidence-open"/);
+  assert.match(evidence, /Open the details of photo/);
+  // A photo can name its own building; one picture can cover another than the record does.
+  assert.match(evidence, /\{text\("Building", "Gebouw"\)\}/);
 
   // One photo block for every module; the client asked for one way of working, not five.
   for (const [name, source] of [["entry record", entry], ["daily log", dailyLog], ["issues, inspections, HSE and register", operations], ["photo library", media]]) {
@@ -147,6 +156,13 @@ test("gives every attached photo its own words, category, location and direction
   // The photo's own words travel into the register, not the record's title for all of them.
   assert.match(evidence, /export function photoUploadDescription/);
   assert.equal(operations.match(/photoUploadDescription\(photo,/g)?.length, 4);
+
+  // The capture screen in the photo workspace offers the same photo vocabulary, with the
+  // words open instead of hidden behind a summary.
+  assert.match(visualCapture, /photoCategories/);
+  assert.match(visualCapture, /photoDirections/);
+  assert.match(visualCapture, /What is on this photo\?|Wat staat er op deze foto\?/);
+  assert.doesNotMatch(visualCapture, /Adjust title, location or context/);
 
   // A phone zooms in on a field below 16px; that guard has to beat every component rule.
   assert.match(css, /@media \(max-width: 860px\), \(pointer: coarse\)[\s\S]{0,400}font-size: max\(16px, 1em\) !important/);

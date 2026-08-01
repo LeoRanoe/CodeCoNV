@@ -990,7 +990,8 @@ test("processes the second batch of annotated screens from 31 July", async () =>
   // every module instead of a caption in two of them.
   assert.match(workspace, /photos=\{hsePhotos\}/);
   assert.match(evidence, /Description · what is visible|Toelichting · wat is te zien/);
-  assert.match(styles, /\.photo-evidence-fields/);
+  assert.match(styles, /\.photo-evidence-row/);
+  assert.match(styles, /\.photo-detail-modal/);
 
   // A started checklist can be reopened from the list and completed.
   assert.match(operations, /export async function loadInspectionResponses/);
