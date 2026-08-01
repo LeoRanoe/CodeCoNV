@@ -116,7 +116,7 @@ export function buildControlledDocumentDocx(entry: RegisterEntry, logoBytes: Arr
           labelValue("Reference documents", text(details, "reference_documents")),
           labelValue("Attachments / pages", text(details, "attachments")),
           // The author signs in the app; the document that leaves the app has to show it.
-          sectionHeading("Issued and signed by"),
+          sectionHeading(["wcr", "rfi", "rfa", "inspection_request"].includes(type) ? "Submitted and signed by" : "Issued and signed by"),
           signatureBlock([
             ["Name", text(details, "signed_by", text(details, "issued_by"))],
             ["Position / company", [text(details, "signed_by_position", text(details, "issuer_position")), text(details, "issuer_company")].filter((item) => item !== "—" && item !== "").join(" · ")],

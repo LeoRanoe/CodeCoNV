@@ -129,7 +129,7 @@ export function ControlledDocument({ entry, logoSource = "/codeco-logo-pdf.png" 
 
         {/* The author signs this document in the app; the paper has to say so, otherwise
             signing changes nothing for the party that receives it. */}
-        <Text style={styles.sectionTitle}>ISSUED AND SIGNED BY</Text>
+        <Text style={styles.sectionTitle}>{["wcr", "rfi", "rfa", "inspection_request"].includes(type) ? "SUBMITTED AND SIGNED BY" : "ISSUED AND SIGNED BY"}</Text>
         <View style={styles.signatureGrid}>
           {[
             ["Name", text(details, "signed_by", text(details, "issued_by"))],

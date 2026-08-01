@@ -640,6 +640,15 @@ function ProjectOperations({
     && file.status === "available"
     && (!file.building_id || file.building_id === registerBuildingId)
   ));
+  /**
+   * The people this project knows by name. Used for the QC signature on a closed NCR:
+   * the database records who verified, the app has to be able to name that person.
+   */
+  const resolveUserName = (userId: string | null) => {
+    if (!userId) return "";
+    const employee = companyEmployees.find((member) => member.userId === userId);
+    return employee?.displayName?.trim() || employee?.email || "";
+  };
   const documentIssuerOptions = Array.from(new Set([
     currentUserName,
     ...companyEmployees.map((employee) => employee.displayName?.trim() || employee.email),
@@ -775,6 +784,9 @@ function ProjectOperations({
     && (registerForm.type !== "technical_instruction" || (registerForm.reason.trim().length >= 3 && Boolean(registerForm.dueDate)))
   );
   const agreementRegister = registerForm.type === "agreement";
+  // WCR, RFI, RFA and WIR are forms the contractor draws up and signs. CODECO only
+  // records them and signs the response, so "sign as the author" is not CODECO's to tick.
+  const submittedRegister = externalSubmissionRegisterTypes.includes(registerForm.type);
   // Who the parties of an agreement can be: the own company, the signed-in supervisor
   // and every party of this project.
   const agreementPartyOptions = Array.from(new Set([
@@ -1761,6 +1773,7 @@ function ProjectOperations({
             buildings={buildings}
             locationNodes={data.locationNodes}
             currentUserName={currentUserName}
+            resolveUserName={resolveUserName}
             parties={parties}
             busy={busy}
             transition={(finding, nextStatus, note, finalMeasure, correction) => run(() => transitionFinding(client, finding.id, nextStatus, note, finalMeasure, correction), `Bevinding ${finding.finding_number} staat nu op ${findingStatusLabels[nextStatus] ?? nextStatus}.`)}
@@ -1910,17 +1923,24 @@ function ProjectOperations({
               {controlledRegister ? <>
                 <label className="form-field"><span>{text("Revision", "Revisie")}</span><input value={registerForm.revision} onChange={(event) => setRegisterForm({ ...registerForm, revision: event.target.value })} /></label>
                 {/* Who draws the document up is a choice, not always the person logged in. */}
-                <div className="form-grid-2">
-                  <label className="form-field"><span>{text("Drawn up by", "Opgemaakt door")}</span>
-                    <select value={documentIssuerOptions.includes(registerForm.issuerName.trim() || currentUserName) ? registerForm.issuerName.trim() || currentUserName : "__other__"} onChange={(event) => setRegisterForm({ ...registerForm, issuerName: event.target.value === "__other__" ? "" : event.target.value })}>
-                      {documentIssuerOptions.map((name) => <option value={name} key={name}>{name}</option>)}
-                      <option value="__other__">{text("Someone else · type the name", "Iemand anders · naam typen")}</option>
-                    </select>
-                  </label>
-                  {documentIssuerOptions.includes(registerForm.issuerName.trim() || currentUserName)
-                    ? null
-                    : <label className="form-field"><span>{text("Name of the author", "Naam van de opsteller")}</span><input value={registerForm.issuerName} onChange={(event) => setRegisterForm({ ...registerForm, issuerName: event.target.value })} /></label>}
-                </div>
+                {submittedRegister ? (
+                  <div className="form-grid-2">
+                    <label className="form-field"><span>{text("Submitted by · name on the form", "Ingediend door · naam op het formulier")}</span><input value={registerForm.issuerName} onChange={(event) => setRegisterForm({ ...registerForm, issuerName: event.target.value })} placeholder={text("Name of the contractor's signatory", "Naam van de ondertekenaar bij de aannemer")} /></label>
+                    <label className="form-field"><span>{text("Position", "Functie")}</span><input value={registerForm.issuerPosition} onChange={(event) => setRegisterForm({ ...registerForm, issuerPosition: event.target.value })} placeholder="Quality Control" /></label>
+                  </div>
+                ) : (
+                  <div className="form-grid-2">
+                    <label className="form-field"><span>{text("Drawn up by", "Opgemaakt door")}</span>
+                      <select value={documentIssuerOptions.includes(registerForm.issuerName.trim() || currentUserName) ? registerForm.issuerName.trim() || currentUserName : "__other__"} onChange={(event) => setRegisterForm({ ...registerForm, issuerName: event.target.value === "__other__" ? "" : event.target.value })}>
+                        {documentIssuerOptions.map((name) => <option value={name} key={name}>{name}</option>)}
+                        <option value="__other__">{text("Someone else · type the name", "Iemand anders · naam typen")}</option>
+                      </select>
+                    </label>
+                    {documentIssuerOptions.includes(registerForm.issuerName.trim() || currentUserName)
+                      ? null
+                      : <label className="form-field"><span>{text("Name of the author", "Naam van de opsteller")}</span><input value={registerForm.issuerName} onChange={(event) => setRegisterForm({ ...registerForm, issuerName: event.target.value })} /></label>}
+                  </div>
+                )}
                 {/* The party you address it to is the recipient; a second free-text name
                     next to it, plus reference fields nobody filled, are gone. */}
                 <label className="form-field"><span>{text("To:", "Aan:")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => { const party = parties.find((item) => item.id === event.target.value); setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value, requestedTo: party?.name ?? "" }); }}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name} · {party.type}</option>)}</select></label>
@@ -1949,21 +1969,28 @@ function ProjectOperations({
                 <label className="check-field controlled-document-signature">
                   <input
                     type="checkbox"
+                    disabled={submittedRegister && !registerForm.issuerName.trim()}
                     checked={Boolean(registerForm.signedBy)}
                     onChange={(event) => setRegisterForm({
                       ...registerForm,
-                      signedBy: event.target.checked ? registerForm.issuerName.trim() || currentUserName : "",
+                      signedBy: event.target.checked ? registerForm.issuerName.trim() || (submittedRegister ? "" : currentUserName) : "",
                       signedAt: event.target.checked ? new Date().toISOString() : "",
                     })}
                   />
                   <span>
-                    <strong>{text("Sign as the author of this document", "Ondertekenen als opsteller van dit document")}</strong>
+                    <strong>{submittedRegister
+                      ? text("The submitted form is signed by that person", "Het ingediende formulier is door die persoon ondertekend")
+                      : text("Sign as the author of this document", "Ondertekenen als opsteller van dit document")}</strong>
                     <small>{registerForm.signedBy
                       ? text(`Signed by ${registerForm.signedBy} · ${formatDate(registerForm.signedAt, locale)}`, `Ondertekend door ${registerForm.signedBy} · ${formatDate(registerForm.signedAt, locale)}`)
-                      : text("The name and the moment of signing are stored with the document.", "De naam en het moment van ondertekenen worden bij het document opgeslagen.")}</small>
+                      : submittedRegister
+                        ? text("Record the signature that stands on the received form; CODECO signs at the formal response.", "Leg de handtekening vast die op het ontvangen formulier staat; CODECO tekent bij het formele antwoord.")
+                        : text("The name and the moment of signing are stored with the document.", "De naam en het moment van ondertekenen worden bij het document opgeslagen.")}</small>
                   </span>
                 </label>
-                <div className="operation-alert warning"><FileCheck2 size={17} /><div><strong>{text("Numbering and metadata are automatic", "Nummering en metadata zijn automatisch")}</strong><span>{text("Project, building, issue date, author and audit history are filled from the current context. Approval, acknowledgement and signature remain explicit human actions.", "Project, gebouw, uitgiftedatum, opsteller en auditgeschiedenis komen uit de actuele context. Goedkeuring, ontvangst en ondertekening blijven expliciete menselijke acties.")}</span></div></div>
+                <div className="operation-alert warning"><FileCheck2 size={17} /><div><strong>{text("Numbering and metadata are automatic", "Nummering en metadata zijn automatisch")}</strong><span>{submittedRegister
+                  ? text("Project, building, receipt date and audit history are filled from the current context. This form was drawn up and signed by the submitting party; CODECO's own signature belongs to the formal response below.", "Project, gebouw, ontvangstdatum en auditgeschiedenis komen uit de actuele context. Dit formulier is door de indienende partij opgesteld en ondertekend; de handtekening van CODECO hoort bij het formele antwoord hieronder.")
+                  : text("Project, building, issue date, author and audit history are filled from the current context. Approval, acknowledgement and signature remain explicit human actions.", "Project, gebouw, uitgiftedatum, opsteller en auditgeschiedenis komen uit de actuele context. Goedkeuring, ontvangst en ondertekening blijven expliciete menselijke acties.")}</span></div></div>
               </> : agreementRegister ? null : <label className="form-field"><span>{text("Involved party", "Betrokken partij")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>}
               {/* Every register item can carry site photos, with the text that says what
                   the photo shows. Documents alone were not enough for the client. */}
@@ -2394,7 +2421,7 @@ function SubmittedRecordShare({ finding, scope, projectName, projectCode, buildi
   );
 }
 
-function FindingList({ data, client, run, findings, progressUpdates, visualAnnotations, externalShareLinks, projectName, projectCode, buildings, locationNodes, currentUserName, parties, busy, transition, recordProgress, share, revoke, linkVisual, linkDrawing }: {
+function FindingList({ data, client, run, findings, progressUpdates, visualAnnotations, externalShareLinks, projectName, projectCode, buildings, locationNodes, currentUserName, resolveUserName, parties, busy, transition, recordProgress, share, revoke, linkVisual, linkDrawing }: {
   data: OperationSnapshot;
   client: SupabaseClient;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
@@ -2407,6 +2434,8 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   buildings: BuildingOption[];
   locationNodes: OperationSnapshot["locationNodes"];
   currentUserName: string;
+  /** Turns the stored verifier id into the name that belongs on the QC signature line. */
+  resolveUserName: (userId: string | null) => string;
   parties: ProjectParty[];
   busy: boolean;
   transition: (finding: Finding, nextStatus: string, note: string, finalMeasure: string, correction: string) => Promise<boolean>;
@@ -2451,6 +2480,18 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
     setCreatingShareFor(null);
   };
   const findingBuildingName = (finding: Finding) => buildings.find((building) => building.id === finding.building_id)?.name ?? "";
+  /**
+   * The signature lines of the client's NCR form. "QC verification" is the person the
+   * database recorded as verifier, never the person who happens to download the file.
+   */
+  const ncrContext = (finding: Finding, recordBuildingName: string) => ({
+    projectName,
+    projectCode,
+    buildingName: recordBuildingName,
+    issuerName: currentUserName,
+    responsiblePartyName: parties.find((party) => party.id === finding.responsible_party_id)?.name ?? "",
+    verifierName: resolveUserName(finding.verified_by),
+  });
   const externalMessage = (finding: Finding, shared: { url: string; expiresAt: string }) => [
     `CODECO werkpunt ${finding.finding_number}`,
     `${projectCode} · ${projectName}${findingBuildingName(finding) ? ` · ${findingBuildingName(finding)}` : ""}`,
@@ -2488,7 +2529,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
                 {creatingShareFor === finding.id ? <Loader2 className="spin" size={17} /> : <MessageCircle size={17} />}
                 <span><strong>{text("Send to external party", "Stuur naar externe partij")}</strong><small>{text("WhatsApp link · no account needed", "WhatsApp-link · geen account nodig")}</small></span>
               </button>
-              <ReportDownloadButtons disabled={busy} onDownloadPdf={() => import("@/lib/reports/ncr-pdf").then(({ downloadNcrPdf }) => downloadNcrPdf(finding, latestProgress, { projectName, projectCode, buildingName: recordBuildingName, issuerName: currentUserName, responsiblePartyName: parties.find((party) => party.id === finding.responsible_party_id)?.name ?? "" }))} onDownloadWord={() => import("@/lib/reports/ncr-docx").then(({ downloadNcrDocx }) => downloadNcrDocx(finding, latestProgress, { projectName, projectCode, buildingName: recordBuildingName, issuerName: currentUserName, responsiblePartyName: parties.find((party) => party.id === finding.responsible_party_id)?.name ?? "" }))} />
+              <ReportDownloadButtons disabled={busy} onDownloadPdf={() => import("@/lib/reports/ncr-pdf").then(({ downloadNcrPdf }) => downloadNcrPdf(finding, latestProgress, ncrContext(finding, recordBuildingName)))} onDownloadWord={() => import("@/lib/reports/ncr-docx").then(({ downloadNcrDocx }) => downloadNcrDocx(finding, latestProgress, ncrContext(finding, recordBuildingName)))} />
               {!["closed", "cancelled", "rejected"].includes(finding.status) ? <button className="secondary-button" type="button" onClick={() => { setProgressActive(progressActive === finding.id ? null : finding.id); setProgressPercent(String(latestProgress?.progress_percent ?? 0)); setProgressDisposition(latestProgress?.disposition ?? issue.disposition ?? "to_be_corrected"); }}>{text("Record inspection progress", "Inspectievoortgang vastleggen")}</button> : null}
               {nextStatus ? <button className="secondary-button" type="button" onClick={() => { setActive(active === finding.id ? null : finding.id); setCorrection(""); }}>{nextStatus === "closed" ? finding.finding_type === "ncr" ? text("Quality control · resolve", "Kwaliteitscontrole · afsluiten") : text("Verify", "Verifiëren") : nextStatus === "ready_for_verification" ? text("Mark repair ready", "Herstel gereedmelden") : finding.finding_type === "ncr" ? text("Record contractor answer", "Antwoord aannemer vastleggen") : text("Update status", "Status bijwerken")}</button> : null}
             </div>
@@ -2703,6 +2744,31 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
   };
   const canReview = reportStatus === "ready_for_review" || reportStatus === "in_review";
   const canSign = reportStatus === "approved" || reportStatus === "signed";
+  /**
+   * Who has to sign is a project setting, not a fixed list. The database refuses a role
+   * the signer does not hold and only marks the report "signed" when every required role
+   * of this project has signed, so the form has to offer exactly those roles.
+   */
+  const signingWorkflow = data.settings?.signing_workflow?.length
+    ? data.settings.signing_workflow
+    : [{ role: "supervisor", required: true }, { role: "project_manager", required: true }];
+  const roleLabels: Record<string, string> = {
+    supervisor: "Supervisor",
+    lead_supervisor: "Lead supervisor",
+    project_manager: text("Project manager", "Projectleider"),
+    contractor: text("Contractor", "Aannemer"),
+    client: text("Client", "Opdrachtgever"),
+    quality_hse_manager: text("Quality/HSE", "Kwaliteit/HSE"),
+  };
+  const latestVersionId = data.reportVersions[0]?.id ?? "";
+  const requiredRoles = signingWorkflow.filter((rule) => rule.required);
+  const signedRequiredRoles = requiredRoles.filter((rule) => data.reportSignatures.some(
+    (signature) => signature.report_version_id === latestVersionId && signature.signer_role === rule.role,
+  ));
+  // A project that does not use "supervisor" must not start on it either.
+  const effectiveSignerRole = signingWorkflow.some((rule) => rule.role === signerRole)
+    ? signerRole
+    : signingWorkflow[0]?.role ?? "supervisor";
   const canDistribute = reportStatus === "signed" || reportStatus === "sent";
   const reportViews = [
     { id: "create" as const, icon: CalendarRange, title: text("Create report", "Rapport maken"), copy: text("Choose content and period", "Kies inhoud en periode") },
@@ -2807,7 +2873,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
           </div>
           <section className="workflow-grid">
             <div className={`workflow-card ${workflowStep === 1 ? "current" : workflowStep > 1 ? "complete" : "locked"}`}><div className="workflow-icon"><ClipboardCheck size={19} /></div><h2>1. Review</h2><p>{text("An authorized reviewer approves or returns the report with a reason. Approval automatically freezes the complete snapshot with SHA-256.", "Een bevoegde reviewer keurt goed of stuurt gemotiveerd terug. Bij goedkeuring bevriest de database automatisch de volledige momentopname met SHA-256.")}</p><label className="form-field"><span>{text("Review comment", "Reviewcommentaar")}</span><textarea rows={3} value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} /><DictateButton onText={(transcript) => setReviewComment((current) => appendDictation(current, transcript))} /></label><div className="button-row"><button className="secondary-button" type="button" disabled={busy || !reportId || !canReview || reviewComment.trim().length < 2} onClick={() => void run(() => reviewReport(client, reportId!, "returned", reviewComment), text("Report returned for correction with a reason.", "Rapport gemotiveerd teruggestuurd voor correctie."))}>{text("Return", "Terugsturen")}</button><button className="primary-button" type="button" disabled={busy || !reportId || !canReview || reviewComment.trim().length < 2} onClick={() => void run(() => reviewReport(client, reportId!, "approved", reviewComment), text("Report approved and frozen as an immutable version.", "Rapport goedgekeurd en als immutable versie vastgezet."))}><FileCheck2 size={15} /> {text("Approve and freeze", "Goedkeuren & vastzetten")}</button></div></div>
-            <div className={`workflow-card ${workflowStep === 2 ? "current" : workflowStep > 2 ? "complete" : "locked"}`}><div className="workflow-icon"><FileCheck2 size={19} /></div><h2>2. {text("Signing declaration", "Ondertekenverklaring")}</h2><p>{text("Identity, project role, version hash and declaration remain append-only. The legal level remains", "Identiteit, projectrol, versiehash en verklaring blijven append-only bewaard. Het juridische niveau blijft")} <strong>contract pending</strong> {text("until CODECO formally decides.", "totdat CODECO dit formeel kiest.")}</p><label className="form-field"><span>{text("Sign as", "Onderteken als")}</span><select value={signerRole} onChange={(event) => setSignerRole(event.target.value)}><option value="supervisor">Supervisor</option><option value="project_manager">{text("Project manager", "Projectleider")}</option><option value="lead_supervisor">Lead supervisor</option><option value="contractor">{text("Contractor", "Aannemer")}</option><option value="client">{text("Client", "Opdrachtgever")}</option><option value="quality_hse_manager">{text("Quality/HSE", "Kwaliteit/HSE")}</option></select></label><label className="form-field"><span>{text("Declaration", "Verklaring")}</span><textarea rows={3} value={declaration} onChange={(event) => setDeclaration(event.target.value)} /><DictateButton onText={(transcript) => setDeclaration((current) => appendDictation(current, transcript))} /></label><button className="primary-button" type="button" disabled={busy || !reportId || !canSign || declaration.trim().length < 10} onClick={() => void run(() => signReport(client, reportId!, signerRole, currentUserName, declaration), text("Signing declaration immutably linked to the report version.", "Ondertekenverklaring onveranderbaar aan de rapportversie gekoppeld."))}><FileCheck2 size={15} /> {text("Record declaration", "Verklaring vastleggen")}</button></div>
+            <div className={`workflow-card ${workflowStep === 2 ? "current" : workflowStep > 2 ? "complete" : "locked"}`}><div className="workflow-icon"><FileCheck2 size={19} /></div><h2>2. {text("Signing declaration", "Ondertekenverklaring")}</h2><p>{text("Identity, project role, version hash and declaration remain append-only. The legal level remains", "Identiteit, projectrol, versiehash en verklaring blijven append-only bewaard. Het juridische niveau blijft")} <strong>contract pending</strong> {text("until CODECO formally decides.", "totdat CODECO dit formeel kiest.")}</p><label className="form-field"><span>{text("Sign as", "Onderteken als")}</span><select value={effectiveSignerRole} onChange={(event) => setSignerRole(event.target.value)}>{signingWorkflow.map((rule) => <option value={rule.role} key={rule.role}>{roleLabels[rule.role] ?? rule.role.replaceAll("_", " ")}{rule.required ? ` · ${text("required", "verplicht")}` : ""}</option>)}</select><small>{text(`${signedRequiredRoles.length} of ${requiredRoles.length} required signatures recorded for this version. You can only sign in a project role you actually hold.`, `${signedRequiredRoles.length} van ${requiredRoles.length} verplichte handtekeningen vastgelegd voor deze versie. Je kunt alleen tekenen in een projectrol die je echt hebt.`)}</small></label><label className="form-field"><span>{text("Declaration", "Verklaring")}</span><textarea rows={3} value={declaration} onChange={(event) => setDeclaration(event.target.value)} /><DictateButton onText={(transcript) => setDeclaration((current) => appendDictation(current, transcript))} /></label><button className="primary-button" type="button" disabled={busy || !reportId || !canSign || declaration.trim().length < 10} onClick={() => void run(() => signReport(client, reportId!, effectiveSignerRole, currentUserName, declaration), text("Signing declaration immutably linked to the report version.", "Ondertekenverklaring onveranderbaar aan de rapportversie gekoppeld."))}><FileCheck2 size={15} /> {text("Record declaration", "Verklaring vastleggen")}</button></div>
             <div className={`workflow-card ${workflowStep === 3 ? "current" : "locked"}`}><div className="workflow-icon"><Users size={19} /></div><h2>3. {text("Distribution", "Distributie")}</h2><p>{text("Only record a delivery that actually occurred. Without an email connector, the app does not claim automatic delivery.", "Registreer alleen een verzending die werkelijk heeft plaatsgevonden. De app claimt zonder e-mailconnector geen automatische bezorging.")}</p><label className="form-field"><span>{text("Recipient", "Ontvanger")}</span><input value={distribution.name} onChange={(event) => setDistribution({ ...distribution, name: event.target.value })} /></label><label className="form-field"><span>{text("Address / reference", "Adres / referentie")}</span><input value={distribution.address} onChange={(event) => setDistribution({ ...distribution, address: event.target.value })} /></label><label className="form-field"><span>{text("Channel", "Kanaal")}</span><select value={distribution.channel} onChange={(event) => setDistribution({ ...distribution, channel: event.target.value })}><option value="manual">{text("Manual transfer", "Handmatige overdracht")}</option><option value="email">{text("Email (sent externally)", "E-mail (extern verzonden)")}</option><option value="download">{text("Secure download", "Beveiligde download")}</option></select></label><button className="primary-button" type="button" disabled={busy || !reportId || !canDistribute || distribution.name.trim().length < 2 || distribution.address.trim().length < 3} onClick={() => void run(() => recordDistribution(client, reportId!, distribution.name, distribution.address, distribution.channel), text("Traceable distribution record added to the fixed version.", "Aantoonbare distributieregel aan de vastgezette versie toegevoegd."))}><FileText size={15} /> {text("Record distribution", "Distributie registreren")}</button></div>
           </section>
         </>

@@ -94,6 +94,87 @@ kan getekend worden.
 
 ---
 
+# Tweede ronde: hoort er op elke plek wel een handtekening?
+
+Na het repareren van de zichtbaarheid ben ik elke plek in de app waar een handtekening
+staat langs de eigen formulieren van de klant gelopen
+(`tmp/client_context/pdf_pages/`: NCR, RFI, RFA, WIR) en langs het productplan. Drie
+dingen klopten niet.
+
+## 6. CODECO ondertekende formulieren die de aannemer had opgesteld
+
+**Wat de formulieren van de klant zeggen** — op de RFI en de RFA staat bovenaan *Requested
+by · Position · Signature*: dat is de aannemer (Sun Haoxuan, Quality Control, met
+handtekening). Onderaan staat *Name Respondent · Position · Signature · Date*: daar tekent
+CODECO. Op de WIR tekenen Engineer/QC/QA/Surveyor van de aannemer bovenaan, en tekent
+CODECO onder *Inspection By · Construction supervisor*.
+
+**Wat de app deed** — WCR, RFI, RFA en WIR worden onder Management vastgelegd omdat de
+aannemer ze indient. Toch stond op dat formulier *Opgemaakt door* als keuzelijst met
+CODECO-medewerkers en *"Ondertekenen als opsteller van dit document"*. Eén vinkje en de
+PDF zei dat CODECO een document had opgesteld en ondertekend dat de aannemer had
+ingediend.
+
+**Nu** — voor die vier types vraagt het formulier *Ingediend door · naam op het formulier*
+en *Functie* als vrij tekstveld, en het vinkje heet *"Het ingediende formulier is door die
+persoon ondertekend"*: je legt de handtekening vast die op het ontvangen papier staat. De
+PDF kopt daar **SUBMITTED AND SIGNED BY** in plaats van *issued*. De handtekening van
+CODECO blijft waar zij op papier ook staat: bij het formele antwoord.
+
+## 7. De QC-handtekening op de NCR was van wie de PDF downloadde
+
+**Wat het formulier van de klant zegt** — onderaan de NCR staat *Quality Control Issue ·
+Issue resolved / not resolved · Date · Signature*.
+
+**Wat de app deed** — de handtekeningregel *QC verification* werd gevuld met
+`currentUserName`: de naam van degene die op dat moment de PDF opende. Wie een NCR van een
+collega downloadde, kreeg zijn eigen naam op de kwaliteitshandtekening.
+
+**Nu** — `findings.verified_by` bestond al en wordt door de database zelf gezet zodra een
+bevinding wordt gesloten; de app las die kolom alleen nooit. Ze wordt nu geladen en
+omgezet naar de naam van die persoon. Is de verifier onbekend, dan blijft de regel leeg —
+zoals hij op papier ook leeg blijft. Geen migratie nodig.
+
+## 8. Het rapport bood zes ondertekenrollen aan die het project niet kent
+
+**Wat het productplan zegt** — §7: *"Rapportverantwoordelijke en ondertekenaars: niet hard
+coderen. Een beheerder kan later per project instellen wie eigenaar, reviewer en
+ondertekenaar is."* Dat staat er ook: `project_settings.signing_workflow`.
+
+**Wat de app deed** — de keuzelijst *Onderteken als* was een vaste lijst van zes rollen.
+De database weigert een rol die je niet hebt (`sign_report_version` controleert de
+projectrol) en zet het rapport pas op *ondertekend* als alle **verplichte** rollen uit
+`signing_workflow` hebben getekend. De gebruiker zag daar niets van en kon rollen kiezen
+die tot een foutmelding leidden.
+
+**Nu** — de lijst komt uit `signing_workflow` van het project, met *verplicht* erbij, en
+eronder staat *"1 van 2 verplichte handtekeningen vastgelegd voor deze versie. Je kunt
+alleen tekenen in een projectrol die je echt hebt."* Kent een project geen instelling, dan
+geldt de standaard van de database (supervisor + projectleider).
+
+## Plekken die wél kloppen
+
+| Plek | Waarom hij blijft |
+| --- | --- |
+| **NCR · ondertekening door de ingenieur** | Staat op het NCR-formulier van de klant, onder de omschrijving en onder de aanbevolen actie. |
+| **NCR · handtekening van de aannemer bij de correctie** | *Proposed Corrective Action by Contractor · Signature · Date* op hetzelfde formulier. Verplicht gemaakt. |
+| **TI, CO en ER · ondertekenen als opsteller** | CODECO stelt deze zelf op; #12 vroeg er expliciet om. |
+| **Afspraak · beide partijen** | Gevraagd op 1 augustus: "onderteken optie" plus kunnen kiezen tussen wie de afspraak is gemaakt. |
+| **Dagrapport · verklaring per rol** | Punt 19 van het dagrapport en productplan §4.17. |
+| **Formeel antwoord op een indiening** | *Name Respondent · Position · Signature · Date* op de RFI-, RFA- en WIR-formulieren. |
+
+## Plekken waar bewust géén handtekening staat
+
+| Plek | Waarom niet |
+| --- | --- |
+| **Issue / punchlistpunt** | Het Issue Management Template van de klant kent *Entered By* en *Assigned To Owner*, geen handtekening. De app legt de invoerder en de auditregel vast. |
+| **HSE-registratie** | Geen ondertekenveld op de HSE-onderdelen van het dagrapport; ernst, maatregel en bewijs zijn wat gevraagd wordt. |
+| **Inspectie / checklist** | Afronden is een geauthenticeerde handeling met audittrail; de checklistformulieren van de klant (ankerchecklists) hebben geen handtekeningregel. Vraagt de klant er één, dan hoort die bij *Inspection By* zoals op de WIR. |
+| **Levering, materieel, test, daglog** | Registerregels met een uitslag en een hoeveelheid; geen van de klantformulieren zet daar een handtekening onder. |
+| **Externe gereedmelding door de aannemer** | De naam blijft optioneel: gereedmelden is geen ondertekening op hun formulier. Alleen de correctieve actie vraagt een naam. |
+
+---
+
 ## Wat bewust niet is opgelost
 
 | Punt | Waarom |

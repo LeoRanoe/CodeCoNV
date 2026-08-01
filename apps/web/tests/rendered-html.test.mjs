@@ -1316,3 +1316,38 @@ test("makes every recorded signature visible on the document it belongs to", asy
   assert.match(fieldTools, /agreementSignatureDetails\(agreement\)/);
   assert.match(workspace, /agreementSummaryLine\(entry\.details, text\)/);
 });
+
+test("only asks for a signature where the client's own forms have one", async () => {
+  const [workspace, operations, ncrPdf, ncrDocx, controlledPdf, controlledDocx] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/ncr-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/ncr-docx.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/controlled-document-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/controlled-document-docx.ts", import.meta.url), "utf8"),
+  ]);
+
+  // On the client's RFI, RFA and WIR forms the contractor signs the request and CODECO
+  // signs the reply, so CODECO never signs those as the author.
+  assert.match(workspace, /const submittedRegister = externalSubmissionRegisterTypes\.includes\(registerForm\.type\)/);
+  assert.match(workspace, /Submitted by · name on the form|Ingediend door · naam op het formulier/);
+  assert.match(workspace, /The submitted form is signed by that person|Het ingediende formulier is door die persoon ondertekend/);
+  assert.match(controlledPdf, /SUBMITTED AND SIGNED BY/);
+  assert.match(controlledDocx, /Submitted and signed by/);
+
+  // The QC signature on a closed NCR is the recorded verifier, never the person who
+  // downloads the document.
+  assert.match(operations, /verified_by: string \| null;/);
+  assert.match(operations, /final_measure,issue_management,verified_by,verified_at/);
+  assert.match(workspace, /verifierName: resolveUserName\(finding\.verified_by\)/);
+  assert.match(ncrPdf, /resolved \? context\.verifierName \?\? "" : ""/);
+  assert.match(ncrDocx, /resolved \? context\.verifierName \?\? "" : ""/);
+  assert.doesNotMatch(ncrPdf, /"QC verification", resolved \? context\.issuerName/);
+
+  // Who has to sign a report is a project setting; the database enforces it, so the form
+  // offers exactly those roles instead of a fixed list.
+  assert.match(workspace, /const signingWorkflow = data\.settings\?\.signing_workflow\?\.length/);
+  assert.match(workspace, /const requiredRoles = signingWorkflow\.filter\(\(rule\) => rule\.required\)/);
+  assert.match(workspace, /required signatures recorded for this version|verplichte handtekeningen vastgelegd voor deze versie/);
+  assert.doesNotMatch(workspace, /<option value="quality_hse_manager">/);
+});

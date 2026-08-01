@@ -8,6 +8,8 @@ export type NcrContext = {
   buildingName: string;
   issuerName: string;
   responsiblePartyName: string;
+  /** Who actually verified the close-out. Never the person downloading the file. */
+  verifierName?: string;
 };
 
 const styles = StyleSheet.create({
@@ -63,7 +65,7 @@ export function NcrDocument({ finding, progress, context, logoSource = "/codeco-
       <Section title="ENGINEER'S RECOMMENDED ACTION"><Text style={styles.value}>{value(issue.recommended_action_detail || issue.action_steps, "Rework / repair in accordance with the approved drawings and specifications.")}</Text><View style={styles.checks}><Text>{issue.recommended_action === "rework" ? "[X]" : "[ ]"} Rework</Text><Text>{issue.recommended_action === "repair" ? "[X]" : "[ ]"} Repair</Text><Text>{issue.recommended_action === "alternative" ? "[X]" : "[ ]"} Alternative solution for approval</Text></View></Section>
       <Section title="PROPOSED CORRECTIVE ACTION BY CONTRACTOR"><Text style={styles.value}>{value(finding.proposed_correction, "Pending contractor proposal and acknowledgement.")}</Text>{finding.final_measure ? <Text style={styles.value}>Completed: {finding.final_measure}</Text> : null}{issue.correction_signed_by ? <Text style={styles.value}>Signed: {issue.correction_signed_by} · {String(issue.correction_signed_at ?? "").slice(0, 10)}</Text> : null}</Section>
       <Section title="QUALITY CONTROL VERIFICATION"><Text style={styles.value}>Latest inspection progress: {progress?.progress_percent ?? 0}% · disposition: {(progress?.disposition ?? issue.disposition ?? "to_be_corrected").replaceAll("_", " ")}</Text><View style={styles.checks}><Text>{resolved ? "[X]" : "[ ]"} Issue resolved</Text><Text>{resolved ? "[ ]" : "[X]"} Issue not resolved</Text><Text>Status: {finding.status.replaceAll("_", " ")}</Text></View></Section>
-      <View style={styles.signatures}>{[["Issued by", issue.signed_by || context.issuerName], ["Received / contractor", issue.correction_signed_by || issue.completion_signed_by || ""], ["QC verification", resolved ? context.issuerName : ""]].map(([label, result], index) => <View style={[styles.signature, index < 2 ? styles.right : {}]} key={label}><Text style={styles.label}>{label}</Text><View style={styles.signatureLine} /><Text>{result || " "}</Text></View>)}</View>
+      <View style={styles.signatures}>{[["Issued by", issue.signed_by || context.issuerName], ["Received / contractor", issue.correction_signed_by || issue.completion_signed_by || ""], ["QC verification", resolved ? context.verifierName ?? "" : ""]].map(([label, result], index) => <View style={[styles.signature, index < 2 ? styles.right : {}]} key={label}><Text style={styles.label}>{label}</Text><View style={styles.signatureLine} /><Text>{result || " "}</Text></View>)}</View>
       <Text style={styles.note}>The photo boxes refer to evidence linked in the central project record; images are not duplicated into this generated form unless selected as report attachments. Closing remains a separate authorized human verification.</Text>
       <Text style={styles.footer} fixed>CODECO N.V. · Non-conformance report</Text>
     </Page>

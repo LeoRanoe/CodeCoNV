@@ -90,6 +90,8 @@ export type Finding = {
     completion_signed_by?: string;
     completion_signed_at?: string | null;
   };
+  /** Set by the database when a finding is closed: who verified it, for the QC signature. */
+  verified_by: string | null;
   verified_at: string | null;
   created_at: string;
 };
@@ -473,7 +475,7 @@ export async function loadProjectOperations(
     client.from("checklist_templates").select("id,project_id,module,code,name,description,version_number,status").or(`project_id.is.null,project_id.eq.${projectId}`).order("name"),
     client.from("checklist_library_templates").select("code,module,category,name,description,prompts,sort_order").eq("active", true).order("sort_order"),
     client.from("inspections").select("id,building_id,location_node_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
-    client.from("findings").select("id,building_id,location_node_id,finding_number,finding_type,title,description,severity,priority,status,responsible_party_id,assigned_user_id,due_at,cause,proposed_correction,final_measure,issue_management,verified_at,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
+    client.from("findings").select("id,building_id,location_node_id,finding_number,finding_type,title,description,severity,priority,status,responsible_party_id,assigned_user_id,due_at,cause,proposed_correction,final_measure,issue_management,verified_by,verified_at,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
     client.from("finding_progress_updates").select("id,finding_id,progress_percent,disposition,note,inspected_at,created_at").eq("project_id", projectId).order("inspected_at", { ascending: false }).limit(1000),
     client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,title,description,severity,status,confidential,immediate_measure,occurred_at").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100),
     client.from("project_register_entries").select("id,building_id,location_node_id,register_type,entry_number,title,status,occurred_at,due_at,details").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(5000),

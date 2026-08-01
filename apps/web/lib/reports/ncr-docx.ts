@@ -18,6 +18,8 @@ export type NcrContext = {
   buildingName: string;
   issuerName: string;
   responsiblePartyName: string;
+  /** Who actually verified the close-out. Never the person downloading the file. */
+  verifierName?: string;
 };
 
 function value(result: string | null | undefined, fallback = "—") {
@@ -69,7 +71,7 @@ export function buildNcrDocxDocument(finding: Finding, progress: FindingProgress
           signatureBlock([
             ["Issued by", issue.signed_by || context.issuerName],
             ["Received / contractor", issue.correction_signed_by || issue.completion_signed_by || ""],
-            ["QC verification", resolved ? context.issuerName : ""],
+            ["QC verification", resolved ? context.verifierName ?? "" : ""],
           ]),
           new Paragraph({
             children: [new TextRun({ text: "Linked evidence photos remain in the central project record; images are not duplicated into this generated document unless selected as report attachments. Closing remains a separate authorized human verification.", italics: true, color: "666666", size: 14 })],
