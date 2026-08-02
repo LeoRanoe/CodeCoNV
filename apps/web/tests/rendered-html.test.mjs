@@ -771,7 +771,7 @@ test("treats every project as a multi-building workspace", async () => {
 });
 
 test("keeps employee assignment, editable external rights and openable document history enforceable", async () => {
-  const [app, operations, documents, media, data, storage, pushClient, roleRoute, migration] = await Promise.all([
+  const [app, operations, documents, media, data, storage, pushClient, roleRoute, migration, roleRepairMigration] = await Promise.all([
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/project-documents-home.tsx", import.meta.url), "utf8"),
@@ -781,6 +781,7 @@ test("keeps employee assignment, editable external rights and openable document 
     readFile(new URL("../lib/notifications/push-client.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/admin/project-role/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../../../supabase/migrations/202607300002_company_employee_task_assignment.sql", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202608020001_fix_project_role_assignment.sql", import.meta.url), "utf8"),
   ]);
 
   assert.match(app, /Assigned company employee/);
@@ -804,6 +805,8 @@ test("keeps employee assignment, editable external rights and openable document 
   assert.match(migration, /create or replace function public\.set_user_project_role/);
   assert.match(migration, /app_private\.is_company_project_employee/);
   assert.match(migration, /insert into public\.audit_events/);
+  assert.match(roleRepairMigration, /create or replace function public\.set_user_project_role/);
+  assert.doesNotMatch(roleRepairMigration, /role\.active/);
 });
 
 test("makes photo linkage, punch-list marker colours and report topics real", async () => {

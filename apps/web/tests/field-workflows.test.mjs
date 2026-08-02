@@ -232,7 +232,7 @@ test("offers marking on the photo everywhere a photo can be attached", async () 
 
   // Dragging the pen must not turn into dragging the photo, which cancels the stroke.
   assert.match(markup, /draggable=\{false\}/);
-  assert.match(markup, /event\.preventDefault\(\);\n\s*event\.currentTarget\.setPointerCapture/);
+  assert.match(markup, /event\.preventDefault\(\);\r?\n\s*event\.currentTarget\.setPointerCapture/);
   // The markings are burnt into the picture, so it still says what is wrong outside the app.
   assert.match(markup, /canvas\.toBlob\(resolve, "image\/jpeg", 0\.9\)/);
   assert.match(css, /\.photo-markup-stage img \{[\s\S]{0,220}user-select: none/);
