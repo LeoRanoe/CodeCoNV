@@ -62,6 +62,7 @@ import { LiveWeatherChip } from "@/app/live-weather-chip";
 import { LocationPicker, locationBreadcrumb, type ProjectLocationOption } from "@/app/location-picker";
 import { FieldGuide } from "@/app/field-guide";
 import { OperationalWorkspace } from "@/app/operational-workspace";
+import type { ActionCenterView } from "@/app/project-action-center";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { ensureDailyBackup } from "@/lib/backups/client";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
@@ -537,7 +538,12 @@ export function CodecoSupervisionApp() {
   const [pendingQuickPhotos, setPendingQuickPhotos] = useState<File[]>([]);
   const [externalSubmissionIntent, setExternalSubmissionIntent] = useState(false);
   /** Which view the action centre opens on; the deadline tile asks for the deadlines. */
-  const [actionCenterView, setActionCenterView] = useState<"work" | "deadlines">("work");
+  const [actionCenterView, setActionCenterView] = useState<ActionCenterView>("work");
+  /**
+   * The record the action centre sent the user to. It is a detail inside a screen, not a
+   * screen of its own, so it stays out of the history and out of the address.
+   */
+  const [focusRecordId, setFocusRecordId] = useState("");
   const [description, setDescription] = useState("");
   // A proposed description must vanish on the first keystroke instead of staying behind.
   const [descriptionSuggested, setDescriptionSuggested] = useState(false);
@@ -1193,6 +1199,8 @@ export function CodecoSupervisionApp() {
     // Reaching the action centre from the bar means the worklist; only the deadline
     // tile of the workspace asks for the deadline view.
     setActionCenterView("work");
+    // A new destination is a new screen: the record the action centre pointed at is done.
+    setFocusRecordId("");
     // Any deliberate navigation ends the Management submission hand-off, so the
     // workspace never stays unlocked for contractor document types.
     setExternalSubmissionIntent(false);
@@ -1675,6 +1683,7 @@ export function CodecoSupervisionApp() {
               reportStatus={String(dayQuery.data?.report?.status ?? "draft")}
               projectStartAnswers={projectStartAnswers}
               currentUserName={currentUserName}
+              currentUserId={session.user.id}
               companyEmployees={companyEmployees}
               parties={dayQuery.data?.parties ?? []}
               canManageOrganization={canManageMembers}
@@ -1683,6 +1692,7 @@ export function CodecoSupervisionApp() {
               onProjectTabChange={setInitialProjectTab}
               externalSubmissionIntent={externalSubmissionIntent}
               actionCenterView={actionCenterView}
+              focusRecordId={focusRecordId}
               initialCameraFiles={pendingQuickPhotos}
               onInitialCameraFilesConsumed={() => setPendingQuickPhotos([])}
               openQuickCamera={openQuickAdd}
@@ -1695,11 +1705,14 @@ export function CodecoSupervisionApp() {
                 setModal("action_detail");
               }}
               createProjectAction={() => setModal("action_create")}
-              openProjectArea={(tab) => {
+              openProjectArea={(tab, recordId) => {
                 // "submissions" is Management deliberately unlocking the contractor
                 // document types; every other destination is a normal workspace module.
                 setExternalSubmissionIntent(tab === "submissions");
                 setInitialProjectTab(tab === "submissions" ? "registers" : tab);
+                // The action centre points at a record, so the module opens on that record
+                // instead of on the list it stands in.
+                setFocusRecordId(recordId ?? "");
                 setActiveNav("project");
               }}
               openActionCenter={(view = "work") => { navigate("acties"); setActionCenterView(view); }}

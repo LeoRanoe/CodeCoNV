@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "@photo-sphere-viewer/core/index.css";
 @import "@photo-sphere-viewer/markers-plugin/index.css";
+@import "@photo-sphere-viewer/compass-plugin/index.css";
 
 :root {
   --ink-950: #14151a;
@@ -7647,6 +7648,107 @@ textarea:focus-visible {
   font-size: 10px;
 }
 
+/* The 360° controls sit on the image as labelled buttons, because on site the drag and
+   pinch gestures alone were not discovered. */
+.panorama-controls {
+  bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  left: 12px;
+  position: absolute;
+  z-index: 5;
+}
+
+.panorama-controls button {
+  align-items: center;
+  backdrop-filter: blur(7px);
+  background: rgba(12, 28, 38, .86);
+  border: 1px solid rgba(255, 255, 255, .32);
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 9px;
+  font-weight: 720;
+  gap: 5px;
+  min-height: 35px;
+  padding: 7px 10px;
+}
+
+.panorama-controls button.active { background: #0f7667; border-color: #6fd0bd; }
+
+.panorama-heading {
+  align-items: center;
+  backdrop-filter: blur(7px);
+  background: rgba(12, 28, 38, .86);
+  border-radius: 999px;
+  color: #fff;
+  display: inline-flex;
+  font-size: 9px;
+  font-weight: 750;
+  gap: 5px;
+  padding: 5px 10px;
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  z-index: 5;
+}
+
+/* What the picture says about itself, next to the picture. */
+.capture-details {
+  background: #fff;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  display: grid;
+  gap: 9px;
+  padding: 12px 13px;
+}
+
+.capture-details-copy h3 { color: #1d2924; font-size: 12px; margin: 3px 0 5px; }
+.capture-details-copy p { color: #56635d; font-size: 9px; line-height: 1.6; margin: 0 0 6px; white-space: pre-line; }
+.capture-details-copy p.capture-details-empty { color: #8b968f; font-style: italic; }
+.capture-details-copy small { align-items: center; color: #7a8781; display: flex; font-size: 8px; gap: 4px; }
+.capture-details-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Every marking on the image, numbered as it is numbered on the picture. */
+.visual-marker-list { display: grid; gap: 5px; list-style: none; margin: 0; padding: 0; }
+.visual-marker-list button {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  display: grid;
+  gap: 9px;
+  grid-template-columns: 26px minmax(0, 1fr);
+  min-height: 46px;
+  padding: 7px 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.visual-marker-list button.active { border-color: #87b9ae; box-shadow: 0 0 0 2px rgba(15, 118, 103, .18); }
+.visual-marker-list strong { color: #1d2924; display: block; font-size: 9px; }
+.visual-marker-list small { color: #7a8781; display: block; font-size: 7px; text-transform: capitalize; }
+.visual-marker-number {
+  border-radius: 50%;
+  color: #fff;
+  display: grid;
+  font-size: 9px;
+  font-weight: 850;
+  height: 26px;
+  place-items: center;
+  width: 26px;
+  background: var(--yellow);
+}
+
+.visual-marker-number.validated { background: var(--green); }
+.visual-marker-number.to-be-corrected { background: #d36f25; }
+.visual-marker-number.alternative-solution { background: var(--red); }
+.visual-marker-number.low { background: var(--green); }
+.visual-marker-number.high { background: #d36f25; }
+.visual-marker-number.critical { background: var(--red); }
+
 .visual-stage-help {
   display: flex;
   align-items: flex-start;
@@ -7805,6 +7907,18 @@ textarea:focus-visible {
     height: 430px;
     min-height: 430px;
   }
+
+  /* On a phone the controls stay one scrollable row instead of covering the image. */
+  .panorama-controls {
+    flex-wrap: nowrap;
+    left: 8px;
+    max-width: calc(100% - 16px);
+    overflow-x: auto;
+    right: 8px;
+  }
+
+  .panorama-controls button { flex: 0 0 auto; min-height: 40px; }
+  .capture-details-actions > button { flex: 1 1 auto; justify-content: center; }
 
   .viewer-center-action {
     right: 8px;
@@ -11753,7 +11867,7 @@ button {
 }
 
 .action-center-worklist,
-.action-plan-card {
+.action-focus-card {
   background: #fff;
   border: 1px solid var(--panel-border);
   border-radius: 15px;
@@ -11830,29 +11944,67 @@ button {
 .unified-action-priority.urgent { color: #d06b17; }
 .unified-action-priority.critical { color: #c43d32; }
 
-.action-plan-card {
+/* The instruction on a row: what has to happen next with this record. */
+.unified-action-next {
+  align-items: center;
+  color: var(--teal-dark);
+  display: flex;
+  font-size: 8px;
+  font-weight: 750;
+  gap: 4px;
+  margin: 1px 0 2px;
+}
+
+.unified-action-next.step-assign,
+.unified-action-next.step-finish { color: #b35a10; }
+.unified-action-next.step-verify { color: #2b6f97; }
+.unified-action-next.step-done { color: #8a958f; font-weight: 700; }
+.unified-action-flag { align-items: center; background: #fdeceb; border-radius: 999px; color: #c43d32; display: inline-flex; font-size: 7px; font-style: normal; font-weight: 800; gap: 3px; padding: 1px 6px; text-transform: uppercase; }
+
+.action-focus-card {
+  display: grid;
+  gap: 10px;
   padding: 13px;
 }
 
-.action-plan-card > header {
+.action-focus-card > header {
   align-items: center;
   display: flex;
   gap: 8px;
-  margin-bottom: 10px;
 }
 
-.action-plan-card > header > span { background: #e8f4f0; border-radius: 8px; color: var(--teal); display: grid; height: 33px; place-items: center; width: 33px; }
-.action-plan-card h2,
-.action-plan-card p { margin: 0; }
-.action-plan-card h2 { font-size: 11px; }
-.action-plan-card p { color: #7b8782; font-size: 8px; margin-top: 2px; }
-.action-plan-preview { height: 240px; margin-bottom: 10px; }
-.data-pin.pin-1 { left: 24%; top: 23%; }
-.data-pin.pin-2 { right: 26%; top: 31%; }
-.data-pin.pin-3 { bottom: 24%; left: 38%; }
-.data-pin.pin-4 { bottom: 17%; right: 18%; }
-.action-plan-empty { align-items: center; background: rgba(255,255,255,.9); border-radius: 999px; color: #66756e; display: flex; font-size: 8px; gap: 5px; left: 50%; padding: 6px 8px; position: absolute; top: 50%; transform: translate(-50%,-50%); white-space: nowrap; z-index: 2; }
-.action-plan-card > .secondary-button { justify-content: center; width: 100%; }
+.action-focus-card > header > span { background: #fdeceb; border-radius: 8px; color: #c43d32; display: grid; height: 33px; place-items: center; width: 33px; }
+.action-focus-card h2,
+.action-focus-card p { margin: 0; }
+.action-focus-card h2 { font-size: 11px; }
+.action-focus-card p { color: #7b8782; font-size: 8px; margin-top: 2px; }
+
+.action-escalation-list { display: grid; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.action-escalation-list button {
+  background: #fff8f7;
+  border: 1px solid #f3d9d5;
+  border-radius: 10px;
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  text-align: left;
+  width: 100%;
+}
+.action-escalation-list strong { color: #26332d; font-size: 9px; }
+.action-escalation-list small { color: #8b6058; font-size: 7px; }
+.action-focus-empty { align-items: center; color: #5f7a68; display: flex; font-size: 8px; gap: 6px; margin: 0; }
+
+.action-focus-counts { display: grid; gap: 5px; margin: 0; }
+.action-focus-counts > div { align-items: center; border-top: 1px solid #eef2f0; display: flex; justify-content: space-between; padding-top: 5px; }
+.action-focus-counts dt { color: #6e7b75; font-size: 8px; }
+.action-focus-counts dd { color: #26332d; font-size: 12px; font-weight: 800; margin: 0; }
+.action-focus-card > .secondary-button { justify-content: center; width: 100%; }
+
+/* The record the action centre pointed at, so it is recognisable the moment it opens. */
+.record-focused {
+  box-shadow: 0 0 0 2px var(--teal), 0 6px 18px rgba(15, 118, 103, .16);
+  scroll-margin-top: 90px;
+}
 
 @media (max-width: 1180px) {
   .overview-secondary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -11885,10 +12037,6 @@ button {
   .workspace-launcher-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .project-documents-actions { width: 100%; }
   .action-center-layout { grid-template-columns: 1fr; }
-  .action-plan-card { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) minmax(260px, .8fr); }
-  .action-plan-card > header,
-  .action-plan-card > .secondary-button { grid-column: 1; }
-  .action-plan-preview { grid-column: 2; grid-row: 1 / span 2; height: 170px; margin: 0; }
 }
 
 @media (max-width: 620px) {
@@ -12723,7 +12871,7 @@ button {
 .action-center-views button span { background: #fdeceb; border-radius: 999px; color: #c43d32; font-size: 9px; font-weight: 800; padding: 1px 7px; }
 
 .deadline-summary { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-.deadline-summary > button.overdue strong { color: #c43d32; }
+.action-center-summary > button.overdue strong { color: #c43d32; }
 .unified-action-list > button.overdue { background: #fff8f7; }
 .unified-action-copy small.overdue { color: #c43d32; font-weight: 800; }
 
@@ -12731,6 +12879,10 @@ button {
   .ncr-form-boxes,
   .agreement-signatures { grid-template-columns: 1fr; }
   .deadline-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* Three views do not fit side by side on a phone; they wrap instead of shrinking
+     the words away. */
+  .action-center-views { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .action-center-views button { min-height: 46px; }
 }
 
 @media (max-width: 520px) {

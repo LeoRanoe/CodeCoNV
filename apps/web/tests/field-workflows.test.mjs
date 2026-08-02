@@ -6,6 +6,13 @@ import {
   normalizeExternalShareToken,
 } from "../lib/external-share/token.mjs";
 import {
+  compareActionItems,
+  daysUntilOnSite,
+  isEscalatedItem,
+  isOverdueItem,
+  nextStepFor,
+} from "../lib/actions/action-center.mjs";
+import {
   fieldPhotoMimeTypes,
   markedPhotoName,
   markupCanvasSize,
@@ -385,4 +392,52 @@ test("walks the back button through the screens the field user actually visited"
   assert.equal(closesOverlay(screen({ menu: true }), screen({})), true);
   assert.equal(closesOverlay(screen({ tab: "ncr" }), screen({ tab: "home" })), false);
   assert.equal(closesOverlay(screen({ modal: "quick" }), screen({ nav: "acties" })), false);
+});
+
+test("says what has to happen next with a record in the action centre", () => {
+  const day = 24 * 60 * 60 * 1000;
+  const now = new Date("2026-08-02T14:00:00Z");
+  const record = (extra) => ({ status: "open", priority: "normal", dueAt: null, ownerUserId: null, ownerLabel: "", ...extra });
+
+  // The one instruction on a row. A record that is waiting on somebody says what that
+  // somebody has to do; a finished record says nothing has to happen.
+  assert.equal(nextStepFor(record({ status: "closed" })), "done");
+  assert.equal(nextStepFor(record({ status: "verified" })), "done");
+  assert.equal(nextStepFor(record({ status: "draft" })), "finish");
+  assert.equal(nextStepFor(record({ status: "ready_for_verification" })), "verify");
+  assert.equal(nextStepFor(record({ status: "in_review" })), "decide");
+  assert.equal(nextStepFor(record()), "assign");
+  assert.equal(nextStepFor(record({ ownerLabel: "Aannemer B" })), "start");
+  assert.equal(nextStepFor(record({ ownerUserId: "u1", status: "in_progress" })), "progress");
+  // Being late is already visible on the deadline itself, so the more specific expectation
+  // stays the instruction.
+  assert.equal(nextStepFor(record({ status: "ready_for_verification", dueAt: "2020-01-01T00:00:00Z" })), "verify");
+
+  // Late, urgent and explicitly escalated are one group: on site they mean the same thing.
+  assert.equal(isEscalatedItem(record({ dueAt: new Date(now.getTime() - day).toISOString() }), now), true);
+  assert.equal(isEscalatedItem(record({ priority: "critical" }), now), true);
+  assert.equal(isEscalatedItem(record({ escalationRequired: true }), now), true);
+  assert.equal(isEscalatedItem(record({ dueAt: new Date(now.getTime() + 3 * day).toISOString() }), now), false);
+  // A closed record with a date in the past is not an arrear.
+  assert.equal(isEscalatedItem(record({ status: "closed", priority: "critical", dueAt: "2020-01-01T00:00:00Z" }), now), false);
+  assert.equal(isOverdueItem(record({ status: "closed", dueAt: "2020-01-01T00:00:00Z" }), now), false);
+
+  // The day that counts is the day on site, not the day of a phone in another timezone.
+  assert.equal(daysUntilOnSite("2026-08-02T23:00:00-03:00", now), 0);
+  assert.equal(daysUntilOnSite("2026-08-05T09:00:00-03:00", now), 3);
+  assert.equal(daysUntilOnSite("2026-07-30T09:00:00-03:00", now), -3);
+
+  // The row that needs a decision today stands on top: open before closed, escalations
+  // before the rest, then the closest deadline, and no deadline last.
+  const items = [
+    record({ status: "closed" }),
+    record({ dueAt: new Date(now.getTime() + 10 * day).toISOString() }),
+    record({ dueAt: new Date(now.getTime() - day).toISOString() }),
+    record(),
+  ];
+  const sorted = [...items].sort((left, right) => compareActionItems(left, right, now));
+  assert.equal(sorted[0], items[2]);
+  assert.equal(sorted[1], items[1]);
+  assert.equal(sorted[2], items[3]);
+  assert.equal(sorted[3], items[0]);
 });

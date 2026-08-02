@@ -7,12 +7,22 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleDot,
+  Compass,
+  Download,
+  ExternalLink,
   Image as ImageIcon,
   Loader2,
   MapPin,
+  Maximize2,
+  Move3d,
+  Pause,
+  Play,
   Plus,
+  RotateCcw,
   ScanLine,
   ShieldCheck,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
@@ -20,9 +30,9 @@ import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { photoCategories, photoDirections, dutchDirectionLabels } from "@/app/photo-evidence";
 import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
-import { fieldPhotoMimeTypes, normalizedImagePoint, validatePanoramaDimensions } from "@/lib/images/field-image.mjs";
+import { fieldPhotoMimeTypes, normalizedImagePoint, photoMarkupToneColors, validatePanoramaDimensions } from "@/lib/images/field-image.mjs";
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload } from "@/lib/offline/upload-queue";
-import { isStorageGatewayConfigured, loadProjectFileObjectUrl } from "@/lib/storage/gateway";
+import { downloadProjectFile, isStorageGatewayConfigured, loadProjectFileObjectUrl, openProjectFile } from "@/lib/storage/gateway";
 import {
   createVisualAnnotationFinding,
   linkVisualAnnotationToFinding,
@@ -52,6 +62,9 @@ type VisualEvidenceWorkspaceProps = {
   initialFindingId?: string;
   initialFiles?: File[];
   onInitialFilesConsumed?: () => void;
+  /** Set when "Upload 360° image" was tapped elsewhere, so the form is already open here. */
+  start360Upload?: boolean;
+  onStart360UploadConsumed?: () => void;
 };
 
 const emptyIssue = {
@@ -89,7 +102,7 @@ function imageDimensions(file: File) {
   });
 }
 
-export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingName, buildings, reportId, parties, client, busy, run, initialFindingId, initialFiles = [], onInitialFilesConsumed }: VisualEvidenceWorkspaceProps) {
+export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingName, buildings, reportId, parties, client, busy, run, initialFindingId, initialFiles = [], onInitialFilesConsumed, start360Upload = false, onStart360UploadConsumed }: VisualEvidenceWorkspaceProps) {
   const { language, text } = useLanguage();
   const maxFileSizeBytes = (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024;
   const captures = data.visualCaptures.filter((capture) => capture.status === "active");
@@ -196,6 +209,18 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     // stageImage intentionally runs once for the camera hand-off.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialFiles, onInitialFilesConsumed]);
+
+  // Tapping "Upload 360° image" in the photo library asked for the 360° form, so the form
+  // opens here instead of asking for the same button a second time.
+  const handled360Intent = useRef(false);
+  useEffect(() => {
+    if (handled360Intent.current || !start360Upload) return;
+    handled360Intent.current = true;
+    setCaptureForm((current) => ({ ...current, type: "panorama", title: "", locationLabel: captureBuildingName }));
+    setFile(null);
+    setShowUpload(true);
+    onStart360UploadConsumed?.();
+  }, [captureBuildingName, onStart360UploadConsumed, start360Upload]);
 
   const tour = (() => {
     if (!activeCapture?.tour_name) return [];
@@ -431,8 +456,14 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
             {activeCapture && activeFile ? (
               <>
                 <div className="visual-stage-header"><div><span className="record-number">{activeCapture.capture_type === "panorama" ? text("Interactive 360° camera image", "Interactief 360°-camerabeeld") : text("Annotated photo", "Geannoteerde foto")}</span><h2>{activeCapture.title}</h2><p><MapPin size={13} /> {activeCapture.location_label}{activeCapture.tour_name ? ` · ${activeCapture.tour_name}` : ""}</p></div>{tour.length > 1 ? <div className="tour-controls"><button type="button" aria-label={text("Previous 360° camera image", "Vorig 360°-camerabeeld")} onClick={() => chooseTourCapture(-1)}><ChevronLeft size={17} /></button><span>{tourIndex + 1} / {tour.length}</span><button type="button" aria-label={text("Next 360° camera image", "Volgend 360°-camerabeeld")} onClick={() => chooseTourCapture(1)}><ChevronRight size={17} /></button></div> : null}</div>
-                <VisualViewer key={activeCapture.id} capture={activeCapture} file={activeFile} annotations={activeAnnotations} pendingPoint={point} client={client} onPoint={(nextPoint) => { setPoint(nextPoint); setSelectedAnnotationId(null); }} onSelectAnnotation={(annotationId) => { setSelectedAnnotationId(annotationId); setPoint(null); }} />
-                <div className="visual-stage-help"><CircleDot size={15} /><span>{text("Click the exact damaged or non-conforming area to create a marker. Drag to inspect the 360° camera view; use the center-marker button for keyboard entry.", "Klik exact op de beschadiging of afwijking om een marker te maken. Sleep om het 360°-camerabeeld te inspecteren; gebruik de middenmarkerknop voor toetsenbordbediening.")}</span></div>
+                <VisualViewer key={activeCapture.id} capture={activeCapture} file={activeFile} annotations={activeAnnotations} pendingPoint={point} focusAnnotationId={selectedAnnotationId} client={client} onPoint={(nextPoint) => { setPoint(nextPoint); setSelectedAnnotationId(null); }} onSelectAnnotation={(annotationId) => { setSelectedAnnotationId(annotationId); setPoint(null); }} />
+                <div className="visual-stage-help"><CircleDot size={15} /><span>{activeCapture.capture_type === "panorama"
+                  ? text("Drag to look around, pinch or use the zoom buttons to come closer, then click the exact damaged or non-conforming area to place a marker. The compass shows which way you are looking.", "Sleep om rond te kijken, knijp of gebruik de zoomknoppen om dichterbij te komen en klik daarna exact op de beschadiging of afwijking om een marker te plaatsen. Het kompas laat zien welke kant je op kijkt.")
+                  : text("Click the exact damaged or non-conforming area to create a marker.", "Klik exact op de beschadiging of afwijking om een marker te maken.")}</span></div>
+                {/* Everything the picture itself carries — the same words a normal photo gets
+                    — next to the image instead of only in the upload form. */}
+                <CaptureDetails capture={activeCapture} file={activeFile} client={client} />
+                <VisualMarkerList annotations={activeAnnotations} findings={data.findings} selectedId={selectedAnnotationId} onSelect={(annotationId) => { setSelectedAnnotationId(annotationId); setPoint(null); }} />
               </>
             ) : null}
           </div>
@@ -445,7 +476,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   );
 }
 
-function VisualViewer({ capture, file, annotations, pendingPoint, client, onPoint, onSelectAnnotation }: { capture: VisualCapture; file: FileRecord; annotations: VisualAnnotation[]; pendingPoint: VisualPoint | null; client: SupabaseClient; onPoint: (point: VisualPoint) => void; onSelectAnnotation: (annotationId: string) => void }) {
+function VisualViewer({ capture, file, annotations, pendingPoint, focusAnnotationId, client, onPoint, onSelectAnnotation }: { capture: VisualCapture; file: FileRecord; annotations: VisualAnnotation[]; pendingPoint: VisualPoint | null; focusAnnotationId: string | null; client: SupabaseClient; onPoint: (point: VisualPoint) => void; onSelectAnnotation: (annotationId: string) => void }) {
   const { text } = useLanguage();
   const [imageUrl, setImageUrl] = useState("");
   const [error, setError] = useState("");
@@ -468,7 +499,7 @@ function VisualViewer({ capture, file, annotations, pendingPoint, client, onPoin
 
   if (error) return <div className="visual-load-state error"><AlertTriangle size={21} /> {error}</div>;
   if (!imageUrl) return <div className="visual-load-state"><Loader2 className="spin" size={21} /> {text("Loading secured image…", "Beveiligd beeld laden…")}</div>;
-  if (capture.capture_type === "panorama") return <PanoramaViewer imageUrl={imageUrl} annotations={annotations} pendingPoint={pendingPoint?.mode === "spherical" ? pendingPoint : null} onPoint={onPoint} onSelectAnnotation={onSelectAnnotation} />;
+  if (capture.capture_type === "panorama") return <PanoramaViewer imageUrl={imageUrl} annotations={annotations} pendingPoint={pendingPoint?.mode === "spherical" ? pendingPoint : null} focusAnnotationId={focusAnnotationId} onPoint={onPoint} onSelectAnnotation={onSelectAnnotation} />;
   return <PhotoAnnotationViewer imageUrl={imageUrl} title={capture.title} annotations={annotations} pendingPoint={pendingPoint?.mode === "photo" ? pendingPoint : null} onPoint={onPoint} onSelectAnnotation={onSelectAnnotation} />;
 }
 
@@ -507,16 +538,37 @@ function markerTone(annotation: VisualAnnotation) {
   return annotation.severity;
 }
 
-function PanoramaViewer({ imageUrl, annotations, pendingPoint, onPoint, onSelectAnnotation }: { imageUrl: string; annotations: VisualAnnotation[]; pendingPoint: Extract<VisualPoint, { mode: "spherical" }> | null; onPoint: (point: VisualPoint) => void; onSelectAnnotation: (annotationId: string) => void }) {
+/** The same colour as the dot on the image, for the dot the compass draws for it. */
+function markerToneColor(annotation: VisualAnnotation) {
+  if (annotation.disposition && photoMarkupToneColors[annotation.disposition]) return photoMarkupToneColors[annotation.disposition];
+  if (annotation.severity === "critical") return photoMarkupToneColors.alternative_solution;
+  if (annotation.severity === "low") return photoMarkupToneColors.validated;
+  return photoMarkupToneColors.to_be_corrected;
+}
+
+/**
+ * The interactive 360° image. A supervisor has to be able to do the same things here as with
+ * an ordinary photo: come closer, look in a chosen direction, see which markings are already
+ * on the image and put a new one exactly on the defect. Everything is a labelled button as
+ * well as a gesture, because on site the gesture alone was not discovered.
+ */
+function PanoramaViewer({ imageUrl, annotations, pendingPoint, focusAnnotationId, onPoint, onSelectAnnotation }: { imageUrl: string; annotations: VisualAnnotation[]; pendingPoint: Extract<VisualPoint, { mode: "spherical" }> | null; focusAnnotationId: string | null; onPoint: (point: VisualPoint) => void; onSelectAnnotation: (annotationId: string) => void }) {
   const { text } = useLanguage();
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<import("@photo-sphere-viewer/core").Viewer | null>(null);
   const markersRef = useRef<import("@photo-sphere-viewer/markers-plugin").MarkersPlugin | null>(null);
+  const autorotateRef = useRef<import("@photo-sphere-viewer/autorotate-plugin").AutorotatePlugin | null>(null);
+  const gyroscopeRef = useRef<import("@photo-sphere-viewer/gyroscope-plugin").GyroscopePlugin | null>(null);
   const onPointRef = useRef(onPoint);
   const onSelectAnnotationRef = useRef(onSelectAnnotation);
   const markerDataRef = useRef({ annotations, pendingPoint });
   const [viewerState, setViewerState] = useState<"loading" | "ready" | "error">("loading");
   const [retry, setRetry] = useState(0);
+  /** Where the viewer is looking, in whole degrees, so two people can name the same spot. */
+  const [heading, setHeading] = useState(0);
+  const [zoomLevel, setZoomLevel] = useState(45);
+  const [autorotating, setAutorotating] = useState(false);
+  const [gyroscope, setGyroscope] = useState<"unavailable" | "off" | "on">("unavailable");
 
   useEffect(() => {
     onPointRef.current = onPoint;
@@ -528,24 +580,52 @@ function PanoramaViewer({ imageUrl, annotations, pendingPoint, onPoint, onSelect
     let active = true;
     if (!containerRef.current) return;
     setViewerState("loading");
-    void Promise.all([import("@photo-sphere-viewer/core"), import("@photo-sphere-viewer/markers-plugin")]).then(([core, markers]) => {
+    void Promise.all([
+      import("@photo-sphere-viewer/core"),
+      import("@photo-sphere-viewer/markers-plugin"),
+      import("@photo-sphere-viewer/autorotate-plugin"),
+      import("@photo-sphere-viewer/compass-plugin"),
+      import("@photo-sphere-viewer/gyroscope-plugin"),
+    ]).then(([core, markers, autorotate, compass, gyro]) => {
       if (!active || !containerRef.current) return;
       const viewer = new core.Viewer({
         container: containerRef.current,
         panorama: imageUrl,
-        plugins: [[markers.MarkersPlugin, { clickEventOnMarker: true }]],
-        navbar: ["zoom", "move", "fullscreen"],
+        plugins: [
+          [markers.MarkersPlugin, { clickEventOnMarker: true }],
+          // A slow turn on its own, so a 360° image can be shown to somebody without
+          // anybody having to drag it.
+          [autorotate.AutorotatePlugin, { autostartDelay: null, autorotateSpeed: "1rpm" }],
+          // The compass says which way the camera is looking and marks where the existing
+          // problem markers sit, so a marker behind your back is still findable.
+          [compass.CompassPlugin, { size: "88px", position: "top left", navigation: true, hotspots: [] }],
+          [gyro.GyroscopePlugin, { touchmove: true, absolutePosition: false }],
+        ],
+        // The viewer's own bar is switched off: this screen offers the same controls as
+        // labelled buttons, and two rows of controls on one image only confused the choice.
+        navbar: false,
         mousewheelCtrlKey: false,
         touchmoveTwoFingers: false,
         defaultZoomLvl: 45,
         lang: { loadError: text("The 360° image could not be rendered.", "Het 360°-beeld kon niet worden weergegeven."), fullscreen: text("Fullscreen", "Volledig scherm"), zoom: text("Zoom", "Zoom") },
       });
       const markerPlugin = viewer.getPlugin<import("@photo-sphere-viewer/markers-plugin").MarkersPlugin>(markers.MarkersPlugin);
+      const autorotatePlugin = viewer.getPlugin<import("@photo-sphere-viewer/autorotate-plugin").AutorotatePlugin>(autorotate.AutorotatePlugin);
+      const gyroscopePlugin = viewer.getPlugin<import("@photo-sphere-viewer/gyroscope-plugin").GyroscopePlugin>(gyro.GyroscopePlugin);
       viewer.addEventListener(core.events.ClickEvent.type, ({ data }) => {
         if (!data.marker) onPointRef.current({ mode: "spherical", yaw: data.yaw, pitch: data.pitch });
       });
       markerPlugin.addEventListener(markers.events.SelectMarkerEvent.type, ({ marker }) => {
         if (!marker.id.startsWith("pending:")) onSelectAnnotationRef.current(marker.id);
+      });
+      viewer.addEventListener(core.events.PositionUpdatedEvent.type, ({ position }) => {
+        if (active) setHeading(Math.round(((position.yaw * (180 / Math.PI)) % 360 + 360) % 360));
+      });
+      viewer.addEventListener(core.events.ZoomUpdatedEvent.type, ({ zoomLevel: level }) => {
+        if (active) setZoomLevel(Math.round(level));
+      });
+      autorotatePlugin.addEventListener(autorotate.events.AutorotateEvent.type, ({ autorotateEnabled }) => {
+        if (active) setAutorotating(autorotateEnabled);
       });
       viewer.addEventListener(core.events.ReadyEvent.type, () => {
         if (active) setViewerState("ready");
@@ -555,13 +635,22 @@ function PanoramaViewer({ imageUrl, annotations, pendingPoint, onPoint, onSelect
       });
       viewerRef.current = viewer;
       markersRef.current = markerPlugin;
+      autorotateRef.current = autorotatePlugin;
+      gyroscopeRef.current = gyroscopePlugin;
       markerPlugin.setMarkers(panoramaMarkers(markerDataRef.current.annotations, markerDataRef.current.pendingPoint));
+      // A phone that can be pointed around the room is the closest thing to standing there
+      // again; a laptop simply does not offer the button.
+      void gyroscopePlugin.isSupported().then((supported) => {
+        if (active) setGyroscope(supported ? "off" : "unavailable");
+      }).catch(() => undefined);
     }).catch(() => {
       if (active) setViewerState("error");
     });
     return () => {
       active = false;
       markersRef.current = null;
+      autorotateRef.current = null;
+      gyroscopeRef.current = null;
       viewerRef.current?.destroy();
       viewerRef.current = null;
     };
@@ -571,17 +660,123 @@ function PanoramaViewer({ imageUrl, annotations, pendingPoint, onPoint, onSelect
     markersRef.current?.setMarkers(panoramaMarkers(annotations, pendingPoint));
   }, [annotations, pendingPoint]);
 
+  // Choosing a marking in the list turns the view towards it, so a marker that is behind you
+  // is reachable without hunting for it.
+  useEffect(() => {
+    if (!focusAnnotationId || viewerState !== "ready") return;
+    const annotation = annotations.find((item) => item.id === focusAnnotationId);
+    if (!annotation || annotation.yaw === null || annotation.pitch === null) return;
+    autorotateRef.current?.stop();
+    viewerRef.current?.animate({ yaw: Number(annotation.yaw), pitch: Number(annotation.pitch), speed: "3rpm" });
+  }, [annotations, focusAnnotationId, viewerState]);
+
   const markCenter = () => {
     const position = viewerRef.current?.getPosition();
     if (position) onPoint({ mode: "spherical", yaw: position.yaw, pitch: position.pitch });
+  };
+
+  const resetView = () => {
+    autorotateRef.current?.stop();
+    viewerRef.current?.animate({ yaw: 0, pitch: 0, zoom: 45, speed: "6rpm" });
+  };
+
+  const toggleAutorotate = () => {
+    const plugin = autorotateRef.current;
+    if (!plugin) return;
+    if (plugin.isEnabled()) plugin.stop();
+    else plugin.start();
+  };
+
+  const toggleGyroscope = () => {
+    const plugin = gyroscopeRef.current;
+    if (!plugin) return;
+    if (plugin.isEnabled()) {
+      plugin.stop();
+      setGyroscope("off");
+      return;
+    }
+    void plugin.start().then(() => setGyroscope("on")).catch(() => setGyroscope("unavailable"));
   };
 
   return <div className="panorama-stage" data-viewer-state={viewerState}>
     <div className="panorama-viewer" ref={containerRef} />
     {viewerState === "loading" ? <div className="panorama-status"><Loader2 className="spin" size={22} /> {text("Opening interactive 360° image…", "Interactief 360°-beeld openen…")}</div> : null}
     {viewerState === "error" ? <div className="panorama-status error"><AlertTriangle size={22} /><span>{text("The 360° viewer could not start on this device.", "De 360°-viewer kon niet starten op dit apparaat.")}</span><button type="button" onClick={() => setRetry((value) => value + 1)}>{text("Try again", "Probeer opnieuw")}</button></div> : null}
+    {viewerState === "ready" ? (
+      <>
+        <span className="panorama-heading" aria-live="off"><Compass size={13} /> {heading}° · {text("zoom", "zoom")} {zoomLevel}%</span>
+        <div className="panorama-controls" role="group" aria-label={text("360° viewer controls", "Bediening 360°-viewer")}>
+          <button type="button" onClick={() => viewerRef.current?.zoomOut(10)} aria-label={text("Zoom out", "Uitzoomen")}><ZoomOut size={15} /></button>
+          <button type="button" onClick={() => viewerRef.current?.zoomIn(10)} aria-label={text("Zoom in", "Inzoomen")}><ZoomIn size={15} /></button>
+          <button type="button" onClick={resetView}><RotateCcw size={14} /> {text("Reset view", "Beginstand")}</button>
+          <button className={autorotating ? "active" : ""} type="button" onClick={toggleAutorotate}>{autorotating ? <Pause size={14} /> : <Play size={14} />} {text("Auto turn", "Vanzelf draaien")}</button>
+          {gyroscope !== "unavailable" ? <button className={gyroscope === "on" ? "active" : ""} type="button" onClick={toggleGyroscope}><Move3d size={14} /> {text("Move phone to look", "Kijken met de telefoon")}</button> : null}
+          <button type="button" onClick={() => viewerRef.current?.toggleFullscreen()}><Maximize2 size={14} /> {text("Fullscreen", "Volledig scherm")}</button>
+        </div>
+      </>
+    ) : null}
     {viewerState === "ready" ? <button className="viewer-center-action" type="button" onClick={markCenter}><CircleDot size={15} /> {text("Mark center of current view", "Markeer midden van huidige weergave")}</button> : null}
   </div>;
+}
+
+/**
+ * What this picture is, in its own words, next to the picture. A regular photo carries a
+ * title, a description, a category and a direction; the 360° export carries exactly the same
+ * words, and here they are readable without opening the upload form again.
+ */
+function CaptureDetails({ capture, file, client }: { capture: VisualCapture; file: FileRecord; client: SupabaseClient }) {
+  const { locale, text } = useLanguage();
+  const [failed, setFailed] = useState("");
+  const capturedAt = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(capture.captured_at));
+  const run = (operation: Promise<unknown>) => {
+    setFailed("");
+    void operation.catch(() => setFailed(text("The secured file could not be opened. Check the connection and try again.", "Het beveiligde bestand kon niet worden geopend. Controleer de verbinding en probeer opnieuw.")));
+  };
+  return (
+    <section className="capture-details" aria-label={text("Details of this image", "Details van dit beeld")}>
+      <div className="capture-details-copy">
+        <span className="record-number">{capture.capture_type === "panorama" ? text("360° camera export", "360°-camera-export") : text("Field photo", "Veldfoto")}</span>
+        <h3>{capture.title}</h3>
+        {/* The category and the facing direction were written next to the photo when it was
+            saved; they are part of its description and stay readable here. */}
+        {capture.description ? <p>{capture.description}</p> : <p className="capture-details-empty">{text("No description was written with this image.", "Bij dit beeld is geen omschrijving geschreven.")}</p>}
+        <small><MapPin size={11} /> {capture.location_label}{capture.tour_name ? ` · ${capture.tour_name}${capture.tour_order ? ` (${capture.tour_order})` : ""}` : ""} · {capturedAt}</small>
+      </div>
+      <div className="capture-details-actions">
+        <button className="secondary-button" type="button" onClick={() => run(openProjectFile(client, file.id, file.original_name))}><ExternalLink size={14} /> {text("Open original", "Origineel openen")}</button>
+        <button className="secondary-button" type="button" onClick={() => run(downloadProjectFile(client, file.id, file.original_name))}><Download size={14} /> {text("Download", "Downloaden")}</button>
+      </div>
+      {failed ? <p className="field-error" role="alert">{failed}</p> : null}
+    </section>
+  );
+}
+
+/**
+ * Every marking on this image, numbered exactly as it is numbered on the picture. A marked
+ * photo has this list in the marking pad; the 360° image needs it more, because a marker can
+ * sit behind the viewer. Choosing one turns the view towards it.
+ */
+function VisualMarkerList({ annotations, findings, selectedId, onSelect }: { annotations: VisualAnnotation[]; findings: Finding[]; selectedId: string | null; onSelect: (annotationId: string) => void }) {
+  const { text } = useLanguage();
+  if (!annotations.length) return null;
+  return (
+    <ol className="visual-marker-list" aria-label={text("Markings on this image", "Markeringen op dit beeld")}>
+      {annotations.map((annotation, index) => {
+        const finding = findings.find((item) => item.id === annotation.finding_id) ?? null;
+        return (
+          <li key={annotation.id}>
+            <button className={selectedId === annotation.id ? "active" : ""} type="button" onClick={() => onSelect(annotation.id)}>
+              <span className={`visual-marker-number ${markerTone(annotation)}`}>{index + 1}</span>
+              <span>
+                <strong>{annotation.title}</strong>
+                <small>{[finding?.finding_number, annotation.severity, annotation.coordinate_mode === "spherical" ? `${degrees(Number(annotation.yaw))} · ${degrees(Number(annotation.pitch))}` : `X ${Math.round(Number(annotation.x_ratio) * 100)}% · Y ${Math.round(Number(annotation.y_ratio) * 100)}%`].filter(Boolean).join(" · ")}</small>
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ol>
+  );
 }
 
 function panoramaMarkers(annotations: VisualAnnotation[], pendingPoint: Extract<VisualPoint, { mode: "spherical" }> | null): import("@photo-sphere-viewer/markers-plugin").MarkerConfig[] {
@@ -592,8 +787,11 @@ function panoramaMarkers(annotations: VisualAnnotation[], pendingPoint: Extract<
     size: { width: 34, height: 34 },
     anchor: "center center",
     className: "panorama-marker-shell",
+    // The compass draws a dot for every marker that carries this, so a problem behind your
+    // back is still visible while you look the other way.
+    data: { compass: markerToneColor(annotation) },
   }]);
-  if (pendingPoint) markers.push({ id: "pending:new", position: { yaw: pendingPoint.yaw, pitch: pendingPoint.pitch }, html: '<span class="panorama-marker-dot pending">+</span>', size: { width: 34, height: 34 }, anchor: "center center", className: "panorama-marker-shell" });
+  if (pendingPoint) markers.push({ id: "pending:new", position: { yaw: pendingPoint.yaw, pitch: pendingPoint.pitch }, html: '<span class="panorama-marker-dot pending">+</span>', size: { width: 34, height: 34 }, anchor: "center center", className: "panorama-marker-shell", data: { compass: "#1667a8" } });
   return markers;
 }
 

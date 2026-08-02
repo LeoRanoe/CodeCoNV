@@ -1211,7 +1211,9 @@ test("processes the annotated screens of 1 August: NCR form, agreement and deadl
   // #15 · The deadline page is about deadlines: no creation date standing in for one,
   // overdue first, and every record that carries a deadline is on it.
   assert.match(actionCenter, /text\("Deadlines", "Deadlines"\)/);
-  assert.match(actionCenter, /function daysUntil/);
+  // The day arithmetic itself moved into a module of its own, tested without React.
+  assert.match(actionCenter, /daysUntilOnSite,/);
+  assert.match(actionCenter, /from "@\/lib\/actions\/action-center.mjs"/);
   assert.match(actionCenter, /dueAt: finding\.due_at,/);
   assert.doesNotMatch(actionCenter, /finding\.due_at \?\? finding\.created_at/);
   assert.doesNotMatch(actionCenter, /entry\.due_at \?\? entry\.occurred_at/);
@@ -1222,9 +1224,10 @@ test("processes the annotated screens of 1 August: NCR form, agreement and deadl
 });
 
 test("keeps the action centre and makes its deadlines and choices true on site", async () => {
-  const [workspace, actionCenter, home, app, styles] = await Promise.all([
+  const [workspace, actionCenter, rules, home, app, styles] = await Promise.all([
     readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/project-action-center.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/actions/action-center.mjs", import.meta.url), "utf8"),
     readFile(new URL("../app/project-workspace-home.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
@@ -1233,15 +1236,16 @@ test("keeps the action centre and makes its deadlines and choices true on site",
   // The action centre keeps the name the client asked for and gains the deadline view
   // instead of being renamed into one.
   assert.match(actionCenter, /text\("Action center", "Actiecentrum"\)/);
-  assert.match(actionCenter, /export type ActionCenterView = "work" \| "deadlines"/);
+  assert.match(actionCenter, /export type ActionCenterView = "mine" \| "work" \| "deadlines"/);
   assert.match(actionCenter, /action-center-views/);
   assert.match(styles, /\.action-center-views/);
-  assert.match(actionCenter, /type WorkFilter = "open" \| "urgent" \| "verification" \| "all"/);
-  assert.match(actionCenter, /Awaiting verification|Wacht op verificatie/);
-  assert.match(actionCenter, /Urgent or overdue|Urgent of te laat/);
-  // Deadlines are counted in the day on site, and an NCR opens in the NCR module.
-  assert.match(actionCenter, /timeZone: "America\/Paramaribo" \}\)\.format\(value\)\}T00:00:00Z/);
-  assert.match(actionCenter, /openProjectArea\(item\.recordKind === "ncr" \? "ncr" : "findings"\)/);
+  assert.match(actionCenter, /type WorkFilter = "open" \| "escalated" \| "verification" \| "all"/);
+  assert.match(actionCenter, /Waiting for verification|Wacht op verificatie/);
+  assert.match(actionCenter, /Escalations · late or urgent|Escalaties · te laat of urgent/);
+  // Deadlines are counted in the day on site, and an NCR opens in the NCR module — on the
+  // record itself, not on the list it stands in.
+  assert.match(rules, /timeZone: siteTimeZone \}\)\.format\(value\)\}T00:00:00Z/);
+  assert.match(actionCenter, /openProjectArea\(item\.recordKind === "ncr" \? "ncr" : "findings", item\.id\)/);
   // The deadline tile opens the same page on its deadline view.
   assert.match(home, /openActionCenter\("deadlines"\)/);
   assert.match(app, /const \[actionCenterView, setActionCenterView\]/);
@@ -1383,4 +1387,107 @@ test("gives the phone back button a screen to go back to", async () => {
   assert.match(photoEvidence, /useBackToClose\(true, close\)/);
   assert.match(photoMarkup, /useBackToClose\(true, close\)/);
   assert.match(sketch, /useBackToClose\(true, close\)/);
+});
+
+test("makes the action centre say what the user has to do and open the record itself", async () => {
+  const [actionCenter, rules, workspace, app, focus, styles] = await Promise.all([
+    readFile(new URL("../app/project-action-center.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/actions/action-center.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/navigation/record-focus.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // The product plan's action board: my work, project work, deadlines, status and
+  // escalations. "My work" is the answer to "what am I supposed to do here".
+  assert.match(actionCenter, /text\("My work", "Mijn werk"\)/);
+  assert.match(actionCenter, /text\("All project work", "Al het projectwerk"\)/);
+  assert.match(actionCenter, /const mine = useMemo/);
+  assert.match(actionCenter, /item\.ownerUserId === currentUserId/);
+  assert.match(actionCenter, /currentUserId: string;/);
+  // Somebody with assigned work lands on it; somebody without it does not land on an
+  // empty page.
+  assert.match(actionCenter, /initialView === "work" && mine\.some\(isOpenItem\) \? "mine" : initialView/);
+  assert.match(app, /currentUserId=\{session\.user\.id\}/);
+
+  // Every row carries the one instruction that belongs to it, plus who it waits on.
+  assert.match(actionCenter, /const nextStepLabel = \(item: UnifiedItem\)/);
+  assert.match(actionCenter, /Assign who has to do this|Wijs toe wie dit moet doen/);
+  assert.match(actionCenter, /Check the work on site and close it out|Controleer het werk op locatie en sluit af/);
+  assert.match(actionCenter, /Record the decision on this submission|Leg het besluit over deze indiening vast/);
+  assert.match(actionCenter, /unified-action-next/);
+  assert.match(styles, /\.unified-action-next/);
+  assert.match(actionCenter, /const ownerLabel = \(item: UnifiedItem\)/);
+  assert.match(rules, /export function nextStepFor/);
+
+  // Tapping a row opens that record, instead of the module list it stands in.
+  assert.match(focus, /export function recordAnchorId/);
+  assert.match(focus, /export function useRecordFocus/);
+  assert.match(actionCenter, /openProjectArea\("registers", item\.id\)/);
+  assert.match(workspace, /id=\{recordAnchorId\(finding\.id\)\}/);
+  assert.match(workspace, /id=\{recordAnchorId\(entry\.id\)\}/);
+  assert.match(workspace, /id=\{recordAnchorId\(row\.id\)\}/);
+  assert.match(workspace, /focusRecordId === finding\.id \? "record-focused" : ""/);
+  assert.match(app, /setFocusRecordId\(recordId \?\? ""\)/);
+  assert.match(styles, /\.record-focused/);
+
+  // The decorative floor plan is replaced by what actually needs a decision today.
+  assert.match(actionCenter, /action-focus-card/);
+  assert.match(actionCenter, /Needs attention now|Vraagt nu aandacht/);
+  assert.match(styles, /\.action-focus-card/);
+  assert.doesNotMatch(actionCenter, /plan-mass/);
+  assert.doesNotMatch(actionCenter, /action-plan-preview/);
+});
+
+test("gives the 360 degree viewer the same reach as the photo options", async () => {
+  const [evidence, workspace, styles, packageJson] = await Promise.all([
+    readFile(new URL("../app/visual-evidence-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../package.json", import.meta.url), "utf8"),
+  ]);
+
+  // Looking around is a labelled button as well as a gesture: on site the gesture alone
+  // was not discovered.
+  assert.match(evidence, /className="panorama-controls"/);
+  assert.match(evidence, /text\("Reset view", "Beginstand"\)/);
+  assert.match(evidence, /text\("Auto turn", "Vanzelf draaien"\)/);
+  assert.match(evidence, /text\("Fullscreen", "Volledig scherm"\)/);
+  assert.match(evidence, /text\("Zoom out", "Uitzoomen"\)/);
+  assert.match(evidence, /text\("Zoom in", "Inzoomen"\)/);
+  assert.match(evidence, /text\("Move phone to look", "Kijken met de telefoon"\)/);
+  assert.match(evidence, /navbar: false,/);
+  assert.match(styles, /\.panorama-controls/);
+
+  // A compass and a readable heading, so a direction on a 360 image can be named the same
+  // way the facing direction of a normal photo is.
+  assert.match(evidence, /CompassPlugin/);
+  assert.match(evidence, /className="panorama-heading"/);
+  assert.match(styles, /\.panorama-heading/);
+  assert.match(styles, /@import "@photo-sphere-viewer\/compass-plugin\/index.css";/);
+  for (const plugin of ["autorotate-plugin", "compass-plugin", "gyroscope-plugin", "markers-plugin"]) {
+    assert.match(packageJson, new RegExp(`"@photo-sphere-viewer/${plugin}"`), `${plugin} must be a dependency`);
+  }
+
+  // Every marking is listed and numbered as it is on the image, and choosing one turns
+  // the view towards it — a marker can sit behind you on a sphere.
+  assert.match(evidence, /function VisualMarkerList/);
+  assert.match(evidence, /Markings on this image|Markeringen op dit beeld/);
+  assert.match(evidence, /viewerRef\.current\?\.animate\(\{ yaw: Number\(annotation\.yaw\)/);
+  assert.match(styles, /\.visual-marker-list/);
+
+  // The words that belong to the image stand next to the image, and the original export
+  // can be opened or downloaded, exactly as a photo in the library can.
+  assert.match(evidence, /function CaptureDetails/);
+  assert.match(evidence, /text\("Open original", "Origineel openen"\)/);
+  assert.match(evidence, /text\("Download", "Downloaden"\)/);
+  assert.match(evidence, /openProjectFile, downloadProjectFile|downloadProjectFile, isStorageGatewayConfigured, loadProjectFileObjectUrl, openProjectFile/);
+  assert.match(styles, /\.capture-details/);
+
+  // "Upload 360° image" in the photo library opens the 360° form instead of asking for
+  // the same button a second time.
+  assert.match(workspace, /setVisual360Intent\(true\); setTab\("visual"\)/);
+  assert.match(evidence, /start360Upload\?: boolean;/);
+  assert.match(evidence, /handled360Intent/);
 });

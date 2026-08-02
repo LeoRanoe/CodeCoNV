@@ -38,7 +38,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
-import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { AgreementSignatureFields, agreementSignatureDetails, agreementSummaryLine, emptyAgreementSignature } from "@/app/agreement-signature";
 import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
@@ -53,9 +53,10 @@ import { FieldTools } from "@/app/field-tools";
 import { MediaLibraryWorkspace } from "@/app/media-library-workspace";
 import { ProjectWorkspaceHome } from "@/app/project-workspace-home";
 import { ProjectDocumentsHome } from "@/app/project-documents-home";
-import { ProjectActionCenter } from "@/app/project-action-center";
+import { ProjectActionCenter, type ActionCenterView } from "@/app/project-action-center";
 import { RapidVerifyWorkspace } from "@/app/rapid-verify-workspace";
 import { anchorChecklistCodes } from "@/lib/checklists/anchor-library";
+import { recordAnchorId, useRecordFocus } from "@/lib/navigation/record-focus";
 import { downloadBoqCsvTemplate, parseBoqCsv, type BoqImportItem } from "@/lib/boq/csv";
 import {
   createControlledDocumentDetails,
@@ -285,6 +286,7 @@ export function OperationalWorkspace({
   reportStatus,
   projectStartAnswers,
   currentUserName,
+  currentUserId,
   companyEmployees,
   parties,
   canManageOrganization,
@@ -305,6 +307,7 @@ export function OperationalWorkspace({
   projectActions = [],
   openProjectAction,
   createProjectAction,
+  focusRecordId = "",
 }: {
   mode: WorkspaceMode;
   client: SupabaseClient;
@@ -320,6 +323,8 @@ export function OperationalWorkspace({
   reportStatus: string;
   projectStartAnswers: ProjectStartAnswers | null;
   currentUserName: string;
+  /** Who is looking, so the action centre can show the work that is theirs. */
+  currentUserId: string;
   companyEmployees: InternalMember[];
   parties: ProjectParty[];
   canManageOrganization: boolean;
@@ -329,20 +334,23 @@ export function OperationalWorkspace({
   onProjectTabChange: (tab: ProjectTab) => void;
   /** Set when Management sends the user here to record a contractor submission. */
   externalSubmissionIntent?: boolean;
-  /** Which view of the action centre to open: the worklist or the deadlines. */
-  actionCenterView?: "work" | "deadlines";
+  /** Which view of the action centre to open: my work, all project work or the deadlines. */
+  actionCenterView?: ActionCenterView;
   initialCameraFiles?: File[];
   onInitialCameraFilesConsumed?: () => void;
   openQuickCamera: () => void;
   openDailyRecord: (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => void;
-  openProjectArea: (tab: "inspections" | "findings" | "ncr" | "documents" | "registers" | "visual" | "drawings" | "files" | "submissions") => void;
-  openActionCenter: (view?: "work" | "deadlines") => void;
+  /** The optional record id opens that record itself, instead of the list it stands in. */
+  openProjectArea: (tab: "inspections" | "findings" | "ncr" | "documents" | "registers" | "visual" | "drawings" | "files" | "submissions", recordId?: string) => void;
+  openActionCenter: (view?: ActionCenterView) => void;
   openRapidVerify: () => void;
   openReports: () => void;
   openManagement: () => void;
   projectActions?: Array<{ id: string; title: string; action_number: string; status: string; priority: string; due_at: string | null; owner_user_id?: string | null }>;
   openProjectAction?: (actionId: string) => void;
   createProjectAction?: () => void;
+  /** The record the action centre sent the user to; it opens expanded and scrolled to. */
+  focusRecordId?: string;
 }) {
   const { text } = useLanguage();
   const queryClient = useQueryClient();
@@ -363,6 +371,11 @@ export function OperationalWorkspace({
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  /** The name behind an assignment, stable so the action centre does not rebuild its list. */
+  const resolveMemberName = useCallback((userId: string | null) => {
+    const employee = companyEmployees.find((member) => member.userId === userId);
+    return employee?.displayName?.trim() || employee?.email || "";
+  }, [companyEmployees]);
 
   const refresh = async () => {
     await Promise.all([
@@ -432,6 +445,7 @@ export function OperationalWorkspace({
           openRapidVerify={openRapidVerify}
           openReports={openReports}
           openManagement={openManagement}
+          focusRecordId={focusRecordId}
         />
       ) : null}
       {mode === "actions" ? (
@@ -440,9 +454,12 @@ export function OperationalWorkspace({
           actions={projectActions}
           projectName={projectName}
           initialView={actionCenterView}
+          currentUserId={currentUserId}
+          parties={parties}
+          resolveUserName={resolveMemberName}
           openAction={(actionId) => openProjectAction?.(actionId)}
           createAction={() => createProjectAction?.()}
-          openProjectArea={(tab) => openProjectArea(tab)}
+          openProjectArea={(tab, recordId) => openProjectArea(tab, recordId)}
         />
       ) : null}
       {mode === "verify" ? <RapidVerifyWorkspace projectName={projectName} projectFiles={query.data.files} client={client} /> : null}
@@ -515,6 +532,7 @@ function ProjectOperations({
   openReports,
   openManagement,
   externalSubmissionIntent = false,
+  focusRecordId = "",
 }: {
   data: OperationSnapshot;
   organizationId: string;
@@ -539,11 +557,13 @@ function ProjectOperations({
   onInitialCameraFilesConsumed?: () => void;
   openQuickCamera: () => void;
   openDailyRecord: (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => void;
-  openActionCenter: (view?: "work" | "deadlines") => void;
+  openActionCenter: (view?: ActionCenterView) => void;
   openRapidVerify: () => void;
   openReports: () => void;
   openManagement: () => void;
   externalSubmissionIntent?: boolean;
+  /** A record the action centre asked for; it opens expanded instead of only its module. */
+  focusRecordId?: string;
 }) {
   const { language, locale, text } = useLanguage();
   const allRegisterNames = language === "en" ? registerLabelsEnglish : registerLabels;
@@ -568,6 +588,8 @@ function ProjectOperations({
   // Issues and NCRs are separate modules: the client's issue screen is for issues only.
   const findingScope: "issue" | "ncr" = tab === "ncr" ? "ncr" : "issue";
   const [visualFindingId, setVisualFindingId] = useState("");
+  /** Set when the photo library asked for the 360° upload form instead of a normal photo. */
+  const [visual360Intent, setVisual360Intent] = useState(false);
   const [drawingFindingId, setDrawingFindingId] = useState("");
   const [dailyWorkView, setDailyWorkView] = useState<DailyWorkView>("works_ongoing");
   const [showForm, setShowForm] = useState(initialTab !== "home");
@@ -1801,6 +1823,7 @@ function ProjectOperations({
             resolveUserName={resolveUserName}
             parties={parties}
             busy={busy}
+            focusRecordId={focusRecordId}
             transition={(finding, nextStatus, note, finalMeasure, correction) => run(() => transitionFinding(client, finding.id, nextStatus, note, finalMeasure, correction), `Bevinding ${finding.finding_number} staat nu op ${findingStatusLabels[nextStatus] ?? nextStatus}.`)}
             recordProgress={(finding, progressPercent, disposition, note) => run(
               () => recordFindingProgress(client, { findingId: finding.id, progressPercent, disposition, note }),
@@ -2077,7 +2100,7 @@ function ProjectOperations({
             <button className="secondary-button" type="button" onClick={openManagement}>{text("Open submissions", "Open indieningen")}</button>
           </div>
           )}
-          <ControlledDocumentList entries={data.registerEntries.filter((entry) => isControlledDocumentType(entry.register_type) && (externalSubmissionIntent || !externalSubmissionRegisterTypes.includes(entry.register_type)))} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={currentUserName} client={client} run={run} />
+          <ControlledDocumentList entries={data.registerEntries.filter((entry) => isControlledDocumentType(entry.register_type) && (externalSubmissionIntent || !externalSubmissionRegisterTypes.includes(entry.register_type)))} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={currentUserName} focusRecordId={focusRecordId} client={client} run={run} />
           <RecordList empty={text("No additional project registers yet.", "Nog geen aanvullende projectregisters.")} rows={data.registerEntries.filter((entry) => !isControlledDocumentType(entry.register_type) && entry.register_type !== "boq").map((entry) => {
             // The verdict and the quantity are the point of a delivery line, so the list
             // shows them instead of hiding them in the record.
@@ -2102,7 +2125,7 @@ function ProjectOperations({
               status: entry.status,
               tone: outcome === "not_compliant" ? "red" : entry.status === "closed" || entry.status === "approved" ? "green" : "",
             };
-          })} />
+          })} focusRecordId={focusRecordId} />
         </section>
       ) : null}
 
@@ -2115,7 +2138,7 @@ function ProjectOperations({
         onRecord={(view) => openDailyRecord(view === "delays" ? "delay" : view)}
       /> : null}
 
-      {tab === "visual" ? <VisualEvidenceWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} parties={parties} client={client} busy={busy} run={run} initialFindingId={visualFindingId} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} /> : null}
+      {tab === "visual" ? <VisualEvidenceWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} parties={parties} client={client} busy={busy} run={run} initialFindingId={visualFindingId} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} start360Upload={visual360Intent} onStart360UploadConsumed={() => setVisual360Intent(false)} /> : null}
 
       {tab === "documents" ? <ProjectDocumentsHome data={data} client={client} openDrawings={() => switchTab("drawings")} openFiles={() => switchTab("files")} openRegisters={() => switchTab("registers")} createDocument={() => openTask("registers", true)} /> : null}
 
@@ -2123,7 +2146,7 @@ function ProjectOperations({
 
       {tab === "tools" ? <FieldTools data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} parties={parties} reportId={reportId} client={client} busy={busy} run={run} /> : null}
 
-      {tab === "files" ? <MediaLibraryWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} open360Upload={() => setTab("visual")} /> : null}
+      {tab === "files" ? <MediaLibraryWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} open360Upload={() => { setVisual360Intent(true); setTab("visual"); }} /> : null}
     </>
   );
 }
@@ -2206,12 +2229,14 @@ function BoqProgressRegister({
   );
 }
 
-function ControlledDocumentList({ entries, buildings, locationNodes, busy, currentUserName, client, run }: {
+function ControlledDocumentList({ entries, buildings, locationNodes, busy, currentUserName, focusRecordId = "", client, run }: {
   entries: OperationSnapshot["registerEntries"];
   buildings: BuildingOption[];
   locationNodes: OperationSnapshot["locationNodes"];
   busy: boolean;
   currentUserName: string;
+  /** The register item the action centre pointed at. */
+  focusRecordId?: string;
   client: SupabaseClient;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
 }) {
@@ -2250,6 +2275,7 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
     ].filter(Boolean).join("\n");
   };
 
+  useRecordFocus(focusRecordId, entries.some((entry) => entry.id === focusRecordId));
   if (!entries.length) return null;
   return (
     <section className="controlled-document-register">
@@ -2268,7 +2294,7 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
           const attachmentFiles = Array.isArray(details.attachment_files)
             ? details.attachment_files.filter((file): file is Record<string, unknown> => Boolean(file) && typeof file === "object" && !Array.isArray(file))
             : [];
-          return <article className="controlled-document-card" key={entry.id}>
+          return <article className={`controlled-document-card ${focusRecordId === entry.id ? "record-focused" : ""}`} id={recordAnchorId(entry.id)} key={entry.id}>
             <div className="controlled-document-card-main"><div><span className="record-number">{entry.entry_number} · {entry.register_type.replaceAll("_", " ").toUpperCase()}</span><h3>{entry.title}</h3><p>{String(details.description ?? "")}</p><small>{entryBuildingName}{entryLocation ? ` → ${entryLocation}` : ""} · {formatDate(entry.occurred_at, locale)}{entry.due_at ? ` · ${text("due", "uiterlijk")} ${formatDate(entry.due_at, locale)}` : ""}{responseData.decision ? ` · ${String(responseData.decision).replaceAll("_", " ")}` : ""}</small></div><span className={`task-status ${entry.status === "approved" || entry.status === "closed" ? "green" : entry.status === "rejected" ? "red" : ""}`}>{entry.status.replaceAll("_", " ")}</span></div>
             <div className="finding-actions"><button className="secondary-button" type="button" onClick={() => setHistoryActive((current) => current === entry.id ? null : entry.id)}><Archive size={15} /> {historyActive === entry.id ? text("Close record", "Sluit dossier") : text("Open record & history", "Open dossier & historie")}</button>
             {/* Send the document to the contractor over WhatsApp. The formal PDF or Word
@@ -2446,7 +2472,7 @@ function SubmittedRecordShare({ finding, scope, projectName, projectCode, buildi
   );
 }
 
-function FindingList({ data, client, run, findings, progressUpdates, visualAnnotations, externalShareLinks, projectName, projectCode, buildings, locationNodes, currentUserName, resolveUserName, parties, busy, transition, recordProgress, share, revoke, linkVisual, linkDrawing }: {
+function FindingList({ data, client, run, findings, progressUpdates, visualAnnotations, externalShareLinks, projectName, projectCode, buildings, locationNodes, currentUserName, resolveUserName, parties, busy, focusRecordId = "", transition, recordProgress, share, revoke, linkVisual, linkDrawing }: {
   data: OperationSnapshot;
   client: SupabaseClient;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
@@ -2463,6 +2489,8 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   resolveUserName: (userId: string | null) => string;
   parties: ProjectParty[];
   busy: boolean;
+  /** The finding the action centre pointed at, so it is the one in front of the user. */
+  focusRecordId?: string;
   transition: (finding: Finding, nextStatus: string, note: string, finalMeasure: string, correction: string) => Promise<boolean>;
   recordProgress: (finding: Finding, progressPercent: number, disposition: "validated" | "to_be_corrected" | "alternative_solution", note: string) => Promise<boolean>;
   share: (finding: Finding) => Promise<{ shareId: string; url: string; expiresAt: string } | null>;
@@ -2504,6 +2532,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
     if (result) setExternalShare({ findingId: finding.id, ...result });
     setCreatingShareFor(null);
   };
+  useRecordFocus(focusRecordId, findings.some((finding) => finding.id === focusRecordId));
   const findingBuildingName = (finding: Finding) => buildings.find((building) => building.id === finding.building_id)?.name ?? "";
   /**
    * The signature lines of the client's NCR form. "QC verification" is the person the
@@ -2545,7 +2574,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
           && new Date(item.expires_at).getTime() > Date.now()
         );
         return (
-          <article className="finding-card" key={finding.id}>
+          <article className={`finding-card ${focusRecordId === finding.id ? "record-focused" : ""}`} id={recordAnchorId(finding.id)} key={finding.id}>
             <div className="finding-card-main"><span className={`record-severity ${finding.severity}`}>{finding.severity}</span><div><span className="record-number">{finding.finding_number} · {finding.finding_type.toUpperCase()}</span><h3>{finding.title}</h3><p>{finding.description}</p>{issue.action_steps ? <p className="finding-required-action"><strong>{text("Required action:", "Vereiste actie:")}</strong> {issue.action_steps}</p> : null}<small>{recordBuildingName}{recordLocation ? ` → ${recordLocation}` : ""} · Deadline {formatDate(finding.due_at, locale)}{latestProgress ? ` · ${text("progress", "voortgang")} ${latestProgress.progress_percent}% · ${latestProgress.disposition.replaceAll("_", " ")}` : ""}{finding.verified_at ? ` · ${text("verified", "geverifieerd")} ${formatDate(finding.verified_at, locale)}` : ""}</small></div><span className={`task-status ${finding.status === "closed" ? "green" : finding.severity === "critical" ? "red" : ""}`}>{statusLabels[finding.status] ?? finding.status}</span></div>
             <div className="finding-actions">
               <button className="secondary-button" type="button" onClick={() => linkVisual(finding)}><Camera size={16} /> {visualAnnotation ? text("View photo marker", "Bekijk fotomarker") : text("Mark on photo / 360°", "Markeer op foto / 360°")}</button>
@@ -3273,13 +3302,14 @@ function MfaSecurityCard({ client }: { client: SupabaseClient }) {
   );
 }
 
-function RecordList({ empty, rows }: { empty: string; rows: Array<{ id: string; icon: typeof ClipboardCheck; title: string; meta: string; status: string; tone: string; open?: { label: string; onOpen: () => void } }> }) {
+function RecordList({ empty, rows, focusRecordId = "" }: { empty: string; rows: Array<{ id: string; icon: typeof ClipboardCheck; title: string; meta: string; status: string; tone: string; open?: { label: string; onOpen: () => void } }>; focusRecordId?: string }) {
   const { text } = useLanguage();
+  useRecordFocus(focusRecordId, rows.some((row) => row.id === focusRecordId));
   if (!rows.length) return <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No records", "Geen registraties")}</strong><span>{empty}</span></div>;
   return <div className="record-stack">{rows.map((row) => {
     const Icon = row.icon;
     return (
-      <article className="record-row" key={row.id}>
+      <article className={`record-row ${focusRecordId === row.id ? "record-focused" : ""}`} id={recordAnchorId(row.id)} key={row.id}>
         <span className="action-icon"><Icon size={18} /></span>
         <div><strong>{row.title}</strong><span>{row.meta}</span></div>
         {row.open ? <button className="secondary-button record-row-open" type="button" onClick={row.open.onOpen}>{row.open.label}</button> : null}
