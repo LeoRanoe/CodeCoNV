@@ -70,6 +70,10 @@ import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import { currentPushState, enablePushNotifications, type PushState } from "@/lib/notifications/push-client";
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
 import { cacheProjectDay, cacheWorkspace, getCachedProjectDay, getCachedWorkspace } from "@/lib/offline/workspace-cache";
+import { loadWithOfflineCache } from "@/lib/offline/query-cache";
+import { offlineQueryKeys } from "@/lib/offline/query-keys";
+import { getSessionWithOfflineFallback, storedSessionOnThisDevice } from "@/lib/supabase/offline-session";
+import { OfflineManagerModal } from "@/app/offline-manager";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   clientReportSections,
@@ -105,9 +109,11 @@ import {
   createProjectAction,
   createOrGetReport,
   createProjectWorkspace,
-  getSession,
   inviteInternalUser,
   loadInternalAccess,
+  loadProjectConfiguration,
+  loadProjectDrawings,
+  loadProjectLocations,
   loadProjectNotifications,
   loadProjectDay,
   loadWorkspace,
@@ -128,6 +134,7 @@ import {
   type ProjectDaySnapshot,
   type ProjectParty,
   type ProjectNotification,
+  type ProjectDrawingOption,
   type WorkspaceBuilding,
   type WorkspaceProject,
 } from "@/lib/supabase/data";
@@ -155,7 +162,7 @@ type NavKey = "vandaag" | "project" | "acties" | "projectdocs" | "punchlist" | "
 type ProjectTabKey = "home" | "inspections" | "findings" | "ncr" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files";
 const navKeys: NavKey[] = ["vandaag", "project", "acties", "projectdocs", "punchlist", "verify", "rapporten", "meer"];
 const projectTabKeys: ProjectTabKey[] = ["home", "inspections", "findings", "ncr", "hse", "daily", "documents", "registers", "visual", "drawings", "tools", "files"];
-type ModalKey = "quick" | "entry" | "action_create" | "action_detail" | "report" | "attendance" | "one_tap_log" | "daily_questions" | "project_start" | "user_admin" | "notifications" | "manage_buildings" | null;
+type ModalKey = "quick" | "entry" | "action_create" | "action_detail" | "report" | "attendance" | "one_tap_log" | "daily_questions" | "project_start" | "user_admin" | "notifications" | "manage_buildings" | "offline" | null;
 type WorkspaceStage = "projects" | "cockpit";
 type EntryKind =
   | "activity"
@@ -188,7 +195,6 @@ type ProjectContext = WorkspaceProject;
 type BuildingContext = WorkspaceBuilding;
 
 /** An uploaded project drawing, used to point a field record at the right plan. */
-type ProjectDrawingOption = { id: string; name: string; buildingId: string | null };
 
 const constructionWorkOptions = [
   { en: "Site preparation", nl: "Bouwplaatsinrichting" },
@@ -635,7 +641,10 @@ export function CodecoSupervisionApp() {
 
   const internalAccessQuery = useQuery({
     queryKey: ["internal-access", activeOrganizationId],
-    queryFn: () => loadInternalAccess(supabase as SupabaseClient, activeOrganizationId!),
+    queryFn: () => loadWithOfflineCache(
+      offlineQueryKeys.internalAccess(activeOrganizationId!),
+      () => loadInternalAccess(supabase as SupabaseClient, activeOrganizationId!),
+    ),
     enabled: Boolean(
       supabase
       && session
@@ -674,34 +683,10 @@ export function CodecoSupervisionApp() {
 
   const projectConfigurationQuery = useQuery({
     queryKey: ["project-configuration", selectedProject?.id],
-    queryFn: async () => {
-      const result = await (supabase as SupabaseClient)
-        .from("project_settings")
-        .select("disciplines,default_shift_start,default_shift_end,modules,required_location_depth")
-        .eq("project_id", selectedProject!.id)
-        .single();
-      if (!result.error) return result.data as {
-        disciplines: string[];
-        default_shift_start: string;
-        default_shift_end: string;
-        modules: Record<string, boolean>;
-        required_location_depth: "building" | "floor" | "room" | "element";
-      };
-      if (!result.error.message.includes("does not exist")) throw result.error;
-      const compatible = await (supabase as SupabaseClient)
-        .from("project_settings")
-        .select("modules")
-        .eq("project_id", selectedProject!.id)
-        .single();
-      if (compatible.error) throw compatible.error;
-      return {
-        disciplines: [...constructionDisciplines],
-        default_shift_start: "07:00",
-        default_shift_end: "16:00",
-        modules: (compatible.data?.modules ?? {}) as Record<string, boolean>,
-        required_location_depth: "building" as const,
-      };
-    },
+    queryFn: () => loadWithOfflineCache(
+      offlineQueryKeys.projectConfiguration(selectedProject!.id),
+      () => loadProjectConfiguration(supabase as SupabaseClient, selectedProject!.id),
+    ),
     enabled: Boolean(supabase && session && selectedProject),
   });
   const configuredDisciplines = projectConfigurationQuery.data?.disciplines?.length
@@ -711,45 +696,28 @@ export function CodecoSupervisionApp() {
   const configuredShiftEnd = projectConfigurationQuery.data?.default_shift_end?.slice(0, 5) ?? "16:00";
   const projectLocationsQuery = useQuery({
     queryKey: ["project-locations", selectedProject?.id],
-    queryFn: async () => {
-      const result = await (supabase as SupabaseClient)
-        .from("location_nodes")
-        .select("id,building_id,parent_id,node_type,code,name,status")
-        .eq("project_id", selectedProject!.id)
-        .eq("status", "active")
-        .order("sort_order");
-      if (result.error) throw result.error;
-      return result.data as ProjectLocationOption[];
-    },
+    queryFn: () => loadWithOfflineCache(
+      offlineQueryKeys.projectLocations(selectedProject!.id),
+      () => loadProjectLocations(supabase as SupabaseClient, selectedProject!.id) as Promise<ProjectLocationOption[]>,
+    ),
     enabled: Boolean(supabase && session && selectedProject),
   });
 
-  /**
-   * The drawings of this project, so a record can name the plan it belongs to instead of
-   * only a floor or a room. Reading `files` directly keeps this cheap next to the full
-   * project snapshot the workspace loads.
-   */
   const projectDrawingsQuery = useQuery({
     queryKey: ["project-drawings", selectedProject?.id],
-    queryFn: async () => {
-      const result = await (supabase as SupabaseClient)
-        .from("files")
-        .select("id,building_id,original_name,created_at")
-        .eq("project_id", selectedProject!.id)
-        .eq("category", "drawing")
-        .eq("status", "available")
-        .order("created_at", { ascending: false })
-        .limit(200);
-      if (result.error) throw result.error;
-      return (result.data as Array<{ id: string; building_id: string | null; original_name: string }>)
-        .map((file) => ({ id: file.id, name: file.original_name, buildingId: file.building_id })) satisfies ProjectDrawingOption[];
-    },
+    queryFn: () => loadWithOfflineCache(
+      offlineQueryKeys.projectDrawings(selectedProject!.id),
+      () => loadProjectDrawings(supabase as SupabaseClient, selectedProject!.id),
+    ),
     enabled: Boolean(supabase && session && selectedProject),
   });
 
   const notificationQuery = useQuery({
     queryKey: ["project-notifications", selectedProject?.id],
-    queryFn: () => loadProjectNotifications(supabase as SupabaseClient, selectedProject!.id),
+    queryFn: () => loadWithOfflineCache(
+      offlineQueryKeys.projectNotifications(selectedProject!.id),
+      () => loadProjectNotifications(supabase as SupabaseClient, selectedProject!.id),
+    ),
     enabled: Boolean(supabase && session && selectedProject),
     staleTime: 60_000,
   });
@@ -791,7 +759,11 @@ export function CodecoSupervisionApp() {
     const authTimeout = window.setTimeout(() => {
       if (active) setAuthReady(true);
     }, 8_000);
-    void getSession(supabase).then((nextSession) => {
+    // Offline the library cannot refresh an expired access token, so it answers "no
+    // session". The session written to this device is used instead: without it an
+    // installed app opened in the field showed the login screen with all its data sitting
+    // unreachable on the phone.
+    void getSessionWithOfflineFallback(supabase).then((nextSession) => {
       if (active) {
         setSession(nextSession);
         setAuthReady(true);
@@ -803,6 +775,10 @@ export function CodecoSupervisionApp() {
     });
     const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (event === "PASSWORD_RECOVERY") setPasswordRecovery(true);
+      // Losing the session while there is no connection is not a sign-out: it is a refresh
+      // that could not reach the server. Signing out on purpose clears the stored session,
+      // so a real sign-out still ends here.
+      if (!nextSession && !navigator.onLine && storedSessionOnThisDevice()) return;
       setSession(nextSession);
       setAuthReady(true);
       if (!nextSession) {
@@ -1622,7 +1598,9 @@ export function CodecoSupervisionApp() {
           <div className="top-actions">
             <LiveWeatherChip location={selectedProject?.location ?? ""} />
             <LanguageSwitcher compact />
-            <span className={`storage-state ${syncState}`} title={storageStatus}>{syncState === "error" || !isOnline ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />} <span>{storageStatus}</span></span>
+            {/* The connection chip is the way into the offline copy: it is where a
+                supervisor already looks when the connection is the question. */}
+            <button className={`storage-state ${syncState}`} type="button" title={storageStatus} onClick={() => setModal("offline")} aria-label={text("Offline availability", "Offline beschikbaarheid")}>{syncState === "error" || !isOnline ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />} <span>{storageStatus}</span></button>
             <button className={`icon-button management-button ${activeNav === "meer" ? "active" : ""}`} type="button" aria-label={text("Open management and settings", "Open beheer en instellingen")} title={text("Management and settings", "Beheer en instellingen")} onClick={() => navigate("meer")}><Settings size={17} /></button>
             <button className="icon-button" type="button" aria-label={`${text("Notifications", "Meldingen")}${unreadNotificationCount ? `, ${unreadNotificationCount} ${text("unread", "ongelezen")}` : ""}`} onClick={() => setModal("notifications")}>
               <Bell size={17} />
@@ -1913,6 +1891,14 @@ export function CodecoSupervisionApp() {
             await queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] });
             return true;
           }}
+        />
+      ) : null}
+      {modal === "offline" && supabase && session ? (
+        <OfflineManagerModal
+          client={supabase}
+          userId={session.user.id}
+          isOnline={isOnline}
+          close={() => setModal(null)}
         />
       ) : null}
       {modal === "action_detail" && selectedAction ? (

@@ -31,9 +31,14 @@ export const metadata: Metadata = {
   description: siteConfig.description,
   manifest: "/manifest.webmanifest",
   icons: {
-    icon: [{ url: "/codeco-logo.png", type: "image/png" }],
-    shortcut: "/codeco-logo.png",
-    apple: "/codeco-logo.png",
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/icon-192.png", type: "image/png", sizes: "192x192" },
+      { url: "/icon-512.png", type: "image/png", sizes: "512x512" },
+    ],
+    shortcut: "/icon-192.png",
+    // iOS uses this for the home-screen icon; the wide logo was rendered squashed there.
+    apple: [{ url: "/icon-192.png", sizes: "180x180", type: "image/png" }],
   },
   openGraph: {
     type: "website",

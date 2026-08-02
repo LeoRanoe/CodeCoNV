@@ -11,8 +11,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
         staleTime: 30_000,
         retry: 1,
         refetchOnWindowFocus: true,
+        // Without this a query is *paused* while the device reports no connection: the
+        // loader never runs, so the offline copy on the device is never read and the
+        // installed app opens on an empty screen in the field. Every loader tries the
+        // network first and falls back to what is stored, which is what "offline first"
+        // means here.
+        networkMode: "offlineFirst",
       },
-      mutations: { retry: 0 },
+      mutations: { retry: 0, networkMode: "offlineFirst" },
     },
   }));
 
@@ -34,6 +40,18 @@ export function Providers({ children }: { children: React.ReactNode }) {
         });
       });
       void registration.update().catch(() => undefined);
+      // Refresh the offline shell while there still is a connection, so the installed app
+      // opens without internet on the version that is deployed now, and hand over the code
+      // this page is running: on a first visit the worker did not see it being loaded.
+      if (navigator.onLine) {
+        void navigator.serviceWorker.ready.then((ready) => {
+          ready.active?.postMessage("codeco-refresh-shell");
+          const assets = performance.getEntriesByType("resource")
+            .map((entry) => entry.name)
+            .filter((name) => name.startsWith(window.location.origin) && (name.includes("/_next/static/") || /\.(?:woff2?|css)$/.test(name)));
+          if (assets.length) ready.active?.postMessage({ type: "codeco-precache", urls: Array.from(new Set(assets)) });
+        }).catch(() => undefined);
+      }
     }).catch(() => undefined);
 
     // When the new worker takes control, load the page it serves once.

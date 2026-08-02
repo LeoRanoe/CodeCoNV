@@ -66,7 +66,9 @@ test("server-renders the public CODECO landing page", async () => {
   assert.match(html, /Kwattaweg 717E/i);
   assert.doesNotMatch(html, /href="\/supervisie/i);
   assert.match(html, /manifest\.webmanifest/i);
-  assert.match(html, /rel="icon"[^>]+codeco-logo\.png/i);
+  // The tab icon is the square app icon set, the same one the phone installs.
+  assert.match(html, /rel="icon"[^>]+favicon\.svg/i);
+  assert.match(html, /rel="apple-touch-icon"[^>]+icon-192\.png/i);
   assert.doesNotMatch(html, /Sitezicht|codex-preview|Building your site|react-loading-skeleton/i);
 });
 
@@ -83,7 +85,13 @@ test("serves branded recovery pages and install metadata", async () => {
   const manifest = await manifestResponse.json();
   assert.equal(manifest.short_name, "CODECO");
   assert.equal(manifest.start_url, "/supervisie");
-  assert.equal(manifest.icons[0].src, "/codeco-logo.png");
+  assert.equal(manifest.display, "standalone");
+  // The sizes a phone needs before it offers to install the app, plus the maskable icon
+  // Android crops to its own shape.
+  assert.deepEqual(
+    manifest.icons.map((icon) => `${icon.sizes}:${icon.purpose}`),
+    ["192x192:any", "512x512:any", "512x512:maskable", "any:any"],
+  );
 });
 
 test("explains an invalid external-party link without exposing a token error", async () => {
@@ -1038,7 +1046,7 @@ test("lets a new deployment reach an installed field app", async () => {
 
   // Documents are never served from the cache first; that is what kept a deployed
   // change invisible on a phone that had the app installed.
-  assert.match(serviceWorker, /const CACHE = "codeco-field-shell-v2"/);
+  assert.match(serviceWorker, /const CACHE = "codeco-field-shell-v3"/);
   assert.match(serviceWorker, /const isDocument = request\.mode === "navigate"/);
   assert.match(serviceWorker, /_rsc/);
   assert.doesNotMatch(serviceWorker, /SHELL = \["\/supervisie"/);
@@ -1490,4 +1498,95 @@ test("gives the 360 degree viewer the same reach as the photo options", async ()
   assert.match(workspace, /setVisual360Intent\(true\); setTab\("visual"\)/);
   assert.match(evidence, /start360Upload\?: boolean;/);
   assert.match(evidence, /handled360Intent/);
+});
+
+test("opens and works as an installed app with or without internet", async () => {
+  const [serviceWorker, providers, app, offlineSession, queryCache, fullSync, fileCache, gateway, idb, manager, styles] = await Promise.all([
+    readFile(new URL("../public/sw.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/providers.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/offline-session.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/offline/query-cache.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/offline/full-sync.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/offline/file-cache.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/storage/gateway.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/offline/idb.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/offline-manager.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // A query that is "paused" because the device reports no connection never runs its
+  // loader, so the copy on the device is never read. This is what makes the installed app
+  // open on its own data instead of on an empty screen.
+  assert.match(providers, /networkMode: "offlineFirst"/);
+  assert.match(providers, /mutations: \{ retry: 0, networkMode: "offlineFirst" \}/);
+
+  // Offline the library cannot refresh an expired token and answers "no session". The
+  // session stored on the device is used instead, and a null session while offline is not
+  // treated as a sign-out.
+  assert.match(offlineSession, /export function storedSessionOnThisDevice/);
+  assert.match(offlineSession, /export async function getSessionWithOfflineFallback/);
+  assert.match(offlineSession, /sb-\$\{reference\}-auth-token/);
+  assert.match(app, /getSessionWithOfflineFallback\(supabase\)/);
+  assert.match(app, /if \(!nextSession && !navigator\.onLine && storedSessionOnThisDevice\(\)\) return;/);
+
+  // Every project read has a copy on the device, including the smaller ones that used to
+  // leave the app with empty pickers and default settings when opened offline.
+  assert.match(queryCache, /export async function loadWithOfflineCache/);
+  for (const key of ["projectConfiguration", "projectLocations", "projectDrawings", "projectNotifications", "internalAccess"]) {
+    assert.match(app, new RegExp(`offlineQueryKeys\\.${key}\\(`), `${key} must fall back to the offline copy`);
+    assert.match(fullSync, new RegExp(`offlineQueryKeys\\.${key}\\(`), `${key} must be filled in by the full sync`);
+  }
+
+  // Everything the account can read, on the device on purpose, before leaving.
+  assert.match(fullSync, /export async function syncEverythingForOffline/);
+  assert.match(fullSync, /loadProjectOperations\(client, project\.id, project\.organizationId, reportId\)/);
+  assert.match(fullSync, /if \(reportId\) await cacheProjectSnapshot\(project\.id, null, snapshot\)/);
+  assert.match(fullSync, /storeProjectFileOffline\(client, file\.id, project\.id\)/);
+  // The lazily loaded parts of the app are downloaded too; offline is exactly when they
+  // would otherwise be fetched for the first time.
+  assert.match(fullSync, /async function warmLazyModules/);
+  assert.match(fullSync, /import\("@photo-sphere-viewer\/core"\)/);
+  assert.match(fullSync, /import\("pdfjs-dist"\)/);
+
+  // Evidence is private and travels with a token, so it is stored by the app itself
+  // instead of in the service worker cache, and read from there when the network fails.
+  assert.match(idb, /const databaseVersion = 2/);
+  assert.match(idb, /createObjectStore\("files"/);
+  assert.match(fileCache, /export async function cacheProjectFile/);
+  assert.match(gateway, /const cached = await readCachedProjectFile\(fileId\)/);
+  assert.match(gateway, /export async function storeProjectFileOffline/);
+  assert.match(serviceWorker, /url\.pathname\.startsWith\("\/api\/"\)\) return;/);
+
+  // The shell itself: precached documents, a network timeout so an unusable connection
+  // does not look like an app that will not open, and the assets it renders with.
+  assert.match(serviceWorker, /const SHELL_DOCUMENTS = \["\/supervisie", "\/"\]/);
+  assert.match(serviceWorker, /DOCUMENT_NETWORK_TIMEOUT/);
+  assert.match(serviceWorker, /function networkWithTimeout/);
+  assert.match(serviceWorker, /woff2\?/);
+  assert.match(serviceWorker, /codeco-refresh-shell/);
+  assert.match(providers, /codeco-refresh-shell/);
+
+  // The way in, and an honest list of what does and does not work without a connection.
+  assert.match(app, /modal === "offline"/);
+  assert.match(app, /<OfflineManagerModal/);
+  assert.match(manager, /Make everything available offline|Alles offline beschikbaar maken/);
+  assert.match(manager, /What works without internet|Wat werkt zonder internet/);
+  assert.match(manager, /What still needs a connection|Waar nog verbinding voor nodig is/);
+  assert.match(manager, /Remove offline copy|Offline kopie verwijderen/);
+  assert.match(styles, /\.offline-manager-state/);
+});
+
+test("installs as an application with square icons and its own identity", async () => {
+  const [manifest, layout] = await Promise.all([
+    readFile(new URL("../app/manifest.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+  ]);
+
+  // A phone offers to install an app that has an id, a standalone display and square
+  // icons; the wide logo was rendered squashed on the home screen.
+  assert.match(manifest, /id: "\/supervisie"/);
+  assert.match(manifest, /display_override: \["standalone", "minimal-ui"\]/);
+  assert.match(manifest, /purpose: "maskable"/);
+  assert.match(layout, /apple: \[\{ url: "\/icon-192\.png"/);
 });

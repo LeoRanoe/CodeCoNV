@@ -1931,12 +1931,16 @@ textarea:focus-visible {
   align-items: center;
   gap: 7px;
   padding: 8px 10px;
+  border: 1px solid transparent;
   border-radius: 9px;
   background: #fff3df;
   color: #8a4b04;
   font-size: 11px;
   font-weight: 650;
+  cursor: pointer;
 }
+
+.storage-state:hover { border-color: currentColor; }
 
 .storage-state.saved,
 .storage-state.idle {
@@ -1953,6 +1957,39 @@ textarea:focus-visible {
   background: #fff0ed;
   color: #a33a2b;
 }
+
+/* Making the whole project available on the device, before leaving for a site without
+   coverage. */
+.offline-manager-body { display: grid; gap: 12px; }
+
+.offline-manager-state {
+  align-items: center;
+  background: #f8faf9;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  display: flex;
+  gap: 11px;
+  padding: 12px 13px;
+}
+
+.offline-manager-state > span { display: grid; height: 36px; place-items: center; width: 36px; border-radius: 9px; background: #eef3f1; color: #52635c; }
+.offline-manager-state.ready > span { background: #eaf8f3; color: #116c5d; }
+.offline-manager-state strong { display: block; color: #1d2924; font-size: 12px; }
+.offline-manager-state small { color: #6e7b75; font-size: 9px; }
+.offline-manager-quota { color: #7a8781; font-size: 9px; margin: 0; }
+
+.offline-manager-progress { display: grid; gap: 6px; }
+.offline-progress-track { background: #e7ecea; border-radius: 999px; height: 7px; overflow: hidden; }
+.offline-progress-track > span { background: var(--teal); display: block; height: 100%; transition: width .25s ease; }
+.offline-manager-progress p { align-items: center; color: #52635c; display: flex; font-size: 9px; gap: 6px; margin: 0; }
+
+.offline-manager-explainer { background: #f8faf9; border: 1px solid var(--panel-border); border-radius: 12px; padding: 12px 13px; }
+.offline-manager-explainer h3 { color: #1d2924; font-size: 10px; margin: 0 0 5px; text-transform: uppercase; letter-spacing: .05em; }
+.offline-manager-explainer h3 + ul { margin: 0 0 11px; }
+.offline-manager-explainer ul { color: #56635d; font-size: 9px; line-height: 1.6; margin: 0; padding-left: 16px; }
+.offline-manager-explainer li { margin-bottom: 3px; }
+.offline-manager-actions { flex-wrap: wrap; }
+.offline-clear-warning { color: #a33a2b; flex: 1 1 200px; font-size: 9px; }
 
 .main-content {
   width: min(1360px, 100%);

@@ -396,7 +396,14 @@ export function OperationalWorkspace({
       await refresh();
       return true;
     } catch (caught) {
-      setError(messageFrom(caught));
+      // Offline the real cause is always the same one, and the generic database message
+      // reads like data loss. Photos are the exception: they queue on the device.
+      setError(typeof navigator !== "undefined" && !navigator.onLine
+        ? text(
+          "No connection. This record cannot be saved centrally yet; your input stays in the open form. Photos you take are kept on this device and upload by themselves.",
+          "Geen verbinding. Deze registratie kan nog niet centraal worden opgeslagen; je invoer blijft in het geopende formulier staan. Foto's die je maakt blijven op dit apparaat en gaan er vanzelf naartoe.",
+        )
+        : messageFrom(caught));
       return false;
     } finally {
       setBusy(false);

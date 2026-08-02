@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { cacheProjectFile, readCachedProjectFile } from "@/lib/offline/file-cache";
 import { validAccessToken } from "@/lib/supabase/access-token";
 
 // Storage routes are part of the same Next.js application. The server route
@@ -102,8 +103,13 @@ async function authorizedFileResponse(client: SupabaseClient, fileId: string, do
 }
 
 export async function downloadProjectFile(client: SupabaseClient, fileId: string, filename: string) {
-  const response = await authorizedFileResponse(client, fileId, true);
-  const url = URL.createObjectURL(await response.blob());
+  // Downloading a file that is already on the device must keep working in the field.
+  const blob = await authorizedFileResponse(client, fileId, true).then((response) => response.blob()).catch(async (error: unknown) => {
+    const cached = await readCachedProjectFile(fileId).catch(() => null);
+    if (cached) return cached;
+    throw error;
+  });
+  const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = filename;
@@ -114,8 +120,7 @@ export async function downloadProjectFile(client: SupabaseClient, fileId: string
 export async function openProjectFile(client: SupabaseClient, fileId: string, filename: string) {
   const previewWindow = window.open("about:blank", "_blank");
   try {
-    const response = await authorizedFileResponse(client, fileId);
-    const blob = await response.blob();
+    const blob = await loadProjectFileBlob(client, fileId);
     const url = URL.createObjectURL(blob);
     if (previewWindow) {
       previewWindow.opener = null;
@@ -135,9 +140,22 @@ export async function openProjectFile(client: SupabaseClient, fileId: string, fi
   }
 }
 
-export async function loadProjectFileBlob(client: SupabaseClient, fileId: string) {
-  const response = await authorizedFileResponse(client, fileId);
-  return response.blob();
+/**
+ * The bytes of one project file. Every successful read leaves a copy on the device, and a
+ * read that cannot reach the network uses that copy. A supervisor who opened a photo once,
+ * or who made the project available offline, keeps seeing it in the field.
+ */
+export async function loadProjectFileBlob(client: SupabaseClient, fileId: string, projectId = "") {
+  try {
+    const response = await authorizedFileResponse(client, fileId);
+    const blob = await response.blob();
+    await cacheProjectFile(fileId, projectId, blob).catch(() => undefined);
+    return blob;
+  } catch (error) {
+    const cached = await readCachedProjectFile(fileId).catch(() => null);
+    if (cached) return cached;
+    throw error;
+  }
 }
 
 export async function loadProjectFileObjectUrl(client: SupabaseClient, fileId: string) {
@@ -150,10 +168,22 @@ export async function loadProjectFileObjectUrl(client: SupabaseClient, fileId: s
 }
 
 export async function loadProjectFilePreviewObjectUrl(client: SupabaseClient, fileId: string) {
-  const response = await authorizedFileResponse(client, fileId);
-  const blob = await response.blob();
+  const blob = await loadProjectFileBlob(client, fileId);
   if (!blob.type.startsWith("image/") && blob.type !== "application/pdf") {
     throw new Error("The selected file is not a supported drawing preview.");
   }
   return { url: URL.createObjectURL(blob), mimeType: blob.type };
+}
+
+/**
+ * Puts one file on the device on purpose, for "make this project available offline". It is
+ * skipped when the same file is already stored, so a second run only fetches what is new.
+ */
+export async function storeProjectFileOffline(client: SupabaseClient, fileId: string, projectId: string) {
+  const existing = await readCachedProjectFile(fileId).catch(() => null);
+  if (existing) return { bytes: existing.size, alreadyStored: true };
+  const response = await authorizedFileResponse(client, fileId);
+  const blob = await response.blob();
+  await cacheProjectFile(fileId, projectId, blob);
+  return { bytes: blob.size, alreadyStored: false };
 }

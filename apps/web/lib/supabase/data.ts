@@ -1087,6 +1087,106 @@ export async function markNotificationRead(client: SupabaseClient, notificationI
   fail(result.error);
 }
 
+/** The trades a project can record attendance for, when the project itself names none. */
+export const constructionDisciplines = [
+  "Bouwvakkers / algemeen",
+  "Timmerlieden",
+  "Metselaars",
+  "Beton en wapening",
+  "Betonwerkers",
+  "Wapeningwerkers",
+  "Elektriciens",
+  "HVAC",
+  "Loodgieters / sanitair",
+  "Schilders",
+  "Gevelwerk",
+  "Tegelzetters",
+  "Grondwerk",
+  "Staalbouw",
+  "Steigerbouwers",
+  "Dakwerk",
+  "Machine-operators",
+  "HSE / veiligheidsmedewerkers",
+  "Voormannen / supervisors",
+] as const;
+
+export type ProjectConfiguration = {
+  disciplines: string[];
+  default_shift_start: string;
+  default_shift_end: string;
+  modules: Record<string, boolean>;
+  required_location_depth: "building" | "floor" | "room" | "element";
+};
+
+export type ProjectLocationNode = {
+  id: string;
+  building_id: string;
+  parent_id: string | null;
+  node_type: string;
+  code: string;
+  name: string;
+  status: string;
+};
+
+export type ProjectDrawingOption = { id: string; name: string; buildingId: string | null };
+
+/**
+ * The settings of one project. Kept here instead of inside a screen so the offline sync can
+ * fetch exactly what the screen will later ask for.
+ */
+export async function loadProjectConfiguration(client: SupabaseClient, projectId: string): Promise<ProjectConfiguration> {
+  const result = await client
+    .from("project_settings")
+    .select("disciplines,default_shift_start,default_shift_end,modules,required_location_depth")
+    .eq("project_id", projectId)
+    .single();
+  if (!result.error) return result.data as ProjectConfiguration;
+  if (!result.error.message.includes("does not exist")) throw result.error;
+  const compatible = await client
+    .from("project_settings")
+    .select("modules")
+    .eq("project_id", projectId)
+    .single();
+  if (compatible.error) throw compatible.error;
+  return {
+    disciplines: [...constructionDisciplines],
+    default_shift_start: "07:00",
+    default_shift_end: "16:00",
+    modules: (compatible.data?.modules ?? {}) as Record<string, boolean>,
+    required_location_depth: "building",
+  };
+}
+
+export async function loadProjectLocations(client: SupabaseClient, projectId: string): Promise<ProjectLocationNode[]> {
+  const result = await client
+    .from("location_nodes")
+    .select("id,building_id,parent_id,node_type,code,name,status")
+    .eq("project_id", projectId)
+    .eq("status", "active")
+    .order("sort_order");
+  fail(result.error);
+  return (result.data ?? []) as ProjectLocationNode[];
+}
+
+/**
+ * The drawings of this project, so a record can name the plan it belongs to instead of only
+ * a floor or a room. Reading `files` directly keeps this cheap next to the full project
+ * snapshot the workspace loads.
+ */
+export async function loadProjectDrawings(client: SupabaseClient, projectId: string): Promise<ProjectDrawingOption[]> {
+  const result = await client
+    .from("files")
+    .select("id,building_id,original_name,created_at")
+    .eq("project_id", projectId)
+    .eq("category", "drawing")
+    .eq("status", "available")
+    .order("created_at", { ascending: false })
+    .limit(200);
+  fail(result.error);
+  return (result.data as Array<{ id: string; building_id: string | null; original_name: string }> ?? [])
+    .map((file) => ({ id: file.id, name: file.original_name, buildingId: file.building_id }));
+}
+
 export async function getSession(client: SupabaseClient): Promise<Session | null> {
   const { data, error } = await client.auth.getSession();
   fail(error);

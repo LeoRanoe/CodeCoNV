@@ -15,7 +15,13 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   use: {
     baseURL,
-    channel: "chrome",
+    // Google Chrome is the browser the client uses, so it stays the default. A container
+    // that only has Playwright's own build (CI, this repository's dev image) sets
+    // CODECO_E2E_CHANNEL=chromium and, if needed, the path to that build.
+    channel: process.env.CODECO_E2E_CHANNEL ?? "chrome",
+    launchOptions: process.env.CODECO_E2E_BROWSER_PATH
+      ? { executablePath: process.env.CODECO_E2E_BROWSER_PATH }
+      : {},
     locale: "en-US",
     timezoneId: "America/Paramaribo",
     trace: "retain-on-failure",
