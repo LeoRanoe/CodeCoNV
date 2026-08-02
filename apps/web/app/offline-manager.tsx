@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   CloudDownload,
+  CloudUpload,
   HardDrive,
   Loader2,
   Trash2,
@@ -22,6 +23,8 @@ import {
   type OfflineSyncProgress,
   type OfflineSyncSummary,
 } from "@/lib/offline/full-sync";
+import { listOfflineRecords, syncOfflineRecords, type OfflineRecord } from "@/lib/offline/record-queue";
+import { listOfflineUploads, syncOfflineUploads, type OfflineUpload } from "@/lib/offline/upload-queue";
 
 function humanSize(bytes: number) {
   if (!bytes) return "0 MB";
@@ -38,11 +41,14 @@ function humanSize(bytes: number) {
 export function OfflineManagerModal({
   client,
   userId,
+  projectId,
   isOnline,
   close,
 }: {
   client: SupabaseClient;
   userId: string;
+  /** The open project, whose queue of unsent field records is shown and can be retried. */
+  projectId: string;
   isOnline: boolean;
   close: () => void;
 }) {
@@ -57,11 +63,45 @@ export function OfflineManagerModal({
   const [confirmingClear, setConfirmingClear] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
+  const [waitingRecords, setWaitingRecords] = useState<OfflineRecord[]>([]);
+  const [waitingUploads, setWaitingUploads] = useState<OfflineUpload[]>([]);
+  const [sendingQueue, setSendingQueue] = useState(false);
+
   const refresh = useCallback(async () => {
-    const [stored, used] = await Promise.all([readOfflineSyncSummary(), offlineStorageUsage()]);
+    const [stored, used, records, uploads] = await Promise.all([
+      readOfflineSyncSummary(),
+      offlineStorageUsage(),
+      projectId ? listOfflineRecords(projectId).catch(() => [] as OfflineRecord[]) : Promise.resolve([] as OfflineRecord[]),
+      projectId ? listOfflineUploads(projectId).catch(() => [] as OfflineUpload[]) : Promise.resolve([] as OfflineUpload[]),
+    ]);
     setSummary(stored);
     setUsage(used);
-  }, []);
+    setWaitingRecords(records);
+    setWaitingUploads(uploads);
+  }, [projectId]);
+
+  /** Send what is waiting now, instead of waiting for the connection to return by itself. */
+  const sendQueue = async () => {
+    setSendingQueue(true);
+    setError("");
+    setNotice("");
+    try {
+      const records = await syncOfflineRecords(client, projectId);
+      const uploads = await syncOfflineUploads(client, projectId, { force: true });
+      setNotice(text(
+        `${records.synced} record(s) and ${uploads.synced} file(s) sent.`,
+        `${records.synced} registratie(s) en ${uploads.synced} bestand(en) verstuurd.`,
+      ));
+    } catch {
+      setError(text(
+        "Not everything could be sent. What is waiting stays safely on this device.",
+        "Niet alles kon worden verstuurd. Wat wacht blijft veilig op dit apparaat.",
+      ));
+    } finally {
+      setSendingQueue(false);
+      await refresh();
+    }
+  };
 
   useEffect(() => {
     // Reading the device's own storage is an external system, not React state derived from
@@ -165,6 +205,34 @@ export function OfflineManagerModal({
             {text("Also download photos, 360° images and drawings (large)", "Ook foto’s, 360°-beelden en tekeningen ophalen (groot)")}
           </label>
 
+          {/* What this device still has to send: the other direction of the same question,
+              and the place a supervisor will look for it. */}
+          {waitingRecords.length || waitingUploads.length ? (
+            <div className="offline-outbox">
+              <div>
+                <strong>{text(
+                  `${waitingRecords.length} record(s) and ${waitingUploads.length} file(s) waiting to be sent`,
+                  `${waitingRecords.length} registratie(s) en ${waitingUploads.length} bestand(en) wachten op verzending`,
+                )}</strong>
+                <small>{text(
+                  "They are safe on this device and go by themselves as soon as there is a connection.",
+                  "Ze staan veilig op dit apparaat en gaan vanzelf zodra er verbinding is.",
+                )}</small>
+              </div>
+              <button className="secondary-button" type="button" disabled={!isOnline || sendingQueue} onClick={() => void sendQueue()}>
+                {sendingQueue ? <Loader2 className="spin" size={15} /> : <CloudUpload size={15} />} {text("Send now", "Nu versturen")}
+              </button>
+              <ul>
+                {waitingRecords.map((record) => (
+                  <li key={record.id}>
+                    <b>{record.preview.title || text("Field record", "Veldregistratie")}</b>
+                    <small>{record.lastError ?? text("waiting", "wacht")}</small>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           {busy ? (
             <div className="offline-manager-progress" role="status">
               <div className="offline-progress-track"><span style={{ width: `${percent}%` }} /></div>
@@ -192,11 +260,13 @@ export function OfflineManagerModal({
               <li>{text("Reading every downloaded project: registers, issues, NCRs, inspections, documents, deadlines and the action centre.", "Elk opgehaald project lezen: registers, issues, NCR’s, inspecties, documenten, deadlines en het actiecentrum.")}</li>
               <li>{text("Photos, 360° images and drawings that were downloaded, including marking them.", "Opgehaalde foto’s, 360°-beelden en tekeningen bekijken en markeren.")}</li>
               <li>{text("Taking photos and marking them: they queue on the device and upload by themselves once there is a connection.", "Foto’s maken en markeren: ze wachten op het apparaat en gaan vanzelf omhoog zodra er verbinding is.")}</li>
+              <li>{text("Writing a new issue, NCR, HSE record, register item or action: it is stored on the device, stands in the list marked as waiting, and is sent by itself.", "Een nieuw issue, NCR, HSE-registratie, registeritem of actie schrijven: het wordt op het apparaat opgeslagen, staat in de lijst als wachtend en wordt vanzelf verstuurd.")}</li>
             </ul>
             <h3>{text("What still needs a connection", "Waar nog verbinding voor nodig is")}</h3>
             <ul>
-              <li>{text("Saving a new issue, NCR, inspection, register item or day report. The form keeps what you typed until you are back online.", "Een nieuw issue, NCR, inspectie, registeritem of dagrapport opslaan. Het formulier houdt vast wat je hebt ingevuld tot je weer online bent.")}</li>
-              <li>{text("Sending a link to a contractor, push notifications and the weather.", "Een link naar een aannemer sturen, pushmeldingen en het weer.")}</li>
+              <li>{text("Changing a record that already exists: a status update, a verification, a signature or a decision on a contractor submission. This device cannot know what that record looks like right now.", "Een bestaand record wijzigen: een status bijwerken, verifiëren, ondertekenen of een besluit over een aannemersindiening. Dit apparaat kan niet weten hoe dat record er nu uitziet.")}</li>
+              <li>{text("Filling in an inspection, importing a BOQ, and attaching a document file to a register item.", "Een inspectie invullen, een BOQ importeren en een documentbijlage aan een registeritem hangen.")}</li>
+              <li>{text("Submitting or freezing the day report, sending a link to a contractor, push notifications and the weather.", "Het dagrapport indienen of vastzetten, een link naar een aannemer sturen, pushmeldingen en het weer.")}</li>
             </ul>
           </div>
         </div>

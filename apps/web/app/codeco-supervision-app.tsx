@@ -71,6 +71,8 @@ import { currentPushState, enablePushNotifications, type PushState } from "@/lib
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
 import { cacheProjectDay, cacheWorkspace, getCachedProjectDay, getCachedWorkspace } from "@/lib/offline/workspace-cache";
 import { loadWithOfflineCache } from "@/lib/offline/query-cache";
+import { isPendingRecordId, listOfflineRecords, saveRecordOnlineOrQueue, syncOfflineRecords } from "@/lib/offline/record-queue";
+import { withPendingActions } from "@/lib/offline/pending-records";
 import { offlineQueryKeys } from "@/lib/offline/query-keys";
 import { getSessionWithOfflineFallback, storedSessionOnThisDevice } from "@/lib/supabase/offline-session";
 import { OfflineManagerModal } from "@/app/offline-manager";
@@ -612,6 +614,22 @@ export function CodecoSupervisionApp() {
     if (!supabase || !session || !selectedProject || !isOnline) return;
     let active = true;
     const timer = window.setTimeout(() => {
+      // The registrations go first: a photo that belongs to one of them can only be
+      // linked once that record has a real number.
+      void syncOfflineRecords(supabase, selectedProject.id).then(async (recordResult) => {
+        if (!active) return;
+        if (recordResult.synced > 0) {
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["project-operations", selectedProject.id] }),
+            queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id] }),
+            queryClient.invalidateQueries({ queryKey: ["offline-records", selectedProject.id] }),
+          ]);
+          setToast(text(
+            `${recordResult.synced} field record(s) sent from this device.`,
+            `${recordResult.synced} veldregistratie(s) vanaf dit apparaat verstuurd.`,
+          ));
+        }
+      }).catch(() => undefined).finally(() => {
       void syncOfflineUploads(supabase, selectedProject.id).then(async (result) => {
         if (!active) return;
         if (result.synced > 0) {
@@ -631,6 +649,7 @@ export function CodecoSupervisionApp() {
           "Queued field photos remain safely on this device.",
           "Wachtende veldfoto’s blijven veilig op dit apparaat.",
         ));
+      });
       });
     }, 350);
     return () => {
@@ -938,20 +957,45 @@ export function CodecoSupervisionApp() {
     [dayQuery.data],
   );
   const reportNumber = String(dayQuery.data?.report?.report_number ?? `DR-${reportDate.replaceAll("-", "")}`);
-  const dayActions = dayQuery.data?.actions ?? [];
+  /**
+   * The actions of today, with the ones that are still waiting on this device in front of
+   * them. An action written without a connection has to be visible in the action centre,
+   * otherwise it looks like it was never saved.
+   */
+  const pendingRecordsQuery = useQuery({
+    queryKey: ["offline-records", selectedProject?.id],
+    queryFn: () => listOfflineRecords(selectedProject!.id),
+    networkMode: "always",
+    refetchInterval: 20_000,
+    enabled: Boolean(selectedProject),
+  });
+  const dayActions = withPendingActions(dayQuery.data?.actions ?? [], pendingRecordsQuery.data ?? []);
 
-  const runSynced = async <T,>(operation: () => Promise<T>, successMessage: string): Promise<T | null> => {
-    if (!isOnline) {
+  const runSynced = async <T,>(
+    operation: () => Promise<T>,
+    successMessage: string,
+    // A registration that can wait on the device is allowed to run without a connection;
+    // everything that changes an existing central record is not.
+    options: { offlineCapable?: boolean } = {},
+  ): Promise<T | null> => {
+    if (!isOnline && !options.offlineCapable) {
       setSyncState("error");
       setToast(text("No connection. Your input remains in the open form; try again when you are online.", "Geen verbinding. Je invoer blijft in het geopende formulier; probeer opnieuw zodra je online bent."));
       return null;
     }
+    const queuedBefore = selectedProject ? (await listOfflineRecords(selectedProject.id).catch(() => [])).length : 0;
     setSyncState("saving");
     try {
       const result = await operation();
-      if (selectedProject && supabase) await requestProjectNotificationDispatch(supabase, selectedProject.id).catch(() => false);
-      setSyncState("saved");
-      setToast(successMessage);
+      if (selectedProject && supabase && isOnline) await requestProjectNotificationDispatch(supabase, selectedProject.id).catch(() => false);
+      const queuedAfter = selectedProject ? (await listOfflineRecords(selectedProject.id).catch(() => [])).length : 0;
+      setSyncState(queuedAfter > queuedBefore ? "idle" : "saved");
+      setToast(queuedAfter > queuedBefore
+        ? text(
+          "Saved on this device and sent by itself as soon as there is a connection.",
+          "Op dit apparaat opgeslagen en wordt vanzelf verstuurd zodra er verbinding is.",
+        )
+        : successMessage);
       return result;
     } catch (error) {
       setSyncState("error");
@@ -1679,6 +1723,15 @@ export function CodecoSupervisionApp() {
               openProjectAction={(actionId) => {
                 const action = dayActions.find((item) => item.id === actionId);
                 if (!action) return;
+                // An action that is still waiting on the device has no central record to
+                // update yet; opening its detail would offer buttons that cannot work.
+                if (isPendingRecordId(action.id)) {
+                  setToast(text(
+                    "This action is still on this device. It opens as soon as it has been sent.",
+                    "Deze actie staat nog op dit apparaat. Ze opent zodra ze is verstuurd.",
+                  ));
+                  return;
+                }
                 setSelectedAction(action);
                 setModal("action_detail");
               }}
@@ -1877,13 +1930,32 @@ export function CodecoSupervisionApp() {
               ? selectedProject.buildings.map((building) => building.id)
               : [actionBuildingId];
             const saved = await runSynced(
-              () => Promise.all(targetBuildingIds.map((buildingId) => createProjectAction(supabase, {
-                projectId: selectedProject.id,
-                buildingId,
-                locationNodeId: actionBuildingId === ALL_BUILDINGS ? undefined : locationNodeId,
-                ...answers,
-              }))),
+              () => Promise.all(targetBuildingIds.map((buildingId) => {
+                const input = {
+                  projectId: selectedProject.id,
+                  buildingId,
+                  locationNodeId: actionBuildingId === ALL_BUILDINGS ? undefined : locationNodeId,
+                  ...answers,
+                };
+                return saveRecordOnlineOrQueue({
+                  kind: "action",
+                  projectId: selectedProject.id,
+                  input,
+                  preview: {
+                    title: answers.title,
+                    description: answers.description,
+                    buildingId,
+                    locationNodeId: actionBuildingId === ALL_BUILDINGS ? null : locationNodeId || null,
+                    severity: "medium",
+                    priority: answers.priority,
+                    dueAt: answers.dueAt || null,
+                    recordType: "action",
+                  },
+                  send: () => createProjectAction(supabase, input),
+                });
+              })),
               "Actie is met deadline en verantwoordelijke centraal aangemaakt.",
+              { offlineCapable: true },
             );
             if (!saved) return false;
             setModal(null);
@@ -1897,6 +1969,7 @@ export function CodecoSupervisionApp() {
         <OfflineManagerModal
           client={supabase}
           userId={session.user.id}
+          projectId={selectedProject?.id ?? ""}
           isOnline={isOnline}
           close={() => setModal(null)}
         />

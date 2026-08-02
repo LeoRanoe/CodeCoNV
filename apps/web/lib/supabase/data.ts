@@ -977,9 +977,11 @@ export async function createProjectAction(
     description: string;
     dueAt: string;
     priority: ProjectAction["priority"];
+    /** Stable across retries, so a registration written offline is never created twice. */
+    idempotencyKey?: string;
   },
 ) {
-  const idempotencyKey = `action:${crypto.randomUUID()}`;
+  const idempotencyKey = input.idempotencyKey ?? `action:${crypto.randomUUID()}`;
   const result = await client.rpc("create_project_action", {
     p_project_id: input.projectId,
     p_building_id: input.buildingId,

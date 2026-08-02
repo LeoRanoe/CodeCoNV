@@ -1983,6 +1983,25 @@ textarea:focus-visible {
 .offline-progress-track > span { background: var(--teal); display: block; height: 100%; transition: width .25s ease; }
 .offline-manager-progress p { align-items: center; color: #52635c; display: flex; font-size: 9px; gap: 6px; margin: 0; }
 
+/* What this device still owes the database. */
+.offline-outbox {
+  background: #fffaf0;
+  border: 1px solid #f0dcb4;
+  border-radius: 12px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 12px 13px;
+}
+
+.offline-outbox strong { color: #7a4d08; display: block; font-size: 10px; }
+.offline-outbox small { color: #8a6a3a; font-size: 8px; }
+.offline-outbox > button { align-self: start; }
+.offline-outbox ul { grid-column: 1 / -1; display: grid; gap: 4px; list-style: none; margin: 0; max-height: 132px; overflow-y: auto; padding: 0; }
+.offline-outbox li { align-items: baseline; display: flex; gap: 7px; justify-content: space-between; }
+.offline-outbox li b { color: #4d422f; font-size: 9px; font-weight: 700; }
+.offline-outbox li small { color: #98784a; font-size: 7px; text-align: right; }
+
 .offline-manager-explainer { background: #f8faf9; border: 1px solid var(--panel-border); border-radius: 12px; padding: 12px 13px; }
 .offline-manager-explainer h3 { color: #1d2924; font-size: 10px; margin: 0 0 5px; text-transform: uppercase; letter-spacing: .05em; }
 .offline-manager-explainer h3 + ul { margin: 0 0 11px; }
@@ -12036,6 +12055,25 @@ button {
 .action-focus-counts dt { color: #6e7b75; font-size: 8px; }
 .action-focus-counts dd { color: #26332d; font-size: 12px; font-weight: 800; margin: 0; }
 .action-focus-card > .secondary-button { justify-content: center; width: 100%; }
+
+/* A registration that is on the device and still has to be sent. It is deliberately calm,
+   not an error: the record is safe, it is only not central yet. */
+.record-waiting {
+  border-left: 3px solid #d59a2c;
+  background: #fffaf0;
+}
+
+.record-waiting-note {
+  align-items: flex-start;
+  color: #8a5b12;
+  display: flex;
+  font-size: 8px;
+  gap: 6px;
+  line-height: 1.5;
+  margin: 0 0 8px;
+}
+
+.task-status.waiting { background: #fff3df; color: #8a4b04; }
 
 /* The record the action centre pointed at, so it is recognisable the moment it opens. */
 .record-focused {

@@ -1181,9 +1181,14 @@ test("processes the annotated screens of 1 August: NCR form, agreement and deadl
 
   // #14A · After submitting, the link to the contractor stands where you submitted.
   assert.match(workspace, /function SubmittedRecordShare/);
-  assert.match(workspace, /setSubmittedFinding\(created\)/);
-  assert.match(workspace, /if \(navigator\.onLine \|\| !findingPhotos\.length\) \{/);
-  assert.match(workspace, /const record = await createFinding\(client, \{ \.\.\.draft, buildingId: targetBuildingId/);
+  // The contractor link only exists for a record the database has actually numbered; a
+  // record that had to wait on the device gets it after it is sent.
+  assert.match(workspace, /setSubmittedFinding\(queuedOffline \? null : created\)/);
+  // The record is written with or without a connection: without one it waits on the
+  // device and stands in the list, instead of the save simply failing.
+  assert.match(workspace, /kind: "finding",\n\s+projectId,/);
+  assert.match(workspace, /send: \(\) => createFinding\(client, \{ \.\.\.draft, buildingId: targetBuildingId/);
+  assert.match(workspace, /send: \(\) => createFinding\(client, \{ \.\.\.draft, buildingId: targetBuildingId/);
   assert.match(styles, /\.submitted-record-share/);
 
   // #14 · The contractor fills the correction in through the link and sends it back.
@@ -1551,7 +1556,7 @@ test("opens and works as an installed app with or without internet", async () =>
 
   // Evidence is private and travels with a token, so it is stored by the app itself
   // instead of in the service worker cache, and read from there when the network fails.
-  assert.match(idb, /const databaseVersion = 2/);
+  assert.match(idb, /const databaseVersion = 3/);
   assert.match(idb, /createObjectStore\("files"/);
   assert.match(fileCache, /export async function cacheProjectFile/);
   assert.match(gateway, /const cached = await readCachedProjectFile\(fileId\)/);
@@ -1589,4 +1594,59 @@ test("installs as an application with square icons and its own identity", async 
   assert.match(manifest, /display_override: \["standalone", "minimal-ui"\]/);
   assert.match(manifest, /purpose: "maskable"/);
   assert.match(layout, /apple: \[\{ url: "\/icon-192\.png"/);
+});
+
+test("lets a field record be written without a connection and sends it by itself", async () => {
+  const [queue, pending, workspace, app, uploads, manager, styles] = await Promise.all([
+    readFile(new URL("../lib/offline/record-queue.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/offline/pending-records.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/offline/upload-queue.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/offline-manager.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // A new registration waits on the device; changing a record that already exists does
+  // not, because this device cannot know what that record looks like right now.
+  assert.match(queue, /export type OfflineRecordKind = "finding" \| "hse" \| "register" \| "action"/);
+  assert.match(queue, /export async function saveRecordOnlineOrQueue/);
+  assert.match(queue, /export function isConnectionFailure/);
+  assert.match(queue, /if \(!isConnectionFailure\(error\)\) throw error;/);
+  // The same key on every attempt, so a retry can never create the record twice.
+  assert.match(queue, /const idempotencyKey = `offline-\$\{record\.kind\}:\$\{record\.id\}`/);
+
+  // Each of the four kinds actually goes through the queue.
+  for (const kind of ["finding", "hse", "register"]) {
+    assert.match(workspace, new RegExp(`kind: "${kind}",`), `${kind} must be able to wait on the device`);
+  }
+  assert.match(app, /kind: "action",/);
+
+  // A queued record stands in the list marked as waiting: a record that disappears after
+  // saving reads as data loss.
+  assert.match(pending, /export function withPendingRecords/);
+  assert.match(pending, /export function withPendingActions/);
+  assert.match(pending, /export const pendingStatus = "queued_offline"/);
+  assert.match(workspace, /const snapshot = withPendingRecords\(query\.data, pendingRecords\)/);
+  assert.match(app, /withPendingActions\(dayQuery\.data\?\.actions \?\? \[\], pendingRecordsQuery\.data \?\? \[\]\)/);
+  assert.match(workspace, /record-waiting-note/);
+  assert.match(styles, /\.record-waiting/);
+
+  // It is read-only until it is central: its number, deadline and contractor link are
+  // decided by the database.
+  assert.match(workspace, /<div className="finding-actions" hidden=\{waitingToBeSent\}>/);
+  assert.match(app, /if \(isPendingRecordId\(action\.id\)\) \{/);
+
+  // Photos attached to a queued record carry its local id and find the real one after the
+  // record has been sent; the records are therefore sent before the files.
+  assert.match(uploads, /pendingRecordId\?: string;/);
+  assert.match(uploads, /await resolvePendingRecordId\(upload\.findingGroup\.pendingRecordId\)/);
+  assert.match(uploads, /isPendingRecordId\(upload\.recordLink\.recordId\)/);
+  assert.match(app, /syncOfflineRecords\(supabase, selectedProject\.id\)/);
+
+  // The offline screen shows what is still owed and can send it on demand.
+  assert.match(manager, /offline-outbox/);
+  assert.match(manager, /Send now|Nu versturen/);
+  assert.match(styles, /\.offline-outbox/);
+  assert.match(manager, /Changing a record that already exists|Een bestaand record wijzigen/);
 });

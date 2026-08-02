@@ -5,8 +5,12 @@ het als een normale app werken met of zonder internet. Alle data moet offline oo
 beschikbaar zijn wat op de database is."*
 
 Gecontroleerd: `npx tsc --noEmit` schoon · `npx eslint app lib tests` schoon · `next build`
-slaagt · 45/45 knipseltests groen · **4/4 offline-browsertests groen** (Playwright, echte
+slaagt · 48/48 knipseltests groen · **6/6 offline-browsertests groen** (Playwright, echte
 Chromium, netwerk uitgezet).
+
+> Vervolg in dezelfde ronde: veldregistraties kunnen nu ook zonder verbinding worden
+> geschreven. Zie *Wat werkt zonder verbinding* hieronder en de gebruikshandleiding
+> `docs/product/offline-gebruik-en-grenzen.md`.
 
 ---
 
@@ -129,19 +133,22 @@ locatie een werkdag.
 - Foto's maken en markeren: ze wachten op het apparaat en gaan er vanzelf naartoe zodra er
   verbinding is.
 - Wisselen van taal, project, gebouw en module, en de terugknop.
+- **Een nieuwe registratie schrijven**: issue, NCR, HSE, registeritem of actie. Ze wordt op
+  het toestel opgeslagen, staat in de lijst met een oranje rand en *wacht op verzending*, en
+  gaat er vanzelf naartoe zodra er verbinding is.
 
 **Vraagt nog verbinding**
 
-- Een nieuw issue, NCR, inspectie, registeritem, HSE-registratie of dagrapport **opslaan**.
-  Alleen foto's hebben een wachtrij; de overige registraties gaan rechtstreeks naar de
-  database. Het formulier houdt vast wat je hebt ingevuld, en de melding zegt dat nu ook met
-  zoveel woorden in plaats van een databasefout te tonen.
-- Een link naar een aannemer sturen, pushmeldingen, het weer en het aanmaken van een account.
+- Een **bestaand** record wijzigen: status bijwerken, verifiëren, ondertekenen, of een besluit
+  vastleggen op een aannemersindiening. Dit toestel kan niet weten hoe dat record er nu
+  uitziet; een blind teruggespeelde wijziging zou het werk van een collega overschrijven.
+- Een inspectie invullen, een BOQ importeren en een documentbijlage aan een registeritem
+  hangen (het bestand hoort ín het record).
+- Het dagrapport indienen of vastzetten, een link naar een aannemer sturen, pushmeldingen,
+  het weer en het aanmaken van een account.
 
-Een wachtrij voor álle registraties (een "outbox" met idempotente herhaling en een
-conflictregel per recordtype) is een aparte opdracht. Dit is bewust niet half gedaan: een
-registratie die lokaal "opgeslagen" lijkt maar bij synchronisatie stilletjes sneuvelt, is
-erger dan een eerlijke melding.
+De volledige gebruikshandleiding met deze grenzen staat in
+`docs/product/offline-gebruik-en-grenzen.md`.
 
 ---
 

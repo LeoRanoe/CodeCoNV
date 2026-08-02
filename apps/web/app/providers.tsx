@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { LanguageProvider } from "@/lib/i18n";
+import { ensureOfflineDatabase } from "@/lib/offline/idb";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient({
@@ -21,6 +22,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
       mutations: { retry: 0, networkMode: "offlineFirst" },
     },
   }));
+
+  useEffect(() => {
+    // The device storage is opened at start-up, so the version upgrade never lands in the
+    // middle of saving a field record.
+    void ensureOfflineDatabase().catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;

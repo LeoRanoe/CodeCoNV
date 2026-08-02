@@ -6,6 +6,11 @@ import {
   normalizeExternalShareToken,
 } from "../lib/external-share/token.mjs";
 import {
+  isConnectionFailure,
+  isPendingRecordId,
+  newPendingRecordId,
+} from "../lib/offline/record-rules.mjs";
+import {
   compareActionItems,
   daysUntilOnSite,
   isEscalatedItem,
@@ -440,4 +445,32 @@ test("says what has to happen next with a record in the action centre", () => {
   assert.equal(sorted[1], items[1]);
   assert.equal(sorted[2], items[3]);
   assert.equal(sorted[3], items[0]);
+});
+
+test("only lets a connection failure put a field record in the offline queue", () => {
+  // No connection: the registration waits on the device, whatever the error looked like.
+  assert.equal(isConnectionFailure(new Error("anything"), false), true);
+  assert.equal(isConnectionFailure(null, false), true);
+
+  // With a connection, a browser that could not reach the server is still a queue case.
+  const fetchFailure = new TypeError("Failed to fetch");
+  assert.equal(isConnectionFailure(fetchFailure, true), true);
+  assert.equal(isConnectionFailure(new Error("NetworkError when attempting to fetch resource"), true), true);
+  assert.equal(isConnectionFailure(new Error("Load failed"), true), true);
+  const aborted = new Error("aborted");
+  aborted.name = "AbortError";
+  assert.equal(isConnectionFailure(aborted, true), true);
+
+  // A database that refuses the record must never be queued: retrying it forever would
+  // tell the supervisor it is safe when it never will be.
+  assert.equal(isConnectionFailure(new Error("new row violates row-level security policy"), true), false);
+  assert.equal(isConnectionFailure(new Error("null value in column \"building_id\""), true), false);
+  assert.equal(isConnectionFailure(new Error("permission denied for table findings"), true), false);
+  assert.equal(isConnectionFailure("not an error", true), false);
+
+  // A record on the device is recognisable, so a list can keep it read-only.
+  assert.equal(isPendingRecordId(newPendingRecordId("abc-123")), true);
+  assert.equal(newPendingRecordId("abc-123"), "pending:abc-123");
+  assert.equal(isPendingRecordId("6f1a2c34-0000-4000-8000-000000000000"), false);
+  assert.equal(isPendingRecordId(undefined), false);
 });

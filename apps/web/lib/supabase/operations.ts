@@ -829,7 +829,7 @@ export async function transitionFinding(client: SupabaseClient, findingId: strin
   return result.data as Finding;
 }
 
-export async function createHseEvent(client: SupabaseClient, input: { projectId: string; buildingId: string; locationNodeId?: string; reportId?: string | null; type: string; title: string; description: string; severity: string; immediateMeasure: string; confidential: boolean }) {
+export async function createHseEvent(client: SupabaseClient, input: { projectId: string; buildingId: string; locationNodeId?: string; reportId?: string | null; type: string; title: string; description: string; severity: string; immediateMeasure: string; confidential: boolean; idempotencyKey?: string }) {
   const reportId = await ensureProjectDayReport(client, input.projectId, input.reportId);
   let result = await client.rpc("create_project_hse_event", {
     p_project_id: input.projectId,
@@ -842,7 +842,7 @@ export async function createHseEvent(client: SupabaseClient, input: { projectId:
     p_immediate_measure: input.immediateMeasure,
     p_confidential: input.confidential,
     p_occurred_at: new Date().toISOString(),
-    p_idempotency_key: `hse:${crypto.randomUUID()}`,
+    p_idempotency_key: input.idempotencyKey ?? `hse:${crypto.randomUUID()}`,
     p_location_node_id: input.locationNodeId || null,
   });
   if (rpcSignatureMissing(result.error, "create_project_hse_event")) {
@@ -857,14 +857,14 @@ export async function createHseEvent(client: SupabaseClient, input: { projectId:
       p_immediate_measure: input.immediateMeasure,
       p_confidential: input.confidential,
       p_occurred_at: new Date().toISOString(),
-      p_idempotency_key: `hse:${crypto.randomUUID()}`,
+      p_idempotency_key: input.idempotencyKey ?? `hse:${crypto.randomUUID()}`,
     });
   }
   fail(result.error);
   return { ...(result.data as HseEvent), location_node_id: (result.data as HseEvent).location_node_id ?? input.locationNodeId ?? null };
 }
 
-export async function createRegisterEntry(client: SupabaseClient, input: { projectId: string; buildingId: string | null; locationNodeId?: string; reportId?: string | null; type: string; title: string; responsiblePartyId?: string; dueAt?: string | null; details: Record<string, unknown> }) {
+export async function createRegisterEntry(client: SupabaseClient, input: { projectId: string; buildingId: string | null; locationNodeId?: string; reportId?: string | null; type: string; title: string; responsiblePartyId?: string; dueAt?: string | null; details: Record<string, unknown>; idempotencyKey?: string }) {
   const reportId = await ensureProjectDayReport(client, input.projectId, input.reportId);
   const result = await client.rpc("create_project_register_entry", {
     p_project_id: input.projectId,
@@ -876,7 +876,7 @@ export async function createRegisterEntry(client: SupabaseClient, input: { proje
     p_due_at: input.dueAt ? `${input.dueAt}T23:59:59-03:00` : null,
     p_responsible_party_id: input.responsiblePartyId || null,
     p_details: { ...input.details, location_node_id: input.locationNodeId || null },
-    p_idempotency_key: `register:${crypto.randomUUID()}`,
+    p_idempotency_key: input.idempotencyKey ?? `register:${crypto.randomUUID()}`,
   });
   fail(result.error);
   return result.data as RegisterEntry;

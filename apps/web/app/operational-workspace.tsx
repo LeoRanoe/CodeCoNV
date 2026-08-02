@@ -57,6 +57,8 @@ import { ProjectActionCenter, type ActionCenterView } from "@/app/project-action
 import { RapidVerifyWorkspace } from "@/app/rapid-verify-workspace";
 import { anchorChecklistCodes } from "@/lib/checklists/anchor-library";
 import { recordAnchorId, useRecordFocus } from "@/lib/navigation/record-focus";
+import { isPendingRecordId, listOfflineRecords, saveRecordOnlineOrQueue, syncOfflineRecords } from "@/lib/offline/record-queue";
+import { pendingStatus, withPendingRecords } from "@/lib/offline/pending-records";
 import { downloadBoqCsvTemplate, parseBoqCsv, type BoqImportItem } from "@/lib/boq/csv";
 import {
   createControlledDocumentDetails,
@@ -371,6 +373,18 @@ export function OperationalWorkspace({
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  /**
+   * The registrations that are on this device and still have to be sent. They are read
+   * alongside the project snapshot and shown in the same lists, marked as waiting: a
+   * record that vanishes after saving reads as data loss.
+   */
+  const pendingRecordsQuery = useQuery({
+    queryKey: ["offline-records", projectId],
+    queryFn: () => listOfflineRecords(projectId),
+    networkMode: "always",
+    refetchInterval: 20_000,
+  });
+  const pendingRecords = useMemo(() => pendingRecordsQuery.data ?? [], [pendingRecordsQuery.data]);
   /** The name behind an assignment, stable so the action centre does not rebuild its list. */
   const resolveMemberName = useCallback((userId: string | null) => {
     const employee = companyEmployees.find((member) => member.userId === userId);
@@ -382,6 +396,7 @@ export function OperationalWorkspace({
       queryClient.invalidateQueries({ queryKey: ["project-operations", projectId] }),
       queryClient.invalidateQueries({ queryKey: ["project-day", projectId] }),
       queryClient.invalidateQueries({ queryKey: ["workspace"] }),
+      queryClient.invalidateQueries({ queryKey: ["offline-records", projectId] }),
     ]);
   };
 
@@ -389,10 +404,21 @@ export function OperationalWorkspace({
     setBusy(true);
     setError("");
     setNotice("");
+    const queuedBefore = (await listOfflineRecords(projectId).catch(() => [])).length;
     try {
       await operation();
+      // A successful save means there is a connection, so anything that had to wait
+      // earlier goes now instead of on the next reconnect.
+      if (typeof navigator === "undefined" || navigator.onLine) await syncOfflineRecords(client, projectId).catch(() => undefined);
       await requestProjectNotificationDispatch(client, projectId).catch(() => false);
-      setNotice(success);
+      // A registration that had to wait says so, instead of claiming it is central.
+      const waiting = await listOfflineRecords(projectId).catch(() => []);
+      setNotice(waiting.length > queuedBefore
+        ? text(
+          "Saved on this device. It is in the list below marked as waiting, and is sent by itself as soon as there is a connection.",
+          "Op dit apparaat opgeslagen. Het staat hieronder in de lijst als wachtend en wordt vanzelf verstuurd zodra er verbinding is.",
+        )
+        : success);
       await refresh();
       return true;
     } catch (caught) {
@@ -417,15 +443,19 @@ export function OperationalWorkspace({
     return <div className="operation-alert error"><AlertTriangle size={18} /> {messageFrom(query.error)}</div>;
   }
 
+  // Everything below reads one snapshot, so the registrations waiting on the device are
+  // merged in once, here, instead of in every list that shows them.
+  const snapshot = withPendingRecords(query.data, pendingRecords);
+
   return (
     <>
-      {query.data._offlineCached ? <div className="operation-alert warning"><HardDrive size={17} /><div><strong>{text("Offline project copy", "Offline projectkopie")}</strong><span>{text("You can inspect the last synchronized data and queue photos or drawings. Formal changes synchronize only when the connection returns.", "Je kunt de laatst gesynchroniseerde gegevens bekijken en foto’s of tekeningen klaarzetten. Formele wijzigingen synchroniseren pas zodra de verbinding terug is.")} {query.data._offlineSavedAt ? `${text("Saved", "Opgeslagen")} ${formatDate(query.data._offlineSavedAt)}.` : ""}</span></div></div> : null}
+      {snapshot._offlineCached ? <div className="operation-alert warning"><HardDrive size={17} /><div><strong>{text("Offline project copy", "Offline projectkopie")}</strong><span>{text("You can inspect the last synchronized data and queue photos or drawings. Formal changes synchronize only when the connection returns.", "Je kunt de laatst gesynchroniseerde gegevens bekijken en foto’s of tekeningen klaarzetten. Formele wijzigingen synchroniseren pas zodra de verbinding terug is.")} {snapshot._offlineSavedAt ? `${text("Saved", "Opgeslagen")} ${formatDate(snapshot._offlineSavedAt)}.` : ""}</span></div></div> : null}
       {error ? <div className="operation-alert error"><AlertTriangle size={17} /> {error}</div> : null}
       {notice ? <div className="operation-alert success"><CheckCircle2 size={17} /> {notice}</div> : null}
       {mode === "project" ? (
         <ProjectOperations
           key={`${projectId}:${externalSubmissionIntent}`}
-          data={query.data}
+          data={snapshot}
           organizationId={organizationId}
           reportId={reportId}
           projectId={projectId}
@@ -457,7 +487,7 @@ export function OperationalWorkspace({
       ) : null}
       {mode === "actions" ? (
         <ProjectActionCenter
-          data={query.data}
+          data={snapshot}
           actions={projectActions}
           projectName={projectName}
           initialView={actionCenterView}
@@ -469,10 +499,10 @@ export function OperationalWorkspace({
           openProjectArea={(tab, recordId) => openProjectArea(tab, recordId)}
         />
       ) : null}
-      {mode === "verify" ? <RapidVerifyWorkspace projectName={projectName} projectFiles={query.data.files} client={client} /> : null}
+      {mode === "verify" ? <RapidVerifyWorkspace projectName={projectName} projectFiles={snapshot.files} client={client} /> : null}
       {mode === "reports" ? (
         <ReportOperations
-          data={query.data}
+          data={snapshot}
           reportId={reportId}
           reportNumber={reportNumber}
           reportStatus={reportStatus}
@@ -486,7 +516,7 @@ export function OperationalWorkspace({
       ) : null}
       {mode === "admin" ? (
         <AdminOperations
-          data={query.data}
+          data={snapshot}
           client={client}
           organizationId={organizationId}
           projectId={projectId}
@@ -1098,6 +1128,8 @@ function ProjectOperations({
     // A finding always belongs to a building in the database. "All buildings" therefore
     // means the same record in every building, exactly as the daily log and the field
     // notes already do it; before this it produced an error on saving.
+    const online = typeof navigator === "undefined" || navigator.onLine;
+    let createdRecordId = "";
     const projectWideFinding = findingBuildingId === ALL_BUILDINGS;
     const findingBuildingIds = projectWideFinding ? buildings.map((building) => building.id) : [findingBuildingId];
     const findingPhotoBuildingId = projectWideFinding ? resolveDefaultBuildingId(buildings, buildingId) : findingBuildingId;
@@ -1135,18 +1167,39 @@ function ProjectOperations({
     // makes the link to the contractor available the moment the NCR is submitted; the
     // photos still travel over the offline queue and attach themselves to it.
     let created: Finding | null = null;
+    let queuedOffline = false;
     const success = findingPhotos.length
       ? text("Issue and photo stack secured; numbering and assignment synchronize automatically.", "Probleem en fotostapel veiliggesteld; nummering en toewijzing synchroniseren automatisch.")
       : text("Finding numbered, assigned and given a rule-driven deadline.", "Bevinding genummerd, toegewezen en van een regelgestuurde deadline voorzien.");
     const okay = await run(async () => {
-      const effectiveReportId = await ensureProjectDayReport(client, projectId, reportId);
-      // Without photos there is nothing to queue, so the record is created here even
-      // when the connection is gone: the failure has to be visible, not silent.
-      if (navigator.onLine || !findingPhotos.length) {
+      // Creating the day report needs the network. Without one the record keeps the report
+      // it already knows about; the queue attaches it to today's report when it is sent.
+      const effectiveReportId = online ? await ensureProjectDayReport(client, projectId, reportId) : reportId;
+      // The record is written first, with or without a connection: without one it goes
+      // to the device and appears in the list marked as waiting, so a supervisor sees
+      // that the issue is registered instead of nothing at all.
+      {
         for (const targetBuildingId of findingBuildingIds) {
-          const record = await createFinding(client, { ...draft, buildingId: targetBuildingId, reportId: effectiveReportId });
+          const saved = await saveRecordOnlineOrQueue({
+            kind: "finding",
+            projectId,
+            input: { ...draft, buildingId: targetBuildingId, reportId: effectiveReportId },
+            preview: {
+              title: draft.title,
+              description: draft.description,
+              buildingId: targetBuildingId,
+              locationNodeId: draft.locationNodeId || null,
+              severity: draft.severity,
+              priority: "normal",
+              dueAt: null,
+              recordType: findingType,
+            },
+            send: () => createFinding(client, { ...draft, buildingId: targetBuildingId, reportId: effectiveReportId }),
+          });
+          if (saved.queued) queuedOffline = true;
           // The photos hang under the first record; the others carry the same words.
-          if (!created) created = record;
+          if (!created) created = saved.record;
+          if (!createdRecordId) createdRecordId = saved.id;
         }
       }
       if (findingPhotos.length) {
@@ -1178,9 +1231,12 @@ function ProjectOperations({
             findingGroup: {
               id: groupId,
               organizationId,
-              // An already created record is only linked; without a connection the queue
-              // still creates it from this draft during synchronization.
+              // An already created record is only linked. A record that was written to the
+              // device carries its local id, which the upload queue swaps for the real one
+              // once the record queue has sent it. The draft below stays as the fallback
+              // for uploads that were queued before records could wait on the device.
               findingId: created?.id,
+              pendingRecordId: queuedOffline ? createdRecordId : undefined,
               draft: {
                 organizationId,
                 type: findingType,
@@ -1223,7 +1279,8 @@ function ProjectOperations({
       setShowForm(false);
       // Right after submitting, the record itself offers the link to the contractor:
       // an NCR only works when the party that must correct it actually receives it.
-      setSubmittedFinding(created);
+      // The contractor link only exists for a record the database has actually numbered.
+      setSubmittedFinding(queuedOffline ? null : created);
     }
   };
 
@@ -1237,16 +1294,33 @@ function ProjectOperations({
     const hseBuildingName = projectWideHse
       ? text("All buildings", "Alle gebouwen")
       : buildings.find((building) => building.id === hseBuildingId)?.name ?? buildingName;
+    const hseOnline = typeof navigator === "undefined" || navigator.onLine;
     const okay = await run(
       async () => {
-        const effectiveReportId = await ensureProjectDayReport(client, projectId, reportId);
-        let event: Awaited<ReturnType<typeof createHseEvent>> | null = null;
+        const effectiveReportId = hseOnline ? await ensureProjectDayReport(client, projectId, reportId) : reportId;
+        let eventId = "";
         for (const targetBuildingId of hseBuildingIds) {
-          const recorded = await createHseEvent(client, { projectId, buildingId: targetBuildingId, locationNodeId: projectWideHse ? "" : hseLocationNodeId, reportId: effectiveReportId, ...hseForm });
+          const input = { projectId, buildingId: targetBuildingId, locationNodeId: projectWideHse ? "" : hseLocationNodeId, reportId: effectiveReportId, ...hseForm };
+          const saved = await saveRecordOnlineOrQueue({
+            kind: "hse",
+            projectId,
+            input,
+            preview: {
+              title: hseForm.title,
+              description: hseForm.description,
+              buildingId: targetBuildingId,
+              locationNodeId: projectWideHse ? null : hseLocationNodeId || null,
+              severity: hseForm.severity,
+              priority: "normal",
+              dueAt: null,
+              recordType: hseForm.type,
+            },
+            send: () => createHseEvent(client, input),
+          });
           // The photos hang under the first event; the others carry the same words.
-          if (!event) event = recorded;
+          if (!eventId) eventId = saved.id;
         }
-        if (hsePhotos.length && event) {
+        if (hsePhotos.length && eventId) {
           const folderName = "HSE";
           const folderId = existingMediaFolderId(folderName, hsePhotoBuildingId);
           for (const photo of hsePhotos) {
@@ -1271,7 +1345,7 @@ function ProjectOperations({
               originalSize: photo.original.size,
               queuedSize: prepared.blob.size,
               compressed: prepared.compressed,
-              recordLink: { organizationId, recordType: "hse", recordId: event.id, relationship: "evidence" },
+              recordLink: { organizationId, recordType: "hse", recordId: eventId, relationship: "evidence" },
             });
           }
           if (navigator.onLine) await syncQueuedEvidenceNow();
@@ -1313,9 +1387,20 @@ function ProjectOperations({
         // An agreement carries the two parties that made it and their signatures.
         ...(agreementRegister ? agreementSignatureDetails(agreementForm) : {}),
       };
+    const registerOnline = typeof navigator === "undefined" || navigator.onLine;
     const okay = await run(
       async () => {
-        const effectiveReportId = await ensureProjectDayReport(client, projectId, reportId);
+        // A document attachment is uploaded to private storage and lives inside the record
+        // itself, so it cannot be added afterwards. Without a connection the register item
+        // can still be written to the device — the attachment cannot, and saying so is
+        // better than dropping the file silently.
+        if (!registerOnline && registerFiles.length) {
+          throw new Error(text(
+            "Attached documents need a connection. Remove the attachment to save this register item on the device, or wait until you are online.",
+            "Bijgevoegde documenten vragen verbinding. Verwijder de bijlage om dit registeritem op het apparaat op te slaan, of wacht tot je online bent.",
+          ));
+        }
+        const effectiveReportId = registerOnline ? await ensureProjectDayReport(client, projectId, reportId) : reportId;
         const uploadedFiles = [];
         for (const file of registerFiles) {
           const uploaded = await uploadProjectFile(client, {
@@ -1332,7 +1417,7 @@ function ProjectOperations({
             size_bytes: file.size,
           });
         }
-        const entry = await createRegisterEntry(client, {
+        const registerInput = {
           projectId,
           buildingId: registerRecordBuildingId,
           locationNodeId: registerLocationNodeId,
@@ -1347,7 +1432,25 @@ function ProjectOperations({
             drawing_file_id: selectedDrawing?.id ?? null,
             drawing_name: selectedDrawing?.original_name ?? null,
           },
+        };
+        const savedEntry = await saveRecordOnlineOrQueue({
+          kind: "register",
+          projectId,
+          input: registerInput,
+          preview: {
+            title: registerTitle,
+            description: String(baseDetails.description ?? ""),
+            buildingId: registerRecordBuildingId,
+            locationNodeId: registerLocationNodeId || null,
+            severity: "medium",
+            priority: "normal",
+            dueAt: registerForm.dueDate || null,
+            recordType: registerForm.type,
+          },
+          send: () => createRegisterEntry(client, registerInput),
         });
+        // A queued item has no number yet; the database assigns it when the item is sent.
+        const entry = savedEntry.record ?? { id: savedEntry.id, entry_number: "" };
         // Site photos belong to a register item as much as documents do.
         if (registerPhotos.length) {
           const folderName = text("Register evidence", "Registerbewijs");
@@ -1379,7 +1482,7 @@ function ProjectOperations({
           if (navigator.onLine) await syncQueuedEvidenceNow();
         }
         if (registerForm.type === "punch_list") {
-          await createFinding(client, {
+          const punchInput = {
             projectId,
             buildingId: registerPhotoBuildingId,
             locationNodeId: registerLocationNodeId,
@@ -1391,7 +1494,25 @@ function ProjectOperations({
             responsiblePartyId: registerForm.responsiblePartyId,
             issueType: "quality",
             actionSteps: text("Correct this punch-list item and submit visual evidence.", "Herstel dit punch-listpunt en lever visueel bewijs."),
+            // A queued register item has no number yet, so the reference stays empty
+            // instead of pointing at nothing.
             sourceCatalogSubject: entry.entry_number,
+          };
+          await saveRecordOnlineOrQueue({
+            kind: "finding",
+            projectId,
+            input: punchInput,
+            preview: {
+              title: registerForm.title,
+              description: registerForm.details,
+              buildingId: registerPhotoBuildingId,
+              locationNodeId: registerLocationNodeId || null,
+              severity: "medium",
+              priority: "normal",
+              dueAt: null,
+              recordType: "deficiency",
+            },
+            send: () => createFinding(client, punchInput),
           });
         }
         return entry;
@@ -2301,9 +2422,11 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
           const attachmentFiles = Array.isArray(details.attachment_files)
             ? details.attachment_files.filter((file): file is Record<string, unknown> => Boolean(file) && typeof file === "object" && !Array.isArray(file))
             : [];
-          return <article className={`controlled-document-card ${focusRecordId === entry.id ? "record-focused" : ""}`} id={recordAnchorId(entry.id)} key={entry.id}>
+          const entryWaiting = isPendingRecordId(entry.id);
+          return <article className={`controlled-document-card ${entryWaiting ? "record-waiting" : ""} ${focusRecordId === entry.id ? "record-focused" : ""}`} id={recordAnchorId(entry.id)} key={entry.id}>
+            {entryWaiting ? <p className="record-waiting-note"><WifiOff size={14} /> {text("Saved on this device. The number and the formal response follow once it has been sent.", "Op dit apparaat opgeslagen. Het nummer en het formele antwoord volgen zodra het is verstuurd.")}</p> : null}
             <div className="controlled-document-card-main"><div><span className="record-number">{entry.entry_number} · {entry.register_type.replaceAll("_", " ").toUpperCase()}</span><h3>{entry.title}</h3><p>{String(details.description ?? "")}</p><small>{entryBuildingName}{entryLocation ? ` → ${entryLocation}` : ""} · {formatDate(entry.occurred_at, locale)}{entry.due_at ? ` · ${text("due", "uiterlijk")} ${formatDate(entry.due_at, locale)}` : ""}{responseData.decision ? ` · ${String(responseData.decision).replaceAll("_", " ")}` : ""}</small></div><span className={`task-status ${entry.status === "approved" || entry.status === "closed" ? "green" : entry.status === "rejected" ? "red" : ""}`}>{entry.status.replaceAll("_", " ")}</span></div>
-            <div className="finding-actions"><button className="secondary-button" type="button" onClick={() => setHistoryActive((current) => current === entry.id ? null : entry.id)}><Archive size={15} /> {historyActive === entry.id ? text("Close record", "Sluit dossier") : text("Open record & history", "Open dossier & historie")}</button>
+            <div className="finding-actions" hidden={entryWaiting}><button className="secondary-button" type="button" onClick={() => setHistoryActive((current) => current === entry.id ? null : entry.id)}><Archive size={15} /> {historyActive === entry.id ? text("Close record", "Sluit dossier") : text("Open record & history", "Open dossier & historie")}</button>
             {/* Send the document to the contractor over WhatsApp. The formal PDF or Word
                 file stays the attachment; this is the message that announces it. */}
             <button className="whatsapp-button" type="button" onClick={() => openWhatsApp(contractorMessage(entry))}><MessageCircle size={16} /> {text("Send to contractor", "Naar aannemer sturen")}</button>
@@ -2580,10 +2703,20 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
           && !item.revoked_at
           && new Date(item.expires_at).getTime() > Date.now()
         );
+        const waitingToBeSent = isPendingRecordId(finding.id);
         return (
-          <article className={`finding-card ${focusRecordId === finding.id ? "record-focused" : ""}`} id={recordAnchorId(finding.id)} key={finding.id}>
+          <article className={`finding-card ${waitingToBeSent ? "record-waiting" : ""} ${focusRecordId === finding.id ? "record-focused" : ""}`} id={recordAnchorId(finding.id)} key={finding.id}>
+            {waitingToBeSent ? (
+              <p className="record-waiting-note">
+                <WifiOff size={14} />
+                {text(
+                  "Saved on this device. The number, the deadline and the link to the contractor follow as soon as this record has been sent.",
+                  "Op dit apparaat opgeslagen. Het nummer, de deadline en de link naar de aannemer volgen zodra deze registratie is verstuurd.",
+                )}
+              </p>
+            ) : null}
             <div className="finding-card-main"><span className={`record-severity ${finding.severity}`}>{finding.severity}</span><div><span className="record-number">{finding.finding_number} · {finding.finding_type.toUpperCase()}</span><h3>{finding.title}</h3><p>{finding.description}</p>{issue.action_steps ? <p className="finding-required-action"><strong>{text("Required action:", "Vereiste actie:")}</strong> {issue.action_steps}</p> : null}<small>{recordBuildingName}{recordLocation ? ` → ${recordLocation}` : ""} · Deadline {formatDate(finding.due_at, locale)}{latestProgress ? ` · ${text("progress", "voortgang")} ${latestProgress.progress_percent}% · ${latestProgress.disposition.replaceAll("_", " ")}` : ""}{finding.verified_at ? ` · ${text("verified", "geverifieerd")} ${formatDate(finding.verified_at, locale)}` : ""}</small></div><span className={`task-status ${finding.status === "closed" ? "green" : finding.severity === "critical" ? "red" : ""}`}>{statusLabels[finding.status] ?? finding.status}</span></div>
-            <div className="finding-actions">
+            <div className="finding-actions" hidden={waitingToBeSent}>
               <button className="secondary-button" type="button" onClick={() => linkVisual(finding)}><Camera size={16} /> {visualAnnotation ? text("View photo marker", "Bekijk fotomarker") : text("Mark on photo / 360°", "Markeer op foto / 360°")}</button>
               <button className="secondary-button" type="button" onClick={() => linkDrawing(finding)}><MapPin size={16} /> {drawingPin ? text("View on drawing", "Bekijk op tekening") : text("Place on drawing", "Plaats op tekening")}</button>
               <button className="external-party-button" type="button" disabled={busy || creatingShareFor === finding.id} onClick={() => void createShare(finding)}>
@@ -3311,16 +3444,19 @@ function MfaSecurityCard({ client }: { client: SupabaseClient }) {
 
 function RecordList({ empty, rows, focusRecordId = "" }: { empty: string; rows: Array<{ id: string; icon: typeof ClipboardCheck; title: string; meta: string; status: string; tone: string; open?: { label: string; onOpen: () => void } }>; focusRecordId?: string }) {
   const { text } = useLanguage();
+  // A row that is still waiting on the device offers no actions: its number, its deadline
+  // and its formal answer are decided centrally.
+
   useRecordFocus(focusRecordId, rows.some((row) => row.id === focusRecordId));
   if (!rows.length) return <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No records", "Geen registraties")}</strong><span>{empty}</span></div>;
   return <div className="record-stack">{rows.map((row) => {
     const Icon = row.icon;
     return (
-      <article className={`record-row ${focusRecordId === row.id ? "record-focused" : ""}`} id={recordAnchorId(row.id)} key={row.id}>
+      <article className={`record-row ${isPendingRecordId(row.id) ? "record-waiting" : ""} ${focusRecordId === row.id ? "record-focused" : ""}`} id={recordAnchorId(row.id)} key={row.id}>
         <span className="action-icon"><Icon size={18} /></span>
         <div><strong>{row.title}</strong><span>{row.meta}</span></div>
-        {row.open ? <button className="secondary-button record-row-open" type="button" onClick={row.open.onOpen}>{row.open.label}</button> : null}
-        <span className={`task-status ${row.tone}`}>{row.status}</span>
+        {row.open && !isPendingRecordId(row.id) ? <button className="secondary-button record-row-open" type="button" onClick={row.open.onOpen}>{row.open.label}</button> : null}
+        <span className={`task-status ${isPendingRecordId(row.id) ? "waiting" : row.tone}`}>{row.status === pendingStatus ? text("waiting to be sent", "wacht op verzending") : row.status}</span>
       </article>
     );
   })}</div>;

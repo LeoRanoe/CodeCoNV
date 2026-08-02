@@ -186,6 +186,7 @@ Deze onderwerpen blijven bewust **Geblokkeerd** totdat CODECO ze formeel bevesti
 | 02-08-2026 | Actiecentrum omgebouwd tot het actiebord van het productplan: weergaven *Mijn werk / Al het projectwerk / Deadlines*, één instructie en de verantwoordelijke per regel, escalaties als één begrip en een rij die het record zelf opent in plaats van zijn module | MVP-09, CC-06, WF-08 |
 | 02-08-2026 | 360°-camerabeeld gelijkgetrokken met de foto-opties: benoemde zoom-, draai-, gyroscoop- en volledig-schermbediening, kompas met kijkhoek en probleemstippen, genummerde markeringlijst die het beeld naar de marker draait, en de eigen omschrijving plus origineel openen/downloaden bij het beeld | MVP-11, CDR-17, CC-10 |
 | 02-08-2026 | Volledig offline werkende geïnstalleerde app: sessie van het apparaat wanneer vernieuwen niet kan, offline-eerst laden zodat de kopie op het toestel ook echt wordt gelezen, een kopie per projectread, alle beelden op het apparaat, de eigen code van de app vooraf opgeslagen en één knop die alles wat het account mag inzien ophaalt | PP-01, PP-02, MVP-16, TA-06 |
+| 02-08-2026 | Veldregistraties zonder verbinding: nieuwe issues, NCR's, HSE-registraties, registeritems en acties wachten met een vaste idempotentiesleutel op het toestel, staan zichtbaar als wachtend in hun eigen lijst en worden vóór de bijbehorende foto's verstuurd; wijzigen van bestaande centrale records blijft bewust online | MVP-16, PP-02, WF-08, SEC-03 |
 
 ## Verificatie van deze slice
 

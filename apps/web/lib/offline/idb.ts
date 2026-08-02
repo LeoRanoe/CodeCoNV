@@ -3,9 +3,10 @@
 const databaseName = "codeco-field-v1";
 // v2 adds the "files" store: the photos, drawings and documents themselves, so a project
 // that was made available offline still shows its evidence without a connection.
-const databaseVersion = 2;
+// v3 adds "records": field registrations written without a connection, waiting to be sent.
+const databaseVersion = 3;
 
-export type OfflineStore = "uploads" | "snapshots" | "settings" | "files";
+export type OfflineStore = "uploads" | "snapshots" | "settings" | "files" | "records";
 
 function openDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
@@ -20,10 +21,23 @@ function openDatabase() {
       if (!database.objectStoreNames.contains("snapshots")) database.createObjectStore("snapshots", { keyPath: "id" });
       if (!database.objectStoreNames.contains("settings")) database.createObjectStore("settings", { keyPath: "id" });
       if (!database.objectStoreNames.contains("files")) database.createObjectStore("files", { keyPath: "id" });
+      if (!database.objectStoreNames.contains("records")) database.createObjectStore("records", { keyPath: "id" });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error("Offline opslag kon niet worden geopend."));
   });
+}
+
+/**
+ * Opens the device storage once when the app starts, so the version upgrade happens while
+ * nothing is being saved. Discovering an upgrade at the moment a supervisor saves a
+ * registration — with another tab possibly blocking it — is the worst possible time.
+ */
+export async function ensureOfflineDatabase() {
+  const database = await openDatabase();
+  const stores = Array.from(database.objectStoreNames);
+  database.close();
+  return stores;
 }
 
 export async function idbPut<T>(store: OfflineStore, value: T) {

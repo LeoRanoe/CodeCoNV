@@ -20,6 +20,7 @@ import {
   syncOfflineUploads,
   type OfflineUpload,
 } from "@/lib/offline/upload-queue";
+import { syncOfflineRecords } from "@/lib/offline/record-queue";
 import { downloadProjectFile, loadProjectFileObjectUrl, openProjectFile } from "@/lib/storage/gateway";
 import { createFileOriginResolver, type FileOriginKind } from "@/lib/supabase/file-origins";
 import { createMediaFolder, type FileRecord, type OperationSnapshot } from "@/lib/supabase/operations";
@@ -140,6 +141,9 @@ export function MediaLibraryWorkspace({
   const synchronize = useCallback(async (force = false, requireComplete = false) => {
     setSyncing(true);
     try {
+      // The registrations go first: a photo that belongs to one can only be linked once
+      // that record has a real number.
+      await syncOfflineRecords(client, projectId).catch(() => undefined);
       const result = requireComplete
         ? await forceSyncOfflineUploads(client, projectId, {
           paused: text(

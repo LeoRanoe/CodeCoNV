@@ -2,6 +2,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { idbDelete, idbGetAll, idbPut } from "@/lib/offline/idb";
+import { isPendingRecordId, resolvePendingRecordId } from "@/lib/offline/record-queue";
 import { uploadProjectFile } from "@/lib/storage/gateway";
 import { createFinding, createMediaFolder, createVisualCapture, linkFileToRecord } from "@/lib/supabase/operations";
 
@@ -35,6 +36,11 @@ export type OfflineFindingGroup = {
   organizationId: string;
   draft: QueuedFindingDraft;
   findingId?: string;
+  /**
+   * The local id of a finding that is waiting in the record queue. The record queue sends
+   * it first and remembers the real id, so this photo only has to be linked.
+   */
+  pendingRecordId?: string;
 };
 
 export type OfflineUpload = {
@@ -244,9 +250,15 @@ async function syncOfflineUploadsUnlocked(
         category: upload.kind === "drawing" ? "drawing" : "photo",
         file: asFile(upload),
       });
-      if (upload.findingGroup && upload.reportId) {
+      if (upload.findingGroup) {
         let findingId = upload.findingGroup.findingId ?? findingIds.get(upload.findingGroup.id);
-        if (!findingId) {
+        // The record itself waited in the record queue and has been sent by now; this
+        // photo only has to find the number it ended up with.
+        if (!findingId && upload.findingGroup.pendingRecordId) {
+          findingId = (await resolvePendingRecordId(upload.findingGroup.pendingRecordId)) ?? undefined;
+          if (!findingId) throw new Error("De bijbehorende registratie wacht nog op verzending.");
+        }
+        if (!findingId && upload.reportId) {
           const draft = upload.findingGroup.draft;
           const finding = await createFinding(client, {
             projectId: upload.projectId,
@@ -283,6 +295,7 @@ async function syncOfflineUploadsUnlocked(
               findingGroup: { ...candidate.findingGroup!, findingId },
             })));
         }
+        if (!findingId) throw new Error("De bijbehorende registratie is nog niet aangemaakt.");
         await linkFileToRecord(client, {
           organizationId: upload.findingGroup.organizationId,
           projectId: upload.projectId,
@@ -321,12 +334,18 @@ async function syncOfflineUploadsUnlocked(
           relationship: "before",
         });
       } else if (upload.recordLink) {
+        // A photo taken inside a registration that itself waited on the device carries the
+        // local id of that registration; the record queue has since given it a real one.
+        const linkedRecordId = isPendingRecordId(upload.recordLink.recordId)
+          ? await resolvePendingRecordId(upload.recordLink.recordId)
+          : upload.recordLink.recordId;
+        if (!linkedRecordId) throw new Error("De bijbehorende registratie wacht nog op verzending.");
         await linkFileToRecord(client, {
           organizationId: upload.recordLink.organizationId,
           projectId: upload.projectId,
           fileId: stored.fileId,
           recordType: upload.recordLink.recordType,
-          recordId: upload.recordLink.recordId,
+          recordId: linkedRecordId,
           relationship: upload.recordLink.relationship,
         });
         // A photo taken inside a field record is also site evidence, so it has to show up
