@@ -658,7 +658,7 @@ test("keeps the project workspace mobile-first and task driven", async () => {
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
 
-  assert.match(app, /useState<"home"[\s\S]*>\("home"\)/);
+  assert.match(app, /useState<ProjectTabKey>\("home"\)/);
   assert.match(app, /openQuickCamera=\{openQuickAdd\}/);
   assert.match(operations, /mobile-workspace-section-select/);
   assert.match(operations, /projectSectionGroups/);
@@ -1350,4 +1350,34 @@ test("only asks for a signature where the client's own forms have one", async ()
   assert.match(workspace, /const requiredRoles = signingWorkflow\.filter\(\(rule\) => rule\.required\)/);
   assert.match(workspace, /required signatures recorded for this version|verplichte handtekeningen vastgelegd voor deze versie/);
   assert.doesNotMatch(workspace, /<option value="quality_hse_manager">/);
+});
+
+test("gives the phone back button a screen to go back to", async () => {
+  const [app, workspace, history, photoEvidence, photoMarkup, sketch] = await Promise.all([
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/navigation/app-history.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/photo-evidence.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/photo-markup.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/sketch-pad.tsx", import.meta.url), "utf8"),
+  ]);
+
+  // Every screen the user perceives as a page is a history entry with its own address.
+  assert.match(app, /const screen: AppScreen = useMemo/);
+  assert.match(app, /useScreenHistory\(screen, applyScreen\)/);
+  assert.match(app, /const applyScreen = useCallback/);
+  assert.match(history, /window\.history\.pushState\(entry, "", url\)/);
+  assert.match(history, /window\.addEventListener\("popstate", onPopState\)/);
+  // The flag that follows the back button must never survive into the next navigation.
+  assert.match(history, /restoringRef\.current = false;\s*\n\s*if \(action === "none"\) return;/);
+
+  // The open module belongs to the shell, so back can bring a module back.
+  assert.match(workspace, /onTabChange: \(tab: ProjectTab\) => void;/);
+  assert.match(app, /onProjectTabChange=\{setInitialProjectTab\}/);
+  assert.doesNotMatch(workspace, /key=\{`\$\{projectId\}:\$\{initialProjectTab\}/);
+
+  // A full-screen overlay closes on back instead of leaving the screen behind it.
+  assert.match(photoEvidence, /useBackToClose\(true, close\)/);
+  assert.match(photoMarkup, /useBackToClose\(true, close\)/);
+  assert.match(sketch, /useBackToClose\(true, close\)/);
 });

@@ -14,6 +14,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { useLanguage } from "@/lib/i18n";
+import { useBackToClose } from "@/lib/navigation/app-history";
 import {
   markedPhotoName,
   markupCanvasSize,
@@ -153,6 +154,8 @@ export function PhotoMarkupPad({
   context?: PhotoMarkupContext;
 }) {
   const { text } = useLanguage();
+  // The marking pad fills the screen, so the back gesture leaves it, not the app.
+  useBackToClose(true, close);
   const imageRef = useRef<HTMLImageElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef<{ id: string; moved: boolean } | null>(null);

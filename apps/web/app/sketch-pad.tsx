@@ -3,6 +3,7 @@
 import { Eraser, PenLine, Undo2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
+import { useBackToClose } from "@/lib/navigation/app-history";
 
 type Stroke = { color: string; width: number; points: Array<{ x: number; y: number }> };
 
@@ -15,6 +16,8 @@ const sketchColors = ["#14201c", "#d92d20", "#1d6feb", "#f07400"];
  */
 export function SketchPad({ close, save }: { close: () => void; save: (file: File) => void }) {
   const { text } = useLanguage();
+  // A full-screen pad is a page: the back gesture closes the pad, nothing else.
+  useBackToClose(true, close);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const strokesRef = useRef<Stroke[]>([]);
   const drawingRef = useRef(false);

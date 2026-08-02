@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad, type MarkupOption, type PhotoMarkupContext } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
+import { useBackToClose } from "@/lib/navigation/app-history";
 
 /**
  * What the client's own product plan asks of every photo (§4.16): a category, a location, the
@@ -208,6 +209,10 @@ export function PhotoDetailSheet({
 }) {
   const { language, text } = useLanguage();
   const [marking, setMarking] = useState(false);
+  // On a phone this is a page of its own: the back gesture closes it instead of
+  // leaving the record behind it. The entry stays while the marking pad is open on
+  // top, so back closes the pad first and this sheet after it.
+  useBackToClose(true, close);
   const buildings = markupContext?.buildings ?? [];
   const chosenBuildingId = photo.details.buildingId || markupContext?.defaultBuildingId || "";
   const locations = (markupContext?.locations ?? []).filter((location) =>

@@ -301,3 +301,88 @@ test("enforces project configuration, exact locations and auditable BOQ progress
   assert.match(migration, /create or replace function app_private\.validate_record_location/);
   assert.match(migration, /create or replace function public\.create_project_action\([\s\S]*p_location_node_id uuid/);
 });
+
+test("walks the back button through the screens the field user actually visited", async () => {
+  const {
+    closesOverlay,
+    emptyScreen,
+    historyActionFor,
+    sameScreen,
+    screenFromSearch,
+    screenToSearch,
+  } = await import("../lib/navigation/screen-url.mjs");
+
+  const screen = (parts) => ({ ...emptyScreen, ...parts });
+
+  // A screen is written into the address bar, so a reload or a reopened installed app
+  // lands where the user was instead of at the beginning.
+  assert.equal(screenToSearch(emptyScreen), "");
+  assert.equal(
+    screenToSearch(screen({ project: "p1", nav: "project", tab: "ncr" })),
+    "?project=p1&nav=project&tab=ncr",
+  );
+  assert.deepEqual(screenFromSearch("?project=p1&nav=project&tab=ncr"), {
+    project: "p1", nav: "project", tab: "ncr", modal: null, menu: false,
+  });
+  // A drawer never comes back from a link.
+  assert.equal(screenFromSearch("?project=p1").menu, false);
+
+  // The first screen replaces; nothing that did not change touches the history.
+  assert.equal(historyActionFor(null, emptyScreen, false), "replace");
+  assert.equal(historyActionFor(emptyScreen, screen({}), false), "none");
+
+  // A simulated phone: every step the user takes is one entry, and back returns the
+  // screen before it instead of the landing page.
+  const stack = [];
+  let current = null;
+  let restoring = false;
+  const go = (next) => {
+    const action = historyActionFor(current, next, restoring);
+    restoring = false;
+    if (action === "none") return;
+    if (action === "replace") stack[Math.max(stack.length - 1, 0)] = next;
+    if (action === "push") stack.push(next);
+    if (action === "back") stack.pop();
+    current = action === "back" ? stack[stack.length - 1] : next;
+  };
+  const back = () => {
+    stack.pop();
+    const restored = stack[stack.length - 1];
+    restoring = true;
+    current = restored;
+    // The app puts itself back on that screen, which the sync sees as "nothing changed".
+    go(restored);
+    return current;
+  };
+
+  go(emptyScreen);                                                   // project selection
+  go(screen({ project: "p1" }));                                     // opened a project
+  go(screen({ project: "p1", nav: "project" }));                     // workspace
+  go(screen({ project: "p1", nav: "project", tab: "ncr" }));         // NCR module
+  assert.equal(stack.length, 4);
+
+  // A dialog is a screen too: back closes it and leaves the module underneath.
+  go(screen({ project: "p1", nav: "project", tab: "ncr", modal: "quick" }));
+  assert.equal(stack.length, 5);
+  assert.ok(sameScreen(back(), screen({ project: "p1", nav: "project", tab: "ncr" })));
+  assert.equal(stack.length, 4);
+
+  // Closing that same dialog with its own button spends the entry it added, so the back
+  // button afterwards goes to the module before it — not back into the dialog.
+  go(screen({ project: "p1", nav: "project", tab: "ncr", modal: "quick" }));
+  assert.equal(stack.length, 5);
+  go(screen({ project: "p1", nav: "project", tab: "ncr" }));
+  assert.equal(stack.length, 4);
+  assert.ok(sameScreen(back(), screen({ project: "p1", nav: "project" })));
+
+  // And back keeps walking: workspace → project → the project list.
+  assert.ok(sameScreen(back(), screen({ project: "p1" })));
+  assert.ok(sameScreen(back(), emptyScreen));
+  assert.equal(stack.length, 1);
+
+  // Only an overlay closing counts as spending an entry; changing module does not.
+  assert.equal(closesOverlay(screen({ modal: "quick" }), screen({})), true);
+  assert.equal(closesOverlay(screen({ menu: true }), screen({})), true);
+  assert.equal(closesOverlay(screen({ tab: "ncr" }), screen({ tab: "home" })), false);
+  assert.equal(closesOverlay(screen({ modal: "quick" }), screen({ nav: "acties" })), false);
+});

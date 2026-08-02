@@ -52,6 +52,7 @@ import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { ALL_BUILDINGS, BuildingMultiPicker, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { screenFromSearch, useScreenHistory, type AppScreen } from "@/lib/navigation/app-history";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { photoEvidenceLine, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
 import { SketchPad } from "@/app/sketch-pad";
@@ -150,6 +151,9 @@ function CompanyLogo({ subtitle }: { subtitle?: string }) {
 }
 
 type NavKey = "vandaag" | "project" | "acties" | "projectdocs" | "punchlist" | "verify" | "rapporten" | "meer";
+type ProjectTabKey = "home" | "inspections" | "findings" | "ncr" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files";
+const navKeys: NavKey[] = ["vandaag", "project", "acties", "projectdocs", "punchlist", "verify", "rapporten", "meer"];
+const projectTabKeys: ProjectTabKey[] = ["home", "inspections", "findings", "ncr", "hse", "daily", "documents", "registers", "visual", "drawings", "tools", "files"];
 type ModalKey = "quick" | "entry" | "action_create" | "action_detail" | "report" | "attendance" | "one_tap_log" | "daily_questions" | "project_start" | "user_admin" | "notifications" | "manage_buildings" | null;
 type WorkspaceStage = "projects" | "cockpit";
 type EntryKind =
@@ -527,7 +531,7 @@ export function CodecoSupervisionApp() {
   const [modal, setModal] = useState<ModalKey>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [selectedType, setSelectedType] = useState<string>("activity");
-  const [initialProjectTab, setInitialProjectTab] = useState<"home" | "inspections" | "findings" | "ncr" | "hse" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files">("home");
+  const [initialProjectTab, setInitialProjectTab] = useState<ProjectTabKey>("home");
   const quickCameraInputRef = useRef<HTMLInputElement>(null);
   const dailyBackupCheckRef = useRef("");
   const [pendingQuickPhotos, setPendingQuickPhotos] = useState<File[]>([]);
@@ -1183,6 +1187,9 @@ export function CodecoSupervisionApp() {
 
   const navigate = (next: NavKey) => {
     if (next === "project") setInitialProjectTab("home");
+    // Project Docs and Punchlist are the workspace with one module already open.
+    if (next === "projectdocs") setInitialProjectTab("documents");
+    if (next === "punchlist") setInitialProjectTab("findings");
     // Reaching the action centre from the bar means the worklist; only the deadline
     // tile of the workspace asks for the deadline view.
     setActionCenterView("work");
@@ -1198,7 +1205,70 @@ export function CodecoSupervisionApp() {
     setSelectedProject(project);
     setSelectedBuilding(project.buildings[0] ?? null);
     setWorkspaceStage("cockpit");
+    setActiveNav("vandaag");
+    setInitialProjectTab("home");
   };
+
+  /**
+   * The screen the app is showing, in the few things a user would call a page: the
+   * project, the destination in the bar, the open module and any full-screen dialog.
+   * Everything else is detail inside a screen and stays out of the history.
+   */
+  const screen: AppScreen = useMemo(() => ({
+    project: workspaceStage === "cockpit" && selectedProject ? selectedProject.id : null,
+    nav: activeNav,
+    tab: initialProjectTab,
+    modal: modal ?? null,
+    menu: mobileMenuOpen,
+  }), [activeNav, initialProjectTab, mobileMenuOpen, modal, selectedProject, workspaceStage]);
+
+  /** Puts the app back on a screen the back button handed to us. */
+  const applyScreen = useCallback((restored: AppScreen) => {
+    const projects = workspaceQuery.data?.projects ?? [];
+    if (!restored.project) {
+      setWorkspaceStage("projects");
+    } else {
+      const project = projects.find((candidate) => candidate.id === restored.project);
+      if (project) {
+        setSelectedProject((current) => current?.id === project.id ? current : project);
+        setSelectedBuilding((current) => current && project.buildings.some((building) => building.id === current.id)
+          ? current
+          : project.buildings[0] ?? null);
+      }
+      setWorkspaceStage("cockpit");
+    }
+    setActiveNav(navKeys.includes(restored.nav as NavKey) ? restored.nav as NavKey : "vandaag");
+    setInitialProjectTab(projectTabKeys.includes(restored.tab as ProjectTabKey) ? restored.tab as ProjectTabKey : "home");
+    // A dialog that only makes sense with a record in hand is not restored from an
+    // entry; the screen behind it is what the user asked to go back to.
+    const contextFreeModal = restored.modal && !["action_detail", "entry"].includes(restored.modal)
+      ? restored.modal as ModalKey
+      : null;
+    setModal(contextFreeModal);
+    setMobileMenuOpen(restored.menu);
+    // A restored screen is a fresh screen: never keep the previous one's scroll.
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [workspaceQuery.data?.projects]);
+
+  useScreenHistory(screen, applyScreen);
+
+  // A reload, a shared link or a phone that reopens the installed app lands on the
+  // screen the address bar describes instead of at the beginning.
+  const restoredFromUrlRef = useRef(false);
+  // The projects arrive from the server, so the screen in the address bar can only be
+  // restored once they are there. That is exactly what an effect is for.
+  useEffect(() => {
+    if (restoredFromUrlRef.current) return;
+    const projects = workspaceQuery.data?.projects;
+    if (!projects?.length) return;
+    restoredFromUrlRef.current = true;
+    const fromUrl = screenFromSearch(window.location.search);
+    if (!fromUrl.project) return;
+    const project = projects.find((candidate) => candidate.id === fromUrl.project);
+    if (!project) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- restoring a screen from the address bar can only happen once the projects have loaded
+    applyScreen(fromUrl);
+  }, [applyScreen, workspaceQuery.data?.projects]);
 
   const openBuildingStart = (building: BuildingContext) => {
     setContextBuildingId(building.id);
@@ -1609,7 +1679,8 @@ export function CodecoSupervisionApp() {
               parties={dayQuery.data?.parties ?? []}
               canManageOrganization={canManageMembers}
               openUserAdmin={() => setModal("user_admin")}
-              initialProjectTab={activeNav === "projectdocs" ? "documents" : activeNav === "punchlist" ? "findings" : initialProjectTab}
+              initialProjectTab={initialProjectTab}
+              onProjectTabChange={setInitialProjectTab}
               externalSubmissionIntent={externalSubmissionIntent}
               actionCenterView={actionCenterView}
               initialCameraFiles={pendingQuickPhotos}

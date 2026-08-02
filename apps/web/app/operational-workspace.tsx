@@ -290,6 +290,7 @@ export function OperationalWorkspace({
   canManageOrganization,
   openUserAdmin,
   initialProjectTab = "home",
+  onProjectTabChange,
   externalSubmissionIntent = false,
   actionCenterView = "work",
   initialCameraFiles = [],
@@ -324,6 +325,8 @@ export function OperationalWorkspace({
   canManageOrganization: boolean;
   openUserAdmin: () => void;
   initialProjectTab?: ProjectTab;
+  /** The app shell keeps the open module, so it can be reached with the back button. */
+  onProjectTabChange: (tab: ProjectTab) => void;
   /** Set when Management sends the user here to record a contractor submission. */
   externalSubmissionIntent?: boolean;
   /** Which view of the action centre to open: the worklist or the deadlines. */
@@ -401,7 +404,7 @@ export function OperationalWorkspace({
       {notice ? <div className="operation-alert success"><CheckCircle2 size={17} /> {notice}</div> : null}
       {mode === "project" ? (
         <ProjectOperations
-          key={`${projectId}:${initialProjectTab}:${externalSubmissionIntent}`}
+          key={`${projectId}:${externalSubmissionIntent}`}
           data={query.data}
           organizationId={organizationId}
           reportId={reportId}
@@ -419,6 +422,7 @@ export function OperationalWorkspace({
           busy={busy}
           run={run}
           initialTab={initialProjectTab}
+          onTabChange={onProjectTabChange}
           externalSubmissionIntent={externalSubmissionIntent}
           initialCameraFiles={initialCameraFiles}
           onInitialCameraFilesConsumed={onInitialCameraFilesConsumed}
@@ -501,6 +505,7 @@ function ProjectOperations({
   busy,
   run,
   initialTab,
+  onTabChange,
   initialCameraFiles,
   onInitialCameraFilesConsumed,
   openQuickCamera,
@@ -528,6 +533,8 @@ function ProjectOperations({
   busy: boolean;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
   initialTab: ProjectTab;
+  /** Reports the chosen module upwards, so it becomes a history entry. */
+  onTabChange: (tab: ProjectTab) => void;
   initialCameraFiles: File[];
   onInitialCameraFilesConsumed?: () => void;
   openQuickCamera: () => void;
@@ -550,7 +557,14 @@ function ProjectOperations({
     );
   const issueDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(new Date());
   const issueTime = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Paramaribo" }).format(new Date());
-  const [tab, setTab] = useState<ProjectTab>(initialTab);
+  // The open module is owned by the app shell: it is a screen of its own, so it belongs
+  // in the browser history instead of in a state nobody can navigate back to.
+  const tab = initialTab;
+  const internalTabChange = useRef(false);
+  const setTab = (next: ProjectTab) => {
+    internalTabChange.current = true;
+    onTabChange(next);
+  };
   // Issues and NCRs are separate modules: the client's issue screen is for issues only.
   const findingScope: "issue" | "ncr" = tab === "ncr" ? "ncr" : "issue";
   const [visualFindingId, setVisualFindingId] = useState("");
@@ -619,6 +633,17 @@ function ProjectOperations({
   const [registerPhotos, setRegisterPhotos] = useState<PhotoEvidence[]>([]);
   const [registerPhotoError, setRegisterPhotoError] = useState("");
   const [registerSketching, setRegisterSketching] = useState(false);
+  // A module reached from outside — the bottom bar, a deadline row, the back button —
+  // opens the same way as one chosen in the switcher.
+  useEffect(() => {
+    if (internalTabChange.current) {
+      internalTabChange.current = false;
+      return;
+    }
+    setSubmittedFinding(null);
+    setShowForm(tab !== "home");
+    setActiveInspection(null);
+  }, [tab]);
   /** An agreement is text plus the two parties who made it, and who signs for them. */
   const [agreementForm, setAgreementForm] = useState({ ...emptyAgreementSignature });
   // Everything this workspace already knows about the project is offered inside the marking
