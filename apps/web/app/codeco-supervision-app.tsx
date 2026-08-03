@@ -54,7 +54,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { ALL_BUILDINGS, BuildingMultiPicker, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { screenFromSearch, useScreenHistory, type AppScreen } from "@/lib/navigation/app-history";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
-import { photoEvidenceLine, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
+import { photoEvidenceLine, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
 import { SketchPad } from "@/app/sketch-pad";
 import { ClientDashboard } from "@/app/client-dashboard";
 import { DailyLogModal } from "@/app/daily-log-modal";
@@ -66,6 +66,7 @@ import type { ActionCenterView } from "@/app/project-action-center";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { ensureDailyBackup } from "@/lib/backups/client";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
+import { startCompassWatch } from "@/lib/images/compass";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import { currentPushState, enablePushNotifications, type PushState } from "@/lib/notifications/push-client";
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
@@ -1030,6 +1031,9 @@ export function CodecoSupervisionApp() {
   const openQuickAdd = () => {
     writeDescription("");
     setLocation(selectedBuilding?.name ?? "");
+    // The tap that opens the camera is also the moment a phone will hand out its compass, so
+    // the photo can say by itself which way it was facing.
+    void startCompassWatch();
     quickCameraInputRef.current?.click();
   };
 
@@ -1167,7 +1171,7 @@ export function CodecoSupervisionApp() {
       const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
       // The photo's own words win over the record title, and its own location over the
       // record's, so the photo register can be read without opening the registration.
-      const photoTitle = photo.details.title.trim() || input.title.trim();
+      const uploadTitle = photoTitle(photo) || input.title.trim();
       await queueOfflineUpload({
         projectId: input.projectId,
         buildingId: input.buildingId,
@@ -1178,7 +1182,7 @@ export function CodecoSupervisionApp() {
         file: prepared.blob,
         fileName: prepared.fileName,
         mimeType: prepared.mimeType,
-        title: photoTitle.slice(0, 120),
+        title: uploadTitle.slice(0, 120),
         description: [photoEvidenceLine(photo, language), photo.details.description.trim()].filter(Boolean).join("\n"),
         locationLabel: input.buildingLabel,
         locationNodeId: photo.details.locationNodeId || input.locationNodeId || null,
@@ -2203,7 +2207,7 @@ export function CodecoSupervisionApp() {
                     fileName: prepared.fileName,
                     mimeType: prepared.mimeType,
                     // The words the supervisor gave the photo are what the report shows.
-                    title: photo.details.title.trim().slice(0, 120) || text("Field photo", "Veldfoto"),
+                    title: photoTitle(photo).slice(0, 120) || text("Field photo", "Veldfoto"),
                     description: photoUploadDescription(photo, "", language),
                     locationLabel: logBuildingName,
                     locationNodeId: photo.details.locationNodeId || null,

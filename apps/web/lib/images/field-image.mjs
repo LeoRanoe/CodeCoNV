@@ -32,6 +32,42 @@ export function normalizedImagePoint(clientX, clientY, bounds) {
   };
 }
 
+export const compassPoints = Object.freeze(["N", "NE", "E", "SE", "S", "SW", "W", "NW"]);
+
+/**
+ * The compass reading of a photo, as one of the eight points a supervisor uses on site.
+ * The camera gives degrees; the report says "facing NE". Anything unreadable stays empty
+ * so the field can still be filled by hand.
+ *
+ * @param {number | null | undefined} degrees
+ */
+export function compassPointFromDegrees(degrees) {
+  if (typeof degrees !== "number" || !Number.isFinite(degrees)) return "";
+  const normalized = ((degrees % 360) + 360) % 360;
+  return compassPoints[Math.round(normalized / 45) % 8];
+}
+
+/**
+ * The client asked for one text box per photo instead of a title and a description. The
+ * report still needs a name per file, so the first sentence of what the supervisor wrote
+ * becomes that name, and the fallback keeps a photo without words findable by its number.
+ *
+ * @param {string} description
+ * @param {string} [fallback]
+ */
+export function photoTitleFromDescription(description, fallback = "") {
+  const written = (description ?? "").trim();
+  if (!written) return fallback.trim();
+  const firstLine = written.split(/\r?\n/).find((line) => line.trim().length > 0) ?? "";
+  const firstSentence = firstLine.split(/(?<=[.!?])\s/)[0] ?? firstLine;
+  const title = firstSentence.trim().replace(/[.,;:]+$/, "");
+  if (title.length <= 90) return title || fallback.trim();
+  // A long opening sentence is cut on a word, so the file name never ends mid-word.
+  const cut = title.slice(0, 90);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > 40 ? cut.slice(0, lastSpace) : cut).trim()}…`;
+}
+
 /** The three marker classifications the client uses on a punch list. */
 export const photoMarkupTones = Object.freeze(["to_be_corrected", "alternative_solution", "validated"]);
 

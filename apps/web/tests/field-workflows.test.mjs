@@ -17,7 +17,10 @@ import {
   isOverdueItem,
   nextStepFor,
 } from "../lib/actions/action-center.mjs";
+import { exifImageDirection } from "../lib/images/exif-direction.mjs";
 import {
+  compassPointFromDegrees,
+  compassPoints,
   fieldPhotoMimeTypes,
   markedPhotoName,
   markupCanvasSize,
@@ -27,6 +30,7 @@ import {
   photoMarkupReport,
   photoMarkupSummary,
   photoMarkupToneColors,
+  photoTitleFromDescription,
   validatePanoramaDimensions,
 } from "../lib/images/field-image.mjs";
 
@@ -125,7 +129,7 @@ test("writes what was marked on a photo back into the record's own words", () =>
   assert.deepEqual(Object.keys(photoMarkupToneColors), ["to_be_corrected", "alternative_solution", "validated"]);
 });
 
-test("gives every attached photo its own words, category, location and direction", async () => {
+test("gives every attached photo one written field, its location and an automatic direction", async () => {
   const [evidence, entry, dailyLog, operations, media, visualCapture, css] = await Promise.all([
     readFile(new URL("../app/photo-evidence.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
@@ -136,11 +140,16 @@ test("gives every attached photo its own words, category, location and direction
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
 
-  // §4.16 of the client's product plan: category, location, direction and description per
-  // photo, next to the picture instead of drawn on it.
-  for (const field of [/What is on this photo\?/, /Description · what is visible/, /Category/, /Exact location/, /Facing direction/]) {
-    assert.match(evidence, field);
-  }
+  // §4.16 of the client's product plan asks for a location, a direction and a description per
+  // photo, next to the picture instead of drawn on it. The feedback of 2 August cut that back
+  // to one written field: "voor nr is 1 invoer voldoende". The title, the category and the
+  // typed room name are gone; the description carries the words and names the file.
+  assert.match(evidence, /What is on this photo, and why does it matter\?/);
+  assert.match(evidence, /Exact location/);
+  assert.match(evidence, /<FacingDirectionField/);
+  assert.doesNotMatch(evidence, /placeholder=\{text\("For example: rebar column line B/);
+  assert.doesNotMatch(evidence, /\{text\("Category", "Categorie"\)\}/);
+  assert.match(evidence, /export function photoTitle/);
   // §4.16 also: the original photo is always kept, so marking never destroys it.
   assert.match(evidence, /original: File;/);
   assert.match(evidence, /Restore original/);
@@ -169,12 +178,18 @@ test("gives every attached photo its own words, category, location and direction
   assert.match(evidence, /export function photoUploadDescription/);
   assert.equal(operations.match(/photoUploadDescription\(photo,/g)?.length, 4);
 
-  // The capture screen in the photo workspace offers the same photo vocabulary, with the
-  // words open instead of hidden behind a summary.
-  assert.match(visualCapture, /photoCategories/);
-  assert.match(visualCapture, /photoDirections/);
-  assert.match(visualCapture, /What is on this photo\?|Wat staat er op deze foto\?/);
+  // The capture screen in the photo workspace asks the same single question, and never the
+  // three fields the client struck through on it.
+  assert.match(visualCapture, /What is on this photo, and why does it matter\?/);
+  assert.doesNotMatch(visualCapture, /photoCategories/);
+  assert.doesNotMatch(visualCapture, /Room \/ location in your own words/);
   assert.doesNotMatch(visualCapture, /Adjust title, location or context/);
+  // The building is a row of buttons that can hold more than one building, not a dropdown.
+  assert.match(visualCapture, /<BuildingChoiceField/);
+  // The direction is measured, not asked, and the spot can be pointed at on the drawing.
+  assert.match(visualCapture, /<FacingDirectionField/);
+  assert.match(visualCapture, /<DrawingLocationPicker/);
+  assert.match(visualCapture, /readPhotoDirection/);
 
   // A phone zooms in on a field below 16px; that guard has to beat every component rule.
   assert.match(css, /@media \(max-width: 860px\), \(pointer: coarse\)[\s\S]{0,400}font-size: max\(16px, 1em\) !important/);
@@ -474,3 +489,101 @@ test("only lets a connection failure put a field record in the offline queue", (
   assert.equal(isPendingRecordId("6f1a2c34-0000-4000-8000-000000000000"), false);
   assert.equal(isPendingRecordId(undefined), false);
 });
+
+test("turns a compass reading into the eight points a supervisor uses", () => {
+  assert.deepEqual(compassPoints, ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]);
+  assert.equal(compassPointFromDegrees(0), "N");
+  assert.equal(compassPointFromDegrees(45), "NE");
+  assert.equal(compassPointFromDegrees(200), "S");
+  assert.equal(compassPointFromDegrees(359), "N");
+  // A camera may report a bearing that ran past a full circle, or a negative one.
+  assert.equal(compassPointFromDegrees(365), "N");
+  assert.equal(compassPointFromDegrees(-90), "W");
+  // Nothing measured stays empty, so the field can still be answered by hand.
+  assert.equal(compassPointFromDegrees(null), "");
+  assert.equal(compassPointFromDegrees(Number.NaN), "");
+  assert.equal(compassPointFromDegrees(undefined), "");
+});
+
+test("names a photo from the one sentence the supervisor wrote", () => {
+  // The client asked for a single text box per photo; the report still needs a file name.
+  assert.equal(
+    photoTitleFromDescription("Rebar column line B is bent. It has to be replaced before pouring."),
+    "Rebar column line B is bent",
+  );
+  assert.equal(photoTitleFromDescription("Scheur in de wand\nTweede regel"), "Scheur in de wand");
+  // A photo without words falls back to the name the screen already gave it.
+  assert.equal(photoTitleFromDescription("   ", "Veldfoto"), "Veldfoto");
+  assert.equal(photoTitleFromDescription(""), "");
+
+  // A long opening sentence is cut on a word rather than in the middle of one.
+  const long = `${"steel ".repeat(40)}end`;
+  const title = photoTitleFromDescription(long);
+  assert.ok(title.length <= 91, title);
+  assert.ok(title.endsWith("…"));
+  assert.ok(!title.includes("stee…"));
+});
+
+test("reads the facing direction the camera wrote into the photo", () => {
+  // A photo with a bearing of 135 degrees was taken facing south-east, in both byte orders.
+  assert.equal(exifImageDirection(jpegWithDirection(135, true)), 135);
+  assert.equal(exifImageDirection(jpegWithDirection(135, false)), 135);
+  assert.equal(compassPointFromDegrees(exifImageDirection(jpegWithDirection(135, true))), "SE");
+
+  // Indoors a phone often records no bearing at all, and that is not an error.
+  assert.equal(exifImageDirection(jpegWithoutExif()), null);
+  assert.equal(exifImageDirection(new ArrayBuffer(0)), null);
+  assert.equal(exifImageDirection(new Uint8Array([1, 2, 3]).buffer), null);
+});
+
+/**
+ * A minimal JPEG that carries one EXIF field: the bearing the camera was pointing at. Built by
+ * hand so the reader is tested against the bytes a phone actually writes, in both byte orders,
+ * without pulling a photo of several megabytes into the test suite.
+ */
+function jpegWithDirection(degrees, littleEndian) {
+  const tiff = new DataView(new ArrayBuffer(52));
+  const setShort = (offset, value) => tiff.setUint16(offset, value, littleEndian);
+  const setLong = (offset, value) => tiff.setUint32(offset, value, littleEndian);
+
+  tiff.setUint16(0, littleEndian ? 0x4949 : 0x4d4d);
+  setShort(2, 0x002a);
+  setLong(4, 8);
+
+  // IFD0: one entry, the pointer to the GPS directory.
+  setShort(8, 1);
+  setShort(10, 0x8825);
+  setShort(12, 4);
+  setLong(14, 1);
+  setLong(18, 26);
+  setLong(22, 0);
+
+  // GPS directory: one entry, the image direction as a rational number.
+  setShort(26, 1);
+  setShort(28, 0x0011);
+  setShort(30, 5);
+  setLong(32, 1);
+  setLong(36, 44);
+  setLong(40, 0);
+  setLong(44, degrees);
+  setLong(48, 1);
+
+  const bytes = new Uint8Array(2 + 2 + 2 + 6 + tiff.byteLength + 2);
+  const file = new DataView(bytes.buffer);
+  file.setUint16(0, 0xffd8);
+  file.setUint16(2, 0xffe1);
+  file.setUint16(4, 2 + 6 + tiff.byteLength);
+  bytes.set(new TextEncoder().encode("Exif"), 6);
+  bytes.set(new Uint8Array(tiff.buffer), 12);
+  file.setUint16(bytes.length - 2, 0xffd9);
+  return bytes.buffer;
+}
+
+/** The same file without the EXIF segment: a camera that recorded no bearing at all. */
+function jpegWithoutExif() {
+  const bytes = new Uint8Array(4);
+  const file = new DataView(bytes.buffer);
+  file.setUint16(0, 0xffd8);
+  file.setUint16(2, 0xffd9);
+  return bytes.buffer;
+}

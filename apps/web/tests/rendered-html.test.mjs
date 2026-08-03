@@ -668,8 +668,14 @@ test("keeps the project workspace mobile-first and task driven", async () => {
 
   assert.match(app, /useState<ProjectTabKey>\("home"\)/);
   assert.match(app, /openQuickCamera=\{openQuickAdd\}/);
-  assert.match(operations, /mobile-workspace-section-select/);
-  assert.match(operations, /projectSectionGroups/);
+  // The "Switch module" dropdown is gone: the client wrote "ik begrijp dit niet, misschien kan
+  // het weg" beside it. What is left is the way back and the name of the module you are in;
+  // every module is one tap away on the workspace launcher itself.
+  assert.doesNotMatch(operations, /mobile-workspace-section-select/);
+  assert.doesNotMatch(operations, /text\("Switch module", "Wissel van module"\)/);
+  assert.doesNotMatch(operations, /Switch project module/);
+  assert.doesNotMatch(styles, /mobile-workspace-section-select/);
+  assert.match(operations, /workspace-back-button/);
   assert.match(operations, /workspace-current-module/);
   // The workspace start screen is the client's fifteen-tile launcher, not a hidden legacy hub.
   assert.match(operations, /<ProjectWorkspaceHome/);
@@ -686,7 +692,6 @@ test("keeps the project workspace mobile-first and task driven", async () => {
   assert.doesNotMatch(workspaceHome, /openRegister\("(wcr|rfi|rfa|inspection_request)"\)/);
   assert.match(workspaceHome, /openTask\("documents"\)/);
   assert.match(styles, /\.workspace-task-hub/);
-  assert.match(styles, /\.workspace-desktop-tabs\s*\{\s*display: none/);
   assert.match(styles, /\.overview-shortcut\.mobile-redundant\s*\{\s*display: none/);
   assert.match(app, /Project, building, time and folder automatic/);
   assert.doesNotMatch(operations, /field-flow-launcher/);
@@ -963,11 +968,13 @@ test("processes the five annotated field screens from 31 July", async () => {
   // the standard sentences about manning levels.
   assert.match(dailyLog, /export type DailyLogPhoto/);
   assert.match(dailyLog, /<PhotoEvidenceList/);
-  assert.match(evidence, /What is on this photo\?|Wat staat er op deze foto\?/);
+  // The naming is now one question instead of a title next to a description, and the report
+  // name is taken from the answer.
+  assert.match(evidence, /What is on this photo, and why does it matter\?/);
   assert.match(evidence, /photo-evidence-remove/);
   assert.match(dailyLog, /workforceNoteChoices/);
   assert.match(dailyLog, /Too few workers|Onvoldoende arbeiders/);
-  assert.match(app, /photo\.details\.title\.trim\(\)\.slice\(0, 120\)/);
+  assert.match(app, /photoTitle\(photo\)\.slice\(0, 120\)/);
 });
 
 test("processes the second batch of annotated screens from 31 July", async () => {
@@ -1005,7 +1012,7 @@ test("processes the second batch of annotated screens from 31 July", async () =>
   // Every evidence photo carries the text that says what it shows — now the same fields in
   // every module instead of a caption in two of them.
   assert.match(workspace, /photos=\{hsePhotos\}/);
-  assert.match(evidence, /Description · what is visible|Toelichting · wat is te zien/);
+  assert.match(evidence, /Describe it as you would to someone who was not there/);
   assert.match(styles, /\.photo-evidence-row/);
   assert.match(styles, /\.photo-detail-modal/);
 
@@ -1649,4 +1656,65 @@ test("lets a field record be written without a connection and sends it by itself
   assert.match(manager, /Send now|Nu versturen/);
   assert.match(styles, /\.offline-outbox/);
   assert.match(manager, /Changing a record that already exists|Een bestaand record wijzigen/);
+});
+
+test("processes the three annotated capture screens from 2 August", async () => {
+  const [evidence, visual, picker, facing, drawingPicker, compass, queue, operations, styles] = await Promise.all([
+    readFile(new URL("../app/photo-evidence.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/visual-evidence-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/building-picker.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/facing-direction.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/drawing-location-picker.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/images/compass.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/offline/upload-queue.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // #17 and #18: "voor nr is 1 invoer voldoende". The title, the category and the typed room
+  // name are struck through on both photo screens; one written field is left.
+  for (const [name, source] of [["photo detail sheet", evidence], ["capture screen", visual]]) {
+    assert.match(source, /What is on this photo, and why does it matter\?/, `${name} asks one question`);
+    assert.doesNotMatch(source, /\{text\("Category", "Categorie"\)\}/, `${name} no longer asks for a category`);
+  }
+  assert.doesNotMatch(visual, /Room \/ location in your own words/);
+  // #17: the building stays — the client ticked it off.
+  assert.match(evidence, /\{text\("Building", "Gebouw"\)\}/);
+
+  // #18: "laten we met knopjes werken, en meerdere kiezen".
+  assert.match(picker, /export function BuildingChoiceField/);
+  assert.match(picker, /aria-pressed=\{chosen\}/);
+  assert.match(visual, /<BuildingChoiceField/);
+  assert.match(visual, /value=\{captureBuildingIds\}/);
+  assert.match(styles, /\.building-choice-options button/);
+
+  // #17 and #18: "kan dit automatisch?" — the direction comes from the photo itself, and
+  // otherwise from the compass of the device, and only then from a tap.
+  assert.match(facing, /export function FacingDirectionField/);
+  assert.match(facing, /measured automatically|automatisch bepaald/);
+  assert.match(compass, /webkitCompassHeading/);
+  assert.match(compass, /deviceorientationabsolute/);
+  for (const source of [evidence, visual]) {
+    assert.match(source, /readPhotoDirection/);
+    assert.match(source, /<FacingDirectionField/);
+  }
+
+  // #18: "locatie kunnen kiezen in PDF" — the spot is pointed at on the drawing and stays
+  // there as a pin next to the photo.
+  assert.match(drawingPicker, /export function DrawingLocationPicker/);
+  assert.match(drawingPicker, /pdfjs-dist/);
+  assert.match(visual, /<DrawingLocationPicker/);
+  assert.match(queue, /drawingPin\?: \{/);
+  assert.match(queue, /linkedRecordType: "visual"/);
+
+  // #18: "ik begrijp dit niet, misschien kan het weg" — the module dropdown is gone.
+  assert.doesNotMatch(operations, /Switch project module/);
+
+  // #18: "kunnen we de zwarte delen wegdoen" — the preview no longer pads a portrait photo
+  // out to the full card width with black.
+  assert.match(styles, /\.visual-photo-preview img \{[\s\S]{0,220}width: auto/);
+  assert.doesNotMatch(styles, /\.visual-photo-preview img \{[\s\S]{0,220}background: #000/);
+
+  // The photo library and the marker panel stay away while a photo is waiting to be saved.
+  assert.match(visual, /captures\.length && !showUpload/);
 });

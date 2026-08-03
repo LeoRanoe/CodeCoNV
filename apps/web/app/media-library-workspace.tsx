@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
-import { photoFiles, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
+import { photoFiles, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
 import { useLanguage } from "@/lib/i18n";
 import {
   compressFieldPhoto,
@@ -299,7 +299,7 @@ export function MediaLibraryWorkspace({
         const photo = pendingCapture.find((entry) => entry.file === file);
         if (!photo) return undefined;
         return {
-          title: photo.details.title,
+          title: photoTitle(photo),
           description: photoUploadDescription(photo, photoDescription, language),
           locationNodeId: photo.details.locationNodeId || null,
         };

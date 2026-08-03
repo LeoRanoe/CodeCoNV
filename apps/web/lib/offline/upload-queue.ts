@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { idbDelete, idbGetAll, idbPut } from "@/lib/offline/idb";
 import { isPendingRecordId, resolvePendingRecordId } from "@/lib/offline/record-queue";
 import { uploadProjectFile } from "@/lib/storage/gateway";
-import { createFinding, createMediaFolder, createVisualCapture, linkFileToRecord } from "@/lib/supabase/operations";
+import { createDrawingPin, createFinding, createMediaFolder, createVisualCapture, linkFileToRecord } from "@/lib/supabase/operations";
 
 export type QueuedFindingDraft = {
   organizationId: string;
@@ -64,6 +64,17 @@ export type OfflineUpload = {
   originalSize: number;
   queuedSize: number;
   compressed: boolean;
+  /**
+   * The spot the supervisor pointed at on the building drawing. It becomes a pin on that
+   * drawing as soon as the photo reaches the server, so the picture can be found back from
+   * the plan and not only from a list of file names.
+   */
+  drawingPin?: {
+    fileId: string;
+    pageNumber: number;
+    xRatio: number;
+    yRatio: number;
+  } | null;
   findingGroup?: OfflineFindingGroup | null;
   recordLink?: {
     organizationId: string;
@@ -184,7 +195,7 @@ async function ensureVisualCapture(client: SupabaseClient, upload: OfflineUpload
     .maybeSingle();
   if (existingCapture.error) throw existingCapture.error;
   if (existingCapture.data) return;
-  await createVisualCapture(client, {
+  const capture = await createVisualCapture(client, {
     projectId: upload.projectId,
     buildingId: upload.buildingId,
     dayReportId: upload.reportId,
@@ -198,6 +209,23 @@ async function ensureVisualCapture(client: SupabaseClient, upload: OfflineUpload
     tourOrder: upload.tourOrder ?? null,
     capturedAt: upload.capturedAt,
   });
+  if (!upload.drawingPin || !capture?.id) return;
+  // The pin is a second recording of the same fact. The photo is already filed with its
+  // location, so a drawing that has meanwhile been replaced must never send the picture
+  // itself back into the queue.
+  try {
+    await createDrawingPin(client, {
+      drawingFileId: upload.drawingPin.fileId,
+      pageNumber: upload.drawingPin.pageNumber,
+      xRatio: upload.drawingPin.xRatio,
+      yRatio: upload.drawingPin.yRatio,
+      linkedRecordType: "visual",
+      linkedRecordId: capture.id,
+      note: upload.title,
+    });
+  } catch {
+    // Intentionally silent: the photo is safe, and the location is on it in words as well.
+  }
 }
 
 async function syncOfflineUploadsUnlocked(

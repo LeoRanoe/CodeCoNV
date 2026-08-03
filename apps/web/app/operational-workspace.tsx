@@ -42,7 +42,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type 
 import { AgreementSignatureFields, agreementSignatureDetails, agreementSummaryLine, emptyAgreementSignature } from "@/app/agreement-signature";
 import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
-import { photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
+import { photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
 import { SketchPad } from "@/app/sketch-pad";
 import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
@@ -1041,7 +1041,7 @@ function ProjectOperations({
           const folderId = existingMediaFolderId(folderName, photoBuildingId);
           for (const photo of inspectionPhotos) {
             const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
-            const caption = photo.details.title.trim();
+            const caption = photoTitle(photo);
             await queueOfflineUpload({
               projectId,
               buildingId: photoBuildingId,
@@ -1220,7 +1220,7 @@ function ProjectOperations({
             file: prepared.blob,
             fileName: prepared.fileName,
             mimeType: prepared.mimeType,
-            title: photo.details.title.trim() || findingForm.title,
+            title: photoTitle(photo) || findingForm.title,
             description: photoUploadDescription(photo, findingForm.description, language),
             locationLabel: findingBuildingName,
             locationNodeId: photo.details.locationNodeId || (projectWideFinding ? null : findingLocationNodeId) || null,
@@ -1325,7 +1325,7 @@ function ProjectOperations({
           const folderId = existingMediaFolderId(folderName, hsePhotoBuildingId);
           for (const photo of hsePhotos) {
             const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
-            const caption = photo.details.title.trim();
+            const caption = photoTitle(photo);
             await queueOfflineUpload({
               projectId,
               buildingId: hsePhotoBuildingId,
@@ -1457,7 +1457,7 @@ function ProjectOperations({
           const folderId = existingMediaFolderId(folderName, registerPhotoBuildingId);
           for (const photo of registerPhotos) {
             const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
-            const caption = photo.details.title.trim();
+            const caption = photoTitle(photo);
             await queueOfflineUpload({
               projectId,
               buildingId: registerPhotoBuildingId,
@@ -1587,20 +1587,6 @@ function ProjectOperations({
   })[sectionId]);
   const activeSectionLabel = projectSections.find(([id]) => id === tab)?.[1];
   const activeSectionCount = projectSections.find(([id]) => id === tab)?.[2] ?? 0;
-  const projectSectionGroups = [
-    {
-      label: text("Field control", "Veldcontrole"),
-      sections: projectSections.filter(([id]) => ["inspections", "findings", "ncr", "hse", "daily"].includes(id)),
-    },
-    {
-      label: text("Documents & approvals", "Documenten & goedkeuring"),
-      sections: projectSections.filter(([id]) => ["documents", "registers", "drawings"].includes(id)),
-    },
-    {
-      label: text("Evidence & tools", "Bewijs & hulpmiddelen"),
-      sections: projectSections.filter(([id]) => ["visual", "files", "tools"].includes(id)),
-    },
-  ].filter((group) => group.sections.length);
   const canCreateRecord = ["inspections", "findings", "hse", "registers"].includes(tab);
 
   return (
@@ -1649,16 +1635,9 @@ function ProjectOperations({
               <strong>{activeSectionLabel}</strong>
               <b>{activeSectionCount}</b>
             </div>
-            <label className="workspace-section-picker mobile-workspace-section-select">
-              <span>{text("Switch module", "Wissel van module")}</span>
-              <select value={tab} onChange={(event) => switchTab(event.target.value as ProjectTab)} aria-label={text("Switch project module", "Wissel projectmodule")}>
-                {projectSectionGroups.map((group) => (
-                  <optgroup label={group.label} key={group.label}>
-                    {group.sections.map(([id, label, count]) => <option value={id} key={id}>{label} · {count}</option>)}
-                  </optgroup>
-                ))}
-              </select>
-            </label>
+            {/* The "Switch module" dropdown used to sit here. The client wrote next to it: "ik
+                begrijp dit niet, misschien kan het weg". Every module is one tap away on the
+                workspace itself, so there is no second, hidden way in any more. */}
             {canCreateRecord && !activeInspection ? <button className="primary-button workspace-module-create" type="button" onClick={() => setShowForm((value) => !value)}><Plus size={15} /> {text("New", "Nieuw")}</button> : null}
           </div>
         </>

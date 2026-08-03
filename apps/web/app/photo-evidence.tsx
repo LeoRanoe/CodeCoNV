@@ -1,19 +1,28 @@
 "use client";
 
-import { Check, ChevronRight, Compass, MapPin, RotateCcw, Trash2, X } from "lucide-react";
+import { Check, ChevronRight, MapPin, RotateCcw, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
+import { FacingDirectionField } from "@/app/facing-direction";
 import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad, type MarkupOption, type PhotoMarkupContext } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
+import { compassPointFromDegrees, photoTitleFromDescription } from "@/lib/images/field-image.mjs";
+import { readPhotoDirection } from "@/lib/images/exif-direction.mjs";
 import { useBackToClose } from "@/lib/navigation/app-history";
 
 /**
- * What the client's own product plan asks of every photo (§4.16): a category, a location, the
- * direction it was taken from and a description — next to the picture, not drawn on it. The
- * report needs the same three things per photo: time, location and an explanation.
+ * What the client's own product plan asks of every photo (§4.16): a location, the direction it
+ * was taken from and a description — next to the picture, not drawn on it. The report needs
+ * time, location and an explanation per photo.
+ *
+ * Since the feedback of 2 August it is one written field, not three: the supervisor writes what
+ * is on the picture and why it matters, and the app fills in the rest.
  */
 export type PhotoEvidenceDetails = {
-  /** What is on the picture, in a few words. Becomes the file title in the report. */
+  /**
+   * The name of the file in the report. Filled in from the first sentence of the description;
+   * kept as its own field because a marking on the photo can also name the picture.
+   */
   title: string;
   /** The explanation: what is visible, why it matters, what has to happen. */
   description: string;
@@ -23,7 +32,17 @@ export type PhotoEvidenceDetails = {
   locationNodeId: string;
   /** The direction the camera was pointing, so a photo can be found back on site. */
   direction: string;
+  /** True while the direction is the one the camera or the compass measured. */
+  directionAutomatic?: boolean;
 };
+
+/**
+ * The name this photo carries into the register. The supervisor no longer types a title, so
+ * the first sentence of the description is used unless a marking already named the picture.
+ */
+export function photoTitle(photo: PhotoEvidence) {
+  return photo.details.title.trim() || photoTitleFromDescription(photo.details.description);
+}
 
 export type PhotoEvidence = {
   id: string;
@@ -83,8 +102,12 @@ export function photoFiles(photos: PhotoEvidence[]) {
  */
 export function photoEvidenceLine(photo: PhotoEvidence, language: "en" | "nl") {
   const category = photoCategories.find((entry) => entry.id === photo.details.category);
+  const written = photo.details.description.trim();
+  const title = photo.details.title.trim();
   return [
-    photo.details.title.trim(),
+    // The title normally is the opening of the description, and printing the same sentence
+    // twice above itself is what a report reader notices first.
+    title && !written.startsWith(title) ? title : "",
     category ? (language === "en" ? category.en : category.nl) : "",
     photo.details.direction ? `${language === "en" ? "facing" : "kijkrichting"} ${language === "en" ? photo.details.direction : dutchDirections[photo.details.direction] ?? photo.details.direction}` : "",
   ].filter((part) => part.length > 0).join(" · ");
@@ -158,8 +181,8 @@ export function PhotoEvidenceList({
             >
               <PhotoThumbnail file={photo.file} />
               <span className="photo-evidence-row-text">
-                <strong>{photo.details.title.trim() || text(`Photo ${index + 1} · not described yet`, `Foto ${index + 1} · nog niet omschreven`)}</strong>
-                <small>{line || text("Tap to add the description and details", "Tik om de omschrijving en details toe te voegen")}</small>
+                <strong>{photoTitle(photo) || text(`Photo ${index + 1} · not described yet`, `Foto ${index + 1} · nog niet omschreven`)}</strong>
+                <small>{line || text("Tap to write what is on this photo", "Tik om te schrijven wat er op deze foto staat")}</small>
                 {photo.markerCount ? <em><MapPin size={11} /> {text(`${photo.markerCount} marked`, `${photo.markerCount} gemarkeerd`)}</em> : null}
               </span>
               <ChevronRight size={18} />
@@ -207,7 +230,7 @@ export function PhotoDetailSheet({
   onChange: (photo: PhotoEvidence) => void;
   onRemove?: () => void;
 }) {
-  const { language, text } = useLanguage();
+  const { text } = useLanguage();
   const [marking, setMarking] = useState(false);
   // On a phone this is a page of its own: the back gesture closes it instead of
   // leaving the record behind it. The entry stays while the marking pad is open on
@@ -219,6 +242,22 @@ export function PhotoDetailSheet({
     !location.buildingId || !chosenBuildingId || location.buildingId === chosenBuildingId);
 
   const patch = (details: Partial<PhotoEvidenceDetails>) => onChange({ ...photo, details: { ...photo.details, ...details } });
+
+  // "Kan dit automatisch?" — the camera writes its own bearing into the original picture, so
+  // the direction is read there once, and only while nobody has answered it by hand.
+  const measured = photo.details.direction;
+  const original = photo.original;
+  useEffect(() => {
+    if (measured) return;
+    let active = true;
+    void readPhotoDirection(original).then((degrees) => {
+      const point = compassPointFromDegrees(degrees);
+      if (active && point) patch({ direction: point, directionAutomatic: true });
+    });
+    return () => { active = false; };
+    // The reading depends on the picture alone; patch closes over the photo it belongs to.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [measured, original]);
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
@@ -245,33 +284,21 @@ export function PhotoDetailSheet({
             </div>
           </div>
 
+          {/* One text box. The client struck through the separate title and the category:
+              "voor nr is 1 invoer voldoende". The report title is taken from the first
+              sentence of what is written here. */}
           <label className="form-field">
-            <span>{text("What is on this photo?", "Wat staat er op deze foto?")}</span>
-            <input
-              value={photo.details.title}
-              onChange={(event) => patch({ title: event.target.value })}
-              placeholder={text("For example: rebar column line B", "Bijvoorbeeld: wapening kolom lijn B")}
-              autoFocus
-            />
-          </label>
-          <label className="form-field">
-            <span>{text("Description · what is visible and why it matters", "Toelichting · wat is te zien en waarom is het belangrijk")}</span>
+            <span>{text("What is on this photo, and why does it matter?", "Wat is er op deze foto te zien, en waarom is dat belangrijk?")}</span>
             <textarea
-              rows={3}
+              rows={4}
               value={photo.details.description}
               onChange={(event) => patch({ description: event.target.value })}
               placeholder={text("Describe it as you would to someone who was not there.", "Beschrijf het alsof je het uitlegt aan iemand die er niet bij was.")}
+              autoFocus
             />
             <DictateButton onText={(transcript) => patch({ description: appendDictation(photo.details.description, transcript) })} />
           </label>
           <div className="form-grid-2">
-            <label className="form-field">
-              <span>{text("Category", "Categorie")}</span>
-              <select value={photo.details.category} onChange={(event) => patch({ category: event.target.value })}>
-                <option value="">{text("Not specified", "Niet aangegeven")}</option>
-                {photoCategories.map((option) => <option value={option.id} key={option.id}>{language === "en" ? option.en : option.nl}</option>)}
-              </select>
-            </label>
             {buildings.length > 1 ? (
               <label className="form-field">
                 <span>{text("Building", "Gebouw")}</span>
@@ -290,13 +317,11 @@ export function PhotoDetailSheet({
                 </select>
               </label>
             ) : null}
-            <label className="form-field">
-              <span><Compass size={11} /> {text("Facing direction", "Kijkrichting")}</span>
-              <select value={photo.details.direction} onChange={(event) => patch({ direction: event.target.value })}>
-                <option value="">{text("Not specified", "Niet aangegeven")}</option>
-                {photoDirections.map((option) => <option value={option} key={option}>{language === "en" ? option : dutchDirections[option]}</option>)}
-              </select>
-            </label>
+            <FacingDirectionField
+              value={photo.details.direction}
+              automatic={photo.details.directionAutomatic ?? false}
+              onChange={(direction, automatic) => patch({ direction, directionAutomatic: automatic })}
+            />
           </div>
         </div>
 

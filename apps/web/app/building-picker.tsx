@@ -1,5 +1,6 @@
 "use client";
 
+import { Check } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
 
 export type BuildingOption = { id: string; name: string };
@@ -42,6 +43,89 @@ export function BuildingPicker({
         {options.map((option) => <option value={option.id} key={option.id}>{option.name}</option>)}
       </select>
     </label>
+  );
+}
+
+/** Above this many buildings a row of buttons stops being faster than a list. */
+const maxChoiceButtons = 8;
+
+/**
+ * The building of a photo, as buttons instead of a dropdown — what the client asked for on
+ * the capture screen: "laten we met knopjes werken, en meerdere kiezen". One tap with a glove
+ * on beats opening a list, choosing and closing it, and one picture regularly covers two
+ * buildings at once.
+ *
+ * A very long list of buildings would push the rest of the form off a phone screen, which is
+ * why this used to be a dropdown. So the buttons hold up to eight buildings and a bigger
+ * project falls back to the list it had before.
+ */
+export function BuildingChoiceField({
+  id,
+  buildings,
+  value,
+  onChange,
+  label,
+  hint,
+}: {
+  id: string;
+  buildings: BuildingOption[];
+  /** Always at least one building; the last chosen one cannot be switched off. */
+  value: string[];
+  onChange: (buildingIds: string[]) => void;
+  label?: string;
+  hint?: string;
+}) {
+  const { text } = useLanguage();
+  if (buildings.length < 2) return null;
+  const fieldLabel = label ?? text("Building", "Gebouw");
+  const inOrder = (selected: Set<string>) => buildings.filter((building) => selected.has(building.id)).map((building) => building.id);
+
+  const toggle = (buildingId: string) => {
+    const selected = new Set(value);
+    if (selected.has(buildingId)) {
+      // Never leave the photo without a building: tapping the only one on does nothing.
+      if (selected.size === 1) return;
+      selected.delete(buildingId);
+    } else selected.add(buildingId);
+    onChange(inOrder(selected));
+  };
+
+  if (buildings.length > maxChoiceButtons) {
+    return (
+      <label className="form-field building-picker-field" htmlFor={id}>
+        <span>{fieldLabel}</span>
+        <select id={id} value={value[0] ?? ""} onChange={(event) => onChange([event.target.value])}>
+          {buildings.map((option) => <option value={option.id} key={option.id}>{option.name}</option>)}
+        </select>
+      </label>
+    );
+  }
+
+  return (
+    <fieldset className="form-field building-choice-field" id={id}>
+      <legend>{fieldLabel}</legend>
+      <div className="building-choice-options">
+        {buildings.map((building) => {
+          const chosen = value.includes(building.id);
+          return (
+            <button
+              className={chosen ? "active" : ""}
+              type="button"
+              aria-pressed={chosen}
+              onClick={() => toggle(building.id)}
+              key={building.id}
+            >
+              {chosen ? <Check size={14} /> : null}
+              <span>{building.name}</span>
+            </button>
+          );
+        })}
+      </div>
+      <small>{hint ?? text(
+        "Tap a second building when the photo covers more than one. The photo is then filed under each of them.",
+        "Tik een tweede gebouw aan als de foto er meer dan één laat zien. De foto wordt dan onder elk gebouw opgeslagen.",
+      )}</small>
+    </fieldset>
   );
 }
 

@@ -3645,6 +3645,202 @@ textarea:focus-visible {
   text-align: left;
 }
 
+/*
+ * The building of a photo, as buttons: "laten we met knopjes werken, en meerdere kiezen".
+ * The targets are wide and tall enough to be hit with a work glove on, and a second building
+ * is one more tap rather than a second trip through a dropdown.
+ */
+.building-choice-field {
+  border: 1px solid var(--ink-200);
+  border-radius: 10px;
+  padding: 10px 12px 12px;
+}
+
+.building-choice-field legend {
+  color: var(--ink-700);
+  font-size: 10px;
+  font-weight: 680;
+  padding: 0 4px;
+}
+
+.building-choice-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.building-choice-options button {
+  align-items: center;
+  background: #f4f7f7;
+  border: 1px solid var(--ink-200);
+  border-radius: 999px;
+  color: var(--ink-700);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 650;
+  gap: 6px;
+  min-height: 44px;
+  padding: 8px 16px;
+  text-align: left;
+}
+
+.building-choice-options button.active {
+  background: var(--green-soft);
+  border-color: #7fbead;
+  color: var(--green);
+  font-weight: 750;
+}
+
+.building-choice-field small {
+  color: var(--muted);
+  display: block;
+  font-size: 10px;
+  margin-top: 8px;
+}
+
+/* Where the photo was taken: a list of known locations, or the spot on the drawing itself. */
+.capture-location-row {
+  align-items: stretch;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.capture-location-row > select {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.capture-drawing-button {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 1 auto;
+  gap: 7px;
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+.capture-location-field > small {
+  color: var(--muted);
+  display: block;
+  font-size: 10px;
+  margin-top: 6px;
+}
+
+/* The direction the app measured itself, shown as a fact rather than as a question. */
+.facing-direction-automatic {
+  align-items: center;
+  background: var(--green-soft);
+  border: 1px solid #9ecdbf;
+  border-radius: 10px;
+  color: var(--green);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 12px;
+}
+
+.facing-direction-automatic strong {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.facing-direction-automatic em {
+  color: var(--ink-600);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.facing-direction-automatic button {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: var(--teal);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 750;
+  gap: 4px;
+  margin-left: auto;
+  padding: 4px;
+}
+
+/* Pointing at the spot on the building drawing, from the capture form. */
+.drawing-location-modal {
+  display: grid;
+  gap: 10px;
+  max-width: 940px;
+  padding-bottom: 20px;
+}
+
+.drawing-location-modal > .modal-actions {
+  padding-left: 26px;
+  padding-right: 26px;
+}
+
+.drawing-location-body {
+  display: grid;
+  gap: 12px;
+}
+
+.drawing-location-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.drawing-location-tabs button {
+  background: #f4f7f7;
+  border: 1px solid var(--ink-200);
+  border-radius: 999px;
+  color: var(--ink-700);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+  min-height: 38px;
+  padding: 7px 14px;
+}
+
+.drawing-location-tabs button.active {
+  background: var(--green-soft);
+  border-color: #7fbead;
+  color: var(--green);
+  font-weight: 750;
+}
+
+.drawing-location-pages {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.drawing-location-pages button {
+  align-items: center;
+  background: #f4f7f7;
+  border: 1px solid var(--ink-200);
+  border-radius: 9px;
+  color: var(--ink-700);
+  cursor: pointer;
+  display: inline-flex;
+  height: 40px;
+  justify-content: center;
+  width: 40px;
+}
+
+.drawing-location-pages button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+.drawing-location-pages span {
+  color: var(--ink-600);
+  font-size: 11px;
+  font-weight: 650;
+}
+
 /* One record can cover several buildings, so the buildings are checkboxes. */
 .building-multi-picker {
   border: 1px solid var(--ink-200);
@@ -5753,7 +5949,9 @@ textarea:focus-visible {
   border-radius: 13px;
   display: grid;
   gap: 10px;
-  grid-template-columns: auto minmax(180px, 1fr) minmax(250px, 360px);
+  /* The module dropdown that used to hold the third column is gone; what is left is the way
+     back to the workspace, the name of the module you are in, and the one create button. */
+  grid-template-columns: auto minmax(180px, 1fr) auto;
   margin: -6px 0 14px;
   padding: 7px;
 }
@@ -5818,38 +6016,6 @@ textarea:focus-visible {
   min-width: 28px;
   padding: 6px 8px;
   text-align: center;
-}
-
-.mobile-workspace-section-select {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.mobile-workspace-section-select > span {
-  color: var(--ink-500);
-  font-size: 8px;
-  font-weight: 800;
-  letter-spacing: .05em;
-  padding-left: 2px;
-  text-transform: uppercase;
-}
-
-.mobile-workspace-section-select select {
-  appearance: none;
-  background-color: #f7faf9;
-  background-image: linear-gradient(45deg, transparent 50%, var(--teal) 50%), linear-gradient(135deg, var(--teal) 50%, transparent 50%);
-  background-position: calc(100% - 17px) 50%, calc(100% - 12px) 50%;
-  background-repeat: no-repeat;
-  background-size: 5px 5px, 5px 5px;
-  border: 1px solid #d8e5e2;
-  border-radius: 9px;
-  color: var(--ink-800);
-  font-size: 11px;
-  font-weight: 750;
-  min-height: 38px;
-  padding: 0 34px 0 11px;
-  width: 100%;
 }
 
 .operation-tabs button {
@@ -6836,6 +7002,23 @@ textarea:focus-visible {
   font-size: 10px;
 }
 
+/* Its counterpart was never written, so a failed sign-in step came out as plain body text
+   next to a green success line. An error has to read as one. */
+.inline-error {
+  color: var(--red);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+/* The sentence under a field that explains what the app does by itself. It was used in four
+   forms without ever being styled, so it competed with the labels around it. */
+.form-helper {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 2px 0 0;
+}
+
 .mfa-enroll {
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr);
@@ -7181,34 +7364,13 @@ textarea:focus-visible {
     width: max-content;
   }
 
-  .workspace-desktop-tabs {
-    display: none;
-  }
-
-  .mobile-workspace-section-select {
-    gap: 5px;
+  /* On a phone the create button gets a row of its own: a thumb-wide target instead of a
+     sliver squeezed next to the module name. */
+  .workspace-module-create {
     grid-column: 1 / -1;
-  }
-
-  .mobile-workspace-section-select span {
-    color: var(--ink-500);
-    font-size: 9px;
-    font-weight: 750;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-
-  .mobile-workspace-section-select select {
     min-height: 46px;
-    padding: 0 36px 0 12px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background-color: #fff;
-    color: var(--ink-800);
-    font-size: 13px;
-    font-weight: 700;
-    width: 100%;
   }
+
 }
 
 .spin {
@@ -7357,15 +7519,20 @@ textarea:focus-visible {
   display: grid;
   justify-items: center;
   gap: 9px;
-  padding-bottom: 9px;
+  padding: 9px;
 }
 
+/*
+ * "Kunnen we de zwarte delen wegdoen": a portrait photo used to be stretched across the full
+ * width of the card and padded out with black. The picture now takes the space it needs and
+ * no more, so a phone photo is shown upright without two black columns beside it.
+ */
 .visual-photo-preview img {
   display: block;
-  width: 100%;
-  max-height: 420px;
-  object-fit: contain;
-  background: #000;
+  width: auto;
+  max-width: 100%;
+  max-height: min(58vh, 460px);
+  border-radius: 9px;
   cursor: pointer;
 }
 
@@ -12847,7 +13014,6 @@ button {
 @media (max-width: 760px) {
   .client-workspace-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .workspace-section-controls { grid-template-columns: auto minmax(0, 1fr) auto; }
-  .workspace-section-picker { grid-column: 1 / -1; grid-row: 2; }
   .external-access-summary { grid-template-columns: 1fr; }
   .company-task-assignment > header { align-items: stretch; flex-direction: column; }
   .company-action-assignment-list > article { align-items: stretch; grid-template-columns: 1fr; }

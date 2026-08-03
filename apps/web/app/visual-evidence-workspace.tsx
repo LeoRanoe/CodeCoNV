@@ -25,12 +25,16 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { BuildingChoiceField, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
-import { photoCategories, photoDirections, dutchDirectionLabels } from "@/app/photo-evidence";
+import { DrawingLocationPicker, drawingLocationLabel, pickableDrawings, type DrawingLocation } from "@/app/drawing-location-picker";
+import { FacingDirectionField } from "@/app/facing-direction";
+import { dutchDirectionLabels } from "@/app/photo-evidence";
 import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
-import { fieldPhotoMimeTypes, normalizedImagePoint, photoMarkupToneColors, validatePanoramaDimensions } from "@/lib/images/field-image.mjs";
+import { currentCompassPoint, startCompassWatch } from "@/lib/images/compass";
+import { readPhotoDirection } from "@/lib/images/exif-direction.mjs";
+import { compassPointFromDegrees, fieldPhotoMimeTypes, normalizedImagePoint, photoMarkupToneColors, photoTitleFromDescription, validatePanoramaDimensions } from "@/lib/images/field-image.mjs";
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload } from "@/lib/offline/upload-queue";
 import { downloadProjectFile, isStorageGatewayConfigured, loadProjectFileObjectUrl, openProjectFile } from "@/lib/storage/gateway";
 import {
@@ -129,19 +133,24 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   const [markingPhoto, setMarkingPhoto] = useState(false);
   const [photoMarkerCount, setPhotoMarkerCount] = useState(0);
   const [cameraSourceConfirmed, setCameraSourceConfirmed] = useState(false);
+  /**
+   * One picture, one text box. The client crossed out the title, the category and the room
+   * field on the capture screen: "voor nr is 1 invoer voldoende". What is left is the
+   * sentence a supervisor would say out loud, plus the things the app can know by itself.
+   */
   const [captureForm, setCaptureForm] = useState({
     type: "photo" as VisualCapture["capture_type"],
-    title: "",
     description: "",
-    locationLabel: "",
     locationNodeId: "",
-    /** The same photo vocabulary as every other screen: what kind of picture is this. */
-    category: "",
-    /** The direction the camera was pointing, so the photo can be found back on site. */
+    /** The direction the camera was pointing, read from the photo or from the compass. */
     direction: "",
+    /** False once the supervisor has chosen a direction by hand. */
+    directionAutomatic: true,
     tourName: "",
     tourOrder: "",
   });
+  const [drawingLocation, setDrawingLocation] = useState<DrawingLocation | null>(null);
+  const [pickingDrawingLocation, setPickingDrawingLocation] = useState(false);
   const [point, setPoint] = useState<VisualPoint | null>(null);
   const [issue, setIssue] = useState(() => initialFinding ? {
     findingType: initialFinding.finding_type,
@@ -154,8 +163,23 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   } : emptyIssue);
   const [existingFindingId, setExistingFindingId] = useState(initialFinding?.id ?? "");
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(initialAnnotation?.id ?? null);
-  const [captureBuildingId, setCaptureBuildingId] = useState(() => initialFinding?.building_id ?? resolveDefaultBuildingId(buildings, buildingId));
+  /** One photo can show two buildings at once, so the choice is a list, never a single value. */
+  const [captureBuildingIds, setCaptureBuildingIds] = useState<string[]>(() => [initialFinding?.building_id ?? resolveDefaultBuildingId(buildings, buildingId)].filter(Boolean));
+  const captureBuildingId = captureBuildingIds[0] ?? resolveDefaultBuildingId(buildings, buildingId);
   const captureBuildingName = buildings.find((building) => building.id === captureBuildingId)?.name ?? buildingName;
+  const captureDrawings = useMemo(() => pickableDrawings(data.files, captureBuildingId), [data.files, captureBuildingId]);
+  const captureLocationNodes = data.locationNodes.filter((node) => node.building_id === captureBuildingId);
+  /**
+   * Where the photo says it was taken: the spot on the drawing if one was pointed at, then the
+   * structured project location, and otherwise simply the building. The client crossed out the
+   * field that asked the supervisor to type this himself.
+   */
+  const captureLocationLabel = (() => {
+    if (drawingLocation) return drawingLocationLabel(drawingLocation, text("page", "pagina"));
+    const node = data.locationNodes.find((entry) => entry.id === captureForm.locationNodeId);
+    if (node) return `${node.code} · ${node.name}`;
+    return captureBuildingName;
+  })();
   const existingFinding = data.findings.find((finding) => finding.id === existingFindingId) ?? null;
   const initialFileHandled = useRef(false);
   const [cameraHandoff, setCameraHandoff] = useState(false);
@@ -166,18 +190,20 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     setPhotoMarkerCount(0);
     setCameraSourceConfirmed(false);
     if (!selected) return;
-    const automaticName = type === "photo"
-      ? text("Field photo", "Veldfoto")
-      : selected.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").slice(0, 180);
     setCaptureForm((current) => ({
       ...current,
       type,
-      title: automaticName,
-      locationLabel: current.locationLabel || captureBuildingName,
       tourName: type === "photo" ? "" : current.tourName,
       tourOrder: type === "photo" ? "" : current.tourOrder,
     }));
     setShowUpload(true);
+    // "Kan dit automatisch?" — the camera writes its own bearing into the picture, and when it
+    // did not, the compass of the device still knows which way the phone was held.
+    void readPhotoDirection(selected).then((degrees) => {
+      const measured = compassPointFromDegrees(degrees) || currentCompassPoint();
+      if (!measured) return;
+      setCaptureForm((current) => current.directionAutomatic ? { ...current, direction: measured } : current);
+    });
   };
 
   useEffect(() => {
@@ -185,6 +211,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       if (filePreviewUrl) URL.revokeObjectURL(filePreviewUrl);
     };
   }, [filePreviewUrl]);
+
+  const emptyCaptureForm = { type: "photo" as VisualCapture["capture_type"], description: "", locationNodeId: "", direction: "", directionAutomatic: true, tourName: "", tourOrder: "" };
 
   const discardCapture = () => {
     setFile(null);
@@ -194,7 +222,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     setCameraSourceConfirmed(false);
     setCameraHandoff(false);
     setShowUpload(false);
-    setCaptureForm({ type: "photo", title: "", description: "", locationLabel: "", locationNodeId: "", category: "", direction: "", tourName: "", tourOrder: "" });
+    setDrawingLocation(null);
+    setCaptureForm(emptyCaptureForm);
   };
 
   useEffect(() => {
@@ -207,7 +236,6 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     }, 0);
     return () => window.clearTimeout(handoff);
     // stageImage intentionally runs once for the camera hand-off.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialFiles, onInitialFilesConsumed]);
 
   // Tapping "Upload 360° image" in the photo library asked for the 360° form, so the form
@@ -216,11 +244,11 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   useEffect(() => {
     if (handled360Intent.current || !start360Upload) return;
     handled360Intent.current = true;
-    setCaptureForm((current) => ({ ...current, type: "panorama", title: "", locationLabel: captureBuildingName }));
+    setCaptureForm((current) => ({ ...current, type: "panorama" }));
     setFile(null);
     setShowUpload(true);
     onStart360UploadConsumed?.();
-  }, [captureBuildingName, onStart360UploadConsumed, start360Upload]);
+  }, [onStart360UploadConsumed, start360Upload]);
 
   const tour = (() => {
     if (!activeCapture?.tour_name) return [];
@@ -230,8 +258,13 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   })();
   const tourIndex = activeCapture ? tour.findIndex((capture) => capture.id === activeCapture.id) : -1;
 
+  const captureTitle = photoTitleFromDescription(
+    captureForm.description,
+    captureForm.type === "panorama" ? text("360° camera image", "360°-camerabeeld") : text("Field photo", "Veldfoto"),
+  );
+
   const uploadCapture = async () => {
-    if (!file || captureForm.title.trim().length < 3 || captureForm.locationLabel.trim().length < 2 || (captureForm.type === "panorama" && !cameraSourceConfirmed)) return;
+    if (!file || captureForm.description.trim().length < 3 || (captureForm.type === "panorama" && !cameraSourceConfirmed)) return;
     setFileError("");
     try {
       const dimensions = await imageDimensions(file);
@@ -252,42 +285,52 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       return;
     }
     const folderName = captureForm.type === "panorama" ? text("360° tours", "360°-rondgangen") : text("Daily progress", "Dagvoortgang");
-    const existingFolder = data.mediaFolders.find((folder) => (!folder.building_id || folder.building_id === captureBuildingId) && folder.name.toLocaleLowerCase() === folderName.toLocaleLowerCase());
-    const folderId = existingFolder?.id ?? null;
     const prepared = captureForm.type === "photo"
       ? await compressFieldPhoto(file, dataSaverEnabled())
       : { blob: file as Blob, fileName: file.name, mimeType: file.type, compressed: false };
+    // The direction is the one thing the picture cannot show, so it stays in the words that
+    // travel with it into the register.
+    const description = [
+      captureForm.description.trim(),
+      captureForm.direction
+        ? `${text("Facing", "Kijkrichting")} ${language === "en" ? captureForm.direction : dutchDirectionLabels[captureForm.direction] ?? captureForm.direction}`
+        : "",
+    ].filter(Boolean).join("\n");
     const okay = await run(async () => {
-      const queued = await queueOfflineUpload({
-        projectId,
-        buildingId: captureBuildingId,
-        reportId,
-        folderId,
-        folderName,
-        kind: captureForm.type,
-        file: prepared.blob,
-        fileName: prepared.fileName,
-        mimeType: prepared.mimeType,
-        title: captureForm.title.trim(),
-        // The category and the direction travel with the picture, so the photo register can be
-        // read without opening the capture.
-        description: [
-          [
-            photoCategories.find((option) => option.id === captureForm.category)?.[language === "en" ? "en" : "nl"] ?? "",
-            captureForm.direction ? `${text("facing", "kijkrichting")} ${language === "en" ? captureForm.direction : dutchDirectionLabels[captureForm.direction] ?? captureForm.direction}` : "",
-          ].filter(Boolean).join(" · "),
-          captureForm.description.trim(),
-        ].filter(Boolean).join("\n"),
-        locationLabel: captureForm.locationLabel.trim(),
-        locationNodeId: captureForm.locationNodeId || null,
-        tourName: captureForm.tourName || null,
-        tourOrder: captureForm.tourName ? Number(captureForm.tourOrder) : null,
-        capturedAt: new Date(file.lastModified || Date.now()).toISOString(),
-        originalSize: file.size,
-        queuedSize: prepared.blob.size,
-        compressed: prepared.compressed,
-      });
-      setPendingSelectionFileId(queued.id);
+      // A photo that shows two buildings is filed under both, so neither register misses it.
+      // A project with a single building never reaches the button row, so the primary
+      // building stands in for an empty choice.
+      for (const targetBuildingId of captureBuildingIds.length ? captureBuildingIds : [captureBuildingId]) {
+        const existingFolder = data.mediaFolders.find((folder) => (!folder.building_id || folder.building_id === targetBuildingId) && folder.name.toLocaleLowerCase() === folderName.toLocaleLowerCase());
+        const queued = await queueOfflineUpload({
+          projectId,
+          buildingId: targetBuildingId,
+          reportId,
+          folderId: existingFolder?.id ?? null,
+          folderName,
+          kind: captureForm.type,
+          file: prepared.blob,
+          fileName: prepared.fileName,
+          mimeType: prepared.mimeType,
+          title: captureTitle,
+          description,
+          locationLabel: captureLocationLabel,
+          locationNodeId: targetBuildingId === captureBuildingId ? captureForm.locationNodeId || null : null,
+          drawingPin: drawingLocation && targetBuildingId === captureBuildingId ? {
+            fileId: drawingLocation.fileId,
+            pageNumber: drawingLocation.pageNumber,
+            xRatio: drawingLocation.xRatio,
+            yRatio: drawingLocation.yRatio,
+          } : null,
+          tourName: captureForm.tourName || null,
+          tourOrder: captureForm.tourName ? Number(captureForm.tourOrder) : null,
+          capturedAt: new Date(file.lastModified || Date.now()).toISOString(),
+          originalSize: file.size,
+          queuedSize: prepared.blob.size,
+          compressed: prepared.compressed,
+        });
+        if (targetBuildingId === captureBuildingId) setPendingSelectionFileId(queued.id);
+      }
       if (navigator.onLine) {
         await forceSyncOfflineUploads(client, projectId, {
           paused: text(
@@ -305,7 +348,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       "Beeld veilig op dit apparaat opgeslagen; centrale synchronisatie loopt automatisch.",
     ));
     if (okay) {
-      setCaptureForm({ type: "photo", title: "", description: "", locationLabel: "", locationNodeId: "", category: "", direction: "", tourName: "", tourOrder: "" });
+      setCaptureForm(emptyCaptureForm);
+      setDrawingLocation(null);
       setFile(null);
       setFileError("");
       setPhotoMarkerCount(0);
@@ -372,8 +416,10 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
         <div><span className="record-number">{text("Visual evidence", "Visueel bewijs")}</span><h2>{text("Photos, 360° camera tours and exact issue locations", "Foto’s, 360°-cameratours en exacte probleemlocaties")}</h2><p>{text("Standard photos are the default. The interactive 360° mode accepts a stitched export from a dedicated 360° camera such as Insta360, not a flat phone panorama.", "Gewone foto’s zijn standaard. De interactieve 360°-modus accepteert een gestitchte export van een speciale 360°-camera zoals Insta360, geen vlakke telefoonpanorama.")}</p></div>
         <div className="visual-toolbar-actions">
           <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { stageImage(event.currentTarget.files?.[0] ?? null, "photo"); event.currentTarget.value = ""; }} />
-          <button className="primary-button camera-primary-action" type="button" disabled={!isStorageGatewayConfigured} onClick={() => cameraInputRef.current?.click()}><Camera size={17} /> {text("Take photo", "Maak foto")}</button>
-          <button className="secondary-button" type="button" disabled={!isStorageGatewayConfigured} onClick={() => { setCaptureForm({ ...captureForm, type: "panorama", title: "", locationLabel: captureBuildingName }); setFile(null); setShowUpload(true); }}><ScanLine size={16} /> {text("Upload 360°", "Upload 360°")}</button>
+          {/* The compass is started on the tap that opens the camera: it is the gesture a phone
+              needs before it hands out its orientation, and it is the moment the reading matters. */}
+          <button className="primary-button camera-primary-action" type="button" disabled={!isStorageGatewayConfigured} onClick={() => { void startCompassWatch(); cameraInputRef.current?.click(); }}><Camera size={17} /> {text("Take photo", "Maak foto")}</button>
+          <button className="secondary-button" type="button" disabled={!isStorageGatewayConfigured} onClick={() => { setCaptureForm({ ...captureForm, type: "panorama" }); setFile(null); setShowUpload(true); }}><ScanLine size={16} /> {text("Upload 360°", "Upload 360°")}</button>
         </div>
       </div>
 
@@ -420,31 +466,84 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
               }}
             />
           ) : null}
+          {captureForm.type === "panorama"
+            ? <label className="form-field"><span>{text(`360° image · JPEG, PNG or WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`, `360°-beeld · JPEG, PNG of WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`)}</span><input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" onChange={(event) => stageImage(event.currentTarget.files?.[0] ?? null, "panorama")} /></label>
+            : <div className="visual-review-actions"><button className="secondary-button visual-retake-button" type="button" onClick={() => { void startCompassWatch(); cameraInputRef.current?.click(); }}><Camera size={16} /> {text("Retake photo", "Foto opnieuw maken")}</button><button className="secondary-button visual-discard-button" type="button" onClick={discardCapture}>{text("Discard photo", "Foto verwijderen")}</button></div>}
+
+          {/* One text box, in the supervisor's own words. Everything else on this form is
+              either a tap or something the app fills in by itself. */}
+          <label className="form-field">
+            <span>{text("What is on this photo, and why does it matter?", "Wat is er op deze foto te zien, en waarom is dat belangrijk?")}</span>
+            <textarea
+              rows={3}
+              value={captureForm.description}
+              onChange={(event) => setCaptureForm({ ...captureForm, description: event.target.value })}
+              placeholder={text("Describe it as you would to someone who was not there.", "Beschrijf het alsof je het uitlegt aan iemand die er niet bij was.")}
+            />
+            <DictateButton onText={(transcript) => setCaptureForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} />
+          </label>
+
+          <BuildingChoiceField
+            id="capture-building"
+            buildings={buildings}
+            value={captureBuildingIds}
+            onChange={(next) => { setCaptureBuildingIds(next); setCaptureForm((current) => ({ ...current, locationNodeId: "" })); setDrawingLocation(null); }}
+          />
+
           <div className="form-grid-2">
-            <BuildingPicker id="capture-building" buildings={buildings} value={captureBuildingId} onChange={(next) => { setCaptureBuildingId(next); setCaptureForm((current) => ({ ...current, locationNodeId: "" })); }} />
-            <label className="form-field"><span>{text("Project location node", "Projectlocatie")}</span><select value={captureForm.locationNodeId} onChange={(event) => setCaptureForm({ ...captureForm, locationNodeId: event.target.value })}><option value="">{text("No structured location selected", "Geen gestructureerde locatie gekozen")}</option>{data.locationNodes.filter((node) => node.building_id === captureBuildingId).map((node) => <option value={node.id} key={node.id}>{node.code} · {node.name}</option>)}</select></label>
-            {captureForm.type === "panorama" ? <label className="form-field"><span>{text(`360° image · JPEG, PNG or WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`, `360°-beeld · JPEG, PNG of WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`)}</span><input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" onChange={(event) => stageImage(event.currentTarget.files?.[0] ?? null, "panorama")} /></label> : <div className="visual-review-actions"><button className="secondary-button visual-retake-button" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={16} /> {text("Retake photo", "Foto opnieuw maken")}</button><button className="secondary-button visual-discard-button" type="button" onClick={discardCapture}>{text("Discard photo", "Foto verwijderen")}</button></div>}
+            {/* Only shown when there is something to choose. Without a location tree and
+                without a drawing this field could only repeat the building, and repeating
+                what the buttons above already say is the noise the client struck through. */}
+            {captureLocationNodes.length || captureDrawings.length ? (
+              <div className="form-field capture-location-field">
+                <span>{text("Where on the project", "Waar op het project")}</span>
+                <div className="capture-location-row">
+                  {captureLocationNodes.length ? (
+                    <select value={captureForm.locationNodeId} onChange={(event) => setCaptureForm({ ...captureForm, locationNodeId: event.target.value })} aria-label={text("Project location", "Projectlocatie")}>
+                      <option value="">{text("Building level", "Op gebouwniveau")}</option>
+                      {captureLocationNodes.map((node) => <option value={node.id} key={node.id}>{node.code} · {node.name}</option>)}
+                    </select>
+                  ) : null}
+                  {captureDrawings.length ? (
+                    <button className="secondary-button capture-drawing-button" type="button" onClick={() => setPickingDrawingLocation(true)}>
+                      <MapPin size={15} /> {drawingLocation ? text("Change spot on drawing", "Plek op tekening wijzigen") : text("Point on drawing", "Aanwijzen op tekening")}
+                    </button>
+                  ) : null}
+                </div>
+                <small>{drawingLocation
+                  ? text(`Pointed at: ${drawingLocationLabel(drawingLocation, "page")}`, `Aangewezen op: ${drawingLocationLabel(drawingLocation, "pagina")}`)
+                  : text(`Saved as: ${captureLocationLabel}`, `Wordt opgeslagen als: ${captureLocationLabel}`)}</small>
+              </div>
+            ) : null}
+            <FacingDirectionField
+              value={captureForm.direction}
+              automatic={captureForm.directionAutomatic}
+              onChange={(direction, automatic) => setCaptureForm((current) => ({ ...current, direction, directionAutomatic: automatic }))}
+            />
           </div>
-          {/* The words that belong to this picture stand open: hiding them behind a summary
-              is what made photos arrive in the register without a description. */}
-          <div className="form-grid">
-            <label className="form-field"><span>{text("What is on this photo?", "Wat staat er op deze foto?")}</span><input value={captureForm.title} onChange={(event) => setCaptureForm({ ...captureForm, title: event.target.value })} placeholder={text("For example: rebar column line B", "Bijvoorbeeld: wapening kolom lijn B")} /></label>
-            <label className="form-field"><span>{text("Description · what is visible and why it matters", "Toelichting · wat is te zien en waarom is het belangrijk")}</span><textarea rows={3} value={captureForm.description} onChange={(event) => setCaptureForm({ ...captureForm, description: event.target.value })} placeholder={text("Describe it as you would to someone who was not there.", "Beschrijf het alsof je het uitlegt aan iemand die er niet bij was.")} /><DictateButton onText={(transcript) => setCaptureForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} /></label>
-          </div>
-          <div className="form-grid-2">
-            <label className="form-field"><span>{text("Category", "Categorie")}</span><select value={captureForm.category} onChange={(event) => setCaptureForm({ ...captureForm, category: event.target.value })}><option value="">{text("Not specified", "Niet aangegeven")}</option>{photoCategories.map((option) => <option value={option.id} key={option.id}>{language === "en" ? option.en : option.nl}</option>)}</select></label>
-            <label className="form-field"><span>{text("Facing direction", "Kijkrichting")}</span><select value={captureForm.direction} onChange={(event) => setCaptureForm({ ...captureForm, direction: event.target.value })}><option value="">{text("Not specified", "Niet aangegeven")}</option>{photoDirections.map((option) => <option value={option} key={option}>{language === "en" ? option : dutchDirectionLabels[option]}</option>)}</select></label>
-            <label className="form-field"><span>{text("Room / location in your own words", "Ruimte / locatie in eigen woorden")}</span><input value={captureForm.locationLabel} onChange={(event) => setCaptureForm({ ...captureForm, locationLabel: event.target.value })} /></label>
-          </div>
+
+          {pickingDrawingLocation ? (
+            <DrawingLocationPicker
+              drawings={captureDrawings}
+              client={client}
+              initial={drawingLocation}
+              close={() => setPickingDrawingLocation(false)}
+              save={(location) => { setDrawingLocation(location); setPickingDrawingLocation(false); }}
+            />
+          ) : null}
           {captureForm.type === "panorama" ? <div className="form-grid-2"><label className="form-field"><span>{text("Tour name · optional", "Tournaam · optioneel")}</span><input value={captureForm.tourName} onChange={(event) => setCaptureForm({ ...captureForm, tourName: event.target.value })} placeholder={text("Ground floor walkthrough", "Rondgang begane grond")} /></label><label className="form-field"><span>{text("Position in tour", "Volgorde in tour")}</span><input type="number" min="1" max="10000" disabled={!captureForm.tourName} value={captureForm.tourOrder} onChange={(event) => setCaptureForm({ ...captureForm, tourOrder: event.target.value })} /></label></div> : null}
           {captureForm.type === "panorama" ? <><div className="operation-alert"><ScanLine size={18} /><div><strong>{text("Dedicated 360° camera required", "Speciale 360°-camera vereist")}</strong><span>{text("Use a stitched 2:1 equirectangular export of at least 3840 × 1920 pixels from an Insta360 or equivalent 360° camera. A swept phone panorama is not accepted.", "Gebruik een gestitchte equirectangulaire 2:1-export van minimaal 3840 × 1920 pixels uit een Insta360 of gelijkwaardige 360°-camera. Een geveegde telefoonpanorama wordt niet geaccepteerd.")}</span></div></div><label className="check-field"><input type="checkbox" checked={cameraSourceConfirmed} onChange={(event) => setCameraSourceConfirmed(event.target.checked)} /> {text("I confirm this is an export from a dedicated 360° camera.", "Ik bevestig dat dit een export uit een speciale 360°-camera is.")}</label></> : null}
           {file && file.size > maxFileSizeBytes ? <p className="field-error">{text("This image exceeds the project file limit.", "Deze afbeelding is groter dan de bestandslimiet van het project.")}</p> : null}
           {fileError ? <p className="field-error" role="alert">{fileError}</p> : null}
-          <button className="primary-button" type="button" disabled={busy || !file || file.size > maxFileSizeBytes || !fieldPhotoMimeTypes.includes(file.type) || captureForm.title.trim().length < 3 || captureForm.locationLabel.trim().length < 2 || (captureForm.type === "panorama" && (!cameraSourceConfirmed || Boolean(captureForm.tourName) !== Boolean(captureForm.tourOrder)))} onClick={() => void uploadCapture()}>{busy ? <Loader2 className="spin" size={15} /> : <Camera size={15} />} {captureForm.type === "panorama" ? text("Secure and sync 360° image", "Beveilig en synchroniseer 360°-beeld") : text("Save photo", "Foto opslaan")}</button>
+          {file && captureForm.description.trim().length < 3 ? <p className="form-intro">{text("Write one line about this photo to save it.", "Schrijf één regel over deze foto om hem op te slaan.")}</p> : null}
+          <button className="primary-button" type="button" disabled={busy || !file || file.size > maxFileSizeBytes || !fieldPhotoMimeTypes.includes(file.type) || captureForm.description.trim().length < 3 || (captureForm.type === "panorama" && (!cameraSourceConfirmed || Boolean(captureForm.tourName) !== Boolean(captureForm.tourOrder)))} onClick={() => void uploadCapture()}>{busy ? <Loader2 className="spin" size={15} /> : <Camera size={15} />} {captureForm.type === "panorama" ? text("Secure and sync 360° image", "Beveilig en synchroniseer 360°-beeld") : text("Save photo", "Foto opslaan")}</button>
         </div>
       ) : null}
 
-      {captures.length ? (
+      {/* While a photo is waiting to be saved the screen shows that photo and nothing else.
+          The client crossed out the library, the annotated photo and the marker panel below
+          this form: on site they are three more things to read past before saving. */}
+      {captures.length && !showUpload ? (
         <div className="visual-workspace-grid">
           <aside className="visual-capture-list" aria-label={text("Visual evidence list", "Lijst visueel bewijs")}>
             {captures.map((capture) => {
@@ -471,7 +570,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
             {point && activeCapture ? <IssueForm point={point} capture={activeCapture} issue={issue} setIssue={setIssue} findings={data.findings} annotations={data.visualAnnotations} existingFindingId={existingFindingId} setExistingFindingId={setExistingFindingId} parties={parties} buildings={buildings} captureBuildingId={captureBuildingId} busy={busy} save={() => void saveIssue()} cancel={() => { setPoint(null); setIssue(emptyIssue); setExistingFindingId(""); }} /> : selectedAnnotation && selectedFinding ? <AnnotationDetails annotation={selectedAnnotation} finding={selectedFinding} /> : <div className="visual-panel-empty"><ScanLine size={24} /><strong>{text("Select or place a marker", "Selecteer of plaats een marker")}</strong><span>{text("The exact image position and the formal finding remain linked.", "De exacte beeldpositie en de formele bevinding blijven gekoppeld.")}</span></div>}
           </aside>
         </div>
-      ) : <div className="empty-list-state visual-empty"><Camera size={24} /><strong>{text("No visual evidence yet", "Nog geen visueel bewijs")}</strong><span>{text("Start with a standard photo, or add a dedicated 360° camera export for an interactive site tour.", "Start met een gewone foto of voeg een export uit een speciale 360°-camera toe voor een interactieve terreinrondgang.")}</span></div>}
+      ) : showUpload ? null : <div className="empty-list-state visual-empty"><Camera size={24} /><strong>{text("No visual evidence yet", "Nog geen visueel bewijs")}</strong><span>{text("Start with a standard photo, or add a dedicated 360° camera export for an interactive site tour.", "Start met een gewone foto of voeg een export uit een speciale 360°-camera toe voor een interactieve terreinrondgang.")}</span></div>}
     </section>
   );
 }
