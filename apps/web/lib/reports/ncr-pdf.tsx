@@ -6,7 +6,10 @@ export type NcrContext = {
   projectName: string;
   projectCode: string;
   buildingName: string;
+  /** The person who drew the report up, taken from the record itself. */
   issuerName: string;
+  /** The signature that person wrote on the form, printed where they signed. */
+  signatureImage?: string | null;
   responsiblePartyName: string;
   /** Who actually verified the close-out. Never the person downloading the file. */
   verifierName?: string;
@@ -33,6 +36,7 @@ const styles = StyleSheet.create({
   checks: { flexDirection: "row", gap: 16, marginTop: 7 },
   signatures: { flexDirection: "row" },
   signature: { minHeight: 54, padding: 6, width: "33.333%" },
+  signatureInk: { height: 26, marginBottom: 2, objectFit: "contain", width: "90%" },
   signatureLine: { borderBottomColor: "#555", borderBottomWidth: 1, marginBottom: 4, marginTop: 23 },
   note: { color: "#666", fontSize: 6.5, lineHeight: 1.3, marginTop: 8 },
   footer: { bottom: 10, color: "#666", fontSize: 6, left: 24, position: "absolute", right: 24, textAlign: "center" },
@@ -58,6 +62,7 @@ export function NcrDocument({ finding, progress, context, logoSource = "/codeco-
       <View style={styles.header}><View style={styles.brand}><View style={styles.logoPlate}><Image src={logoSource} style={styles.logo} /></View></View><View style={styles.heading}><Text style={styles.title}>NON-CONFORMANCE REPORT</Text><Text style={styles.number}>{finding.finding_number}</Text></View></View>
       <View style={styles.row}><Cell label="Project name and number" result={`${context.projectCode} · ${context.projectName}`} right /><Cell label="Building / location" result={context.buildingName} /></View>
       <View style={styles.row}><Cell label="Contractor / responsible party" result={context.responsiblePartyName} right /><Cell label="Date / due date" result={`${finding.created_at.slice(0, 10)} / ${finding.due_at?.slice(0, 10) ?? "—"}`} /></View>
+      <View style={styles.row}><Cell label="Drawn up by" result={issue.issued_by || context.issuerName} right /><Cell label="Report number" result={finding.finding_number} /></View>
       <View style={styles.row}><Cell label="Subject" result={finding.title} right /><Cell label="Reference checklist" result={value(issue.reference_checklist)} /></View>
       <View style={styles.row}><Cell label="Severity / issue type" result={`${finding.severity} / ${issue.issue_type ?? finding.finding_type}`} right /><Cell label="Remarks" result={value(issue.remarks)} /></View>
       <Section title="DESCRIPTION OF NON-CONFORMANCE"><Text style={styles.value}>{finding.description}</Text><View style={styles.photoGrid}>{[1, 2, 3].map((item) => <View style={styles.photo} key={item}><Text>Linked evidence photo {item}</Text></View>)}</View></Section>
@@ -65,7 +70,13 @@ export function NcrDocument({ finding, progress, context, logoSource = "/codeco-
       <Section title="ENGINEER'S RECOMMENDED ACTION"><Text style={styles.value}>{value(issue.recommended_action_detail || issue.action_steps, "Rework / repair in accordance with the approved drawings and specifications.")}</Text><View style={styles.checks}><Text>{issue.recommended_action === "rework" ? "[X]" : "[ ]"} Rework</Text><Text>{issue.recommended_action === "repair" ? "[X]" : "[ ]"} Repair</Text><Text>{issue.recommended_action === "alternative" ? "[X]" : "[ ]"} Alternative solution for approval</Text></View></Section>
       <Section title="PROPOSED CORRECTIVE ACTION BY CONTRACTOR"><Text style={styles.value}>{value(finding.proposed_correction, "Pending contractor proposal and acknowledgement.")}</Text>{finding.final_measure ? <Text style={styles.value}>Completed: {finding.final_measure}</Text> : null}{issue.correction_signed_by ? <Text style={styles.value}>Signed: {issue.correction_signed_by} · {String(issue.correction_signed_at ?? "").slice(0, 10)}</Text> : null}</Section>
       <Section title="QUALITY CONTROL VERIFICATION"><Text style={styles.value}>Latest inspection progress: {progress?.progress_percent ?? 0}% · disposition: {(progress?.disposition ?? issue.disposition ?? "to_be_corrected").replaceAll("_", " ")}</Text><View style={styles.checks}><Text>{resolved ? "[X]" : "[ ]"} Issue resolved</Text><Text>{resolved ? "[ ]" : "[X]"} Issue not resolved</Text><Text>Status: {finding.status.replaceAll("_", " ")}</Text></View></Section>
-      <View style={styles.signatures}>{[["Issued by", issue.signed_by || context.issuerName], ["Received / contractor", issue.correction_signed_by || issue.completion_signed_by || ""], ["QC verification", resolved ? context.verifierName ?? "" : ""]].map(([label, result], index) => <View style={[styles.signature, index < 2 ? styles.right : {}]} key={label}><Text style={styles.label}>{label}</Text><View style={styles.signatureLine} /><Text>{result || " "}</Text></View>)}</View>
+      {/* The engineer's own written signature is printed where it belongs: above the line
+          that carries their name, exactly as on the client's paper form. */}
+      <View style={styles.signatures}>{[
+        { label: "Issued by", name: issue.signed_by || issue.issued_by || context.issuerName, ink: issue.signature_image || context.signatureImage || null },
+        { label: "Received / contractor", name: issue.correction_signed_by || issue.completion_signed_by || "", ink: issue.correction_signature_image || issue.completion_signature_image || null },
+        { label: "QC verification", name: resolved ? context.verifierName ?? "" : "", ink: null },
+      ].map((line, index) => <View style={[styles.signature, index < 2 ? styles.right : {}]} key={line.label}><Text style={styles.label}>{line.label}</Text>{line.ink ? <Image src={line.ink} style={styles.signatureInk} /> : <View style={styles.signatureLine} />}<Text>{line.name || " "}</Text></View>)}</View>
       <Text style={styles.note}>The photo boxes refer to evidence linked in the central project record; images are not duplicated into this generated form unless selected as report attachments. Closing remains a separate authorized human verification.</Text>
       <Text style={styles.footer} fixed>CODECO N.V. · Non-conformance report</Text>
     </Page>

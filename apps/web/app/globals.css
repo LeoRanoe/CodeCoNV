@@ -8652,18 +8652,6 @@ textarea:focus-visible {
   font-weight: 800;
   padding: 7px 10px;
 }
-/* The author signs the document; the name and moment are stored with it. */
-.check-field.controlled-document-signature {
-  align-items: flex-start;
-  background: #f6faf9;
-  border: 1px solid #bfd9d1;
-  border-radius: 11px;
-  gap: 11px;
-  padding: 12px 14px;
-}
-.controlled-document-signature span { display: grid; gap: 3px; }
-.controlled-document-signature strong { color: var(--ink-900); font-size: 12px; }
-.controlled-document-signature small { color: var(--ink-500); font-size: 10px; line-height: 1.45; }
 
 /* A delivery is judged and counted next to each other. */
 .register-outcome { align-items: start; }
@@ -13129,4 +13117,267 @@ button {
 @media (max-width: 520px) {
   .submitted-record-share-actions { display: grid; grid-template-columns: 1fr; }
   .submitted-record-share-actions > button { justify-content: center; width: 100%; }
+}
+
+/* ---------------------------------------------------------------------------
+   Signing on the record itself.
+   A signature is written, not ticked: the pad below is where somebody signs, and
+   the field beside a document shows the signature that was actually written.
+   --------------------------------------------------------------------------- */
+.signature-modal { max-width: 560px; }
+.signature-body { display: grid; gap: 12px; }
+
+.signature-pad-frame {
+  background: #fff;
+  border: 1px dashed #9db6ae;
+  border-radius: 12px;
+  min-height: 190px;
+  position: relative;
+  touch-action: none;
+}
+
+.signature-canvas { display: block; height: 190px; touch-action: none; width: 100%; }
+
+.signature-placeholder {
+  align-items: center;
+  color: var(--ink-400, #8a9a94);
+  display: flex;
+  font-size: 11px;
+  gap: 6px;
+  inset: 0;
+  justify-content: center;
+  pointer-events: none;
+  position: absolute;
+}
+
+.signature-baseline {
+  background: #c8d6d1;
+  bottom: 42px;
+  height: 1px;
+  left: 26px;
+  pointer-events: none;
+  position: absolute;
+  right: 26px;
+}
+
+.signature-tools { display: flex; gap: 8px; }
+
+.signature-field {
+  background: #f6faf9;
+  border: 1px solid #bfd9d1;
+  border-radius: 11px;
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+}
+
+.signature-field.signed { background: #f2fbf6; border-color: #8fc9ae; }
+.signature-field-copy { display: grid; gap: 3px; }
+.signature-field-copy strong { color: var(--ink-900); font-size: 12px; }
+.signature-field-copy small { color: var(--ink-500); font-size: 10px; line-height: 1.45; }
+.signature-open-button { justify-self: start; min-height: 44px; }
+
+.signature-field-proof {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.signature-field-proof img {
+  background: #fff;
+  border: 1px solid #d6e3de;
+  border-radius: 8px;
+  height: 58px;
+  object-fit: contain;
+  padding: 4px;
+  width: auto;
+}
+
+.signature-field-actions { display: flex; gap: 6px; }
+
+/* The signature as it stands on a record card, under the box it belongs to. */
+.record-signature-proof {
+  background: #fff;
+  border: 1px solid #e0e8e5;
+  border-radius: 7px;
+  height: 44px;
+  margin: 4px 0;
+  object-fit: contain;
+  padding: 3px;
+  width: auto;
+}
+
+/* ---------------------------------------------------------------------------
+   Looking a document up by its unique code.
+   --------------------------------------------------------------------------- */
+.workspace-code-results {
+  background: #fff;
+  border: 1px solid #dbe4e1;
+  border-radius: 13px;
+  display: grid;
+  gap: 4px;
+  margin-bottom: 14px;
+  padding: 12px;
+}
+
+.workspace-code-results header {
+  align-items: center;
+  color: var(--ink-500);
+  display: flex;
+  font-size: 10px;
+  gap: 6px;
+  padding: 0 4px 6px;
+  text-transform: uppercase;
+}
+
+.workspace-code-results > button {
+  align-items: center;
+  background: #f8faf9;
+  border: 1px solid #e4ebe8;
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 11px;
+  text-align: left;
+  width: 100%;
+}
+
+.workspace-code-results > button:hover { background: #f0f6f4; border-color: #b9d5cc; }
+.workspace-code-results > button > span:nth-child(2) { display: grid; flex: 1; gap: 2px; }
+.workspace-code-results strong { color: var(--ink-900); font-size: 12px; }
+.workspace-code-results small { color: var(--ink-500); font-size: 10px; }
+
+.workspace-code-chip {
+  background: var(--green-soft, #e6f4ef);
+  border-radius: 999px;
+  color: var(--green, #0f7667);
+  font-size: 10px;
+  font-weight: 800;
+  padding: 5px 9px;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+   Photos first, then the choice of how to add one.
+   --------------------------------------------------------------------------- */
+.media-choice-bar {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  margin-bottom: 14px;
+}
+
+.media-choice {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #dbe4e1;
+  border-radius: 13px;
+  cursor: pointer;
+  display: flex;
+  gap: 11px;
+  min-height: 64px;
+  padding: 11px 13px;
+  text-align: left;
+}
+
+.media-choice:hover { border-color: #82b7ab; }
+.media-choice > span:first-child {
+  align-items: center;
+  background: #f1f7f5;
+  border-radius: 10px;
+  color: var(--green, #0f7667);
+  display: inline-flex;
+  height: 40px;
+  justify-content: center;
+  width: 40px;
+}
+
+.media-choice > span:last-child { display: grid; gap: 2px; }
+.media-choice strong { color: var(--ink-900); font-size: 12.5px; }
+.media-choice small { color: var(--ink-500); font-size: 10px; line-height: 1.4; }
+.media-choice.primary { background: var(--green-soft, #e6f4ef); border-color: #8fc9ae; }
+.media-choice.primary > span:first-child { background: #fff; }
+
+.media-code-chip {
+  background: #f1f5f4;
+  border-radius: 999px;
+  color: var(--ink-700);
+  font-size: 9.5px;
+  font-weight: 800;
+  justify-self: start;
+  letter-spacing: .03em;
+  padding: 3px 8px;
+}
+
+/* ---------------------------------------------------------------------------
+   Choosing which drawing a photo belongs to, before pointing at it.
+   --------------------------------------------------------------------------- */
+.drawing-choice-list { display: grid; gap: 8px; max-height: 60vh; overflow-y: auto; }
+
+.drawing-choice-search {
+  align-items: center;
+  background: #f8faf9;
+  border: 1px solid #dbe4e1;
+  border-radius: 9px;
+  color: #77857f;
+  display: flex;
+  gap: 7px;
+  min-height: 42px;
+  padding: 0 11px;
+}
+
+.drawing-choice-search input { background: transparent; border: 0; flex: 1; font-size: 12px; outline: none; }
+
+.drawing-choice-list > button {
+  align-items: center;
+  background: #f8faf9;
+  border: 1px solid #e4ebe8;
+  border-radius: 11px;
+  cursor: pointer;
+  display: flex;
+  gap: 11px;
+  min-height: 58px;
+  padding: 9px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.drawing-choice-list > button:hover { background: #f0f6f4; border-color: #b9d5cc; }
+.drawing-choice-list > button > span:nth-child(2) { display: grid; flex: 1; gap: 2px; }
+.drawing-choice-list strong { color: var(--ink-900); font-size: 12.5px; }
+.drawing-choice-list small { color: var(--ink-500); font-size: 10px; }
+
+.drawing-choice-icon {
+  align-items: center;
+  background: #eef4f2;
+  border-radius: 9px;
+  color: var(--green, #0f7667);
+  display: inline-flex;
+  height: 36px;
+  justify-content: center;
+  width: 36px;
+}
+
+.drawing-location-chosen {
+  align-items: center;
+  background: #f6faf9;
+  border: 1px solid #dbe4e1;
+  border-radius: 11px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  justify-content: space-between;
+  padding: 9px 12px;
+}
+
+.drawing-location-chosen span { display: grid; gap: 2px; }
+.drawing-location-chosen strong { color: var(--ink-900); font-size: 12.5px; }
+.drawing-location-chosen small { color: var(--ink-500); font-size: 10px; }
+
+@media (max-width: 520px) {
+  .media-choice-bar { grid-template-columns: 1fr; }
+  .signature-field-proof { align-items: flex-start; flex-direction: column; }
 }

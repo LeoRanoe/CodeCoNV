@@ -82,13 +82,20 @@ export type Finding = {
     recommended_action?: "rework" | "repair" | "alternative";
     recommended_action_detail?: string;
     remarks?: string;
+    /** Who drew the record up, kept with the record itself instead of derived later. */
+    issued_by?: string;
+    issued_at?: string | null;
     signed_by?: string;
     signed_at?: string | null;
-    /** The name the contractor signed the corrective action with, through the link. */
+    /** The signature that was written on the form, at the moment it was issued. */
+    signature_image?: string | null;
+    /** The name and the signature the contractor wrote through the shared link. */
     correction_signed_by?: string;
     correction_signed_at?: string | null;
+    correction_signature_image?: string | null;
     completion_signed_by?: string;
     completion_signed_at?: string | null;
+    completion_signature_image?: string | null;
   };
   /** Set by the database when a finding is closed: who verified it, for the QC signature. */
   verified_by: string | null;
@@ -143,6 +150,12 @@ export type FileRecord = {
   size_bytes: number;
   category: string;
   status: string;
+  /**
+   * The unique code the database gives every file, so a photo, a drawing or an uploaded
+   * document can be looked up the same way as a finding or an inspection. Null only on a
+   * database that has not run the numbering migration yet.
+   */
+  document_code: string | null;
   created_at: string;
 };
 
@@ -222,7 +235,7 @@ export type ReportVersion = {
 };
 
 export type ReportReview = { id: string; decision: string; comment: string; created_at: string };
-export type ReportSignature = { id: string; report_version_id: string; signer_name: string; signer_role: string; declaration: string; legal_level: string; signed_at: string };
+export type ReportSignature = { id: string; report_version_id: string; signer_name: string; signer_role: string; declaration: string; legal_level: string; signed_at: string; signature_image?: string | null };
 export type ReportDistribution = { id: string; recipient_name: string; recipient_address: string; channel: string; status: string; sent_at: string | null };
 export type DayReportSummary = { id: string; report_date: string; report_number: string; status: string; completeness_percent: number; created_at: string; updated_at: string };
 export type BackupRun = { id: string; run_type: string; status: string; schema_version: string; size_bytes: number | null; sha256: string | null; verified_at: string | null; created_at: string };
@@ -480,7 +493,7 @@ export async function loadProjectOperations(
     client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,title,description,severity,status,confidential,immediate_measure,occurred_at").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100),
     client.from("project_register_entries").select("id,building_id,location_node_id,register_type,entry_number,title,status,occurred_at,due_at,details").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(5000),
     client.from("boq_progress_updates").select("id,register_entry_id,building_id,progress_percent,quantity_completed,note,recorded_at,created_at").eq("project_id", projectId).order("recorded_at", { ascending: false }).limit(5000),
-    client.from("files").select("id,building_id,folder_id,original_name,mime_type,size_bytes,category,status,created_at").eq("project_id", projectId).neq("status", "deleted").order("created_at", { ascending: false }).limit(500),
+    client.from("files").select("id,building_id,folder_id,original_name,mime_type,size_bytes,category,status,document_code,created_at").eq("project_id", projectId).neq("status", "deleted").order("created_at", { ascending: false }).limit(500),
     client.from("project_settings").select("id,project_id,report_prefix,default_language,max_file_size_mb,notification_lead_hours,email_notifications_enabled,push_notifications_enabled,retention_days,branding,modules,signing_workflow,configuration_status,default_shift_start,default_shift_end,disciplines,finding_deadlines,report_sections,default_units,required_location_depth,report_header,report_footer").eq("project_id", projectId).maybeSingle(),
     client.from("backup_runs").select("id,run_type,status,schema_version,size_bytes,sha256,verified_at,created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(25),
     client.from("location_nodes").select("id,building_id,parent_id,node_type,code,name,description,status").eq("project_id", projectId).order("sort_order").limit(500),
@@ -498,6 +511,11 @@ export async function loadProjectOperations(
   const compatibleRegisterResult = schemaFeatureMissing(registerResult.error, "location_node_id")
     ? await client.from("project_register_entries").select("id,building_id,register_type,entry_number,title,status,occurred_at,due_at,details").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(5000)
     : registerResult;
+  // A database that has not been given the document numbering yet still has to load; the
+  // files then simply carry no code until the migration has run.
+  const compatibleFileResult = schemaFeatureMissing(fileResult.error, "document_code")
+    ? await client.from("files").select("id,building_id,folder_id,original_name,mime_type,size_bytes,category,status,created_at").eq("project_id", projectId).neq("status", "deleted").order("created_at", { ascending: false }).limit(500)
+    : fileResult;
   const compatibleBoqProgressResult = schemaFeatureMissing(boqProgressResult.error, "boq_progress_updates")
     ? { data: [], error: null }
     : boqProgressResult;
@@ -512,7 +530,7 @@ export async function loadProjectOperations(
   const compatibleSettingsResult = legacySettingsSchema
     ? await client.from("project_settings").select("id,project_id,report_prefix,default_language,max_file_size_mb,notification_lead_hours,email_notifications_enabled,push_notifications_enabled,retention_days,branding,modules,signing_workflow").eq("project_id", projectId).maybeSingle()
     : settingsResult;
-  [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, compatibleRegisterResult, compatibleBoqProgressResult, fileResult, compatibleSettingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, compatibleVisualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult, dayReportResult].forEach((result) => fail(result.error));
+  [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, compatibleRegisterResult, compatibleBoqProgressResult, compatibleFileResult, compatibleSettingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, compatibleVisualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult, dayReportResult].forEach((result) => fail(result.error));
   const templateRows = (templateResult.data ?? []) as Omit<ChecklistTemplate, "items">[];
   const itemResult = templateRows.length
     ? await client.from("checklist_items").select("id,template_id,section,prompt,response_type,required,sort_order,unit,minimum_value,maximum_value,failure_severity,guidance").in("template_id", templateRows.map((template) => template.id)).order("sort_order")
@@ -523,11 +541,16 @@ export async function loadProjectOperations(
     ? await Promise.all([
         client.from("report_versions").select("id,revision,sha256,snapshot,signed_at,created_at").eq("day_report_id", reportId).order("revision", { ascending: false }),
         client.from("report_reviews").select("id,decision,comment,created_at").eq("day_report_id", reportId).order("created_at", { ascending: false }),
-        client.from("report_signatures").select("id,report_version_id,signer_name,signer_role,declaration,legal_level,signed_at").eq("day_report_id", reportId).order("signed_at", { ascending: false }),
+        client.from("report_signatures").select("id,report_version_id,signer_name,signer_role,declaration,legal_level,signed_at,signature_image").eq("day_report_id", reportId).order("signed_at", { ascending: false }),
         client.from("report_distributions").select("id,recipient_name,recipient_address,channel,status,sent_at").eq("day_report_id", reportId).order("created_at", { ascending: false }),
       ])
     : [];
-  reportFilters.forEach((result) => fail(result.error));
+  // The written signature on a report version is new; without that column the report
+  // history still has to load.
+  const signatureResult = reportId && schemaFeatureMissing(reportFilters[2]?.error ?? null, "signature_image")
+    ? await client.from("report_signatures").select("id,report_version_id,signer_name,signer_role,declaration,legal_level,signed_at").eq("day_report_id", reportId).order("signed_at", { ascending: false })
+    : reportFilters[2];
+  [reportFilters[0], reportFilters[1], signatureResult, reportFilters[3]].forEach((result) => fail(result?.error ?? null));
   const items = (itemResult.data ?? []) as ChecklistItem[];
   return {
     templates: templateRows.map((template) => ({ ...template, items: items.filter((item) => item.template_id === template.id) })),
@@ -550,7 +573,7 @@ export async function loadProjectOperations(
           : null,
     })) as RegisterEntry[],
     boqProgressUpdates: (compatibleBoqProgressResult.data ?? []) as BoqProgressUpdate[],
-    files: (fileResult.data ?? []) as FileRecord[],
+    files: (compatibleFileResult.data ?? []) as FileRecord[],
     settings: compatibleSettingsResult.data ? {
       configuration_status: "setup",
       default_shift_start: "07:00",
@@ -568,7 +591,7 @@ export async function loadProjectOperations(
     backupRuns: (backupResult.data ?? []) as BackupRun[],
     reportVersions: (reportFilters[0]?.data ?? []) as ReportVersion[],
     reportReviews: (reportFilters[1]?.data ?? []) as ReportReview[],
-    reportSignatures: (reportFilters[2]?.data ?? []) as ReportSignature[],
+    reportSignatures: (signatureResult?.data ?? []) as ReportSignature[],
     reportDistributions: (reportFilters[3]?.data ?? []) as ReportDistribution[],
     dayReports: (dayReportResult.data ?? []) as DayReportSummary[],
     locationNodes: (locationResult.data ?? []) as LocationNode[],
@@ -744,9 +767,13 @@ export async function createFinding(client: SupabaseClient, input: {
   recommendedAction?: "rework" | "repair" | "alternative";
   recommendedActionDetail?: string;
   remarks?: string;
+  /** Who drew this record up, so the register never has to guess it afterwards. */
+  issuedBy?: string;
   /** The engineer signs the NCR before it goes to the contractor. */
   signedBy?: string;
   signedAt?: string;
+  /** The written signature itself, drawn on the form at the moment of signing. */
+  signatureImage?: string | null;
   locationNodeId?: string;
   idempotencyKey?: string;
 }) {
@@ -777,8 +804,11 @@ export async function createFinding(client: SupabaseClient, input: {
       recommended_action: input.recommendedAction || null,
       recommended_action_detail: input.recommendedActionDetail?.trim() || "",
       remarks: input.remarks?.trim() || "",
+      issued_by: input.issuedBy?.trim() || "",
+      issued_at: new Date().toISOString(),
       signed_by: input.signedBy?.trim() || "",
       signed_at: input.signedAt || null,
+      signature_image: input.signatureImage || null,
       location_node_id: input.locationNodeId || null,
     },
   });
@@ -997,8 +1027,20 @@ export async function reviewReport(client: SupabaseClient, reportId: string, dec
   return result.data;
 }
 
-export async function signReport(client: SupabaseClient, reportId: string, role: string, name: string, declaration: string) {
-  const result = await client.rpc("sign_report_version", { p_day_report_id: reportId, p_signer_role: role, p_signer_name: name, p_declaration: declaration, p_legal_level: "contract_pending" });
+export async function signReport(client: SupabaseClient, reportId: string, role: string, name: string, declaration: string, signatureImage?: string | null) {
+  let result = await client.rpc("sign_report_version", {
+    p_day_report_id: reportId,
+    p_signer_role: role,
+    p_signer_name: name,
+    p_declaration: declaration,
+    p_legal_level: "contract_pending",
+    p_signature_image: signatureImage || null,
+  });
+  // A database that has not been given the written signature yet still has to be able to
+  // record the declaration; the signature then simply is not stored with it.
+  if (rpcSignatureMissing(result.error, "sign_report_version")) {
+    result = await client.rpc("sign_report_version", { p_day_report_id: reportId, p_signer_role: role, p_signer_name: name, p_declaration: declaration, p_legal_level: "contract_pending" });
+  }
   fail(result.error);
   return result.data;
 }

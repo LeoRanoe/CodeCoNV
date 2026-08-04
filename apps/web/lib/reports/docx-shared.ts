@@ -106,17 +106,46 @@ export function metadataTable(pairs: Array<[string, string]>, columns = 2): Tabl
   return new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE }, borders: standardTableBorders() });
 }
 
-/** A row of signature fields, each with a blank line to sign above the printed name — mirrors the PDF signature blocks. */
-export function signatureBlock(fields: Array<[string, string]>): Table {
-  const cells = fields.map(([label, filledValue]) => gridCell([
-    new Paragraph({ children: [new TextRun({ text: label.toUpperCase(), bold: true, color: brandMuted, size: 14 })] }),
-    new Paragraph({
-      children: [new TextRun({ text: " ", size: 18 })],
-      border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "555555" } },
-      spacing: { before: 360, after: 60 },
-    }),
-    new Paragraph({ children: [new TextRun({ text: filledValue || " ", size: 18 })] }),
-  ], 100 / fields.length));
+/**
+ * A row of signature fields, each with the written signature — or a blank line to sign —
+ * above the printed name; mirrors the PDF signature blocks.
+ *
+ * A signature that was written in the app travels as a small PNG data URL, which Word
+ * needs as raw bytes before it can be placed on the signature line.
+ */
+export function signatureImageBytes(dataUrl: string | null | undefined): Uint8Array | null {
+  const base64 = String(dataUrl ?? "").split(",")[1];
+  if (!base64) return null;
+  try {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
+/** Each field is a label, the name under the line, and optionally the written signature. */
+export function signatureBlock(fields: Array<[string, string, (string | null)?]>): Table {
+  const cells = fields.map(([label, filledValue, ink]) => {
+    const inkBytes = signatureImageBytes(ink);
+    return gridCell([
+      new Paragraph({ children: [new TextRun({ text: label.toUpperCase(), bold: true, color: brandMuted, size: 14 })] }),
+      inkBytes
+        ? new Paragraph({
+          children: [new ImageRun({ type: "png", data: inkBytes, transformation: { width: 132, height: 46 } })],
+          border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "555555" } },
+          spacing: { before: 120, after: 60 },
+        })
+        : new Paragraph({
+          children: [new TextRun({ text: " ", size: 18 })],
+          border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "555555" } },
+          spacing: { before: 360, after: 60 },
+        }),
+      new Paragraph({ children: [new TextRun({ text: filledValue || " ", size: 18 })] }),
+    ], 100 / fields.length);
+  });
   return new Table({ rows: [new TableRow({ children: cells })], width: { size: 100, type: WidthType.PERCENTAGE }, borders: standardTableBorders() });
 }
 

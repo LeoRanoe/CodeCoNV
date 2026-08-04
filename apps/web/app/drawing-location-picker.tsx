@@ -1,8 +1,9 @@
 "use client";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AlertTriangle, ChevronLeft, ChevronRight, Check, Loader2, MapPin, X } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, Check, FileText, Loader2, MapPin, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import type { BuildingOption } from "@/app/building-picker";
 import { useLanguage } from "@/lib/i18n";
 import { normalizedImagePoint } from "@/lib/images/field-image.mjs";
 import { loadProjectFilePreviewObjectUrl } from "@/lib/storage/gateway";
@@ -24,13 +25,22 @@ export type DrawingLocation = {
 
 const supportedDrawingMimeTypes = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
 
-/** The drawings of a building that can actually be pointed at. */
+/**
+ * The drawings that can be pointed at, with the ones of the building you are standing in
+ * first. A photo is not always taken in the building whose drawings were uploaded last,
+ * and a picker that shows one drawing and calls it "the" drawing is exactly what the
+ * client ran into: "bij point on drawing moet ik een tekening kunnen kiezen".
+ */
 export function pickableDrawings(files: FileRecord[], buildingId: string) {
-  return files.filter((file) =>
-    file.category === "drawing"
-    && file.status === "available"
-    && supportedDrawingMimeTypes.includes(file.mime_type)
-    && (!file.building_id || !buildingId || file.building_id === buildingId));
+  return files
+    .filter((file) =>
+      file.category === "drawing"
+      && file.status === "available"
+      && supportedDrawingMimeTypes.includes(file.mime_type))
+    .sort((left, right) => {
+      const rank = (file: FileRecord) => (buildingId && file.building_id === buildingId ? 0 : file.building_id ? 2 : 1);
+      return rank(left) - rank(right) || left.original_name.localeCompare(right.original_name);
+    });
 }
 
 /** How the chosen spot reads in the register and on the photo card. */
@@ -41,27 +51,36 @@ export function drawingLocationLabel(location: DrawingLocation, pageWord: string
 
 export function DrawingLocationPicker({
   drawings,
+  buildings = [],
   client,
   initial,
   close,
   save,
 }: {
   drawings: FileRecord[];
+  /** Only to name the building a drawing belongs to, so two floor plans stay apart. */
+  buildings?: BuildingOption[];
   client: SupabaseClient;
   initial?: DrawingLocation | null;
   close: () => void;
   save: (location: DrawingLocation) => void;
 }) {
   const { text } = useLanguage();
-  const [activeId, setActiveId] = useState(initial?.fileId ?? drawings[0]?.id ?? "");
-  const activeDrawing = drawings.find((drawing) => drawing.id === activeId) ?? drawings[0] ?? null;
+  const [activeId, setActiveId] = useState(initial?.fileId ?? "");
+  const activeDrawing = drawings.find((drawing) => drawing.id === activeId) ?? null;
+  const [query, setQuery] = useState("");
   const [pageNumber, setPageNumber] = useState(initial?.pageNumber ?? 1);
   const [pageCount, setPageCount] = useState(1);
   const [point, setPoint] = useState<{ xRatio: number; yRatio: number } | null>(
     initial && initial.fileId === activeId ? { xRatio: initial.xRatio, yRatio: initial.yRatio } : null,
   );
 
-  if (!activeDrawing) return null;
+  const buildingName = (drawing: FileRecord) => buildings.find((building) => building.id === drawing.building_id)?.name
+    ?? text("Whole project", "Hele project");
+  const term = query.trim().toLowerCase();
+  const shown = term
+    ? drawings.filter((drawing) => `${drawing.original_name} ${drawing.document_code ?? ""} ${buildingName(drawing)}`.toLowerCase().includes(term))
+    : drawings;
 
   const choose = (clientX: number, clientY: number, target: HTMLElement) => {
     const normalized = normalizedImagePoint(clientX, clientY, target.getBoundingClientRect());
@@ -74,45 +93,74 @@ export function DrawingLocationPicker({
         <header className="modal-header">
           <div>
             <p className="eyebrow">{text("Location on the drawing", "Locatie op de tekening")}</p>
-            <h2 id="drawing-location-title">{text("Tap where this photo was taken", "Tik waar deze foto is genomen")}</h2>
-            <p>{text("The point is saved with the photo and stays on the drawing as a pin.", "Het punt wordt bij de foto opgeslagen en blijft als pin op de tekening staan.")}</p>
+            <h2 id="drawing-location-title">{activeDrawing
+              ? text("Tap where this photo was taken", "Tik waar deze foto is genomen")
+              : text("Choose the drawing first", "Kies eerst de tekening")}</h2>
+            <p>{activeDrawing
+              ? text("The point is saved with the photo and stays on the drawing as a pin.", "Het punt wordt bij de foto opgeslagen en blijft als pin op de tekening staan.")
+              : text("Point at the plan this photo belongs to; the drawing is opened afterwards.", "Wijs de tekening aan waar deze foto bij hoort; daarna wordt die tekening geopend.")}</p>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
 
         <div className="modal-body drawing-location-body">
-          {drawings.length > 1 ? (
-            <div className="drawing-location-tabs" role="tablist" aria-label={text("Drawings", "Tekeningen")}>
-              {drawings.map((drawing) => (
+          {/* Choosing comes first. The picker used to open straight on whichever drawing
+              happened to be first in the list, and called it the location of the photo. */}
+          {!activeDrawing ? (
+            <div className="drawing-choice-list">
+              {drawings.length > 4 ? (
+                <label className="drawing-choice-search">
+                  <Search size={15} />
+                  <span className="sr-only">{text("Search drawings", "Zoek tekeningen")}</span>
+                  <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={text("Search name, code or building", "Zoek naam, code of gebouw")} />
+                </label>
+              ) : null}
+              {shown.map((drawing) => (
                 <button
-                  className={drawing.id === activeDrawing.id ? "active" : ""}
                   type="button"
-                  role="tab"
-                  aria-selected={drawing.id === activeDrawing.id}
                   onClick={() => { setActiveId(drawing.id); setPageNumber(1); setPoint(null); }}
                   key={drawing.id}
-                >{drawing.original_name.replace(/\.[^.]+$/, "")}</button>
+                >
+                  <span className="drawing-choice-icon"><FileText size={18} /></span>
+                  <span>
+                    <strong>{drawing.original_name.replace(/\.[^.]+$/, "")}</strong>
+                    <small>{buildingName(drawing)} · {drawing.mime_type === "application/pdf" ? "PDF" : text("Image", "Afbeelding")}{drawing.document_code ? ` · ${drawing.document_code}` : ""}</small>
+                  </span>
+                  <ChevronRight size={16} />
+                </button>
               ))}
+              {!shown.length ? <p className="form-intro">{text("No drawing matches this search.", "Geen tekening gevonden met deze zoekterm.")}</p> : null}
             </div>
-          ) : null}
+          ) : (
+            <>
+              <div className="drawing-location-chosen">
+                <span><strong>{activeDrawing.original_name.replace(/\.[^.]+$/, "")}</strong><small>{buildingName(activeDrawing)}{activeDrawing.document_code ? ` · ${activeDrawing.document_code}` : ""}</small></span>
+                {drawings.length > 1 ? (
+                  <button className="ghost-button" type="button" onClick={() => { setActiveId(""); setPoint(null); setPageNumber(1); }}>
+                    <ChevronLeft size={15} /> {text("Choose another drawing", "Andere tekening kiezen")}
+                  </button>
+                ) : null}
+              </div>
 
-          <DrawingPointCanvas
-            key={`${activeDrawing.id}-${pageNumber}`}
-            file={activeDrawing}
-            pageNumber={pageNumber}
-            client={client}
-            point={point}
-            onPageCount={setPageCount}
-            onPoint={choose}
-          />
+              <DrawingPointCanvas
+                key={`${activeDrawing.id}-${pageNumber}`}
+                file={activeDrawing}
+                pageNumber={pageNumber}
+                client={client}
+                point={point}
+                onPageCount={setPageCount}
+                onPoint={choose}
+              />
 
-          {pageCount > 1 ? (
-            <div className="drawing-location-pages">
-              <button type="button" disabled={pageNumber <= 1} onClick={() => { setPageNumber(pageNumber - 1); setPoint(null); }} aria-label={text("Previous page", "Vorige pagina")}><ChevronLeft size={17} /></button>
-              <span>{text(`Page ${pageNumber} of ${pageCount}`, `Pagina ${pageNumber} van ${pageCount}`)}</span>
-              <button type="button" disabled={pageNumber >= pageCount} onClick={() => { setPageNumber(pageNumber + 1); setPoint(null); }} aria-label={text("Next page", "Volgende pagina")}><ChevronRight size={17} /></button>
-            </div>
-          ) : null}
+              {pageCount > 1 ? (
+                <div className="drawing-location-pages">
+                  <button type="button" disabled={pageNumber <= 1} onClick={() => { setPageNumber(pageNumber - 1); setPoint(null); }} aria-label={text("Previous page", "Vorige pagina")}><ChevronLeft size={17} /></button>
+                  <span>{text(`Page ${pageNumber} of ${pageCount}`, `Pagina ${pageNumber} van ${pageCount}`)}</span>
+                  <button type="button" disabled={pageNumber >= pageCount} onClick={() => { setPageNumber(pageNumber + 1); setPoint(null); }} aria-label={text("Next page", "Volgende pagina")}><ChevronRight size={17} /></button>
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
 
         <footer className="modal-actions">
@@ -120,8 +168,8 @@ export function DrawingLocationPicker({
           <button
             className="primary-button"
             type="button"
-            disabled={!point}
-            onClick={() => point && save({
+            disabled={!point || !activeDrawing}
+            onClick={() => point && activeDrawing && save({
               fileId: activeDrawing.id,
               fileName: activeDrawing.original_name,
               pageNumber,

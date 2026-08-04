@@ -1721,7 +1721,6 @@ export function CodecoSupervisionApp() {
               focusRecordId={focusRecordId}
               initialCameraFiles={pendingQuickPhotos}
               onInitialCameraFilesConsumed={() => setPendingQuickPhotos([])}
-              openQuickCamera={openQuickAdd}
               openDailyRecord={openWorkspaceDailyRecord}
               projectActions={dayActions}
               openProjectAction={(actionId) => {

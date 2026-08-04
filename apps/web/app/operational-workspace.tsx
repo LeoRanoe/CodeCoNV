@@ -55,8 +55,11 @@ import { ProjectWorkspaceHome } from "@/app/project-workspace-home";
 import { ProjectDocumentsHome } from "@/app/project-documents-home";
 import { ProjectActionCenter, type ActionCenterView } from "@/app/project-action-center";
 import { RapidVerifyWorkspace } from "@/app/rapid-verify-workspace";
+import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
 import { anchorChecklistCodes } from "@/lib/checklists/anchor-library";
 import { recordAnchorId, useRecordFocus } from "@/lib/navigation/record-focus";
+import { buildRecordDirectory } from "@/lib/records/record-directory.mjs";
+import { signatureFromDetails } from "@/lib/signatures/handwritten-signature.mjs";
 import { isPendingRecordId, listOfflineRecords, saveRecordOnlineOrQueue, syncOfflineRecords } from "@/lib/offline/record-queue";
 import { pendingStatus, withPendingRecords } from "@/lib/offline/pending-records";
 import { downloadBoqCsvTemplate, parseBoqCsv, type BoqImportItem } from "@/lib/boq/csv";
@@ -299,7 +302,6 @@ export function OperationalWorkspace({
   actionCenterView = "work",
   initialCameraFiles = [],
   onInitialCameraFilesConsumed,
-  openQuickCamera,
   openDailyRecord,
   openProjectArea,
   openActionCenter,
@@ -340,10 +342,9 @@ export function OperationalWorkspace({
   actionCenterView?: ActionCenterView;
   initialCameraFiles?: File[];
   onInitialCameraFilesConsumed?: () => void;
-  openQuickCamera: () => void;
   openDailyRecord: (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => void;
   /** The optional record id opens that record itself, instead of the list it stands in. */
-  openProjectArea: (tab: "inspections" | "findings" | "ncr" | "documents" | "registers" | "visual" | "drawings" | "files" | "submissions", recordId?: string) => void;
+  openProjectArea: (tab: "inspections" | "findings" | "ncr" | "hse" | "documents" | "registers" | "visual" | "drawings" | "files" | "submissions", recordId?: string) => void;
   openActionCenter: (view?: ActionCenterView) => void;
   openRapidVerify: () => void;
   openReports: () => void;
@@ -476,8 +477,8 @@ export function OperationalWorkspace({
           externalSubmissionIntent={externalSubmissionIntent}
           initialCameraFiles={initialCameraFiles}
           onInitialCameraFilesConsumed={onInitialCameraFilesConsumed}
-          openQuickCamera={openQuickCamera}
           openDailyRecord={openDailyRecord}
+          openProjectArea={openProjectArea}
           openActionCenter={openActionCenter}
           openRapidVerify={openRapidVerify}
           openReports={openReports}
@@ -562,8 +563,8 @@ function ProjectOperations({
   onTabChange,
   initialCameraFiles,
   onInitialCameraFilesConsumed,
-  openQuickCamera,
   openDailyRecord,
+  openProjectArea,
   openActionCenter,
   openRapidVerify,
   openReports,
@@ -592,8 +593,9 @@ function ProjectOperations({
   onTabChange: (tab: ProjectTab) => void;
   initialCameraFiles: File[];
   onInitialCameraFilesConsumed?: () => void;
-  openQuickCamera: () => void;
   openDailyRecord: (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => void;
+  /** Opens a module on one record: how the workspace search reaches what it found. */
+  openProjectArea: (tab: "inspections" | "findings" | "ncr" | "hse" | "documents" | "registers" | "visual" | "drawings" | "files" | "submissions", recordId?: string) => void;
   openActionCenter: (view?: ActionCenterView) => void;
   openRapidVerify: () => void;
   openReports: () => void;
@@ -659,6 +661,8 @@ function ProjectOperations({
     remarks: "",
     signedBy: "",
     signedAt: "",
+    /** The signature that was written on this form, not a tick in a box. */
+    signatureImage: "",
   });
   const [findingPhotos, setFindingPhotos] = useState<PhotoEvidence[]>([]);
   const [findingPhotoError, setFindingPhotoError] = useState("");
@@ -705,6 +709,11 @@ function ProjectOperations({
   }, [tab]);
   /** An agreement is text plus the two parties who made it, and who signs for them. */
   const [agreementForm, setAgreementForm] = useState({ ...emptyAgreementSignature });
+  /**
+   * Every numbered record in this project, so the workspace search can find a document
+   * back from the unique code that stands on it — on paper, in an e-mail or on a photo.
+   */
+  const recordDirectory = useMemo(() => buildRecordDirectory(data), [data]);
   // Everything this workspace already knows about the project is offered inside the marking
   // pad, so a marker on a photo can say which building, floor, room and party it belongs to.
   const markupOptions = useMemo(() => ({
@@ -1159,8 +1168,12 @@ function ProjectOperations({
       recommendedAction: findingForm.recommendedAction || undefined,
       recommendedActionDetail: findingForm.recommendedActionDetail,
       remarks: findingForm.remarks,
+      // Who drew the record up is stored with the record, so the register and the printed
+      // form never have to guess it from whoever opens the file later.
+      issuedBy: currentUserName,
       signedBy: findingForm.signedBy,
       signedAt: findingForm.signedAt,
+      signatureImage: findingForm.signatureImage || null,
       locationNodeId: projectWideFinding ? "" : findingLocationNodeId,
     };
     // The record itself is created first whenever there is a connection. That is what
@@ -1256,8 +1269,10 @@ function ProjectOperations({
                 recommendedAction: findingForm.recommendedAction || undefined,
                 recommendedActionDetail: findingForm.recommendedActionDetail,
                 remarks: findingForm.remarks,
+                issuedBy: currentUserName,
                 signedBy: findingForm.signedBy,
                 signedAt: findingForm.signedAt,
+                signatureImage: findingForm.signatureImage || null,
                 locationNodeId: (projectWideFinding ? "" : findingLocationNodeId) || undefined,
               },
             },
@@ -1271,7 +1286,7 @@ function ProjectOperations({
         type: findingScope === "ncr" ? "ncr" : "deficiency", title: "", description: "", severity: "medium", responsiblePartyId: "",
         issueType: "quality", impactSummary: "", actionSteps: "", escalationRequired: false,
         disposition: "to_be_corrected", expectedResolutionDate: "", sourceCatalogSubject: "", dateIdentified: "",
-        referenceChecklist: "", recommendedAction: "", recommendedActionDetail: "", remarks: "", signedBy: "", signedAt: "",
+        referenceChecklist: "", recommendedAction: "", recommendedActionDetail: "", remarks: "", signedBy: "", signedAt: "", signatureImage: "",
       });
       setFindingPhotos([]);
       setFindingPhotoError("");
@@ -1614,7 +1629,9 @@ function ProjectOperations({
                 + data.registerEntries.filter((entry) => entry.due_at && !["closed", "approved", "cancelled"].includes(entry.status)).length,
             }}
             modules={data.settings?.modules ?? {}}
-            openQuickCamera={openQuickCamera}
+            records={recordDirectory}
+            openRecord={(recordTab, recordId) => openProjectArea(recordTab as Parameters<typeof openProjectArea>[0], recordId)}
+            openPhotoLibrary={() => switchTab("files")}
             openTask={openTask}
             openFinding={openFinding}
             openRegister={openRegister}
@@ -1773,7 +1790,10 @@ function ProjectOperations({
                   <div><small>{text("Project name and number", "Projectnaam en -nummer")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
                   <div><small>{text("Contractor", "Aannemer")}</small><strong>{parties.find((party) => party.id === findingForm.responsiblePartyId)?.name || text("Not assigned yet", "Nog niet toegewezen")}</strong><span>{buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName}</span></div>
                   <div><small>{text("Date", "Datum")}</small><strong>{issueDate}</strong><span>{issueTime}</span></div>
-                  <div><small>{text("Report no · automatic", "Rapportnummer · automatisch")}</small><strong>{text("On submit", "Bij indienen")}</strong><span>{findingForm.signedBy ? text("Signed", "Ondertekend") : text("Not signed yet", "Nog niet ondertekend")}</span></div>
+                  {/* An NCR says who drew it up, from the moment it is written: without it
+                      the contractor receives a formal report nobody stands behind. */}
+                  <div><small>{text("Drawn up by", "Opgesteld door")}</small><strong>{currentUserName}</strong><span>{findingForm.signedBy ? text(`Signed by ${findingForm.signedBy}`, `Ondertekend door ${findingForm.signedBy}`) : text("Not signed yet", "Nog niet ondertekend")}</span></div>
+                  <div><small>{text("Report no · automatic", "Rapportnummer · automatisch")}</small><strong>{text("On submit", "Bij indienen")}</strong><span>{text("Unique project code", "Unieke projectcode")}</span></div>
                 </section>
               ) : null}
               <label className="finding-photo-capture">
@@ -1861,23 +1881,25 @@ function ProjectOperations({
               {findingScope === "ncr" ? (
                 <>
                   <label className="form-field"><span>{text("Remarks", "Opmerkingen")}</span><textarea rows={2} value={findingForm.remarks} onChange={(event) => setFindingForm({ ...findingForm, remarks: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, remarks: appendDictation(current.remarks, transcript) }))} /></label>
-                  <label className="check-field controlled-document-signature">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(findingForm.signedBy)}
-                      onChange={(event) => setFindingForm({
-                        ...findingForm,
-                        signedBy: event.target.checked ? currentUserName : "",
-                        signedAt: event.target.checked ? new Date().toISOString() : "",
-                      })}
-                    />
-                    <span>
-                      <strong>{text("Sign as the engineer who issues this NCR", "Ondertekenen als ingenieur die deze NCR uitgeeft")}</strong>
-                      <small>{findingForm.signedBy
-                        ? text(`Signed by ${findingForm.signedBy} · ${formatDate(findingForm.signedAt, locale)}`, `Ondertekend door ${findingForm.signedBy} · ${formatDate(findingForm.signedAt, locale)}`)
-                        : text("The name and the moment of signing are stored with the report.", "De naam en het moment van ondertekenen worden bij het rapport opgeslagen.")}</small>
-                    </span>
-                  </label>
+                  {/* Signing is the signature itself, written here, on this form, at this
+                      moment — not a box that records that somebody clicked. */}
+                  <SignatureField
+                    label={text("Sign as the engineer who issues this NCR", "Ondertekenen als ingenieur die deze NCR uitgeeft")}
+                    declaration={text(
+                      "By signing you issue this non-conformance report to the contractor named above.",
+                      "Met je handtekening geef je dit non-conformance report uit aan de hierboven genoemde aannemer.",
+                    )}
+                    hint={text("The signature, the name and the moment of signing are stored with the report.", "De handtekening, de naam en het moment van ondertekenen worden bij het rapport opgeslagen.")}
+                    nameSuggestion={currentUserName}
+                    nameOptions={documentIssuerOptions}
+                    value={signatureFromDetails(findingForm.signedBy, findingForm.signedAt, findingForm.signatureImage)}
+                    onChange={(signature) => setFindingForm({
+                      ...findingForm,
+                      signedBy: signature?.name ?? "",
+                      signedAt: signature?.signedAt ?? "",
+                      signatureImage: signature?.image ?? "",
+                    })}
+                  />
                   <div className="operation-alert warning"><RotateCcw size={17} /><div><strong>{text("The contractor fills in the correction", "De aannemer vult de correctie in")}</strong><span>{text("After submitting you send this NCR to the contractor with one tap. The contractor fills in the proposed corrective action and sends it back; the quality-control close-out stays with CODECO.", "Na indienen stuur je deze NCR met één tik naar de aannemer. De aannemer vult de voorgestelde correctieve actie in en stuurt die terug; de eindcontrole blijft bij CODECO.")}</span></div></div>
                 </>
               ) : null}
@@ -2121,28 +2143,28 @@ function ProjectOperations({
                 {registerForm.type === "technical_instruction" ? <label className="form-field"><span>{text("Discipline", "Discipline")}</span><select value={registerForm.discipline} onChange={(event) => setRegisterForm({ ...registerForm, discipline: event.target.value })}><option value="architectural">Architectural</option><option value="structural">Structural</option><option value="electrical">Electrical</option><option value="mechanical">Mechanical</option><option value="civil">Civil</option><option value="hse">HSE</option></select></label> : null}
                 {registerForm.type === "change_order" || registerForm.type === "technical_instruction" ? <><div className="form-grid-2"><label className="form-field"><span>{text("Schedule impact", "Planningimpact")}</span><select value={registerForm.scheduleImpact} onChange={(event) => setRegisterForm({ ...registerForm, scheduleImpact: event.target.value })}><option value="none">None</option><option value="possible">Possible</option><option value="confirmed">Confirmed</option><option value="unknown">To be assessed</option></select></label><label className="form-field"><span>{text("Cost impact", "Kostenimpact")}</span><select value={registerForm.costImpact} onChange={(event) => setRegisterForm({ ...registerForm, costImpact: event.target.value })}><option value="none">None</option><option value="possible">Possible</option><option value="confirmed">Confirmed</option><option value="unknown">To be assessed</option></select></label></div><label className="form-field"><span>{text("Impact explanation", "Toelichting impact")}</span><textarea rows={2} value={registerForm.impactExplanation} onChange={(event) => setRegisterForm({ ...registerForm, impactExplanation: event.target.value })} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, impactExplanation: appendDictation(current.impactExplanation, transcript) }))} /></label></> : null}
                 {registerForm.type === "environmental_report" ? <><div className="form-grid-2"><label className="form-field"><span>{text("Period start", "Periode start")}</span><input type="date" value={registerForm.periodStart} onChange={(event) => setRegisterForm({ ...registerForm, periodStart: event.target.value })} /></label><label className="form-field"><span>{text("Period end", "Periode einde")}</span><input type="date" value={registerForm.periodEnd} onChange={(event) => setRegisterForm({ ...registerForm, periodEnd: event.target.value })} /></label></div><div className="form-grid-2"><label className="form-field"><span>{text("Lost hours", "Verloren uren")}</span><input type="number" min="0" value={registerForm.lostHours} onChange={(event) => setRegisterForm({ ...registerForm, lostHours: event.target.value })} /></label><label className="form-field"><span>{text("Reason for lost hours", "Reden verloren uren")}</span><input value={registerForm.lostHoursReason} onChange={(event) => setRegisterForm({ ...registerForm, lostHoursReason: event.target.value })} /></label></div></> : null}
-                <label className="check-field controlled-document-signature">
-                  <input
-                    type="checkbox"
-                    disabled={submittedRegister && !registerForm.issuerName.trim()}
-                    checked={Boolean(registerForm.signedBy)}
-                    onChange={(event) => setRegisterForm({
-                      ...registerForm,
-                      signedBy: event.target.checked ? registerForm.issuerName.trim() || (submittedRegister ? "" : currentUserName) : "",
-                      signedAt: event.target.checked ? new Date().toISOString() : "",
-                    })}
-                  />
-                  <span>
-                    <strong>{submittedRegister
-                      ? text("The submitted form is signed by that person", "Het ingediende formulier is door die persoon ondertekend")
-                      : text("Sign as the author of this document", "Ondertekenen als opsteller van dit document")}</strong>
-                    <small>{registerForm.signedBy
-                      ? text(`Signed by ${registerForm.signedBy} · ${formatDate(registerForm.signedAt, locale)}`, `Ondertekend door ${registerForm.signedBy} · ${formatDate(registerForm.signedAt, locale)}`)
-                      : submittedRegister
-                        ? text("Record the signature that stands on the received form; CODECO signs at the formal response.", "Leg de handtekening vast die op het ontvangen formulier staat; CODECO tekent bij het formele antwoord.")
-                        : text("The name and the moment of signing are stored with the document.", "De naam en het moment van ondertekenen worden bij het document opgeslagen.")}</small>
-                  </span>
-                </label>
+                {/* The document is signed here, with a written signature, at the moment it
+                    is drawn up or the moment the received form is recorded. */}
+                <SignatureField
+                  label={submittedRegister
+                    ? text("Signature on the submitted form", "Handtekening op het ingediende formulier")
+                    : text("Sign as the author of this document", "Ondertekenen als opsteller van dit document")}
+                  declaration={submittedRegister
+                    ? text("Record the signature that stands on the received form; CODECO signs at the formal response.", "Leg de handtekening vast die op het ontvangen formulier staat; CODECO tekent bij het formele antwoord.")
+                    : text("By signing you issue this document under your own name.", "Met je handtekening geef je dit document onder je eigen naam uit.")}
+                  hint={text("The signature, the name and the moment of signing are stored with the document.", "De handtekening, de naam en het moment van ondertekenen worden bij het document opgeslagen.")}
+                  nameSuggestion={registerForm.issuerName.trim() || (submittedRegister ? "" : currentUserName)}
+                  nameOptions={submittedRegister ? [] : documentIssuerOptions}
+                  disabled={submittedRegister && !registerForm.issuerName.trim()}
+                  disabledHint={text("Fill in who submitted the form first.", "Vul eerst in wie het formulier heeft ingediend.")}
+                  value={signatureFromDetails(registerForm.signedBy, registerForm.signedAt, registerForm.signatureImage)}
+                  onChange={(signature) => setRegisterForm({
+                    ...registerForm,
+                    signedBy: signature?.name ?? "",
+                    signedAt: signature?.signedAt ?? "",
+                    signatureImage: signature?.image ?? "",
+                  })}
+                />
                 <div className="operation-alert warning"><FileCheck2 size={17} /><div><strong>{text("Numbering and metadata are automatic", "Nummering en metadata zijn automatisch")}</strong><span>{submittedRegister
                   ? text("Project, building, receipt date and audit history are filled from the current context. This form was drawn up and signed by the submitting party; CODECO's own signature belongs to the formal response below.", "Project, gebouw, ontvangstdatum en auditgeschiedenis komen uit de actuele context. Dit formulier is door de indienende partij opgesteld en ondertekend; de handtekening van CODECO hoort bij het formele antwoord hieronder.")
                   : text("Project, building, issue date, author and audit history are filled from the current context. Approval, acknowledgement and signature remain explicit human actions.", "Project, gebouw, uitgiftedatum, opsteller en auditgeschiedenis komen uit de actuele context. Goedkeuring, ontvangst en ondertekening blijven expliciete menselijke acties.")}</span></div></div>
@@ -2651,7 +2673,10 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
     projectName,
     projectCode,
     buildingName: recordBuildingName,
-    issuerName: currentUserName,
+    // The person who drew the NCR up, as it was stored with the record. Never the person
+    // who happens to download the form.
+    issuerName: finding.issue_management?.issued_by || currentUserName,
+    signatureImage: finding.issue_management?.signature_image ?? null,
     responsiblePartyName: parties.find((party) => party.id === finding.responsible_party_id)?.name ?? "",
     verifierName: resolveUserName(finding.verified_by),
   });
@@ -2715,12 +2740,25 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
                   <span>{text("Recommended action by engineer", "Aanbevolen actie door de ingenieur")}</span>
                   <strong>{issue.recommended_action ? { rework: text("Rework", "Opnieuw uitvoeren"), repair: text("Repair", "Herstellen"), alternative: text("Alternative solution", "Alternatieve oplossing") }[issue.recommended_action] : text("Not chosen", "Niet gekozen")}</strong>
                   <p>{issue.recommended_action_detail || issue.action_steps || text("No instruction recorded.", "Geen instructie vastgelegd.")}</p>
+                  {/* Who drew the NCR up stands on the record itself, next to the written
+                      signature of the engineer who issued it. */}
+                  <small>{text("Drawn up by", "Opgesteld door")}: {issue.issued_by || text("not recorded", "niet vastgelegd")}</small>
+                  {issue.signature_image ? (
+                    // A stored signature is a data URL, which the image optimizer cannot take.
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img className="record-signature-proof" src={issue.signature_image} alt={text(`Signature of ${issue.signed_by ?? ""}`, `Handtekening van ${issue.signed_by ?? ""}`)} />
+                  ) : null}
                   <small>{issue.signed_by ? text(`Signed by ${issue.signed_by} · ${formatDate(issue.signed_at ?? null, locale)}`, `Ondertekend door ${issue.signed_by} · ${formatDate(issue.signed_at ?? null, locale)}`) : text("Not signed", "Niet ondertekend")}</small>
                 </div>
                 <div className={finding.proposed_correction ? "answered" : ""}>
                   <span>{text("Proposed corrective action by contractor", "Voorgestelde correctieve actie door de aannemer")}</span>
                   <p>{finding.proposed_correction || text("Waiting for the contractor's answer through the sent link.", "Wacht op het antwoord van de aannemer via de verstuurde link.")}</p>
                   {/* The name the contractor typed under the correction is the signature. */}
+                  {finding.proposed_correction && issue.correction_signature_image ? (
+                    // The signature the contractor wrote through the shared link.
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img className="record-signature-proof" src={issue.correction_signature_image} alt={text(`Signature of ${issue.correction_signed_by ?? ""}`, `Handtekening van ${issue.correction_signed_by ?? ""}`)} />
+                  ) : null}
                   {finding.proposed_correction ? <small>{issue.correction_signed_by
                     ? text(`Signed by ${issue.correction_signed_by} · ${formatDate(issue.correction_signed_at ?? null, locale)}`, `Ondertekend door ${issue.correction_signed_by} · ${formatDate(issue.correction_signed_at ?? null, locale)}`)
                     : text("Recorded without a name", "Vastgelegd zonder naam")}</small> : null}
@@ -2808,6 +2846,8 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
   const [reviewComment, setReviewComment] = useState("");
   const [signerRole, setSignerRole] = useState("supervisor");
   const [declaration, setDeclaration] = useState(() => text("I declare that I reviewed this fixed report version and confirmed it truthfully.", "Ik verklaar dat ik deze vastgezette rapportversie heb gecontroleerd en naar waarheid heb bevestigd."));
+  /** The declaration is signed by hand, at the moment it is recorded. */
+  const [reportSignature, setReportSignature] = useState<HandwrittenSignature | null>(null);
   const [distribution, setDistribution] = useState({ name: "", address: "", channel: "manual" });
   const [revisionReason, setRevisionReason] = useState("");
   /**
@@ -2822,6 +2862,9 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
       declaration: signature.declaration,
       signedAt: signature.signed_at,
       legalLevel: signature.legal_level,
+      // The signature that was written when the version was signed, so the file that
+      // leaves the app carries it too.
+      signatureImage: signature.signature_image ?? null,
     }));
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(new Date());
   const [period, setPeriod] = useState({ start: `${today.slice(0, 8)}01`, end: today });
@@ -3046,7 +3089,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
           </div>
           <section className="workflow-grid">
             <div className={`workflow-card ${workflowStep === 1 ? "current" : workflowStep > 1 ? "complete" : "locked"}`}><div className="workflow-icon"><ClipboardCheck size={19} /></div><h2>1. Review</h2><p>{text("An authorized reviewer approves or returns the report with a reason. Approval automatically freezes the complete snapshot with SHA-256.", "Een bevoegde reviewer keurt goed of stuurt gemotiveerd terug. Bij goedkeuring bevriest de database automatisch de volledige momentopname met SHA-256.")}</p><label className="form-field"><span>{text("Review comment", "Reviewcommentaar")}</span><textarea rows={3} value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} /><DictateButton onText={(transcript) => setReviewComment((current) => appendDictation(current, transcript))} /></label><div className="button-row"><button className="secondary-button" type="button" disabled={busy || !reportId || !canReview || reviewComment.trim().length < 2} onClick={() => void run(() => reviewReport(client, reportId!, "returned", reviewComment), text("Report returned for correction with a reason.", "Rapport gemotiveerd teruggestuurd voor correctie."))}>{text("Return", "Terugsturen")}</button><button className="primary-button" type="button" disabled={busy || !reportId || !canReview || reviewComment.trim().length < 2} onClick={() => void run(() => reviewReport(client, reportId!, "approved", reviewComment), text("Report approved and frozen as an immutable version.", "Rapport goedgekeurd en als immutable versie vastgezet."))}><FileCheck2 size={15} /> {text("Approve and freeze", "Goedkeuren & vastzetten")}</button></div></div>
-            <div className={`workflow-card ${workflowStep === 2 ? "current" : workflowStep > 2 ? "complete" : "locked"}`}><div className="workflow-icon"><FileCheck2 size={19} /></div><h2>2. {text("Signing declaration", "Ondertekenverklaring")}</h2><p>{text("Identity, project role, version hash and declaration remain append-only. The legal level remains", "Identiteit, projectrol, versiehash en verklaring blijven append-only bewaard. Het juridische niveau blijft")} <strong>contract pending</strong> {text("until CODECO formally decides.", "totdat CODECO dit formeel kiest.")}</p><label className="form-field"><span>{text("Sign as", "Onderteken als")}</span><select value={effectiveSignerRole} onChange={(event) => setSignerRole(event.target.value)}>{signingWorkflow.map((rule) => <option value={rule.role} key={rule.role}>{roleLabels[rule.role] ?? rule.role.replaceAll("_", " ")}{rule.required ? ` · ${text("required", "verplicht")}` : ""}</option>)}</select><small>{text(`${signedRequiredRoles.length} of ${requiredRoles.length} required signatures recorded for this version. You can only sign in a project role you actually hold.`, `${signedRequiredRoles.length} van ${requiredRoles.length} verplichte handtekeningen vastgelegd voor deze versie. Je kunt alleen tekenen in een projectrol die je echt hebt.`)}</small></label><label className="form-field"><span>{text("Declaration", "Verklaring")}</span><textarea rows={3} value={declaration} onChange={(event) => setDeclaration(event.target.value)} /><DictateButton onText={(transcript) => setDeclaration((current) => appendDictation(current, transcript))} /></label><button className="primary-button" type="button" disabled={busy || !reportId || !canSign || declaration.trim().length < 10} onClick={() => void run(() => signReport(client, reportId!, effectiveSignerRole, currentUserName, declaration), text("Signing declaration immutably linked to the report version.", "Ondertekenverklaring onveranderbaar aan de rapportversie gekoppeld."))}><FileCheck2 size={15} /> {text("Record declaration", "Verklaring vastleggen")}</button></div>
+            <div className={`workflow-card ${workflowStep === 2 ? "current" : workflowStep > 2 ? "complete" : "locked"}`}><div className="workflow-icon"><FileCheck2 size={19} /></div><h2>2. {text("Signing declaration", "Ondertekenverklaring")}</h2><p>{text("Identity, project role, version hash and declaration remain append-only. The legal level remains", "Identiteit, projectrol, versiehash en verklaring blijven append-only bewaard. Het juridische niveau blijft")} <strong>contract pending</strong> {text("until CODECO formally decides.", "totdat CODECO dit formeel kiest.")}</p><label className="form-field"><span>{text("Sign as", "Onderteken als")}</span><select value={effectiveSignerRole} onChange={(event) => setSignerRole(event.target.value)}>{signingWorkflow.map((rule) => <option value={rule.role} key={rule.role}>{roleLabels[rule.role] ?? rule.role.replaceAll("_", " ")}{rule.required ? ` · ${text("required", "verplicht")}` : ""}</option>)}</select><small>{text(`${signedRequiredRoles.length} of ${requiredRoles.length} required signatures recorded for this version. You can only sign in a project role you actually hold.`, `${signedRequiredRoles.length} van ${requiredRoles.length} verplichte handtekeningen vastgelegd voor deze versie. Je kunt alleen tekenen in een projectrol die je echt hebt.`)}</small></label><label className="form-field"><span>{text("Declaration", "Verklaring")}</span><textarea rows={3} value={declaration} onChange={(event) => setDeclaration(event.target.value)} /><DictateButton onText={(transcript) => setDeclaration((current) => appendDictation(current, transcript))} /></label>{/* The declaration is signed here and now, by hand, like every other document in the app. */}<SignatureField label={text("Sign this declaration", "Onderteken deze verklaring")} declaration={declaration} hint={text("The signature is stored with the version hash and can never be changed afterwards.", "De handtekening wordt bij de versiehash bewaard en kan daarna niet meer worden gewijzigd.")} nameSuggestion={currentUserName} value={reportSignature} onChange={setReportSignature} disabled={!canSign} disabledHint={text("You can only sign in a project role you actually hold.", "Je kunt alleen tekenen in een projectrol die je echt hebt.")} /><button className="primary-button" type="button" disabled={busy || !reportId || !canSign || declaration.trim().length < 10 || !reportSignature} onClick={() => void run(async () => { await signReport(client, reportId!, effectiveSignerRole, reportSignature?.name || currentUserName, declaration, reportSignature?.image ?? null); setReportSignature(null); }, text("Signing declaration immutably linked to the report version.", "Ondertekenverklaring onveranderbaar aan de rapportversie gekoppeld."))}><FileCheck2 size={15} /> {text("Record signed declaration", "Ondertekende verklaring vastleggen")}</button></div>
             <div className={`workflow-card ${workflowStep === 3 ? "current" : "locked"}`}><div className="workflow-icon"><Users size={19} /></div><h2>3. {text("Distribution", "Distributie")}</h2><p>{text("Only record a delivery that actually occurred. Without an email connector, the app does not claim automatic delivery.", "Registreer alleen een verzending die werkelijk heeft plaatsgevonden. De app claimt zonder e-mailconnector geen automatische bezorging.")}</p><label className="form-field"><span>{text("Recipient", "Ontvanger")}</span><input value={distribution.name} onChange={(event) => setDistribution({ ...distribution, name: event.target.value })} /></label><label className="form-field"><span>{text("Address / reference", "Adres / referentie")}</span><input value={distribution.address} onChange={(event) => setDistribution({ ...distribution, address: event.target.value })} /></label><label className="form-field"><span>{text("Channel", "Kanaal")}</span><select value={distribution.channel} onChange={(event) => setDistribution({ ...distribution, channel: event.target.value })}><option value="manual">{text("Manual transfer", "Handmatige overdracht")}</option><option value="email">{text("Email (sent externally)", "E-mail (extern verzonden)")}</option><option value="download">{text("Secure download", "Beveiligde download")}</option></select></label><button className="primary-button" type="button" disabled={busy || !reportId || !canDistribute || distribution.name.trim().length < 2 || distribution.address.trim().length < 3} onClick={() => void run(() => recordDistribution(client, reportId!, distribution.name, distribution.address, distribution.channel), text("Traceable distribution record added to the fixed version.", "Aantoonbare distributieregel aan de vastgezette versie toegevoegd."))}><FileText size={15} /> {text("Record distribution", "Distributie registreren")}</button></div>
           </section>
         </>

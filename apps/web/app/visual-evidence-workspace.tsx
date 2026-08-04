@@ -506,7 +506,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
                   ) : null}
                   {captureDrawings.length ? (
                     <button className="secondary-button capture-drawing-button" type="button" onClick={() => setPickingDrawingLocation(true)}>
-                      <MapPin size={15} /> {drawingLocation ? text("Change spot on drawing", "Plek op tekening wijzigen") : text("Point on drawing", "Aanwijzen op tekening")}
+                      <MapPin size={15} /> {drawingLocation ? text("Change drawing or spot", "Tekening of plek wijzigen") : text("Choose drawing & point", "Tekening kiezen & aanwijzen")}
                     </button>
                   ) : null}
                 </div>
@@ -525,6 +525,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           {pickingDrawingLocation ? (
             <DrawingLocationPicker
               drawings={captureDrawings}
+              buildings={buildings}
               client={client}
               initial={drawingLocation}
               close={() => setPickingDrawingLocation(false)}

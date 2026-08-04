@@ -23,6 +23,8 @@ export type ControlledDocumentDraft = {
   /** Set when the author signs the document; kept with the moment of signing. */
   signedBy: string;
   signedAt: string;
+  /** The signature the author actually wrote, drawn on the form itself. */
+  signatureImage: string;
   issuerPosition: string;
   issuerCompany: string;
   discipline: string;
@@ -69,6 +71,7 @@ export const emptyControlledDocumentDraft: ControlledDocumentDraft = {
   issuerName: "",
   signedBy: "",
   signedAt: "",
+  signatureImage: "",
   issuerPosition: "Construction Supervisor",
   issuerCompany: "CODECO N.V.",
   discipline: "architectural",
@@ -129,6 +132,7 @@ export function createControlledDocumentDetails(
     signed_by: draft.signedBy.trim(),
     signed_by_position: draft.signedBy.trim() ? draft.issuerPosition.trim() : "",
     signed_at: draft.signedAt || null,
+    signature_image: draft.signatureImage || null,
     schedule_impact: draft.scheduleImpact,
     cost_impact: draft.costImpact,
     impact_explanation: draft.impactExplanation.trim(),

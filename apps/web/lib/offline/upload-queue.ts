@@ -26,8 +26,11 @@ export type QueuedFindingDraft = {
   recommendedAction?: "rework" | "repair" | "alternative";
   recommendedActionDetail?: string;
   remarks?: string;
+  /** Who drew the record up, and the signature they wrote under it. */
+  issuedBy?: string;
   signedBy?: string;
   signedAt?: string;
+  signatureImage?: string | null;
   locationNodeId?: string;
 };
 
@@ -309,8 +312,10 @@ async function syncOfflineUploadsUnlocked(
             recommendedAction: draft.recommendedAction,
             recommendedActionDetail: draft.recommendedActionDetail,
             remarks: draft.remarks,
+            issuedBy: draft.issuedBy,
             signedBy: draft.signedBy,
             signedAt: draft.signedAt,
+            signatureImage: draft.signatureImage,
             locationNodeId: draft.locationNodeId || upload.locationNodeId || undefined,
             idempotencyKey: `offline-finding:${upload.findingGroup.id}`,
           });

@@ -118,7 +118,8 @@ export function buildControlledDocumentDocx(entry: RegisterEntry, logoBytes: Arr
           // The author signs in the app; the document that leaves the app has to show it.
           sectionHeading(["wcr", "rfi", "rfa", "inspection_request"].includes(type) ? "Submitted and signed by" : "Issued and signed by"),
           signatureBlock([
-            ["Name", text(details, "signed_by", text(details, "issued_by"))],
+            // The written signature, when the author signed in the app, above their name.
+            ["Name", text(details, "signed_by", text(details, "issued_by")), typeof details.signature_image === "string" ? details.signature_image : null],
             ["Position / company", [text(details, "signed_by_position", text(details, "issuer_position")), text(details, "issuer_company")].filter((item) => item !== "—" && item !== "").join(" · ")],
             ["Date signed", text(details, "signed_at") === "—" ? "Not signed yet" : String(text(details, "signed_at")).slice(0, 10)],
           ]),

@@ -667,7 +667,9 @@ test("keeps the project workspace mobile-first and task driven", async () => {
   ]);
 
   assert.match(app, /useState<ProjectTabKey>\("home"\)/);
-  assert.match(app, /openQuickCamera=\{openQuickAdd\}/);
+  // Photos on the workspace open the photo library, not the camera: the client asked to
+  // land on the photos first and choose taking, uploading or 360° afterwards.
+  assert.doesNotMatch(app, /openQuickCamera=\{openQuickAdd\}/);
   // The "Switch module" dropdown is gone: the client wrote "ik begrijp dit niet, misschien kan
   // het weg" beside it. What is left is the way back and the name of the module you are in;
   // every module is one tap away on the workspace launcher itself.
@@ -681,7 +683,7 @@ test("keeps the project workspace mobile-first and task driven", async () => {
   assert.match(operations, /<ProjectWorkspaceHome/);
   assert.doesNotMatch(operations, /workspace-task-hub/);
   assert.match(workspaceHome, /workspace-launcher-grid/);
-  assert.match(workspaceHome, /openQuickCamera/);
+  assert.match(workspaceHome, /openPhotoLibrary/);
   assert.match(workspaceHome, /works_ongoing/);
   assert.match(workspaceHome, /works_completed/);
   assert.match(workspaceHome, /openFinding\("issue"\)/);
@@ -1110,8 +1112,9 @@ test("processes the third batch of annotated screens from 31 July", async () => 
   assert.match(controlledDocuments, /reason: draft\.reason\.trim\(\) \|\| draft\.details\.trim\(\)/);
   assert.match(controlledDocuments, /required_action: draft\.requiredAction \|\| "proceed"/);
   assert.match(controlledDocuments, /signedBy: string/);
-  assert.match(workspace, /controlled-document-signature/);
-  assert.match(styles, /\.check-field\.controlled-document-signature/);
+  // Signing is the written signature, captured on the form itself, not a checkbox.
+  assert.match(workspace, /<SignatureField/);
+  assert.match(styles, /\.signature-field/);
   assert.match(workspace, /Send to contractor|Naar aannemer sturen/);
   assert.match(workspace, /const contractorMessage =/);
 });
@@ -1327,7 +1330,8 @@ test("makes every recorded signature visible on the document it belongs to", asy
   // The contractor's name under the corrective action is that signature, and it is
   // required, stored on the record and printed on the NCR form.
   assert.match(shareActions, /const signatureRequired = responseType === "proposed_correction"/);
-  assert.match(shareActions, /signatureRequired && contactName\.trim\(\)\.length < 2/);
+  // The contractor writes that signature now, so a name alone is no longer enough.
+  assert.match(shareActions, /signatureRequired && \(contactName\.trim\(\)\.length < 2 \|\| !signature\)/);
   assert.match(migration, /'correction_signed_by', coalesce\(v_contact, ''\)/);
   assert.match(migration, /'completion_signed_by', coalesce\(v_contact, ''\)/);
   assert.match(operations, /correction_signed_by\?: string;/);
@@ -1358,7 +1362,7 @@ test("only asks for a signature where the client's own forms have one", async ()
   // signs the reply, so CODECO never signs those as the author.
   assert.match(workspace, /const submittedRegister = externalSubmissionRegisterTypes\.includes\(registerForm\.type\)/);
   assert.match(workspace, /Submitted by · name on the form|Ingediend door · naam op het formulier/);
-  assert.match(workspace, /The submitted form is signed by that person|Het ingediende formulier is door die persoon ondertekend/);
+  assert.match(workspace, /Signature on the submitted form|Handtekening op het ingediende formulier/);
   assert.match(controlledPdf, /SUBMITTED AND SIGNED BY/);
   assert.match(controlledDocx, /Submitted and signed by/);
 
@@ -1717,4 +1721,114 @@ test("processes the three annotated capture screens from 2 August", async () => 
 
   // The photo library and the marker panel stay away while a photo is waiting to be saved.
   assert.match(visual, /captures\.length && !showUpload/);
+});
+
+test("processes the feedback of 4 August: photos first, written signatures, an NCR author, unique codes and a chosen drawing", async () => {
+  const [app, operations, workspaceHome, media, visual, drawingPicker, agreement, signaturePad, findings, controlledDocuments, ncrPdf, ncrDocx, controlledPdf, controlledDocx, docxShared, migration, reportMigration, contractorMigration, externalActions, externalRoute, styles] = await Promise.all([
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/project-workspace-home.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/media-library-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/visual-evidence-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/drawing-location-picker.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/agreement-signature.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/signature-pad.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/forms/controlled-project-documents.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/ncr-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/ncr-docx.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/controlled-document-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/controlled-document-docx.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/docx-shared.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202608040001_unique_document_codes.sql", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202608040002_written_report_signature.sql", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202608040003_written_contractor_signature.sql", import.meta.url), "utf8"),
+    readFile(new URL("../app/share/[token]/external-share-actions.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/external-share/[token]/response/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // "wanneer ik op Camera druk moet het mij niet gelijk brengen naar camera maar naar de
+  // foto's, daarna met de optie uploaden of foto maken en 360 upload": the tile opens the
+  // library, and the four ways to add something stand on top of the photos themselves.
+  assert.match(workspaceHome, /openPhotoLibrary: \(\) => void;/);
+  assert.match(operations, /openPhotoLibrary=\{\(\) => switchTab\("files"\)\}/);
+  assert.doesNotMatch(app, /openQuickCamera=/);
+  assert.match(media, /media-choice-bar/);
+  assert.match(media, /Take photo|Maak foto/);
+  assert.match(media, /Upload photos|Foto's uploaden/);
+  assert.match(media, /Upload 360°|360° uploaden/);
+  assert.match(media, /Upload drawing|Tekening uploaden/);
+  // The photo choice and the drawing choice each have their own input, so a choice can
+  // never pick up the accepted file types of the other one.
+  assert.match(media, /ref=\{photoImportRef\}/);
+  assert.match(media, /ref=\{drawingImportRef\}/);
+  assert.match(media, /uploadKind: "photo" \| "drawing" = kind/);
+  assert.match(styles, /\.media-choice-bar/);
+
+  // "bij Signing document moet gebeuren op dat moment; nu gebeurt het door een check te
+  // drukken": every signature is written on the form, and no signature is a checkbox.
+  assert.match(signaturePad, /export function SignaturePad/);
+  assert.match(signaturePad, /export function SignatureField/);
+  assert.match(signaturePad, /toDataURL\("image\/png"\)/);
+  assert.match(operations, /<SignatureField[\s\S]{0,400}Sign as the engineer who issues this NCR/);
+  assert.match(operations, /<SignatureField[\s\S]{0,400}Sign as the author of this document|<SignatureField[\s\S]{0,400}Signature on the submitted form/);
+  assert.match(agreement, /<SignatureField/);
+  assert.doesNotMatch(agreement, /type="checkbox"/);
+  assert.doesNotMatch(operations, /checked=\{Boolean\(findingForm\.signedBy\)\}/);
+  assert.doesNotMatch(operations, /checked=\{Boolean\(registerForm\.signedBy\)\}/);
+  assert.match(findings, /signature_image\?: string \| null;/);
+  assert.match(controlledDocuments, /signature_image: draft\.signatureImage \|\| null/);
+  // The written signature is printed on the documents that leave the app.
+  assert.match(ncrPdf, /styles\.signatureInk/);
+  assert.match(controlledPdf, /styles\.signatureInk/);
+  assert.match(docxShared, /export function signatureImageBytes/);
+  assert.match(controlledDocx, /details\.signature_image/);
+  assert.match(styles, /\.signature-field/);
+  assert.match(styles, /\.signature-canvas/);
+  // The formal report declaration and the contractor's box on the NCR are signed the
+  // same way: the signature travels with the record, never as a tick.
+  assert.match(operations, /signReport\(client, reportId!, effectiveSignerRole, reportSignature\?\.name \|\| currentUserName, declaration, reportSignature\?\.image \?\? null\)/);
+  assert.match(reportMigration, /add column if not exists signature_image text/);
+  assert.match(externalActions, /<SignatureField/);
+  assert.match(externalActions, /signatureImage: signature\?\.image \?\? null/);
+  assert.match(externalRoute, /p_signature_image: input\.data\.signatureImage \|\| null/);
+  assert.match(contractorMigration, /correction_signature_image/);
+
+  // "de NCR moet ook een indicatie hebben wie het heeft opgesteld": the author is stored
+  // with the record, shown on the form and on the card, and printed on the report.
+  assert.match(findings, /issued_by\?: string;/);
+  assert.match(findings, /issued_by: input\.issuedBy\?\.trim\(\) \|\| ""/);
+  assert.match(operations, /issuedBy: currentUserName/);
+  assert.match(operations, /Drawn up by", "Opgesteld door/);
+  assert.match(operations, /issuerName: finding\.issue_management\?\.issued_by \|\| currentUserName/);
+  assert.match(ncrPdf, /Drawn up by/);
+  assert.match(ncrDocx, /\["Drawn up by", issue\.issued_by \|\| context\.issuerName\]/);
+
+  // "alles moet uniek zijn met een nummer ter onderscheiding; je moet kunnen opzoeken op
+  // basis van de unique code op alle documenten": files are numbered by the database, and
+  // the workspace search finds any record back from its code.
+  assert.match(migration, /add column if not exists document_code text/);
+  assert.match(migration, /files_project_document_code_key/);
+  assert.match(migration, /assign_file_document_code/);
+  assert.match(migration, /when 'photo' then 'PHO'/);
+  assert.match(migration, /when 'drawing' then 'DWG'/);
+  assert.match(findings, /document_code: string \| null;/);
+  assert.match(findings, /schemaFeatureMissing\(fileResult\.error, "document_code"\)/);
+  assert.match(operations, /buildRecordDirectory\(data\)/);
+  assert.match(workspaceHome, /searchRecordDirectory\(records, query, 8\)/);
+  assert.match(workspaceHome, /workspace-code-results/);
+  assert.match(workspaceHome, /openRecord\(record\.tab, record\.id\)/);
+  assert.match(media, /file\.document_code \? <span className="media-code-chip"/);
+  assert.match(styles, /\.workspace-code-results/);
+
+  // "bij point on drawing moet ik een drawing kunnen kiezen, want nu geeft het mij gewoon
+  // een drawing": the picker starts on the list of drawings and can be switched back.
+  assert.match(drawingPicker, /drawing-choice-list/);
+  assert.match(drawingPicker, /Choose the drawing first|Kies eerst de tekening/);
+  assert.match(drawingPicker, /Choose another drawing|Andere tekening kiezen/);
+  assert.match(drawingPicker, /useState\(initial\?\.fileId \?\? ""\)/);
+  assert.doesNotMatch(drawingPicker, /drawings\[0\]\?\.id/);
+  assert.match(visual, /<DrawingLocationPicker[\s\S]{0,200}buildings=\{buildings\}/);
+  assert.match(styles, /\.drawing-choice-list/);
 });

@@ -12,6 +12,7 @@ import {
   FileCheck2,
   FileText,
   HardHat,
+  Hash,
   MessageSquareText,
   PackageCheck,
   Search,
@@ -24,8 +25,19 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
+import { searchRecordDirectory } from "@/lib/records/record-directory.mjs";
 
-type WorkspaceDestination = "inspections" | "findings" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files";
+type WorkspaceDestination = "inspections" | "findings" | "ncr" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files";
+
+/** One record in the project, as the code search knows it. */
+export type WorkspaceRecord = {
+  id: string;
+  kind: string;
+  tab: string;
+  code: string;
+  title: string;
+  subtitle: string;
+};
 type RegisterShortcut = "change_order" | "delivery" | "technical_instruction" | "agreement";
 type DailyShortcut = "works_ongoing" | "works_completed" | "workforce" | "delay";
 
@@ -41,7 +53,10 @@ type ProjectWorkspaceHomeProps = {
     deadlines: number;
   };
   modules: Record<string, boolean>;
-  openQuickCamera: () => void;
+  /** Everything in this project that carries a unique code, for the search box. */
+  records: WorkspaceRecord[];
+  openRecord: (tab: string, recordId: string) => void;
+  openPhotoLibrary: () => void;
   openTask: (destination: WorkspaceDestination, create?: boolean) => void;
   openFinding: (scope: "issue" | "ncr", create?: boolean) => void;
   openRegister: (type: RegisterShortcut) => void;
@@ -67,7 +82,9 @@ type WorkspaceTile = {
 export function ProjectWorkspaceHome({
   counts,
   modules,
-  openQuickCamera,
+  records,
+  openRecord,
+  openPhotoLibrary,
   openTask,
   openFinding,
   openRegister,
@@ -85,13 +102,16 @@ export function ProjectWorkspaceHome({
   const tiles = useMemo<WorkspaceTile[]>(() => [
     {
       id: "photos",
+      // The camera used to open on this tap, before anybody had said what the photo was
+      // for. It opens the photo library instead: the photos that are already there, with
+      // taking one, uploading one and a 360° upload as the choices on top of them.
       label: text("Photos", "Foto's"),
-      copy: text("Capture, classify and mark a finding", "Maken, koppelen en een bevinding markeren"),
+      copy: text("Library, camera, upload and 360°", "Bibliotheek, camera, upload en 360°"),
       icon: Camera,
       tone: "blue",
       count: counts.photos,
       module: "visual_evidence",
-      action: openQuickCamera,
+      action: openPhotoLibrary,
     },
     {
       id: "works-ongoing",
@@ -218,13 +238,31 @@ export function ProjectWorkspaceHome({
       count: counts.agreements,
       action: () => openRegister("agreement"),
     },
-  ], [counts, openActionCenter, openDailyRecord, openDailyWork, openFinding, openQuickCamera, openRegister, openTask, text]);
+  ], [counts, openActionCenter, openDailyRecord, openDailyWork, openFinding, openPhotoLibrary, openRegister, openTask, text]);
 
   const visibleTiles = tiles.filter((tile) => {
     if (!moduleEnabled(tile.module)) return false;
     const term = query.trim().toLocaleLowerCase(locale);
     return !term || `${tile.label} ${tile.copy}`.toLocaleLowerCase(locale).includes(term);
   });
+
+  /**
+   * The same box that filters the modules also looks up a record by the unique code that
+   * stands on the document: type Q-2026-0004, NCR - 51 or PHO-2026-0031 and the record
+   * itself is one tap away, instead of hunting through the module it happens to live in.
+   */
+  const matches = useMemo(() => searchRecordDirectory(records, query, 8) as WorkspaceRecord[], [query, records]);
+  const kindLabels: Record<string, string> = {
+    ncr: "NCR",
+    finding: text("Issue", "Issue"),
+    inspection: text("Inspection", "Inspectie"),
+    hse: "HSE",
+    register: text("Register document", "Registerdocument"),
+    report: text("Day report", "Dagrapport"),
+    photo: text("Photo", "Foto"),
+    drawing: text("Drawing", "Tekening"),
+    file: text("File", "Bestand"),
+  };
 
   return (
     <section className="workspace-launcher" aria-labelledby="workspace-launcher-title">
@@ -237,9 +275,24 @@ export function ProjectWorkspaceHome({
         <label className="workspace-launcher-search">
           <Search size={16} />
           <span className="sr-only">{text("Search workspace", "Doorzoek werkruimte")}</span>
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={text("Search workspace", "Zoek in werkruimte")} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={text("Search a code, number or module", "Zoek een code, nummer of module")} />
         </label>
       </div>
+
+      {query.trim().length >= 2 ? (
+        <div className="workspace-code-results" aria-label={text("Records found by code", "Gevonden registraties op code")}>
+          <header><Hash size={15} /> <strong>{matches.length
+            ? text(`${matches.length} record${matches.length === 1 ? "" : "s"} with this code`, `${matches.length} registratie${matches.length === 1 ? "" : "s"} met deze code`)
+            : text("No record with this code", "Geen registratie met deze code")}</strong></header>
+          {matches.map((record) => (
+            <button type="button" onClick={() => openRecord(record.tab, record.id)} key={`${record.kind}:${record.id}`}>
+              <span className="workspace-code-chip">{record.code || text("no code yet", "nog geen code")}</span>
+              <span><strong>{record.title}</strong><small>{kindLabels[record.kind] ?? record.kind}{record.subtitle ? ` · ${record.subtitle.replaceAll("_", " ")}` : ""}</small></span>
+              <ArrowRight size={15} />
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="workspace-launcher-grid client-workspace-grid">
         {visibleTiles.map((tile) => {
@@ -256,7 +309,7 @@ export function ProjectWorkspaceHome({
         })}
       </div>
 
-      {!visibleTiles.length ? <div className="workspace-launcher-empty"><Search size={22} /><div><strong>{text("No workspace item found", "Geen werkruimte-item gevonden")}</strong><p>{text("Try another term.", "Probeer een andere zoekterm.")}</p></div><button className="secondary-button" type="button" onClick={() => setQuery("")}>{text("Clear", "Wissen")}</button></div> : null}
+      {!visibleTiles.length && !matches.length ? <div className="workspace-launcher-empty"><Search size={22} /><div><strong>{text("No workspace item found", "Geen werkruimte-item gevonden")}</strong><p>{text("Try another term.", "Probeer een andere zoekterm.")}</p></div><button className="secondary-button" type="button" onClick={() => setQuery("")}>{text("Clear", "Wissen")}</button></div> : null}
 
       <div className="workspace-support-strip" aria-label={text("Supporting project tools", "Ondersteunende projecttools")}>
         <span><Clock3 size={15} /> {text("Supporting tools", "Ondersteunende tools")}</span>
