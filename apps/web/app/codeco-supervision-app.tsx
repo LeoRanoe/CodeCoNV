@@ -15,7 +15,6 @@ import {
   ChevronRight,
   ClipboardCheck,
   CloudSun,
-  Copy,
   FileCheck2,
   FileText,
   Gauge,
@@ -29,7 +28,6 @@ import {
   LogOut,
   MapPin,
   MessageSquareText,
-  Minus,
   PackageCheck,
   PenLine,
   Plus,
@@ -67,6 +65,7 @@ import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { ensureDailyBackup } from "@/lib/backups/client";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 import { startCompassWatch } from "@/lib/images/compass";
+import { WorkforceModal } from "@/app/workforce-register";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import { currentPushState, enablePushNotifications, type PushState } from "@/lib/notifications/push-client";
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
@@ -122,6 +121,7 @@ import {
   loadWorkspace,
   markNotificationRead,
   reportDateInSuriname,
+  loadPreviousWorkdayAttendance,
   saveAttendance,
   saveDailyCloseout,
   saveProjectStart,
@@ -1092,7 +1092,10 @@ export function CodecoSupervisionApp() {
 
   const openWorkspaceDailyRecord = (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => {
     if (type === "workforce") {
-      setModal("one_tap_log");
+      // Workforce opens the attendance screen itself. It used to open the whole daily log
+      // with the workforce block folded shut, which is a day report to read past for one
+      // headcount — and not what the tile promises: "attendance by contractor and trade".
+      setModal("attendance");
       return;
     }
     const isDelay = type === "delay";
@@ -1432,7 +1435,7 @@ export function CodecoSupervisionApp() {
               slug: answers.organizationSlug,
               displayName: answers.displayName,
             }),
-            "CODECO-werkruimte is centraal aangemaakt.",
+            text("The CODECO workspace has been created.", "De CODECO-werkruimte is aangemaakt."),
           );
           if (saved) await queryClient.invalidateQueries({ queryKey: ["workspace", session.user.id] });
           return Boolean(saved);
@@ -1452,7 +1455,7 @@ export function CodecoSupervisionApp() {
               organizationId: workspaceQuery.data.organizations[0].id,
               ...answers,
             }),
-            "Project, gebouw en standaardpartijen zijn centraal aangemaakt.",
+            text("Project, building and standard parties have been created.", "Project, gebouw en standaardpartijen zijn aangemaakt."),
           );
           if (saved) await queryClient.invalidateQueries({ queryKey: ["workspace", session.user.id] });
           return Boolean(saved);
@@ -1685,7 +1688,7 @@ export function CodecoSupervisionApp() {
               actions={dayActions}
               showCritical={() => {
                 navigate("acties");
-                setToast("De centrale actielijst is geopend.");
+                setToast(text("The action list is open.", "De actielijst is geopend."));
               }}
               buildings={selectedProject?.buildings ?? []}
               startChecks={dayQuery.data?.startChecks ?? []}
@@ -1957,7 +1960,7 @@ export function CodecoSupervisionApp() {
                   send: () => createProjectAction(supabase, input),
                 });
               })),
-              "Actie is met deadline en verantwoordelijke centraal aangemaakt.",
+              text("The action has been created with its deadline and responsible party.", "De actie is aangemaakt met deadline en verantwoordelijke."),
               { offlineCapable: true },
             );
             if (!saved) return false;
@@ -2017,24 +2020,24 @@ export function CodecoSupervisionApp() {
             if (!snapshot) return;
             const { downloadDailyReportPdf } = await import("@/lib/reports/daily-report-pdf");
             await downloadDailyReportPdf(snapshot);
-            setToast("De concept-PDF is gegenereerd uit de centraal opgeslagen rapportgegevens.");
+            setToast(text("The draft PDF has been generated from the saved report data.", "De concept-PDF is gegenereerd uit de opgeslagen rapportgegevens."));
           }}
           onDownloadDocx={async () => {
             const snapshot = buildDraftReportSnapshot();
             if (!snapshot) return;
             const { downloadDailyReportDocx } = await import("@/lib/reports/daily-report-docx");
             await downloadDailyReportDocx(snapshot);
-            setToast("Het concept-Worddocument is gegenereerd uit de centraal opgeslagen rapportgegevens.");
+            setToast(text("The draft Word document has been generated from the saved report data.", "Het concept-Worddocument is gegenereerd uit de opgeslagen rapportgegevens."));
           }}
           onSubmit={async () => {
             const reportId = dayQuery.data?.report?.id;
             if (!reportId) {
-              setToast("Start eerst het dagrapport voordat je het indient.");
+              setToast(text("Start the day report before submitting it.", "Start eerst het dagrapport voordat je het indient."));
               return;
             }
             const saved = await runSynced(
               () => submitReportForReview(supabase, String(reportId)),
-              "Dagrapport is centraal gereed voor review gezet.",
+              text("The day report has been submitted for review.", "Het dagrapport is gereed voor review gezet."),
             );
             if (!saved) return;
             setModal(null);
@@ -2053,19 +2056,23 @@ export function CodecoSupervisionApp() {
           initialAnswers={contextDailyCloseoutAnswers}
           projectStartAnswers={contextProjectStartAnswers}
           save={async (answers) => {
-            if (!dayQuery.data?.report) {
-              setToast("Start eerst het centrale dagrapport.");
-              return;
-            }
             const targetBuildings = contextIsAllBuildings ? selectedProject.buildings : [contextBuilding!];
             const saved = await runSynced(
-              () => Promise.all(targetBuildings.map((building) => saveDailyCloseout(supabase, {
-                report: dayQuery.data.report!,
-                projectId: selectedProject.id,
-                buildingId: building.id,
-                answers,
-              }))),
-              "Dagvragen zijn centraal opgeslagen en in de rapportcontrole verwerkt.",
+              async () => {
+                // Same as the attendance screen: answering the day's questions must not wait
+                // on a report the supervisor has to go and start somewhere else first.
+                const report = dayQuery.data?.report ?? await createOrGetReport(supabase, selectedProject.id, reportDate);
+                await Promise.all(targetBuildings.map((building) => saveDailyCloseout(supabase, {
+                  report,
+                  projectId: selectedProject.id,
+                  buildingId: building.id,
+                  answers,
+                })));
+              },
+              text(
+                "The day's questions are saved and carried into the report review.",
+                "De dagvragen zijn opgeslagen en in de rapportcontrole verwerkt.",
+              ),
             );
             if (!saved) return;
             if (targetBuildings.some((building) => building.id === selectedBuilding?.id)) {
@@ -2101,38 +2108,62 @@ export function CodecoSupervisionApp() {
         />
       ) : null}
       {modal === "attendance" && selectedProject && selectedBuilding ? (
-        <AttendanceModal
+        <WorkforceModal
           initialRows={attendance}
+          rowsForBuilding={(nextBuildingId) => dayQuery.data
+            ? attendanceRowsForBuilding(dayQuery.data, nextBuildingId, text("Unknown party", "Onbekende partij"), configuredShiftStart, configuredShiftEnd)
+            : []}
+          parties={dayQuery.data?.parties ?? []}
           disciplines={configuredDisciplines}
           defaultShiftStart={configuredShiftStart}
           defaultShiftEnd={configuredShiftEnd}
           buildings={selectedProject.buildings}
           defaultBuildingId={selectedBuilding.id}
-          day={dayQuery.data}
-          copyPreviousDay={() => {
-            setToast("Er is nog geen eerdere centrale werkdag met aanwezigheid om over te nemen.");
+          buildingName={buildingName}
+          weatherLabel={projectStartAnswers ? `${projectStartAnswers.temperatureC}°C` : ""}
+          busy={syncState === "saving"}
+          copyPreviousWorkday={async (workforceBuildingId) => {
+            const previous = await loadPreviousWorkdayAttendance(supabase, selectedProject.id, reportDate, workforceBuildingId);
+            if (!previous) return null;
+            const partyName = new Map((dayQuery.data?.parties ?? []).map((party) => [party.id, party.name]));
+            return {
+              reportDate: previous.reportDate,
+              rows: previous.rows.map((row) => ({
+                partyId: row.partyId,
+                party: partyName.get(row.partyId) ?? text("Unknown party", "Onbekende partij"),
+                discipline: row.discipline,
+                count: row.headcount,
+                shiftStart: row.shiftStart,
+                shiftEnd: row.shiftEnd,
+              })),
+            };
           }}
           close={() => setModal(null)}
           save={async (rows, attendanceBuildingId) => {
-            if (!dayQuery.data?.report) {
-              setToast("Start eerst het centrale dagrapport.");
-              return;
-            }
             const total = rows.reduce((sum, row) => sum + row.count, 0);
             const saved = await runSynced(
-              () => saveAttendance(supabase, {
-                report: dayQuery.data.report!,
-                projectId: selectedProject.id,
-                buildingId: attendanceBuildingId,
-                rows: rows.map((row) => ({
-                  partyId: row.partyId,
-                  discipline: row.discipline,
-                  count: row.count,
-                  shiftStart: row.shiftStart,
-                  shiftEnd: row.shiftEnd,
-                })),
-              }),
-              `${total} aanwezigen zijn centraal aan het dagrapport gekoppeld.`,
+              async () => {
+                // Counting the crew is often the first thing done on site, before anyone
+                // opened the day report. The report is started here rather than sending the
+                // supervisor away to press a button somewhere else first.
+                const report = dayQuery.data?.report ?? await createOrGetReport(supabase, selectedProject.id, reportDate);
+                await saveAttendance(supabase, {
+                  report,
+                  projectId: selectedProject.id,
+                  buildingId: attendanceBuildingId,
+                  rows: rows.map((row) => ({
+                    partyId: row.partyId,
+                    discipline: row.discipline,
+                    count: row.count,
+                    shiftStart: row.shiftStart,
+                    shiftEnd: row.shiftEnd,
+                  })),
+                });
+              },
+              text(
+                `${total} people present are now linked to today's day report.`,
+                `${total} aanwezigen zijn aan het dagrapport van vandaag gekoppeld.`,
+              ),
             );
             if (!saved) return;
             setModal(null);
@@ -2273,7 +2304,7 @@ export function CodecoSupervisionApp() {
           changeProjectRole={async (userId, projectId, roleCode, reason) => {
             const saved = await runSynced(
               () => setUserProjectRole(supabase, { organizationId: activeOrganizationId, userId, projectId, roleCode, reason }),
-              "Projectrechten aangepast en in de auditgeschiedenis vastgelegd.",
+              text("Project permissions changed and recorded in the audit history.", "Projectrechten aangepast en in de auditgeschiedenis vastgelegd."),
             );
             if (!saved) return false;
             await internalAccessQuery.refetch();
@@ -2299,7 +2330,7 @@ export function CodecoSupervisionApp() {
           markRead={async (notificationId) => {
             const saved = await runSynced(
               () => markNotificationRead(supabase, notificationId),
-              "Melding als gelezen gemarkeerd.",
+              text("Notification marked as read.", "Melding als gelezen gemarkeerd."),
             );
             if (saved) await queryClient.invalidateQueries({ queryKey: ["project-notifications", selectedProject?.id] });
           }}
@@ -4091,94 +4122,6 @@ function ManageBuildingsModal({
             </div>
             <button className="primary-button" type="button" disabled={busy || code.trim().length < 1 || name.trim().length < 2} onClick={() => void submit()}>{busy ? <Loader2 className="spin" size={15} /> : <Plus size={15} />} {text("Add building", "Gebouw toevoegen")}</button>
           </details>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function AttendanceModal({
-  initialRows,
-  disciplines,
-  defaultShiftStart,
-  defaultShiftEnd,
-  buildings,
-  defaultBuildingId,
-  day,
-  copyPreviousDay,
-  close,
-  save,
-}: {
-  initialRows: AttendanceRow[];
-  disciplines: string[];
-  defaultShiftStart: string;
-  defaultShiftEnd: string;
-  buildings: BuildingOption[];
-  defaultBuildingId: string;
-  day: Pick<ProjectDaySnapshot, "attendance" | "parties"> | undefined;
-  copyPreviousDay: () => void;
-  close: () => void;
-  save: (rows: AttendanceRow[], buildingId: string) => void | Promise<void>;
-}) {
-  const { text } = useLanguage();
-  const [buildingId, setBuildingId] = useState(() => resolveDefaultBuildingId(buildings, defaultBuildingId));
-  const [rows, setRows] = useState(initialRows);
-  const total = rows.reduce((sum, row) => sum + row.count, 0);
-
-  const switchBuilding = (nextBuildingId: string) => {
-    setBuildingId(nextBuildingId);
-    if (nextBuildingId === defaultBuildingId) {
-      setRows(initialRows);
-      return;
-    }
-    setRows(day ? attendanceRowsForBuilding(day, nextBuildingId, text("Unknown party", "Onbekende partij"), defaultShiftStart, defaultShiftEnd) : initialRows);
-  };
-
-  const changeCount = (id: string, delta: number) => {
-    setRows((current) => current.map((row) => row.id === id ? { ...row, count: Math.max(0, row.count + delta) } : row));
-  };
-  const changeDiscipline = (id: string, discipline: string) => {
-    setRows((current) => current.map((row) => row.id === id ? { ...row, discipline } : row));
-  };
-
-  return (
-    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
-      <section className="modal report-modal" role="dialog" aria-modal="true" aria-labelledby="attendance-title">
-        <header className="modal-header">
-          <div><h2 id="attendance-title">{text("Today's attendance", "Aanwezigheid vandaag")}</h2><p>{text("Parties, disciplines and shifts", "Partijen, disciplines en werktijden")} · {total} {text("people", "personen")}</p></div>
-          <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
-        </header>
-        <div className="modal-body">
-          <BuildingPicker id="attendance-building" buildings={buildings} value={buildingId} onChange={switchBuilding} />
-          <div className="attendance-toolbar">
-            <span><Users size={16} /><strong>{total}</strong> {text("people present in total", "aanwezigen in totaal")}</span>
-            <button className="ghost-button" type="button" onClick={copyPreviousDay}><Copy size={13} /> {text("Copy previous workday", "Vorige werkdag overnemen")}</button>
-          </div>
-          <div className="attendance-list">
-            {rows.map((row) => (
-              <div className="attendance-row" key={row.id}>
-                <span className="attendance-party">
-                  <strong>{row.party}</strong>
-                  <label>
-                    <span className="sr-only">{text(`Discipline for ${row.party}`, `Discipline voor ${row.party}`)}</span>
-                    <select value={row.discipline} onChange={(event) => changeDiscipline(row.id, event.target.value)}>
-                      {Array.from(new Set([row.discipline, ...disciplines])).map((discipline) => <option value={discipline} key={discipline}>{discipline}</option>)}
-                    </select>
-                  </label>
-                  <small>{row.shiftStart}–{row.shiftEnd}</small>
-                </span>
-                <span className="counter-control">
-                  <button type="button" onClick={() => changeCount(row.id, -1)} aria-label={text(`One fewer person at ${row.party}`, `Eén persoon minder bij ${row.party}`)}><Minus size={14} /></button>
-                  <strong>{row.count}</strong>
-                  <button type="button" onClick={() => changeCount(row.id, 1)} aria-label={text(`One more person at ${row.party}`, `Eén persoon meer bij ${row.party}`)}><Plus size={14} /></button>
-                </span>
-              </div>
-            ))}
-          </div>
-          <div className="modal-actions">
-            <span className="form-note"><CheckCircle2 size={13} /> {text("Totals are reused in the daily report.", "Totalen worden in het dagrapport hergebruikt.")}</span>
-            <button className="primary-button" type="button" onClick={() => void save(rows, buildingId)}>{text("Confirm attendance", "Aanwezigheid bevestigen")} <Check size={14} /></button>
-          </div>
         </div>
       </section>
     </div>

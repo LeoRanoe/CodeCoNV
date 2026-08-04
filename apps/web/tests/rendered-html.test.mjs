@@ -167,7 +167,7 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(app, /setInterval\(\(\) => setClock\(new Date\(\)\), 60_000\)/);
   assert.match(app, /WorkspaceStage/);
   assert.match(app, /Werkdag starten/);
-  assert.match(app, /Aanwezigheid vandaag/);
+  assert.match(app, /<WorkforceModal/);
   assert.match(app, /Hoe is het project vandaag gegaan\?/);
   assert.match(app, /Actual weather · automatic|Werkelijk weer · automatisch/);
   assert.match(app, /Triggered by|Geactiveerd door/);
@@ -602,7 +602,7 @@ test("implements the customer video workflows without external accounts", async 
   assert.match(dailyLog, /QC performed & advice|QC uitgevoerd & advies/);
   assert.match(dailyLog, /Health & safety issues|Gezondheid & veiligheid/);
   assert.match(dailyLog, /General advice to the contractor|Algemeen advies aan de aannemer/);
-  assert.match(dailyLog, /daily-log-counter/);
+  assert.match(dailyLog, /<WorkforceRegister/);
   assert.match(dailyLog, /DictateButton/);
   assert.match(operations, /Issue management|Issuebeheer/);
   assert.match(operations, /findingGroup/);
@@ -997,8 +997,7 @@ test("processes the second batch of annotated screens from 31 July", async () =>
   // fixed counter row for every project party.
   assert.match(dailyLog, /BuildingMultiPicker/);
   assert.match(dailyLog, /buildingIds: string\[\]/);
-  assert.match(dailyLog, /addWorkforceRow/);
-  assert.match(dailyLog, /Add person|Persoon toevoegen/);
+  assert.match(dailyLog, /<WorkforceRegister/);
   assert.match(app, /for \(const logBuildingId of targetBuildingIds\)/);
   assert.doesNotMatch(app, /Quick workforce entry or the complete client log/);
   assert.match(picker, /export function BuildingMultiPicker/);
@@ -1831,4 +1830,67 @@ test("processes the feedback of 4 August: photos first, written signatures, an N
   assert.doesNotMatch(drawingPicker, /drawings\[0\]\?\.id/);
   assert.match(visual, /<DrawingLocationPicker[\s\S]{0,200}buildings=\{buildings\}/);
   assert.match(styles, /\.drawing-choice-list/);
+});
+
+test("sends the workforce tile to the attendance screen, not to the day log", async () => {
+  const [app, workspaceHome] = await Promise.all([
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/project-workspace-home.tsx", import.meta.url), "utf8"),
+  ]);
+
+  // The tile promises attendance by contractor and trade, so it opens the attendance screen
+  // instead of the whole day report with the workforce block folded shut.
+  assert.match(workspaceHome, /id: "workforce"[\s\S]{0,220}openDailyRecord\("workforce"\)/);
+  assert.match(app, /if \(type === "workforce"\) \{[\s\S]{0,320}setModal\("attendance"\)/);
+  assert.doesNotMatch(app, /if \(type === "workforce"\) \{[\s\S]{0,320}setModal\("one_tap_log"\)/);
+
+  // Counting the crew is often the first thing done on site, so it starts the day report
+  // itself instead of refusing until one exists.
+  const attendanceModal = app.slice(app.indexOf('modal === "attendance"'), app.indexOf('modal === "one_tap_log"'));
+  assert.match(attendanceModal, /dayQuery\.data\?\.report \?\? await createOrGetReport/);
+  assert.doesNotMatch(attendanceModal, /Start eerst het centrale dagrapport/);
+
+  // Answering the day's questions has the same dead end behind it, and the same fix.
+  const dailyQuestionsModal = app.slice(app.indexOf('modal === "daily_questions"'), app.indexOf('modal === "project_start"'));
+  assert.match(dailyQuestionsModal, /dayQuery\.data\?\.report \?\? await createOrGetReport/);
+  assert.doesNotMatch(dailyQuestionsModal, /Start eerst het centrale dagrapport/);
+
+  // Every confirmation the supervisor sees speaks the language the app is set to. These were
+  // Dutch-only while the client runs the app in English.
+  assert.doesNotMatch(app, /setToast\("[^"]{15,}"\)/);
+  assert.doesNotMatch(app, /runSynced\([\s\S]{0,200}?\n\s+"[A-Z][^"]{15,}",\n/);
+});
+
+test("gives the workforce screen the full register, not a counter per party", async () => {
+  const [app, register, dailyLog, dataLayer, styles] = await Promise.all([
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/workforce-register.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/data.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // The screen this replaced could only count down one row per project party. A contractor
+  // with masons and carpenters on site could not be recorded at all.
+  assert.match(register, /export function addWorkforceRow/);
+  assert.match(register, /Add person|Persoon toevoegen/);
+  assert.match(register, /workforce-row-remove/);
+  assert.match(register, /type="time"/);
+  assert.match(register, /workforce-context/);
+  assert.match(register, /No project parties configured yet|Nog geen projectpartijen ingericht/);
+
+  // One register for both screens, so the standalone one can never fall behind again.
+  assert.match(app, /<WorkforceModal/);
+  assert.match(dailyLog, /<WorkforceRegister/);
+  assert.doesNotMatch(app, /function AttendanceModal/);
+
+  // "Copy previous workday" was a button that always reported there was nothing.
+  assert.match(dataLayer, /export async function loadPreviousWorkdayAttendance/);
+  assert.match(app, /loadPreviousWorkdayAttendance\(supabase/);
+  assert.match(register, /copyPreviousWorkday\(buildingId\)/);
+
+  // The markup of the removed screens left its styling behind; it must not pile up.
+  assert.doesNotMatch(styles, /\.one-tap-workforce/);
+  assert.doesNotMatch(styles, /\.attendance-toolbar/);
+  assert.match(styles, /\.workforce-row \{/);
 });

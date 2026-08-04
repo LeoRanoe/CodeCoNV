@@ -3963,73 +3963,6 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
-.attendance-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 14px;
-  padding: 12px 14px;
-  border-radius: 11px;
-  background: var(--ink-50);
-}
-
-.attendance-toolbar > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--ink-600);
-  font-size: 10px;
-}
-
-.attendance-toolbar > span strong {
-  color: var(--ink-950);
-  font-size: 16px;
-}
-
-.attendance-list {
-  display: grid;
-  gap: 8px;
-}
-
-.attendance-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 16px;
-  min-height: 70px;
-  padding: 12px 14px;
-  border: 1px solid var(--ink-100);
-  border-radius: 11px;
-}
-
-.attendance-party strong,
-.attendance-party small {
-  display: block;
-}
-
-.attendance-party strong {
-  font-size: 11px;
-}
-
-.attendance-party small {
-  margin-top: 4px;
-  color: var(--ink-500);
-  font-size: 9px;
-}
-
-.attendance-party select {
-  max-width: 220px;
-  margin-top: 5px;
-  padding: 5px 24px 5px 7px;
-  border: 1px solid var(--ink-200);
-  border-radius: 7px;
-  background: #fff;
-  color: var(--ink-700);
-  font: inherit;
-  font-size: 9px;
-}
-
 .counter-control {
   display: grid;
   grid-template-columns: 33px 38px 33px;
@@ -5177,14 +5110,12 @@ textarea:focus-visible {
     gap: 30px;
   }
 
-  .project-start-bar,
-  .attendance-toolbar {
+  .project-start-bar {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .project-start-bar .primary-button,
-  .attendance-toolbar .ghost-button {
+  .project-start-bar .primary-button {
     width: 100%;
   }
 
@@ -8493,64 +8424,15 @@ textarea:focus-visible {
 }
 .quick-issue-presets button.active { background: var(--green-soft); border-color: #7fbead; color: var(--green); font-weight: 750; }
 
-.one-tap-log-modal { max-width: 780px; }
-.one-tap-log-body { display: grid; gap: 15px; }
-.daily-log-mode-switch {
-  background: #edf3f3;
-  border-radius: 13px;
-  display: grid;
-  gap: 5px;
-  grid-template-columns: 1fr 1fr;
-  padding: 5px;
-}
-.daily-log-mode-switch button {
-  align-items: center;
-  background: transparent;
-  border: 0;
-  border-radius: 10px;
-  color: var(--ink-600);
-  cursor: pointer;
-  display: flex;
-  gap: 9px;
-  padding: 11px 12px;
-  text-align: left;
-}
-.daily-log-mode-switch button.active { background: #fff; box-shadow: 0 2px 8px rgba(24, 47, 57, .09); color: var(--green); }
-.daily-log-mode-switch button span { display: grid; gap: 2px; }
-.daily-log-mode-switch button strong { font-size: 11px; }
-.daily-log-mode-switch button small { color: var(--ink-500); font-size: 9px; }
-.client-daily-log-coverage {
-  background: linear-gradient(145deg, #f5faf8, #eef5f3);
-  border: 1px solid #cfe2dc;
-  border-radius: 14px;
-  padding: 12px 15px;
-}
-.client-daily-log-coverage[open] { display: grid; gap: 12px; padding: 15px; }
-.client-daily-log-coverage summary {
-  color: var(--ink-800);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 700;
-  list-style: none;
-}
-.client-daily-log-coverage summary::-webkit-details-marker { display: none; }
-.client-daily-log-coverage > div { margin-top: 12px; }
-.client-daily-log-coverage > div { display: grid; gap: 7px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.client-daily-log-coverage > div > span {
-  align-items: start;
-  background: rgba(255, 255, 255, .78);
-  border: 1px solid rgba(177, 207, 198, .7);
-  border-radius: 10px;
-  display: grid;
-  gap: 2px 7px;
-  grid-template-columns: auto 1fr;
-  padding: 9px;
-}
-.client-daily-log-coverage > div svg { color: var(--green); grid-row: 1 / 3; }
-.client-daily-log-coverage > div strong { color: var(--ink-800); font-size: 10px; }
-.client-daily-log-coverage > div small { color: var(--ink-500); font-size: 9px; line-height: 1.35; }
-.one-tap-context { display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.one-tap-context > span {
+/*
+ * The workforce screen: who is on site, per contractor and per trade. It reuses the shape the
+ * old workforce log had — a context strip, an add row and a counted list — because that is the
+ * layout the client already knows from the screen this one replaces.
+ */
+.workforce-modal { max-width: 780px; }
+.workforce-body { display: grid; gap: 15px; }
+.workforce-context { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.workforce-context > span {
   align-items: center;
   background: #f3f7f7;
   border-radius: 11px;
@@ -8559,16 +8441,14 @@ textarea:focus-visible {
   grid-template-columns: auto 1fr;
   padding: 12px;
 }
-.one-tap-context svg { color: var(--green); grid-row: 1 / 3; }
-.one-tap-context small { color: var(--ink-500); font-size: 9px; text-transform: uppercase; }
-.one-tap-context strong { color: var(--ink-800); font-size: 11px; }
-.one-tap-workforce { border: 1px solid var(--ink-200); border-radius: 13px; display: grid; gap: 10px; padding: 13px; }
-.one-tap-workforce > header { align-items: center; display: grid; gap: 9px; grid-template-columns: auto 1fr auto; }
-.one-tap-workforce > header > span { align-items: center; background: var(--green-soft); border-radius: 9px; color: var(--green); display: flex; height: 34px; justify-content: center; width: 34px; }
-.one-tap-workforce > header h3 { color: var(--ink-900); font-size: 13px; margin: 0; }
-.one-tap-workforce > header p { color: var(--ink-500); font-size: 9px; margin: 2px 0 0; }
-.one-tap-workforce > header > strong { color: var(--green); font-size: 20px; }
-.one-tap-workforce-add {
+.workforce-context svg { color: var(--green); grid-row: 1 / 3; }
+.workforce-context small { color: var(--ink-500); font-size: 9px; text-transform: uppercase; }
+.workforce-context strong { color: var(--ink-800); font-size: 11px; }
+
+.workforce-toolbar { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; }
+.workforce-toolbar small { color: var(--muted); font-size: 10px; }
+
+.workforce-add {
   align-items: end;
   background: #f5f8f8;
   border-radius: 10px;
@@ -8577,15 +8457,55 @@ textarea:focus-visible {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   padding: 10px;
 }
-.one-tap-workforce-add label { display: grid; gap: 4px; }
-.one-tap-workforce-add label > span { color: var(--ink-500); font-size: 9px; font-weight: 750; text-transform: uppercase; }
-.one-tap-workforce-add select { background: #fff; border: 1px solid var(--ink-200); border-radius: 8px; min-height: 40px; padding: 7px 9px; }
-.one-tap-workforce-add .one-tap-trade-add { min-height: 40px; white-space: nowrap; }
-.attendance-list.compact { max-height: 280px; overflow-y: auto; }
-.one-tap-note { display: grid; gap: 10px; }
-.one-tap-note h3 { color: var(--ink-900); font-size: 13px; margin: 3px 0 0; }
-.one-tap-photos { display: grid; gap: 10px; }
-.one-tap-photos h3 { color: var(--ink-900); font-size: 13px; margin: 3px 0 0; }
+.workforce-add .form-field { gap: 4px; margin: 0; }
+.workforce-add-button { align-items: center; display: inline-flex; gap: 6px; min-height: 44px; white-space: nowrap; }
+
+.workforce-rows { display: grid; gap: 8px; }
+.workforce-row {
+  align-items: center;
+  border: 1px solid var(--ink-200);
+  border-radius: 11px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  padding: 9px 11px;
+}
+.workforce-row-name { display: grid; min-width: 0; }
+.workforce-row-name strong { color: var(--ink-900); font-size: 13px; }
+.workforce-row-name small { color: var(--muted); font-size: 10px; }
+.workforce-shift { align-items: center; display: flex; gap: 4px; }
+.workforce-shift input {
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: 8px;
+  color: var(--ink-700);
+  min-height: 38px;
+  padding: 4px 7px;
+}
+.workforce-shift em { color: var(--ink-500); font-style: normal; }
+.workforce-shift-static { color: var(--muted); font-size: 10px; }
+.workforce-row-remove {
+  align-items: center;
+  background: none;
+  border: 1px solid var(--ink-200);
+  border-radius: 9px;
+  color: var(--ink-600);
+  cursor: pointer;
+  display: inline-flex;
+  height: 38px;
+  justify-content: center;
+  width: 38px;
+}
+.workforce-row-remove:hover { border-color: var(--red); color: var(--red); }
+.workforce-empty { margin: 4px 0; }
+
+@media (max-width: 640px) {
+  .workforce-add { grid-template-columns: 1fr 1fr; }
+  .workforce-add-button { grid-column: 1 / -1; }
+  /* The counter and the shift each get a full row rather than four columns on a phone. */
+  .workforce-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .workforce-shift { grid-column: 1 / -1; }
+}
 
 .external-source-image { background: #edf2f2; border-radius: 12px; max-height: 360px; object-fit: cover; width: 100%; }
 .external-response-panel { border-top: 1px solid #e0e7e8; display: grid; gap: 13px; padding-top: 16px; }
@@ -8875,50 +8795,8 @@ textarea:focus-visible {
 .daily-log-extra { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 13px 16px; }
 .daily-log-extra summary { cursor: pointer; display: flex; font-size: 12.5px; font-weight: 650; gap: 10px; justify-content: space-between; }
 .daily-log-extra summary span { color: var(--muted); font-weight: 500; }
-.daily-log-workforce { display: grid; gap: 9px; margin: 13px 0; }
-.daily-log-workforce > div { align-items: center; display: flex; gap: 12px; justify-content: space-between; }
-.daily-log-workforce span { display: grid; }
-.daily-log-workforce small { color: var(--muted); font-size: 11px; }
-.daily-log-counter { align-items: center; display: flex; gap: 10px; }
-.daily-log-counter button {
-  background: var(--ink-50);
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  cursor: pointer;
-  font-size: 17px;
-  line-height: 1;
-  min-height: 40px;
-  min-width: 40px;
-}
-.daily-log-counter button:hover { border-color: var(--green); color: var(--green); }
-.daily-log-counter b { min-width: 26px; text-align: center; }
-.daily-log-footer { flex-wrap: wrap; margin: 0; padding: 18px 26px 22px; }
-
-/* Add the trade that is on site, instead of a fixed row per project party. */
-.daily-log-workforce-add {
-  align-items: end;
-  display: grid;
-  gap: 9px;
-  grid-template-columns: 1fr 1fr auto;
-  margin: 13px 0 4px;
-}
-.daily-log-workforce-add .form-field { gap: 4px; margin: 0; }
-.daily-log-row-remove {
-  align-items: center;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--red);
-  display: grid;
-  height: 30px;
-  justify-content: center;
-  width: 30px;
-}
-.daily-log-row-remove:hover { border-color: var(--red); }
 
 @media (max-width: 620px) {
-  .daily-log-workforce-add { grid-template-columns: 1fr 1fr; }
-  .daily-log-workforce-add button { grid-column: 1 / -1; }
 }
 
 /* Every photo of the day gets a thumbnail and a name; the report needs both. */
@@ -8976,9 +8854,7 @@ textarea:focus-visible {
 }
 
 @media (max-width: 620px) {
-  .daily-log-mode-switch, .client-daily-log-coverage > div, .one-tap-context, .external-choice-grid { grid-template-columns: 1fr; }
-  .one-tap-workforce-add { grid-template-columns: 1fr; }
-  .one-tap-workforce-add .one-tap-trade-add { width: 100%; }
+  .external-choice-grid { grid-template-columns: 1fr; }
   .controlled-document-dates > .form-grid { grid-template-columns: 1fr; }
   .controlled-document-history { grid-template-columns: 1fr; }
   .controlled-document-history > div { grid-column: 1; }

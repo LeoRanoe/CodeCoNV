@@ -744,6 +744,56 @@ export async function createBuilding(
   return result.data as NewBuilding;
 }
 
+export type PreviousWorkdayAttendance = {
+  reportDate: string;
+  rows: Array<{
+    partyId: string;
+    discipline: string;
+    headcount: number;
+    shiftStart: string;
+    shiftEnd: string;
+  }>;
+};
+
+/**
+ * The crew of the last workday that actually had one, so the supervisor does not retype the
+ * same twelve trades every morning. Days before it are walked back one by one: a project with
+ * a public holiday or a rained-off day still has a sensible day to copy from.
+ */
+export async function loadPreviousWorkdayAttendance(
+  client: SupabaseClient,
+  projectId: string,
+  beforeDate: string,
+  buildingId: string,
+): Promise<PreviousWorkdayAttendance | null> {
+  const reportResult = await client
+    .from("day_reports")
+    .select("id,report_date")
+    .eq("project_id", projectId)
+    .lt("report_date", beforeDate)
+    .order("report_date", { ascending: false })
+    .limit(14);
+  fail(reportResult.error);
+  for (const report of reportResult.data ?? []) {
+    const attendanceResult = await client
+      .from("attendance_entries")
+      .select("party_id,discipline,shift_start,shift_end,headcount")
+      .eq("day_report_id", report.id as string)
+      .eq("building_id", buildingId)
+      .gt("headcount", 0);
+    fail(attendanceResult.error);
+    const rows = (attendanceResult.data ?? []).map((row) => ({
+      partyId: String(row.party_id),
+      discipline: String(row.discipline),
+      headcount: Number(row.headcount),
+      shiftStart: String(row.shift_start).slice(0, 5),
+      shiftEnd: String(row.shift_end).slice(0, 5),
+    }));
+    if (rows.length) return { reportDate: String(report.report_date), rows };
+  }
+  return null;
+}
+
 export async function createOrGetReport(client: SupabaseClient, projectId: string, reportDate: string) {
   const result = await client.rpc("create_day_report", {
     p_project_id: projectId,
