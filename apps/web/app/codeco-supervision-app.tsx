@@ -15,7 +15,6 @@ import {
   ChevronRight,
   ClipboardCheck,
   CloudSun,
-  Copy,
   FileCheck2,
   FileText,
   Gauge,
@@ -29,7 +28,6 @@ import {
   LogOut,
   MapPin,
   MessageSquareText,
-  Minus,
   PackageCheck,
   PenLine,
   Plus,
@@ -67,6 +65,7 @@ import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { ensureDailyBackup } from "@/lib/backups/client";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 import { startCompassWatch } from "@/lib/images/compass";
+import { WorkforceModal } from "@/app/workforce-register";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import { currentPushState, enablePushNotifications, type PushState } from "@/lib/notifications/push-client";
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
@@ -122,6 +121,7 @@ import {
   loadWorkspace,
   markNotificationRead,
   reportDateInSuriname,
+  loadPreviousWorkdayAttendance,
   saveAttendance,
   saveDailyCloseout,
   saveProjectStart,
@@ -2109,19 +2109,35 @@ export function CodecoSupervisionApp() {
         />
       ) : null}
       {modal === "attendance" && selectedProject && selectedBuilding ? (
-        <AttendanceModal
+        <WorkforceModal
           initialRows={attendance}
+          rowsForBuilding={(nextBuildingId) => dayQuery.data
+            ? attendanceRowsForBuilding(dayQuery.data, nextBuildingId, text("Unknown party", "Onbekende partij"), configuredShiftStart, configuredShiftEnd)
+            : []}
+          parties={dayQuery.data?.parties ?? []}
           disciplines={configuredDisciplines}
           defaultShiftStart={configuredShiftStart}
           defaultShiftEnd={configuredShiftEnd}
           buildings={selectedProject.buildings}
           defaultBuildingId={selectedBuilding.id}
-          day={dayQuery.data}
-          copyPreviousDay={() => {
-            setToast(text(
-              "There is no earlier workday with attendance to copy yet.",
-              "Er is nog geen eerdere werkdag met aanwezigheid om over te nemen.",
-            ));
+          buildingName={buildingName}
+          weatherLabel={projectStartAnswers ? `${projectStartAnswers.temperatureC}°C` : ""}
+          busy={syncState === "saving"}
+          copyPreviousWorkday={async (workforceBuildingId) => {
+            const previous = await loadPreviousWorkdayAttendance(supabase, selectedProject.id, reportDate, workforceBuildingId);
+            if (!previous) return null;
+            const partyName = new Map((dayQuery.data?.parties ?? []).map((party) => [party.id, party.name]));
+            return {
+              reportDate: previous.reportDate,
+              rows: previous.rows.map((row) => ({
+                partyId: row.partyId,
+                party: partyName.get(row.partyId) ?? text("Unknown party", "Onbekende partij"),
+                discipline: row.discipline,
+                count: row.headcount,
+                shiftStart: row.shiftStart,
+                shiftEnd: row.shiftEnd,
+              })),
+            };
           }}
           close={() => setModal(null)}
           save={async (rows, attendanceBuildingId) => {
@@ -4107,102 +4123,6 @@ function ManageBuildingsModal({
             </div>
             <button className="primary-button" type="button" disabled={busy || code.trim().length < 1 || name.trim().length < 2} onClick={() => void submit()}>{busy ? <Loader2 className="spin" size={15} /> : <Plus size={15} />} {text("Add building", "Gebouw toevoegen")}</button>
           </details>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function AttendanceModal({
-  initialRows,
-  disciplines,
-  defaultShiftStart,
-  defaultShiftEnd,
-  buildings,
-  defaultBuildingId,
-  day,
-  copyPreviousDay,
-  close,
-  save,
-}: {
-  initialRows: AttendanceRow[];
-  disciplines: string[];
-  defaultShiftStart: string;
-  defaultShiftEnd: string;
-  buildings: BuildingOption[];
-  defaultBuildingId: string;
-  day: Pick<ProjectDaySnapshot, "attendance" | "parties"> | undefined;
-  copyPreviousDay: () => void;
-  close: () => void;
-  save: (rows: AttendanceRow[], buildingId: string) => void | Promise<void>;
-}) {
-  const { text } = useLanguage();
-  const [buildingId, setBuildingId] = useState(() => resolveDefaultBuildingId(buildings, defaultBuildingId));
-  const [rows, setRows] = useState(initialRows);
-  const total = rows.reduce((sum, row) => sum + row.count, 0);
-
-  const switchBuilding = (nextBuildingId: string) => {
-    setBuildingId(nextBuildingId);
-    if (nextBuildingId === defaultBuildingId) {
-      setRows(initialRows);
-      return;
-    }
-    setRows(day ? attendanceRowsForBuilding(day, nextBuildingId, text("Unknown party", "Onbekende partij"), defaultShiftStart, defaultShiftEnd) : initialRows);
-  };
-
-  const changeCount = (id: string, delta: number) => {
-    setRows((current) => current.map((row) => row.id === id ? { ...row, count: Math.max(0, row.count + delta) } : row));
-  };
-  const changeDiscipline = (id: string, discipline: string) => {
-    setRows((current) => current.map((row) => row.id === id ? { ...row, discipline } : row));
-  };
-
-  return (
-    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
-      <section className="modal report-modal" role="dialog" aria-modal="true" aria-labelledby="attendance-title">
-        <header className="modal-header">
-          <div><h2 id="attendance-title">{text("Today's attendance", "Aanwezigheid vandaag")}</h2><p>{text("Parties, disciplines and shifts", "Partijen, disciplines en werktijden")} · {total} {text("people", "personen")}</p></div>
-          <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
-        </header>
-        <div className="modal-body">
-          <BuildingPicker id="attendance-building" buildings={buildings} value={buildingId} onChange={switchBuilding} />
-          <div className="attendance-toolbar">
-            <span><Users size={16} /><strong>{total}</strong> {text("people present in total", "aanwezigen in totaal")}</span>
-            <button className="ghost-button" type="button" onClick={copyPreviousDay}><Copy size={13} /> {text("Copy previous workday", "Vorige werkdag overnemen")}</button>
-          </div>
-          <div className="attendance-list">
-            {/* Without project parties there is nobody to count, and an empty list with a
-                confirm button under it says nothing about why. */}
-            {!rows.length ? (
-              <p className="form-helper">{text(
-                "No project parties have been configured yet, so there is nobody to count. Add the contractors under Management · project parties.",
-                "Er zijn nog geen projectpartijen ingesteld, dus er is niemand om te tellen. Voeg de aannemers toe bij Beheer · projectpartijen.",
-              )}</p>
-            ) : null}
-            {rows.map((row) => (
-              <div className="attendance-row" key={row.id}>
-                <span className="attendance-party">
-                  <strong>{row.party}</strong>
-                  <label>
-                    <span className="sr-only">{text(`Discipline for ${row.party}`, `Discipline voor ${row.party}`)}</span>
-                    <select value={row.discipline} onChange={(event) => changeDiscipline(row.id, event.target.value)}>
-                      {Array.from(new Set([row.discipline, ...disciplines])).map((discipline) => <option value={discipline} key={discipline}>{discipline}</option>)}
-                    </select>
-                  </label>
-                  <small>{row.shiftStart}–{row.shiftEnd}</small>
-                </span>
-                <span className="counter-control">
-                  <button type="button" onClick={() => changeCount(row.id, -1)} aria-label={text(`One fewer person at ${row.party}`, `Eén persoon minder bij ${row.party}`)}><Minus size={14} /></button>
-                  <strong>{row.count}</strong>
-                  <button type="button" onClick={() => changeCount(row.id, 1)} aria-label={text(`One more person at ${row.party}`, `Eén persoon meer bij ${row.party}`)}><Plus size={14} /></button>
-                </span>
-              </div>
-            ))}
-          </div>
-          <div className="modal-actions">
-            <span className="form-note"><CheckCircle2 size={13} /> {text("Totals are reused in the daily report.", "Totalen worden in het dagrapport hergebruikt.")}</span>
-            <button className="primary-button" type="button" disabled={!rows.length} onClick={() => void save(rows, buildingId)}>{text("Confirm attendance", "Aanwezigheid bevestigen")} <Check size={14} /></button>
-          </div>
         </div>
       </section>
     </div>
