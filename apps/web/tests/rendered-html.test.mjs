@@ -1737,6 +1737,13 @@ test("sends the workforce tile to the attendance screen, not to the day log", as
   assert.match(attendanceModal, /dayQuery\.data\?\.report \?\? await createOrGetReport/);
   assert.doesNotMatch(attendanceModal, /Start eerst het centrale dagrapport/);
 
-  // Both messages on this screen speak the language the app is set to.
-  assert.doesNotMatch(app, /setToast\("Er is nog geen eerdere centrale werkdag/);
+  // Answering the day's questions has the same dead end behind it, and the same fix.
+  const dailyQuestionsModal = app.slice(app.indexOf('modal === "daily_questions"'), app.indexOf('modal === "project_start"'));
+  assert.match(dailyQuestionsModal, /dayQuery\.data\?\.report \?\? await createOrGetReport/);
+  assert.doesNotMatch(dailyQuestionsModal, /Start eerst het centrale dagrapport/);
+
+  // Every confirmation the supervisor sees speaks the language the app is set to. These were
+  // Dutch-only while the client runs the app in English.
+  assert.doesNotMatch(app, /setToast\("[^"]{15,}"\)/);
+  assert.doesNotMatch(app, /runSynced\([\s\S]{0,200}?\n\s+"[A-Z][^"]{15,}",\n/);
 });

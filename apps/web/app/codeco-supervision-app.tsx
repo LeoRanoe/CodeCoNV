@@ -1435,7 +1435,7 @@ export function CodecoSupervisionApp() {
               slug: answers.organizationSlug,
               displayName: answers.displayName,
             }),
-            "CODECO-werkruimte is centraal aangemaakt.",
+            text("The CODECO workspace has been created.", "De CODECO-werkruimte is aangemaakt."),
           );
           if (saved) await queryClient.invalidateQueries({ queryKey: ["workspace", session.user.id] });
           return Boolean(saved);
@@ -1455,7 +1455,7 @@ export function CodecoSupervisionApp() {
               organizationId: workspaceQuery.data.organizations[0].id,
               ...answers,
             }),
-            "Project, gebouw en standaardpartijen zijn centraal aangemaakt.",
+            text("Project, building and standard parties have been created.", "Project, gebouw en standaardpartijen zijn aangemaakt."),
           );
           if (saved) await queryClient.invalidateQueries({ queryKey: ["workspace", session.user.id] });
           return Boolean(saved);
@@ -1688,7 +1688,7 @@ export function CodecoSupervisionApp() {
               actions={dayActions}
               showCritical={() => {
                 navigate("acties");
-                setToast("De centrale actielijst is geopend.");
+                setToast(text("The action list is open.", "De actielijst is geopend."));
               }}
               buildings={selectedProject?.buildings ?? []}
               startChecks={dayQuery.data?.startChecks ?? []}
@@ -1961,7 +1961,7 @@ export function CodecoSupervisionApp() {
                   send: () => createProjectAction(supabase, input),
                 });
               })),
-              "Actie is met deadline en verantwoordelijke centraal aangemaakt.",
+              text("The action has been created with its deadline and responsible party.", "De actie is aangemaakt met deadline en verantwoordelijke."),
               { offlineCapable: true },
             );
             if (!saved) return false;
@@ -2021,24 +2021,24 @@ export function CodecoSupervisionApp() {
             if (!snapshot) return;
             const { downloadDailyReportPdf } = await import("@/lib/reports/daily-report-pdf");
             await downloadDailyReportPdf(snapshot);
-            setToast("De concept-PDF is gegenereerd uit de centraal opgeslagen rapportgegevens.");
+            setToast(text("The draft PDF has been generated from the saved report data.", "De concept-PDF is gegenereerd uit de opgeslagen rapportgegevens."));
           }}
           onDownloadDocx={async () => {
             const snapshot = buildDraftReportSnapshot();
             if (!snapshot) return;
             const { downloadDailyReportDocx } = await import("@/lib/reports/daily-report-docx");
             await downloadDailyReportDocx(snapshot);
-            setToast("Het concept-Worddocument is gegenereerd uit de centraal opgeslagen rapportgegevens.");
+            setToast(text("The draft Word document has been generated from the saved report data.", "Het concept-Worddocument is gegenereerd uit de opgeslagen rapportgegevens."));
           }}
           onSubmit={async () => {
             const reportId = dayQuery.data?.report?.id;
             if (!reportId) {
-              setToast("Start eerst het dagrapport voordat je het indient.");
+              setToast(text("Start the day report before submitting it.", "Start eerst het dagrapport voordat je het indient."));
               return;
             }
             const saved = await runSynced(
               () => submitReportForReview(supabase, String(reportId)),
-              "Dagrapport is centraal gereed voor review gezet.",
+              text("The day report has been submitted for review.", "Het dagrapport is gereed voor review gezet."),
             );
             if (!saved) return;
             setModal(null);
@@ -2057,19 +2057,23 @@ export function CodecoSupervisionApp() {
           initialAnswers={contextDailyCloseoutAnswers}
           projectStartAnswers={contextProjectStartAnswers}
           save={async (answers) => {
-            if (!dayQuery.data?.report) {
-              setToast("Start eerst het centrale dagrapport.");
-              return;
-            }
             const targetBuildings = contextIsAllBuildings ? selectedProject.buildings : [contextBuilding!];
             const saved = await runSynced(
-              () => Promise.all(targetBuildings.map((building) => saveDailyCloseout(supabase, {
-                report: dayQuery.data.report!,
-                projectId: selectedProject.id,
-                buildingId: building.id,
-                answers,
-              }))),
-              "Dagvragen zijn centraal opgeslagen en in de rapportcontrole verwerkt.",
+              async () => {
+                // Same as the attendance screen: answering the day's questions must not wait
+                // on a report the supervisor has to go and start somewhere else first.
+                const report = dayQuery.data?.report ?? await createOrGetReport(supabase, selectedProject.id, reportDate);
+                await Promise.all(targetBuildings.map((building) => saveDailyCloseout(supabase, {
+                  report,
+                  projectId: selectedProject.id,
+                  buildingId: building.id,
+                  answers,
+                })));
+              },
+              text(
+                "The day's questions are saved and carried into the report review.",
+                "De dagvragen zijn opgeslagen en in de rapportcontrole verwerkt.",
+              ),
             );
             if (!saved) return;
             if (targetBuildings.some((building) => building.id === selectedBuilding?.id)) {
@@ -2285,7 +2289,7 @@ export function CodecoSupervisionApp() {
           changeProjectRole={async (userId, projectId, roleCode, reason) => {
             const saved = await runSynced(
               () => setUserProjectRole(supabase, { organizationId: activeOrganizationId, userId, projectId, roleCode, reason }),
-              "Projectrechten aangepast en in de auditgeschiedenis vastgelegd.",
+              text("Project permissions changed and recorded in the audit history.", "Projectrechten aangepast en in de auditgeschiedenis vastgelegd."),
             );
             if (!saved) return false;
             await internalAccessQuery.refetch();
@@ -2311,7 +2315,7 @@ export function CodecoSupervisionApp() {
           markRead={async (notificationId) => {
             const saved = await runSynced(
               () => markNotificationRead(supabase, notificationId),
-              "Melding als gelezen gemarkeerd.",
+              text("Notification marked as read.", "Melding als gelezen gemarkeerd."),
             );
             if (saved) await queryClient.invalidateQueries({ queryKey: ["project-notifications", selectedProject?.id] });
           }}
