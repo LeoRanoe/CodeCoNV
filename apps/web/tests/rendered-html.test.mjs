@@ -1718,3 +1718,25 @@ test("processes the three annotated capture screens from 2 August", async () => 
   // The photo library and the marker panel stay away while a photo is waiting to be saved.
   assert.match(visual, /captures\.length && !showUpload/);
 });
+
+test("sends the workforce tile to the attendance screen, not to the day log", async () => {
+  const [app, workspaceHome] = await Promise.all([
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/project-workspace-home.tsx", import.meta.url), "utf8"),
+  ]);
+
+  // The tile promises attendance by contractor and trade, so it opens the attendance screen
+  // instead of the whole day report with the workforce block folded shut.
+  assert.match(workspaceHome, /id: "workforce"[\s\S]{0,220}openDailyRecord\("workforce"\)/);
+  assert.match(app, /if \(type === "workforce"\) \{[\s\S]{0,320}setModal\("attendance"\)/);
+  assert.doesNotMatch(app, /if \(type === "workforce"\) \{[\s\S]{0,320}setModal\("one_tap_log"\)/);
+
+  // Counting the crew is often the first thing done on site, so it starts the day report
+  // itself instead of refusing until one exists.
+  const attendanceModal = app.slice(app.indexOf('modal === "attendance"'), app.indexOf('modal === "one_tap_log"'));
+  assert.match(attendanceModal, /dayQuery\.data\?\.report \?\? await createOrGetReport/);
+  assert.doesNotMatch(attendanceModal, /Start eerst het centrale dagrapport/);
+
+  // Both messages on this screen speak the language the app is set to.
+  assert.doesNotMatch(app, /setToast\("Er is nog geen eerdere centrale werkdag/);
+});

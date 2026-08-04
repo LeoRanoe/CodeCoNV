@@ -1092,7 +1092,10 @@ export function CodecoSupervisionApp() {
 
   const openWorkspaceDailyRecord = (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => {
     if (type === "workforce") {
-      setModal("one_tap_log");
+      // Workforce opens the attendance screen itself. It used to open the whole daily log
+      // with the workforce block folded shut, which is a day report to read past for one
+      // headcount — and not what the tile promises: "attendance by contractor and trade".
+      setModal("attendance");
       return;
     }
     const isDelay = type === "delay";
@@ -2111,29 +2114,37 @@ export function CodecoSupervisionApp() {
           defaultBuildingId={selectedBuilding.id}
           day={dayQuery.data}
           copyPreviousDay={() => {
-            setToast("Er is nog geen eerdere centrale werkdag met aanwezigheid om over te nemen.");
+            setToast(text(
+              "There is no earlier workday with attendance to copy yet.",
+              "Er is nog geen eerdere werkdag met aanwezigheid om over te nemen.",
+            ));
           }}
           close={() => setModal(null)}
           save={async (rows, attendanceBuildingId) => {
-            if (!dayQuery.data?.report) {
-              setToast("Start eerst het centrale dagrapport.");
-              return;
-            }
             const total = rows.reduce((sum, row) => sum + row.count, 0);
             const saved = await runSynced(
-              () => saveAttendance(supabase, {
-                report: dayQuery.data.report!,
-                projectId: selectedProject.id,
-                buildingId: attendanceBuildingId,
-                rows: rows.map((row) => ({
-                  partyId: row.partyId,
-                  discipline: row.discipline,
-                  count: row.count,
-                  shiftStart: row.shiftStart,
-                  shiftEnd: row.shiftEnd,
-                })),
-              }),
-              `${total} aanwezigen zijn centraal aan het dagrapport gekoppeld.`,
+              async () => {
+                // Counting the crew is often the first thing done on site, before anyone
+                // opened the day report. The report is started here rather than sending the
+                // supervisor away to press a button somewhere else first.
+                const report = dayQuery.data?.report ?? await createOrGetReport(supabase, selectedProject.id, reportDate);
+                await saveAttendance(supabase, {
+                  report,
+                  projectId: selectedProject.id,
+                  buildingId: attendanceBuildingId,
+                  rows: rows.map((row) => ({
+                    partyId: row.partyId,
+                    discipline: row.discipline,
+                    count: row.count,
+                    shiftStart: row.shiftStart,
+                    shiftEnd: row.shiftEnd,
+                  })),
+                });
+              },
+              text(
+                `${total} people present are now linked to today's day report.`,
+                `${total} aanwezigen zijn aan het dagrapport van vandaag gekoppeld.`,
+              ),
             );
             if (!saved) return;
             setModal(null);
@@ -4156,6 +4167,14 @@ function AttendanceModal({
             <button className="ghost-button" type="button" onClick={copyPreviousDay}><Copy size={13} /> {text("Copy previous workday", "Vorige werkdag overnemen")}</button>
           </div>
           <div className="attendance-list">
+            {/* Without project parties there is nobody to count, and an empty list with a
+                confirm button under it says nothing about why. */}
+            {!rows.length ? (
+              <p className="form-helper">{text(
+                "No project parties have been configured yet, so there is nobody to count. Add the contractors under Management · project parties.",
+                "Er zijn nog geen projectpartijen ingesteld, dus er is niemand om te tellen. Voeg de aannemers toe bij Beheer · projectpartijen.",
+              )}</p>
+            ) : null}
             {rows.map((row) => (
               <div className="attendance-row" key={row.id}>
                 <span className="attendance-party">
@@ -4178,7 +4197,7 @@ function AttendanceModal({
           </div>
           <div className="modal-actions">
             <span className="form-note"><CheckCircle2 size={13} /> {text("Totals are reused in the daily report.", "Totalen worden in het dagrapport hergebruikt.")}</span>
-            <button className="primary-button" type="button" onClick={() => void save(rows, buildingId)}>{text("Confirm attendance", "Aanwezigheid bevestigen")} <Check size={14} /></button>
+            <button className="primary-button" type="button" disabled={!rows.length} onClick={() => void save(rows, buildingId)}>{text("Confirm attendance", "Aanwezigheid bevestigen")} <Check size={14} /></button>
           </div>
         </div>
       </section>
