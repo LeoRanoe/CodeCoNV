@@ -1879,7 +1879,8 @@ test("gives the workforce screen the full register, not a counter per party", as
   assert.match(register, /Add person|Persoon toevoegen/);
   assert.match(register, /workforce-row-remove/);
   assert.match(register, /type="time"/);
-  assert.match(register, /workforce-context/);
+  // The context tiles were struck through later; the headcount they left is what remains.
+  assert.match(register, /workforce-headline/);
   assert.match(register, /No project parties configured yet|Nog geen projectpartijen ingericht/);
 
   // One register for both screens, so the standalone one can never fall behind again.
@@ -1896,6 +1897,20 @@ test("gives the workforce screen the full register, not a counter per party", as
   assert.doesNotMatch(styles, /\.one-tap-workforce/);
   assert.doesNotMatch(styles, /\.attendance-toolbar/);
   assert.match(styles, /\.workforce-row \{/);
+
+  // The client struck three things through on this very screen, and they must stay struck.
+  // A fixed row per project party at zero — "Opdrachtgever 0, Supervisie 0, Uitvoering 0".
+  assert.match(register, /initialRows\.filter\(\(row\) => row\.count > 0\)/);
+  // The location and weather tiles above the crew.
+  assert.doesNotMatch(register, /workforce-context/);
+  assert.doesNotMatch(register, /weatherLabel/);
+  assert.doesNotMatch(styles, /\.workforce-context/);
+  // "Ik kan hier niet van beide gebouwen invullen!" — every building keeps its own crew and
+  // one confirm writes them all.
+  assert.match(register, /rowsByBuilding/);
+  assert.match(register, /workforce-buildings/);
+  assert.match(register, /filledBuildings\.map\(/);
+  assert.match(app, /for \(const entry of perBuilding\)/);
 });
 
 test("processes the annotated screens of 4 August: ordered photos, a named pin, the client's issue form and a day-aware record", async () => {
