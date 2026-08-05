@@ -2,6 +2,8 @@
 
 import { AlertTriangle, Camera, CheckCircle2, ImageOff, Loader2, PenLine, Send, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
+import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
+import { LanguageProvider } from "@/lib/i18n";
 import { compressFieldPhoto } from "@/lib/offline/upload-queue";
 
 type ResponseType = "ready_for_verification" | "issue" | "proposed_correction";
@@ -64,6 +66,8 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
   const [note, setNote] = useState("");
   const [contactName, setContactName] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
+  /** The signature the contractor writes under the corrective action. */
+  const [signature, setSignature] = useState<HandwrittenSignature | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
@@ -98,7 +102,7 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
   // is not optional there.
   const signatureRequired = responseType === "proposed_correction";
   const submit = async () => {
-    if (note.trim().length < 3 || (signatureRequired && contactName.trim().length < 2)) return;
+    if (note.trim().length < 3 || (signatureRequired && (contactName.trim().length < 2 || !signature))) return;
     setBusy(true);
     setError("");
     try {
@@ -110,6 +114,7 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
           responseType,
           note: note.trim(),
           contactName: contactName.trim(),
+          signatureImage: signature?.image ?? null,
           evidenceFileId,
           idempotencyKey: `external:${crypto.randomUUID()}`,
         }),
@@ -121,6 +126,7 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
         ? "Voorgestelde correctieve actie ontvangen. CODECO beoordeelt het voorstel; de NCR blijft open tot het werk is gecontroleerd."
         : "Probleem ontvangen. De verantwoordelijke CODECO-gebruiker krijgt direct een melding.");
       setPhoto(null);
+      setSignature(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "De reactie kon niet worden verzonden.");
     } finally {
@@ -150,9 +156,23 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
         <span><strong>{photo ? photo.name : "Bewijsfoto toevoegen (optioneel)"}</strong><small>De foto wordt verkleind om mobiele data te besparen.</small></span>
         <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => setPhoto(event.target.files?.[0] ?? null)} />
       </label>
-      <label className="form-field"><span>{signatureRequired ? "Naam · geldt als ondertekening" : "Naam (optioneel)"}</span><input value={contactName} onChange={(event) => setContactName(event.target.value)} autoComplete="name" required={signatureRequired} /></label>
+      <label className="form-field"><span>{signatureRequired ? "Naam van de ondertekenaar" : "Naam (optioneel)"}</span><input value={contactName} onChange={(event) => setContactName(event.target.value)} autoComplete="name" required={signatureRequired} /></label>
+      {/* The client's NCR form has a signature line under the contractor's box, so the
+          contractor writes the signature here instead of only typing a name. */}
+      {signatureRequired ? (
+        <LanguageProvider>
+          <SignatureField
+            label="Onderteken de correctieve actie"
+            declaration="Met je handtekening bevestig je de correctieve actie die je hierboven hebt ingevuld."
+            hint="De handtekening komt op het non-conformance report van CODECO te staan."
+            nameSuggestion={contactName}
+            value={signature}
+            onChange={(written) => { setSignature(written); if (written?.name) setContactName(written.name); }}
+          />
+        </LanguageProvider>
+      ) : null}
       {error ? <p className="field-error" role="alert">{error}</p> : null}
-      <button className={`external-submit ${responseType === "issue" ? "issue" : ""}`} type="button" disabled={busy || note.trim().length < 3 || (signatureRequired && contactName.trim().length < 2) || (responseType === "ready_for_verification" && !completionAllowed)} onClick={() => void submit()}>
+      <button className={`external-submit ${responseType === "issue" ? "issue" : ""}`} type="button" disabled={busy || note.trim().length < 3 || (signatureRequired && (contactName.trim().length < 2 || !signature)) || (responseType === "ready_for_verification" && !completionAllowed)} onClick={() => void submit()}>
         {busy ? <Loader2 className="spin" size={17} /> : photo ? <Upload size={17} /> : <Send size={17} />}
         {busy ? "Veilig verzenden…" : responseType === "proposed_correction" ? "Verstuur correctieve actie" : responseType === "ready_for_verification" ? "Markeer gereed voor controle" : "Verstuur probleem"}
       </button>

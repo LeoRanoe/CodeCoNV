@@ -17,7 +17,7 @@ function section(title: string, ...body: Paragraph[]): Paragraph[] {
 }
 
 /** Three signature columns; a role that has not signed keeps an empty line. */
-function signatureFields(signatures: ReportSignatureLine[]): Array<[string, string]> {
+function signatureFields(signatures: ReportSignatureLine[]): Array<[string, string, (string | null)?]> {
   const roles = signatures.length
     ? signatures.slice(0, 3)
     : [
@@ -28,6 +28,8 @@ function signatureFields(signatures: ReportSignatureLine[]): Array<[string, stri
   return roles.map((signature) => [
     signature.role.replaceAll("_", " "),
     signature.name ? `${signature.name} · ${signature.signedAt.slice(0, 16).replace("T", " ")}` : "Nog niet ondertekend",
+    // The signature that was written when the version was signed.
+    signature.signatureImage ?? null,
   ]);
 }
 

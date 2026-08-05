@@ -26,6 +26,22 @@ import {
   workforceNoteRequired,
 } from "../lib/forms/workforce.mjs";
 import {
+  buildRecordDirectory,
+  normalizeRecordCode,
+  searchRecordDirectory,
+} from "../lib/records/record-directory.mjs";
+import {
+  handwrittenSignature,
+  isSigned,
+  isSignatureImage,
+  maxSignatureBytes,
+  signatureDetails,
+  signatureExportBox,
+  signatureFromDetails,
+  signatureImageBytes,
+  signatureInkBounds,
+} from "../lib/signatures/handwritten-signature.mjs"
+import {
   compassPointFromDegrees,
   compassPoints,
   fieldPhotoMimeTypes,
@@ -541,6 +557,88 @@ test("reads the facing direction the camera wrote into the photo", () => {
   assert.equal(exifImageDirection(jpegWithoutExif()), null);
   assert.equal(exifImageDirection(new ArrayBuffer(0)), null);
   assert.equal(exifImageDirection(new Uint8Array([1, 2, 3]).buffer), null);
+});
+
+test("finds any record back from the unique code that stands on the document", () => {
+  const directory = buildRecordDirectory({
+    findings: [
+      { id: "f1", finding_number: "Q-2026-0004", finding_type: "ncr", title: "Loose railing", status: "open" },
+      { id: "f2", finding_number: "Q-2026-0011", finding_type: "deficiency", title: "Paint damage", status: "open" },
+    ],
+    inspections: [{ id: "i1", inspection_number: "INS-2026-0002", title: "Concrete pour", status: "passed" }],
+    hseEvents: [{ id: "h1", event_number: "HSE-2026-0001", title: "Near miss", status: "open" }],
+    registerEntries: [{ id: "r1", entry_number: "RFI-0007", title: "Anchor detail", register_type: "rfi" }],
+    dayReports: [{ id: "d1", report_number: "DR-2026-0100", report_date: "2026-08-04", status: "draft" }],
+    files: [
+      { id: "p1", document_code: "PHO-2026-0031", original_name: "railing.jpg", category: "image" },
+      { id: "t1", document_code: "DWG-2026-0002", original_name: "floor-2.pdf", category: "drawing" },
+      { id: "u1", document_code: null, original_name: "not-numbered-yet.jpg", category: "image" },
+    ],
+    visualCaptures: [{ id: "v1", file_id: "p1" }],
+  });
+
+  // Each kind opens in its own module, and a photo is found through its own file code.
+  assert.deepEqual(
+    directory.map((item) => `${item.kind}:${item.tab}:${item.code}`).sort(),
+    [
+      "drawing:drawings:DWG-2026-0002",
+      "finding:findings:Q-2026-0011",
+      "hse:hse:HSE-2026-0001",
+      "inspection:inspections:INS-2026-0002",
+      "ncr:ncr:Q-2026-0004",
+      "photo:files:PHO-2026-0031",
+      "register:registers:RFI-0007",
+      "report:documents:DR-2026-0100",
+    ],
+  );
+
+  // The code is typed the way it stands on paper, on a phone, or half remembered.
+  assert.deepEqual(searchRecordDirectory(directory, "Q-2026-0004").map((item) => item.id), ["f1"]);
+  assert.deepEqual(searchRecordDirectory(directory, "q20260004").map((item) => item.id), ["f1"]);
+  assert.deepEqual(searchRecordDirectory(directory, "  q-2026-0004 ").map((item) => item.id), ["f1"]);
+  assert.deepEqual(searchRecordDirectory(directory, "INS").map((item) => item.id), ["i1"]);
+  // Without the code, the words of the title still find the record.
+  assert.deepEqual(searchRecordDirectory(directory, "paint dam").map((item) => item.id), ["f2"]);
+  // The exact code wins from the one that merely contains it.
+  assert.equal(searchRecordDirectory(directory, "0004")[0].id, "f1");
+  assert.deepEqual(searchRecordDirectory(directory, "z"), []);
+  assert.deepEqual(searchRecordDirectory(directory, "Q-2026", 1).length, 1);
+  assert.equal(normalizeRecordCode("hse 2026/0001"), "HSE20260001");
+});
+
+test("keeps a written signature small, named and dated", () => {
+  const ink = `data:image/png;base64,${"A".repeat(400)}`;
+  const signature = handwrittenSignature("  Ravi Sardjoe  ", ink, "2026-08-04T12:00:00.000Z");
+  assert.deepEqual(signature, { name: "Ravi Sardjoe", image: ink, signedAt: "2026-08-04T12:00:00.000Z" });
+  assert.equal(isSigned(signature), true);
+
+  // A tick in a box is not a signature: without a name or without ink there is none.
+  assert.equal(handwrittenSignature("", ink), null);
+  assert.equal(handwrittenSignature("R", ink), null);
+  assert.equal(handwrittenSignature("Ravi Sardjoe", ""), null);
+  assert.equal(handwrittenSignature("Ravi Sardjoe", "https://example.test/signature.png"), null);
+  assert.equal(handwrittenSignature("Ravi Sardjoe", `data:image/png;base64,${"A".repeat(maxSignatureBytes * 2)}`), null);
+  assert.equal(isSigned(null), false);
+  assert.equal(signatureImageBytes(ink), 300);
+  assert.equal(isSignatureImage(`data:image/svg+xml;base64,${"A".repeat(40)}`), false);
+
+  // A signature is stored as the ink itself, so it can be printed on the client's form.
+  assert.deepEqual(signatureDetails(signature), { signature_image: ink });
+  assert.deepEqual(signatureDetails(null, "signature_first"), { signature_first_image: null });
+  assert.deepEqual(signatureFromDetails("Ravi Sardjoe", "2026-08-04T12:00:00.000Z", ink), signature);
+  assert.equal(signatureFromDetails("Ravi Sardjoe", null, null), null);
+});
+
+test("stores only the written part of a signature pad", () => {
+  const strokes = [{ points: [{ x: 60, y: 40 }, { x: 120, y: 90 }] }, { points: [{ x: 200, y: 55 }] }];
+  assert.deepEqual(signatureInkBounds(strokes), { minX: 60, minY: 40, maxX: 200, maxY: 90 });
+  assert.equal(signatureInkBounds([]), null);
+  assert.equal(signatureInkBounds([{ points: [{ x: Number.NaN, y: 3 }] }]), null);
+
+  // The ink keeps a margin around it, and never reaches outside the pad.
+  assert.deepEqual(signatureExportBox({ minX: 60, minY: 40, maxX: 200, maxY: 90 }, 400, 160, 10), { x: 50, y: 30, width: 160, height: 70 });
+  assert.deepEqual(signatureExportBox({ minX: 4, minY: 4, maxX: 396, maxY: 156 }, 400, 160, 10), { x: 0, y: 0, width: 400, height: 160 });
+  assert.deepEqual(signatureExportBox(null, 400, 160), { x: 0, y: 0, width: 400, height: 160 });
 });
 
 /**

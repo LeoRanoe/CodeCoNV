@@ -15,6 +15,8 @@ export type ReportSignatureLine = {
   declaration: string;
   signedAt: string;
   legalLevel: string;
+  /** The signature the signer wrote in the app, printed on the signature line. */
+  signatureImage?: string | null;
 };
 
 export type DailyReportPdfSnapshot = {
@@ -78,6 +80,7 @@ const styles = StyleSheet.create({
   signatureRole: { color: "#69828d", fontSize: 7, marginBottom: 2, textTransform: "uppercase" },
   signatureName: { color: "#173b4b", fontSize: 9, fontWeight: 700 },
   signatureLine: { borderBottomColor: "#8ba3ad", borderBottomWidth: 1, marginBottom: 4, marginTop: 20 },
+  signatureInk: { height: 26, marginBottom: 3, marginTop: 4, objectFit: "contain", width: "88%" },
   signatureMeta: { color: "#69828d", fontSize: 7 },
   declaration: { color: "#526c77", fontSize: 7.5, marginTop: 4 },
 });
@@ -103,7 +106,7 @@ function SignatureSection({ signatures }: { signatures: ReportSignatureLine[] })
           {roles.slice(0, 3).map((signature, index) => (
             <View style={styles.signatureCell} key={`${signature.role}:${index}`}>
               <Text style={styles.signatureRole}>{signature.role.replaceAll("_", " ")}</Text>
-              <View style={styles.signatureLine} />
+              {signature.signatureImage ? <Image src={signature.signatureImage} style={styles.signatureInk} /> : <View style={styles.signatureLine} />}
               <Text style={styles.signatureName}>{signature.name || " "}</Text>
               <Text style={styles.signatureMeta}>{signature.signedAt ? `Ondertekend ${signature.signedAt.slice(0, 16).replace("T", " ")}` : "Nog niet ondertekend"}</Text>
             </View>

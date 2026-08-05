@@ -42,6 +42,7 @@ const styles = StyleSheet.create({
   signatureGrid: { flexDirection: "row" },
   signature: { minHeight: 48, padding: 6, width: "33.333%" },
   signatureLine: { borderBottomColor: "#555555", borderBottomWidth: 1, marginBottom: 4, marginTop: 20 },
+  signatureInk: { height: 26, marginBottom: 3, marginTop: 4, objectFit: "contain", width: "88%" },
   notice: { color: "#555555", fontSize: 6.5, lineHeight: 1.3, marginTop: 8 },
   footer: { bottom: 10, color: "#666666", fontSize: 6, left: 22, position: "absolute", right: 22, textAlign: "center" },
 });
@@ -132,10 +133,11 @@ export function ControlledDocument({ entry, logoSource = "/codeco-logo-pdf.png" 
         <Text style={styles.sectionTitle}>{["wcr", "rfi", "rfa", "inspection_request"].includes(type) ? "SUBMITTED AND SIGNED BY" : "ISSUED AND SIGNED BY"}</Text>
         <View style={styles.signatureGrid}>
           {[
-            ["Name", text(details, "signed_by", text(details, "issued_by"))],
-            ["Position / company", [text(details, "signed_by_position", text(details, "issuer_position")), text(details, "issuer_company")].filter((item) => item !== "—" && item !== "").join(" · ")],
-            ["Date signed", text(details, "signed_at") === "—" ? "Not signed yet" : String(text(details, "signed_at")).slice(0, 10)],
-          ].map(([label, result], index) => <View style={[styles.signature, index < 2 ? styles.borderRight : {}]} key={label}><Text style={styles.label}>{label}</Text><View style={styles.signatureLine} /><Text>{result || " "}</Text></View>)}
+            // The name line carries the signature that was actually written in the app.
+            { label: "Name", result: text(details, "signed_by", text(details, "issued_by")), ink: typeof details.signature_image === "string" ? details.signature_image : null },
+            { label: "Position / company", result: [text(details, "signed_by_position", text(details, "issuer_position")), text(details, "issuer_company")].filter((item) => item !== "—" && item !== "").join(" · "), ink: null },
+            { label: "Date signed", result: text(details, "signed_at") === "—" ? "Not signed yet" : String(text(details, "signed_at")).slice(0, 10), ink: null },
+          ].map((line, index) => <View style={[styles.signature, index < 2 ? styles.borderRight : {}]} key={line.label}><Text style={styles.label}>{line.label}</Text>{line.ink ? <Image src={line.ink} style={styles.signatureInk} /> : <View style={styles.signatureLine} />}<Text>{line.result || " "}</Text></View>)}
         </View>
 
         <View style={styles.response} wrap={false}>

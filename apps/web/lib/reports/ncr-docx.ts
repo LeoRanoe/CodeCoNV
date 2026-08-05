@@ -16,7 +16,10 @@ export type NcrContext = {
   projectName: string;
   projectCode: string;
   buildingName: string;
+  /** The person who drew the report up, taken from the record itself. */
   issuerName: string;
+  /** The signature that person wrote on the form, placed on the signature line. */
+  signatureImage?: string | null;
   responsiblePartyName: string;
   /** Who actually verified the close-out. Never the person downloading the file. */
   verifierName?: string;
@@ -49,6 +52,7 @@ export function buildNcrDocxDocument(finding: Finding, progress: FindingProgress
             ["Building / location", context.buildingName],
             ["Contractor / responsible party", context.responsiblePartyName],
             ["Date / due date", `${finding.created_at.slice(0, 10)} / ${finding.due_at?.slice(0, 10) ?? "—"}`],
+            ["Drawn up by", issue.issued_by || context.issuerName],
             ["Subject", finding.title],
             ["Reference checklist", value(issue.reference_checklist)],
             ["Severity / issue type", `${finding.severity} / ${issue.issue_type ?? finding.finding_type}`],
@@ -69,8 +73,8 @@ export function buildNcrDocxDocument(finding: Finding, progress: FindingProgress
           labelValue("Status", finding.status.replaceAll("_", " ")),
           new Paragraph({ children: [new TextRun({ text: resolved ? "Issue resolved" : "Issue not resolved", bold: true, size: 18 })], spacing: { before: 120, after: 160 } }),
           signatureBlock([
-            ["Issued by", issue.signed_by || context.issuerName],
-            ["Received / contractor", issue.correction_signed_by || issue.completion_signed_by || ""],
+            ["Issued by", issue.signed_by || issue.issued_by || context.issuerName, issue.signature_image || context.signatureImage || null],
+            ["Received / contractor", issue.correction_signed_by || issue.completion_signed_by || "", issue.correction_signature_image || issue.completion_signature_image || null],
             ["QC verification", resolved ? context.verifierName ?? "" : ""],
           ]),
           new Paragraph({

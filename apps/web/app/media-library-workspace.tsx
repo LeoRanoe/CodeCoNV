@@ -94,7 +94,8 @@ export function MediaLibraryWorkspace({
   const { language, text } = useLanguage();
   const queryClient = useQueryClient();
   const cameraInputRef = useRef<HTMLInputElement>(null);
-  const importInputRef = useRef<HTMLInputElement>(null);
+  const photoImportRef = useRef<HTMLInputElement>(null);
+  const drawingImportRef = useRef<HTMLInputElement>(null);
   const [folderId, setFolderId] = useState("all");
   const [newFolder, setNewFolder] = useState("");
   const [kind, setKind] = useState<"photo" | "drawing">("photo");
@@ -194,12 +195,14 @@ export function MediaLibraryWorkspace({
     descriptionOverride?: string,
     /** The words a photo carries of its own, when it was described before being filed. */
     detailsFor?: (file: File) => { title?: string; description?: string; locationNodeId?: string | null } | undefined,
+    /** What is being uploaded. A choice says it itself instead of relying on the toggle. */
+    uploadKind: "photo" | "drawing" = kind,
   ) => {
     if (!selected?.length) return;
     setFieldError("");
     try {
       let targetFolder = folders.some((folder) => folder.id === folderId) ? folderId : null;
-      const automaticFolderName = preferredFolderName ?? (kind === "photo" ? text("Daily progress", "Dagvoortgang") : text("Approved drawings", "Goedgekeurde tekeningen"));
+      const automaticFolderName = preferredFolderName ?? (uploadKind === "photo" ? text("Daily progress", "Dagvoortgang") : text("Approved drawings", "Goedgekeurde tekeningen"));
       if (!targetFolder && navigator.onLine) {
         const existing = folders.find((folder) => folder.name.toLocaleLowerCase() === automaticFolderName.toLocaleLowerCase());
         if (existing) {
@@ -210,7 +213,7 @@ export function MediaLibraryWorkspace({
               projectId,
               buildingId: libraryBuildingId,
               name: automaticFolderName,
-              folderType: kind === "photo" ? "images" : "drawings",
+              folderType: uploadKind === "photo" ? "images" : "drawings",
             });
             targetFolder = created.id;
             setFolderId(created.id);
@@ -221,7 +224,7 @@ export function MediaLibraryWorkspace({
         }
       }
       const candidates = Array.from(selected);
-      const valid = candidates.filter((file) => kind === "photo"
+      const valid = candidates.filter((file) => uploadKind === "photo"
         ? ["image/jpeg", "image/png", "image/webp"].includes(file.type)
         : ["application/pdf", "image/jpeg", "image/png", "image/webp", "application/dwg", "application/acad", "application/x-acad", "image/vnd.dwg", "application/octet-stream"].includes(file.type || "application/octet-stream")
           || file.name.toLocaleLowerCase().endsWith(".dwg"));
@@ -230,14 +233,14 @@ export function MediaLibraryWorkspace({
         setFieldError(text("Unsupported files were skipped.", "Niet-ondersteunde bestanden zijn overgeslagen."));
       }
       for (const file of valid) {
-        const prepared = kind === "photo" ? await compressFieldPhoto(file, savingData) : { blob: file as Blob, fileName: file.name, mimeType: file.type || "application/octet-stream", compressed: false };
+        const prepared = uploadKind === "photo" ? await compressFieldPhoto(file, savingData) : { blob: file as Blob, fileName: file.name, mimeType: file.type || "application/octet-stream", compressed: false };
         await queueOfflineUpload({
           projectId,
           buildingId: libraryBuildingId,
           reportId,
           folderId: targetFolder,
           folderName: automaticFolderName,
-          kind,
+          kind: uploadKind,
           file: prepared.blob,
           fileName: prepared.fileName,
           mimeType: prepared.mimeType,
@@ -330,10 +333,32 @@ export function MediaLibraryWorkspace({
       <div className="media-library-toolbar">
         <div>
           <span className={`connectivity-pill ${online ? "online" : "offline"}`}>{online ? text("Online", "Online") : text("Offline · stored on device", "Offline · opgeslagen op apparaat")}</span>
-          <h2>{text("Point, shoot, done", "Richten, foto, klaar")}</h2>
-          <p>{text("Every photo gets project, building, date, time and a folder automatically.", "Elke foto krijgt automatisch project, gebouw, datum, tijd en een map.")}</p>
+          <h2>{text("Project photos", "Projectfoto's")}</h2>
+          <p>{text("The photos of this project, and the four ways to add one. Every photo gets project, building, date, time and a folder automatically.", "De foto's van dit project, en de vier manieren om er een toe te voegen. Elke foto krijgt automatisch project, gebouw, datum, tijd en een map.")}</p>
         </div>
         <label className="data-saver-toggle"><input type="checkbox" checked={savingData} onChange={(event) => { setSavingData(event.target.checked); setDataSaverEnabled(event.target.checked); }} /><span><strong>{text("Save mobile data", "Mobiele data besparen")}</strong><small>{text("Compress regular photos; never alter 360° images or drawings.", "Comprimeert gewone foto’s; wijzigt nooit 360°-beelden of tekeningen.")}</small></span></label>
+      </div>
+
+      {/* Tapping Photos in the workspace lands here, on the photos themselves, and the
+          choice of what to add is made afterwards — instead of a camera that opens before
+          anybody has said what the picture is for. */}
+      <div className="media-choice-bar" role="group" aria-label={text("Add a photo, an image or a drawing", "Voeg een foto, beeld of tekening toe")}>
+        <button className="media-choice primary" type="button" onClick={() => { setKind("photo"); cameraInputRef.current?.click(); }}>
+          <span><Camera size={20} /></span>
+          <span><strong>{text("Take photo", "Maak foto")}</strong><small>{text("Camera, with today's folder", "Camera, met de map van vandaag")}</small></span>
+        </button>
+        <button className="media-choice" type="button" onClick={() => { setKind("photo"); photoImportRef.current?.click(); }}>
+          <span><Upload size={19} /></span>
+          <span><strong>{text("Upload photos", "Foto's uploaden")}</strong><small>{text("From this device's gallery", "Uit de galerij van dit toestel")}</small></span>
+        </button>
+        <button className="media-choice" type="button" onClick={open360Upload}>
+          <span><ScanLine size={19} /></span>
+          <span><strong>{text("Upload 360°", "360° uploaden")}</strong><small>{text("Stitched export of a 360° camera", "Gestitchte export van een 360°-camera")}</small></span>
+        </button>
+        <button className="media-choice" type="button" onClick={() => { setKind("drawing"); drawingImportRef.current?.click(); }}>
+          <span><HardDrive size={19} /></span>
+          <span><strong>{text("Upload drawing", "Tekening uploaden")}</strong><small>{text("PDF, DWG or an image of a plan", "PDF, DWG of een afbeelding van een plan")}</small></span>
+        </button>
       </div>
 
       <div className="media-folder-bar">
@@ -351,23 +376,27 @@ export function MediaLibraryWorkspace({
         <div className="quick-issue-presets media-folder-presets" aria-label={text("Choose a photo folder", "Kies een fotomap")}>{standardFolderNames.map((name) => { const folder = folders.find((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase()); return <button className={Boolean(folder && folderId === folder.id) ? "active" : ""} type="button" disabled={busy} onClick={() => folder ? setFolderId(folder.id) : void addFolder(name)} key={name}><Folder size={13} /> {name}</button>; })}</div>
         <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { setPendingCapture(Array.from(event.target.files ?? []).map((file) => toPhotoEvidence(file))); event.target.value = ""; }} />
         <input
-          ref={importInputRef}
+          ref={photoImportRef}
           hidden
           type="file"
           multiple
-          accept={kind === "photo" ? "image/jpeg,image/png,image/webp" : "application/pdf,image/jpeg,image/png,image/webp,.dwg"}
+          accept="image/jpeg,image/png,image/webp"
           onChange={(event) => {
-            const selected = Array.from(event.target.files ?? []);
-            if (kind === "photo") setPendingCapture(selected.map((file) => toPhotoEvidence(file)));
-            else void addFiles(selected);
+            setPendingCapture(Array.from(event.target.files ?? []).map((file) => toPhotoEvidence(file)));
             event.target.value = "";
           }}
         />
-        <div className="media-capture-actions">
-          {kind === "photo" ? <button className="primary-button camera-primary-action" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={18} /> {text("Take photo", "Maak foto")}</button> : <button className="primary-button" type="button" onClick={() => importInputRef.current?.click()}><Upload size={15} /> {text("Choose drawing", "Kies tekening")}</button>}
-          {kind === "photo" ? <button className="secondary-button" type="button" onClick={() => importInputRef.current?.click()}><Upload size={15} /> {text("Import existing photos", "Bestaande foto’s importeren")}</button> : null}
-          {kind === "photo" ? <button className="secondary-button" type="button" onClick={open360Upload}><ScanLine size={15} /> {text("Upload 360° image", "Upload 360°-beeld")}</button> : null}
-        </div>
+        <input
+          ref={drawingImportRef}
+          hidden
+          type="file"
+          multiple
+          accept="application/pdf,image/jpeg,image/png,image/webp,.dwg"
+          onChange={(event) => {
+            void addFiles(Array.from(event.target.files ?? []), undefined, undefined, undefined, "drawing");
+            event.target.value = "";
+          }}
+        />
         {kind === "photo" && pendingCapture.length ? (
           <div className="media-capture-review">
             <div className="media-capture-review-heading">
@@ -427,7 +456,7 @@ export function MediaLibraryWorkspace({
           const folder = data.mediaFolders.find((item) => item.id === file.folder_id);
           const capture = data.visualCaptures.find((item) => item.file_id === file.id);
           const origins = originResolver.origins(file.id);
-          return <article className="media-card" key={file.id}>{file.mime_type.startsWith("image/") ? <SecureImage client={client} file={file} /> : <span className="media-file-icon"><HardDrive size={28} /></span>}<div><strong>{file.original_name}</strong><span>{libraryBuildingName} · {folder?.name ?? text("Unfiled", "Zonder map")} · {file.category} · {humanSize(file.size_bytes)}</span>{capture ? <small>{capture.capture_type === "panorama" ? "360°" : text("Photo", "Foto")} · {capture.location_label}</small> : null}<span className="media-origin-chips">{origins.length ? origins.map((origin) => <em className={`media-origin-chip tone-${origin.kind}`} title={origin.title} key={`${origin.kind}:${origin.recordId}`}>{origin.number || origin.kind}</em>) : <em className="media-origin-chip tone-unlinked">{text("Not linked to a record yet", "Nog niet aan een record gekoppeld")}</em>}</span></div><span className="media-file-actions"><button type="button" onClick={() => void openProjectFile(client, file.id, file.original_name)} aria-label={text("Open file", "Bestand openen")}><ExternalLink size={15} /></button><button type="button" onClick={() => void downloadProjectFile(client, file.id, file.original_name)} aria-label={text("Download file", "Bestand downloaden")}><Download size={15} /></button></span></article>;
+          return <article className="media-card" key={file.id}>{file.mime_type.startsWith("image/") ? <SecureImage client={client} file={file} /> : <span className="media-file-icon"><HardDrive size={28} /></span>}<div>{file.document_code ? <span className="media-code-chip">{file.document_code}</span> : null}<strong>{file.original_name}</strong><span>{libraryBuildingName} · {folder?.name ?? text("Unfiled", "Zonder map")} · {file.category} · {humanSize(file.size_bytes)}</span>{capture ? <small>{capture.capture_type === "panorama" ? "360°" : text("Photo", "Foto")} · {capture.location_label}</small> : null}<span className="media-origin-chips">{origins.length ? origins.map((origin) => <em className={`media-origin-chip tone-${origin.kind}`} title={origin.title} key={`${origin.kind}:${origin.recordId}`}>{origin.number || origin.kind}</em>) : <em className="media-origin-chip tone-unlinked">{text("Not linked to a record yet", "Nog niet aan een record gekoppeld")}</em>}</span></div><span className="media-file-actions"><button type="button" onClick={() => void openProjectFile(client, file.id, file.original_name)} aria-label={text("Open file", "Bestand openen")}><ExternalLink size={15} /></button><button type="button" onClick={() => void downloadProjectFile(client, file.id, file.original_name)} aria-label={text("Download file", "Bestand downloaden")}><Download size={15} /></button></span></article>;
         })}
         {!files.length ? <div className="empty-list-state"><Folder size={24} /><strong>{originFilter === "all" ? text("This folder is empty", "Deze map is leeg") : text("No photo matches this filter", "Geen foto voldoet aan dit filter")}</strong><span>{originFilter === "all" ? text("Take a photo or select files; they can also be queued offline.", "Maak een foto of kies bestanden; dit kan ook volledig offline.") : text("Choose another link filter to see the rest of this folder.", "Kies een ander koppelfilter om de rest van deze map te zien.")}</span></div> : null}
       </div>
