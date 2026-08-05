@@ -278,8 +278,9 @@ test("keeps standard photo and validated 360 camera annotation production paths"
   assert.match(migration, /create table public\.visual_annotations/);
   assert.match(migration, /'annotation'/);
   assert.match(drawingWorkspace, /Drawings workspace/);
-  assert.match(drawingWorkspace, /Link an RFI/);
-  assert.match(drawingWorkspace, /Link a photo \/ 360° camera image/);
+  // The link types are the pin legend now: a pin is placed for the record you came with.
+  assert.match(drawingWorkspace, /rfi: \{ en: "RFI"/);
+  assert.match(drawingWorkspace, /visual: \{ en: "Photo \/ 360°"/);
   assert.match(drawingWorkspace, /pdfjs-dist/);
   assert.match(drawingWorkspace, /xRatio/);
   assert.match(drawingMigration, /create table public\.drawing_pins/);
@@ -1090,7 +1091,9 @@ test("processes the third batch of annotated screens from 31 July", async () => 
   assert.match(workspace, /text\("Assigned to owner", "Assigned To Owner"\)/);
   assert.match(workspace, /Escalation Required \(Y\/N\)/);
   assert.match(workspace, /Final Resolution & Rationale/);
-  assert.match(workspace, /<option value="informational">Informational<\/option>/);
+  // The issue type list became the client's own vocabulary on 4 August; the columns of
+  // their Issues_Tracking_Log around it stayed.
+  assert.match(workspace, /const issueTypeOptions = \[/);
   assert.match(operations, /date_identified: input\.dateIdentified/);
   assert.doesNotMatch(workspace, /Initial completion date|Eerste opleverdatum/);
 
@@ -1893,4 +1896,72 @@ test("gives the workforce screen the full register, not a counter per party", as
   assert.doesNotMatch(styles, /\.one-tap-workforce/);
   assert.doesNotMatch(styles, /\.attendance-toolbar/);
   assert.match(styles, /\.workforce-row \{/);
+});
+
+test("processes the annotated screens of 4 August: ordered photos, a named pin, the client's issue form and a day-aware record", async () => {
+  const [app, operations, media, drawings, library, pinMigration, styles] = await Promise.all([
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/media-library-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/drawing-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/media/photo-library.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202608040004_registration_drawing_pins.sql", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // The photos and folders are ordered: a folder counts exactly what its gallery shows,
+  // the daily folders come first, and the pictures stand under the day they were taken.
+  assert.match(library, /export function visibleLibraryFiles/);
+  assert.match(library, /export function orderMediaFolders/);
+  assert.match(library, /export function groupFilesByDay/);
+  assert.match(media, /visibleLibraryFiles\(data\.files, libraryBuildingId\)/);
+  assert.match(media, /orderMediaFolders\(/);
+  assert.match(media, /groupFilesByDay\(files\)/);
+  assert.match(media, /filesInFolder\(buildingFiles, "all"\)\.length/);
+  assert.doesNotMatch(media, /<b>\{data\.files\.length\}<\/b>/);
+  assert.match(styles, /\.media-day-heading/);
+
+  // #19: a pin is placed for the record you came with, and carries that record's own
+  // name, number and date. The list of link types and the freehand pen are gone.
+  assert.match(pinMigration, /'observation','inspection','visual','registration'/);
+  assert.match(pinMigration, /elsif p_linked_record_type = 'registration' then/);
+  assert.match(pinMigration, /from public\.site_registrations registration/);
+  assert.match(drawings, /pendingRecord\?: \{ label: string; title: string;/);
+  assert.match(drawings, /linkedRecordType: "observation"/);
+  assert.doesNotMatch(drawings, /\["freehand", PenLine/);
+  assert.doesNotMatch(drawings, /Select item to be linked|Selecteer het te koppelen item/);
+  assert.doesNotMatch(drawings, /const linkOptions = useMemo/);
+  assert.match(drawings, /drawing-pin-code/);
+  assert.match(drawings, /drawing-pin-legend/);
+  assert.match(drawings, /registration: "amber"/);
+  assert.match(styles, /\.drawing-pin-code/);
+  assert.match(app, /linkedRecordType: "registration"/);
+  assert.match(operations, /pendingRecord=\{pendingRecordPin\}/);
+
+  // #20: the record screen says which part of the day it belongs to.
+  assert.match(app, /What are you recording\?|Waar ben je mee bezig\?/);
+  assert.match(app, /const chooseActivityKind = \(kind: DailyActivityKind\)/);
+  assert.match(app, /const activityNote = activityKindLabel\(entryActivityKind\)/);
+  assert.match(styles, /\.entry-activity-kind/);
+
+  // #23 and #23A: the issue form is the client's own form. No preset problems, no B1
+  // catalog, the type is safety / quality / equipment / materials / schedule /
+  // operational, priority is high, medium or low, no disposition, and impact and
+  // follow-up can simply be typed.
+  assert.match(operations, /const issueTypeOptions = \[/);
+  for (const kind of ["safety", "quality", "equipment", "materials", "schedule", "operational"]) {
+    assert.match(operations, new RegExp(`id: "${kind}"`));
+  }
+  assert.match(operations, /findingScope === "ncr" \? \(\s*<div className="quick-issue-presets" aria-label=\{text\("Common issue choices/);
+  assert.match(operations, /\{findingScope === "ncr" \? \(\s*<label className="form-field"><span>\{text\("Client B1 issue catalog/);
+  assert.match(operations, /<option value="high">\{text\("High · 3 days"/);
+  assert.match(operations, /findingScope === "ncr" \? <option value="critical">/);
+  assert.match(operations, /Impact in your own words|Impact in eigen woorden/);
+  assert.match(operations, /Follow-up in your own words|Opvolging in eigen woorden/);
+  assert.doesNotMatch(operations, /Different impact or action|Andere impact of actie/);
+  // The issue form is signed too: the client wrote "signature" beside it.
+  assert.match(operations, /Sign as the supervisor who reports this issue|Ondertekenen als supervisor die dit issue meldt/);
+
+  // #21: Workforce counts people per contractor and per trade, on its own screen.
+  assert.match(app, /if \(type === "workforce"\) \{[\s\S]{0,320}setModal\("attendance"\)/);
 });

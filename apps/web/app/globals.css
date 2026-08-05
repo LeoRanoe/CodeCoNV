@@ -13257,3 +13257,107 @@ button {
   .media-choice-bar { grid-template-columns: 1fr; }
   .signature-field-proof { align-items: flex-start; flex-direction: column; }
 }
+
+/* ---------------------------------------------------------------------------
+   The photo library, ordered by day.
+   --------------------------------------------------------------------------- */
+.media-day-group { display: grid; gap: 8px; margin-bottom: 16px; }
+
+.media-day-heading {
+  align-items: baseline;
+  border-bottom: 1px solid #e7edeb;
+  display: flex;
+  gap: 9px;
+  justify-content: space-between;
+  padding-bottom: 5px;
+}
+
+.media-day-heading strong { color: var(--ink-900); font-size: 12.5px; }
+.media-day-heading small { color: var(--ink-500); font-size: 10px; }
+
+/* ---------------------------------------------------------------------------
+   The record form: what you are busy with, and the spot it gets on the drawing.
+   --------------------------------------------------------------------------- */
+.entry-activity-kind { display: grid; gap: 6px; }
+.entry-activity-kind > strong { color: var(--ink-700); font-size: 11px; }
+
+.entry-pin-set {
+  align-items: center;
+  color: var(--green, #128268);
+  display: flex;
+  font-size: 10px;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* ---------------------------------------------------------------------------
+   A pin carries a colour and its own code.
+   --------------------------------------------------------------------------- */
+/* The pin stands on its point; the code chip hangs under it, unrotated. */
+.drawing-pin-anchor { position: absolute; z-index: 4; }
+.drawing-pin-anchor > .drawing-pin { left: 0; top: 0; }
+
+.drawing-pin-code {
+  background: #fff;
+  border: 1px solid #d7e0dd;
+  border-radius: 999px;
+  color: #24352f;
+  display: block;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 800;
+  left: 50%;
+  max-width: 136px;
+  overflow: hidden;
+  padding: 2px 7px;
+  position: absolute;
+  text-overflow: ellipsis;
+  top: 5px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.drawing-pin-code.red { border-color: #b82b34; }
+.drawing-pin-code.orange { border-color: #ce6e1d; }
+.drawing-pin-code.blue { border-color: #216a99; }
+.drawing-pin-code.purple { border-color: #7749a4; }
+.drawing-pin-code.green { border-color: #23805e; }
+.drawing-pin-code.cyan { border-color: #157f91; }
+.drawing-pin-code.amber { border-color: #b07514; }
+
+.drawing-pin.amber { background: #c08016; }
+
+.drawing-pin-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+
+.drawing-pin-legend span {
+  align-items: center;
+  background: #f6f9f8;
+  border: 1px solid #e2eae7;
+  border-radius: 999px;
+  color: var(--ink-700);
+  display: inline-flex;
+  font-size: 9.5px;
+  font-weight: 700;
+  gap: 5px;
+  padding: 3px 9px;
+}
+
+.drawing-pin-legend span::before {
+  border-radius: 50%;
+  content: "";
+  height: 9px;
+  width: 9px;
+}
+
+.drawing-pin-legend .red::before { background: #b82b34; }
+.drawing-pin-legend .orange::before { background: #ce6e1d; }
+.drawing-pin-legend .blue::before { background: #216a99; }
+.drawing-pin-legend .purple::before { background: #7749a4; }
+.drawing-pin-legend .green::before { background: #23805e; }
+.drawing-pin-legend .cyan::before { background: #157f91; }
+.drawing-pin-legend .amber::before { background: #c08016; }
