@@ -2141,8 +2141,6 @@ export function CodecoSupervisionApp() {
           defaultShiftEnd={configuredShiftEnd}
           buildings={selectedProject.buildings}
           defaultBuildingId={selectedBuilding.id}
-          buildingName={buildingName}
-          weatherLabel={projectStartAnswers ? `${projectStartAnswers.temperatureC}°C` : ""}
           expectedWorkers={projectStartAnswers?.expectedWorkers ?? null}
           initialNote={attendanceNote}
           initialVisitors={attendanceVisitors}
@@ -2165,47 +2163,51 @@ export function CodecoSupervisionApp() {
             };
           }}
           close={() => setModal(null)}
-          save={async (rows, attendanceBuildingId, note, visitors) => {
-            const total = rows.reduce((sum, row) => sum + row.count, 0);
+          save={async (perBuilding, note) => {
+            const total = perBuilding.reduce((sum, entry) => sum + entry.rows.reduce((rowSum, row) => rowSum + row.count, 0), 0);
             const saved = await runSynced(
               async () => {
                 // Counting the crew is often the first thing done on site, before anyone
                 // opened the day report. The report is started here rather than sending the
                 // supervisor away to press a button somewhere else first.
                 const report = dayQuery.data?.report ?? await createOrGetReport(supabase, selectedProject.id, reportDate);
-                await saveAttendance(supabase, {
-                  report,
-                  projectId: selectedProject.id,
-                  buildingId: attendanceBuildingId,
-                  // The explanation belongs to the day, so every line of it carries the same
-                  // sentence: a report reader sees it whichever line they open.
-                  rows: rows.map((row) => ({
-                    partyId: row.partyId,
-                    discipline: row.discipline,
-                    count: row.count,
-                    shiftStart: row.shiftStart,
-                    shiftEnd: row.shiftEnd,
-                    crew: row.crew,
-                    notes: note,
-                  })),
-                });
-                if (visitors.length) {
+                // One save covers every building that was filled in, so a day across two
+                // buildings is not two trips through this screen.
+                for (const entry of perBuilding) {
                   await saveAttendance(supabase, {
                     report,
                     projectId: selectedProject.id,
-                    buildingId: attendanceBuildingId,
-                    rows: visitors.map((visitor) => ({
-                      partyId: visitor.partyId,
-                      // The visitor's own name distinguishes the line from the crew of the
-                      // same organisation, which is counted rather than named.
-                      discipline: visitor.visitorName.slice(0, 100),
-                      visitorName: visitor.visitorName,
-                      entryType: "visitor" as const,
-                      count: visitor.count,
-                      shiftStart: visitor.shiftStart,
-                      shiftEnd: visitor.shiftEnd,
+                    buildingId: entry.buildingId,
+                    // The explanation belongs to the day, so every line of it carries the same
+                    // sentence: a report reader sees it whichever line they open.
+                    rows: entry.rows.map((row) => ({
+                      partyId: row.partyId,
+                      discipline: row.discipline,
+                      count: row.count,
+                      shiftStart: row.shiftStart,
+                      shiftEnd: row.shiftEnd,
+                      crew: row.crew,
+                      notes: note,
                     })),
                   });
+                  if (entry.visitors.length) {
+                    await saveAttendance(supabase, {
+                      report,
+                      projectId: selectedProject.id,
+                      buildingId: entry.buildingId,
+                      rows: entry.visitors.map((visitor) => ({
+                        partyId: visitor.partyId,
+                        // The visitor's own name distinguishes the line from the crew of the
+                        // same organisation, which is counted rather than named.
+                        discipline: visitor.visitorName.slice(0, 100),
+                        visitorName: visitor.visitorName,
+                        entryType: "visitor" as const,
+                        count: visitor.count,
+                        shiftStart: visitor.shiftStart,
+                        shiftEnd: visitor.shiftEnd,
+                      })),
+                    });
+                  }
                 }
               },
               text(

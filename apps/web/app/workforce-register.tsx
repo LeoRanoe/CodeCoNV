@@ -1,8 +1,8 @@
 "use client";
 
-import { AlertTriangle, Check, CloudSun, Copy, Loader2, MapPin, Minus, Plus, Users, X } from "lucide-react";
+import { AlertTriangle, Check, Copy, Loader2, Minus, Plus, Users, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { useLanguage } from "@/lib/i18n";
 import {
@@ -205,14 +205,12 @@ export function WorkforceRegister({
 export function WorkforceModal({
   buildings,
   defaultBuildingId,
-  buildingName,
   initialRows,
   rowsForBuilding,
   parties,
   disciplines,
   defaultShiftStart,
   defaultShiftEnd,
-  weatherLabel,
   expectedWorkers,
   initialNote,
   initialVisitors,
@@ -223,7 +221,6 @@ export function WorkforceModal({
 }: {
   buildings: BuildingOption[];
   defaultBuildingId: string;
-  buildingName: string;
   initialRows: WorkforceRow[];
   /** The crew already recorded for another building of the same day. */
   rowsForBuilding: (buildingId: string) => WorkforceRow[];
@@ -231,7 +228,6 @@ export function WorkforceModal({
   disciplines: string[];
   defaultShiftStart: string;
   defaultShiftEnd: string;
-  weatherLabel: string;
   /** What the project start planned for today, so a deviation can be seen instead of guessed. */
   expectedWorkers: number | null;
   initialNote: string;
@@ -240,21 +236,53 @@ export function WorkforceModal({
   close: () => void;
   /** Returns the crew of the last workday that had one, or null when there is none yet. */
   copyPreviousWorkday: (buildingId: string) => Promise<{ reportDate: string; rows: WorkforceRow[] } | null>;
-  save: (rows: WorkforceRow[], buildingId: string, note: string, visitors: VisitorRow[]) => void | Promise<void>;
+  save: (
+    perBuilding: Array<{ buildingId: string; rows: WorkforceRow[]; visitors: VisitorRow[] }>,
+    note: string,
+  ) => void | Promise<void>;
 }) {
   const { text } = useLanguage();
-  const [buildingId, setBuildingId] = useState(() => resolveDefaultBuildingId(buildings, defaultBuildingId));
-  const [rows, setRows] = useState(initialRows);
+  const firstBuildingId = resolveDefaultBuildingId(buildings, defaultBuildingId);
+  const [buildingId, setBuildingId] = useState(firstBuildingId);
+  /**
+   * A crew per building, all of them at once. The client wrote it on this screen: "ik kan
+   * hier niet van beide gebouwen invullen!" Switching used to throw away what was typed, so
+   * a day covering two buildings meant opening the screen twice and saving twice.
+   *
+   * The counts are deliberately not shared between buildings: four masons in one building
+   * and three in the other is seven people, and copying one list to both would say fourteen.
+   */
+  const [rowsByBuilding, setRowsByBuilding] = useState<Record<string, WorkforceRow[]>>(
+    // A row per project party at zero was the fixed list the client crossed out. Only what
+    // was really counted comes back.
+    () => ({ [firstBuildingId]: initialRows.filter((row) => row.count > 0) }),
+  );
+  const [visitorsByBuilding, setVisitorsByBuilding] = useState<Record<string, VisitorRow[]>>(
+    () => ({ [firstBuildingId]: initialVisitors }),
+  );
   const [copyNote, setCopyNote] = useState("");
   /** undefined while the last workday is still being looked up, null when there is none. */
   const [previousDay, setPreviousDay] = useState<{ reportDate: string; rows: WorkforceRow[] } | null | undefined>(undefined);
   const [note, setNote] = useState(initialNote);
-  const [visitors, setVisitors] = useState(initialVisitors);
   const [visitorDraft, setVisitorDraft] = useState(() => ({ partyId: parties[0]?.id ?? "", visitorName: "" }));
-  const total = workforceTotal(rows);
-  const chosenBuildingName = buildings.find((building) => building.id === buildingId)?.name ?? buildingName;
-  const byParty = workforceByParty(rows);
-  const byDiscipline = workforceByDiscipline(rows);
+
+  const rows = rowsByBuilding[buildingId] ?? [];
+  const visitors = visitorsByBuilding[buildingId] ?? [];
+  const setRows = (next: WorkforceRow[]) => setRowsByBuilding((current) => ({ ...current, [buildingId]: next }));
+  const setVisitors = (next: VisitorRow[]) => setVisitorsByBuilding((current) => ({ ...current, [buildingId]: next }));
+
+  const buildingTotals = buildings.map((building) => ({
+    building,
+    count: workforceTotal(rowsByBuilding[building.id] ?? []),
+  }));
+  const filledBuildings = buildings.filter((building) => (rowsByBuilding[building.id] ?? []).length > 0
+    || (visitorsByBuilding[building.id] ?? []).length > 0);
+  // The deviation is judged on the day as a whole: a crew moved from one building to the
+  // other is not a shortage, and comparing per building would call it one twice.
+  const total = buildingTotals.reduce((sum, entry) => sum + entry.count, 0);
+  const allRows = buildings.flatMap((building) => rowsByBuilding[building.id] ?? []);
+  const byParty = workforceByParty(allRows);
+  const byDiscipline = workforceByDiscipline(allRows);
   const previousTotal = previousDay ? workforceTotal(previousDay.rows) : null;
   const deviations = workforceDeviations({ total, expected: expectedWorkers, previous: previousTotal });
   const noteMissing = workforceNoteRequired(deviations, note);
@@ -278,7 +306,11 @@ export function WorkforceModal({
     setBuildingId(nextBuildingId);
     setCopyNote("");
     setPreviousDay(undefined);
-    setRows(nextBuildingId === defaultBuildingId ? initialRows : rowsForBuilding(nextBuildingId));
+    // What was already typed for this building stays; only a building never opened before
+    // is filled from what the day already had recorded for it.
+    setRowsByBuilding((current) => current[nextBuildingId]
+      ? current
+      : { ...current, [nextBuildingId]: rowsForBuilding(nextBuildingId).filter((row) => row.count > 0) });
   };
 
   // The last workday is loaded as soon as the screen opens, not only when the button is
@@ -328,13 +360,32 @@ export function WorkforceModal({
         </header>
 
         <div className="modal-body workforce-body">
-          <div className="workforce-context">
-            <span><MapPin size={17} /><small>{text("Building", "Gebouw")}</small><strong>{chosenBuildingName}</strong></span>
-            {weatherLabel ? <span><CloudSun size={17} /><small>{text("Weather", "Weer")}</small><strong>{weatherLabel}</strong></span> : null}
-            <span><Users size={17} /><small>{text("On site", "Aanwezig")}</small><strong>{total}</strong></span>
+          {/* The location and weather tiles that used to stand here were struck through on
+              the client's own screenshot. What is left is the number they left standing. */}
+          <div className="workforce-headline">
+            <span><Users size={18} /> {text("On site today", "Vandaag aanwezig")}</span>
+            <strong>{total}</strong>
           </div>
 
-          <BuildingPicker id="workforce-building" buildings={buildings} value={buildingId} onChange={switchBuilding} />
+          {/* One tab per building, each with its own crew. Every building that gets a crew is
+              written when you confirm, so both are filled in without saving twice. */}
+          {buildings.length > 1 ? (
+            <div className="workforce-buildings" role="tablist" aria-label={text("Buildings", "Gebouwen")}>
+              {buildingTotals.map((entry) => (
+                <button
+                  className={entry.building.id === buildingId ? "active" : ""}
+                  type="button"
+                  role="tab"
+                  aria-selected={entry.building.id === buildingId}
+                  onClick={() => switchBuilding(entry.building.id)}
+                  key={entry.building.id}
+                >
+                  <span>{entry.building.name}</span>
+                  <b>{entry.count}</b>
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           <div className="workforce-toolbar">
             <button className="ghost-button" type="button" disabled={previousDay === undefined} onClick={copyPrevious}>
@@ -459,8 +510,19 @@ export function WorkforceModal({
                 ? text("Explain the deviation to confirm.", "Licht de afwijking toe om te bevestigen.")
                 : text("Project, building, date and report are linked automatically.", "Project, gebouw, datum en rapport worden automatisch gekoppeld.")}
             </span>
-            <button className="primary-button" type="button" disabled={busy || !rows.length || noteMissing} onClick={() => void save(rows, buildingId, note, visitors)}>
-              {busy ? <Loader2 className="spin" size={15} /> : <Check size={15} />} {text("Confirm attendance", "Aanwezigheid bevestigen")}
+            <button
+              className="primary-button"
+              type="button"
+              disabled={busy || !filledBuildings.length || noteMissing}
+              onClick={() => void save(filledBuildings.map((building) => ({
+                buildingId: building.id,
+                rows: rowsByBuilding[building.id] ?? [],
+                visitors: visitorsByBuilding[building.id] ?? [],
+              })), note)}
+            >
+              {busy ? <Loader2 className="spin" size={15} /> : <Check size={15} />} {filledBuildings.length > 1
+                ? text(`Confirm attendance · ${filledBuildings.length} buildings`, `Aanwezigheid bevestigen · ${filledBuildings.length} gebouwen`)
+                : text("Confirm attendance", "Aanwezigheid bevestigen")}
             </button>
           </div>
         </div>

@@ -8431,19 +8431,39 @@ textarea:focus-visible {
  */
 .workforce-modal { max-width: 780px; }
 .workforce-body { display: grid; gap: 15px; }
-.workforce-context { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
-.workforce-context > span {
+/* The location and weather tiles were struck through on the client's screenshot; the count
+   they left standing became the one line at the top. */
+.workforce-headline {
   align-items: center;
   background: #f3f7f7;
   border-radius: 11px;
-  display: grid;
-  gap: 3px 8px;
-  grid-template-columns: auto 1fr;
-  padding: 12px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 11px 14px;
 }
-.workforce-context svg { color: var(--green); grid-row: 1 / 3; }
-.workforce-context small { color: var(--ink-500); font-size: 9px; text-transform: uppercase; }
-.workforce-context strong { color: var(--ink-800); font-size: 11px; }
+.workforce-headline > span { align-items: center; color: var(--ink-600); display: inline-flex; font-size: 11px; font-weight: 700; gap: 8px; }
+.workforce-headline svg { color: var(--green); }
+.workforce-headline > strong { color: var(--green); font-size: 22px; }
+
+/* One tab per building, each carrying its own crew and its own count. */
+.workforce-buildings { display: flex; flex-wrap: wrap; gap: 7px; }
+.workforce-buildings button {
+  align-items: center;
+  background: #f4f7f7;
+  border: 1px solid var(--ink-200);
+  border-radius: 999px;
+  color: var(--ink-700);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 650;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 14px;
+}
+.workforce-buildings button.active { background: var(--green-soft); border-color: #7fbead; color: var(--green); font-weight: 750; }
+.workforce-buildings button > b { background: #fff; border-radius: 999px; font-size: 11px; min-width: 24px; padding: 3px 7px; text-align: center; }
 
 .workforce-toolbar { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; }
 .workforce-toolbar small { color: var(--muted); font-size: 10px; }
