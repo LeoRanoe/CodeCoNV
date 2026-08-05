@@ -2116,12 +2116,14 @@ test("processes the annotated screens of 5 August: one building field, a signed 
 });
 
 test("builds the HSE observation / issue screen the client sent, section by section", async () => {
-  const [operations, dataLayer, pendingRecords, issueMigration, evidence, styles] = await Promise.all([
+  const [operations, dataLayer, pendingRecords, issueMigration, evidence, periodPdf, periodDocx, styles] = await Promise.all([
     readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/offline/pending-records.ts", import.meta.url), "utf8"),
     readFile(new URL("../../../supabase/migrations/202608050003_hse_issue_form_sections.sql", import.meta.url), "utf8"),
     readFile(new URL("../app/photo-evidence.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/period-report-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/period-report-docx.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
 
@@ -2189,6 +2191,14 @@ test("builds the HSE observation / issue screen the client sent, section by sect
   assert.match(dataLayer, /schemaFeatureMissing\(hseResult\.error, "issue_type"\)/);
   assert.match(dataLayer, /const fallbackType = input\.type === "observation" \|\| input\.type === "other" \? "positive_observation" : input\.type/);
 
+  // A box that is filled in on the screen is printed in the period report; a box that is
+  // only asked for reads as a box that was never stored.
+  assert.match(periodPdf, /export function immediateActionText\(issue: Record<string, unknown>\)/);
+  for (const key of ["hse_category", "issue_category", "responsible_person", "immediate_measure", "root_cause"]) {
+    assert.match(periodPdf, new RegExp(`"${key}"`), `the period report prints ${key}`);
+    assert.match(periodDocx, new RegExp(`"${key}"`), `the period report document prints ${key}`);
+  }
+
   // "Save draft" parks the screen on the device; it is offered back, never pushed back.
   assert.match(operations, /Save draft", "Concept opslaan/);
   assert.match(operations, /Put it back", "Terugzetten/);
@@ -2213,6 +2223,13 @@ test("builds the HSE observation / issue screen the client sent, section by sect
   assert.match(operations, /function deadlineDistanceLabel\(/);
   assert.match(operations, /className="record-due-distance"/);
   assert.match(operations, /className="record-field-clear"/);
+
+  // Every control on the client's bar does something: the chip pushes what is still on
+  // the device, the paperclip attaches, and the boxes read back where they are looked for.
+  assert.match(operations, /const syncWaitingRecordsNow = \(\) => void run\(/);
+  assert.match(operations, /<label className="record-attachment-count">/);
+  assert.match(operations, /event\.responsible_person \? text\(`for \$\{event\.responsible_person\}`/);
+  assert.match(operations, /Already done:", "Al gedaan:/);
 
   // The two columns, the tiles and the action bar have a shape of their own.
   for (const rule of [/\.sectioned-record-columns \{/, /\.record-tile-grid \{/, /\.record-severity-choices \{/, /\.record-action-grid \{/, /\.record-form-actions \{/]) {

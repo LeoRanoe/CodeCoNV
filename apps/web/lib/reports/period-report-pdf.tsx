@@ -78,6 +78,13 @@ function humanizeToken(result: string) {
   return result.replaceAll("_", " ");
 }
 
+/** Section 7 of the client's screens: the measures that were ticked, as one sentence. */
+export function immediateActionText(issue: Record<string, unknown>) {
+  const taken = Array.isArray(issue.immediate_actions) ? issue.immediate_actions.map((action) => humanizeToken(String(action))) : [];
+  const other = typeof issue.immediate_action_other === "string" ? issue.immediate_action_other.trim() : "";
+  return [...taken, other].filter(Boolean).join(" · ");
+}
+
 function detailsText(record: Record<string, unknown>) {
   const details = record.details;
   if (!details || typeof details !== "object" || Array.isArray(details)) return "";
@@ -98,6 +105,12 @@ function detailsText(record: Record<string, unknown>) {
     "period_start",
     "period_end",
     "description",
+    // The boxes of the client's own HSE and issue screens.
+    "hse_category",
+    "issue_category",
+    "responsible_person",
+    "immediate_measure",
+    "root_cause",
     "corrective_action",
     "disposition",
     "progress_percent",
@@ -176,8 +189,36 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
   }));
   const registerEntries = withContext(snapshot.register_entries);
   const inspections = withContext(snapshot.inspections);
-  const findings = withContext(snapshot.findings);
-  const hseEvents = withContext(snapshot.hse_events);
+  // The same for an issue: the category, the measure taken and the cause travel with it.
+  const findings = withContext(snapshot.findings).map((entry) => {
+    const issue = nested(entry, "issue_management");
+    return {
+      ...entry,
+      details: {
+        ...nested(entry, "details"),
+        issue_category: value(issue, "issue_category"),
+        responsible_person: value(issue, "responsible_person"),
+        immediate_measure: immediateActionText(issue),
+        root_cause: humanizeToken(value(issue, "root_cause")),
+        due_date: value(entry, "due_at"),
+      },
+    };
+  });
+  // What the client fills in on the HSE screen has to read back in the report: the
+  // heading, what was already done, who has to act, why it happened and what must change.
+  const hseEvents = withContext(snapshot.hse_events).map((entry) => ({
+    ...entry,
+    details: {
+      ...nested(entry, "details"),
+      hse_category: humanizeToken(value(entry, "hse_category")),
+      responsible_person: value(entry, "responsible_person"),
+      immediate_measure: value(entry, "immediate_measure"),
+      root_cause: humanizeToken(value(entry, "root_cause")),
+      corrective_action: value(entry, "corrective_action"),
+      due_date: value(entry, "due_at"),
+      notes: value(entry, "notes"),
+    },
+  }));
   const register = (type: string) => registerEntries.filter((entry) => value(entry, "register_type") === type);
   const openFindings = findings.filter((entry) => !["closed", "cancelled"].includes(value(entry, "status")));
   const issueFindings = findings.filter((entry) => value(entry, "finding_type") !== "ncr");

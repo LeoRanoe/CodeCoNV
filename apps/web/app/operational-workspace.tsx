@@ -1276,6 +1276,17 @@ function ProjectOperations({
     (days) => text(`in ${days} days`, `over ${days} dagen`),
     text("overdue", "verlopen"),
   );
+  /**
+   * The chip in the head of the record screens is not only a light: it is the way to push
+   * what is still on the device. "Data will sync" has to be something you can also ask for.
+   */
+  const syncWaitingRecordsNow = () => void run(
+    async () => {
+      await syncOfflineRecords(client, projectId);
+      await syncQueuedEvidenceNow();
+    },
+    text("Everything on this device has been offered to the central project.", "Alles op dit apparaat is aan het centrale project aangeboden."),
+  );
   /** The line the client's own screens carry: what the app already filled in by itself. */
   const capturedAutomatically = text("All key info captured automatically", "Alle kerngegevens worden automatisch vastgelegd");
   const syncChip = online
@@ -2419,7 +2430,7 @@ function ProjectOperations({
                   <h2>{text("Create issue", "Issue registreren")}</h2>
                   <p className="form-intro">{capturedAutomatically}</p>
                 </div>
-                <span className={`record-sync-chip${online ? "" : " offline"}`}>{online ? <CloudSun size={15} /> : <WifiOff size={15} />}<span><strong>{syncChip.label}</strong><small>{syncChip.detail}</small></span></span>
+                <button className={`record-sync-chip${online ? "" : " offline"}`} type="button" disabled={busy} onClick={syncWaitingRecordsNow} title={text("Send what is still waiting on this device", "Verstuur wat nog op dit apparaat wacht")}>{online ? <CloudSun size={15} /> : <WifiOff size={15} />}<span><strong>{syncChip.label}</strong><small>{syncChip.detail}</small></span></button>
                 <button className="secondary-button record-heading-draft" type="button" onClick={() => writeRecordDraft("issue", projectId, findingForm)}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
               </div>
               <section className="controlled-document-context sectioned-record-context" aria-label={text("Issue header", "Kop van het issue")}>
@@ -2651,7 +2662,10 @@ function ProjectOperations({
               <div className="record-form-actions">
                 <button className="ghost-button" type="button" onClick={() => { resetFindingForm(); setShowForm(false); }}><X size={14} /> {text("Cancel", "Annuleren")}</button>
                 <button className="ghost-button" type="button" onClick={() => writeRecordDraft("issue", projectId, findingForm)}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
-                <span className="record-attachment-count"><Paperclip size={14} /> {text(`Attachments (${findingPhotos.length})`, `Bijlagen (${findingPhotos.length})`)}</span>
+                <label className="record-attachment-count">
+                  <Paperclip size={14} /> {text(`Attachments (${findingPhotos.length})`, `Bijlagen (${findingPhotos.length})`)}
+                  <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
+                </label>
                 <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && findingBuildingId !== ALL_BUILDINGS && !findingLocationNodeId) || (!online && !findingPhotos.length) || !findingForm.issueCategory || findingForm.responsiblePerson.trim().length < 2 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><Send size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Issue indienen")}</button>
               </div>
             </div>
@@ -2861,7 +2875,7 @@ function ProjectOperations({
                   <h2>{text("HSE observation / issue", "HSE-observatie / issue")}</h2>
                   <p className="form-intro">{text("Report an unsafe act, condition or incident", "Meld een onveilige handeling, situatie of incident")}</p>
                 </div>
-                <span className={`record-sync-chip${online ? "" : " offline"}`}>{online ? <CloudSun size={15} /> : <WifiOff size={15} />}<span><strong>{syncChip.label}</strong><small>{syncChip.detail}</small></span></span>
+                <button className={`record-sync-chip${online ? "" : " offline"}`} type="button" disabled={busy} onClick={syncWaitingRecordsNow} title={text("Send what is still waiting on this device", "Verstuur wat nog op dit apparaat wacht")}>{online ? <CloudSun size={15} /> : <WifiOff size={15} />}<span><strong>{syncChip.label}</strong><small>{syncChip.detail}</small></span></button>
                 <button className="secondary-button record-heading-draft" type="button" onClick={() => writeRecordDraft("hse", projectId, hseForm)}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
               </div>
               {/* The head of the client's own screen: what the app already knows before a
@@ -3073,12 +3087,35 @@ function ProjectOperations({
               <div className="record-form-actions">
                 <button className="ghost-button" type="button" onClick={() => { resetHseForm(); setShowForm(false); }}><X size={14} /> {text("Cancel", "Annuleren")}</button>
                 <button className="ghost-button" type="button" onClick={() => writeRecordDraft("hse", projectId, hseForm)}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
-                <span className="record-attachment-count"><Paperclip size={14} /> {text(`Attachments (${hsePhotos.length})`, `Bijlagen (${hsePhotos.length})`)}</span>
+                <label className="record-attachment-count">
+                  <Paperclip size={14} /> {text(`Attachments (${hsePhotos.length})`, `Bijlagen (${hsePhotos.length})`)}
+                  <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setHsePhotos, setHsePhotoError); event.currentTarget.value = ""; }} />
+                </label>
                 <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && hseBuildingId !== ALL_BUILDINGS && !hseLocationNodeId) || !hseForm.issueCategory || hseForm.responsiblePerson.trim().length < 2 || hseForm.description.trim().length < 3} onClick={() => void addHse()}><Send size={15} /> {text("Submit issue", "Issue indienen")}</button>
               </div>
             </div>
           ) : null}
-          <RecordList empty={text("No formal HSE records yet.", "Nog geen formele HSE-registraties.")} rows={data.hseEvents.map((event) => ({ id: event.id, icon: ShieldCheck, title: event.confidential ? `${event.title} · ${text("confidential", "vertrouwelijk")}` : event.title, meta: `${event.event_number} · ${event.hse_category ? `${hseCategoryLabels[event.hse_category] ?? event.hse_category} · ` : ""}${recordContextLabel(event.building_id, event.location_node_id)} · ${event.event_type.replaceAll("_", " ")} · ${formatDate(event.occurred_at, locale)}`, status: event.status.replaceAll("_", " "), tone: event.severity === "critical" ? "red" : event.status === "closed" ? "green" : "" }))} />
+          {/* The line under a record says what was filled in on the screen: the heading,
+              the category, who has to act and by when. A box that is only asked for and
+              never read back reads as a box that was not stored. */}
+          <RecordList empty={text("No formal HSE records yet.", "Nog geen formele HSE-registraties.")} rows={data.hseEvents.map((event) => ({
+            id: event.id,
+            icon: ShieldCheck,
+            title: event.confidential ? `${event.title} · ${text("confidential", "vertrouwelijk")}` : event.title,
+            meta: [
+              event.event_number,
+              event.hse_category ? hseCategoryLabels[event.hse_category] ?? event.hse_category : "",
+              event.issue_category || "",
+              recordContextLabel(event.building_id, event.location_node_id),
+              event.event_type.replaceAll("_", " "),
+              formatDate(event.occurred_at, locale),
+              event.responsible_person ? text(`for ${event.responsible_person}`, `voor ${event.responsible_person}`) : "",
+              event.due_at ? `${text("deadline", "deadline")} ${formatDate(event.due_at, locale)}` : "",
+              event.root_cause ? `${text("cause", "oorzaak")}: ${event.root_cause.replaceAll("_", " ")}` : "",
+            ].filter(Boolean).join(" · "),
+            status: event.status.replaceAll("_", " "),
+            tone: event.severity === "critical" ? "red" : event.status === "closed" ? "green" : "",
+          }))} />
         </section>
       ) : null}
 
@@ -3795,7 +3832,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
                 )}
               </p>
             ) : null}
-            <div className="finding-card-main"><span className={`record-severity ${finding.severity}`}>{finding.severity}</span><div><span className="record-number">{finding.finding_number} · {finding.finding_type.toUpperCase()}</span><h3>{finding.title}</h3><p>{finding.description}</p>{issue.action_steps ? <p className="finding-required-action"><strong>{text("Required action:", "Vereiste actie:")}</strong> {issue.action_steps}</p> : null}<small>{recordBuildingName}{recordLocation ? ` → ${recordLocation}` : ""} · Deadline {formatDate(finding.due_at, locale)}{latestProgress ? ` · ${text("progress", "voortgang")} ${latestProgress.progress_percent}% · ${latestProgress.disposition.replaceAll("_", " ")}` : ""}{finding.verified_at ? ` · ${text("verified", "geverifieerd")} ${formatDate(finding.verified_at, locale)}` : ""}</small></div><span className={`task-status ${finding.status === "closed" ? "green" : finding.severity === "critical" ? "red" : ""}`}>{statusLabels[finding.status] ?? finding.status}</span></div>
+            <div className="finding-card-main"><span className={`record-severity ${finding.severity}`}>{finding.severity}</span><div><span className="record-number">{finding.finding_number} · {finding.finding_type.toUpperCase()}</span><h3>{finding.title}</h3><p>{finding.description}</p>{issue.action_steps ? <p className="finding-required-action"><strong>{text("Required action:", "Vereiste actie:")}</strong> {issue.action_steps}</p> : null}{issue.immediate_actions?.length || issue.immediate_action_other ? <p className="finding-immediate-action"><strong>{text("Already done:", "Al gedaan:")}</strong> {[...(issue.immediate_actions ?? []).map((action) => action.replaceAll("_", " ")), issue.immediate_action_other ?? ""].filter(Boolean).join(" · ")}</p> : null}<small>{[issue.issue_category, issue.root_cause ? `${text("cause", "oorzaak")}: ${issue.root_cause.replaceAll("_", " ")}` : "", issue.responsible_person].filter(Boolean).join(" · ")}{[issue.issue_category, issue.root_cause, issue.responsible_person].some(Boolean) ? " · " : ""}{recordBuildingName}{recordLocation ? ` → ${recordLocation}` : ""} · Deadline {formatDate(finding.due_at, locale)}{latestProgress ? ` · ${text("progress", "voortgang")} ${latestProgress.progress_percent}% · ${latestProgress.disposition.replaceAll("_", " ")}` : ""}{finding.verified_at ? ` · ${text("verified", "geverifieerd")} ${formatDate(finding.verified_at, locale)}` : ""}</small></div><span className={`task-status ${finding.status === "closed" ? "green" : finding.severity === "critical" ? "red" : ""}`}>{statusLabels[finding.status] ?? finding.status}</span></div>
             <div className="finding-actions" hidden={waitingToBeSent}>
               <button className="secondary-button" type="button" onClick={() => linkVisual(finding)}><Camera size={16} /> {visualAnnotation ? text("View photo marker", "Bekijk fotomarker") : text("Mark on photo / 360°", "Markeer op foto / 360°")}</button>
               <button className="secondary-button" type="button" onClick={() => linkDrawing(finding)}><MapPin size={16} /> {drawingPin ? text("View on drawing", "Bekijk op tekening") : text("Place on drawing", "Plaats op tekening")}</button>

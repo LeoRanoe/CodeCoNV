@@ -8645,6 +8645,8 @@ textarea:focus-visible {
 .record-back-button:hover { border-color: var(--ink-300); }
 .record-sync-chip {
   align-items: center;
+  border: 0;
+  cursor: pointer;
   background: var(--green-soft);
   border-radius: 10px;
   color: var(--green);
@@ -8778,13 +8780,22 @@ textarea:focus-visible {
   padding-top: 13px;
 }
 .record-form-actions .primary-button { margin-left: auto; }
+/* The paperclip attaches: it opens the same picker as the strip in section 6. */
 .record-attachment-count {
   align-items: center;
+  background: var(--paper);
+  border: 1px solid var(--ink-200);
+  border-radius: 10px;
   color: var(--ink-600);
+  cursor: pointer;
   display: flex;
   font-size: 11.5px;
   gap: 6px;
+  min-height: 36px;
+  padding: 7px 11px;
 }
+.record-attachment-count:hover { border-color: var(--ink-300); color: var(--ink-700); }
+.record-attachment-count input { height: 1px; opacity: 0; position: absolute; width: 1px; }
 
 /*
  * In one column the sections read in the client's own numbering — 1 to 12 — instead of
@@ -9299,6 +9310,7 @@ textarea:focus-visible {
   margin-top: 7px !important;
   padding: 7px 9px;
 }
+.finding-immediate-action { color: var(--ink-600); font-size: 11.5px; margin: 3px 0 0; }
 .issue-progress-form { background: #f5faf8; }
 .issue-escalation {
   align-self: end;

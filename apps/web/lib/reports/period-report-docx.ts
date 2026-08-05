@@ -7,7 +7,7 @@ import {
   metadataTable,
   sectionHeading,
 } from "@/lib/reports/docx-shared";
-import { allPeriodReportSections, allPeriodReportTopics, hseIncidentTypes, type PeriodReportOptions } from "@/lib/reports/period-report-pdf";
+import { allPeriodReportSections, allPeriodReportTopics, hseIncidentTypes, immediateActionText, type PeriodReportOptions } from "@/lib/reports/period-report-pdf";
 import type { PeriodReportSnapshot } from "@/lib/supabase/operations";
 
 function value(record: Record<string, unknown>, key: string, fallback = "") {
@@ -39,7 +39,8 @@ function detailsText(record: Record<string, unknown>) {
   const preferredKeys = [
     "building_name", "requested_to", "due_date", "revision", "related_reference", "reference_documents",
     "attachments", "discipline", "priority", "schedule_impact", "cost_impact", "period_start", "period_end",
-    "description", "corrective_action", "disposition", "progress_percent", "inspected_at", "status",
+    "description", "hse_category", "issue_category", "responsible_person", "immediate_measure",
+    "root_cause", "corrective_action", "disposition", "progress_percent", "inspected_at", "status",
   ];
   return preferredKeys
     .filter((key) => {
@@ -102,11 +103,39 @@ export function buildPeriodReportDocxDocument(snapshot: PeriodReportSnapshot, op
   const sections = new Set(options.sections?.length ? options.sections : allPeriodReportSections);
   const topics = new Set(options.topics?.length ? options.topics : allPeriodReportTopics);
   const register = (type: string) => snapshot.register_entries.filter((entry) => value(entry, "register_type") === type);
-  const openFindings = snapshot.findings.filter((entry) => !["closed", "cancelled"].includes(value(entry, "status")));
-  const issueFindings = snapshot.findings.filter((entry) => value(entry, "finding_type") !== "ncr");
-  const ncrFindings = snapshot.findings.filter((entry) => value(entry, "finding_type") === "ncr");
-  const hseIncidents = snapshot.hse_events.filter((entry) => hseIncidentTypes.includes(value(entry, "event_type")));
-  const hseObservations = snapshot.hse_events.filter((entry) => !hseIncidentTypes.includes(value(entry, "event_type")));
+  const findings = snapshot.findings.map((entry) => {
+    const issue = nested(entry, "issue_management");
+    return {
+      ...entry,
+      details: {
+        ...nested(entry, "details"),
+        issue_category: value(issue, "issue_category"),
+        responsible_person: value(issue, "responsible_person"),
+        immediate_measure: immediateActionText(issue),
+        root_cause: humanizeToken(value(issue, "root_cause")),
+        due_date: value(entry, "due_at"),
+      },
+    };
+  });
+  const openFindings = findings.filter((entry) => !["closed", "cancelled"].includes(value(entry, "status")));
+  const issueFindings = findings.filter((entry) => value(entry, "finding_type") !== "ncr");
+  const ncrFindings = findings.filter((entry) => value(entry, "finding_type") === "ncr");
+  // What the client fills in on the HSE and issue screens has to read back in the report.
+  const hseEvents = snapshot.hse_events.map((entry) => ({
+    ...entry,
+    details: {
+      ...nested(entry, "details"),
+      hse_category: humanizeToken(value(entry, "hse_category")),
+      responsible_person: value(entry, "responsible_person"),
+      immediate_measure: value(entry, "immediate_measure"),
+      root_cause: humanizeToken(value(entry, "root_cause")),
+      corrective_action: value(entry, "corrective_action"),
+      due_date: value(entry, "due_at"),
+      notes: value(entry, "notes"),
+    },
+  }));
+  const hseIncidents = hseEvents.filter((entry) => hseIncidentTypes.includes(value(entry, "event_type")));
+  const hseObservations = hseEvents.filter((entry) => !hseIncidentTypes.includes(value(entry, "event_type")));
   const attendanceTotal = snapshot.attendance.reduce((total, entry) => total + Number(entry.headcount ?? 0), 0);
   const workforce = Object.entries(snapshot.attendance.reduce<Record<string, number>>((groups, entry) => {
     const discipline = value(entry, "discipline", "Onbekend");
