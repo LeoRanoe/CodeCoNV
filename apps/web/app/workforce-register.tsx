@@ -1,7 +1,7 @@
 "use client";
 
-import { AlertTriangle, Check, Copy, Loader2, Minus, Plus, Users, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { AlertTriangle, Check, Copy, Loader2, Minus, Plus, Sigma, UserCheck, Users, X } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import { resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { useLanguage } from "@/lib/i18n";
@@ -199,6 +199,32 @@ export function WorkforceRegister({
 }
 
 /**
+ * One block of the workforce screen. The old screen the client knew put every part in a
+ * titled card with its own count; a flat stack of fields is what makes a supervisor lose
+ * track of which number belongs to what.
+ */
+function WorkforceSection({ icon, title, subtitle, count, action, children }: {
+  icon: ReactNode;
+  title: string;
+  subtitle?: string;
+  count?: number;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="workforce-section">
+      <header>
+        <span className="workforce-section-icon">{icon}</span>
+        <div><h3>{title}</h3>{subtitle ? <p>{subtitle}</p> : null}</div>
+        {typeof count === "number" ? <strong>{count}</strong> : null}
+      </header>
+      {action}
+      {children}
+    </section>
+  );
+}
+
+/**
  * The workforce screen the Workforce tile opens: the register, plus the context that says
  * which building and which day it belongs to, and the way to take over yesterday's crew.
  */
@@ -387,29 +413,41 @@ export function WorkforceModal({
             </div>
           ) : null}
 
-          <div className="workforce-toolbar">
-            <button className="ghost-button" type="button" disabled={previousDay === undefined} onClick={copyPrevious}>
-              {previousDay === undefined ? <Loader2 className="spin" size={13} /> : <Copy size={13} />} {text("Copy previous workday", "Vorige werkdag overnemen")}
-            </button>
-            {copyNote ? <small aria-live="polite">{copyNote}</small> : null}
-          </div>
-
-          <WorkforceRegister
-            rows={rows}
-            setRows={setRows}
-            parties={parties}
-            disciplines={disciplines}
-            defaultShiftStart={defaultShiftStart}
-            defaultShiftEnd={defaultShiftEnd}
-            editShifts
-          />
+          <WorkforceSection
+            icon={<Users size={17} />}
+            title={text("Workforce by trade", "Bezetting per discipline")}
+            subtitle={text("Choose the trade that is really on site and set today's headcount.", "Kies de discipline die er echt is en zet het aantal van vandaag.")}
+            count={workforceTotal(rows)}
+            action={(
+              <div className="workforce-toolbar">
+                <button className="ghost-button" type="button" disabled={previousDay === undefined} onClick={copyPrevious}>
+                  {previousDay === undefined ? <Loader2 className="spin" size={13} /> : <Copy size={13} />} {text("Copy previous workday", "Vorige werkdag overnemen")}
+                </button>
+                {copyNote ? <small aria-live="polite">{copyNote}</small> : null}
+              </div>
+            )}
+          >
+            <WorkforceRegister
+              rows={rows}
+              setRows={setRows}
+              parties={parties}
+              disciplines={disciplines}
+              defaultShiftStart={defaultShiftStart}
+              defaultShiftEnd={defaultShiftEnd}
+              editShifts
+            />
+          </WorkforceSection>
 
           {/* §4.3: the visitor registration. Kept apart from the counted crew on purpose —
               an inspector on site is not manning the work and must never inflate the
               headcount the contractor is held to. */}
           {parties.length ? (
-            <section className="workforce-visitors">
-              <h3>{text("Visitors on site", "Bezoekers op de bouwplaats")}</h3>
+            <WorkforceSection
+              icon={<UserCheck size={17} />}
+              title={text("Visitors", "Bezoekers")}
+              subtitle={text("On site, but not manning the work. They stay outside every headcount.", "Wel op de bouwplaats, maar niet aan het werk. Ze tellen in geen enkel totaal mee.")}
+              count={visitors.length}
+            >
               <div className="workforce-add">
                 <label className="form-field">
                   <span>{text("Organisation", "Organisatie")}</span>
@@ -454,54 +492,67 @@ export function WorkforceModal({
                 ))}
                 {!visitors.length ? <p className="form-helper">{text("No visitors recorded today.", "Vandaag geen bezoekers vastgelegd.")}</p> : null}
               </div>
-            </section>
+            </WorkforceSection>
           ) : null}
 
           {/* §4.3: totals per organisation and per discipline. The report is read per
-              contractor, and the planning is read per trade. */}
+              contractor, and the planning is read per trade. Over the whole day, so a crew
+              moved between buildings is counted once. */}
           {byParty.length || byDiscipline.length ? (
-            <div className="workforce-totals">
-              <section>
-                <h3>{text("Per organisation", "Per organisatie")}</h3>
-                <dl>{byParty.map((entry) => <div key={entry.key}><dt>{entry.label}</dt><dd>{entry.count}</dd></div>)}</dl>
-              </section>
-              <section>
-                <h3>{text("Per trade", "Per discipline")}</h3>
-                <dl>{byDiscipline.map((entry) => <div key={entry.key}><dt>{entry.label}</dt><dd>{entry.count}</dd></div>)}</dl>
-              </section>
-            </div>
+            <WorkforceSection
+              icon={<Sigma size={17} />}
+              title={text("Totals for today", "Totalen van vandaag")}
+              subtitle={buildings.length > 1
+                ? text("Across all buildings together.", "Over alle gebouwen samen.")
+                : undefined}
+              count={total}
+            >
+              <div className="workforce-totals">
+                <div>
+                  <h4>{text("Per organisation", "Per organisatie")}</h4>
+                  <dl>{byParty.map((entry) => <div key={entry.key}><dt>{entry.label}</dt><dd>{entry.count}</dd></div>)}</dl>
+                </div>
+                <div>
+                  <h4>{text("Per trade", "Per discipline")}</h4>
+                  <dl>{byDiscipline.map((entry) => <div key={entry.key}><dt>{entry.label}</dt><dd>{entry.count}</dd></div>)}</dl>
+                </div>
+              </div>
+            </WorkforceSection>
           ) : null}
 
-          {/* §4.3: signal a large deviation. It states the fact and the number behind it;
-              deciding whether it is a problem is the supervisor's job, not the app's. */}
-          {deviations.map((deviation) => (
-            <div className="operation-alert warning workforce-deviation" key={deviation.id}>
-              <AlertTriangle size={18} />
-              <div>
-                <strong>{deviation.kind === "planned"
-                  ? text("Deviates from the planned workforce", "Wijkt af van de geplande bezetting")
-                  : text("Deviates from the last workday", "Wijkt af van de vorige werkdag")}</strong>
-                <span>{text(
-                  `${deviation.total} on site against ${deviation.reference} ${deviation.kind === "planned" ? "planned" : "on the last workday"} — ${Math.round(deviation.share * 100)}% ${deviation.direction === "above" ? "more" : "fewer"}.`,
-                  `${deviation.total} aanwezig tegenover ${deviation.reference} ${deviation.kind === "planned" ? "gepland" : "op de vorige werkdag"} — ${Math.round(deviation.share * 100)}% ${deviation.direction === "above" ? "meer" : "minder"}.`,
-                )}</span>
-              </div>
-            </div>
-          ))}
-
-          {/* §4.3: an explanation with a deviating manning level. Asked for only when there is
-              something to explain, so a normal day stays two taps. */}
+          {/* §4.3: signal a large deviation and ask for the sentence that explains it. Both
+              stand in one block: a warning whose answer sits somewhere else on the screen is
+              a warning that gets read twice and answered once. */}
           {deviations.length ? (
-            <label className="form-field">
-              <span>{text("Explain the deviating workforce", "Toelichting bij de afwijkende bezetting")}</span>
-              <textarea
-                rows={2}
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-                placeholder={text("For example: two crews moved to the other building.", "Bijvoorbeeld: twee ploegen zijn naar het andere gebouw verplaatst.")}
-              />
-              <DictateButton onText={(transcript) => setNote((current) => appendDictation(current, transcript))} />
-            </label>
+            <WorkforceSection
+              icon={<AlertTriangle size={17} />}
+              title={text("Deviating workforce", "Afwijkende bezetting")}
+              subtitle={text("Say why, so the report explains the number instead of only stating it.", "Zeg waarom, zodat het rapport het getal uitlegt in plaats van het alleen te noemen.")}
+            >
+              <ul className="workforce-deviation-list">
+                {deviations.map((deviation) => (
+                  <li key={deviation.id}>
+                    <strong>{deviation.kind === "planned"
+                      ? text("Against the plan", "Tegenover de planning")
+                      : text("Against the last workday", "Tegenover de vorige werkdag")}</strong>
+                    <span>{text(
+                      `${deviation.total} on site against ${deviation.reference} — ${Math.round(deviation.share * 100)}% ${deviation.direction === "above" ? "more" : "fewer"}.`,
+                      `${deviation.total} aanwezig tegenover ${deviation.reference} — ${Math.round(deviation.share * 100)}% ${deviation.direction === "above" ? "meer" : "minder"}.`,
+                    )}</span>
+                  </li>
+                ))}
+              </ul>
+              <label className="form-field">
+                <span>{text("Explanation", "Toelichting")}</span>
+                <textarea
+                  rows={2}
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  placeholder={text("For example: two crews moved to the other building.", "Bijvoorbeeld: twee ploegen zijn naar het andere gebouw verplaatst.")}
+                />
+                <DictateButton onText={(transcript) => setNote((current) => appendDictation(current, transcript))} />
+              </label>
+            </WorkforceSection>
           ) : null}
 
           <div className="modal-actions">

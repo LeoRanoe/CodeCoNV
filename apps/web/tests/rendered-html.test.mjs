@@ -1916,6 +1916,17 @@ test("gives the workforce screen the full register, not a counter per party", as
   assert.match(register, /workforce-buildings/);
   assert.match(register, /filledBuildings\.map\(/);
   assert.match(app, /for \(const entry of perBuilding\)/);
+
+  // "Geordend, hoe het was": every block is a titled card with its own count, in a fixed
+  // order, instead of one flat stack of fields a supervisor has to read top to bottom.
+  assert.match(register, /function WorkforceSection/);
+  assert.match(styles, /\.workforce-section \{/);
+  assert.match(styles, /\.workforce-section-icon/);
+  const blocks = ["Workforce by trade", "Visitors", "Totals for today", "Deviating workforce"]
+    .map((title) => register.indexOf(`title={text("${title}"`));
+  assert.ok(blocks.every((position) => position > 0), `every block needs its own heading: ${blocks}`);
+  // Crew first, then visitors, then the totals, then what needs explaining.
+  assert.deepEqual([...blocks].sort((left, right) => left - right), blocks);
 });
 
 test("processes the annotated screens of 4 August: ordered photos, a named pin, the client's issue form and a day-aware record", async () => {
@@ -2006,10 +2017,11 @@ test("covers section 4.3 of the product plan on the workforce screen", async () 
   assert.match(register, /type="time"/);
   // Bezoekersregistratie.
   assert.match(register, /export type VisitorRow/);
-  assert.match(register, /Visitors on site|Bezoekers op de bouwplaats/);
+  assert.match(register, /title=\{text\("Visitors", "Bezoekers"\)\}/);
   assert.match(app, /entryType: "visitor" as const/);
   // Toelichting bij afwijkende bezetting.
-  assert.match(register, /Explain the deviating workforce|Toelichting bij de afwijkende bezetting/);
+  assert.match(register, /title=\{text\("Deviating workforce", "Afwijkende bezetting"\)\}/);
+  assert.match(register, /\{text\("Explanation", "Toelichting"\)\}/);
   assert.match(dataLayer, /notes: row\.notes\?\.trim\(\) \|\| null/);
 
   // Automatisering: vorige werkdag kopiëren, totalen per organisatie en discipline,
