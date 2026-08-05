@@ -8202,6 +8202,13 @@ textarea:focus-visible {
 .media-detail-facts dd { color: var(--ink-900); font-size: 12.5px; margin: 0; overflow-wrap: anywhere; }
 .media-detail-links { display: grid; gap: 6px; }
 .media-detail-links > strong { color: var(--ink-600); font-size: 11px; }
+.media-detail-markers { display: grid; gap: 5px; list-style: none; margin: 0; padding: 0; }
+.media-detail-markers li { align-items: center; color: var(--ink-800); display: flex; font-size: 12px; gap: 7px; }
+.marker-dot { border-radius: 999px; display: inline-block; height: 9px; width: 9px; }
+.marker-dot.tone-low { background: var(--green); }
+.marker-dot.tone-medium { background: var(--yellow); }
+.marker-dot.tone-high { background: var(--signal); }
+.marker-dot.tone-critical { background: var(--red); }
 .media-detail-actions { display: flex; flex-wrap: wrap; gap: 9px; }
 .media-detail-actions .primary-button { margin-left: auto; }
 @media (max-width: 560px) {

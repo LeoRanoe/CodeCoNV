@@ -58,6 +58,7 @@ import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingO
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
 import { RecordLocationMap } from "@/app/record-location-map";
+import { StoredPhotoDetail } from "@/app/stored-photo-detail";
 import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { VisualEvidenceWorkspace } from "@/app/visual-evidence-workspace";
@@ -2831,6 +2832,8 @@ function ProjectOperations({
             data={data}
             client={client}
             run={run}
+            projectId={projectId}
+            openPhotoMarking={(fileId) => { setVisualFileId(fileId); switchTab("visual"); }}
             findings={scopedFindings}
             progressUpdates={data.findingProgressUpdates}
             visualAnnotations={data.visualAnnotations}
@@ -3611,10 +3614,13 @@ function StoredPhotoThumbnail({ client, file }: { client: SupabaseClient; file: 
  * a register of a hundred findings would otherwise start hundreds of secure
  * downloads on first paint.
  */
-function RecordPhotoStrip({ data, client, kind, recordId, resolver, busy, run }: { data: OperationSnapshot; client: SupabaseClient; kind: FileOriginKind; recordId: string; resolver: FileOriginResolver; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean> }) {
+function RecordPhotoStrip({ data, client, kind, recordId, resolver, buildings, projectId, busy, run, openPhotoMarking }: { data: OperationSnapshot; client: SupabaseClient; kind: FileOriginKind; recordId: string; resolver: FileOriginResolver; buildings: BuildingOption[]; projectId: string; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>; openPhotoMarking?: (fileId: string) => void }) {
   const { text } = useLanguage();
   const [open, setOpen] = useState(false);
+  /** The photo whose own screen is open, the same screen the library opens. */
+  const [openFileId, setOpenFileId] = useState("");
   const files = filesForRecord(data, kind, recordId, resolver);
+  const openFile = files.find((file) => file.id === openFileId) ?? null;
   if (!files.length) return null;
   const label = `${files.length} ${text(files.length === 1 ? "linked photo" : "linked photos", files.length === 1 ? "gekoppelde foto" : "gekoppelde foto's")}`;
   return (
@@ -3627,11 +3633,24 @@ function RecordPhotoStrip({ data, client, kind, recordId, resolver, busy, run }:
       {open ? (
         <div>
           {files.slice(0, 12).map((file) => (
-            <button type="button" disabled={busy} onClick={() => void run(() => openProjectFile(client, file.id, file.original_name), text(`${file.original_name} opened.`, `${file.original_name} geopend.`))} title={file.original_name} key={file.id}>
+            <button type="button" onClick={() => setOpenFileId(file.id)} title={file.original_name} key={file.id}>
               <StoredPhotoThumbnail client={client} file={file} />
             </button>
           ))}
         </div>
+      ) : null}
+      {openFile ? (
+        <StoredPhotoDetail
+          data={data}
+          buildings={buildings}
+          file={openFile}
+          client={client}
+          busy={busy}
+          run={run}
+          projectId={projectId}
+          close={() => setOpenFileId("")}
+          openMarking={openPhotoMarking}
+        />
       ) : null}
     </section>
   );
@@ -3709,7 +3728,7 @@ function SubmittedRecordShare({ finding, scope, projectName, projectCode, buildi
   );
 }
 
-function FindingList({ data, client, run, findings, progressUpdates, visualAnnotations, externalShareLinks, projectName, projectCode, buildings, locationNodes, currentUserName, resolveUserName, parties, busy, focusRecordId = "", transition, recordProgress, share, revoke, linkVisual, linkDrawing }: {
+function FindingList({ data, client, run, findings, progressUpdates, visualAnnotations, externalShareLinks, projectId, projectName, projectCode, buildings, locationNodes, currentUserName, resolveUserName, parties, busy, focusRecordId = "", transition, recordProgress, share, revoke, linkVisual, linkDrawing, openPhotoMarking }: {
   data: OperationSnapshot;
   client: SupabaseClient;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
@@ -3717,6 +3736,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   progressUpdates: OperationSnapshot["findingProgressUpdates"];
   visualAnnotations: OperationSnapshot["visualAnnotations"];
   externalShareLinks: NonNullable<OperationSnapshot["externalShareLinks"]>;
+  projectId: string;
   projectName: string;
   projectCode: string;
   buildings: BuildingOption[];
@@ -3734,6 +3754,8 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   revoke: (shareId: string) => Promise<boolean>;
   linkVisual: (finding: Finding) => void;
   linkDrawing: (finding: Finding) => void;
+  /** Opens the screen where problems are marked on a photo, on the photo that was tapped. */
+  openPhotoMarking?: (fileId: string) => void;
 }) {
   const { language, locale, text } = useLanguage();
   const statusLabels = language === "en" ? findingStatusLabelsEnglish : findingStatusLabels;
@@ -3877,7 +3899,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
                 </div>
               </section>
             ) : null}
-            <RecordPhotoStrip data={data} client={client} kind="finding" recordId={finding.id} resolver={fileOriginResolver} busy={busy} run={run} />
+            <RecordPhotoStrip data={data} client={client} kind="finding" recordId={finding.id} resolver={fileOriginResolver} buildings={buildings} projectId={projectId} busy={busy} run={run} openPhotoMarking={openPhotoMarking} />
             {activeExternalShares.length ? (
               <section className="active-external-shares" aria-label={text("Active external links", "Actieve externe links")}>
                 <header><Link2 size={16} /><span><strong>{text(`${activeExternalShares.length} active external link${activeExternalShares.length === 1 ? "" : "s"}`, `${activeExternalShares.length} actieve externe link${activeExternalShares.length === 1 ? "" : "s"}`)}</strong><small>{text("The raw link is shown only once when it is created. It can always be revoked here.", "De ruwe link wordt alleen bij het aanmaken getoond. Intrekken kan hier altijd.")}</small></span></header>

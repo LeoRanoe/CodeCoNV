@@ -2418,32 +2418,41 @@ test("gives a file a name a person can read, and a phone controls it can reach",
   assert.match(styles, /\.primary-button:disabled \{[^}]*color: #8a9a9a;/);
 });
 
-test("opens a stored photo on its own screen, with the way to mark a problem on it", async () => {
-  const [media, visual, workspace, styles] = await Promise.all([
+test("opens a stored photo on its own screen everywhere it is shown", async () => {
+  const [detail, media, visual, workspace, styles] = await Promise.all([
+    readFile(new URL("../app/stored-photo-detail.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/media-library-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/visual-evidence-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
 
-  // Tapping a photo opens what the app knows about it, instead of dropping the raw file
-  // into a browser tab.
-  assert.match(media, /function MediaFileDetail\(/);
-  assert.match(media, /onClick=\{\(\) => setOpenFileId\(file\.id\)\}/);
-  for (const fact of [/Building", "Gebouw/, /Taken", "Gemaakt/, /Folder", "Map/, /Marked problems", "Gemarkeerde problemen/]) {
-    assert.match(media, fact);
+  // One screen, used by every place a stored photo is shown, so they cannot drift apart.
+  assert.match(detail, /export function StoredPhotoDetail\(/);
+  assert.match(media, /<StoredPhotoDetail/);
+  assert.match(workspace, /<StoredPhotoDetail/);
+  assert.doesNotMatch(media, /function MediaFileDetail\(/);
+
+  // It says what the app knows about the picture.
+  for (const fact of [/Building", "Gebouw/, /Taken", "Gemaakt/, /Folder", "Map/, /Marked problems", "Gemarkeerde problemen/, /Linked records", "Gekoppelde registraties/]) {
+    assert.match(detail, fact);
   }
-  assert.match(media, /Linked records", "Gekoppelde registraties/);
   assert.match(styles, /\.media-detail-facts \{/);
 
-  // Marking a problem happens on a capture; a library photo gets one the first time it is
-  // asked for, on the file that is already there.
-  assert.match(media, /const markOnPhoto = async \(file: FileRecord\)/);
-  assert.match(media, /createVisualCapture\(client, \{/);
-  assert.match(media, /Mark a problem on this photo", "Probleem op deze foto markeren/);
+  // Marking a problem happens on a capture; a photo gets one the first time it is asked
+  // for, on the file that is already there.
+  assert.match(detail, /const markProblem = async \(\)/);
+  assert.match(detail, /createVisualCapture\(client, \{/);
+  assert.match(detail, /Mark a problem on this photo", "Probleem op deze foto markeren/);
+
+  // Tapping a photo no longer drops the raw file into a browser tab.
+  assert.doesNotMatch(workspace, /onClick=\{\(\) => void run\(\(\) => openProjectFile\(client, file\.id, file\.original_name\)/);
+  assert.match(workspace, /onClick=\{\(\) => setOpenFileId\(file\.id\)\}/);
+  assert.match(media, /onClick=\{\(\) => setOpenFileId\(file\.id\)\}/);
 
   // And the marking screen opens on that photo instead of on whatever was first.
   assert.match(workspace, /markPhotoIssue=\{\(fileId\) => \{ setVisualFileId\(fileId\); switchTab\("visual"\); \}\}/);
+  assert.match(workspace, /openPhotoMarking=\{\(fileId\) => \{ setVisualFileId\(fileId\); switchTab\("visual"\); \}\}/);
   assert.match(visual, /const \[pendingSelectionFileId, setPendingSelectionFileId\] = useState\(initialFileId\)/);
   assert.match(visual, /if \(initialFileId\) onInitialFileConsumed\?\.\(\)/);
 });
