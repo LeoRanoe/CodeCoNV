@@ -28,6 +28,16 @@ Stel deze waarden afzonderlijk in voor Production en, waar nodig, Preview. Kopie
 - [ ] `VAPID_SUBJECT` — `mailto:`-contact voor de pushprovider
 - [ ] `NOTIFICATION_FROM_EMAIL` — alleen nodig wanneer de optionele e-mailfallback later wordt geactiveerd
 - [ ] `NEXT_PUBLIC_SITE_URL` — canonieke productie-URL die in meldingsmails wordt opgenomen
+- [ ] `GOOGLE_MAPS_API_KEY` — uitsluitend server-side; zonder deze sleutel tonen de registratieschermen alleen de coordinaten en geen satellietbeeld
+
+## Kaartprovider (optioneel)
+
+Het satellietbeeld op het HSE- en issuescherm komt van de Google **Maps Static API**. De sleutel blijft server-side: de browser vraagt `/api/maps/static` op met het sessietoken en deze applicatie haalt het beeld op. Daardoor blijft de Content-Security-Policy dicht - geen externe scripts, geen iframes - en staat de sleutel nooit in de paginabron.
+
+- [ ] Zet in Google Cloud een project op en schakel alleen **Maps Static API** in.
+- [ ] Beperk de sleutel tot die ene API. Een HTTP-referrerbeperking heeft hier geen zin omdat de aanroep van de server komt; gebruik een IP-beperking of een aparte sleutel per omgeving.
+- [ ] Stel een budgetwaarschuwing en een dagelijkse quotalimiet in. Elk beeld kost geld; het endpoint is daarom alleen bereikbaar voor een aangemeld account en het antwoord mag een dag gecachet worden.
+- [ ] Controleer na de eerste deploy dat een registratie zonder netwerk nog steeds de coordinaten toont: het beeld is een hulpmiddel, nooit de registratie zelf.
 
 ## Origins en redirects
 

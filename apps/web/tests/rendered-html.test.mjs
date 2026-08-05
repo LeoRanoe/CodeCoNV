@@ -2297,3 +2297,52 @@ test("gives the issue screen the same sections the client drew for it", async ()
   assert.match(operations, /Impact, follow-up and escalation|Impact, opvolging en escalatie/);
   assert.match(operations, /escalationRequired: event\.target\.checked/);
 });
+
+test("shows the spot on a satellite view without opening the application to the map provider", async () => {
+  const [route, mapComponent, operations, config, styles, checklist] = await Promise.all([
+    readFile(new URL("../app/api/maps/static/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/record-location-map.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../next.config.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../../../docs/operations/vercel-deployment-checklist.md", import.meta.url), "utf8"),
+  ]);
+
+  // The key belongs to the server. It is never a NEXT_PUBLIC_ value and never reaches a
+  // phone, so the picture is fetched here and handed back as an image of this application.
+  assert.match(route, /process\.env\.GOOGLE_MAPS_API_KEY/);
+  assert.doesNotMatch(route, /NEXT_PUBLIC_GOOGLE/);
+  assert.doesNotMatch(mapComponent, /googleapis|GOOGLE_MAPS/);
+  assert.match(route, /https:\/\/maps\.googleapis\.com\/maps\/api\/staticmap/);
+
+  // Every picture costs the project money, so an anonymous caller gets nothing.
+  assert.match(route, /Signing in is required/);
+  assert.match(route, /auth\.getUser\(accessToken\)/);
+  assert.match(mapComponent, /authorization: `Bearer \$\{token\}`/);
+
+  // The security policy stays shut: no external script, no iframe, images from here only.
+  assert.match(config, /"img-src 'self' blob: data:"/);
+  assert.doesNotMatch(config, /frame-src/);
+  assert.doesNotMatch(config, /script-src[^"]*googleapis/);
+  // The screens do ask the phone where it stands, so geolocation has to be allowed here.
+  assert.match(config, /geolocation=\(self\)/);
+
+  // Tapping the picture moves the pin: the provider's own script is not needed for that.
+  assert.match(mapComponent, /function coordinatesFromTap\(/);
+  assert.match(mapComponent, /Tap the map to move the pin|Tik op de kaart om de speld te verplaatsen/);
+  assert.match(styles, /\.record-location-map img \{/);
+
+  // Without a provider, and on a site without a signal, the coordinates stay.
+  assert.match(route, /No map provider is configured for this environment/);
+  assert.match(mapComponent, /if \(!cancelled\) setMapImage\(null\)/);
+  assert.match(mapComponent, /No coordinates recorded yet|Nog geen coördinaten vastgelegd/);
+
+  // Both record screens use the one map block, centred on the project until the phone
+  // has been asked.
+  assert.equal(operations.match(/<RecordLocationMap/g)?.length, 2);
+  assert.match(operations, /const projectCenter = liveWeather \? \{ latitude: liveWeather\.latitude, longitude: liveWeather\.longitude \} : null/);
+
+  // Whoever deploys this has to know the key exists, what it costs and how to cap it.
+  assert.match(checklist, /GOOGLE_MAPS_API_KEY/);
+  assert.match(checklist, /Maps Static API/);
+});

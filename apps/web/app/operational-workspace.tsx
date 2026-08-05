@@ -27,13 +27,11 @@ import {
   Leaf,
   Link2,
   Loader2,
-  LocateFixed,
   MapPin,
   MessageCircle,
   MoreHorizontal,
   PackageCheck,
   Paperclip,
-  Pencil,
   PersonStanding,
   Plus,
   RotateCcw,
@@ -59,6 +57,7 @@ import { AgreementSignatureFields, agreementSignatureDetails, agreementSummaryLi
 import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
+import { RecordLocationMap } from "@/app/record-location-map";
 import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { VisualEvidenceWorkspace } from "@/app/visual-evidence-workspace";
@@ -1289,6 +1288,9 @@ function ProjectOperations({
   );
   /** The line the client's own screens carry: what the app already filled in by itself. */
   const capturedAutomatically = text("All key info captured automatically", "Alle kerngegevens worden automatisch vastgelegd");
+  // Before the phone has been asked anything, the map already knows roughly where the
+  // project stands: the same place the live weather was resolved for.
+  const projectCenter = liveWeather ? { latitude: liveWeather.latitude, longitude: liveWeather.longitude } : null;
   const syncChip = online
     ? { label: text("Online", "Online"), detail: text("Data syncs directly", "Gegevens gaan direct mee") }
     : { label: text("Offline", "Offline"), detail: text("Data will sync", "Gegevens synchroniseren later") };
@@ -2505,25 +2507,17 @@ function ProjectOperations({
                       <BuildingPicker id="finding-building" buildings={buildings} value={findingBuildingId} onChange={(next) => { setFindingBuildingId(next); setFindingLocationNodeId(""); }} allowAll />
                       <LocationPicker id="finding-location" nodes={data.locationNodes} buildingId={findingBuildingId} value={findingLocationNodeId} onChange={setFindingLocationNodeId} requiredDepth={requiredLocationDepth} />
                     </div>
-                    <div className="record-location-card">
-                      <div className="record-location-readout">
-                        <MapPin size={16} />
-                        <div>
-                          <strong>{findingForm.latitude && findingForm.longitude ? `Lat: ${findingForm.latitude}, Long: ${findingForm.longitude}` : text("No coordinates recorded yet", "Nog geen coördinaten vastgelegd")}</strong>
-                          <span>{findingBuildingId === ALL_BUILDINGS ? projectName : `${buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName}, ${projectName}`}</span>
-                        </div>
-                      </div>
-                      <div className="record-location-buttons">
-                        <button className="ghost-button" type="button" disabled={issueLocating} onClick={captureIssuePosition}>{issueLocating ? <Loader2 className="spin" size={14} /> : <LocateFixed size={14} />} {findingForm.latitude ? text("Change location", "Locatie wijzigen") : text("Use my location", "Gebruik mijn locatie")}</button>
-                        <button className="ghost-button" type="button" aria-pressed={issueManualPosition} onClick={() => setIssueManualPosition(!issueManualPosition)}><Pencil size={14} /> {text("Type coordinates", "Coördinaten invullen")}</button>
-                      </div>
-                    </div>
-                    {issueManualPosition ? (
-                      <div className="form-grid-2">
-                        <label className="form-field"><span>{text("Latitude", "Breedtegraad")}</span><input inputMode="decimal" value={findingForm.latitude} onChange={(event) => setFindingForm({ ...findingForm, latitude: event.target.value })} placeholder="5.8521" /></label>
-                        <label className="form-field"><span>{text("Longitude", "Lengtegraad")}</span><input inputMode="decimal" value={findingForm.longitude} onChange={(event) => setFindingForm({ ...findingForm, longitude: event.target.value })} placeholder="-55.2034" /></label>
-                      </div>
-                    ) : null}
+                    <RecordLocationMap
+                      client={client}
+                      value={{ latitude: findingForm.latitude, longitude: findingForm.longitude }}
+                      fallbackCenter={projectCenter}
+                      contextLabel={findingBuildingId === ALL_BUILDINGS ? projectName : `${buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName}, ${projectName}`}
+                      onChange={(coordinates) => setFindingForm((current) => ({ ...current, ...coordinates }))}
+                      onUseMyLocation={captureIssuePosition}
+                      locating={issueLocating}
+                      manualOpen={issueManualPosition}
+                      onToggleManual={() => setIssueManualPosition(!issueManualPosition)}
+                    />
                     {issueLocationError ? <p className="field-error" role="alert">{issueLocationError}</p> : null}
                   </section>
                 </div>
@@ -2998,25 +2992,17 @@ function ProjectOperations({
                       <LocationPicker id="hse-location" nodes={data.locationNodes} buildingId={hseBuildingId} value={hseLocationNodeId} onChange={setHseLocationNodeId} requiredDepth={hseBuildingId === ALL_BUILDINGS ? "building" : requiredLocationDepth} />
                     </div>
                     {/* Where on earth it was seen, next to where in the works it was seen. */}
-                    <div className="record-location-card">
-                      <div className="record-location-readout">
-                        <MapPin size={16} />
-                        <div>
-                          <strong>{hseForm.latitude && hseForm.longitude ? `Lat: ${hseForm.latitude}, Long: ${hseForm.longitude}` : text("No coordinates recorded yet", "Nog geen coördinaten vastgelegd")}</strong>
-                          <span>{hseBuildingId === ALL_BUILDINGS ? projectName : `${buildings.find((building) => building.id === hseBuildingId)?.name ?? buildingName}, ${projectName}`}</span>
-                        </div>
-                      </div>
-                      <div className="record-location-buttons">
-                        <button className="ghost-button" type="button" disabled={hseLocating} onClick={captureHsePosition}>{hseLocating ? <Loader2 className="spin" size={14} /> : <LocateFixed size={14} />} {hseForm.latitude ? text("Change location", "Locatie wijzigen") : text("Use my location", "Gebruik mijn locatie")}</button>
-                        <button className="ghost-button" type="button" aria-pressed={hseManualPosition} onClick={() => setHseManualPosition(!hseManualPosition)}><Pencil size={14} /> {text("Type coordinates", "Coördinaten invullen")}</button>
-                      </div>
-                    </div>
-                    {hseManualPosition ? (
-                      <div className="form-grid-2">
-                        <label className="form-field"><span>{text("Latitude", "Breedtegraad")}</span><input inputMode="decimal" value={hseForm.latitude} onChange={(event) => setHseForm({ ...hseForm, latitude: event.target.value })} placeholder="5.8521" /></label>
-                        <label className="form-field"><span>{text("Longitude", "Lengtegraad")}</span><input inputMode="decimal" value={hseForm.longitude} onChange={(event) => setHseForm({ ...hseForm, longitude: event.target.value })} placeholder="-55.2034" /></label>
-                      </div>
-                    ) : null}
+                    <RecordLocationMap
+                      client={client}
+                      value={{ latitude: hseForm.latitude, longitude: hseForm.longitude }}
+                      fallbackCenter={projectCenter}
+                      contextLabel={hseBuildingId === ALL_BUILDINGS ? projectName : `${buildings.find((building) => building.id === hseBuildingId)?.name ?? buildingName}, ${projectName}`}
+                      onChange={(coordinates) => setHseForm((current) => ({ ...current, ...coordinates }))}
+                      onUseMyLocation={captureHsePosition}
+                      locating={hseLocating}
+                      manualOpen={hseManualPosition}
+                      onToggleManual={() => setHseManualPosition(!hseManualPosition)}
+                    />
                     {hseLocationError ? <p className="field-error" role="alert">{hseLocationError}</p> : null}
                   </section>
 
