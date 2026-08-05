@@ -233,6 +233,81 @@ const hseIssueTypes = [
   { id: "other", en: "Other", nl: "Overig", icon: MoreHorizontal, category: "safety", eventType: "other" },
 ] as const;
 
+/**
+ * The client's issue screen and their own non-conformance report fill the same record.
+ * The screen decides which of these boxes are asked for; the register keeps them all.
+ */
+const emptyFindingForm = {
+  type: "deficiency",
+  title: "",
+  description: "",
+  severity: "medium",
+  responsiblePartyId: "",
+  issueType: "quality",
+  impactSummary: "",
+  actionSteps: "",
+  escalationRequired: false,
+  disposition: "to_be_corrected" as "validated" | "to_be_corrected" | "alternative_solution",
+  expectedResolutionDate: "",
+  sourceCatalogSubject: "",
+  // The issue list of the client has its own issuance date column.
+  dateIdentified: "",
+  // The boxes the client's own issue screen added: the category, what was already done
+  // on the spot, who has to act, the cause and the coordinates of the spot itself.
+  issueCategory: "",
+  immediateActions: [] as string[],
+  immediateActionOther: "",
+  responsibleUserId: "",
+  responsiblePerson: "",
+  rootCause: "",
+  latitude: "",
+  longitude: "",
+  // The boxes of the client's own non-conformance report.
+  referenceChecklist: "",
+  recommendedAction: "" as "" | "rework" | "repair" | "alternative",
+  recommendedActionDetail: "",
+  remarks: "",
+  signedBy: "",
+  signedAt: "",
+  /** The signature that was written on this form, not a tick in a box. */
+  signatureImage: "",
+};
+
+export type FindingForm = typeof emptyFindingForm;
+
+/**
+ * Section 1 of the client's own issue screen. The same grid as the HSE screen, with the
+ * kinds an issue is filed under here: what it is about decides who picks it up.
+ */
+const issueTypeTiles = [
+  { id: "safety", en: "Safety", nl: "Veiligheid", icon: ShieldCheck },
+  { id: "quality", en: "Quality", nl: "Kwaliteit", icon: CheckCircle2 },
+  { id: "environmental", en: "Environmental", nl: "Milieu", icon: Leaf },
+  { id: "equipment", en: "Equipment", nl: "Materieel", icon: Wrench },
+  { id: "materials", en: "Material", nl: "Materiaal", icon: PackageCheck },
+  { id: "schedule", en: "Schedule", nl: "Planning", icon: CalendarRange },
+  { id: "operational", en: "Operational", nl: "Operationeel", icon: Settings },
+  { id: "documentation", en: "Documentation", nl: "Documentatie", icon: FileText },
+  { id: "other", en: "Other", nl: "Overig", icon: MoreHorizontal },
+] as const;
+
+/** Section 2 of the issue screen: what the issue is about, on site and on paper. */
+const issueCategories = [
+  { id: "ppe", en: "PPE (Personal Protective Equipment)", nl: "PBM (persoonlijke beschermingsmiddelen)" },
+  { id: "housekeeping", en: "Housekeeping and access", nl: "Orde, netheid en toegang" },
+  { id: "work_at_height", en: "Work at height", nl: "Werken op hoogte" },
+  { id: "workmanship", en: "Workmanship and finish", nl: "Uitvoering en afwerking" },
+  { id: "dimensions", en: "Dimensions and setting out", nl: "Maatvoering en uitzetten" },
+  { id: "electrical", en: "Electrical", nl: "Elektra" },
+  { id: "equipment", en: "Equipment and machinery", nl: "Materieel en machines" },
+  { id: "materials", en: "Materials and delivery", nl: "Materialen en levering" },
+  { id: "hazardous_materials", en: "Hazardous materials", nl: "Gevaarlijke stoffen" },
+  { id: "environment", en: "Environment and spills", nl: "Milieu en morsingen" },
+  { id: "planning", en: "Planning and sequence", nl: "Planning en volgorde" },
+  { id: "documentation", en: "Drawings and documents", nl: "Tekeningen en documenten" },
+  { id: "other", en: "Other", nl: "Overig" },
+] as const;
+
 /** Section 2: what the issue is about, in the words of the client's own form. */
 const hseIssueCategories = [
   { id: "ppe", en: "PPE (Personal Protective Equipment)", nl: "PBM (persoonlijke beschermingsmiddelen)" },
@@ -251,7 +326,7 @@ const hseIssueCategories = [
 ] as const;
 
 /** Section 7: what was already done on the spot, ticked instead of typed. */
-const hseImmediateActions = [
+const immediateActionsTaken = [
   { id: "work_stopped", en: "Work stopped", nl: "Werk stilgelegd" },
   { id: "area_barricaded", en: "Area barricaded", nl: "Zone afgezet" },
   { id: "employee_warned", en: "Employee warned", nl: "Medewerker aangesproken" },
@@ -263,7 +338,7 @@ const hseImmediateActions = [
 ] as const;
 
 /** Section 10: why it happened. Optional, because it is often only known afterwards. */
-const hseRootCauses = [
+const recordRootCauses = [
   { id: "unsafe_behaviour", en: "Unsafe behaviour", nl: "Onveilig gedrag" },
   { id: "training", en: "Instruction or training missing", nl: "Instructie of training ontbrak" },
   { id: "supervision", en: "Insufficient supervision", nl: "Onvoldoende toezicht" },
@@ -278,10 +353,10 @@ const hseRootCauses = [
 ] as const;
 
 /**
- * Section 9: the deadline the severity implies. The same ladder a finding is given
- * centrally, so the two lists cannot disagree about how urgent one severity is.
+ * Section 9 of both screens: the deadline the severity implies. The same ladder a finding
+ * is given centrally, so the lists cannot disagree about how urgent one severity is.
  */
-const hseSeverityDueDays: Record<string, number> = { critical: 1, high: 3, medium: 7, low: 14 };
+const recordSeverityDueDays: Record<string, number> = { critical: 1, high: 3, medium: 7, low: 14 };
 
 const emptyHseIssueForm = {
   /** Section 1: the tile that was tapped. */
@@ -310,11 +385,16 @@ const emptyHseIssueForm = {
 export type HseIssueForm = typeof emptyHseIssueForm;
 
 /** The deadline the severity implies, in the format the date and time field reads. */
-function hseDueDateDefault(severity: string) {
+function recordDueDateTimeDefault(severity: string) {
   const due = new Date();
-  due.setDate(due.getDate() + (hseSeverityDueDays[severity] ?? 7));
+  due.setDate(due.getDate() + (recordSeverityDueDays[severity] ?? 7));
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())}T${pad(due.getHours())}:${pad(due.getMinutes())}`;
+}
+
+/** The same deadline for a register that keeps the day, not the minute. */
+function recordDueDateDefault(severity: string) {
+  return recordDueDateTimeDefault(severity).slice(0, 10);
 }
 
 /**
@@ -322,66 +402,68 @@ function hseDueDateDefault(severity: string) {
  * one line, so it takes the first sentence of that description and falls back to the
  * chosen type when the sentence is too short to say anything.
  */
-function hseLogLine(description: string, fallback: string) {
+function recordLogLine(description: string, fallback: string) {
   const [firstSentence] = description.trim().split(/(?<=[.!?])\s+/);
   const line = (firstSentence || description).trim().slice(0, 120).trim();
   return line.length >= 3 ? line : fallback;
 }
 
 /**
- * "Save draft" on the client's screen: an issue that is interrupted — by a call, by a
+ * "Save draft" on the client's screens: a record that is interrupted — by a call, by a
  * supervisor, by the phone locking — is not typed a second time. The draft stays on the
- * device, per project, until it is submitted or thrown away.
+ * device, per screen and per project, until it is submitted or thrown away.
  */
-const hseDraftKey = (projectId: string) => `codeco:hse-draft:${projectId}`;
+type RecordDraftKind = "hse" | "issue";
 
-/** The screen itself is the only thing that parks or throws away a draft. */
-const hseDraftListeners = new Set<() => void>();
+const recordDraftKey = (kind: RecordDraftKind, projectId: string) => `codeco:${kind}-draft:${projectId}`;
 
-function subscribeHseDraft(listener: () => void) {
-  hseDraftListeners.add(listener);
-  return () => { hseDraftListeners.delete(listener); };
+/** The screens themselves are the only things that park or throw away a draft. */
+const recordDraftListeners = new Set<() => void>();
+
+function subscribeRecordDraft(listener: () => void) {
+  recordDraftListeners.add(listener);
+  return () => { recordDraftListeners.delete(listener); };
 }
 
-function storedHseDraft(projectId: string) {
+function storedRecordDraft(kind: RecordDraftKind, projectId: string) {
   if (typeof window === "undefined") return null;
   try {
-    return window.localStorage.getItem(hseDraftKey(projectId));
+    return window.localStorage.getItem(recordDraftKey(kind, projectId));
   } catch {
-    // Private browsing blocks the store; the issue itself is filled in as usual.
+    // Private browsing blocks the store; the record itself is filled in as usual.
     return null;
   }
 }
 
 /** The draft is only a head start: unknown or missing boxes fall back to an empty form. */
-function parseHseDraft(stored: string | null): HseIssueForm | null {
+function parseRecordDraft<Form extends { immediateActions: string[] }>(stored: string | null, empty: Form): Form | null {
   if (!stored) return null;
   try {
-    const parsed = JSON.parse(stored) as Partial<HseIssueForm>;
-    return { ...emptyHseIssueForm, ...parsed, immediateActions: Array.isArray(parsed.immediateActions) ? parsed.immediateActions : [] };
+    const parsed = JSON.parse(stored) as Partial<Form>;
+    return { ...empty, ...parsed, immediateActions: Array.isArray(parsed.immediateActions) ? parsed.immediateActions : [] };
   } catch {
     return null;
   }
 }
 
-function writeHseDraft(projectId: string, form: HseIssueForm) {
+function writeRecordDraft(kind: RecordDraftKind, projectId: string, form: unknown) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(hseDraftKey(projectId), JSON.stringify(form));
+    window.localStorage.setItem(recordDraftKey(kind, projectId), JSON.stringify(form));
   } catch {
-    // A device with no room for a draft still has to be able to submit the issue itself.
+    // A device with no room for a draft still has to be able to submit the record itself.
   }
-  hseDraftListeners.forEach((listener) => listener());
+  recordDraftListeners.forEach((listener) => listener());
 }
 
-function clearHseDraft(projectId: string) {
+function clearRecordDraft(kind: RecordDraftKind, projectId: string) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(hseDraftKey(projectId));
+    window.localStorage.removeItem(recordDraftKey(kind, projectId));
   } catch {
     // Nothing to do: the draft is a convenience, never the record.
   }
-  hseDraftListeners.forEach((listener) => listener());
+  recordDraftListeners.forEach((listener) => listener());
 }
 
 const registerLabelsEnglish: Record<string, string> = {
@@ -855,31 +937,7 @@ function ProjectOperations({
   const [inspectionPhotoError, setInspectionPhotoError] = useState("");
   /** The signature under the completed checklist. */
   const [inspectionSignature, setInspectionSignature] = useState<HandwrittenSignature | null>(null);
-  const [findingForm, setFindingForm] = useState({
-    type: "deficiency",
-    title: "",
-    description: "",
-    severity: "medium",
-    responsiblePartyId: "",
-    issueType: "quality",
-    impactSummary: "",
-    actionSteps: "",
-    escalationRequired: false,
-    disposition: "to_be_corrected" as "validated" | "to_be_corrected" | "alternative_solution",
-    expectedResolutionDate: "",
-    sourceCatalogSubject: "",
-    // The issue list of the client has its own issuance date column.
-    dateIdentified: "",
-    // The boxes of the client's own non-conformance report.
-    referenceChecklist: "",
-    recommendedAction: "" as "" | "rework" | "repair" | "alternative",
-    recommendedActionDetail: "",
-    remarks: "",
-    signedBy: "",
-    signedAt: "",
-    /** The signature that was written on this form, not a tick in a box. */
-    signatureImage: "",
-  });
+  const [findingForm, setFindingForm] = useState<FindingForm>({ ...emptyFindingForm });
   const [findingPhotos, setFindingPhotos] = useState<PhotoEvidence[]>([]);
   const [findingPhotoError, setFindingPhotoError] = useState("");
   /** The record that was just submitted, so the link to the contractor is one tap away. */
@@ -894,6 +952,11 @@ function ProjectOperations({
   // One short text per evidence photo, in the same order as the photos themselves.
   const [hsePhotoError, setHsePhotoError] = useState("");
   /** Set while the phone is asked for the spot the issue was seen at. */
+  const [issueLocating, setIssueLocating] = useState(false);
+  const [issueLocationError, setIssueLocationError] = useState("");
+  /** The coordinates are typed by hand when the phone cannot see the sky. */
+  const [issueManualPosition, setIssueManualPosition] = useState(false);
+  /** Set while the phone is asked for the spot the HSE event was seen at. */
   const [hseLocating, setHseLocating] = useState(false);
   const [hseLocationError, setHseLocationError] = useState("");
   /** The coordinates are typed by hand when the phone cannot see the sky. */
@@ -902,11 +965,17 @@ function ProjectOperations({
    * A parked draft is offered, never pushed back in silently: the person who reopens the
    * screen decides whether the old words are still the ones they want to send.
    */
-  const hseParkedDraft = parseHseDraft(useSyncExternalStore(
-    subscribeHseDraft,
-    useCallback(() => storedHseDraft(projectId), [projectId]),
+  const hseParkedDraft = parseRecordDraft(useSyncExternalStore(
+    subscribeRecordDraft,
+    useCallback(() => storedRecordDraft("hse", projectId), [projectId]),
     () => null,
-  ));
+  ), emptyHseIssueForm);
+  /** The parked issue screen, offered back the same way the HSE screen offers its own. */
+  const issueParkedDraft = parseRecordDraft(useSyncExternalStore(
+    subscribeRecordDraft,
+    useCallback(() => storedRecordDraft("issue", projectId), [projectId]),
+    () => null,
+  ), emptyFindingForm);
   const [registerForm, setRegisterForm] = useState<ControlledDocumentDraft>({ ...emptyControlledDocumentDraft });
   const [registerFiles, setRegisterFiles] = useState<File[]>([]);
   const [boqFile, setBoqFile] = useState<File | null>(null);
@@ -1092,9 +1161,9 @@ function ProjectOperations({
   const hseIssueTile = hseIssueTypes.find((tile) => tile.id === hseForm.issueType) ?? hseIssueTypes[0];
   const hseCategoryOption = hseIssueCategories.find((option) => option.id === hseForm.issueCategory);
   /** Section 9 shows the deadline the severity implies until somebody sets another one. */
-  const hseDueValue = hseForm.dueAt || hseDueDateDefault(hseForm.severity);
+  const hseDueValue = hseForm.dueAt || recordDueDateTimeDefault(hseForm.severity);
   const hsePriority = hseForm.severity === "critical" ? "critical" : hseForm.severity === "high" ? "high" : hseForm.severity === "medium" ? "normal" : "low";
-  const hsePriorityLabels: Record<string, string> = {
+  const recordPriorityLabels: Record<string, string> = {
     critical: text("Critical", "Kritiek"), high: text("High", "Hoog"),
     normal: text("Normal", "Normaal"), low: text("Low", "Laag"),
   };
@@ -1103,19 +1172,19 @@ function ProjectOperations({
   const hseStatusLabel = hseForm.severity === "high" || hseForm.severity === "critical"
     ? text("Action required", "Actie vereist")
     : text("Open", "Open");
-  /** Section 8: the colleagues who can be made responsible, with the role they carry here. */
-  const hseResponsibleOptions = companyEmployees.map((member) => {
+  /** Section 8 of both screens: the colleagues who can be made responsible, with the role they carry here. */
+  const responsiblePeople = companyEmployees.map((member) => {
     const projectRole = member.projectRoles.find((role) => role.projectId === projectId);
     const name = member.displayName?.trim() || member.email;
     return { id: member.userId, name, role: projectRole?.roleName ?? member.organizationRoles[0]?.name ?? "" };
   });
   /** The department in the head of the screen is the role the reporter carries here. */
-  const hseReporterDepartment = (() => {
+  const reporterDepartment = (() => {
     const me = companyEmployees.find((member) => member.userId === currentUserId);
     const projectRole = me?.projectRoles.find((role) => role.projectId === projectId);
     return projectRole?.roleName || me?.organizationRoles[0]?.name || text("Field operations", "Uitvoering");
   })();
-  const hseWeatherLabel = liveWeather
+  const liveWeatherLabel = liveWeather
     ? `${({
       sunny: text("Clear", "Helder"), partly_cloudy: text("Partly cloudy", "Licht bewolkt"),
       cloudy: text("Cloudy", "Bewolkt"), rain: text("Rain", "Regen"), heavy_rain: text("Heavy rain", "Zware regen"),
@@ -1134,7 +1203,7 @@ function ProjectOperations({
   }));
   /** Section 7 as one sentence, so every report that already reads the measure keeps working. */
   const hseImmediateMeasure = (form: HseIssueForm) => {
-    const taken = hseImmediateActions.filter((action) => form.immediateActions.includes(action.id)).map((action) => text(action.en, action.nl));
+    const taken = immediateActionsTaken.filter((action) => form.immediateActions.includes(action.id)).map((action) => text(action.en, action.nl));
     if (form.immediateActionOther.trim()) taken.push(form.immediateActionOther.trim());
     return taken.join(" · ");
   };
@@ -1163,6 +1232,62 @@ function ProjectOperations({
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
     );
+  };
+  /**
+   * The client's issue screen is the same shape as the HSE one: numbered sections, one
+   * grid of tiles and a bar underneath. What differs is what is filed — the kind of
+   * issue, and the register it lands in.
+   */
+  const issueTile = issueTypeTiles.find((tile) => tile.id === findingForm.issueType) ?? issueTypeTiles[0];
+  const issueTileLabel = (tile: (typeof issueTypeTiles)[number]) => text(tile.en, tile.nl);
+  const issueCategoryOption = issueCategories.find((option) => option.id === findingForm.issueCategory);
+  const issuePriority = findingForm.severity === "critical" ? "critical" : findingForm.severity === "high" ? "high" : findingForm.severity === "medium" ? "normal" : "low";
+  // A record with somebody's name on it opens as assigned; without one it opens as open.
+  const issueStatusLabel = findingForm.responsibleUserId || findingForm.responsiblePartyId
+    ? text("Assigned", "Toegewezen")
+    : text("Open", "Open");
+  /** Section 9 shows the deadline the severity implies until somebody sets another one. */
+  const issueDueValue = findingForm.expectedResolutionDate || recordDueDateDefault(findingForm.severity);
+  const chooseIssueType = (id: string) => setFindingForm((current) => ({ ...current, issueType: id }));
+  const toggleIssueAction = (id: string) => setFindingForm((current) => ({
+    ...current,
+    immediateActions: current.immediateActions.includes(id)
+      ? current.immediateActions.filter((action) => action !== id)
+      : [...current.immediateActions, id],
+  }));
+  /** Section 5 of the issue screen: the spot itself, as the phone reads it. */
+  const captureIssuePosition = () => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setIssueLocationError(text("This device does not share a position. Type the coordinates instead.", "Dit apparaat deelt geen positie. Vul de coördinaten zelf in."));
+      setIssueManualPosition(true);
+      return;
+    }
+    setIssueLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setFindingForm((current) => ({
+          ...current,
+          latitude: position.coords.latitude.toFixed(6),
+          longitude: position.coords.longitude.toFixed(6),
+        }));
+        setIssueLocationError("");
+        setIssueLocating(false);
+      },
+      () => {
+        setIssueLocationError(text("The position could not be read. Type the coordinates instead.", "De positie kon niet worden gelezen. Vul de coördinaten zelf in."));
+        setIssueManualPosition(true);
+        setIssueLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
+    );
+  };
+  const resetFindingForm = () => {
+    setFindingForm({ ...emptyFindingForm, type: findingScope === "ncr" ? "ncr" : "deficiency" });
+    setFindingPhotos([]);
+    setFindingPhotoError("");
+    setFindingLocationNodeId("");
+    setIssueLocationError("");
+    setIssueManualPosition(false);
   };
   const resetHseForm = () => {
     setHseForm({ ...emptyHseIssueForm });
@@ -1510,7 +1635,13 @@ function ProjectOperations({
   const addFindingPhotos = (files: FileList | null) => addPhotosToStack(files, setFindingPhotos, setFindingPhotoError);
 
   const addFinding = async () => {
-    if (findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3) return;
+    if (findingForm.description.trim().length < 3) return;
+    // The client's issue screen has no title box: the record takes its log line from the
+    // first sentence of the description. The NCR form keeps its own subject.
+    const findingTitle = findingScope === "ncr"
+      ? findingForm.title
+      : recordLogLine(findingForm.description, `${issueTileLabel(issueTile)}${issueCategoryOption ? ` · ${text(issueCategoryOption.en, issueCategoryOption.nl)}` : ""}`);
+    if (findingTitle.trim().length < 3) return;
     // A finding always belongs to a building in the database. "All buildings" therefore
     // means the same record in every building, exactly as the daily log and the field
     // notes already do it; before this it produced an error on saving.
@@ -1530,11 +1661,20 @@ function ProjectOperations({
       projectId,
       buildingId: findingBuildingIds[0] ?? findingBuildingId,
       type: findingType,
-      title: findingForm.title,
+      title: findingTitle,
       description: findingForm.description,
       severity: findingForm.severity,
       responsiblePartyId: findingForm.responsiblePartyId,
+      assignedUserId: findingForm.responsibleUserId,
+      responsiblePerson: findingForm.responsiblePerson,
       issueType: findingForm.issueType,
+      issueCategory: issueCategoryOption ? text(issueCategoryOption.en, issueCategoryOption.nl) : "",
+      immediateActions: findingForm.immediateActions,
+      immediateActionOther: findingForm.immediateActionOther,
+      rootCause: findingForm.rootCause,
+      latitude: findingForm.latitude.trim() === "" ? null : Number(findingForm.latitude),
+      longitude: findingForm.longitude.trim() === "" ? null : Number(findingForm.longitude),
+      locationLabel: findingBuildingName,
       impactSummary: findingForm.impactSummary,
       actionSteps: findingForm.actionSteps,
       escalationRequired: findingForm.escalationRequired,
@@ -1580,8 +1720,8 @@ function ProjectOperations({
               buildingId: targetBuildingId,
               locationNodeId: draft.locationNodeId || null,
               severity: draft.severity,
-              priority: "normal",
-              dueAt: null,
+              priority: issuePriority,
+              dueAt: draft.expectedResolutionDate ? `${draft.expectedResolutionDate}T23:59:59-03:00` : null,
               recordType: findingType,
             },
             send: () => createFinding(client, { ...draft, buildingId: targetBuildingId, reportId: effectiveReportId }),
@@ -1610,7 +1750,7 @@ function ProjectOperations({
             file: prepared.blob,
             fileName: prepared.fileName,
             mimeType: prepared.mimeType,
-            title: photoTitle(photo) || findingForm.title,
+            title: photoTitle(photo) || findingTitle,
             description: photoUploadDescription(photo, findingForm.description, language),
             locationLabel: findingBuildingName,
             locationNodeId: photo.details.locationNodeId || (projectWideFinding ? null : findingLocationNodeId) || null,
@@ -1630,11 +1770,17 @@ function ProjectOperations({
               draft: {
                 organizationId,
                 type: findingType,
-                title: findingForm.title,
+                title: findingTitle,
                 description: findingForm.description,
                 severity: findingForm.severity,
                 responsiblePartyId: findingForm.responsiblePartyId,
+                assignedUserId: findingForm.responsibleUserId,
+                responsiblePerson: findingForm.responsiblePerson,
                 issueType: findingForm.issueType,
+                issueCategory: issueCategoryOption ? text(issueCategoryOption.en, issueCategoryOption.nl) : "",
+                immediateActions: findingForm.immediateActions,
+                immediateActionOther: findingForm.immediateActionOther,
+                rootCause: findingForm.rootCause,
                 impactSummary: findingForm.impactSummary,
                 actionSteps: findingForm.actionSteps,
                 escalationRequired: findingForm.escalationRequired,
@@ -1659,15 +1805,9 @@ function ProjectOperations({
       }
     }, success);
     if (okay) {
-      setFindingForm({
-        type: findingScope === "ncr" ? "ncr" : "deficiency", title: "", description: "", severity: "medium", responsiblePartyId: "",
-        issueType: "quality", impactSummary: "", actionSteps: "", escalationRequired: false,
-        disposition: "to_be_corrected", expectedResolutionDate: "", sourceCatalogSubject: "", dateIdentified: "",
-        referenceChecklist: "", recommendedAction: "", recommendedActionDetail: "", remarks: "", signedBy: "", signedAt: "", signatureImage: "",
-      });
-      setFindingPhotos([]);
-      setFindingPhotoError("");
-      setFindingLocationNodeId("");
+      // The issue is filed, so the parked draft of it has nothing left to protect.
+      clearRecordDraft("issue", projectId);
+      resetFindingForm();
       setShowForm(false);
       // Right after submitting, the record itself offers the link to the contractor:
       // an NCR only works when the party that must correct it actually receives it.
@@ -1680,7 +1820,7 @@ function ProjectOperations({
     if (hseForm.description.trim().length < 3) return;
     // The client's screen has no title box: the record takes its log line from the first
     // sentence of what was observed, so the list still reads as a list.
-    const hseTitle = hseLogLine(hseForm.description, `${hseTileLabel(hseIssueTile)}${hseCategoryOption ? ` · ${text(hseCategoryOption.en, hseCategoryOption.nl)}` : ""}`);
+    const hseTitle = recordLogLine(hseForm.description, `${hseTileLabel(hseIssueTile)}${hseCategoryOption ? ` · ${text(hseCategoryOption.en, hseCategoryOption.nl)}` : ""}`);
     const hseLatitude = hseForm.latitude.trim() === "" ? null : Number(hseForm.latitude);
     const hseLongitude = hseForm.longitude.trim() === "" ? null : Number(hseForm.longitude);
     const hseDueAt = new Date(hseDueValue);
@@ -1778,7 +1918,7 @@ function ProjectOperations({
     );
     if (okay) {
       // The issue is filed, so the parked draft of it has nothing left to protect.
-      clearHseDraft(projectId);
+      clearRecordDraft("hse", projectId);
       resetHseForm();
       setShowForm(false);
     }
@@ -2223,22 +2363,258 @@ function ProjectOperations({
 
       {tab === "findings" || tab === "ncr" ? (
         <section className="operation-panel">
-          {showForm ? (
+          {/*
+            * The client's own issue screen: the same numbered sections as the HSE screen,
+            * with the kinds an issue is filed under and the register it lands in. The NCR
+            * module keeps the client's paper NCR form, below.
+            */}
+          {showForm && findingScope === "issue" ? (
+            <div className="operation-form wide sectioned-record-form">
+              <div className="operation-form-heading">
+                <div>
+                  <span className="record-number">{text("Issue management", "Issuebeheer")}</span>
+                  <h2>{text("Create issue", "Issue registreren")}</h2>
+                </div>
+                {!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}
+              </div>
+              <section className="controlled-document-context sectioned-record-context" aria-label={text("Issue header", "Kop van het issue")}>
+                <div><small>{text("Issue ID", "Issue ID")}</small><strong>Q-{issueDate.slice(0, 4)}</strong><span>{text("Number on submit", "Nummer bij indienen")}</span></div>
+                <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDate}</strong><span>{issueTime}</span></div>
+                <div><small>{text("Reporter", "Melder")}</small><strong>{currentUserName}</strong><span>{reporterDepartment}</span></div>
+                <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
+                <div><small>{text("Site / location", "Locatie")}</small><strong>{findingBuildingId === ALL_BUILDINGS ? text("All buildings", "Alle gebouwen") : buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName}</strong><span>{findingForm.latitude && findingForm.longitude ? `${findingForm.latitude}, ${findingForm.longitude}` : projectLocation || text("No coordinates yet", "Nog geen coördinaten")}</span></div>
+                <div><small>{text("Weather", "Weer")}</small><strong>{liveWeatherLabel}</strong><span>{liveWeather ? `${liveWeather.temperatureC}°C` : "—"}</span></div>
+                <div><small>{text("Department", "Afdeling")}</small><strong>{reporterDepartment}</strong><span>{text("Of the reporter", "Van de melder")}</span></div>
+                <div><small>{text("Status", "Status")}</small><strong className="record-status-preview">{issueStatusLabel}</strong><span>{text("On submit", "Bij indienen")}</span></div>
+              </section>
+              <p className="form-helper"><Clock3 size={13} /> {text(`Day, date and time are recorded automatically · ${issueDate} ${issueTime}`, `Dag, datum en tijd worden automatisch vastgelegd · ${issueDate} ${issueTime}`)}</p>
+              {issueParkedDraft ? (
+                <p className="form-helper record-draft-notice">
+                  <Save size={13} /> {text("A saved draft of this screen is waiting on this device.", "Op dit apparaat staat een opgeslagen concept van dit scherm.")}
+                  <button className="text-link" type="button" onClick={() => { setFindingForm(issueParkedDraft); clearRecordDraft("issue", projectId); }}>{text("Put it back", "Terugzetten")}</button>
+                  <button className="text-link" type="button" onClick={() => clearRecordDraft("issue", projectId)}>{text("Throw it away", "Weggooien")}</button>
+                </p>
+              ) : null}
+
+              <div className="sectioned-record-columns">
+                <div className="sectioned-record-column">
+                  <section className="record-section record-order-1" aria-label={text("Issue type", "Issuetype")}>
+                    <h3><span className="record-section-number">1</span> {text("Issue type", "Issuetype")} <em className="record-section-required">*</em></h3>
+                    <div className="record-tile-grid">
+                      {issueTypeTiles.map((tile) => {
+                        const TileIcon = tile.icon;
+                        return (
+                          <button className={`record-tile${findingForm.issueType === tile.id ? " active" : ""}`} type="button" key={tile.id} aria-pressed={findingForm.issueType === tile.id} onClick={() => chooseIssueType(tile.id)}>
+                            <TileIcon size={20} />
+                            <span>{issueTileLabel(tile)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  <section className="record-section record-order-2" aria-label={text("Category", "Categorie")}>
+                    <h3><span className="record-section-number">2</span> {text("Category", "Categorie")} <em className="record-section-required">*</em></h3>
+                    <label className="form-field"><select value={findingForm.issueCategory} onChange={(event) => setFindingForm({ ...findingForm, issueCategory: event.target.value })}>
+                      <option value="">{text("Choose a category", "Kies een categorie")}</option>
+                      {issueCategories.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}
+                    </select></label>
+                  </section>
+
+                  <section className="record-section record-order-3" aria-label={text("Severity", "Ernst")}>
+                    <h3><span className="record-section-number">3</span> {text("Severity", "Ernst")} <em className="record-section-required">*</em></h3>
+                    <div className="record-severity-choices">
+                      {([["low", text("Low", "Laag")], ["medium", text("Medium", "Middel")], ["high", text("High", "Hoog")], ["critical", text("Critical", "Kritiek")]] as const).map(([value, label]) => (
+                        <button className={`record-severity-choice record-severity-choice-${value}${findingForm.severity === value ? " active" : ""}`} type="button" key={value} aria-pressed={findingForm.severity === value} onClick={() => setFindingForm({ ...findingForm, severity: value })}>
+                          <Circle size={13} /> {label}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="record-section record-order-4" aria-label={text("Description", "Omschrijving")}>
+                    <h3><span className="record-section-number">4</span> {text("Description", "Omschrijving")} <em className="record-section-required">*</em></h3>
+                    <label className="form-field record-description-field">
+                      <textarea rows={5} maxLength={1000} value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} placeholder={text("Describe the issue in detail...", "Beschrijf het issue in detail...")} />
+                      <div className="record-field-foot">
+                        <DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} />
+                        <span className="record-counter">{findingForm.description.length} / 1000</span>
+                      </div>
+                    </label>
+                  </section>
+
+                  <section className="record-section record-order-5" aria-label={text("Location", "Locatie")}>
+                    <h3><span className="record-section-number">5</span> {text("Location", "Locatie")} <em className="record-section-required">*</em></h3>
+                    <div className="form-grid-2">
+                      <BuildingPicker id="finding-building" buildings={buildings} value={findingBuildingId} onChange={(next) => { setFindingBuildingId(next); setFindingLocationNodeId(""); }} allowAll />
+                      <LocationPicker id="finding-location" nodes={data.locationNodes} buildingId={findingBuildingId} value={findingLocationNodeId} onChange={setFindingLocationNodeId} requiredDepth={requiredLocationDepth} />
+                    </div>
+                    <div className="record-location-card">
+                      <div className="record-location-readout">
+                        <MapPin size={16} />
+                        <div>
+                          <strong>{findingForm.latitude && findingForm.longitude ? `Lat: ${findingForm.latitude}, Long: ${findingForm.longitude}` : text("No coordinates recorded yet", "Nog geen coördinaten vastgelegd")}</strong>
+                          <span>{findingBuildingId === ALL_BUILDINGS ? projectName : `${buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName}, ${projectName}`}</span>
+                        </div>
+                      </div>
+                      <div className="record-location-buttons">
+                        <button className="ghost-button" type="button" disabled={issueLocating} onClick={captureIssuePosition}>{issueLocating ? <Loader2 className="spin" size={14} /> : <LocateFixed size={14} />} {findingForm.latitude ? text("Change location", "Locatie wijzigen") : text("Use my location", "Gebruik mijn locatie")}</button>
+                        <button className="ghost-button" type="button" aria-pressed={issueManualPosition} onClick={() => setIssueManualPosition(!issueManualPosition)}><Pencil size={14} /> {text("Type coordinates", "Coördinaten invullen")}</button>
+                      </div>
+                    </div>
+                    {issueManualPosition ? (
+                      <div className="form-grid-2">
+                        <label className="form-field"><span>{text("Latitude", "Breedtegraad")}</span><input inputMode="decimal" value={findingForm.latitude} onChange={(event) => setFindingForm({ ...findingForm, latitude: event.target.value })} placeholder="5.8521" /></label>
+                        <label className="form-field"><span>{text("Longitude", "Lengtegraad")}</span><input inputMode="decimal" value={findingForm.longitude} onChange={(event) => setFindingForm({ ...findingForm, longitude: event.target.value })} placeholder="-55.2034" /></label>
+                      </div>
+                    ) : null}
+                    {issueLocationError ? <p className="field-error" role="alert">{issueLocationError}</p> : null}
+                  </section>
+                </div>
+
+                <div className="sectioned-record-column">
+                  <section className="record-section record-order-6" aria-label={text("Photos / evidence", "Foto's / bewijs")}>
+                    <h3><span className="record-section-number">6</span> {text("Photos / evidence", "Foto's / bewijs")}</h3>
+                    <label className="finding-photo-capture">
+                      <Camera size={22} />
+                      <span><strong>{findingPhotos.length ? text(`${findingPhotos.length} photos ready`, `${findingPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
+                      <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
+                    </label>
+                    <PhotoEvidenceList
+                      photos={findingPhotos}
+                      setPhotos={setFindingPhotos}
+                      markupContext={{ ...markupOptions, defaultBuildingId: findingBuildingId }}
+                    />
+                    {findingPhotoError ? <p className="field-error" role="alert">{findingPhotoError}</p> : null}
+                  </section>
+
+                  <section className="record-section record-order-7" aria-label={text("Immediate action taken", "Directe maatregel")}>
+                    <h3><span className="record-section-number">7</span> {text("Immediate action taken", "Directe maatregel")}</h3>
+                    <div className="record-action-grid">
+                      {immediateActionsTaken.map((action) => (
+                        <label className={`record-action-check${findingForm.immediateActions.includes(action.id) ? " active" : ""}`} key={action.id}>
+                          <input type="checkbox" checked={findingForm.immediateActions.includes(action.id)} onChange={() => toggleIssueAction(action.id)} />
+                          {text(action.en, action.nl)}
+                        </label>
+                      ))}
+                      <label className="record-action-check record-action-other">
+                        <MoreHorizontal size={14} />
+                        <input type="text" value={findingForm.immediateActionOther} onChange={(event) => setFindingForm({ ...findingForm, immediateActionOther: event.target.value })} maxLength={240} placeholder={text("Other · specify", "Overig · omschrijf")} />
+                      </label>
+                    </div>
+                  </section>
+
+                  <section className="record-section record-order-8" aria-label={text("Responsible person", "Verantwoordelijke")}>
+                    <h3><span className="record-section-number">8</span> {text("Responsible person", "Verantwoordelijke")} <em className="record-section-required">*</em></h3>
+                    <label className="form-field record-responsible-field">
+                      <UserCheck size={15} />
+                      <select value={findingForm.responsibleUserId} onChange={(event) => {
+                        const chosen = responsiblePeople.find((option) => option.id === event.target.value);
+                        setFindingForm({ ...findingForm, responsibleUserId: chosen?.id ?? "", responsiblePerson: chosen ? `${chosen.name}${chosen.role ? ` (${chosen.role})` : ""}` : "" });
+                      }}>
+                        <option value="">{text("Choose who has to act", "Kies wie moet handelen")}</option>
+                        {responsiblePeople.map((option) => <option value={option.id} key={option.id}>{option.role ? `${option.name} (${option.role})` : option.name}</option>)}
+                      </select>
+                    </label>
+                    {!responsiblePeople.length ? (
+                      <label className="form-field"><span>{text("Name of the responsible person", "Naam van de verantwoordelijke")}</span><input value={findingForm.responsiblePerson} onChange={(event) => setFindingForm({ ...findingForm, responsiblePerson: event.target.value })} placeholder={text("Nobody from this project is in the app yet", "Nog niemand van dit project staat in de app")} /></label>
+                    ) : null}
+                    {/* The contractor that has to correct it is a party, not a colleague:
+                        the client's issue log carries both. */}
+                    <label className="form-field"><span>{text("Contractor · owner of the correction", "Aannemer · eigenaar van de correctie")}</span><select value={findingForm.responsiblePartyId} onChange={(event) => setFindingForm({ ...findingForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Nog niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
+                  </section>
+
+                  <section className="record-section record-order-9" aria-label={text("Due date", "Deadline")}>
+                    <h3><span className="record-section-number">9</span> {text("Due date", "Deadline")}</h3>
+                    <label className="form-field record-due-field">
+                      <CalendarClock size={15} />
+                      <input type="date" value={issueDueValue} onChange={(event) => setFindingForm({ ...findingForm, expectedResolutionDate: event.target.value })} />
+                    </label>
+                    <div className="record-derived-block">
+                      <div><small>{text("Priority", "Prioriteit")}</small><span className={`record-priority-badge record-priority-${issuePriority}`}>{recordPriorityLabels[issuePriority]}</span></div>
+                      <div><small>{text("Status", "Status")}</small><span className="record-status-badge">{issueStatusLabel}</span></div>
+                      <div className="record-derived-assignee"><small>{text("Automatically assigned to", "Automatisch toegewezen aan")}</small><strong>{findingForm.responsiblePerson || parties.find((party) => party.id === findingForm.responsiblePartyId)?.name || text("Nobody yet", "Nog niemand")}</strong></div>
+                    </div>
+                    <p className="form-helper">{text("The deadline follows the severity: critical 1 day, high 3 days, medium 7 days, low 14 days. Change it when the site says otherwise.", "De deadline volgt de ernst: kritiek 1 dag, hoog 3 dagen, middel 7 dagen, laag 14 dagen. Pas hem aan als het werk anders vraagt.")}</p>
+                  </section>
+
+                  <section className="record-section record-order-10" aria-label={text("Root cause", "Oorzaak")}>
+                    <h3><span className="record-section-number">10</span> {text("Root cause", "Oorzaak")} <em className="record-section-optional">({text("optional", "optioneel")})</em></h3>
+                    <label className="form-field"><select value={findingForm.rootCause} onChange={(event) => setFindingForm({ ...findingForm, rootCause: event.target.value })}>
+                      <option value="">{text("Select root cause", "Kies een oorzaak")}</option>
+                      {recordRootCauses.map((cause) => <option value={cause.id} key={cause.id}>{text(cause.en, cause.nl)}</option>)}
+                    </select></label>
+                  </section>
+
+                  <section className="record-section record-order-11" aria-label={text("Additional notes", "Aanvullende notities")}>
+                    <h3><span className="record-section-number">11</span> {text("Additional notes", "Aanvullende notities")} <em className="record-section-optional">({text("optional", "optioneel")})</em></h3>
+                    <label className="form-field">
+                      <textarea rows={3} maxLength={500} value={findingForm.remarks} onChange={(event) => setFindingForm({ ...findingForm, remarks: event.target.value })} placeholder={text("Any additional notes...", "Aanvullende notities...")} />
+                      <div className="record-field-foot"><span /><span className="record-counter">{findingForm.remarks.length} / 500</span></div>
+                    </label>
+                  </section>
+                </div>
+              </div>
+
+              {/* The impact, the follow-up and the escalation flag are not on the screen
+                  the client drew, but they are the boxes of their own issue register and
+                  the period report reads them. They stay one tap away, folded shut. */}
+              <details className="record-extra-details">
+                <summary>{text("Impact, follow-up and escalation", "Impact, opvolging en escalatie")}</summary>
+                <div className="record-extra-body">
+                  <div className="click-answer-block">
+                    <strong>{text("Impact", "Impact")}</strong>
+                    <div className="quick-issue-presets">{findingImpactPresets.map((option) => <button className={findingForm.impactSummary === option ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, impactSummary: findingForm.impactSummary === option ? "" : option })} key={option}>{option}</button>)}</div>
+                    <label className="form-field"><textarea rows={2} value={findingForm.impactSummary} onChange={(event) => setFindingForm({ ...findingForm, impactSummary: event.target.value })} placeholder={text("Choose above, or write what this means for the work.", "Kies hierboven of schrijf wat dit voor het werk betekent.")} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, impactSummary: appendDictation(current.impactSummary, transcript) }))} /></label>
+                  </div>
+                  <div className="click-answer-block">
+                    <strong>{text("Required follow-up", "Vereiste opvolging")}</strong>
+                    <div className="quick-issue-presets">{findingActionPresets.map((option) => <button className={findingForm.actionSteps === option ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, actionSteps: findingForm.actionSteps === option ? "" : option })} key={option}>{option}</button>)}</div>
+                    <label className="form-field"><textarea rows={2} value={findingForm.actionSteps} onChange={(event) => setFindingForm({ ...findingForm, actionSteps: event.target.value })} placeholder={text("Choose above, or write what has to happen.", "Kies hierboven of schrijf wat er moet gebeuren.")} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, actionSteps: appendDictation(current.actionSteps, transcript) }))} /></label>
+                  </div>
+                  <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required (Y/N)", "Escalation Required (Y/N)")}</label>
+                </div>
+              </details>
+              {/* The client wrote "signature" beside the issue form too. */}
+              <SignatureField
+                label={text("Sign as the supervisor who reports this issue", "Ondertekenen als supervisor die dit issue meldt")}
+                declaration={text(
+                  "By signing you report this issue under your own name.",
+                  "Met je handtekening meld je dit issue onder je eigen naam.",
+                )}
+                hint={text("The signature, the name and the moment of signing are stored with the report.", "De handtekening, de naam en het moment van ondertekenen worden bij het rapport opgeslagen.")}
+                nameSuggestion={currentUserName}
+                nameOptions={documentIssuerOptions}
+                value={signatureFromDetails(findingForm.signedBy, findingForm.signedAt, findingForm.signatureImage)}
+                onChange={(signature) => setFindingForm({
+                  ...findingForm,
+                  signedBy: signature?.name ?? "",
+                  signedAt: signature?.signedAt ?? "",
+                  signatureImage: signature?.image ?? "",
+                })}
+              />
+              <div className="record-form-actions">
+                <button className="ghost-button" type="button" onClick={() => { resetFindingForm(); setShowForm(false); }}><X size={14} /> {text("Cancel", "Annuleren")}</button>
+                <button className="ghost-button" type="button" onClick={() => writeRecordDraft("issue", projectId, findingForm)}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
+                <span className="record-attachment-count"><Paperclip size={14} /> {text(`Attachments (${findingPhotos.length})`, `Bijlagen (${findingPhotos.length})`)}</span>
+                <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && findingBuildingId !== ALL_BUILDINGS && !findingLocationNodeId) || (!online && !findingPhotos.length) || !findingForm.issueCategory || findingForm.responsiblePerson.trim().length < 2 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><Send size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Issue indienen")}</button>
+              </div>
+            </div>
+          ) : null}
+          {showForm && findingScope === "ncr" ? (
             <div className="operation-form snap-assign-form">
-              <div className="operation-form-heading"><div><span className="record-number">{findingScope === "ncr" ? text("Formal non-conformance", "Formele afwijking") : text("Issue management", "Issuebeheer")}</span><h2>{findingScope === "ncr" ? text("Non-conformance report", "Non-conformance report") : text("Create issue", "Issue registreren")}</h2></div>{!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}</div>
+              <div className="operation-form-heading"><div><span className="record-number">{text("Formal non-conformance", "Formele afwijking")}</span><h2>{text("Non-conformance report", "Non-conformance report")}</h2></div>{!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}</div>
               {/* The head of the client's own NCR form: project, contractor, subject and
                   the reference, with the date and the report number filled by the app. */}
-              {findingScope === "ncr" ? (
-                <section className="controlled-document-context ncr-form-context" aria-label={text("Non-conformance report header", "Kop van het non-conformance report")}>
-                  <div><small>{text("Project name and number", "Projectnaam en -nummer")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
-                  <div><small>{text("Contractor", "Aannemer")}</small><strong>{parties.find((party) => party.id === findingForm.responsiblePartyId)?.name || text("Not assigned yet", "Nog niet toegewezen")}</strong><span>{buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName}</span></div>
-                  <div><small>{text("Date", "Datum")}</small><strong>{issueDate}</strong><span>{issueTime}</span></div>
-                  {/* An NCR says who drew it up, from the moment it is written: without it
-                      the contractor receives a formal report nobody stands behind. */}
-                  <div><small>{text("Drawn up by", "Opgesteld door")}</small><strong>{currentUserName}</strong><span>{findingForm.signedBy ? text(`Signed by ${findingForm.signedBy}`, `Ondertekend door ${findingForm.signedBy}`) : text("Not signed yet", "Nog niet ondertekend")}</span></div>
-                  <div><small>{text("Report no · automatic", "Rapportnummer · automatisch")}</small><strong>{text("On submit", "Bij indienen")}</strong><span>{text("Unique project code", "Unieke projectcode")}</span></div>
-                </section>
-              ) : null}
+              <section className="controlled-document-context ncr-form-context" aria-label={text("Non-conformance report header", "Kop van het non-conformance report")}>
+                <div><small>{text("Project name and number", "Projectnaam en -nummer")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
+                <div><small>{text("Contractor", "Aannemer")}</small><strong>{parties.find((party) => party.id === findingForm.responsiblePartyId)?.name || text("Not assigned yet", "Nog niet toegewezen")}</strong><span>{buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName}</span></div>
+                <div><small>{text("Date", "Datum")}</small><strong>{issueDate}</strong><span>{issueTime}</span></div>
+                {/* An NCR says who drew it up, from the moment it is written: without it
+                    the contractor receives a formal report nobody stands behind. */}
+                <div><small>{text("Drawn up by", "Opgesteld door")}</small><strong>{currentUserName}</strong><span>{findingForm.signedBy ? text(`Signed by ${findingForm.signedBy}`, `Ondertekend door ${findingForm.signedBy}`) : text("Not signed yet", "Nog niet ondertekend")}</span></div>
+                <div><small>{text("Report no · automatic", "Rapportnummer · automatisch")}</small><strong>{text("On submit", "Bij indienen")}</strong><span>{text("Unique project code", "Unieke projectcode")}</span></div>
+              </section>
               <label className="finding-photo-capture">
                 <Camera size={22} />
                 <span><strong>{findingPhotos.length ? text(`${findingPhotos.length} photos ready`, `${findingPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
@@ -2253,67 +2629,53 @@ function ProjectOperations({
               {/* The client struck the ready-made problems and the historic B1 catalog off
                   the issue screen: an issue is written in the words of the site. The NCR
                   form keeps both, because that is where they were asked for. */}
-              {findingScope === "ncr" ? (
-                <div className="quick-issue-presets" aria-label={text("Common issue choices", "Veelvoorkomende problemen")}>
-                  {findingPresets.map((preset) => <button className={findingForm.title === preset.title ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, title: preset.title, description: preset.description, type: preset.title === text("Safety risk", "Veiligheidsrisico") ? "observation" : "deficiency", severity: preset.title === text("Safety risk", "Veiligheidsrisico") ? "high" : findingForm.severity })} key={preset.title}>{preset.title}</button>)}
-                </div>
-              ) : null}
-              {findingScope === "ncr" ? (
+              <div className="quick-issue-presets" aria-label={text("Common issue choices", "Veelvoorkomende problemen")}>
+                {findingPresets.map((preset) => <button className={findingForm.title === preset.title ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, title: preset.title, description: preset.description, type: preset.title === text("Safety risk", "Veiligheidsrisico") ? "observation" : "deficiency", severity: preset.title === text("Safety risk", "Veiligheidsrisico") ? "high" : findingForm.severity })} key={preset.title}>{preset.title}</button>)}
+              </div>
               <label className="form-field"><span>{text("Client B1 issue catalog (35 reusable categories)", "Klantcatalogus B1 (35 herbruikbare categorieën)")}</span><select value={findingForm.sourceCatalogSubject} onChange={(event) => {
-                const preset = issueCatalogPresets.find((item) => item.subject === event.target.value);
-                if (!preset) {
-                  setFindingForm({ ...findingForm, sourceCatalogSubject: "" });
-                  return;
-                }
-                setFindingForm({
-                  ...findingForm,
-                  sourceCatalogSubject: preset.subject,
-                  title: preset.subject,
-                  description: preset.description,
-                  actionSteps: preset.action,
-                  disposition: preset.disposition,
-                  type: "deficiency",
-                  issueType: "quality",
-                });
+              const preset = issueCatalogPresets.find((item) => item.subject === event.target.value);
+              if (!preset) {
+                setFindingForm({ ...findingForm, sourceCatalogSubject: "" });
+                return;
+              }
+              setFindingForm({
+                ...findingForm,
+                sourceCatalogSubject: preset.subject,
+                title: preset.subject,
+                description: preset.description,
+                actionSteps: preset.action,
+                disposition: preset.disposition,
+                type: "deficiency",
+                issueType: "quality",
+              });
               }}><option value="">{text("Choose only when applicable", "Kies alleen indien van toepassing")}</option>{issueCatalogPresets.map((preset) => <option value={preset.subject} key={preset.subject}>{preset.subject}</option>)}</select><small>{text("The historic spreadsheet is used as a quick-entry catalog; choosing an item does not mark it as an active project issue until you submit it.", "Het historische spreadsheet is een snelinvoercatalogus; een keuze wordt pas een actief projectpunt nadat je het indient.")}</small></label>
-              ) : null}
               <div className="form-grid-2">
                 {/* In the NCR module the type is the NCR itself; a dropdown that can only
                     say "NCR" is one box too many on the client's form. */}
-                {findingScope === "ncr"
-                  ? <label className="form-field"><span>{text("Reference checklist / earlier report", "Referentiechecklist / eerder rapport")}</span><input value={findingForm.referenceChecklist} onChange={(event) => setFindingForm({ ...findingForm, referenceChecklist: event.target.value })} placeholder="NCR - 51" /></label>
-                  // "Type" on the issue screen is the kind of issue the client actually
-                  // registers — safety, quality, equipment, materials, schedule or
-                  // operational — instead of the internal record type. Every issue is
-                  // filed as a deficiency; the NCR module writes NCRs.
-                  : <label className="form-field"><span>{text("Type", "Type")}</span><select value={findingForm.issueType} onChange={(event) => setFindingForm({ ...findingForm, issueType: event.target.value })}>{issueTypeOptions.map((option) => <option value={option.id} key={option.id}>{option.label}</option>)}</select></label>}
+                <label className="form-field"><span>{text("Reference checklist / earlier report", "Referentiechecklist / eerder rapport")}</span><input value={findingForm.referenceChecklist} onChange={(event) => setFindingForm({ ...findingForm, referenceChecklist: event.target.value })} placeholder="NCR - 51" /></label>
                 {/* Priority is High, Medium or Low, in the client's own words. The deadline
                     that follows from it stays visible, because it is rule-driven. */}
-                <label className="form-field"><span>{text("Priority", "Priority")}</span><select value={findingForm.severity} onChange={(event) => setFindingForm({ ...findingForm, severity: event.target.value })}><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="low">{text("Low · 14 days", "Laag · 14 dagen")}</option>{findingScope === "ncr" ? <option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option> : null}</select></label>
+                <label className="form-field"><span>{text("Priority", "Priority")}</span><select value={findingForm.severity} onChange={(event) => setFindingForm({ ...findingForm, severity: event.target.value })}><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="low">{text("Low · 14 days", "Laag · 14 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label>
               </div>
-              {findingScope === "ncr" ? (
-                <div className="form-grid-2">
-                  <label className="form-field"><span>{text("Issue type", "Issue Type")}</span><select value={findingForm.issueType} onChange={(event) => setFindingForm({ ...findingForm, issueType: event.target.value })}>{issueTypeOptions.map((option) => <option value={option.id} key={option.id}>{option.label}</option>)}</select></label>
-                  <label className="form-field"><span>{text("Disposition", "Beoordeling")}</span><select value={findingForm.disposition} onChange={(event) => setFindingForm({ ...findingForm, disposition: event.target.value as typeof findingForm.disposition })}><option value="validated">{text("Validated", "Gevalideerd")}</option><option value="to_be_corrected">{text("To be corrected", "Te corrigeren")}</option><option value="alternative_solution">{text("Alternative solution required", "Alternatieve oplossing nodig")}</option></select></label>
-                </div>
-              ) : null}
+              <div className="form-grid-2">
+                <label className="form-field"><span>{text("Issue type", "Issue Type")}</span><select value={findingForm.issueType} onChange={(event) => setFindingForm({ ...findingForm, issueType: event.target.value })}>{issueTypeOptions.map((option) => <option value={option.id} key={option.id}>{option.label}</option>)}</select></label>
+                <label className="form-field"><span>{text("Disposition", "Beoordeling")}</span><select value={findingForm.disposition} onChange={(event) => setFindingForm({ ...findingForm, disposition: event.target.value as typeof findingForm.disposition })}><option value="validated">{text("Validated", "Gevalideerd")}</option><option value="to_be_corrected">{text("To be corrected", "Te corrigeren")}</option><option value="alternative_solution">{text("Alternative solution required", "Alternatieve oplossing nodig")}</option></select></label>
+              </div>
               <div className="form-grid">
-                <label className="form-field"><span>{findingScope === "ncr" ? text("Subject", "Onderwerp") : text("Issue title · used as the log line", "Issuetitel · wordt de regel in het log")}</span><input value={findingForm.title} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} placeholder={findingScope === "ncr" ? text("What the non-conformance is about", "Waar de afwijking over gaat") : text("Short title for the issue log", "Korte titel voor het issuelog")} /></label>
-                <label className="form-field"><span>{findingScope === "ncr" ? text("Description of non-conformance", "Omschrijving van de afwijking") : text("Issue description", "Issue Description")}</span><textarea rows={findingScope === "ncr" ? 5 : 3} value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} /></label>
+                <label className="form-field"><span>{text("Subject", "Onderwerp")}</span><input value={findingForm.title} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} placeholder={text("What the non-conformance is about", "Waar de afwijking over gaat")} /></label>
+                <label className="form-field"><span>{text("Description of non-conformance", "Omschrijving van de afwijking")}</span><textarea rows={5} value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} /></label>
               </div>
               {/* "Recommended Action by Engineer" on the client's own NCR form: rework or
                   repair, with the sentence that says what has to happen. */}
-              {findingScope === "ncr" ? (
-                <div className="click-answer-block ncr-recommended-action">
-                  <strong>{text("Recommended action by engineer", "Aanbevolen actie door de ingenieur")}</strong>
-                  <div className="quick-issue-presets">
-                    {([["rework", text("Rework", "Opnieuw uitvoeren")], ["repair", text("Repair", "Herstellen")], ["alternative", text("Alternative solution for approval", "Alternatieve oplossing ter goedkeuring")]] as const).map(([value, label]) => (
-                      <button className={findingForm.recommendedAction === value ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, recommendedAction: findingForm.recommendedAction === value ? "" : value })} key={value}>{label}</button>
-                    ))}
-                  </div>
-                  <label className="form-field"><span>{text("What the contractor has to do", "Wat de aannemer moet doen")}</span><textarea rows={2} value={findingForm.recommendedActionDetail} onChange={(event) => setFindingForm({ ...findingForm, recommendedActionDetail: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, recommendedActionDetail: appendDictation(current.recommendedActionDetail, transcript) }))} /></label>
+              <div className="click-answer-block ncr-recommended-action">
+                <strong>{text("Recommended action by engineer", "Aanbevolen actie door de ingenieur")}</strong>
+                <div className="quick-issue-presets">
+                  {([["rework", text("Rework", "Opnieuw uitvoeren")], ["repair", text("Repair", "Herstellen")], ["alternative", text("Alternative solution for approval", "Alternatieve oplossing ter goedkeuring")]] as const).map(([value, label]) => (
+                    <button className={findingForm.recommendedAction === value ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, recommendedAction: findingForm.recommendedAction === value ? "" : value })} key={value}>{label}</button>
+                  ))}
                 </div>
-              ) : null}
+                <label className="form-field"><span>{text("What the contractor has to do", "Wat de aannemer moet doen")}</span><textarea rows={2} value={findingForm.recommendedActionDetail} onChange={(event) => setFindingForm({ ...findingForm, recommendedActionDetail: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, recommendedActionDetail: appendDictation(current.recommendedActionDetail, transcript) }))} /></label>
+              </div>
               {/* "Moet ook kunnen invoeren": the impact and the follow-up are typed here,
                   in the same block as the ready-made sentences. A choice fills the field
                   and stays editable, instead of hiding the writing behind a fold-out. */}
@@ -2335,30 +2697,21 @@ function ProjectOperations({
               <p className="form-helper">{text(`Entered by ${currentUserName} · the ID, current status and actual resolution date are kept by the app itself.`, `Entered By ${currentUserName} · het ID, de status en de Actual Resolution Date houdt de app zelf bij.`)}</p>
               <div className="form-grid-2">
                 <BuildingPicker id="finding-building" buildings={buildings} value={findingBuildingId} onChange={(next) => { setFindingBuildingId(next); setFindingLocationNodeId(""); }} allowAll />
-                <label className="form-field"><span>{findingScope === "ncr" ? text("Contractor · receives this NCR", "Aannemer · ontvangt deze NCR") : text("Assigned to owner", "Assigned To Owner")}</span><select value={findingForm.responsiblePartyId} onChange={(event) => setFindingForm({ ...findingForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Nog niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
+                <label className="form-field"><span>{text("Contractor · receives this NCR", "Aannemer · ontvangt deze NCR")}</span><select value={findingForm.responsiblePartyId} onChange={(event) => setFindingForm({ ...findingForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Nog niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
               </div>
               <LocationPicker id="finding-location" nodes={data.locationNodes} buildingId={findingBuildingId} value={findingLocationNodeId} onChange={setFindingLocationNodeId} requiredDepth={requiredLocationDepth} />
               {/* The last two boxes of the client's NCR form: free remarks and the
                   signature of the engineer who issues it. */}
-              {findingScope === "ncr" ? (
-                <label className="form-field"><span>{text("Remarks", "Opmerkingen")}</span><textarea rows={2} value={findingForm.remarks} onChange={(event) => setFindingForm({ ...findingForm, remarks: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, remarks: appendDictation(current.remarks, transcript) }))} /></label>
-              ) : null}
+              <label className="form-field"><span>{text("Remarks", "Opmerkingen")}</span><textarea rows={2} value={findingForm.remarks} onChange={(event) => setFindingForm({ ...findingForm, remarks: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, remarks: appendDictation(current.remarks, transcript) }))} /></label>
               {/* Signing is the signature itself, written here, on this form, at this
                   moment — not a box that records that somebody clicked. The client wrote
                   "signature" beside the issue form too, so both are signed the same way. */}
               <SignatureField
-                label={findingScope === "ncr"
-                  ? text("Sign as the engineer who issues this NCR", "Ondertekenen als ingenieur die deze NCR uitgeeft")
-                  : text("Sign as the supervisor who reports this issue", "Ondertekenen als supervisor die dit issue meldt")}
-                declaration={findingScope === "ncr"
-                  ? text(
-                    "By signing you issue this non-conformance report to the contractor named above.",
-                    "Met je handtekening geef je dit non-conformance report uit aan de hierboven genoemde aannemer.",
-                  )
-                  : text(
-                    "By signing you report this issue under your own name.",
-                    "Met je handtekening meld je dit issue onder je eigen naam.",
-                  )}
+                label={text("Sign as the engineer who issues this NCR", "Ondertekenen als ingenieur die deze NCR uitgeeft")}
+                declaration={text(
+                  "By signing you issue this non-conformance report to the contractor named above.",
+                  "Met je handtekening geef je dit non-conformance report uit aan de hierboven genoemde aannemer.",
+                )}
                 hint={text("The signature, the name and the moment of signing are stored with the report.", "De handtekening, de naam en het moment van ondertekenen worden bij het rapport opgeslagen.")}
                 nameSuggestion={currentUserName}
                 nameOptions={documentIssuerOptions}
@@ -2370,10 +2723,8 @@ function ProjectOperations({
                   signatureImage: signature?.image ?? "",
                 })}
               />
-              {findingScope === "ncr" ? (
-                  <div className="operation-alert warning"><RotateCcw size={17} /><div><strong>{text("The contractor fills in the correction", "De aannemer vult de correctie in")}</strong><span>{text("After submitting you send this NCR to the contractor with one tap. The contractor fills in the proposed corrective action and sends it back; the quality-control close-out stays with CODECO.", "Na indienen stuur je deze NCR met één tik naar de aannemer. De aannemer vult de voorgestelde correctieve actie in en stuurt die terug; de eindcontrole blijft bij CODECO.")}</span></div></div>
-              ) : null}
-              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && findingBuildingId !== ALL_BUILDINGS && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : findingScope === "ncr" ? text("Submit NCR", "NCR indienen") : text("Submit issue", "Probleem indienen")}</button>
+                <div className="operation-alert warning"><RotateCcw size={17} /><div><strong>{text("The contractor fills in the correction", "De aannemer vult de correctie in")}</strong><span>{text("After submitting you send this NCR to the contractor with one tap. The contractor fills in the proposed corrective action and sends it back; the quality-control close-out stays with CODECO.", "Na indienen stuur je deze NCR met één tik naar de aannemer. De aannemer vult de voorgestelde correctieve actie in en stuurt die terug; de eindcontrole blijft bij CODECO.")}</span></div></div>
+              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && findingBuildingId !== ALL_BUILDINGS && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit NCR", "NCR indienen")}</button>
             </div>
           ) : null}
           {/* Submitting is not the end of an NCR: the contractor has to receive it and
@@ -2448,7 +2799,7 @@ function ProjectOperations({
       {tab === "hse" ? (
         <section className="operation-panel">
           {showForm ? (
-            <div className="operation-form wide hse-issue-form">
+            <div className="operation-form wide sectioned-record-form">
               <div className="operation-form-heading">
                 <div>
                   <span className="record-number">{text("HSE observation / issue", "HSE-observatie / issue")}</span>
@@ -2459,35 +2810,35 @@ function ProjectOperations({
               {/* The head of the client's own screen: what the app already knows before a
                   single box is filled in. "Ik vermoed dat dag, datum & tijd zelf komen" —
                   they do, and so do the reporter, the project, the site and the weather. */}
-              <section className="controlled-document-context hse-issue-context" aria-label={text("Issue header", "Kop van de melding")}>
+              <section className="controlled-document-context sectioned-record-context" aria-label={text("Issue header", "Kop van de melding")}>
                 <div><small>{text("Issue ID", "Issue ID")}</small><strong>HSE-{issueDate.slice(0, 4)}</strong><span>{text("Number on submit", "Nummer bij indienen")}</span></div>
                 <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDate}</strong><span>{issueTime}</span></div>
-                <div><small>{text("Reporter", "Melder")}</small><strong>{currentUserName}</strong><span>{hseReporterDepartment}</span></div>
+                <div><small>{text("Reporter", "Melder")}</small><strong>{currentUserName}</strong><span>{reporterDepartment}</span></div>
                 <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
                 <div><small>{text("Site / location", "Locatie")}</small><strong>{hseBuildingId === ALL_BUILDINGS ? text("All buildings", "Alle gebouwen") : buildings.find((building) => building.id === hseBuildingId)?.name ?? buildingName}</strong><span>{hseForm.latitude && hseForm.longitude ? `${hseForm.latitude}, ${hseForm.longitude}` : projectLocation || text("No coordinates yet", "Nog geen coördinaten")}</span></div>
-                <div><small>{text("Weather", "Weer")}</small><strong>{hseWeatherLabel}</strong><span>{liveWeather ? `${liveWeather.temperatureC}°C` : "—"}</span></div>
-                <div><small>{text("Department", "Afdeling")}</small><strong>{hseReporterDepartment}</strong><span>{text("Of the reporter", "Van de melder")}</span></div>
-                <div><small>{text("Status", "Status")}</small><strong className="hse-status-preview">{hseStatusLabel}</strong><span>{text("On submit", "Bij indienen")}</span></div>
+                <div><small>{text("Weather", "Weer")}</small><strong>{liveWeatherLabel}</strong><span>{liveWeather ? `${liveWeather.temperatureC}°C` : "—"}</span></div>
+                <div><small>{text("Department", "Afdeling")}</small><strong>{reporterDepartment}</strong><span>{text("Of the reporter", "Van de melder")}</span></div>
+                <div><small>{text("Status", "Status")}</small><strong className="record-status-preview">{hseStatusLabel}</strong><span>{text("On submit", "Bij indienen")}</span></div>
               </section>
               {/* "Ik vermoed dat dag, datum & tijd zelf komen" — the form says so out loud. */}
               <p className="form-helper"><Clock3 size={13} /> {text(`Day, date and time are recorded automatically · ${issueDate} ${issueTime}`, `Dag, datum en tijd worden automatisch vastgelegd · ${issueDate} ${issueTime}`)}</p>
               {hseParkedDraft ? (
-                <p className="form-helper hse-draft-notice">
+                <p className="form-helper record-draft-notice">
                   <Save size={13} /> {text("A saved draft of this screen is waiting on this device.", "Op dit apparaat staat een opgeslagen concept van dit scherm.")}
-                  <button className="text-link" type="button" onClick={() => { setHseForm(hseParkedDraft); clearHseDraft(projectId); }}>{text("Put it back", "Terugzetten")}</button>
-                  <button className="text-link" type="button" onClick={() => clearHseDraft(projectId)}>{text("Throw it away", "Weggooien")}</button>
+                  <button className="text-link" type="button" onClick={() => { setHseForm(hseParkedDraft); clearRecordDraft("hse", projectId); }}>{text("Put it back", "Terugzetten")}</button>
+                  <button className="text-link" type="button" onClick={() => clearRecordDraft("hse", projectId)}>{text("Throw it away", "Weggooien")}</button>
                 </p>
               ) : null}
 
-              <div className="hse-issue-columns">
-                <div className="hse-issue-column">
-                  <section className="hse-issue-section hse-order-1" aria-label={text("Issue type", "Issuetype")}>
-                    <h3><span className="hse-section-number">1</span> {text("Issue type", "Issuetype")} <em className="hse-required">*</em></h3>
-                    <div className="hse-tile-grid">
+              <div className="sectioned-record-columns">
+                <div className="sectioned-record-column">
+                  <section className="record-section record-order-1" aria-label={text("Issue type", "Issuetype")}>
+                    <h3><span className="record-section-number">1</span> {text("Issue type", "Issuetype")} <em className="record-section-required">*</em></h3>
+                    <div className="record-tile-grid">
                       {hseIssueTypes.map((tile) => {
                         const TileIcon = tile.icon;
                         return (
-                          <button className={`hse-tile${hseForm.issueType === tile.id ? " active" : ""}`} type="button" key={tile.id} aria-pressed={hseForm.issueType === tile.id} onClick={() => chooseHseIssueType(tile.id)}>
+                          <button className={`record-tile${hseForm.issueType === tile.id ? " active" : ""}`} type="button" key={tile.id} aria-pressed={hseForm.issueType === tile.id} onClick={() => chooseHseIssueType(tile.id)}>
                             <TileIcon size={20} />
                             <span>{hseTileLabel(tile)}</span>
                           </button>
@@ -2496,92 +2847,92 @@ function ProjectOperations({
                     </div>
                   </section>
 
-                  <section className="hse-issue-section hse-order-2" aria-label={text("Category", "Categorie")}>
-                    <h3><span className="hse-section-number">2</span> {text("Category", "Categorie")} <em className="hse-required">*</em></h3>
+                  <section className="record-section record-order-2" aria-label={text("Category", "Categorie")}>
+                    <h3><span className="record-section-number">2</span> {text("Category", "Categorie")} <em className="record-section-required">*</em></h3>
                     <label className="form-field"><select value={hseForm.issueCategory} onChange={(event) => setHseForm({ ...hseForm, issueCategory: event.target.value })}>
                       <option value="">{text("Choose a category", "Kies een categorie")}</option>
                       {hseIssueCategories.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}
                     </select></label>
                   </section>
 
-                  <section className="hse-issue-section hse-order-3" aria-label={text("Severity", "Ernst")}>
-                    <h3><span className="hse-section-number">3</span> {text("Severity", "Ernst")} <em className="hse-required">*</em></h3>
-                    <div className="hse-severity-row">
+                  <section className="record-section record-order-3" aria-label={text("Severity", "Ernst")}>
+                    <h3><span className="record-section-number">3</span> {text("Severity", "Ernst")} <em className="record-section-required">*</em></h3>
+                    <div className="record-severity-choices">
                       {([["low", text("Low", "Laag")], ["medium", text("Medium", "Middel")], ["high", text("High", "Hoog")], ["critical", text("Critical", "Kritiek")]] as const).map(([value, label]) => (
-                        <button className={`hse-severity hse-severity-${value}${hseForm.severity === value ? " active" : ""}`} type="button" key={value} aria-pressed={hseForm.severity === value} onClick={() => setHseForm({ ...hseForm, severity: value })}>
+                        <button className={`record-severity-choice record-severity-choice-${value}${hseForm.severity === value ? " active" : ""}`} type="button" key={value} aria-pressed={hseForm.severity === value} onClick={() => setHseForm({ ...hseForm, severity: value })}>
                           <Circle size={13} /> {label}
                         </button>
                       ))}
                     </div>
                   </section>
 
-                  <section className="hse-issue-section hse-order-4" aria-label={text("Description", "Omschrijving")}>
-                    <h3><span className="hse-section-number">4</span> {text("Description", "Omschrijving")} <em className="hse-required">*</em></h3>
+                  <section className="record-section record-order-4" aria-label={text("Description", "Omschrijving")}>
+                    <h3><span className="record-section-number">4</span> {text("Description", "Omschrijving")} <em className="record-section-required">*</em></h3>
                     {/* The standard records the client asked for stay one tap away; they
                         fill this box and every box they belong to, and stay editable. */}
                     <div className="quick-issue-presets" aria-label={text("Choose a standard HSE record", "Kies een standaard HSE-registratie")}>{hsePresets.map((preset) => <button className={hseForm.description === preset.description ? "active" : ""} type="button" onClick={() => { chooseHseIssueType(preset.issueType); setHseForm((current) => ({ ...current, issueType: preset.issueType, severity: preset.severity, description: preset.description, immediateActions: preset.actions })); }} key={preset.label}>{preset.label}</button>)}</div>
-                    <label className="form-field hse-description-field">
+                    <label className="form-field record-description-field">
                       <textarea rows={5} maxLength={1000} value={hseForm.description} onChange={(event) => setHseForm({ ...hseForm, description: event.target.value })} placeholder={text("Describe what happened or what you observed...", "Beschrijf wat er gebeurd is of wat je hebt waargenomen...")} />
-                      <div className="hse-field-foot">
+                      <div className="record-field-foot">
                         <DictateButton onText={(transcript) => setHseForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} />
-                        <span className="hse-counter">{hseForm.description.length} / 1000</span>
+                        <span className="record-counter">{hseForm.description.length} / 1000</span>
                       </div>
                     </label>
                   </section>
 
-                  <section className="hse-issue-section hse-order-8" aria-label={text("Responsible person", "Verantwoordelijke")}>
-                    <h3><span className="hse-section-number">8</span> {text("Responsible person", "Verantwoordelijke")} <em className="hse-required">*</em></h3>
-                    <label className="form-field hse-responsible-field">
+                  <section className="record-section record-order-8" aria-label={text("Responsible person", "Verantwoordelijke")}>
+                    <h3><span className="record-section-number">8</span> {text("Responsible person", "Verantwoordelijke")} <em className="record-section-required">*</em></h3>
+                    <label className="form-field record-responsible-field">
                       <UserCheck size={15} />
                       <select value={hseForm.responsibleUserId} onChange={(event) => {
-                        const chosen = hseResponsibleOptions.find((option) => option.id === event.target.value);
+                        const chosen = responsiblePeople.find((option) => option.id === event.target.value);
                         setHseForm({ ...hseForm, responsibleUserId: chosen?.id ?? "", responsiblePerson: chosen ? `${chosen.name}${chosen.role ? ` (${chosen.role})` : ""}` : "" });
                       }}>
                         <option value="">{text("Choose who has to act", "Kies wie moet handelen")}</option>
-                        {hseResponsibleOptions.map((option) => <option value={option.id} key={option.id}>{option.role ? `${option.name} (${option.role})` : option.name}</option>)}
+                        {responsiblePeople.map((option) => <option value={option.id} key={option.id}>{option.role ? `${option.name} (${option.role})` : option.name}</option>)}
                       </select>
                     </label>
                     {/* A project without colleagues in the app still has to be able to file
                         the issue: then the name is written instead of chosen. */}
-                    {!hseResponsibleOptions.length ? (
+                    {!responsiblePeople.length ? (
                       <label className="form-field"><span>{text("Name of the responsible person", "Naam van de verantwoordelijke")}</span><input value={hseForm.responsiblePerson} onChange={(event) => setHseForm({ ...hseForm, responsiblePerson: event.target.value })} placeholder={text("Nobody from this project is in the app yet", "Nog niemand van dit project staat in de app")} /></label>
                     ) : null}
                   </section>
 
-                  <section className="hse-issue-section hse-order-9" aria-label={text("Due date", "Deadline")}>
-                    <h3><span className="hse-section-number">9</span> {text("Due date", "Deadline")}</h3>
-                    <label className="form-field hse-due-field">
+                  <section className="record-section record-order-9" aria-label={text("Due date", "Deadline")}>
+                    <h3><span className="record-section-number">9</span> {text("Due date", "Deadline")}</h3>
+                    <label className="form-field record-due-field">
                       <CalendarClock size={15} />
                       <input type="datetime-local" value={hseDueValue} onChange={(event) => setHseForm({ ...hseForm, dueAt: event.target.value })} />
                     </label>
                     {/* The deadline follows the severity by the same ladder a finding gets,
                         so the priority, the status and the owner are not typed twice. */}
-                    <div className="hse-issue-derived">
-                      <div><small>{text("Priority", "Prioriteit")}</small><span className={`hse-priority-badge hse-priority-${hsePriority}`}>{hsePriorityLabels[hsePriority]}</span></div>
-                      <div><small>{text("Status", "Status")}</small><span className="hse-status-badge">{hseStatusLabel}</span></div>
-                      <div className="hse-issue-assignee"><small>{text("Automatically assigned to", "Automatisch toegewezen aan")}</small><strong>{hseForm.responsiblePerson || text("Nobody yet", "Nog niemand")}</strong></div>
+                    <div className="record-derived-block">
+                      <div><small>{text("Priority", "Prioriteit")}</small><span className={`record-priority-badge record-priority-${hsePriority}`}>{recordPriorityLabels[hsePriority]}</span></div>
+                      <div><small>{text("Status", "Status")}</small><span className="record-status-badge">{hseStatusLabel}</span></div>
+                      <div className="record-derived-assignee"><small>{text("Automatically assigned to", "Automatisch toegewezen aan")}</small><strong>{hseForm.responsiblePerson || text("Nobody yet", "Nog niemand")}</strong></div>
                     </div>
                     <p className="form-helper">{text(`The deadline follows the severity: critical 1 day, high 3 days, medium 7 days, low 14 days. Change it when the site says otherwise.`, `De deadline volgt de ernst: kritiek 1 dag, hoog 3 dagen, middel 7 dagen, laag 14 dagen. Pas hem aan als het werk anders vraagt.`)}</p>
                   </section>
                 </div>
 
-                <div className="hse-issue-column">
-                  <section className="hse-issue-section hse-order-5" aria-label={text("Location", "Locatie")}>
-                    <h3><span className="hse-section-number">5</span> {text("Location", "Locatie")} <em className="hse-required">*</em></h3>
+                <div className="sectioned-record-column">
+                  <section className="record-section record-order-5" aria-label={text("Location", "Locatie")}>
+                    <h3><span className="record-section-number">5</span> {text("Location", "Locatie")} <em className="record-section-required">*</em></h3>
                     <div className="form-grid-2">
                       <BuildingPicker id="hse-building" buildings={buildings} value={hseBuildingId} onChange={(next) => { setHseBuildingId(next); setHseLocationNodeId(""); }} allowAll />
                       <LocationPicker id="hse-location" nodes={data.locationNodes} buildingId={hseBuildingId} value={hseLocationNodeId} onChange={setHseLocationNodeId} requiredDepth={hseBuildingId === ALL_BUILDINGS ? "building" : requiredLocationDepth} />
                     </div>
                     {/* Where on earth it was seen, next to where in the works it was seen. */}
-                    <div className="hse-location-card">
-                      <div className="hse-location-readout">
+                    <div className="record-location-card">
+                      <div className="record-location-readout">
                         <MapPin size={16} />
                         <div>
                           <strong>{hseForm.latitude && hseForm.longitude ? `Lat: ${hseForm.latitude}, Long: ${hseForm.longitude}` : text("No coordinates recorded yet", "Nog geen coördinaten vastgelegd")}</strong>
                           <span>{hseBuildingId === ALL_BUILDINGS ? projectName : `${buildings.find((building) => building.id === hseBuildingId)?.name ?? buildingName}, ${projectName}`}</span>
                         </div>
                       </div>
-                      <div className="hse-location-buttons">
+                      <div className="record-location-buttons">
                         <button className="ghost-button" type="button" disabled={hseLocating} onClick={captureHsePosition}>{hseLocating ? <Loader2 className="spin" size={14} /> : <LocateFixed size={14} />} {hseForm.latitude ? text("Change location", "Locatie wijzigen") : text("Use my location", "Gebruik mijn locatie")}</button>
                         <button className="ghost-button" type="button" aria-pressed={hseManualPosition} onClick={() => setHseManualPosition(!hseManualPosition)}><Pencil size={14} /> {text("Type coordinates", "Coördinaten invullen")}</button>
                       </div>
@@ -2595,8 +2946,8 @@ function ProjectOperations({
                     {hseLocationError ? <p className="field-error" role="alert">{hseLocationError}</p> : null}
                   </section>
 
-                  <section className="hse-issue-section hse-order-6" aria-label={text("Photos / evidence", "Foto's / bewijs")}>
-                    <h3><span className="hse-section-number">6</span> {text("Photos / evidence", "Foto's / bewijs")}</h3>
+                  <section className="record-section record-order-6" aria-label={text("Photos / evidence", "Foto's / bewijs")}>
+                    <h3><span className="record-section-number">6</span> {text("Photos / evidence", "Foto's / bewijs")}</h3>
                     <label className="finding-photo-capture hse-photo-capture">
                       <Camera size={22} />
                       <span><strong>{hsePhotos.length ? text(`${hsePhotos.length} photos ready`, `${hsePhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
@@ -2610,43 +2961,43 @@ function ProjectOperations({
                     {hsePhotoError ? <p className="field-error" role="alert">{hsePhotoError}</p> : null}
                   </section>
 
-                  <section className="hse-issue-section hse-order-7" aria-label={text("Immediate action taken", "Directe maatregel")}>
-                    <h3><span className="hse-section-number">7</span> {text("Immediate action taken", "Directe maatregel")}</h3>
-                    <div className="hse-action-grid">
-                      {hseImmediateActions.map((action) => (
-                        <label className={`hse-action-check${hseForm.immediateActions.includes(action.id) ? " active" : ""}`} key={action.id}>
+                  <section className="record-section record-order-7" aria-label={text("Immediate action taken", "Directe maatregel")}>
+                    <h3><span className="record-section-number">7</span> {text("Immediate action taken", "Directe maatregel")}</h3>
+                    <div className="record-action-grid">
+                      {immediateActionsTaken.map((action) => (
+                        <label className={`record-action-check${hseForm.immediateActions.includes(action.id) ? " active" : ""}`} key={action.id}>
                           <input type="checkbox" checked={hseForm.immediateActions.includes(action.id)} onChange={() => toggleHseAction(action.id)} />
                           {text(action.en, action.nl)}
                         </label>
                       ))}
-                      <label className="hse-action-check hse-action-other">
+                      <label className="record-action-check record-action-other">
                         <MoreHorizontal size={14} />
                         <input type="text" value={hseForm.immediateActionOther} onChange={(event) => setHseForm({ ...hseForm, immediateActionOther: event.target.value })} maxLength={240} placeholder={text("Other · specify", "Overig · omschrijf")} />
                       </label>
                     </div>
                   </section>
 
-                  <section className="hse-issue-section hse-order-10" aria-label={text("Root cause", "Oorzaak")}>
-                    <h3><span className="hse-section-number">10</span> {text("Root cause", "Oorzaak")} <em className="hse-optional">({text("optional", "optioneel")})</em></h3>
+                  <section className="record-section record-order-10" aria-label={text("Root cause", "Oorzaak")}>
+                    <h3><span className="record-section-number">10</span> {text("Root cause", "Oorzaak")} <em className="record-section-optional">({text("optional", "optioneel")})</em></h3>
                     <label className="form-field"><select value={hseForm.rootCause} onChange={(event) => setHseForm({ ...hseForm, rootCause: event.target.value })}>
                       <option value="">{text("Select root cause", "Kies een oorzaak")}</option>
-                      {hseRootCauses.map((cause) => <option value={cause.id} key={cause.id}>{text(cause.en, cause.nl)}</option>)}
+                      {recordRootCauses.map((cause) => <option value={cause.id} key={cause.id}>{text(cause.en, cause.nl)}</option>)}
                     </select></label>
                   </section>
 
-                  <section className="hse-issue-section hse-order-11" aria-label={text("Corrective action required", "Vereiste correctieve actie")}>
-                    <h3><span className="hse-section-number">11</span> {text("Corrective action required", "Vereiste correctieve actie")}</h3>
+                  <section className="record-section record-order-11" aria-label={text("Corrective action required", "Vereiste correctieve actie")}>
+                    <h3><span className="record-section-number">11</span> {text("Corrective action required", "Vereiste correctieve actie")}</h3>
                     <label className="form-field">
                       <textarea rows={3} maxLength={1000} value={hseForm.correctiveAction} onChange={(event) => setHseForm({ ...hseForm, correctiveAction: event.target.value })} placeholder={text("What corrective action is required?", "Welke correctieve actie is nodig?")} />
                       <DictateButton onText={(transcript) => setHseForm((current) => ({ ...current, correctiveAction: appendDictation(current.correctiveAction, transcript) }))} />
                     </label>
                   </section>
 
-                  <section className="hse-issue-section hse-order-12" aria-label={text("Notes", "Notities")}>
-                    <h3><span className="hse-section-number">12</span> {text("Notes", "Notities")} <em className="hse-optional">({text("optional", "optioneel")})</em></h3>
+                  <section className="record-section record-order-12" aria-label={text("Notes", "Notities")}>
+                    <h3><span className="record-section-number">12</span> {text("Notes", "Notities")} <em className="record-section-optional">({text("optional", "optioneel")})</em></h3>
                     <label className="form-field">
                       <textarea rows={3} maxLength={500} value={hseForm.notes} onChange={(event) => setHseForm({ ...hseForm, notes: event.target.value })} placeholder={text("Additional notes...", "Aanvullende notities...")} />
-                      <div className="hse-field-foot"><span /><span className="hse-counter">{hseForm.notes.length} / 500</span></div>
+                      <div className="record-field-foot"><span /><span className="record-counter">{hseForm.notes.length} / 500</span></div>
                     </label>
                   </section>
                 </div>
@@ -2655,10 +3006,10 @@ function ProjectOperations({
               <label className="check-field"><input type="checkbox" checked={hseForm.confidential} onChange={(event) => setHseForm({ ...hseForm, confidential: event.target.checked })} /> {text("Restrict this sensitive incident to authorized HSE roles", "Beperk dit gevoelige incident tot bevoegde HSE-rollen")}</label>
               {/* The bar of the client's screen: leave it, park it, count the evidence,
                   submit it. */}
-              <div className="hse-issue-actions">
+              <div className="record-form-actions">
                 <button className="ghost-button" type="button" onClick={() => { resetHseForm(); setShowForm(false); }}><X size={14} /> {text("Cancel", "Annuleren")}</button>
-                <button className="ghost-button" type="button" onClick={() => writeHseDraft(projectId, hseForm)}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
-                <span className="hse-attachment-count"><Paperclip size={14} /> {text(`Attachments (${hsePhotos.length})`, `Bijlagen (${hsePhotos.length})`)}</span>
+                <button className="ghost-button" type="button" onClick={() => writeRecordDraft("hse", projectId, hseForm)}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
+                <span className="record-attachment-count"><Paperclip size={14} /> {text(`Attachments (${hsePhotos.length})`, `Bijlagen (${hsePhotos.length})`)}</span>
                 <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && hseBuildingId !== ALL_BUILDINGS && !hseLocationNodeId) || !hseForm.issueCategory || hseForm.responsiblePerson.trim().length < 2 || hseForm.description.trim().length < 3} onClick={() => void addHse()}><Send size={15} /> {text("Submit issue", "Issue indienen")}</button>
               </div>
             </div>

@@ -75,6 +75,15 @@ export type Finding = {
   final_measure: string | null;
   issue_management: {
     issue_type?: string;
+    /** The boxes the client's own issue screen added, section by section. */
+    issue_category?: string;
+    immediate_actions?: string[];
+    immediate_action_other?: string;
+    responsible_person?: string;
+    root_cause?: string;
+    latitude?: number | null;
+    longitude?: number | null;
+    location_label?: string;
     impact_summary?: string;
     action_steps?: string;
     escalation_required?: boolean;
@@ -804,7 +813,21 @@ export async function createFinding(client: SupabaseClient, input: {
   description: string;
   severity: string;
   responsiblePartyId?: string;
+  /** The colleague who has to act on it, from section 8 of the client's issue screen. */
+  assignedUserId?: string;
+  responsiblePerson?: string;
   issueType?: string;
+  /** Section 2: what the issue is about — PPE, workmanship, planning. */
+  issueCategory?: string;
+  /** Section 7: what was already done on the spot, ticked instead of typed. */
+  immediateActions?: string[];
+  immediateActionOther?: string;
+  /** Section 10: why it happened, as far as it is known when the issue is written. */
+  rootCause?: string;
+  /** Section 5: where on earth it was seen, next to where in the works it was seen. */
+  latitude?: number | null;
+  longitude?: number | null;
+  locationLabel?: string;
   impactSummary?: string;
   actionSteps?: string;
   escalationRequired?: boolean;
@@ -841,10 +864,18 @@ export async function createFinding(client: SupabaseClient, input: {
     p_description: input.description,
     p_severity: input.severity,
     p_responsible_party_id: input.responsiblePartyId || null,
-    p_assigned_user_id: null,
+    p_assigned_user_id: input.assignedUserId || null,
     p_idempotency_key: input.idempotencyKey ?? `finding:${crypto.randomUUID()}`,
     p_issue_management: {
       issue_type: input.issueType || "quality",
+      issue_category: input.issueCategory?.trim() || "",
+      immediate_actions: input.immediateActions ?? [],
+      immediate_action_other: input.immediateActionOther?.trim() || "",
+      responsible_person: input.responsiblePerson?.trim() || "",
+      root_cause: input.rootCause?.trim() || "",
+      latitude: input.latitude ?? null,
+      longitude: input.longitude ?? null,
+      location_label: input.locationLabel?.trim() || "",
       impact_summary: input.impactSummary?.trim() || "",
       action_steps: input.actionSteps?.trim() || "",
       escalation_required: Boolean(input.escalationRequired),

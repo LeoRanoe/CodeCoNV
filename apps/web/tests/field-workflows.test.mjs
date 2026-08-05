@@ -199,7 +199,7 @@ test("gives every attached photo one written field, its location and an automati
     assert.match(source, /<PhotoEvidenceList/, `${name} must use the shared photo block`);
     assert.match(source, /toPhotoEvidence\(/, `${name} must wrap a taken photo so it carries its own words`);
   }
-  assert.equal(operations.match(/<PhotoEvidenceList/g)?.length, 4);
+  assert.equal(operations.match(/<PhotoEvidenceList/g)?.length, 5);
   // The old one-off stacks are gone rather than left behind next to the shared block.
   assert.doesNotMatch(operations, /FindingPhotoStack/);
   assert.doesNotMatch(entry, /entry-photo-strip/);
@@ -250,9 +250,9 @@ test("offers marking on the photo everywhere a photo can be attached", async () 
   assert.match(visual, /\bcontext=\{/);
   // The shared block is the only place the pad is opened for the forms.
   assert.match(evidencePad, /<PhotoMarkupPad/);
-  // Every one of the four operational photo blocks knows which buildings, rooms and parties
-  // a marker can be attached to.
-  assert.equal(operations.match(/markupContext=\{\{ \.\.\.markupOptions/g)?.length, 4);
+  // Every one of the operational photo blocks knows which buildings, rooms and parties a
+  // marker can be attached to.
+  assert.equal(operations.match(/markupContext=\{\{ \.\.\.markupOptions/g)?.length, 5);
 
   // A marker carries more than a pin: words, severity, and where it belongs.
   for (const field of [/Full description/, /Severity/, /Where does this belong\?/, /Responsible party/, /Work package/, /Floor \/ room \/ element/]) {

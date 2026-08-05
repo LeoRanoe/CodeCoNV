@@ -14,6 +14,13 @@ export type QueuedFindingDraft = {
   severity: string;
   responsiblePartyId?: string;
   issueType?: string;
+  /** The boxes of the client's own issue screen travel with an offline issue. */
+  assignedUserId?: string;
+  responsiblePerson?: string;
+  issueCategory?: string;
+  immediateActions?: string[];
+  immediateActionOther?: string;
+  rootCause?: string;
   impactSummary?: string;
   actionSteps?: string;
   escalationRequired?: boolean;

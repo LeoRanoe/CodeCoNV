@@ -8430,20 +8430,20 @@ textarea:focus-visible {
  * are the client's own — they are how the form is read out loud on site — so they are
  * part of the heading instead of decoration.
  */
-.hse-issue-form { gap: 16px; }
-.hse-issue-context { grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); }
-.hse-status-preview { color: var(--green); }
-.hse-draft-notice { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; }
+.sectioned-record-form { gap: 16px; }
+.sectioned-record-context { grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); }
+.record-status-preview { color: var(--green); }
+.record-draft-notice { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; }
 
-.hse-issue-columns {
+.sectioned-record-columns {
   align-items: start;
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-.hse-issue-column { display: grid; gap: 14px; }
+.sectioned-record-column { display: grid; gap: 14px; }
 
-.hse-issue-section {
+.record-section {
   background: #fbfdfc;
   border: 1px solid var(--ink-200);
   border-radius: 13px;
@@ -8451,7 +8451,7 @@ textarea:focus-visible {
   gap: 11px;
   padding: 14px;
 }
-.hse-issue-section > h3 {
+.record-section > h3 {
   align-items: center;
   color: var(--ink-700);
   display: flex;
@@ -8462,7 +8462,7 @@ textarea:focus-visible {
   margin: 0;
   text-transform: uppercase;
 }
-.hse-section-number {
+.record-section-number {
   background: var(--ink-100);
   border-radius: 7px;
   color: var(--ink-700);
@@ -8473,16 +8473,16 @@ textarea:focus-visible {
   min-width: 21px;
   padding: 3px 5px;
 }
-.hse-required { color: var(--red); font-style: normal; }
-.hse-optional { color: var(--ink-500); font-style: normal; font-weight: 600; text-transform: none; }
+.record-section-required { color: var(--red); font-style: normal; }
+.record-section-optional { color: var(--ink-500); font-style: normal; font-weight: 600; text-transform: none; }
 
 /* Section 1: one tile per kind of issue, so the choice is made with a thumb. */
-.hse-tile-grid {
+.record-tile-grid {
   display: grid;
   gap: 8px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
-.hse-tile {
+.record-tile {
   align-items: center;
   background: var(--paper);
   border: 1px solid var(--ink-200);
@@ -8496,9 +8496,9 @@ textarea:focus-visible {
   padding: 11px 7px;
   text-align: center;
 }
-.hse-tile span { font-size: 11px; font-weight: 650; line-height: 1.25; }
-.hse-tile:hover { border-color: var(--ink-300); }
-.hse-tile.active {
+.record-tile span { font-size: 11px; font-weight: 650; line-height: 1.25; }
+.record-tile:hover { border-color: var(--ink-300); }
+.record-tile.active {
   background: var(--signal-soft);
   border-color: var(--signal);
   box-shadow: inset 0 0 0 1px var(--signal);
@@ -8507,8 +8507,8 @@ textarea:focus-visible {
 }
 
 /* Section 3: the four steps of severity, side by side and never hidden in a dropdown. */
-.hse-severity-row { display: grid; gap: 8px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.hse-severity {
+.record-severity-choices { display: grid; gap: 8px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.record-severity-choice {
   align-items: center;
   background: var(--paper);
   border: 1px solid var(--ink-200);
@@ -8522,29 +8522,29 @@ textarea:focus-visible {
   min-height: 40px;
   padding: 8px 6px;
 }
-.hse-severity-low svg { color: var(--green); }
-.hse-severity-medium svg { color: var(--yellow); }
-.hse-severity-high svg { color: var(--signal); }
-.hse-severity-critical svg { color: var(--red); }
-.hse-severity.active { font-weight: 780; }
-.hse-severity-low.active { background: var(--green-soft); border-color: #7fbead; color: var(--green); }
-.hse-severity-medium.active { background: var(--yellow-soft); border-color: #ddb75c; color: var(--yellow); }
-.hse-severity-high.active { background: var(--signal-soft); border-color: var(--signal); color: var(--signal-dark); }
-.hse-severity-critical.active { background: var(--red-soft); border-color: var(--red); color: var(--red); }
+.record-severity-choice-low svg { color: var(--green); }
+.record-severity-choice-medium svg { color: var(--yellow); }
+.record-severity-choice-high svg { color: var(--signal); }
+.record-severity-choice-critical svg { color: var(--red); }
+.record-severity-choice.active { font-weight: 780; }
+.record-severity-choice-low.active { background: var(--green-soft); border-color: #7fbead; color: var(--green); }
+.record-severity-choice-medium.active { background: var(--yellow-soft); border-color: #ddb75c; color: var(--yellow); }
+.record-severity-choice-high.active { background: var(--signal-soft); border-color: var(--signal); color: var(--signal-dark); }
+.record-severity-choice-critical.active { background: var(--red-soft); border-color: var(--red); color: var(--red); }
 
-.hse-field-foot { align-items: center; display: flex; justify-content: space-between; gap: 9px; }
-.hse-counter { color: var(--ink-500); font-size: 10.5px; }
-.hse-description-field textarea { min-height: 108px; }
+.record-field-foot { align-items: center; display: flex; justify-content: space-between; gap: 9px; }
+.record-counter { color: var(--ink-500); font-size: 10.5px; }
+.record-description-field textarea { min-height: 108px; }
 
-.hse-responsible-field,
-.hse-due-field { align-items: center; display: flex; gap: 9px; }
-.hse-responsible-field svg,
-.hse-due-field svg { color: var(--ink-500); flex: 0 0 auto; }
-.hse-responsible-field select,
-.hse-due-field input { flex: 1; min-width: 0; }
+.record-responsible-field,
+.record-due-field { align-items: center; display: flex; gap: 9px; }
+.record-responsible-field svg,
+.record-due-field svg { color: var(--ink-500); flex: 0 0 auto; }
+.record-responsible-field select,
+.record-due-field input { flex: 1; min-width: 0; }
 
 /* Section 9: what the deadline, the priority and the owner become once it is submitted. */
-.hse-issue-derived {
+.record-derived-block {
   background: var(--paper);
   border: 1px solid var(--ink-200);
   border-radius: 11px;
@@ -8553,12 +8553,12 @@ textarea:focus-visible {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 11px 12px;
 }
-.hse-issue-derived > div { display: grid; gap: 4px; justify-items: start; min-width: 0; }
-.hse-issue-derived small { color: var(--ink-500); font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
-.hse-issue-derived strong { color: var(--ink-900); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
-.hse-issue-assignee { grid-column: 1 / -1; }
-.hse-priority-badge,
-.hse-status-badge {
+.record-derived-block > div { display: grid; gap: 4px; justify-items: start; min-width: 0; }
+.record-derived-block small { color: var(--ink-500); font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.record-derived-block strong { color: var(--ink-900); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+.record-derived-assignee { grid-column: 1 / -1; }
+.record-priority-badge,
+.record-status-badge {
   border-radius: 7px;
   font-size: 10.5px;
   font-weight: 800;
@@ -8566,14 +8566,14 @@ textarea:focus-visible {
   padding: 4px 8px;
   text-transform: uppercase;
 }
-.hse-status-badge { background: var(--blue-soft); color: var(--blue); }
-.hse-priority-low { background: var(--ink-100); color: var(--ink-700); }
-.hse-priority-normal { background: var(--green-soft); color: var(--green); }
-.hse-priority-high { background: var(--signal-soft); color: var(--signal-dark); }
-.hse-priority-critical { background: var(--red); color: #fff; }
+.record-status-badge { background: var(--blue-soft); color: var(--blue); }
+.record-priority-low { background: var(--ink-100); color: var(--ink-700); }
+.record-priority-normal { background: var(--green-soft); color: var(--green); }
+.record-priority-high { background: var(--signal-soft); color: var(--signal-dark); }
+.record-priority-critical { background: var(--red); color: #fff; }
 
 /* Section 5: where in the works, and where on earth. */
-.hse-location-card {
+.record-location-card {
   align-items: center;
   background: var(--paper);
   border: 1px solid var(--ink-200);
@@ -8584,16 +8584,16 @@ textarea:focus-visible {
   justify-content: space-between;
   padding: 11px 12px;
 }
-.hse-location-readout { align-items: center; display: flex; gap: 9px; min-width: 0; }
-.hse-location-readout svg { color: var(--signal); flex: 0 0 auto; }
-.hse-location-readout > div { display: grid; gap: 2px; min-width: 0; }
-.hse-location-readout strong { color: var(--ink-900); font-size: 12.5px; }
-.hse-location-readout span { color: var(--ink-600); font-size: 10.5px; }
-.hse-location-buttons { display: flex; flex-wrap: wrap; gap: 7px; }
+.record-location-readout { align-items: center; display: flex; gap: 9px; min-width: 0; }
+.record-location-readout svg { color: var(--signal); flex: 0 0 auto; }
+.record-location-readout > div { display: grid; gap: 2px; min-width: 0; }
+.record-location-readout strong { color: var(--ink-900); font-size: 12.5px; }
+.record-location-readout span { color: var(--ink-600); font-size: 10.5px; }
+.record-location-buttons { display: flex; flex-wrap: wrap; gap: 7px; }
 
 /* Section 7: the measures that were already taken, ticked instead of typed. */
-.hse-action-grid { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.hse-action-check {
+.record-action-grid { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.record-action-check {
   align-items: center;
   background: var(--paper);
   border: 1px solid var(--ink-200);
@@ -8607,11 +8607,11 @@ textarea:focus-visible {
   min-height: 42px;
   padding: 8px 10px;
 }
-.hse-action-check.active { background: var(--green-soft); border-color: #7fbead; color: var(--green); font-weight: 700; }
-.hse-action-check input[type="checkbox"] { flex: 0 0 auto; }
-.hse-action-other { grid-column: 1 / -1; }
-.hse-action-other svg { color: var(--ink-500); flex: 0 0 auto; }
-.hse-action-other input[type="text"] {
+.record-action-check.active { background: var(--green-soft); border-color: #7fbead; color: var(--green); font-weight: 700; }
+.record-action-check input[type="checkbox"] { flex: 0 0 auto; }
+.record-action-other { grid-column: 1 / -1; }
+.record-action-other svg { color: var(--ink-500); flex: 0 0 auto; }
+.record-action-other input[type="text"] {
   background: transparent;
   border: 0;
   color: var(--ink-900);
@@ -8621,8 +8621,27 @@ textarea:focus-visible {
   outline: none;
 }
 
+/* The boxes of the client's own issue register that their newer screen does not draw:
+   they stay one tap away instead of disappearing from the record. */
+.record-extra-details {
+  border: 1px solid var(--ink-200);
+  border-radius: 13px;
+  background: #fbfdfc;
+  padding: 12px 14px;
+}
+.record-extra-details > summary {
+  color: var(--ink-700);
+  cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 780;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.record-extra-details[open] > summary { margin-bottom: 13px; }
+.record-extra-body { display: grid; gap: 13px; }
+
 /* The bar the client drew under the form: leave, park, count, submit. */
-.hse-issue-actions {
+.record-form-actions {
   align-items: center;
   border-top: 1px solid var(--ink-100);
   display: flex;
@@ -8630,8 +8649,8 @@ textarea:focus-visible {
   gap: 9px;
   padding-top: 13px;
 }
-.hse-issue-actions .primary-button { margin-left: auto; }
-.hse-attachment-count {
+.record-form-actions .primary-button { margin-left: auto; }
+.record-attachment-count {
   align-items: center;
   color: var(--ink-600);
   display: flex;
@@ -8645,26 +8664,26 @@ textarea:focus-visible {
  * screen; the numbers exist for the person reading the form out loud on site.
  */
 @media (max-width: 900px) {
-  .hse-issue-columns { display: flex; flex-direction: column; }
-  .hse-issue-column { display: contents; }
-  .hse-order-1 { order: 1; }
-  .hse-order-2 { order: 2; }
-  .hse-order-3 { order: 3; }
-  .hse-order-4 { order: 4; }
-  .hse-order-5 { order: 5; }
-  .hse-order-6 { order: 6; }
-  .hse-order-7 { order: 7; }
-  .hse-order-8 { order: 8; }
-  .hse-order-9 { order: 9; }
-  .hse-order-10 { order: 10; }
-  .hse-order-11 { order: 11; }
-  .hse-order-12 { order: 12; }
+  .sectioned-record-columns { display: flex; flex-direction: column; }
+  .sectioned-record-column { display: contents; }
+  .record-order-1 { order: 1; }
+  .record-order-2 { order: 2; }
+  .record-order-3 { order: 3; }
+  .record-order-4 { order: 4; }
+  .record-order-5 { order: 5; }
+  .record-order-6 { order: 6; }
+  .record-order-7 { order: 7; }
+  .record-order-8 { order: 8; }
+  .record-order-9 { order: 9; }
+  .record-order-10 { order: 10; }
+  .record-order-11 { order: 11; }
+  .record-order-12 { order: 12; }
 }
 @media (max-width: 560px) {
-  .hse-tile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .hse-severity-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .hse-action-grid { grid-template-columns: 1fr; }
-  .hse-issue-actions .primary-button { margin-left: 0; width: 100%; }
+  .record-tile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .record-severity-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .record-action-grid { grid-template-columns: 1fr; }
+  .record-form-actions .primary-button { margin-left: 0; width: 100%; }
 }
 
 /*

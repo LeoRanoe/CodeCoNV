@@ -1086,12 +1086,15 @@ test("processes the third batch of annotated screens from 31 July", async () => 
   assert.doesNotMatch(styles, /\.finding-scope-switch/);
   assert.match(workspace, /const findingScope: "issue" \| "ncr" = tab === "ncr"/);
 
-  // The issue form uses the columns of the client's own Issue Management Template
-  // (Issues_Tracking_Log), with their names, not a summary of another worksheet.
-  assert.match(workspace, /text\("Issue description", "Issue Description"\)/);
+  // The columns of the client's own Issue Management Template are still filled in, but
+  // through the newer screen they sent: the description is section 4, the deadline is
+  // section 9, and the owner of the correction stands under the responsible person.
+  assert.match(workspace, /Describe the issue in detail|Beschrijf het issue in detail/);
+  assert.match(workspace, /expectedResolutionDate: event\.target\.value/);
+  assert.match(workspace, /Contractor · owner of the correction|Aannemer · eigenaar van de correctie/);
+  // The NCR module keeps the client's own paper form, with its own columns.
   assert.match(workspace, /text\("Date identified", "Date Identified"\)/);
   assert.match(workspace, /text\("Expected resolution date", "Expected Resolution Date"\)/);
-  assert.match(workspace, /text\("Assigned to owner", "Assigned To Owner"\)/);
   assert.match(workspace, /Escalation Required \(Y\/N\)/);
   assert.match(workspace, /Final Resolution & Rationale/);
   // The issue type list became the client's own vocabulary on 4 August; the columns of
@@ -1284,7 +1287,7 @@ test("keeps the action centre and makes its deadlines and choices true on site",
   // #16 · A photo says in every form that it can be described, marked or removed.
   assert.match(workspace, /const photoCaptureHint = text\(/);
   assert.match(workspace, /describe, mark or remove it|omschrijven, markeren of verwijderen/);
-  assert.equal(workspace.match(/<small>\{photoCaptureHint\}<\/small>/g)?.length, 4);
+  assert.equal(workspace.match(/<small>\{photoCaptureHint\}<\/small>/g)?.length, 5);
 
   // #16 · The building and location choice is the same field in every form, and
   // "all buildings" is stored instead of failing.
@@ -1983,10 +1986,12 @@ test("processes the annotated screens of 4 August: ordered photos, a named pin, 
   for (const kind of ["safety", "quality", "equipment", "materials", "schedule", "operational"]) {
     assert.match(operations, new RegExp(`id: "${kind}"`));
   }
-  assert.match(operations, /findingScope === "ncr" \? \(\s*<div className="quick-issue-presets" aria-label=\{text\("Common issue choices/);
-  assert.match(operations, /\{findingScope === "ncr" \? \(\s*<label className="form-field"><span>\{text\("Client B1 issue catalog/);
+  // The ready-made problems and the historic B1 catalog live on the NCR form only, and
+  // that form is now a screen of its own instead of a set of conditions inside the issue.
+  assert.match(operations, /\{showForm && findingScope === "ncr" \? \(/);
+  assert.match(operations, /<div className="quick-issue-presets" aria-label=\{text\("Common issue choices/);
+  assert.match(operations, /<label className="form-field"><span>\{text\("Client B1 issue catalog/);
   assert.match(operations, /<option value="high">\{text\("High · 3 days"/);
-  assert.match(operations, /findingScope === "ncr" \? <option value="critical">/);
   assert.match(operations, /Impact in your own words|Impact in eigen woorden/);
   assert.match(operations, /Follow-up in your own words|Opvolging in eigen woorden/);
   assert.doesNotMatch(operations, /Different impact or action|Andere impact of actie/);
@@ -2118,7 +2123,7 @@ test("builds the HSE observation / issue screen the client sent, section by sect
   ]);
 
   // The head of the screen: everything the app already knows before a box is filled in.
-  assert.match(operations, /hse-issue-context/);
+  assert.match(operations, /sectioned-record-context/);
   for (const heading of [/Issue ID/, /Reporter|Melder/, /Site \/ location|Locatie/, /Weather|Weer/, /Department|Afdeling/]) {
     assert.match(operations, heading);
   }
@@ -2139,7 +2144,7 @@ test("builds the HSE observation / issue screen the client sent, section by sect
     [12, /Notes", "Notities/],
   ];
   for (const [number, label] of sections) {
-    assert.match(operations, new RegExp(`hse-section-number">${number}<`), `section ${number} is numbered as the client numbered it`);
+    assert.match(operations, new RegExp(`record-section-number">${number}<`), `section ${number} is numbered as the client numbered it`);
     assert.match(operations, label);
   }
 
@@ -2153,18 +2158,18 @@ test("builds the HSE observation / issue screen the client sent, section by sect
 
   // Sections 3 and 9 belong together: the severity decides the priority and the deadline,
   // by the same ladder a finding is given.
-  assert.match(operations, /const hseSeverityDueDays: Record<string, number> = \{ critical: 1, high: 3, medium: 7, low: 14 \}/);
-  assert.match(operations, /hse-priority-badge hse-priority-\$\{hsePriority\}/);
+  assert.match(operations, /const recordSeverityDueDays: Record<string, number> = \{ critical: 1, high: 3, medium: 7, low: 14 \}/);
+  assert.match(operations, /record-priority-badge record-priority-\$\{hsePriority\}/);
   assert.match(issueMigration, /when 'critical' then interval '1 day' when 'high' then interval '3 days'/);
 
   // Section 7 is ticked, not typed, and still reaches the report as one measure.
-  assert.match(operations, /const hseImmediateActions = \[/);
+  assert.match(operations, /const immediateActionsTaken = \[/);
   assert.match(operations, /const hseImmediateMeasure = \(form: HseIssueForm\)/);
   assert.match(operations, /immediate_actions text\[\]|immediateActions/);
   assert.match(issueMigration, /add column if not exists immediate_actions text\[\] not null default '\{\}'/);
 
   // The screen has no title box, so the list line is the first sentence of the description.
-  assert.match(operations, /function hseLogLine\(description: string, fallback: string\)/);
+  assert.match(operations, /function recordLogLine\(description: string, fallback: string\)/);
   assert.doesNotMatch(operations, /hseForm\.title\.trim\(\)\.length < 3/);
 
   // Every new box has a column of its own, is written by one function and is read back
@@ -2184,10 +2189,71 @@ test("builds the HSE observation / issue screen the client sent, section by sect
   // "Save draft" parks the screen on the device; it is offered back, never pushed back.
   assert.match(operations, /Save draft", "Concept opslaan/);
   assert.match(operations, /Put it back", "Terugzetten/);
-  assert.match(operations, /function writeHseDraft\(projectId: string, form: HseIssueForm\)/);
+  assert.match(operations, /function writeRecordDraft\(kind: RecordDraftKind, projectId: string, form: unknown\)/);
 
   // The two columns, the tiles and the action bar have a shape of their own.
-  for (const rule of [/\.hse-issue-columns \{/, /\.hse-tile-grid \{/, /\.hse-severity-row \{/, /\.hse-action-grid \{/, /\.hse-issue-actions \{/]) {
+  for (const rule of [/\.sectioned-record-columns \{/, /\.record-tile-grid \{/, /\.record-severity-choices \{/, /\.record-action-grid \{/, /\.record-form-actions \{/]) {
     assert.match(styles, rule);
   }
+});
+
+test("gives the issue screen the same sections the client drew for it", async () => {
+  const [operations, dataLayer, pendingRecords, uploadQueue] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/offline/pending-records.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/offline/upload-queue.ts", import.meta.url), "utf8"),
+  ]);
+
+  // The issue screen and the NCR form are two screens now, not one form with conditions.
+  assert.match(operations, /\{showForm && findingScope === "issue" \? \(/);
+  assert.match(operations, /\{showForm && findingScope === "ncr" \? \(/);
+
+  // The eleven sections of the client's own issue screen, in their order.
+  const sections = [
+    [1, /Issue type", "Issuetype/],
+    [2, /Category", "Categorie/],
+    [3, /Severity", "Ernst/],
+    [4, /Description", "Omschrijving/],
+    [5, /Location", "Locatie/],
+    [6, /Photos \/ evidence/],
+    [7, /Immediate action taken", "Directe maatregel/],
+    [8, /Responsible person", "Verantwoordelijke/],
+    [9, /Due date", "Deadline/],
+    [10, /Root cause", "Oorzaak/],
+    [11, /Additional notes", "Aanvullende notities/],
+  ];
+  for (const [number, label] of sections) {
+    assert.match(operations, new RegExp(`record-section record-order-${number}"`), `issue section ${number} is numbered as the client numbered it`);
+    assert.match(operations, label);
+  }
+
+  // Section 1 is the tile grid of the client's issue screen, with the kinds it files under.
+  assert.match(operations, /const issueTypeTiles = \[/);
+  for (const tile of ["safety", "quality", "environmental", "equipment", "materials", "schedule", "operational", "documentation", "other"]) {
+    assert.match(operations, new RegExp(`\\{ id: "${tile}", en:`));
+  }
+
+  // Severity now goes up to critical on an ordinary issue, because the client's screen does.
+  assert.match(operations, /record-severity-choice record-severity-choice-\$\{value\}\$\{findingForm\.severity === value/);
+
+  // The two screens share one shape: the same sections, tiles, checks and action bar.
+  for (const shared of [/const immediateActionsTaken = \[/, /const recordRootCauses = \[/, /function recordLogLine\(/, /function recordDueDateTimeDefault\(/]) {
+    assert.match(operations, shared);
+  }
+
+  // The new boxes reach the record: the colleague is assigned, the rest travels in the
+  // issue-management object the client's own register already uses.
+  assert.match(dataLayer, /p_assigned_user_id: input\.assignedUserId \|\| null/);
+  for (const key of ["issue_category", "immediate_actions", "responsible_person", "root_cause", "latitude", "longitude"]) {
+    assert.match(dataLayer, new RegExp(`${key}:`));
+  }
+  assert.match(pendingRecords, /assigned_user_id: \(input\.assignedUserId as string\) \|\| null/);
+  assert.match(uploadQueue, /assignedUserId\?: string;/);
+
+  // The impact, the follow-up and the escalation flag are not on the new screen but are
+  // read by the period report, so they stay reachable instead of disappearing.
+  assert.match(operations, /<details className="record-extra-details">/);
+  assert.match(operations, /Impact, follow-up and escalation|Impact, opvolging en escalatie/);
+  assert.match(operations, /escalationRequired: event\.target\.checked/);
 });
