@@ -8519,20 +8519,47 @@ textarea:focus-visible {
 .workforce-row-remove:hover { border-color: var(--red); color: var(--red); }
 .workforce-empty { margin: 4px 0; }
 
+/*
+ * One titled card per block — the shape the client already knew from the screen this one
+ * replaced. Every card says what it is for and carries its own count, so no number on the
+ * screen is left wondering which question it answers.
+ */
+.workforce-section { border: 1px solid var(--ink-200); border-radius: 13px; display: grid; gap: 11px; padding: 13px; }
+.workforce-section > header { align-items: center; display: grid; gap: 10px; grid-template-columns: auto minmax(0, 1fr) auto; }
+.workforce-section-icon {
+  align-items: center;
+  background: var(--green-soft);
+  border-radius: 9px;
+  color: var(--green);
+  display: flex;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+.workforce-section > header h3 { color: var(--ink-900); font-size: 13px; margin: 0; }
+.workforce-section > header p { color: var(--ink-500); font-size: 10px; line-height: 1.4; margin: 2px 0 0; }
+.workforce-section > header > strong { color: var(--green); font-size: 20px; }
+
 /* §4.3: the totals the report is read by — per organisation and per trade. */
-.workforce-totals { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
-.workforce-totals section { background: #f5f8f8; border-radius: 11px; padding: 11px 13px; }
-.workforce-totals h3 { color: var(--ink-500); font-size: 9px; font-weight: 800; letter-spacing: .05em; margin: 0 0 7px; text-transform: uppercase; }
+.workforce-totals { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.workforce-totals > div { background: #f5f8f8; border-radius: 11px; padding: 11px 13px; }
+.workforce-totals h4 { color: var(--ink-500); font-size: 9px; font-weight: 800; letter-spacing: .05em; margin: 0 0 7px; text-transform: uppercase; }
 .workforce-totals dl { display: grid; gap: 5px; margin: 0; }
 .workforce-totals dl > div { display: flex; gap: 10px; justify-content: space-between; }
 .workforce-totals dt { color: var(--ink-700); font-size: 11px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workforce-totals dd { color: var(--ink-900); font-size: 12px; font-weight: 750; margin: 0; }
 
-.workforce-deviation { align-items: flex-start; }
-
-/* Visitors stand apart from the counted crew: on site, but not manning the work. */
-.workforce-visitors { border-top: 1px solid var(--border); display: grid; gap: 10px; padding-top: 13px; }
-.workforce-visitors h3 { color: var(--ink-900); font-size: 13px; margin: 0; }
+/* The deviation and the sentence that explains it stand in one card, never apart. */
+.workforce-deviation-list { display: grid; gap: 7px; list-style: none; margin: 0; padding: 0; }
+.workforce-deviation-list li {
+  background: var(--signal-soft);
+  border-radius: 10px;
+  display: grid;
+  gap: 2px;
+  padding: 9px 12px;
+}
+.workforce-deviation-list strong { color: var(--signal-dark); font-size: 11px; }
+.workforce-deviation-list span { color: var(--ink-600); font-size: 11px; }
 
 @media (max-width: 640px) {
   .workforce-add { grid-template-columns: 1fr 1fr; }
