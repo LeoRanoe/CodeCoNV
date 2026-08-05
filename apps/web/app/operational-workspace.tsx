@@ -947,6 +947,8 @@ function ProjectOperations({
   // Issues and NCRs are separate modules: the client's issue screen is for issues only.
   const findingScope: "issue" | "ncr" = tab === "ncr" ? "ncr" : "issue";
   const [visualFindingId, setVisualFindingId] = useState("");
+  /** The photo the library sent here to have a problem marked on it. */
+  const [visualFileId, setVisualFileId] = useState("");
   /** Set when the photo library asked for the 360° upload form instead of a normal photo. */
   const [visual360Intent, setVisual360Intent] = useState(false);
   const [drawingFindingId, setDrawingFindingId] = useState("");
@@ -3371,7 +3373,7 @@ function ProjectOperations({
         onRecord={(view) => openDailyRecord(view === "delays" ? "delay" : view)}
       /> : null}
 
-      {tab === "visual" ? <VisualEvidenceWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} parties={parties} client={client} busy={busy} run={run} initialFindingId={visualFindingId} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} start360Upload={visual360Intent} onStart360UploadConsumed={() => setVisual360Intent(false)} /> : null}
+      {tab === "visual" ? <VisualEvidenceWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} parties={parties} client={client} busy={busy} run={run} initialFindingId={visualFindingId} initialFileId={visualFileId} onInitialFileConsumed={() => setVisualFileId("")} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} start360Upload={visual360Intent} onStart360UploadConsumed={() => setVisual360Intent(false)} /> : null}
 
       {tab === "documents" ? <ProjectDocumentsHome data={data} client={client} openDrawings={() => switchTab("drawings")} openFiles={() => switchTab("files")} openRegisters={() => switchTab("registers")} createDocument={() => openTask("registers", true)} /> : null}
 
@@ -3379,7 +3381,7 @@ function ProjectOperations({
 
       {tab === "tools" ? <FieldTools data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} parties={parties} reportId={reportId} client={client} busy={busy} run={run} /> : null}
 
-      {tab === "files" ? <MediaLibraryWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} open360Upload={() => { setVisual360Intent(true); setTab("visual"); }} /> : null}
+      {tab === "files" ? <MediaLibraryWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} open360Upload={() => { setVisual360Intent(true); setTab("visual"); }} markPhotoIssue={(fileId) => { setVisualFileId(fileId); switchTab("visual"); }} /> : null}
     </>
   );
 }

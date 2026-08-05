@@ -64,6 +64,9 @@ type VisualEvidenceWorkspaceProps = {
   busy: boolean;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
   initialFindingId?: string;
+  /** A photo from the library that was sent here to have a problem marked on it. */
+  initialFileId?: string;
+  onInitialFileConsumed?: () => void;
   initialFiles?: File[];
   onInitialFilesConsumed?: () => void;
   /** Set when "Upload 360° image" was tapped elsewhere, so the form is already open here. */
@@ -106,7 +109,7 @@ function imageDimensions(file: File) {
   });
 }
 
-export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingName, buildings, reportId, parties, client, busy, run, initialFindingId, initialFiles = [], onInitialFilesConsumed, start360Upload = false, onStart360UploadConsumed }: VisualEvidenceWorkspaceProps) {
+export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingName, buildings, reportId, parties, client, busy, run, initialFindingId, initialFileId = "", onInitialFileConsumed, initialFiles = [], onInitialFilesConsumed, start360Upload = false, onStart360UploadConsumed }: VisualEvidenceWorkspaceProps) {
   const { language, text } = useLanguage();
   const maxFileSizeBytes = (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024;
   const captures = data.visualCaptures.filter((capture) => capture.status === "active");
@@ -118,7 +121,14 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       ? captures.find((capture) => capture.building_id === initialFinding.building_id)
       : null;
   const cameraInputRef = useRef<HTMLInputElement>(null);
-  const [pendingSelectionFileId, setPendingSelectionFileId] = useState("");
+  // A photo tapped in the library opens here, on itself, instead of on whatever picture
+  // happened to be first in the list.
+  const [pendingSelectionFileId, setPendingSelectionFileId] = useState(initialFileId);
+  // The request is used once: coming back to this screen later opens the picture that was
+  // last worked on, not the one that was tapped in the library an hour ago.
+  useEffect(() => {
+    if (initialFileId) onInitialFileConsumed?.();
+  }, [initialFileId, onInitialFileConsumed]);
   const [activeCaptureId, setActiveCaptureId] = useState(initialCapture?.id ?? captures[0]?.id ?? "");
   const activeCapture = captures.find((capture) => capture.file_id === pendingSelectionFileId)
     ?? captures.find((capture) => capture.id === activeCaptureId)

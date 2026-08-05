@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, Download, ExternalLink, Folder, FolderPlus, HardDrive, Image as ImageIcon, Loader2, Maximize2, RefreshCw, ScanLine, Trash2, Upload } from "lucide-react";
+import { Camera, Download, ExternalLink, Folder, FolderPlus, HardDrive, Image as ImageIcon, Loader2, Maximize2, RefreshCw, ScanLine, Trash2, Upload, X } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -32,7 +32,7 @@ import {
 import { syncOfflineRecords } from "@/lib/offline/record-queue";
 import { downloadProjectFile, loadProjectFileObjectUrl, openProjectFile } from "@/lib/storage/gateway";
 import { createFileOriginResolver, type FileOriginKind } from "@/lib/supabase/file-origins";
-import { createMediaFolder, type FileRecord, type MediaFolder, type OperationSnapshot } from "@/lib/supabase/operations";
+import { createMediaFolder, createVisualCapture, type FileRecord, type MediaFolder, type OperationSnapshot, type VisualCapture } from "@/lib/supabase/operations";
 
 function automaticTitle(filename: string) {
   const title = filename.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
@@ -45,7 +45,7 @@ function humanSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function SecureImage({ client, file }: { client: SupabaseClient; file: FileRecord }) {
+function SecureImage({ client, file, large = false }: { client: SupabaseClient; file: FileRecord; large?: boolean }) {
   const { text } = useLanguage();
   const [source, setSource] = useState("");
   const [failed, setFailed] = useState(false);
@@ -70,7 +70,7 @@ function SecureImage({ client, file }: { client: SupabaseClient; file: FileRecor
   }
   // Private object URLs cannot use the Next image optimizer without exposing a public URL.
   // eslint-disable-next-line @next/next/no-img-element
-  return source ? <img src={source} alt={file.original_name} loading="lazy" onError={() => setFailed(true)} /> : <span className="media-preview-loading"><Loader2 className="spin" size={20} /></span>;
+  return source ? <img className={large ? "media-detail-image" : undefined} src={source} alt={file.original_name} loading="lazy" onError={() => setFailed(true)} /> : <span className="media-preview-loading"><Loader2 className="spin" size={20} /></span>;
 }
 
 export function MediaLibraryWorkspace({
@@ -86,6 +86,7 @@ export function MediaLibraryWorkspace({
   initialFiles = [],
   onInitialFilesConsumed,
   open360Upload,
+  markPhotoIssue,
 }: {
   data: OperationSnapshot;
   projectId: string;
@@ -99,6 +100,8 @@ export function MediaLibraryWorkspace({
   initialFiles?: File[];
   onInitialFilesConsumed?: () => void;
   open360Upload: () => void;
+  /** Opens the picture where problems are marked on it, on the photo that was tapped. */
+  markPhotoIssue?: (fileId: string) => void;
 }) {
   const { language, locale, text } = useLanguage();
   const queryClient = useQueryClient();
@@ -118,6 +121,9 @@ export function MediaLibraryWorkspace({
   const [libraryBuildingId, setLibraryBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const libraryBuildingName = buildings.find((building) => building.id === libraryBuildingId)?.name ?? buildingName;
   const [originFilter, setOriginFilter] = useState<"all" | FileOriginKind>("all");
+  /** The photo whose own screen is open: what it shows, where it belongs and what to do. */
+  const [openFileId, setOpenFileId] = useState("");
+  const openFile = data.files.find((file) => file.id === openFileId) ?? null;
   const originResolver = useMemo(() => createFileOriginResolver(data), [data]);
   // One rule for the whole screen: what a folder counts is exactly what the gallery shows
   // inside it. The counts used to come from the whole project while the gallery showed one
@@ -334,6 +340,40 @@ export function MediaLibraryWorkspace({
     setPhotoDescription("");
   }, [addFiles, language, pendingCapture, photoDescription, text]);
 
+  /**
+   * Marking a problem happens on a capture: the app's word for a picture that can carry
+   * markers. A photo from the library does not have one until it is asked for, so the
+   * first mark makes it, on the file that is already there.
+   */
+  const markOnPhoto = async (file: FileRecord) => {
+    if (!markPhotoIssue) return;
+    const existing = data.visualCaptures.find((item) => item.file_id === file.id);
+    if (existing) {
+      setOpenFileId("");
+      markPhotoIssue(file.id);
+      return;
+    }
+    const okay = await run(
+      () => createVisualCapture(client, {
+        projectId,
+        buildingId: file.building_id || libraryBuildingId,
+        dayReportId: reportId,
+        fileId: file.id,
+        captureType: "photo",
+        title: readableFileLabel(file, {
+          kindLabel: text("Photo", "Foto"),
+          formatDate: (value: string) => value ? new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "America/Paramaribo" }).format(new Date(value)) : "",
+        }),
+        locationLabel: buildings.find((building) => building.id === file.building_id)?.name ?? libraryBuildingName,
+        capturedAt: file.created_at,
+      }).then(() => undefined),
+      text("This photo can now carry marked problems.", "Op deze foto kunnen nu problemen worden gemarkeerd."),
+    );
+    if (!okay) return;
+    setOpenFileId("");
+    markPhotoIssue(file.id);
+  };
+
   const addFolder = async (name: string) => {
     let createdFolderId = "";
     const okay = await run(
@@ -494,7 +534,7 @@ export function MediaLibraryWorkspace({
           const capture = data.visualCaptures.find((item) => item.file_id === file.id);
           const origins = originResolver.origins(file.id);
           return <article className="media-card" key={file.id}>{/* The picture itself opens: a photo you can only reach through a small icon beside it reads as a photo you cannot do anything with. */}
-            <button className="media-card-open" type="button" onClick={() => void openProjectFile(client, file.id, file.original_name)} aria-label={text(`Open ${file.original_name}`, `Open ${file.original_name}`)}>
+            <button className="media-card-open" type="button" onClick={() => setOpenFileId(file.id)} aria-label={text(`Open the details of ${file.original_name}`, `Open de details van ${file.original_name}`)}>
               {file.mime_type.startsWith("image/") ? <SecureImage client={client} file={file} /> : <span className="media-file-icon"><HardDrive size={28} /></span>}
               <span className="media-card-open-hint"><Maximize2 size={14} /> {text("Open", "Openen")}</span>
             </button><div>{file.document_code ? <span className="media-code-chip">{file.document_code}</span> : null}<strong title={file.original_name}>{readableFileLabel(file, {
@@ -507,6 +547,87 @@ export function MediaLibraryWorkspace({
         </section>
       ))}
       {!files.length ? <div className="empty-list-state"><Folder size={24} /><strong>{originFilter === "all" ? text("This folder is empty", "Deze map is leeg") : text("No photo matches this filter", "Geen foto voldoet aan dit filter")}</strong><span>{originFilter === "all" ? text("Take a photo or select files; they can also be queued offline.", "Maak een foto of kies bestanden; dit kan ook volledig offline.") : text("Choose another link filter to see the rest of this folder.", "Kies een ander koppelfilter om de rest van deze map te zien.")}</span></div> : null}
+      {openFile ? (
+        <MediaFileDetail
+          file={openFile}
+          capture={data.visualCaptures.find((item) => item.file_id === openFile.id) ?? null}
+          markers={data.visualAnnotations.filter((annotation) => annotation.capture_id === (data.visualCaptures.find((item) => item.file_id === openFile.id)?.id ?? "") && annotation.status === "active").length}
+          folderName={data.mediaFolders.find((item) => item.id === openFile.folder_id)?.name ?? text("Unfiled", "Zonder map")}
+          buildingName={buildings.find((building) => building.id === openFile.building_id)?.name ?? libraryBuildingName}
+          origins={originResolver.origins(openFile.id)}
+          client={client}
+          busy={busy}
+          locale={locale}
+          close={() => setOpenFileId("")}
+          markIssue={markPhotoIssue ? () => void markOnPhoto(openFile) : undefined}
+        />
+      ) : null}
     </section>
+  );
+}
+
+/**
+ * One photo on a screen of its own: the picture, everything the app knows about it, and
+ * the two things a supervisor wants to do with it — mark a problem on the picture itself,
+ * or simply open or keep the file.
+ */
+function MediaFileDetail({ file, capture, markers, folderName, buildingName, origins, client, busy, locale, close, markIssue }: {
+  file: FileRecord;
+  capture: VisualCapture | null;
+  markers: number;
+  folderName: string;
+  buildingName: string;
+  origins: Array<{ kind: FileOriginKind; recordId: string; number: string; title: string }>;
+  client: SupabaseClient;
+  busy: boolean;
+  locale: string;
+  close: () => void;
+  markIssue?: () => void;
+}) {
+  const { text } = useLanguage();
+  const isImage = file.mime_type.startsWith("image/");
+  const moment = (value: string | null | undefined) => value
+    ? new Intl.DateTimeFormat(locale, { dateStyle: "full", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(value))
+    : "—";
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+      <section className="modal media-detail-modal" role="dialog" aria-modal="true" aria-labelledby="media-detail-title">
+        <header className="modal-header">
+          <div>
+            <p className="eyebrow">{capture?.capture_type === "panorama" ? "360°" : isImage ? text("Photo", "Foto") : text("File", "Bestand")}</p>
+            <h2 id="media-detail-title">{capture?.title?.trim() || file.original_name}</h2>
+            <p>{capture?.description?.trim() || text("Everything this photo carries: where it was taken, in which folder it sits and which records point at it.", "Alles wat deze foto met zich meedraagt: waar hij is gemaakt, in welke map hij staat en welke registraties ernaar verwijzen.")}</p>
+          </div>
+          <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
+        </header>
+        <div className="modal-body media-detail-body">
+          {isImage ? <SecureImage client={client} file={file} large /> : <span className="media-file-icon"><HardDrive size={28} /></span>}
+          <dl className="media-detail-facts">
+            <div><dt>{text("Building", "Gebouw")}</dt><dd>{buildingName}</dd></div>
+            <div><dt>{text("Location", "Locatie")}</dt><dd>{capture?.location_label || "—"}</dd></div>
+            <div><dt>{text("Taken", "Gemaakt")}</dt><dd>{moment(capture?.captured_at ?? file.created_at)}</dd></div>
+            <div><dt>{text("Folder", "Map")}</dt><dd>{folderName}</dd></div>
+            <div><dt>{text("File", "Bestand")}</dt><dd title={file.original_name}>{file.original_name}</dd></div>
+            <div><dt>{text("Size", "Grootte")}</dt><dd>{humanSize(file.size_bytes)}</dd></div>
+            {file.document_code ? <div><dt>{text("Document code", "Documentcode")}</dt><dd>{file.document_code}</dd></div> : null}
+            <div><dt>{text("Marked problems", "Gemarkeerde problemen")}</dt><dd>{markers}</dd></div>
+          </dl>
+          <div className="media-detail-links">
+            <strong>{text("Linked records", "Gekoppelde registraties")}</strong>
+            <span className="media-origin-chips">{origins.length
+              ? origins.map((origin) => <em className={`media-origin-chip tone-${origin.kind}`} title={origin.title} key={`${origin.kind}:${origin.recordId}`}>{origin.number || origin.kind}</em>)
+              : <em className="media-origin-chip tone-unlinked">{text("Not linked to a record yet", "Nog niet aan een record gekoppeld")}</em>}</span>
+          </div>
+        </div>
+        <footer className="modal-actions media-detail-actions">
+          <button className="ghost-button" type="button" onClick={() => void downloadProjectFile(client, file.id, file.original_name)}><Download size={15} /> {text("Download", "Downloaden")}</button>
+          <button className="ghost-button" type="button" onClick={() => void openProjectFile(client, file.id, file.original_name)}><ExternalLink size={15} /> {text("Open the file", "Bestand openen")}</button>
+          {isImage && markIssue ? (
+            <button className="primary-button" type="button" disabled={busy} onClick={markIssue}><ScanLine size={15} /> {markers ? text("Mark another problem", "Nog een probleem markeren") : text("Mark a problem on this photo", "Probleem op deze foto markeren")}</button>
+          ) : null}
+        </footer>
+      </section>
+    </div>
   );
 }

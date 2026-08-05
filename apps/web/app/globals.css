@@ -8179,6 +8179,35 @@ textarea:focus-visible {
 .media-card > div strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .media-card > div span { color: var(--muted); font-size: 11px; }
 
+/* One photo on a screen of its own: the picture, what the app knows about it, and what
+   can be done with it. */
+.media-detail-modal { width: min(620px, 100%); }
+.media-detail-body { display: grid; gap: 14px; }
+.media-detail-image {
+  background: var(--ink-100);
+  border-radius: 13px;
+  display: block;
+  max-height: 46vh;
+  object-fit: contain;
+  width: 100%;
+}
+.media-detail-facts {
+  display: grid;
+  gap: 10px 14px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin: 0;
+}
+.media-detail-facts > div { display: grid; gap: 2px; min-width: 0; }
+.media-detail-facts dt { color: var(--ink-500); font-size: 9.5px; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
+.media-detail-facts dd { color: var(--ink-900); font-size: 12.5px; margin: 0; overflow-wrap: anywhere; }
+.media-detail-links { display: grid; gap: 6px; }
+.media-detail-links > strong { color: var(--ink-600); font-size: 11px; }
+.media-detail-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+.media-detail-actions .primary-button { margin-left: auto; }
+@media (max-width: 560px) {
+  .media-detail-actions .primary-button { margin-left: 0; width: 100%; }
+}
+
 /* Photo linkage: which record does this image belong to? */
 .media-origin-bar { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 12px; }
 .media-origin-bar button {

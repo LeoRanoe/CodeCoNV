@@ -2417,3 +2417,33 @@ test("gives a file a name a person can read, and a phone controls it can reach",
   assert.doesNotMatch(styles, /\.primary-button:disabled \{\s*cursor: not-allowed;\s*opacity: 0\.48;/);
   assert.match(styles, /\.primary-button:disabled \{[^}]*color: #8a9a9a;/);
 });
+
+test("opens a stored photo on its own screen, with the way to mark a problem on it", async () => {
+  const [media, visual, workspace, styles] = await Promise.all([
+    readFile(new URL("../app/media-library-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/visual-evidence-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // Tapping a photo opens what the app knows about it, instead of dropping the raw file
+  // into a browser tab.
+  assert.match(media, /function MediaFileDetail\(/);
+  assert.match(media, /onClick=\{\(\) => setOpenFileId\(file\.id\)\}/);
+  for (const fact of [/Building", "Gebouw/, /Taken", "Gemaakt/, /Folder", "Map/, /Marked problems", "Gemarkeerde problemen/]) {
+    assert.match(media, fact);
+  }
+  assert.match(media, /Linked records", "Gekoppelde registraties/);
+  assert.match(styles, /\.media-detail-facts \{/);
+
+  // Marking a problem happens on a capture; a library photo gets one the first time it is
+  // asked for, on the file that is already there.
+  assert.match(media, /const markOnPhoto = async \(file: FileRecord\)/);
+  assert.match(media, /createVisualCapture\(client, \{/);
+  assert.match(media, /Mark a problem on this photo", "Probleem op deze foto markeren/);
+
+  // And the marking screen opens on that photo instead of on whatever was first.
+  assert.match(workspace, /markPhotoIssue=\{\(fileId\) => \{ setVisualFileId\(fileId\); switchTab\("visual"\); \}\}/);
+  assert.match(visual, /const \[pendingSelectionFileId, setPendingSelectionFileId\] = useState\(initialFileId\)/);
+  assert.match(visual, /if \(initialFileId\) onInitialFileConsumed\?\.\(\)/);
+});
