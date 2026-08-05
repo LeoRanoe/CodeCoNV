@@ -605,7 +605,7 @@ test("implements the customer video workflows without external accounts", async 
   assert.match(dailyLog, /General advice to the contractor|Algemeen advies aan de aannemer/);
   assert.match(dailyLog, /<WorkforceRegister/);
   assert.match(dailyLog, /DictateButton/);
-  assert.match(operations, /Issue management|Issuebeheer/);
+  assert.match(operations, /Create issue", "Issue registreren/);
   assert.match(operations, /findingGroup/);
   assert.match(offlineQueue, /createFinding/);
   assert.match(offlineQueue, /relationship: "before"/);
@@ -1287,7 +1287,9 @@ test("keeps the action centre and makes its deadlines and choices true on site",
   // #16 · A photo says in every form that it can be described, marked or removed.
   assert.match(workspace, /const photoCaptureHint = text\(/);
   assert.match(workspace, /describe, mark or remove it|omschrijven, markeren of verwijderen/);
-  assert.equal(workspace.match(/<small>\{photoCaptureHint\}<\/small>/g)?.length, 5);
+  // Five photo blocks, five times the same sentence: three inside the capture button and
+  // two under the strip of thumbnails the client's record screens draw.
+  assert.equal(workspace.match(/\{photoCaptureHint\}/g)?.length, 5);
 
   // #16 · The building and location choice is the same field in every form, and
   // "all buildings" is stored instead of failing.
@@ -2114,11 +2116,12 @@ test("processes the annotated screens of 5 August: one building field, a signed 
 });
 
 test("builds the HSE observation / issue screen the client sent, section by section", async () => {
-  const [operations, dataLayer, pendingRecords, issueMigration, styles] = await Promise.all([
+  const [operations, dataLayer, pendingRecords, issueMigration, evidence, styles] = await Promise.all([
     readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/offline/pending-records.ts", import.meta.url), "utf8"),
     readFile(new URL("../../../supabase/migrations/202608050003_hse_issue_form_sections.sql", import.meta.url), "utf8"),
+    readFile(new URL("../app/photo-evidence.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
 
@@ -2190,6 +2193,26 @@ test("builds the HSE observation / issue screen the client sent, section by sect
   assert.match(operations, /Save draft", "Concept opslaan/);
   assert.match(operations, /Put it back", "Terugzetten/);
   assert.match(operations, /function writeRecordDraft\(kind: RecordDraftKind, projectId: string, form: unknown\)/);
+
+  // The screen the client drew has a head of its own: back, what it is, whether it will
+  // sync, and the button that parks it — and a provisional number while it is written.
+  assert.match(operations, /className="record-back-button"/);
+  assert.match(operations, /record-sync-chip\$\{online \? "" : " offline"\}/);
+  assert.match(operations, /className="secondary-button record-heading-draft"/);
+  assert.match(operations, /function nextRecordNumber\(existing: string\[\], prefix: string, year: string\)/);
+  assert.match(operations, /Provisional · fixed on submit|Voorlopig · vast bij indienen/);
+
+  // Section 6 is the strip of pictures with the tile that adds one, not a list of rows.
+  assert.match(operations, /className="record-photo-strip"/);
+  assert.match(operations, /layout="gallery"/);
+  assert.match(evidence, /layout\?: "list" \| "gallery";/);
+  assert.match(evidence, /className="photo-evidence-tile-remove"/);
+  assert.match(styles, /\.record-add-photo \{/);
+
+  // Section 9 says what the deadline means, and a chosen person can be cleared again.
+  assert.match(operations, /function deadlineDistanceLabel\(/);
+  assert.match(operations, /className="record-due-distance"/);
+  assert.match(operations, /className="record-field-clear"/);
 
   // The two columns, the tiles and the action bar have a shape of their own.
   for (const rule of [/\.sectioned-record-columns \{/, /\.record-tile-grid \{/, /\.record-severity-choices \{/, /\.record-action-grid \{/, /\.record-form-actions \{/]) {

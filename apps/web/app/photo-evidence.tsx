@@ -153,10 +153,17 @@ export function PhotoEvidenceList({
   photos,
   setPhotos,
   markupContext,
+  layout = "list",
 }: {
   photos: PhotoEvidence[];
   setPhotos: (photos: PhotoEvidence[]) => void;
   markupContext?: PhotoMarkupContext;
+  /**
+   * "gallery" is the strip of thumbnails the client drew on their record screens: the
+   * picture with a cross on it, next to the tile that adds one. It is the same block —
+   * the same detail screen, the same marking pad — shown as a strip instead of a list.
+   */
+  layout?: "list" | "gallery";
 }) {
   const { language, text } = useLanguage();
   const [openId, setOpenId] = useState("");
@@ -166,6 +173,43 @@ export function PhotoEvidenceList({
   const remove = (id: string) => setPhotos(photos.filter((photo) => photo.id !== id));
 
   if (!photos.length) return null;
+
+  if (layout === "gallery") {
+    return (
+      <div className="photo-evidence-gallery">
+        {photos.map((photo, index) => (
+          <article className="photo-evidence-tile" key={photo.id}>
+            <button
+              className="photo-evidence-tile-open"
+              type="button"
+              onClick={() => setOpenId(photo.id)}
+              aria-label={text(`Open the details of photo ${index + 1}`, `Open de details van foto ${index + 1}`)}
+            >
+              <PhotoThumbnail file={photo.file} />
+              {photoTitle(photo) ? null : <span className="photo-evidence-tile-todo">{text("Describe", "Omschrijf")}</span>}
+              {photo.markerCount ? <em><MapPin size={11} /> {photo.markerCount}</em> : null}
+            </button>
+            <button
+              className="photo-evidence-tile-remove"
+              type="button"
+              onClick={() => remove(photo.id)}
+              aria-label={text(`Remove photo ${index + 1}`, `Verwijder foto ${index + 1}`)}
+            ><X size={13} /></button>
+          </article>
+        ))}
+        {openPhoto ? (
+          <PhotoDetailSheet
+            photo={openPhoto}
+            index={photos.findIndex((photo) => photo.id === openPhoto.id)}
+            markupContext={markupContext}
+            close={() => setOpenId("")}
+            onChange={(next) => setPhotos(photos.map((photo) => photo.id === next.id ? next : photo))}
+            onRemove={() => { remove(openPhoto.id); setOpenId(""); }}
+          />
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="photo-evidence-list">

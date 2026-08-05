@@ -21,6 +21,7 @@ import {
   FileText,
   FolderOpen,
   HardDrive,
+  Info,
   HeartPulse,
   KeyRound,
   Leaf,
@@ -351,6 +352,32 @@ const recordRootCauses = [
   { id: "weather", en: "Weather or ground conditions", nl: "Weer of bodemgesteldheid" },
   { id: "other", en: "Other", nl: "Overig" },
 ] as const;
+
+/**
+ * The client's screens show the number of the record while it is being written. The number
+ * itself is handed out centrally when it is submitted — two people can be filling in the
+ * same screen — so this is the one that is next in line, marked as provisional.
+ */
+function nextRecordNumber(existing: string[], prefix: string, year: string) {
+  const pattern = new RegExp(`^${prefix}-${year}-([0-9]+)$`);
+  const highest = existing.reduce((top, number) => {
+    const match = pattern.exec(number.trim());
+    return match ? Math.max(top, Number(match[1])) : top;
+  }, 0);
+  return `${prefix}-${year}-${String(highest + 1).padStart(4, "0")}`;
+}
+
+/** "(Today)", "(tomorrow)", "(in 3 days)": what the deadline means without counting. */
+function deadlineDistanceLabel(value: string, todayLabel: string, tomorrowLabel: string, inDays: (days: number) => string, overdue: string) {
+  const due = new Date(value);
+  if (Number.isNaN(due.getTime())) return "";
+  const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const days = Math.round((startOfDay(due) - startOfDay(new Date())) / 86400000);
+  if (days < 0) return overdue;
+  if (days === 0) return todayLabel;
+  if (days === 1) return tomorrowLabel;
+  return inDays(days);
+}
 
 /**
  * Section 9 of both screens: the deadline the severity implies. The same ladder a finding
@@ -1238,6 +1265,22 @@ function ProjectOperations({
    * grid of tiles and a bar underneath. What differs is what is filed — the kind of
    * issue, and the register it lands in.
    */
+  /** The number both screens show while the record is being written. */
+  const recordYear = issueDate.slice(0, 4);
+  const nextIssueNumber = nextRecordNumber(data.findings.map((finding) => finding.finding_number), "Q", recordYear);
+  const nextHseNumber = nextRecordNumber(data.hseEvents.map((event) => event.event_number), "HSE", recordYear);
+  const deadlineDistance = (value: string) => deadlineDistanceLabel(
+    value,
+    text("today", "vandaag"),
+    text("tomorrow", "morgen"),
+    (days) => text(`in ${days} days`, `over ${days} dagen`),
+    text("overdue", "verlopen"),
+  );
+  /** The line the client's own screens carry: what the app already filled in by itself. */
+  const capturedAutomatically = text("All key info captured automatically", "Alle kerngegevens worden automatisch vastgelegd");
+  const syncChip = online
+    ? { label: text("Online", "Online"), detail: text("Data syncs directly", "Gegevens gaan direct mee") }
+    : { label: text("Offline", "Offline"), detail: text("Data will sync", "Gegevens synchroniseren later") };
   const issueTile = issueTypeTiles.find((tile) => tile.id === findingForm.issueType) ?? issueTypeTiles[0];
   const issueTileLabel = (tile: (typeof issueTypeTiles)[number]) => text(tile.en, tile.nl);
   const issueCategoryOption = issueCategories.find((option) => option.id === findingForm.issueCategory);
@@ -2370,15 +2413,17 @@ function ProjectOperations({
             */}
           {showForm && findingScope === "issue" ? (
             <div className="operation-form wide sectioned-record-form">
-              <div className="operation-form-heading">
+              <div className="operation-form-heading sectioned-record-heading">
+                <button className="record-back-button" type="button" onClick={() => { resetFindingForm(); setShowForm(false); }} aria-label={text("Leave this screen", "Dit scherm verlaten")}><ArrowLeft size={18} /></button>
                 <div>
-                  <span className="record-number">{text("Issue management", "Issuebeheer")}</span>
                   <h2>{text("Create issue", "Issue registreren")}</h2>
+                  <p className="form-intro">{capturedAutomatically}</p>
                 </div>
-                {!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}
+                <span className={`record-sync-chip${online ? "" : " offline"}`}>{online ? <CloudSun size={15} /> : <WifiOff size={15} />}<span><strong>{syncChip.label}</strong><small>{syncChip.detail}</small></span></span>
+                <button className="secondary-button record-heading-draft" type="button" onClick={() => writeRecordDraft("issue", projectId, findingForm)}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
               </div>
               <section className="controlled-document-context sectioned-record-context" aria-label={text("Issue header", "Kop van het issue")}>
-                <div><small>{text("Issue ID", "Issue ID")}</small><strong>Q-{issueDate.slice(0, 4)}</strong><span>{text("Number on submit", "Nummer bij indienen")}</span></div>
+                <div><small>{text("Issue ID", "Issue ID")}</small><strong>{nextIssueNumber}</strong><span>{text("Provisional · fixed on submit", "Voorlopig · vast bij indienen")}</span></div>
                 <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDate}</strong><span>{issueTime}</span></div>
                 <div><small>{text("Reporter", "Melder")}</small><strong>{currentUserName}</strong><span>{reporterDepartment}</span></div>
                 <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
@@ -2475,16 +2520,23 @@ function ProjectOperations({
                 <div className="sectioned-record-column">
                   <section className="record-section record-order-6" aria-label={text("Photos / evidence", "Foto's / bewijs")}>
                     <h3><span className="record-section-number">6</span> {text("Photos / evidence", "Foto's / bewijs")}</h3>
-                    <label className="finding-photo-capture">
-                      <Camera size={22} />
-                      <span><strong>{findingPhotos.length ? text(`${findingPhotos.length} photos ready`, `${findingPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
-                      <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
-                    </label>
-                    <PhotoEvidenceList
-                      photos={findingPhotos}
-                      setPhotos={setFindingPhotos}
-                      markupContext={{ ...markupOptions, defaultBuildingId: findingBuildingId }}
-                    />
+                    {/* The strip the client drew: the pictures themselves with a cross on
+                        them, and the tile that adds one right next to them. Tapping a
+                        picture still opens the one screen where it is described. */}
+                    <div className="record-photo-strip">
+                      <PhotoEvidenceList
+                        photos={findingPhotos}
+                        setPhotos={setFindingPhotos}
+                        markupContext={{ ...markupOptions, defaultBuildingId: findingBuildingId }}
+                        layout="gallery"
+                      />
+                      <label className="record-add-photo">
+                        <Camera size={20} />
+                        <strong>{text("Add photo", "Foto toevoegen")}</strong>
+                        <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
+                      </label>
+                    </div>
+                    <small className="record-photo-hint">{photoCaptureHint}</small>
                     {findingPhotoError ? <p className="field-error" role="alert">{findingPhotoError}</p> : null}
                   </section>
 
@@ -2515,6 +2567,7 @@ function ProjectOperations({
                         <option value="">{text("Choose who has to act", "Kies wie moet handelen")}</option>
                         {responsiblePeople.map((option) => <option value={option.id} key={option.id}>{option.role ? `${option.name} (${option.role})` : option.name}</option>)}
                       </select>
+                      {findingForm.responsibleUserId ? <button className="record-field-clear" type="button" onClick={() => setFindingForm({ ...findingForm, responsibleUserId: "", responsiblePerson: "" })} aria-label={text("Clear the responsible person", "Verantwoordelijke wissen")}><X size={14} /></button> : null}
                     </label>
                     {!responsiblePeople.length ? (
                       <label className="form-field"><span>{text("Name of the responsible person", "Naam van de verantwoordelijke")}</span><input value={findingForm.responsiblePerson} onChange={(event) => setFindingForm({ ...findingForm, responsiblePerson: event.target.value })} placeholder={text("Nobody from this project is in the app yet", "Nog niemand van dit project staat in de app")} /></label>
@@ -2529,6 +2582,8 @@ function ProjectOperations({
                     <label className="form-field record-due-field">
                       <CalendarClock size={15} />
                       <input type="date" value={issueDueValue} onChange={(event) => setFindingForm({ ...findingForm, expectedResolutionDate: event.target.value })} />
+                      <span className="record-due-distance">({deadlineDistance(issueDueValue)})</span>
+                      <Info size={15} className="record-due-info" aria-label={text("How this deadline is set", "Hoe deze deadline tot stand komt")} />
                     </label>
                     <div className="record-derived-block">
                       <div><small>{text("Priority", "Prioriteit")}</small><span className={`record-priority-badge record-priority-${issuePriority}`}>{recordPriorityLabels[issuePriority]}</span></div>
@@ -2800,18 +2855,20 @@ function ProjectOperations({
         <section className="operation-panel">
           {showForm ? (
             <div className="operation-form wide sectioned-record-form">
-              <div className="operation-form-heading">
+              <div className="operation-form-heading sectioned-record-heading">
+                <button className="record-back-button" type="button" onClick={() => { resetHseForm(); setShowForm(false); }} aria-label={text("Leave this screen", "Dit scherm verlaten")}><ArrowLeft size={18} /></button>
                 <div>
-                  <span className="record-number">{text("HSE observation / issue", "HSE-observatie / issue")}</span>
-                  <h2>{text("Report an unsafe act, condition or incident", "Meld een onveilige handeling, situatie of incident")}</h2>
+                  <h2>{text("HSE observation / issue", "HSE-observatie / issue")}</h2>
+                  <p className="form-intro">{text("Report an unsafe act, condition or incident", "Meld een onveilige handeling, situatie of incident")}</p>
                 </div>
-                {!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}
+                <span className={`record-sync-chip${online ? "" : " offline"}`}>{online ? <CloudSun size={15} /> : <WifiOff size={15} />}<span><strong>{syncChip.label}</strong><small>{syncChip.detail}</small></span></span>
+                <button className="secondary-button record-heading-draft" type="button" onClick={() => writeRecordDraft("hse", projectId, hseForm)}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
               </div>
               {/* The head of the client's own screen: what the app already knows before a
                   single box is filled in. "Ik vermoed dat dag, datum & tijd zelf komen" —
                   they do, and so do the reporter, the project, the site and the weather. */}
               <section className="controlled-document-context sectioned-record-context" aria-label={text("Issue header", "Kop van de melding")}>
-                <div><small>{text("Issue ID", "Issue ID")}</small><strong>HSE-{issueDate.slice(0, 4)}</strong><span>{text("Number on submit", "Nummer bij indienen")}</span></div>
+                <div><small>{text("Issue ID", "Issue ID")}</small><strong>{nextHseNumber}</strong><span>{text("Provisional · fixed on submit", "Voorlopig · vast bij indienen")}</span></div>
                 <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDate}</strong><span>{issueTime}</span></div>
                 <div><small>{text("Reporter", "Melder")}</small><strong>{currentUserName}</strong><span>{reporterDepartment}</span></div>
                 <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
@@ -2891,6 +2948,7 @@ function ProjectOperations({
                         <option value="">{text("Choose who has to act", "Kies wie moet handelen")}</option>
                         {responsiblePeople.map((option) => <option value={option.id} key={option.id}>{option.role ? `${option.name} (${option.role})` : option.name}</option>)}
                       </select>
+                      {hseForm.responsibleUserId ? <button className="record-field-clear" type="button" onClick={() => setHseForm({ ...hseForm, responsibleUserId: "", responsiblePerson: "" })} aria-label={text("Clear the responsible person", "Verantwoordelijke wissen")}><X size={14} /></button> : null}
                     </label>
                     {/* A project without colleagues in the app still has to be able to file
                         the issue: then the name is written instead of chosen. */}
@@ -2904,6 +2962,8 @@ function ProjectOperations({
                     <label className="form-field record-due-field">
                       <CalendarClock size={15} />
                       <input type="datetime-local" value={hseDueValue} onChange={(event) => setHseForm({ ...hseForm, dueAt: event.target.value })} />
+                      <span className="record-due-distance">({deadlineDistance(hseDueValue)})</span>
+                      <Info size={15} className="record-due-info" aria-label={text("How this deadline is set", "Hoe deze deadline tot stand komt")} />
                     </label>
                     {/* The deadline follows the severity by the same ladder a finding gets,
                         so the priority, the status and the owner are not typed twice. */}
@@ -2948,16 +3008,20 @@ function ProjectOperations({
 
                   <section className="record-section record-order-6" aria-label={text("Photos / evidence", "Foto's / bewijs")}>
                     <h3><span className="record-section-number">6</span> {text("Photos / evidence", "Foto's / bewijs")}</h3>
-                    <label className="finding-photo-capture hse-photo-capture">
-                      <Camera size={22} />
-                      <span><strong>{hsePhotos.length ? text(`${hsePhotos.length} photos ready`, `${hsePhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
-                      <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setHsePhotos, setHsePhotoError); event.currentTarget.value = ""; }} />
-                    </label>
-                    <PhotoEvidenceList
-                      photos={hsePhotos}
-                      setPhotos={setHsePhotos}
-                      markupContext={{ ...markupOptions, defaultBuildingId: hseBuildingId === ALL_BUILDINGS ? "" : hseBuildingId }}
-                    />
+                    <div className="record-photo-strip">
+                      <PhotoEvidenceList
+                        photos={hsePhotos}
+                        setPhotos={setHsePhotos}
+                        markupContext={{ ...markupOptions, defaultBuildingId: hseBuildingId === ALL_BUILDINGS ? "" : hseBuildingId }}
+                        layout="gallery"
+                      />
+                      <label className="record-add-photo">
+                        <Camera size={20} />
+                        <strong>{text("Add photo", "Foto toevoegen")}</strong>
+                        <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setHsePhotos, setHsePhotoError); event.currentTarget.value = ""; }} />
+                      </label>
+                    </div>
+                    <small className="record-photo-hint">{photoCaptureHint}</small>
                     {hsePhotoError ? <p className="field-error" role="alert">{hsePhotoError}</p> : null}
                   </section>
 
