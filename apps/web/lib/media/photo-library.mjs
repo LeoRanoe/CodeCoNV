@@ -72,3 +72,43 @@ export function dayGroupLabel(key, { todayKey, yesterdayKey, today, yesterday, u
   if (key === yesterdayKey) return yesterday;
   return formatDate(key);
 }
+
+/**
+ * A phone names a photo after the millisecond it was taken, and a camera names it after
+ * its own counter. On a card those names read as noise: "1785783668026208549797..." says
+ * nothing about the picture, and pushes what does say something off the screen.
+ *
+ * So the card shows, in this order: the words that were written about the picture, the
+ * controlled document code, the file name a person actually chose, and — when the name is
+ * a machine's — what the file is, on the day it arrived.
+ */
+/**
+ * @param {{ original_name?: string, document_code?: string | null, created_at?: string }} file
+ * @param {{ title?: string, documentCode?: string, kindLabel?: string, formatDate?: (value: string) => string }} [options]
+ */
+export function readableFileLabel(file, options = {}) {
+  const { title = "", documentCode = "", kindLabel = "File", formatDate = () => "" } = options;
+  const written = String(title ?? "").trim();
+  if (written) return written;
+  const code = String(documentCode ?? file?.document_code ?? "").trim();
+  if (code) return code;
+  const name = String(file?.original_name ?? "").trim();
+  const base = name.replace(/\.[a-z0-9]{1,5}$/i, "").trim();
+  if (base && !machineNamed(base)) return base;
+  const day = formatDate(file?.created_at ?? "");
+  return day ? `${kindLabel} · ${day}` : kindLabel;
+}
+
+/** A name a person typed has words in it; a name a device made is a run of characters. */
+export function machineNamed(base) {
+  const cleaned = base.replace(/[\s._-]+/g, "");
+  // What a camera roll or a screenshot calls a picture, whatever its length.
+  if (/^(img|dsc|pxl|photo|image|screenshot|whatsapp|foto|scan)[0-9]*$/i.test(cleaned)) return true;
+  if (cleaned.length < 10) return false;
+  // A timestamp, a uuid or a hash: digits, hexadecimals, or simply far too long a run of
+  // characters to be something a person typed as a title.
+  if (/^[0-9]+$/.test(cleaned)) return true;
+  if (/^[0-9a-f]{12,}$/i.test(cleaned)) return true;
+  if (cleaned.length > 28 && !/[aeiou][a-z]{2}/i.test(cleaned)) return true;
+  return false;
+}

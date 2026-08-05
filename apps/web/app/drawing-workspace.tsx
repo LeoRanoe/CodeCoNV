@@ -22,6 +22,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { useLanguage } from "@/lib/i18n";
+import { readableFileLabel } from "@/lib/media/photo-library.mjs";
 import { loadProjectFilePreviewObjectUrl, uploadProjectFile } from "@/lib/storage/gateway";
 import {
   createDrawingMarkup,
@@ -32,6 +33,12 @@ import {
   type NormalizedPoint,
   type OperationSnapshot,
 } from "@/lib/supabase/operations";
+
+function humanFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 type DrawingWorkspaceProps = {
   data: OperationSnapshot;
@@ -90,13 +97,20 @@ const pinTypeClass: Record<DrawingPin["linked_record_type"], string> = {
 };
 
 export function DrawingWorkspace({ data, projectId, buildingId, buildings, client, busy, run, initialFindingId = "", initialInspectionId = "", pendingRecord = null, onPlaceRecordPin, onOpenLinkedRecord }: DrawingWorkspaceProps) {
-  const { language, text } = useLanguage();
+  const { language, locale, text } = useLanguage();
   const maxFileSizeBytes = (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024;
   const drawings = data.files.filter((file) => file.category === "drawing" && file.status === "available" && supportedDrawingMimeTypes.includes(file.mime_type));
   const dwgSources = data.files.filter((file) => file.category === "drawing" && file.status === "available" && isDwgFile(file));
   const [activeDrawingId, setActiveDrawingId] = useState(drawings[0]?.id ?? "");
   const activeDrawing = drawings.find((file) => file.id === activeDrawingId) ?? drawings[0] ?? null;
   const [pageNumber, setPageNumber] = useState(1);
+  /** A drawing is known by its sheet name, not by the code a phone gave the file. */
+  const drawingLabel = (drawing: FileRecord) => readableFileLabel(drawing, {
+    kindLabel: drawing.mime_type === "application/pdf" ? "PDF" : text("Drawing", "Tekening"),
+    formatDate: (value) => value
+      ? new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "America/Paramaribo" }).format(new Date(value))
+      : "",
+  });
   const [pageCount, setPageCount] = useState(1);
   const [point, setPoint] = useState<PinPoint | null>(null);
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
@@ -244,8 +258,16 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
 
       <div className="drawing-upload-strip">
         <BuildingPicker id="drawing-upload-building" buildings={buildings} value={uploadBuildingId} onChange={setUploadBuildingId} />
-        <label className="form-field">
-          <span>{text(`New drawing · DWG source, PDF, JPEG, PNG or WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`, `Nieuwe tekening · DWG-bron, PDF, JPEG, PNG of WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`)}</span>
+        {/* The browser's own "Choose File · no file selected" was the one control on this
+            screen that did not look like the application it stands in. */}
+        <label className="finding-photo-capture drawing-file-picker">
+          <FileUp size={20} />
+          <span>
+            <strong>{uploadFile ? uploadFile.name : text("Choose a drawing", "Kies een tekening")}</strong>
+            <small>{uploadFile
+              ? humanFileSize(uploadFile.size)
+              : text(`DWG source, PDF, JPEG, PNG or WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`, `DWG-bron, PDF, JPEG, PNG of WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`)}</small>
+          </span>
           <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp,.dwg,.pdf,.jpg,.jpeg,.png,.webp" onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)} />
         </label>
         <button className="primary-button" type="button" disabled={busy || !uploadFile || uploadFile.size > maxFileSizeBytes || (!supportedDrawingMimeTypes.includes(uploadFile.type) && !isDwgFile(uploadFile))} onClick={() => void uploadDrawing()}>
@@ -265,7 +287,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
               return (
                 <button type="button" className={drawing.id === activeDrawing.id ? "active" : ""} onClick={() => selectDrawing(drawing.id)} key={drawing.id}>
                   <span className="visual-list-icon">{drawing.mime_type === "application/pdf" ? <FileText size={17} /> : <ImageIcon size={17} />}</span>
-                  <span><strong>{drawing.original_name}</strong><small>{pinCount} {text(pinCount === 1 ? "linked pin" : "linked pins", pinCount === 1 ? "gekoppelde pin" : "gekoppelde pins")}</small></span>
+                  <span><strong title={drawing.original_name}>{drawingLabel(drawing)}</strong><small>{pinCount} {text(pinCount === 1 ? "linked pin" : "linked pins", pinCount === 1 ? "gekoppelde pin" : "gekoppelde pins")}</small></span>
                 </button>
               );
             })}
@@ -273,7 +295,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
 
           <div className="drawing-stage-column">
             <div className="drawing-stage-header">
-              <div><span className="record-number">{activeDrawing.mime_type === "application/pdf" ? "PDF" : text("Drawing image", "Tekeningsafbeelding")}</span><h2>{activeDrawing.original_name}</h2></div>
+              <div><span className="record-number">{activeDrawing.mime_type === "application/pdf" ? "PDF" : text("Drawing image", "Tekeningsafbeelding")}</span><h2 title={activeDrawing.original_name}>{drawingLabel(activeDrawing)}</h2></div>
               <div className="tour-controls">
                 <button type="button" aria-label={text("Previous page", "Vorige pagina")} disabled={pageNumber <= 1} onClick={() => { setPageNumber((page) => Math.max(1, page - 1)); setPoint(null); }}><ChevronLeft size={17} /></button>
                 <span>{pageNumber} / {pageCount}</span>

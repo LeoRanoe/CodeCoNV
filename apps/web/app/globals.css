@@ -73,6 +73,11 @@
   grid-column: 1 / -1;
 }
 
+@media (max-width: 700px) {
+  .drawing-upload-strip { grid-template-columns: minmax(0, 1fr); }
+  .drawing-upload-strip .primary-button { width: 100%; }
+}
+
 .drawing-workspace-grid {
   align-items: start;
   display: grid;
@@ -136,10 +141,15 @@
   align-items: center;
   border-bottom: 1px solid var(--border);
   display: flex;
+  /* On a phone the page arrows were pushed past the right edge of the card. */
+  flex-wrap: wrap;
   gap: 14px;
   justify-content: space-between;
   padding: 16px 18px;
 }
+.drawing-stage-header > div:first-child { flex: 1 1 190px; min-width: 0; }
+.drawing-stage-header .tour-controls { flex: 0 0 auto; }
+.drawing-file-picker { width: 100%; }
 
 .drawing-stage-header h2 {
   font-size: 1rem;
@@ -2975,9 +2985,15 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
+/* A half-transparent orange button reads as a broken button. A button that cannot be
+   pressed yet says so by being quiet, the way the secondary button already does. */
 .primary-button:disabled {
+  background: #eef2f2;
+  border-color: #d8e1e1;
+  box-shadow: none;
+  color: #8a9a9a;
   cursor: not-allowed;
-  opacity: 0.48;
+  opacity: 1;
 }
 
 .fab {
@@ -8232,6 +8248,12 @@ textarea:focus-visible {
 .record-photo-fallback { align-items: center; color: var(--ink-400); display: flex; height: 100%; justify-content: center; width: 100%; }
 
 .media-file-actions { align-self: center; display: flex; padding-right: 6px; }
+@media (max-width: 620px) {
+  /* Two icons squeezed against the side of the text became a row of their own, with the
+     words underneath saying what they do. */
+  .media-card { grid-template-columns: minmax(0, 1fr); }
+  .media-file-actions { align-self: stretch; border-top: 1px solid var(--ink-100); justify-content: flex-end; padding: 4px 8px; }
+}
 /* A thumb needs something to hit: these were 31 pixels of icon on a phone screen. */
 .media-file-actions button { align-items: center; background: transparent; border: 0; color: var(--green); cursor: pointer; display: flex; justify-content: center; min-height: 42px; min-width: 42px; padding: 8px; }
 .media-file-actions button:hover { background: var(--green-soft); border-radius: 7px; }
@@ -9591,6 +9613,12 @@ textarea:focus-visible {
   right: 6px;
   top: 6px;
   width: 25px;
+}
+
+/* Above the bottom bar, not on it: this button was covering the actions of the last card
+   in every list on a phone. */
+@media (max-width: 860px) {
+  .field-guide-trigger { bottom: calc(84px + env(safe-area-inset-bottom)); }
 }
 
 .field-guide-trigger {

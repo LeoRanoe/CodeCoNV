@@ -2376,3 +2376,34 @@ test("keeps the record screens and the photo library usable on a phone and a tab
   assert.match(styles, /\.media-card-open \{/);
   assert.match(styles, /\.media-file-actions button \{[^}]*min-height: 42px; min-width: 42px;/);
 });
+
+test("gives a file a name a person can read, and a phone controls it can reach", async () => {
+  const [library, media, drawings, styles] = await Promise.all([
+    readFile(new URL("../lib/media/photo-library.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../app/media-library-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/drawing-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // A phone names a photo after a millisecond and a camera after its counter. The card
+  // shows what was written about the picture, or what it is and when it arrived.
+  assert.match(library, /export function readableFileLabel\(/);
+  assert.match(library, /export function machineNamed\(/);
+  assert.match(media, /readableFileLabel\(file, \{/);
+  assert.match(drawings, /const drawingLabel = \(drawing: FileRecord\)/);
+  assert.doesNotMatch(drawings, /<h2>\{activeDrawing\.original_name\}<\/h2>/);
+
+  // The browser's own file control was the one thing on the drawing screen that did not
+  // look like the application around it.
+  assert.match(drawings, /className="finding-photo-capture drawing-file-picker"/);
+  assert.match(styles, /\.drawing-file-picker \{ width: 100%; \}/);
+
+  // The page arrows were pushed off the card, and the help button covered the actions of
+  // the last row in every list.
+  assert.match(styles, /\.drawing-stage-header \{[^}]*flex-wrap: wrap;/);
+  assert.match(styles, /\.field-guide-trigger \{ bottom: calc\(84px \+ env\(safe-area-inset-bottom\)\); \}/);
+
+  // A half-transparent orange button reads as broken instead of as not-yet.
+  assert.doesNotMatch(styles, /\.primary-button:disabled \{\s*cursor: not-allowed;\s*opacity: 0\.48;/);
+  assert.match(styles, /\.primary-button:disabled \{[^}]*color: #8a9a9a;/);
+});

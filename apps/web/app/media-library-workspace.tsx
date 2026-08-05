@@ -14,6 +14,7 @@ import {
   groupFilesByDay,
   libraryDayKey,
   orderMediaFolders,
+  readableFileLabel,
   visibleLibraryFiles,
 } from "@/lib/media/photo-library.mjs";
 import {
@@ -496,7 +497,11 @@ export function MediaLibraryWorkspace({
             <button className="media-card-open" type="button" onClick={() => void openProjectFile(client, file.id, file.original_name)} aria-label={text(`Open ${file.original_name}`, `Open ${file.original_name}`)}>
               {file.mime_type.startsWith("image/") ? <SecureImage client={client} file={file} /> : <span className="media-file-icon"><HardDrive size={28} /></span>}
               <span className="media-card-open-hint"><Maximize2 size={14} /> {text("Open", "Openen")}</span>
-            </button><div>{file.document_code ? <span className="media-code-chip">{file.document_code}</span> : null}<strong>{file.original_name}</strong><span>{libraryBuildingName} · {folder?.name ?? text("Unfiled", "Zonder map")} · {file.category} · {humanSize(file.size_bytes)}</span>{capture ? <small>{capture.capture_type === "panorama" ? "360°" : text("Photo", "Foto")} · {capture.location_label}</small> : null}<span className="media-origin-chips">{origins.length ? origins.map((origin) => <em className={`media-origin-chip tone-${origin.kind}`} title={origin.title} key={`${origin.kind}:${origin.recordId}`}>{origin.number || origin.kind}</em>) : <em className="media-origin-chip tone-unlinked">{text("Not linked to a record yet", "Nog niet aan een record gekoppeld")}</em>}</span></div><span className="media-file-actions"><button type="button" onClick={() => void openProjectFile(client, file.id, file.original_name)} aria-label={text("Open file", "Bestand openen")}><ExternalLink size={15} /></button><button type="button" onClick={() => void downloadProjectFile(client, file.id, file.original_name)} aria-label={text("Download file", "Bestand downloaden")}><Download size={15} /></button></span></article>;
+            </button><div>{file.document_code ? <span className="media-code-chip">{file.document_code}</span> : null}<strong title={file.original_name}>{readableFileLabel(file, {
+              title: capture?.title ?? "",
+              kindLabel: capture?.capture_type === "panorama" ? "360°" : file.mime_type.startsWith("image/") ? text("Photo", "Foto") : text("File", "Bestand"),
+              formatDate: (value: string) => value ? new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "America/Paramaribo" }).format(new Date(value)) : "",
+            })}</strong><span>{[capture?.location_label || libraryBuildingName, folder?.name ?? text("Unfiled", "Zonder map"), humanSize(file.size_bytes)].filter(Boolean).join(" · ")}</span><span className="media-origin-chips">{origins.length ? origins.map((origin) => <em className={`media-origin-chip tone-${origin.kind}`} title={origin.title} key={`${origin.kind}:${origin.recordId}`}>{origin.number || origin.kind}</em>) : <em className="media-origin-chip tone-unlinked">{text("Not linked to a record yet", "Nog niet aan een record gekoppeld")}</em>}</span></div><span className="media-file-actions"><button type="button" onClick={() => void openProjectFile(client, file.id, file.original_name)} aria-label={text("Open file", "Bestand openen")}><ExternalLink size={15} /></button><button type="button" onClick={() => void downloadProjectFile(client, file.id, file.original_name)} aria-label={text("Download file", "Bestand downloaden")}><Download size={15} /></button></span></article>;
         })}
       </div>
         </section>
