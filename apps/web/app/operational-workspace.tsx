@@ -6,11 +6,14 @@ import {
   ArrowLeft,
   ArrowRight,
   Camera,
+  CalendarClock,
   CalendarRange,
   CheckCircle2,
+  Circle,
   ClipboardCheck,
   Clock3,
   CloudSun,
+  Construction,
   Copy,
   DatabaseBackup,
   Download,
@@ -18,18 +21,29 @@ import {
   FileText,
   FolderOpen,
   HardDrive,
+  HeartPulse,
   KeyRound,
+  Leaf,
   Link2,
   Loader2,
+  LocateFixed,
   MapPin,
   MessageCircle,
+  MoreHorizontal,
   PackageCheck,
+  Paperclip,
+  Pencil,
+  PersonStanding,
   Plus,
   RotateCcw,
+  Save,
+  Send,
   Settings,
   ShieldAlert,
   ShieldCheck,
+  Siren,
   Smartphone,
+  UserCheck,
   Users,
   Upload,
   WifiOff,
@@ -39,7 +53,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch, type SetStateAction } from "react";
 import { AgreementSignatureFields, agreementSignatureDetails, agreementSummaryLine, emptyAgreementSignature } from "@/app/agreement-signature";
 import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
@@ -74,6 +88,7 @@ import { externalShareUrl } from "@/lib/external-share/token.mjs";
 import type { ProjectStartAnswers } from "@/lib/forms/daily-report";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 import { cacheProjectSnapshot, getCachedProjectSnapshot } from "@/lib/offline/project-cache";
+import { useLiveProjectWeather } from "@/lib/weather-client";
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload } from "@/lib/offline/upload-queue";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import type { FormalReportSnapshot } from "@/lib/reports/daily-report-pdf";
@@ -199,6 +214,176 @@ const externalSubmissionRegisterTypes = ["wcr", "rfi", "rfa", "inspection_reques
 /** Register items that are judged and counted: material arrives, is checked and measured. */
 const registerQuantityTypes = ["delivery", "equipment", "test"];
 
+/**
+ * Section 1 of the client's own HSE observation / issue screen: one grid of tiles.
+ *
+ * The grid the client drew mixes the heading of the form — Safety, Health, Environment —
+ * with the kind of event that was seen: near miss, incident, unsafe act, unsafe
+ * condition. The record keeps storing both, so a health observation is filed as a health
+ * observation instead of as a made-up unsafe condition.
+ */
+const hseIssueTypes = [
+  { id: "safety", en: "Safety", nl: "Safety", icon: ShieldCheck, category: "safety", eventType: "observation" },
+  { id: "health", en: "Health", nl: "Health", icon: HeartPulse, category: "health", eventType: "observation" },
+  { id: "environment", en: "Environment", nl: "Environment", icon: Leaf, category: "environmental", eventType: "observation" },
+  { id: "near_miss", en: "Near miss", nl: "Near miss", icon: AlertTriangle, category: "safety", eventType: "near_miss" },
+  { id: "incident", en: "Incident", nl: "Incident", icon: Siren, category: "safety", eventType: "incident" },
+  { id: "unsafe_act", en: "Unsafe act", nl: "Onveilige handeling", icon: PersonStanding, category: "safety", eventType: "unsafe_act" },
+  { id: "unsafe_condition", en: "Unsafe condition", nl: "Onveilige situatie", icon: Construction, category: "safety", eventType: "unsafe_condition" },
+  { id: "other", en: "Other", nl: "Overig", icon: MoreHorizontal, category: "safety", eventType: "other" },
+] as const;
+
+/** Section 2: what the issue is about, in the words of the client's own form. */
+const hseIssueCategories = [
+  { id: "ppe", en: "PPE (Personal Protective Equipment)", nl: "PBM (persoonlijke beschermingsmiddelen)" },
+  { id: "housekeeping", en: "Housekeeping and access", nl: "Orde, netheid en toegang" },
+  { id: "work_at_height", en: "Work at height", nl: "Werken op hoogte" },
+  { id: "electrical", en: "Electrical safety", nl: "Elektrische veiligheid" },
+  { id: "equipment", en: "Equipment and machinery", nl: "Materieel en machines" },
+  { id: "lifting", en: "Lifting and hoisting", nl: "Hijsen en heffen" },
+  { id: "excavation", en: "Excavation and confined space", nl: "Ontgraving en besloten ruimte" },
+  { id: "hazardous_materials", en: "Hazardous materials", nl: "Gevaarlijke stoffen" },
+  { id: "fire", en: "Fire and hot work", nl: "Brand en heet werk" },
+  { id: "traffic", en: "Traffic and vehicles", nl: "Verkeer en voertuigen" },
+  { id: "environment", en: "Environment and spills", nl: "Milieu en morsingen" },
+  { id: "health_hygiene", en: "Health and hygiene", nl: "Gezondheid en hygiëne" },
+  { id: "other", en: "Other", nl: "Overig" },
+] as const;
+
+/** Section 7: what was already done on the spot, ticked instead of typed. */
+const hseImmediateActions = [
+  { id: "work_stopped", en: "Work stopped", nl: "Werk stilgelegd" },
+  { id: "area_barricaded", en: "Area barricaded", nl: "Zone afgezet" },
+  { id: "employee_warned", en: "Employee warned", nl: "Medewerker aangesproken" },
+  { id: "supervisor_informed", en: "Supervisor informed", nl: "Supervisor geïnformeerd" },
+  { id: "first_aid_provided", en: "First aid provided", nl: "Eerste hulp verleend" },
+  { id: "spill_cleaned", en: "Spill cleaned", nl: "Morsing opgeruimd" },
+  { id: "equipment_isolated", en: "Equipment isolated", nl: "Materieel geïsoleerd" },
+  { id: "ppe_provided", en: "PPE provided", nl: "PBM verstrekt" },
+] as const;
+
+/** Section 10: why it happened. Optional, because it is often only known afterwards. */
+const hseRootCauses = [
+  { id: "unsafe_behaviour", en: "Unsafe behaviour", nl: "Onveilig gedrag" },
+  { id: "training", en: "Instruction or training missing", nl: "Instructie of training ontbrak" },
+  { id: "supervision", en: "Insufficient supervision", nl: "Onvoldoende toezicht" },
+  { id: "procedure_not_followed", en: "Procedure not followed", nl: "Procedure niet gevolgd" },
+  { id: "procedure_missing", en: "No procedure or method statement", nl: "Geen procedure of werkplan" },
+  { id: "equipment_failure", en: "Equipment defective or unsuitable", nl: "Materieel defect of ongeschikt" },
+  { id: "ppe_unavailable", en: "PPE unavailable", nl: "PBM niet beschikbaar" },
+  { id: "housekeeping", en: "Poor housekeeping", nl: "Slechte orde en netheid" },
+  { id: "planning", en: "Planning or design", nl: "Planning of ontwerp" },
+  { id: "weather", en: "Weather or ground conditions", nl: "Weer of bodemgesteldheid" },
+  { id: "other", en: "Other", nl: "Overig" },
+] as const;
+
+/**
+ * Section 9: the deadline the severity implies. The same ladder a finding is given
+ * centrally, so the two lists cannot disagree about how urgent one severity is.
+ */
+const hseSeverityDueDays: Record<string, number> = { critical: 1, high: 3, medium: 7, low: 14 };
+
+const emptyHseIssueForm = {
+  /** Section 1: the tile that was tapped. */
+  issueType: "safety",
+  /** Derived from the tile: the heading of the client's form. */
+  category: "safety",
+  /** Derived from the tile: the kind of event the record is filed as. */
+  type: "observation",
+  issueCategory: "",
+  severity: "medium",
+  title: "",
+  description: "",
+  immediateActions: [] as string[],
+  immediateActionOther: "",
+  responsibleUserId: "",
+  responsiblePerson: "",
+  dueAt: "",
+  rootCause: "",
+  correctiveAction: "",
+  notes: "",
+  latitude: "",
+  longitude: "",
+  confidential: false,
+};
+
+export type HseIssueForm = typeof emptyHseIssueForm;
+
+/** The deadline the severity implies, in the format the date and time field reads. */
+function hseDueDateDefault(severity: string) {
+  const due = new Date();
+  due.setDate(due.getDate() + (hseSeverityDueDays[severity] ?? 7));
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())}T${pad(due.getHours())}:${pad(due.getMinutes())}`;
+}
+
+/**
+ * The screen has no title box: the client writes what was observed. The list still needs
+ * one line, so it takes the first sentence of that description and falls back to the
+ * chosen type when the sentence is too short to say anything.
+ */
+function hseLogLine(description: string, fallback: string) {
+  const [firstSentence] = description.trim().split(/(?<=[.!?])\s+/);
+  const line = (firstSentence || description).trim().slice(0, 120).trim();
+  return line.length >= 3 ? line : fallback;
+}
+
+/**
+ * "Save draft" on the client's screen: an issue that is interrupted — by a call, by a
+ * supervisor, by the phone locking — is not typed a second time. The draft stays on the
+ * device, per project, until it is submitted or thrown away.
+ */
+const hseDraftKey = (projectId: string) => `codeco:hse-draft:${projectId}`;
+
+/** The screen itself is the only thing that parks or throws away a draft. */
+const hseDraftListeners = new Set<() => void>();
+
+function subscribeHseDraft(listener: () => void) {
+  hseDraftListeners.add(listener);
+  return () => { hseDraftListeners.delete(listener); };
+}
+
+function storedHseDraft(projectId: string) {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(hseDraftKey(projectId));
+  } catch {
+    // Private browsing blocks the store; the issue itself is filled in as usual.
+    return null;
+  }
+}
+
+/** The draft is only a head start: unknown or missing boxes fall back to an empty form. */
+function parseHseDraft(stored: string | null): HseIssueForm | null {
+  if (!stored) return null;
+  try {
+    const parsed = JSON.parse(stored) as Partial<HseIssueForm>;
+    return { ...emptyHseIssueForm, ...parsed, immediateActions: Array.isArray(parsed.immediateActions) ? parsed.immediateActions : [] };
+  } catch {
+    return null;
+  }
+}
+
+function writeHseDraft(projectId: string, form: HseIssueForm) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(hseDraftKey(projectId), JSON.stringify(form));
+  } catch {
+    // A device with no room for a draft still has to be able to submit the issue itself.
+  }
+  hseDraftListeners.forEach((listener) => listener());
+}
+
+function clearHseDraft(projectId: string) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(hseDraftKey(projectId));
+  } catch {
+    // Nothing to do: the draft is a convenience, never the record.
+  }
+  hseDraftListeners.forEach((listener) => listener());
+}
+
 const registerLabelsEnglish: Record<string, string> = {
   equipment: "Equipment", delivery: "Delivery", test: "Test / measurement", variation: "Variation",
   delay: "Delay", communication: "Communication / decision", risk: "Risk", document: "Document",
@@ -284,6 +469,7 @@ export function OperationalWorkspace({
   projectId,
   projectName,
   projectCode,
+  projectLocation = "",
   buildingId,
   buildingName,
   buildings,
@@ -322,6 +508,8 @@ export function OperationalWorkspace({
   projectId: string;
   projectName: string;
   projectCode: string;
+  /** Where the project stands on earth, so the HSE screen can read the live weather. */
+  projectLocation?: string;
   buildingId: string;
   buildingName: string;
   buildings: BuildingOption[];
@@ -468,11 +656,13 @@ export function OperationalWorkspace({
           projectId={projectId}
           projectName={projectName}
           projectCode={projectCode}
+          projectLocation={projectLocation}
           buildingId={buildingId}
           buildingName={buildingName}
           buildings={buildings}
           projectStartAnswers={projectStartAnswers}
           currentUserName={currentUserName}
+          currentUserId={currentUserId}
           companyEmployees={companyEmployees}
           parties={parties}
           client={client}
@@ -557,11 +747,13 @@ function ProjectOperations({
   projectId,
   projectName,
   projectCode,
+  projectLocation,
   buildingId,
   buildingName,
   buildings,
   projectStartAnswers,
   currentUserName,
+  currentUserId,
   companyEmployees,
   parties,
   client,
@@ -588,11 +780,15 @@ function ProjectOperations({
   projectId: string;
   projectName: string;
   projectCode: string;
+  /** Where the project stands on earth, so the HSE screen can read the live weather. */
+  projectLocation: string;
   buildingId: string;
   buildingName: string;
   buildings: BuildingOption[];
   projectStartAnswers: ProjectStartAnswers | null;
   currentUserName: string;
+  /** Who is filling the screen in, so the HSE header can say their department. */
+  currentUserId: string;
   companyEmployees: InternalMember[];
   parties: ProjectParty[];
   client: SupabaseClient;
@@ -618,6 +814,9 @@ function ProjectOperations({
   focusRecordId?: string;
 }) {
   const { language, locale, text } = useLanguage();
+  // The weather at the moment the issue is written: the head of the client's HSE screen
+  // carries it, and site work is weather driven.
+  const { weather: liveWeather } = useLiveProjectWeather(projectLocation);
   const allRegisterNames = language === "en" ? registerLabelsEnglish : registerLabels;
   // WCR, RFI, RFA and WIR are contractor submissions. They are filled in by the external
   // party and decided by the company or owner under Management, so the supervision
@@ -685,10 +884,29 @@ function ProjectOperations({
   const [findingPhotoError, setFindingPhotoError] = useState("");
   /** The record that was just submitted, so the link to the contractor is one tap away. */
   const [submittedFinding, setSubmittedFinding] = useState<Finding | null>(null);
-  const [hseForm, setHseForm] = useState({ type: "unsafe_condition", category: "safety", title: "", description: "", severity: "medium", immediateMeasure: "", confidential: false });
+  /**
+   * The twelve numbered boxes of the client's own HSE observation / issue screen. The
+   * heading (health, safety, environmental) and the kind of event are derived from the
+   * chosen tile, so the record keeps saying both without asking twice.
+   */
+  const [hseForm, setHseForm] = useState({ ...emptyHseIssueForm });
   const [hsePhotos, setHsePhotos] = useState<PhotoEvidence[]>([]);
   // One short text per evidence photo, in the same order as the photos themselves.
   const [hsePhotoError, setHsePhotoError] = useState("");
+  /** Set while the phone is asked for the spot the issue was seen at. */
+  const [hseLocating, setHseLocating] = useState(false);
+  const [hseLocationError, setHseLocationError] = useState("");
+  /** The coordinates are typed by hand when the phone cannot see the sky. */
+  const [hseManualPosition, setHseManualPosition] = useState(false);
+  /**
+   * A parked draft is offered, never pushed back in silently: the person who reopens the
+   * screen decides whether the old words are still the ones they want to send.
+   */
+  const hseParkedDraft = parseHseDraft(useSyncExternalStore(
+    subscribeHseDraft,
+    useCallback(() => storedHseDraft(projectId), [projectId]),
+    () => null,
+  ));
   const [registerForm, setRegisterForm] = useState<ControlledDocumentDraft>({ ...emptyControlledDocumentDraft });
   const [registerFiles, setRegisterFiles] = useState<File[]>([]);
   const [boqFile, setBoqFile] = useState<File | null>(null);
@@ -857,13 +1075,103 @@ function ProjectOperations({
     safety: text("Safety", "Safety"),
     environmental: text("Environmental", "Environmental"),
   };
+  /**
+   * The standard HSE records the client asked to be able to pick: one tap fills the tile,
+   * the severity, what was observed and what was already done, and every box stays
+   * editable afterwards.
+   */
   const hsePresets = [
-    { type: "positive_observation", severity: "low", title: text("Safe work observed", "Veilig werk waargenomen"), description: text("The work was performed safely and according to the agreed control measures.", "Het werk is veilig en volgens de afgesproken beheersmaatregelen uitgevoerd."), immediateMeasure: text("Positive feedback was given to the team.", "Positieve feedback is aan het team gegeven.") },
-    { type: "unsafe_condition", severity: "high", title: text("Unsafe work area", "Onveilige werkzone"), description: text("The work area was not sufficiently secured or marked.", "De werkzone was onvoldoende afgezet of gemarkeerd."), immediateMeasure: text("Work was paused and the area was secured.", "Werk is gepauzeerd en de zone is beveiligd.") },
-    { type: "unsafe_act", severity: "high", title: text("PPE not used correctly", "PBM niet correct gebruikt"), description: text("Required personal protective equipment was not used correctly.", "Verplichte persoonlijke beschermingsmiddelen werden niet correct gebruikt."), immediateMeasure: text("The worker was instructed and PPE use was corrected.", "De medewerker is geïnstrueerd en het PBM-gebruik is gecorrigeerd.") },
-    { type: "near_miss", severity: "high", title: "Near miss", description: text("An event occurred without injury but with a realistic risk of harm.", "Er vond een gebeurtenis plaats zonder letsel, maar met reëel risico op schade."), immediateMeasure: text("The activity was stopped, the area secured and the supervisor informed.", "De activiteit is gestopt, de zone beveiligd en de supervisor geïnformeerd.") },
-    { type: "stop_work", severity: "critical", title: "Stop work", description: text("Work was stopped because the risk was not adequately controlled.", "Werk is stilgelegd omdat het risico onvoldoende werd beheerst."), immediateMeasure: text("Access was restricted pending approval of corrective measures.", "Toegang is beperkt in afwachting van goedgekeurde herstelmaatregelen.") },
+    { issueType: "safety", severity: "low", label: text("Safe work observed", "Veilig werk waargenomen"), description: text("The work was performed safely and according to the agreed control measures.", "Het werk is veilig en volgens de afgesproken beheersmaatregelen uitgevoerd."), actions: [] as string[] },
+    { issueType: "unsafe_condition", severity: "high", label: text("Unsafe work area", "Onveilige werkzone"), description: text("The work area was not sufficiently secured or marked.", "De werkzone was onvoldoende afgezet of gemarkeerd."), actions: ["work_stopped", "area_barricaded"] },
+    { issueType: "unsafe_act", severity: "high", label: text("PPE not used correctly", "PBM niet correct gebruikt"), description: text("Required personal protective equipment was not used correctly.", "Verplichte persoonlijke beschermingsmiddelen werden niet correct gebruikt."), actions: ["employee_warned", "ppe_provided"] },
+    { issueType: "near_miss", severity: "high", label: "Near miss", description: text("An event occurred without injury but with a realistic risk of harm.", "Er vond een gebeurtenis plaats zonder letsel, maar met reëel risico op schade."), actions: ["work_stopped", "area_barricaded", "supervisor_informed"] },
+    { issueType: "incident", severity: "critical", label: text("Work stopped", "Werk stilgelegd"), description: text("Work was stopped because the risk was not adequately controlled.", "Werk is stilgelegd omdat het risico onvoldoende werd beheerst."), actions: ["work_stopped", "supervisor_informed"] },
   ];
+  const hseTileLabel = (tile: (typeof hseIssueTypes)[number]) => text(tile.en, tile.nl);
+  /** The tile that is selected, with the heading and the event kind it stands for. */
+  const hseIssueTile = hseIssueTypes.find((tile) => tile.id === hseForm.issueType) ?? hseIssueTypes[0];
+  const hseCategoryOption = hseIssueCategories.find((option) => option.id === hseForm.issueCategory);
+  /** Section 9 shows the deadline the severity implies until somebody sets another one. */
+  const hseDueValue = hseForm.dueAt || hseDueDateDefault(hseForm.severity);
+  const hsePriority = hseForm.severity === "critical" ? "critical" : hseForm.severity === "high" ? "high" : hseForm.severity === "medium" ? "normal" : "low";
+  const hsePriorityLabels: Record<string, string> = {
+    critical: text("Critical", "Kritiek"), high: text("High", "Hoog"),
+    normal: text("Normal", "Normaal"), low: text("Low", "Laag"),
+  };
+  // High and critical events are opened as action required by the database itself, so the
+  // screen says the status the record will actually get.
+  const hseStatusLabel = hseForm.severity === "high" || hseForm.severity === "critical"
+    ? text("Action required", "Actie vereist")
+    : text("Open", "Open");
+  /** Section 8: the colleagues who can be made responsible, with the role they carry here. */
+  const hseResponsibleOptions = companyEmployees.map((member) => {
+    const projectRole = member.projectRoles.find((role) => role.projectId === projectId);
+    const name = member.displayName?.trim() || member.email;
+    return { id: member.userId, name, role: projectRole?.roleName ?? member.organizationRoles[0]?.name ?? "" };
+  });
+  /** The department in the head of the screen is the role the reporter carries here. */
+  const hseReporterDepartment = (() => {
+    const me = companyEmployees.find((member) => member.userId === currentUserId);
+    const projectRole = me?.projectRoles.find((role) => role.projectId === projectId);
+    return projectRole?.roleName || me?.organizationRoles[0]?.name || text("Field operations", "Uitvoering");
+  })();
+  const hseWeatherLabel = liveWeather
+    ? `${({
+      sunny: text("Clear", "Helder"), partly_cloudy: text("Partly cloudy", "Licht bewolkt"),
+      cloudy: text("Cloudy", "Bewolkt"), rain: text("Rain", "Regen"), heavy_rain: text("Heavy rain", "Zware regen"),
+    } as Record<string, string>)[liveWeather.condition] ?? liveWeather.condition}`
+    : text("Not available", "Niet beschikbaar");
+  /** Section 1: the tile decides the heading of the form and the kind of event it is. */
+  const chooseHseIssueType = (id: string) => {
+    const tile = hseIssueTypes.find((option) => option.id === id) ?? hseIssueTypes[0];
+    setHseForm((current) => ({ ...current, issueType: tile.id, category: tile.category, type: tile.eventType }));
+  };
+  const toggleHseAction = (id: string) => setHseForm((current) => ({
+    ...current,
+    immediateActions: current.immediateActions.includes(id)
+      ? current.immediateActions.filter((action) => action !== id)
+      : [...current.immediateActions, id],
+  }));
+  /** Section 7 as one sentence, so every report that already reads the measure keeps working. */
+  const hseImmediateMeasure = (form: HseIssueForm) => {
+    const taken = hseImmediateActions.filter((action) => form.immediateActions.includes(action.id)).map((action) => text(action.en, action.nl));
+    if (form.immediateActionOther.trim()) taken.push(form.immediateActionOther.trim());
+    return taken.join(" · ");
+  };
+  /** Section 5: the spot itself, as the phone reads it. */
+  const captureHsePosition = () => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setHseLocationError(text("This device does not share a position. Type the coordinates instead.", "Dit apparaat deelt geen positie. Vul de coördinaten zelf in."));
+      setHseManualPosition(true);
+      return;
+    }
+    setHseLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setHseForm((current) => ({
+          ...current,
+          latitude: position.coords.latitude.toFixed(6),
+          longitude: position.coords.longitude.toFixed(6),
+        }));
+        setHseLocationError("");
+        setHseLocating(false);
+      },
+      () => {
+        setHseLocationError(text("The position could not be read. Type the coordinates instead.", "De positie kon niet worden gelezen. Vul de coördinaten zelf in."));
+        setHseManualPosition(true);
+        setHseLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
+    );
+  };
+  const resetHseForm = () => {
+    setHseForm({ ...emptyHseIssueForm });
+    setHsePhotos([]);
+    setHsePhotoError("");
+    setHseLocationError("");
+    setHseManualPosition(false);
+    setHseLocationNodeId("");
+  };
   const registerPresets: Record<string, Array<Partial<ControlledDocumentDraft> & { title: string; details: string }>> = {
     delivery: [
       { title: text("Delivery received and checked", "Levering ontvangen en gecontroleerd"), details: text("Quantity, condition and delivery documents were checked.", "Hoeveelheid, staat en leveringsdocumenten zijn gecontroleerd.") },
@@ -1369,7 +1677,13 @@ function ProjectOperations({
   };
 
   const addHse = async () => {
-    if (hseForm.title.trim().length < 3 || hseForm.description.trim().length < 3) return;
+    if (hseForm.description.trim().length < 3) return;
+    // The client's screen has no title box: the record takes its log line from the first
+    // sentence of what was observed, so the list still reads as a list.
+    const hseTitle = hseLogLine(hseForm.description, `${hseTileLabel(hseIssueTile)}${hseCategoryOption ? ` · ${text(hseCategoryOption.en, hseCategoryOption.nl)}` : ""}`);
+    const hseLatitude = hseForm.latitude.trim() === "" ? null : Number(hseForm.latitude);
+    const hseLongitude = hseForm.longitude.trim() === "" ? null : Number(hseForm.longitude);
+    const hseDueAt = new Date(hseDueValue);
     // The same building choice as every other field record, and it has to work: an HSE
     // event needs a building, so "all buildings" writes the event in each of them.
     const projectWideHse = hseBuildingId === ALL_BUILDINGS;
@@ -1384,19 +1698,44 @@ function ProjectOperations({
         const effectiveReportId = hseOnline ? await ensureProjectDayReport(client, projectId, reportId) : reportId;
         let eventId = "";
         for (const targetBuildingId of hseBuildingIds) {
-          const input = { projectId, buildingId: targetBuildingId, locationNodeId: projectWideHse ? "" : hseLocationNodeId, reportId: effectiveReportId, ...hseForm };
+          const input = {
+            projectId,
+            buildingId: targetBuildingId,
+            locationNodeId: projectWideHse ? "" : hseLocationNodeId,
+            reportId: effectiveReportId,
+            type: hseForm.type,
+            category: hseForm.category,
+            title: hseTitle,
+            description: hseForm.description,
+            severity: hseForm.severity,
+            confidential: hseForm.confidential,
+            immediateMeasure: hseImmediateMeasure(hseForm),
+            issueType: hseForm.issueType,
+            issueCategory: hseCategoryOption ? text(hseCategoryOption.en, hseCategoryOption.nl) : "",
+            immediateActions: hseForm.immediateActions,
+            immediateActionOther: hseForm.immediateActionOther,
+            responsiblePerson: hseForm.responsiblePerson,
+            responsibleUserId: hseForm.responsibleUserId,
+            dueAt: Number.isNaN(hseDueAt.getTime()) ? null : hseDueAt.toISOString(),
+            rootCause: hseForm.rootCause,
+            correctiveAction: hseForm.correctiveAction,
+            notes: hseForm.notes,
+            latitude: hseLatitude,
+            longitude: hseLongitude,
+            locationLabel: hseBuildingName,
+          };
           const saved = await saveRecordOnlineOrQueue({
             kind: "hse",
             projectId,
             input,
             preview: {
-              title: hseForm.title,
+              title: hseTitle,
               description: hseForm.description,
               buildingId: targetBuildingId,
               locationNodeId: projectWideHse ? null : hseLocationNodeId || null,
               severity: hseForm.severity,
-              priority: "normal",
-              dueAt: null,
+              priority: hsePriority,
+              dueAt: Number.isNaN(hseDueAt.getTime()) ? null : hseDueAt.toISOString(),
               recordType: hseForm.type,
             },
             send: () => createHseEvent(client, input),
@@ -1421,7 +1760,7 @@ function ProjectOperations({
               fileName: prepared.fileName,
               mimeType: prepared.mimeType,
               // The photo's own text wins; the record title is only the fallback.
-              title: caption || hseForm.title,
+              title: caption || hseTitle,
               description: photoUploadDescription(photo, hseForm.description, language),
               locationLabel: hseBuildingName,
               locationNodeId: photo.details.locationNodeId || (projectWideHse ? null : hseLocationNodeId) || null,
@@ -1438,10 +1777,9 @@ function ProjectOperations({
       text("HSE event recorded; every photo is secured locally and linked during automatic sync.", "HSE-gebeurtenis vastgelegd; elke foto is lokaal veiliggesteld en wordt automatisch gekoppeld."),
     );
     if (okay) {
-      setHseForm({ type: "unsafe_condition", category: "safety", title: "", description: "", severity: "medium", immediateMeasure: "", confidential: false });
-      setHsePhotos([]);
-      setHsePhotoError("");
-      setHseLocationNodeId("");
+      // The issue is filed, so the parked draft of it has nothing left to protect.
+      clearHseDraft(projectId);
+      resetHseForm();
       setShowForm(false);
     }
   };
@@ -2110,50 +2448,219 @@ function ProjectOperations({
       {tab === "hse" ? (
         <section className="operation-panel">
           {showForm ? (
-            <div className="operation-form">
-              <h2>{text("HSE observation or incident", "HSE-observatie of incident")}</h2>
-              {/* "Kan ik hier kiezen tussen Health, Safety, Environmental?" — that is the
-                  heading of the client's own HSE form, above the situation itself. */}
-              <div className="click-answer-block">
-                <strong>{text("Health, Safety or Environmental", "Health, Safety of Environmental")}</strong>
-                <div className="quick-issue-presets">
-                  {([["health", text("Health", "Health")], ["safety", text("Safety", "Safety")], ["environmental", text("Environmental", "Environmental")]] as const).map(([value, label]) => (
-                    <button className={hseForm.category === value ? "active" : ""} type="button" onClick={() => setHseForm({ ...hseForm, category: value })} key={value}>{label}</button>
-                  ))}
+            <div className="operation-form wide hse-issue-form">
+              <div className="operation-form-heading">
+                <div>
+                  <span className="record-number">{text("HSE observation / issue", "HSE-observatie / issue")}</span>
+                  <h2>{text("Report an unsafe act, condition or incident", "Meld een onveilige handeling, situatie of incident")}</h2>
+                </div>
+                {!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}
+              </div>
+              {/* The head of the client's own screen: what the app already knows before a
+                  single box is filled in. "Ik vermoed dat dag, datum & tijd zelf komen" —
+                  they do, and so do the reporter, the project, the site and the weather. */}
+              <section className="controlled-document-context hse-issue-context" aria-label={text("Issue header", "Kop van de melding")}>
+                <div><small>{text("Issue ID", "Issue ID")}</small><strong>HSE-{issueDate.slice(0, 4)}</strong><span>{text("Number on submit", "Nummer bij indienen")}</span></div>
+                <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDate}</strong><span>{issueTime}</span></div>
+                <div><small>{text("Reporter", "Melder")}</small><strong>{currentUserName}</strong><span>{hseReporterDepartment}</span></div>
+                <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
+                <div><small>{text("Site / location", "Locatie")}</small><strong>{hseBuildingId === ALL_BUILDINGS ? text("All buildings", "Alle gebouwen") : buildings.find((building) => building.id === hseBuildingId)?.name ?? buildingName}</strong><span>{hseForm.latitude && hseForm.longitude ? `${hseForm.latitude}, ${hseForm.longitude}` : projectLocation || text("No coordinates yet", "Nog geen coördinaten")}</span></div>
+                <div><small>{text("Weather", "Weer")}</small><strong>{hseWeatherLabel}</strong><span>{liveWeather ? `${liveWeather.temperatureC}°C` : "—"}</span></div>
+                <div><small>{text("Department", "Afdeling")}</small><strong>{hseReporterDepartment}</strong><span>{text("Of the reporter", "Van de melder")}</span></div>
+                <div><small>{text("Status", "Status")}</small><strong className="hse-status-preview">{hseStatusLabel}</strong><span>{text("On submit", "Bij indienen")}</span></div>
+              </section>
+              {/* "Ik vermoed dat dag, datum & tijd zelf komen" — the form says so out loud. */}
+              <p className="form-helper"><Clock3 size={13} /> {text(`Day, date and time are recorded automatically · ${issueDate} ${issueTime}`, `Dag, datum en tijd worden automatisch vastgelegd · ${issueDate} ${issueTime}`)}</p>
+              {hseParkedDraft ? (
+                <p className="form-helper hse-draft-notice">
+                  <Save size={13} /> {text("A saved draft of this screen is waiting on this device.", "Op dit apparaat staat een opgeslagen concept van dit scherm.")}
+                  <button className="text-link" type="button" onClick={() => { setHseForm(hseParkedDraft); clearHseDraft(projectId); }}>{text("Put it back", "Terugzetten")}</button>
+                  <button className="text-link" type="button" onClick={() => clearHseDraft(projectId)}>{text("Throw it away", "Weggooien")}</button>
+                </p>
+              ) : null}
+
+              <div className="hse-issue-columns">
+                <div className="hse-issue-column">
+                  <section className="hse-issue-section hse-order-1" aria-label={text("Issue type", "Issuetype")}>
+                    <h3><span className="hse-section-number">1</span> {text("Issue type", "Issuetype")} <em className="hse-required">*</em></h3>
+                    <div className="hse-tile-grid">
+                      {hseIssueTypes.map((tile) => {
+                        const TileIcon = tile.icon;
+                        return (
+                          <button className={`hse-tile${hseForm.issueType === tile.id ? " active" : ""}`} type="button" key={tile.id} aria-pressed={hseForm.issueType === tile.id} onClick={() => chooseHseIssueType(tile.id)}>
+                            <TileIcon size={20} />
+                            <span>{hseTileLabel(tile)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  <section className="hse-issue-section hse-order-2" aria-label={text("Category", "Categorie")}>
+                    <h3><span className="hse-section-number">2</span> {text("Category", "Categorie")} <em className="hse-required">*</em></h3>
+                    <label className="form-field"><select value={hseForm.issueCategory} onChange={(event) => setHseForm({ ...hseForm, issueCategory: event.target.value })}>
+                      <option value="">{text("Choose a category", "Kies een categorie")}</option>
+                      {hseIssueCategories.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}
+                    </select></label>
+                  </section>
+
+                  <section className="hse-issue-section hse-order-3" aria-label={text("Severity", "Ernst")}>
+                    <h3><span className="hse-section-number">3</span> {text("Severity", "Ernst")} <em className="hse-required">*</em></h3>
+                    <div className="hse-severity-row">
+                      {([["low", text("Low", "Laag")], ["medium", text("Medium", "Middel")], ["high", text("High", "Hoog")], ["critical", text("Critical", "Kritiek")]] as const).map(([value, label]) => (
+                        <button className={`hse-severity hse-severity-${value}${hseForm.severity === value ? " active" : ""}`} type="button" key={value} aria-pressed={hseForm.severity === value} onClick={() => setHseForm({ ...hseForm, severity: value })}>
+                          <Circle size={13} /> {label}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="hse-issue-section hse-order-4" aria-label={text("Description", "Omschrijving")}>
+                    <h3><span className="hse-section-number">4</span> {text("Description", "Omschrijving")} <em className="hse-required">*</em></h3>
+                    {/* The standard records the client asked for stay one tap away; they
+                        fill this box and every box they belong to, and stay editable. */}
+                    <div className="quick-issue-presets" aria-label={text("Choose a standard HSE record", "Kies een standaard HSE-registratie")}>{hsePresets.map((preset) => <button className={hseForm.description === preset.description ? "active" : ""} type="button" onClick={() => { chooseHseIssueType(preset.issueType); setHseForm((current) => ({ ...current, issueType: preset.issueType, severity: preset.severity, description: preset.description, immediateActions: preset.actions })); }} key={preset.label}>{preset.label}</button>)}</div>
+                    <label className="form-field hse-description-field">
+                      <textarea rows={5} maxLength={1000} value={hseForm.description} onChange={(event) => setHseForm({ ...hseForm, description: event.target.value })} placeholder={text("Describe what happened or what you observed...", "Beschrijf wat er gebeurd is of wat je hebt waargenomen...")} />
+                      <div className="hse-field-foot">
+                        <DictateButton onText={(transcript) => setHseForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} />
+                        <span className="hse-counter">{hseForm.description.length} / 1000</span>
+                      </div>
+                    </label>
+                  </section>
+
+                  <section className="hse-issue-section hse-order-8" aria-label={text("Responsible person", "Verantwoordelijke")}>
+                    <h3><span className="hse-section-number">8</span> {text("Responsible person", "Verantwoordelijke")} <em className="hse-required">*</em></h3>
+                    <label className="form-field hse-responsible-field">
+                      <UserCheck size={15} />
+                      <select value={hseForm.responsibleUserId} onChange={(event) => {
+                        const chosen = hseResponsibleOptions.find((option) => option.id === event.target.value);
+                        setHseForm({ ...hseForm, responsibleUserId: chosen?.id ?? "", responsiblePerson: chosen ? `${chosen.name}${chosen.role ? ` (${chosen.role})` : ""}` : "" });
+                      }}>
+                        <option value="">{text("Choose who has to act", "Kies wie moet handelen")}</option>
+                        {hseResponsibleOptions.map((option) => <option value={option.id} key={option.id}>{option.role ? `${option.name} (${option.role})` : option.name}</option>)}
+                      </select>
+                    </label>
+                    {/* A project without colleagues in the app still has to be able to file
+                        the issue: then the name is written instead of chosen. */}
+                    {!hseResponsibleOptions.length ? (
+                      <label className="form-field"><span>{text("Name of the responsible person", "Naam van de verantwoordelijke")}</span><input value={hseForm.responsiblePerson} onChange={(event) => setHseForm({ ...hseForm, responsiblePerson: event.target.value })} placeholder={text("Nobody from this project is in the app yet", "Nog niemand van dit project staat in de app")} /></label>
+                    ) : null}
+                  </section>
+
+                  <section className="hse-issue-section hse-order-9" aria-label={text("Due date", "Deadline")}>
+                    <h3><span className="hse-section-number">9</span> {text("Due date", "Deadline")}</h3>
+                    <label className="form-field hse-due-field">
+                      <CalendarClock size={15} />
+                      <input type="datetime-local" value={hseDueValue} onChange={(event) => setHseForm({ ...hseForm, dueAt: event.target.value })} />
+                    </label>
+                    {/* The deadline follows the severity by the same ladder a finding gets,
+                        so the priority, the status and the owner are not typed twice. */}
+                    <div className="hse-issue-derived">
+                      <div><small>{text("Priority", "Prioriteit")}</small><span className={`hse-priority-badge hse-priority-${hsePriority}`}>{hsePriorityLabels[hsePriority]}</span></div>
+                      <div><small>{text("Status", "Status")}</small><span className="hse-status-badge">{hseStatusLabel}</span></div>
+                      <div className="hse-issue-assignee"><small>{text("Automatically assigned to", "Automatisch toegewezen aan")}</small><strong>{hseForm.responsiblePerson || text("Nobody yet", "Nog niemand")}</strong></div>
+                    </div>
+                    <p className="form-helper">{text(`The deadline follows the severity: critical 1 day, high 3 days, medium 7 days, low 14 days. Change it when the site says otherwise.`, `De deadline volgt de ernst: kritiek 1 dag, hoog 3 dagen, middel 7 dagen, laag 14 dagen. Pas hem aan als het werk anders vraagt.`)}</p>
+                  </section>
+                </div>
+
+                <div className="hse-issue-column">
+                  <section className="hse-issue-section hse-order-5" aria-label={text("Location", "Locatie")}>
+                    <h3><span className="hse-section-number">5</span> {text("Location", "Locatie")} <em className="hse-required">*</em></h3>
+                    <div className="form-grid-2">
+                      <BuildingPicker id="hse-building" buildings={buildings} value={hseBuildingId} onChange={(next) => { setHseBuildingId(next); setHseLocationNodeId(""); }} allowAll />
+                      <LocationPicker id="hse-location" nodes={data.locationNodes} buildingId={hseBuildingId} value={hseLocationNodeId} onChange={setHseLocationNodeId} requiredDepth={hseBuildingId === ALL_BUILDINGS ? "building" : requiredLocationDepth} />
+                    </div>
+                    {/* Where on earth it was seen, next to where in the works it was seen. */}
+                    <div className="hse-location-card">
+                      <div className="hse-location-readout">
+                        <MapPin size={16} />
+                        <div>
+                          <strong>{hseForm.latitude && hseForm.longitude ? `Lat: ${hseForm.latitude}, Long: ${hseForm.longitude}` : text("No coordinates recorded yet", "Nog geen coördinaten vastgelegd")}</strong>
+                          <span>{hseBuildingId === ALL_BUILDINGS ? projectName : `${buildings.find((building) => building.id === hseBuildingId)?.name ?? buildingName}, ${projectName}`}</span>
+                        </div>
+                      </div>
+                      <div className="hse-location-buttons">
+                        <button className="ghost-button" type="button" disabled={hseLocating} onClick={captureHsePosition}>{hseLocating ? <Loader2 className="spin" size={14} /> : <LocateFixed size={14} />} {hseForm.latitude ? text("Change location", "Locatie wijzigen") : text("Use my location", "Gebruik mijn locatie")}</button>
+                        <button className="ghost-button" type="button" aria-pressed={hseManualPosition} onClick={() => setHseManualPosition(!hseManualPosition)}><Pencil size={14} /> {text("Type coordinates", "Coördinaten invullen")}</button>
+                      </div>
+                    </div>
+                    {hseManualPosition ? (
+                      <div className="form-grid-2">
+                        <label className="form-field"><span>{text("Latitude", "Breedtegraad")}</span><input inputMode="decimal" value={hseForm.latitude} onChange={(event) => setHseForm({ ...hseForm, latitude: event.target.value })} placeholder="5.8521" /></label>
+                        <label className="form-field"><span>{text("Longitude", "Lengtegraad")}</span><input inputMode="decimal" value={hseForm.longitude} onChange={(event) => setHseForm({ ...hseForm, longitude: event.target.value })} placeholder="-55.2034" /></label>
+                      </div>
+                    ) : null}
+                    {hseLocationError ? <p className="field-error" role="alert">{hseLocationError}</p> : null}
+                  </section>
+
+                  <section className="hse-issue-section hse-order-6" aria-label={text("Photos / evidence", "Foto's / bewijs")}>
+                    <h3><span className="hse-section-number">6</span> {text("Photos / evidence", "Foto's / bewijs")}</h3>
+                    <label className="finding-photo-capture hse-photo-capture">
+                      <Camera size={22} />
+                      <span><strong>{hsePhotos.length ? text(`${hsePhotos.length} photos ready`, `${hsePhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
+                      <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setHsePhotos, setHsePhotoError); event.currentTarget.value = ""; }} />
+                    </label>
+                    <PhotoEvidenceList
+                      photos={hsePhotos}
+                      setPhotos={setHsePhotos}
+                      markupContext={{ ...markupOptions, defaultBuildingId: hseBuildingId === ALL_BUILDINGS ? "" : hseBuildingId }}
+                    />
+                    {hsePhotoError ? <p className="field-error" role="alert">{hsePhotoError}</p> : null}
+                  </section>
+
+                  <section className="hse-issue-section hse-order-7" aria-label={text("Immediate action taken", "Directe maatregel")}>
+                    <h3><span className="hse-section-number">7</span> {text("Immediate action taken", "Directe maatregel")}</h3>
+                    <div className="hse-action-grid">
+                      {hseImmediateActions.map((action) => (
+                        <label className={`hse-action-check${hseForm.immediateActions.includes(action.id) ? " active" : ""}`} key={action.id}>
+                          <input type="checkbox" checked={hseForm.immediateActions.includes(action.id)} onChange={() => toggleHseAction(action.id)} />
+                          {text(action.en, action.nl)}
+                        </label>
+                      ))}
+                      <label className="hse-action-check hse-action-other">
+                        <MoreHorizontal size={14} />
+                        <input type="text" value={hseForm.immediateActionOther} onChange={(event) => setHseForm({ ...hseForm, immediateActionOther: event.target.value })} maxLength={240} placeholder={text("Other · specify", "Overig · omschrijf")} />
+                      </label>
+                    </div>
+                  </section>
+
+                  <section className="hse-issue-section hse-order-10" aria-label={text("Root cause", "Oorzaak")}>
+                    <h3><span className="hse-section-number">10</span> {text("Root cause", "Oorzaak")} <em className="hse-optional">({text("optional", "optioneel")})</em></h3>
+                    <label className="form-field"><select value={hseForm.rootCause} onChange={(event) => setHseForm({ ...hseForm, rootCause: event.target.value })}>
+                      <option value="">{text("Select root cause", "Kies een oorzaak")}</option>
+                      {hseRootCauses.map((cause) => <option value={cause.id} key={cause.id}>{text(cause.en, cause.nl)}</option>)}
+                    </select></label>
+                  </section>
+
+                  <section className="hse-issue-section hse-order-11" aria-label={text("Corrective action required", "Vereiste correctieve actie")}>
+                    <h3><span className="hse-section-number">11</span> {text("Corrective action required", "Vereiste correctieve actie")}</h3>
+                    <label className="form-field">
+                      <textarea rows={3} maxLength={1000} value={hseForm.correctiveAction} onChange={(event) => setHseForm({ ...hseForm, correctiveAction: event.target.value })} placeholder={text("What corrective action is required?", "Welke correctieve actie is nodig?")} />
+                      <DictateButton onText={(transcript) => setHseForm((current) => ({ ...current, correctiveAction: appendDictation(current.correctiveAction, transcript) }))} />
+                    </label>
+                  </section>
+
+                  <section className="hse-issue-section hse-order-12" aria-label={text("Notes", "Notities")}>
+                    <h3><span className="hse-section-number">12</span> {text("Notes", "Notities")} <em className="hse-optional">({text("optional", "optioneel")})</em></h3>
+                    <label className="form-field">
+                      <textarea rows={3} maxLength={500} value={hseForm.notes} onChange={(event) => setHseForm({ ...hseForm, notes: event.target.value })} placeholder={text("Additional notes...", "Aanvullende notities...")} />
+                      <div className="hse-field-foot"><span /><span className="hse-counter">{hseForm.notes.length} / 500</span></div>
+                    </label>
+                  </section>
                 </div>
               </div>
-              {/* The situation chips already set the type. A second Type dropdown next to
-                  them said the same thing twice, so it moved into the manual block below. */}
-              <div className="quick-issue-presets" aria-label={text("Choose a standard HSE record", "Kies een standaard HSE-registratie")}>{hsePresets.map((preset) => <button className={hseForm.title === preset.title ? "active" : ""} type="button" onClick={() => setHseForm({ ...hseForm, ...preset })} key={preset.title}>{preset.title}</button>)}</div>
-              <label className="form-field"><span>{text("Severity", "Ernst")}</span><select value={hseForm.severity} onChange={(event) => setHseForm({ ...hseForm, severity: event.target.value })}><option value="low">{text("Low", "Laag")}</option><option value="medium">{text("Medium", "Middel")}</option><option value="high">{text("High", "Hoog")}</option><option value="critical">{text("Critical", "Kritiek")}</option></select></label>
-              {/* "Kunnen deze 2 gelijk onder elkaar?" — the observation and the measure
-                  stand under each other, in the open, instead of side by side inside a
-                  fold-out that has to be opened first. */}
-              <div className="form-grid-2">
-                <label className="form-field"><span>{text("Type", "Type")}</span><select value={hseForm.type} onChange={(event) => setHseForm({ ...hseForm, type: event.target.value })}><option value="positive_observation">{text("Positive observation", "Positieve observatie")}</option><option value="unsafe_act">{text("Unsafe act", "Onveilige handeling")}</option><option value="unsafe_condition">{text("Unsafe condition", "Onveilige situatie")}</option><option value="near_miss">Near miss</option><option value="incident">Incident</option><option value="stop_work">Stop work</option><option value="toolbox">Toolbox meeting</option></select></label>
-                <label className="form-field"><span>{text("Title", "Titel")}</span><input value={hseForm.title} onChange={(event) => setHseForm({ ...hseForm, title: event.target.value })} /></label>
-              </div>
-              <label className="form-field"><span>{text("What was observed?", "Wat is waargenomen?")}</span><textarea value={hseForm.description} onChange={(event) => setHseForm({ ...hseForm, description: event.target.value })} rows={3} /><DictateButton onText={(transcript) => setHseForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} /></label>
-              <label className="form-field"><span>{text("Immediate measure", "Directe maatregel")}</span><textarea value={hseForm.immediateMeasure} onChange={(event) => setHseForm({ ...hseForm, immediateMeasure: event.target.value })} rows={3} /><DictateButton onText={(transcript) => setHseForm((current) => ({ ...current, immediateMeasure: appendDictation(current.immediateMeasure, transcript) }))} /></label>
-              {/* "Ik vermoed dat dag, datum & tijd zelf komen" — they do, and the form says so. */}
-              <p className="form-helper"><Clock3 size={13} /> {text(`Day, date and time are recorded automatically · ${issueDate} ${issueTime}`, `Dag, datum en tijd worden automatisch vastgelegd · ${issueDate} ${issueTime}`)}</p>
-              <label className="finding-photo-capture hse-photo-capture">
-                <Camera size={22} />
-                <span><strong>{hsePhotos.length ? text(`${hsePhotos.length} photos ready`, `${hsePhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
-                <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setHsePhotos, setHsePhotoError); event.currentTarget.value = ""; }} />
-              </label>
-              <PhotoEvidenceList
-                photos={hsePhotos}
-                setPhotos={setHsePhotos}
-                markupContext={{ ...markupOptions, defaultBuildingId: hseBuildingId === ALL_BUILDINGS ? "" : hseBuildingId }}
-              />
-              {hsePhotoError ? <p className="field-error" role="alert">{hsePhotoError}</p> : null}
-              <div className="form-grid-2">
-                <BuildingPicker id="hse-building" buildings={buildings} value={hseBuildingId} onChange={(next) => { setHseBuildingId(next); setHseLocationNodeId(""); }} allowAll />
-                <LocationPicker id="hse-location" nodes={data.locationNodes} buildingId={hseBuildingId} value={hseLocationNodeId} onChange={setHseLocationNodeId} requiredDepth={hseBuildingId === ALL_BUILDINGS ? "building" : requiredLocationDepth} />
-              </div>
+
               <label className="check-field"><input type="checkbox" checked={hseForm.confidential} onChange={(event) => setHseForm({ ...hseForm, confidential: event.target.checked })} /> {text("Restrict this sensitive incident to authorized HSE roles", "Beperk dit gevoelige incident tot bevoegde HSE-rollen")}</label>
-              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && hseBuildingId !== ALL_BUILDINGS && !hseLocationNodeId) || hseForm.title.trim().length < 3 || hseForm.description.trim().length < 3} onClick={() => void addHse()}><ShieldCheck size={15} /> {text("Save HSE record", "HSE-registratie opslaan")}</button>
+              {/* The bar of the client's screen: leave it, park it, count the evidence,
+                  submit it. */}
+              <div className="hse-issue-actions">
+                <button className="ghost-button" type="button" onClick={() => { resetHseForm(); setShowForm(false); }}><X size={14} /> {text("Cancel", "Annuleren")}</button>
+                <button className="ghost-button" type="button" onClick={() => writeHseDraft(projectId, hseForm)}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
+                <span className="hse-attachment-count"><Paperclip size={14} /> {text(`Attachments (${hsePhotos.length})`, `Bijlagen (${hsePhotos.length})`)}</span>
+                <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && hseBuildingId !== ALL_BUILDINGS && !hseLocationNodeId) || !hseForm.issueCategory || hseForm.responsiblePerson.trim().length < 2 || hseForm.description.trim().length < 3} onClick={() => void addHse()}><Send size={15} /> {text("Submit issue", "Issue indienen")}</button>
+              </div>
             </div>
           ) : null}
           <RecordList empty={text("No formal HSE records yet.", "Nog geen formele HSE-registraties.")} rows={data.hseEvents.map((event) => ({ id: event.id, icon: ShieldCheck, title: event.confidential ? `${event.title} · ${text("confidential", "vertrouwelijk")}` : event.title, meta: `${event.event_number} · ${event.hse_category ? `${hseCategoryLabels[event.hse_category] ?? event.hse_category} · ` : ""}${recordContextLabel(event.building_id, event.location_node_id)} · ${event.event_type.replaceAll("_", " ")} · ${formatDate(event.occurred_at, locale)}`, status: event.status.replaceAll("_", " "), tone: event.severity === "critical" ? "red" : event.status === "closed" ? "green" : "" }))} />

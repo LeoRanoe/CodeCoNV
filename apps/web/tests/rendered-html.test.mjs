@@ -2082,7 +2082,9 @@ test("processes the annotated screens of 5 August: one building field, a signed 
   // saying out loud that day, date and time come by themselves.
   assert.match(hseMigration, /hse_category in \('health','safety','environmental'\)/);
   assert.match(hseMigration, /p_hse_category text/);
-  assert.match(operations, /Health, Safety or Environmental|Health, Safety of Environmental/);
+  // The three headings moved into section 1 of the client's newer HSE screen: they are
+  // tiles now, and the heading they stand for is still stored next to the event kind.
+  assert.match(operations, /\{ id: "health", en: "Health", nl: "Health", icon: HeartPulse, category: "health", eventType: "observation" \}/);
   assert.match(operations, /category: "safety"/);
   assert.doesNotMatch(operations, /Different HSE situation|Andere HSE-situatie/);
   assert.match(operations, /Day, date and time are recorded automatically|Dag, datum en tijd worden automatisch vastgelegd/);
@@ -2104,4 +2106,88 @@ test("processes the annotated screens of 5 August: one building field, a signed 
   // #22: the client calls it a PDF, so the field does too.
   assert.match(app, /Location on the PDF drawing|Locatie op de PDF-tekening/);
   assert.match(app, /No PDF selected|Geen PDF gekozen/);
+});
+
+test("builds the HSE observation / issue screen the client sent, section by section", async () => {
+  const [operations, dataLayer, pendingRecords, issueMigration, styles] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/offline/pending-records.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202608050003_hse_issue_form_sections.sql", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // The head of the screen: everything the app already knows before a box is filled in.
+  assert.match(operations, /hse-issue-context/);
+  for (const heading of [/Issue ID/, /Reporter|Melder/, /Site \/ location|Locatie/, /Weather|Weer/, /Department|Afdeling/]) {
+    assert.match(operations, heading);
+  }
+
+  // The twelve numbered sections, in the order and with the words the client drew.
+  const sections = [
+    [1, /Issue type", "Issuetype/],
+    [2, /Category", "Categorie/],
+    [3, /Severity", "Ernst/],
+    [4, /Description", "Omschrijving/],
+    [5, /Location", "Locatie/],
+    [6, /Photos \/ evidence/],
+    [7, /Immediate action taken", "Directe maatregel/],
+    [8, /Responsible person", "Verantwoordelijke/],
+    [9, /Due date", "Deadline/],
+    [10, /Root cause", "Oorzaak/],
+    [11, /Corrective action required", "Vereiste correctieve actie/],
+    [12, /Notes", "Notities/],
+  ];
+  for (const [number, label] of sections) {
+    assert.match(operations, new RegExp(`hse-section-number">${number}<`), `section ${number} is numbered as the client numbered it`);
+    assert.match(operations, label);
+  }
+
+  // Section 1 is a grid of tiles, and each tile keeps saying both what the client's form
+  // files it under and what kind of event it is.
+  assert.match(operations, /const hseIssueTypes = \[/);
+  for (const tile of ["safety", "health", "environment", "near_miss", "incident", "unsafe_act", "unsafe_condition", "other"]) {
+    assert.match(operations, new RegExp(`\\{ id: "${tile}",`));
+  }
+  assert.match(operations, /const chooseHseIssueType = \(id: string\)/);
+
+  // Sections 3 and 9 belong together: the severity decides the priority and the deadline,
+  // by the same ladder a finding is given.
+  assert.match(operations, /const hseSeverityDueDays: Record<string, number> = \{ critical: 1, high: 3, medium: 7, low: 14 \}/);
+  assert.match(operations, /hse-priority-badge hse-priority-\$\{hsePriority\}/);
+  assert.match(issueMigration, /when 'critical' then interval '1 day' when 'high' then interval '3 days'/);
+
+  // Section 7 is ticked, not typed, and still reaches the report as one measure.
+  assert.match(operations, /const hseImmediateActions = \[/);
+  assert.match(operations, /const hseImmediateMeasure = \(form: HseIssueForm\)/);
+  assert.match(operations, /immediate_actions text\[\]|immediateActions/);
+  assert.match(issueMigration, /add column if not exists immediate_actions text\[\] not null default '\{\}'/);
+
+  // The screen has no title box, so the list line is the first sentence of the description.
+  assert.match(operations, /function hseLogLine\(description: string, fallback: string\)/);
+  assert.doesNotMatch(operations, /hseForm\.title\.trim\(\)\.length < 3/);
+
+  // Every new box has a column of its own, is written by one function and is read back
+  // the same way on a device that is still offline.
+  for (const column of ["issue_type", "issue_category", "responsible_person", "due_at", "root_cause", "corrective_action", "notes", "latitude", "longitude"]) {
+    assert.match(issueMigration, new RegExp(`add column if not exists ${column}\\b`));
+    assert.match(dataLayer, new RegExp(`${column}`));
+  }
+  assert.match(dataLayer, /p_immediate_actions: input\.immediateActions \?\? \[\]/);
+  assert.match(pendingRecords, /issue_type: \(input\.issueType as string\) \|\| null/);
+
+  // A database that has not run the migration yet still records the event and still loads
+  // its own list: the newer boxes step back one signature at a time.
+  assert.match(dataLayer, /schemaFeatureMissing\(hseResult\.error, "issue_type"\)/);
+  assert.match(dataLayer, /const fallbackType = input\.type === "observation" \|\| input\.type === "other" \? "positive_observation" : input\.type/);
+
+  // "Save draft" parks the screen on the device; it is offered back, never pushed back.
+  assert.match(operations, /Save draft", "Concept opslaan/);
+  assert.match(operations, /Put it back", "Terugzetten/);
+  assert.match(operations, /function writeHseDraft\(projectId: string, form: HseIssueForm\)/);
+
+  // The two columns, the tiles and the action bar have a shape of their own.
+  for (const rule of [/\.hse-issue-columns \{/, /\.hse-tile-grid \{/, /\.hse-severity-row \{/, /\.hse-action-grid \{/, /\.hse-issue-actions \{/]) {
+    assert.match(styles, rule);
+  }
 });

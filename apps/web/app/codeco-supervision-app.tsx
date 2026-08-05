@@ -1789,6 +1789,7 @@ export function CodecoSupervisionApp() {
               projectId={selectedProject!.id}
               projectName={projectName}
               projectCode={selectedProject!.code}
+              projectLocation={selectedProject?.location ?? ""}
               buildingId={selectedBuilding!.id}
               buildingName={buildingName}
               buildings={selectedProject?.buildings ?? []}

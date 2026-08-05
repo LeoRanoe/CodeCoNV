@@ -48,19 +48,37 @@ function pendingFinding(record: OfflineRecord): Finding {
 }
 
 function pendingHseEvent(record: OfflineRecord): HseEvent {
+  const input = record.input as Record<string, unknown>;
   return {
     id: record.id,
     building_id: record.preview.buildingId ?? "",
     location_node_id: record.preview.locationNodeId,
     event_number: "",
     event_type: record.preview.recordType || "unsafe_condition",
+    hse_category: (input.category as HseEvent["hse_category"]) ?? null,
     title: record.preview.title,
     description: record.preview.description,
     severity: (record.preview.severity || "medium") as HseEvent["severity"],
     status: pendingStatus,
-    confidential: Boolean((record.input as Record<string, unknown>).confidential),
-    immediate_measure: ((record.input as Record<string, unknown>).immediateMeasure as string) || null,
+    confidential: Boolean(input.confidential),
+    immediate_measure: (input.immediateMeasure as string) || null,
     occurred_at: record.createdAt,
+    // The boxes of the client's HSE screen read back the same on the device as they will
+    // from the database, so a queued event is not a thinner record than a sent one.
+    issue_type: (input.issueType as string) || null,
+    issue_category: (input.issueCategory as string) || null,
+    immediate_actions: (input.immediateActions as string[]) ?? [],
+    immediate_action_other: (input.immediateActionOther as string) || null,
+    responsible_person: (input.responsiblePerson as string) || null,
+    responsible_user_id: (input.responsibleUserId as string) || null,
+    due_at: record.preview.dueAt,
+    priority: record.preview.priority || null,
+    root_cause: (input.rootCause as string) || null,
+    corrective_action: (input.correctiveAction as string) || null,
+    notes: (input.notes as string) || null,
+    latitude: (input.latitude as number) ?? null,
+    longitude: (input.longitude as number) ?? null,
+    location_label: (input.locationLabel as string) || null,
   };
 }
 

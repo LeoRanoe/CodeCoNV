@@ -132,6 +132,23 @@ export type HseEvent = {
   confidential: boolean;
   immediate_measure: string | null;
   occurred_at: string;
+  /** Section 1 of the client's HSE screen: the tile that was tapped. */
+  issue_type?: string | null;
+  /** Section 2: PPE, housekeeping, work at height. */
+  issue_category?: string | null;
+  /** Section 7: the measures that were already taken on the spot. */
+  immediate_actions?: string[] | null;
+  immediate_action_other?: string | null;
+  responsible_person?: string | null;
+  responsible_user_id?: string | null;
+  due_at?: string | null;
+  priority?: string | null;
+  root_cause?: string | null;
+  corrective_action?: string | null;
+  notes?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  location_label?: string | null;
 };
 
 export type RegisterEntry = {
@@ -496,7 +513,7 @@ export async function loadProjectOperations(
     client.from("inspections").select("id,building_id,location_node_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at,signed_by,signed_at,signature_image").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
     client.from("findings").select("id,building_id,location_node_id,finding_number,finding_type,title,description,severity,priority,status,responsible_party_id,assigned_user_id,due_at,cause,proposed_correction,final_measure,issue_management,verified_by,verified_at,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
     client.from("finding_progress_updates").select("id,finding_id,progress_percent,disposition,note,inspected_at,created_at").eq("project_id", projectId).order("inspected_at", { ascending: false }).limit(1000),
-    client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,hse_category,title,description,severity,status,confidential,immediate_measure,occurred_at").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100),
+    client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,hse_category,title,description,severity,status,confidential,immediate_measure,occurred_at,issue_type,issue_category,immediate_actions,immediate_action_other,responsible_person,responsible_user_id,due_at,priority,root_cause,corrective_action,notes,latitude,longitude,location_label").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100),
     client.from("project_register_entries").select("id,building_id,location_node_id,register_type,entry_number,title,status,occurred_at,due_at,details").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(5000),
     client.from("boq_progress_updates").select("id,register_entry_id,building_id,progress_percent,quantity_completed,note,recorded_at,created_at").eq("project_id", projectId).order("recorded_at", { ascending: false }).limit(5000),
     client.from("files").select("id,building_id,folder_id,original_name,mime_type,size_bytes,category,status,document_code,created_at").eq("project_id", projectId).neq("status", "deleted").order("created_at", { ascending: false }).limit(500),
@@ -522,9 +539,14 @@ export async function loadProjectOperations(
   const compatibleInspectionResult = schemaFeatureMissing(inspectionResult.error, "signature_image")
     ? await client.from("inspections").select("id,building_id,location_node_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100)
     : inspectionResult;
-  const compatibleHseResult = schemaFeatureMissing(hseResult.error, "hse_category")
-    ? await client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,title,description,severity,status,confidential,immediate_measure,occurred_at").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100)
+  // The twelve boxes of the client's HSE screen are newer still, so the load steps back
+  // one column set at a time instead of failing on the first database that is behind.
+  const hseWithoutIssueFormResult = schemaFeatureMissing(hseResult.error, "issue_type")
+    ? await client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,hse_category,title,description,severity,status,confidential,immediate_measure,occurred_at").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100)
     : hseResult;
+  const compatibleHseResult = schemaFeatureMissing(hseWithoutIssueFormResult.error, "hse_category")
+    ? await client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,title,description,severity,status,confidential,immediate_measure,occurred_at").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100)
+    : hseWithoutIssueFormResult;
   // A database that has not been given the document numbering yet still has to load; the
   // files then simply carry no code until the migration has run.
   const compatibleFileResult = schemaFeatureMissing(fileResult.error, "document_code")
@@ -889,10 +911,12 @@ export async function transitionFinding(client: SupabaseClient, findingId: strin
   return result.data as Finding;
 }
 
-export async function createHseEvent(client: SupabaseClient, input: { projectId: string; buildingId: string; locationNodeId?: string; reportId?: string | null; type: string; title: string; description: string; severity: string; immediateMeasure: string; confidential: boolean; category?: string; idempotencyKey?: string }) {
+export async function createHseEvent(client: SupabaseClient, input: { projectId: string; buildingId: string; locationNodeId?: string; reportId?: string | null; type: string; title: string; description: string; severity: string; immediateMeasure: string; confidential: boolean; category?: string; issueType?: string; issueCategory?: string; immediateActions?: string[]; immediateActionOther?: string; responsiblePerson?: string; responsibleUserId?: string; dueAt?: string | null; rootCause?: string; correctiveAction?: string; notes?: string; latitude?: number | null; longitude?: number | null; locationLabel?: string; idempotencyKey?: string }) {
   const reportId = await ensureProjectDayReport(client, input.projectId, input.reportId);
-  // Health, Safety or Environmental is the heading of the client's own form. A database
-  // that does not know it yet still records the event itself.
+  const occurredAt = new Date().toISOString();
+  const idempotencyKey = input.idempotencyKey ?? `hse:${crypto.randomUUID()}`;
+  // The twelve boxes of the client's own HSE screen. A database that has not been given
+  // them yet still records the event, one signature down, with the boxes it does know.
   let result = await client.rpc("create_project_hse_event", {
     p_project_id: input.projectId,
     p_building_id: input.buildingId,
@@ -903,8 +927,39 @@ export async function createHseEvent(client: SupabaseClient, input: { projectId:
     p_severity: input.severity,
     p_immediate_measure: input.immediateMeasure,
     p_confidential: input.confidential,
-    p_occurred_at: new Date().toISOString(),
-    p_idempotency_key: input.idempotencyKey ?? `hse:${crypto.randomUUID()}`,
+    p_occurred_at: occurredAt,
+    p_idempotency_key: idempotencyKey,
+    p_location_node_id: input.locationNodeId || null,
+    p_hse_category: input.category || null,
+    p_issue_type: input.issueType || null,
+    p_issue_category: input.issueCategory || null,
+    p_immediate_actions: input.immediateActions ?? [],
+    p_immediate_action_other: input.immediateActionOther || null,
+    p_responsible_person: input.responsiblePerson || null,
+    p_responsible_user_id: input.responsibleUserId || null,
+    p_due_at: input.dueAt || null,
+    p_root_cause: input.rootCause || null,
+    p_corrective_action: input.correctiveAction || null,
+    p_notes: input.notes || null,
+    p_latitude: input.latitude ?? null,
+    p_longitude: input.longitude ?? null,
+    p_location_label: input.locationLabel || null,
+  });
+  // An older database knows the seven kinds it was written with, so a plain observation
+  // and an "other" are filed as the observation they are.
+  const fallbackType = input.type === "observation" || input.type === "other" ? "positive_observation" : input.type;
+  if (rpcSignatureMissing(result.error, "create_project_hse_event")) result = await client.rpc("create_project_hse_event", {
+    p_project_id: input.projectId,
+    p_building_id: input.buildingId,
+    p_day_report_id: reportId,
+    p_event_type: fallbackType,
+    p_title: input.title,
+    p_description: input.description,
+    p_severity: input.severity,
+    p_immediate_measure: input.immediateMeasure,
+    p_confidential: input.confidential,
+    p_occurred_at: occurredAt,
+    p_idempotency_key: idempotencyKey,
     p_location_node_id: input.locationNodeId || null,
     p_hse_category: input.category || null,
   });
@@ -912,14 +967,14 @@ export async function createHseEvent(client: SupabaseClient, input: { projectId:
     p_project_id: input.projectId,
     p_building_id: input.buildingId,
     p_day_report_id: reportId,
-    p_event_type: input.type,
+    p_event_type: fallbackType,
     p_title: input.title,
     p_description: input.description,
     p_severity: input.severity,
     p_immediate_measure: input.immediateMeasure,
     p_confidential: input.confidential,
-    p_occurred_at: new Date().toISOString(),
-    p_idempotency_key: input.idempotencyKey ?? `hse:${crypto.randomUUID()}`,
+    p_occurred_at: occurredAt,
+    p_idempotency_key: idempotencyKey,
     p_location_node_id: input.locationNodeId || null,
   });
   if (rpcSignatureMissing(result.error, "create_project_hse_event")) {
@@ -927,14 +982,14 @@ export async function createHseEvent(client: SupabaseClient, input: { projectId:
       p_project_id: input.projectId,
       p_building_id: input.buildingId,
       p_day_report_id: reportId,
-      p_event_type: input.type,
+      p_event_type: fallbackType,
       p_title: input.title,
       p_description: input.description,
       p_severity: input.severity,
       p_immediate_measure: input.immediateMeasure,
       p_confidential: input.confidential,
-      p_occurred_at: new Date().toISOString(),
-      p_idempotency_key: input.idempotencyKey ?? `hse:${crypto.randomUUID()}`,
+      p_occurred_at: occurredAt,
+      p_idempotency_key: idempotencyKey,
     });
   }
   fail(result.error);

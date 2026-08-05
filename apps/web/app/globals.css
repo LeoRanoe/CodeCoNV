@@ -8425,6 +8425,249 @@ textarea:focus-visible {
 .quick-issue-presets button.active { background: var(--green-soft); border-color: #7fbead; color: var(--green); font-weight: 750; }
 
 /*
+ * The HSE observation / issue screen the client drew: twelve numbered sections in two
+ * columns, with the head of the form on top and the action bar underneath. The numbers
+ * are the client's own — they are how the form is read out loud on site — so they are
+ * part of the heading instead of decoration.
+ */
+.hse-issue-form { gap: 16px; }
+.hse-issue-context { grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); }
+.hse-status-preview { color: var(--green); }
+.hse-draft-notice { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; }
+
+.hse-issue-columns {
+  align-items: start;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.hse-issue-column { display: grid; gap: 14px; }
+
+.hse-issue-section {
+  background: #fbfdfc;
+  border: 1px solid var(--ink-200);
+  border-radius: 13px;
+  display: grid;
+  gap: 11px;
+  padding: 14px;
+}
+.hse-issue-section > h3 {
+  align-items: center;
+  color: var(--ink-700);
+  display: flex;
+  font-size: 11.5px;
+  font-weight: 780;
+  gap: 7px;
+  letter-spacing: .04em;
+  margin: 0;
+  text-transform: uppercase;
+}
+.hse-section-number {
+  background: var(--ink-100);
+  border-radius: 7px;
+  color: var(--ink-700);
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  justify-content: center;
+  min-width: 21px;
+  padding: 3px 5px;
+}
+.hse-required { color: var(--red); font-style: normal; }
+.hse-optional { color: var(--ink-500); font-style: normal; font-weight: 600; text-transform: none; }
+
+/* Section 1: one tile per kind of issue, so the choice is made with a thumb. */
+.hse-tile-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.hse-tile {
+  align-items: center;
+  background: var(--paper);
+  border: 1px solid var(--ink-200);
+  border-radius: 11px;
+  color: var(--ink-700);
+  cursor: pointer;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  min-height: 74px;
+  padding: 11px 7px;
+  text-align: center;
+}
+.hse-tile span { font-size: 11px; font-weight: 650; line-height: 1.25; }
+.hse-tile:hover { border-color: var(--ink-300); }
+.hse-tile.active {
+  background: var(--signal-soft);
+  border-color: var(--signal);
+  box-shadow: inset 0 0 0 1px var(--signal);
+  color: var(--signal-dark);
+  font-weight: 780;
+}
+
+/* Section 3: the four steps of severity, side by side and never hidden in a dropdown. */
+.hse-severity-row { display: grid; gap: 8px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.hse-severity {
+  align-items: center;
+  background: var(--paper);
+  border: 1px solid var(--ink-200);
+  border-radius: 10px;
+  color: var(--ink-700);
+  cursor: pointer;
+  display: flex;
+  font-size: 11.5px;
+  gap: 6px;
+  justify-content: center;
+  min-height: 40px;
+  padding: 8px 6px;
+}
+.hse-severity-low svg { color: var(--green); }
+.hse-severity-medium svg { color: var(--yellow); }
+.hse-severity-high svg { color: var(--signal); }
+.hse-severity-critical svg { color: var(--red); }
+.hse-severity.active { font-weight: 780; }
+.hse-severity-low.active { background: var(--green-soft); border-color: #7fbead; color: var(--green); }
+.hse-severity-medium.active { background: var(--yellow-soft); border-color: #ddb75c; color: var(--yellow); }
+.hse-severity-high.active { background: var(--signal-soft); border-color: var(--signal); color: var(--signal-dark); }
+.hse-severity-critical.active { background: var(--red-soft); border-color: var(--red); color: var(--red); }
+
+.hse-field-foot { align-items: center; display: flex; justify-content: space-between; gap: 9px; }
+.hse-counter { color: var(--ink-500); font-size: 10.5px; }
+.hse-description-field textarea { min-height: 108px; }
+
+.hse-responsible-field,
+.hse-due-field { align-items: center; display: flex; gap: 9px; }
+.hse-responsible-field svg,
+.hse-due-field svg { color: var(--ink-500); flex: 0 0 auto; }
+.hse-responsible-field select,
+.hse-due-field input { flex: 1; min-width: 0; }
+
+/* Section 9: what the deadline, the priority and the owner become once it is submitted. */
+.hse-issue-derived {
+  background: var(--paper);
+  border: 1px solid var(--ink-200);
+  border-radius: 11px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 11px 12px;
+}
+.hse-issue-derived > div { display: grid; gap: 4px; justify-items: start; min-width: 0; }
+.hse-issue-derived small { color: var(--ink-500); font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.hse-issue-derived strong { color: var(--ink-900); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+.hse-issue-assignee { grid-column: 1 / -1; }
+.hse-priority-badge,
+.hse-status-badge {
+  border-radius: 7px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  padding: 4px 8px;
+  text-transform: uppercase;
+}
+.hse-status-badge { background: var(--blue-soft); color: var(--blue); }
+.hse-priority-low { background: var(--ink-100); color: var(--ink-700); }
+.hse-priority-normal { background: var(--green-soft); color: var(--green); }
+.hse-priority-high { background: var(--signal-soft); color: var(--signal-dark); }
+.hse-priority-critical { background: var(--red); color: #fff; }
+
+/* Section 5: where in the works, and where on earth. */
+.hse-location-card {
+  align-items: center;
+  background: var(--paper);
+  border: 1px solid var(--ink-200);
+  border-radius: 11px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 11px 12px;
+}
+.hse-location-readout { align-items: center; display: flex; gap: 9px; min-width: 0; }
+.hse-location-readout svg { color: var(--signal); flex: 0 0 auto; }
+.hse-location-readout > div { display: grid; gap: 2px; min-width: 0; }
+.hse-location-readout strong { color: var(--ink-900); font-size: 12.5px; }
+.hse-location-readout span { color: var(--ink-600); font-size: 10.5px; }
+.hse-location-buttons { display: flex; flex-wrap: wrap; gap: 7px; }
+
+/* Section 7: the measures that were already taken, ticked instead of typed. */
+.hse-action-grid { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.hse-action-check {
+  align-items: center;
+  background: var(--paper);
+  border: 1px solid var(--ink-200);
+  border-radius: 10px;
+  color: var(--ink-700);
+  cursor: pointer;
+  display: flex;
+  font-size: 11.5px;
+  gap: 8px;
+  line-height: 1.3;
+  min-height: 42px;
+  padding: 8px 10px;
+}
+.hse-action-check.active { background: var(--green-soft); border-color: #7fbead; color: var(--green); font-weight: 700; }
+.hse-action-check input[type="checkbox"] { flex: 0 0 auto; }
+.hse-action-other { grid-column: 1 / -1; }
+.hse-action-other svg { color: var(--ink-500); flex: 0 0 auto; }
+.hse-action-other input[type="text"] {
+  background: transparent;
+  border: 0;
+  color: var(--ink-900);
+  flex: 1;
+  font-size: 11.5px;
+  min-width: 0;
+  outline: none;
+}
+
+/* The bar the client drew under the form: leave, park, count, submit. */
+.hse-issue-actions {
+  align-items: center;
+  border-top: 1px solid var(--ink-100);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  padding-top: 13px;
+}
+.hse-issue-actions .primary-button { margin-left: auto; }
+.hse-attachment-count {
+  align-items: center;
+  color: var(--ink-600);
+  display: flex;
+  font-size: 11.5px;
+  gap: 6px;
+}
+
+/*
+ * In one column the sections read in the client's own numbering — 1 to 12 — instead of
+ * down the left column and back up the right one. The two columns exist for the desktop
+ * screen; the numbers exist for the person reading the form out loud on site.
+ */
+@media (max-width: 900px) {
+  .hse-issue-columns { display: flex; flex-direction: column; }
+  .hse-issue-column { display: contents; }
+  .hse-order-1 { order: 1; }
+  .hse-order-2 { order: 2; }
+  .hse-order-3 { order: 3; }
+  .hse-order-4 { order: 4; }
+  .hse-order-5 { order: 5; }
+  .hse-order-6 { order: 6; }
+  .hse-order-7 { order: 7; }
+  .hse-order-8 { order: 8; }
+  .hse-order-9 { order: 9; }
+  .hse-order-10 { order: 10; }
+  .hse-order-11 { order: 11; }
+  .hse-order-12 { order: 12; }
+}
+@media (max-width: 560px) {
+  .hse-tile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hse-severity-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hse-action-grid { grid-template-columns: 1fr; }
+  .hse-issue-actions .primary-button { margin-left: 0; width: 100%; }
+}
+
+/*
  * The workforce screen: who is on site, per contractor and per trade. It reuses the shape the
  * old workforce log had — a context strip, an add row and a counted list — because that is the
  * layout the client already knows from the screen this one replaces.
