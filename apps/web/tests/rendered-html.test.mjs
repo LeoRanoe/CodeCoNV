@@ -956,7 +956,8 @@ test("processes the five annotated field screens from 31 July", async () => {
   assert.match(picker, /export function BuildingMultiPicker/);
   assert.match(app, /workPackageOptions/);
   assert.match(app, /Piling and foundations/);
-  assert.match(app, /Location on drawing|Locatie op tekening/);
+  // The field is named after what it holds — the client's own word is PDF.
+  assert.match(app, /Location on the PDF drawing|Locatie op de PDF-tekening/);
   assert.match(app, /project-drawings/);
   assert.match(app, /ref=\{cameraInputRef\}[^>]*capture="environment"/);
   // A photo in a record still shows up under it, now through the shared photo block that
@@ -1033,7 +1034,9 @@ test("processes the second batch of annotated screens from 31 July", async () =>
   assert.match(workspace, /documentIssuerOptions/);
   assert.match(workspace, /technical_instruction: \[\],/);
   assert.doesNotMatch(workspace, /Replacing generator of Central Lab/);
-  assert.match(workspace, /Building · or project-wide|Gebouw · of projectbreed/);
+  // A controlled document can apply to the whole project; the building field is the same
+  // one as everywhere else, with "All buildings" as its first option.
+  assert.match(workspace, /<BuildingPicker id="register-building"[^/]*allowAll/);
   assert.match(workspace, /registerRecordBuildingId/);
   assert.match(operations, /buildingId: string \| null;/);
 
@@ -1098,7 +1101,7 @@ test("processes the third batch of annotated screens from 31 July", async () => 
   assert.doesNotMatch(workspace, /Initial completion date|Eerste opleverdatum/);
 
   // A register item can be about general material, and a delivery is judged and counted.
-  assert.match(workspace, /Building · or general material|Gebouw · of algemeen materiaal/);
+  assert.match(workspace, /<BuildingPicker id="register-building"/);
   assert.match(workspace, /registerQuantityTypes/);
   assert.match(workspace, /Does the delivered material comply\?|Voldoet het geleverde materiaal\?/);
   assert.match(workspace, /text\("Quantity", "Hoeveelheid"\)/);
@@ -1154,8 +1157,10 @@ test("fixes what the client saw on the deployed build", async () => {
   // Sketching by hand, saved as a photo along the existing evidence road.
   assert.match(sketch, /export function SketchPad/);
   assert.match(sketch, /image\/png/);
+  // The sketch stays where a sketch is made on site — inside a field record. The client
+  // crossed it off the register form on 5 August.
   assert.match(app, /Make a sketch|Schets maken/);
-  assert.match(workspace, /Make a sketch|Schets maken/);
+  assert.doesNotMatch(workspace, /Make a sketch|Schets maken/);
   assert.match(styles, /\.sketch-canvas/);
 });
 
@@ -1942,7 +1947,7 @@ test("processes the annotated screens of 4 August: ordered photos, a named pin, 
   assert.match(pinMigration, /elsif p_linked_record_type = 'registration' then/);
   assert.match(pinMigration, /from public\.site_registrations registration/);
   assert.match(drawings, /pendingRecord\?: \{ label: string; title: string;/);
-  assert.match(drawings, /linkedRecordType: "observation"/);
+  assert.match(drawings, /linkedRecordType: incomingFinding \? "observation"/);
   assert.doesNotMatch(drawings, /\["freehand", PenLine/);
   assert.doesNotMatch(drawings, /Select item to be linked|Selecteer het te koppelen item/);
   assert.doesNotMatch(drawings, /const linkOptions = useMemo/);
@@ -2026,4 +2031,65 @@ test("covers section 4.3 of the product plan on the workforce screen", async () 
 
   // A visitor is on site but is not manning the work, so no headcount counts them.
   assert.match(app, /\(row\.entry_type \?\? "workforce"\) === "workforce"/);
+});
+
+test("processes the annotated screens of 5 August: one building field, a signed inspection, the HSE heading and a delivery of several lines", async () => {
+  const [app, operations, drawings, media, hseMigration, styles] = await Promise.all([
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/drawing-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/media-library-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202608050002_hse_category_and_inspection_signature.sql", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // #26 and #25: "uniform maken" / "niet uniform" — every building field is the same
+  // component with the same words, instead of a dropdown with its own label per screen.
+  assert.doesNotMatch(operations, /<BuildingPicker[^/]*label=/);
+  assert.doesNotMatch(media, /<BuildingPicker[^/]*label=/);
+  assert.match(operations, /<BuildingPicker id="inspection-filter-building"/);
+  assert.doesNotMatch(operations, /Building · or general material|Gebouw · of algemeen materiaal/);
+
+  // #26: the inspection date filter offers the days that actually carry an inspection.
+  assert.match(operations, /const inspectionDates = Array\.from\(new Set\(data\.inspections/);
+  assert.match(operations, /All dates|Alle datums/);
+  assert.doesNotMatch(operations, /<input type="date" value=\{inspectionFilterDate\}/);
+
+  // #26 and #26A: the checklist can be pinned on the drawing, is signed before it can be
+  // completed, and can raise the NCR itself.
+  assert.match(operations, /Pin this location on the drawing|Locatie op de tekening pinnen/);
+  assert.match(drawings, /initialInspectionId\?: string;/);
+  assert.match(drawings, /linkedRecordType: incomingFinding \? "observation" : "inspection"/);
+  assert.match(operations, /Sign as the inspector|Ondertekenen als inspecteur/);
+  assert.match(operations, /disabled=\{busy \|\| !inspectionSignature/);
+  assert.match(operations, /const raiseNcrFromInspection = \(inspection: Inspection\)/);
+  assert.match(operations, /Raise an NCR from this checklist|NCR opstellen vanuit deze checklist/);
+  assert.match(hseMigration, /add column if not exists signature_image text/);
+
+  // #24: Health, Safety or Environmental, the two texts under each other, and the app
+  // saying out loud that day, date and time come by themselves.
+  assert.match(hseMigration, /hse_category in \('health','safety','environmental'\)/);
+  assert.match(hseMigration, /p_hse_category text/);
+  assert.match(operations, /Health, Safety or Environmental|Health, Safety of Environmental/);
+  assert.match(operations, /category: "safety"/);
+  assert.doesNotMatch(operations, /Different HSE situation|Andere HSE-situatie/);
+  assert.match(operations, /Day, date and time are recorded automatically|Dag, datum en tijd worden automatisch vastgelegd/);
+
+  // #25: the form says it is a materials delivery, the format hides away, a delivery is
+  // several lines with their own words, and the crossed-out fields are gone.
+  assert.match(operations, /<h2>\{registerNames\[registerForm\.type\]/);
+  assert.doesNotMatch(operations, /Add project register item|Projectregister aanvullen/);
+  assert.match(operations, /register-type-switch/);
+  assert.match(operations, /const \[registerLines, setRegisterLines\]/);
+  assert.match(operations, /Add a line|Regel toevoegen/);
+  assert.match(operations, /Description · optional|Omschrijving · optioneel/);
+  assert.match(operations, /lines: deliveryLines\.map/);
+  assert.doesNotMatch(operations, /Different title or document content|Andere titel of documentinhoud/);
+  assert.doesNotMatch(operations, /Involved party|Betrokken partij/);
+  assert.doesNotMatch(operations, /sketch-open-button/);
+  assert.match(styles, /\.register-line \{/);
+
+  // #22: the client calls it a PDF, so the field does too.
+  assert.match(app, /Location on the PDF drawing|Locatie op de PDF-tekening/);
+  assert.match(app, /No PDF selected|Geen PDF gekozen/);
 });

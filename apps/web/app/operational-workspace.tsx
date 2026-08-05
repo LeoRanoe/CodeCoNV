@@ -9,6 +9,7 @@ import {
   CalendarRange,
   CheckCircle2,
   ClipboardCheck,
+  Clock3,
   CloudSun,
   Copy,
   DatabaseBackup,
@@ -23,10 +24,10 @@ import {
   MapPin,
   MessageCircle,
   PackageCheck,
-  PenLine,
   Plus,
   RotateCcw,
   Settings,
+  ShieldAlert,
   ShieldCheck,
   Smartphone,
   Users,
@@ -43,7 +44,6 @@ import { AgreementSignatureFields, agreementSignatureDetails, agreementSummaryLi
 import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
-import { SketchPad } from "@/app/sketch-pad";
 import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { VisualEvidenceWorkspace } from "@/app/visual-evidence-workspace";
@@ -93,6 +93,7 @@ import {
   downloadManualBackup,
   ensureProjectDayReport,
   finishInspection,
+  signInspection,
   importProjectBoq,
   installChecklistLibraryTemplate,
   loadInspectionResponses,
@@ -642,6 +643,8 @@ function ProjectOperations({
   /** Set when the photo library asked for the 360° upload form instead of a normal photo. */
   const [visual360Intent, setVisual360Intent] = useState(false);
   const [drawingFindingId, setDrawingFindingId] = useState("");
+  /** The checklist that was sent to the drawings screen to have its location pinned. */
+  const [drawingInspectionId, setDrawingInspectionId] = useState("");
   const [dailyWorkView, setDailyWorkView] = useState<DailyWorkView>("works_ongoing");
   const [showForm, setShowForm] = useState(initialTab !== "home");
   const [activeInspection, setActiveInspection] = useState<Inspection | null>(null);
@@ -651,6 +654,8 @@ function ProjectOperations({
   const [inspectionAnswers, setInspectionAnswers] = useState<Record<string, InspectionAnswer>>({});
   const [inspectionPhotos, setInspectionPhotos] = useState<PhotoEvidence[]>([]);
   const [inspectionPhotoError, setInspectionPhotoError] = useState("");
+  /** The signature under the completed checklist. */
+  const [inspectionSignature, setInspectionSignature] = useState<HandwrittenSignature | null>(null);
   const [findingForm, setFindingForm] = useState({
     type: "deficiency",
     title: "",
@@ -680,7 +685,7 @@ function ProjectOperations({
   const [findingPhotoError, setFindingPhotoError] = useState("");
   /** The record that was just submitted, so the link to the contractor is one tap away. */
   const [submittedFinding, setSubmittedFinding] = useState<Finding | null>(null);
-  const [hseForm, setHseForm] = useState({ type: "unsafe_condition", title: "", description: "", severity: "medium", immediateMeasure: "", confidential: false });
+  const [hseForm, setHseForm] = useState({ type: "unsafe_condition", category: "safety", title: "", description: "", severity: "medium", immediateMeasure: "", confidential: false });
   const [hsePhotos, setHsePhotos] = useState<PhotoEvidence[]>([]);
   // One short text per evidence photo, in the same order as the photos themselves.
   const [hsePhotoError, setHsePhotoError] = useState("");
@@ -703,11 +708,14 @@ function ProjectOperations({
   const [inspectionFilterDate, setInspectionFilterDate] = useState("");
   const [registerDrawingId, setRegisterDrawingId] = useState("");
   const [registerOutcome, setRegisterOutcome] = useState("");
-  const [registerQuantity, setRegisterQuantity] = useState("");
-  const [registerUnit, setRegisterUnit] = useState("");
+  /**
+   * A delivery is rarely one line: "ik moet meer kunnen invoeren onder elkaar", with
+   * "wel optie voor omschrijving extra". So the quantity is a list, each line with its own
+   * unit and its own words, and the register keeps every line.
+   */
+  const [registerLines, setRegisterLines] = useState<Array<{ quantity: string; unit: string; description: string }>>([{ quantity: "", unit: "", description: "" }]);
   const [registerPhotos, setRegisterPhotos] = useState<PhotoEvidence[]>([]);
   const [registerPhotoError, setRegisterPhotoError] = useState("");
-  const [registerSketching, setRegisterSketching] = useState(false);
   // A module reached from outside — the bottom bar, a deadline row, the back button —
   // opens the same way as one chosen in the switcher.
   useEffect(() => {
@@ -773,6 +781,13 @@ function ProjectOperations({
     }
     return true;
   });
+  /** The days this project actually inspected, newest first, for the lookup. */
+  const inspectionDates = Array.from(new Set(data.inspections
+    .map((inspection) => inspection.completed_at ?? inspection.started_at ?? inspection.planned_at)
+    .filter((stamp): stamp is string => Boolean(stamp))
+    .map((stamp) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(new Date(stamp)))))
+    .sort((left, right) => right.localeCompare(left));
+  const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(new Date());
   const inspectionTemplates = data.templates
     .filter((template) => template.module === "inspection" && template.status === "published")
     .sort((left, right) => {
@@ -836,6 +851,12 @@ function ProjectOperations({
     text("Inspect the correction and verify compliance.", "Inspecteer het herstel en verifieer dat het voldoet."),
     text("Stop the affected work pending an approved correction.", "Stop het betrokken werk tot een goedgekeurde correctie."),
   ];
+  /** The three headings of the client's HSE form, as they read in a list. */
+  const hseCategoryLabels: Record<string, string> = {
+    health: text("Health", "Health"),
+    safety: text("Safety", "Safety"),
+    environmental: text("Environmental", "Environmental"),
+  };
   const hsePresets = [
     { type: "positive_observation", severity: "low", title: text("Safe work observed", "Veilig werk waargenomen"), description: text("The work was performed safely and according to the agreed control measures.", "Het werk is veilig en volgens de afgesproken beheersmaatregelen uitgevoerd."), immediateMeasure: text("Positive feedback was given to the team.", "Positieve feedback is aan het team gegeven.") },
     { type: "unsafe_condition", severity: "high", title: text("Unsafe work area", "Onveilige werkzone"), description: text("The work area was not sufficiently secured or marked.", "De werkzone was onvoldoende afgezet of gemarkeerd."), immediateMeasure: text("Work was paused and the area was secured.", "Werk is gepauzeerd en de zone is beveiligd.") },
@@ -1061,6 +1082,29 @@ function ProjectOperations({
     ),
   });
 
+  /**
+   * From a checklist straight into the formal report. The client asked for the option to
+   * pick an NCR from the inspection screen; the NCR then opens with this checklist as its
+   * reference, so the two records point at each other from the start.
+   */
+  const raiseNcrFromInspection = (inspection: Inspection) => {
+    const failed = activeTemplate?.items.filter((item) => inspectionAnswers[item.id]?.result === "fail" || inspectionAnswers[item.id]?.result === "no") ?? [];
+    setFindingForm((current) => ({
+      ...current,
+      type: "ncr",
+      referenceChecklist: inspection.inspection_number,
+      title: current.title || inspection.title,
+      description: current.description || (failed.length
+        ? `${text("Failed checkpoints:", "Afgekeurde controlepunten:")}\n${failed.map((item) => `- ${item.prompt}`).join("\n")}`
+        : ""),
+    }));
+    setFindingBuildingId(inspection.building_id);
+    setFindingLocationNodeId(inspection.location_node_id ?? "");
+    setShowForm(true);
+    switchTab("ncr");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const submitInspection = async () => {
     if (!activeInspection || !activeTemplate) return;
     if (activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))) return;
@@ -1068,6 +1112,7 @@ function ProjectOperations({
       async () => {
         const effectiveReportId = await ensureProjectDayReport(client, projectId, reportId);
         await finishInspection(client, activeInspection, inspectionAnswers);
+        if (inspectionSignature) await signInspection(client, activeInspection.id, inspectionSignature);
         if (inspectionPhotos.length) {
           const folderName = text("Inspections", "Inspecties");
           const photoBuildingId = activeInspection.building_id;
@@ -1393,7 +1438,7 @@ function ProjectOperations({
       text("HSE event recorded; every photo is secured locally and linked during automatic sync.", "HSE-gebeurtenis vastgelegd; elke foto is lokaal veiliggesteld en wordt automatisch gekoppeld."),
     );
     if (okay) {
-      setHseForm({ type: "unsafe_condition", title: "", description: "", severity: "medium", immediateMeasure: "", confidential: false });
+      setHseForm({ type: "unsafe_condition", category: "safety", title: "", description: "", severity: "medium", immediateMeasure: "", confidential: false });
       setHsePhotos([]);
       setHsePhotoError("");
       setHseLocationNodeId("");
@@ -1411,6 +1456,8 @@ function ProjectOperations({
       ? registerContextLabel
       : buildings.find((building) => building.id === registerBuildingId)?.name ?? buildingName;
     const selectedDrawing = registerDrawings.find((drawing) => drawing.id === registerDrawingId);
+    // Only the lines that were actually filled in; an empty extra line is not a delivery.
+    const deliveryLines = registerLines.filter((line) => line.quantity.trim() !== "" && Number.isFinite(Number(line.quantity)));
     const baseDetails = controlledRegister
       ? createControlledDocumentDetails(registerForm, {
           projectName,
@@ -1421,8 +1468,11 @@ function ProjectOperations({
       : {
         description: registerForm.details,
         outcome: registerOutcome || null,
-        quantity: registerQuantity.trim() ? Number(registerQuantity) : null,
-        unit: registerUnit.trim() || null,
+        // Every line of the delivery, and the first one still as the plain quantity and
+        // unit the register and the reports already read.
+        lines: deliveryLines.map((line) => ({ quantity: Number(line.quantity), unit: line.unit.trim() || null, description: line.description.trim() || null })),
+        quantity: deliveryLines.length ? Number(deliveryLines[0].quantity) : null,
+        unit: deliveryLines[0]?.unit.trim() || null,
         // An agreement carries the two parties that made it and their signatures.
         ...(agreementRegister ? agreementSignatureDetails(agreementForm) : {}),
       };
@@ -1563,8 +1613,7 @@ function ProjectOperations({
       setAgreementForm({ ...emptyAgreementSignature });
       setRegisterFiles([]);
       setRegisterOutcome("");
-      setRegisterQuantity("");
-      setRegisterUnit("");
+      setRegisterLines([{ quantity: "", unit: "", description: "" }]);
       setRegisterPhotos([]);
       setRegisterPhotoError("");
       setRegisterDrawingId("");
@@ -1739,7 +1788,31 @@ function ProjectOperations({
                 markupContext={{ ...markupOptions, defaultBuildingId: activeInspection.building_id }}
               />
               {inspectionPhotoError ? <p className="field-error" role="alert">{inspectionPhotoError}</p> : null}
-              <div className="form-actions checklist-sticky-actions"><button className="secondary-button" type="button" onClick={() => setActiveInspection(null)}>{text("Complete later", "Later afronden")}</button><button className="primary-button" type="button" disabled={busy || activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))} onClick={() => void submitInspection()}>{busy ? <Loader2 className="spin" size={15} /> : <FileCheck2 size={15} />} {text("Complete inspection", "Inspectie afronden")}</button></div>
+              {/* "Geen optie om te ondertekenen! Naam etc." — the person who walked the
+                  checklist signs it, here, before it is completed. */}
+              <SignatureField
+                label={text("Sign as the inspector", "Ondertekenen als inspecteur")}
+                declaration={text(
+                  "By signing you confirm that you checked every point of this checklist yourself.",
+                  "Met je handtekening bevestig je dat je elk punt van deze checklist zelf hebt gecontroleerd.",
+                )}
+                hint={text("The signature, the name and the moment are stored with the inspection.", "De handtekening, de naam en het moment worden bij de inspectie opgeslagen.")}
+                nameSuggestion={currentUserName}
+                nameOptions={documentIssuerOptions}
+                value={inspectionSignature}
+                onChange={setInspectionSignature}
+              />
+              {/* "Locatie pinnen": the checklist itself gets its spot on the drawing. */}
+              <button className="secondary-button" type="button" onClick={() => { setDrawingInspectionId(activeInspection.id); setDrawingFindingId(""); switchTab("drawings"); }}>
+                <MapPin size={15} /> {text("Pin this location on the drawing", "Locatie op de tekening pinnen")}
+              </button>
+              {/* "Optie om NCR te kiezen vanuit hier" — a failed point can become the
+                  formal report straight away, with the checklist as its reference. */}
+              <button className="secondary-button inspection-ncr-button" type="button" onClick={() => raiseNcrFromInspection(activeInspection)}>
+                <ShieldAlert size={15} /> {text("Raise an NCR from this checklist", "NCR opstellen vanuit deze checklist")}
+              </button>
+              <div className="form-actions checklist-sticky-actions"><button className="secondary-button" type="button" onClick={() => setActiveInspection(null)}>{text("Complete later", "Later afronden")}</button><button className="primary-button" type="button" disabled={busy || !inspectionSignature || activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))} onClick={() => void submitInspection()}>{busy ? <Loader2 className="spin" size={15} /> : <FileCheck2 size={15} />} {text("Complete inspection", "Inspectie afronden")}</button></div>
+              {!inspectionSignature ? <p className="form-intro">{text("Sign the checklist to complete it.", "Onderteken de checklist om hem af te ronden.")}</p> : null}
             </div>
           ) : null}
           {showForm && !activeInspection ? (
@@ -1771,9 +1844,17 @@ function ProjectOperations({
           <div className="operation-form inspection-search">
             <div className="operation-form-heading"><div><span className="record-number">{text("Inspection lookup", "Inspecties terugvinden")}</span><h2>{text("Search by building, exact location and date", "Zoek op gebouw, exacte locatie en datum")}</h2></div><span>{filteredInspections.length}</span></div>
             <div className="form-grid-2">
-              <label className="form-field"><span>{text("Building", "Gebouw")}</span><select value={inspectionFilterBuildingId} onChange={(event) => { setInspectionFilterBuildingId(event.target.value); setInspectionFilterLocationNodeId(""); }}><option value="">{text("All buildings", "Alle gebouwen")}</option>{buildings.map((building) => <option value={building.id} key={building.id}>{building.name}</option>)}</select></label>
+              {/* The same building field as every other form on this screen. */}
+              <BuildingPicker id="inspection-filter-building" buildings={buildings} value={inspectionFilterBuildingId || ALL_BUILDINGS} onChange={(next) => { setInspectionFilterBuildingId(next === ALL_BUILDINGS ? "" : next); setInspectionFilterLocationNodeId(""); }} allowAll />
               <label className="form-field"><span>{text("Exact location", "Exacte locatie")}</span><select value={inspectionFilterLocationNodeId} onChange={(event) => setInspectionFilterLocationNodeId(event.target.value)}><option value="">{text("All locations", "Alle locaties")}</option>{data.locationNodes.filter((node) => !inspectionFilterBuildingId || node.building_id === inspectionFilterBuildingId).map((node) => <option value={node.id} key={node.id}>{locationBreadcrumb(data.locationNodes, node.id)}</option>)}</select></label>
-              <label className="form-field"><span>{text("Inspection date", "Inspectiedatum")}</span><input type="date" value={inspectionFilterDate} onChange={(event) => setInspectionFilterDate(event.target.value)} /></label>
+              {/* "Automatisch": the dates come from the inspections themselves, so a date
+                  that has nothing on it cannot be chosen at all. */}
+              <label className="form-field"><span>{text("Inspection date", "Inspectiedatum")}</span>
+                <select value={inspectionFilterDate} onChange={(event) => setInspectionFilterDate(event.target.value)}>
+                  <option value="">{text("All dates", "Alle datums")}</option>
+                  {inspectionDates.map((day) => <option value={day} key={day}>{day === todayKey ? text(`Today · ${day}`, `Vandaag · ${day}`) : formatDate(`${day}T12:00:00-03:00`, locale)}</option>)}
+                </select>
+              </label>
               <button className="secondary-button" type="button" onClick={() => { setInspectionFilterBuildingId(""); setInspectionFilterLocationNodeId(""); setInspectionFilterDate(""); }}>{text("Clear filters", "Wis filters")}</button>
             </div>
           </div>
@@ -1784,7 +1865,7 @@ function ProjectOperations({
             id: inspection.id,
             icon: ClipboardCheck,
             title: inspection.title,
-            meta: `${inspection.inspection_number} · ${recordContextLabel(inspection.building_id, inspection.location_node_id)} · ${formatDate(inspection.completed_at ?? inspection.started_at, locale)}`,
+            meta: `${inspection.inspection_number} · ${recordContextLabel(inspection.building_id, inspection.location_node_id)} · ${formatDate(inspection.completed_at ?? inspection.started_at, locale)}${inspection.signed_by ? ` · ${text("signed by", "ondertekend door")} ${inspection.signed_by}` : ""}`,
             status: inspection.status.replaceAll("_", " "),
             tone: inspection.status === "passed" ? "green" : inspection.status === "failed" ? "red" : "",
             open: ["planned", "in_progress", "ready_for_reinspection", "failed"].includes(inspection.status)
@@ -2031,19 +2112,31 @@ function ProjectOperations({
           {showForm ? (
             <div className="operation-form">
               <h2>{text("HSE observation or incident", "HSE-observatie of incident")}</h2>
+              {/* "Kan ik hier kiezen tussen Health, Safety, Environmental?" — that is the
+                  heading of the client's own HSE form, above the situation itself. */}
+              <div className="click-answer-block">
+                <strong>{text("Health, Safety or Environmental", "Health, Safety of Environmental")}</strong>
+                <div className="quick-issue-presets">
+                  {([["health", text("Health", "Health")], ["safety", text("Safety", "Safety")], ["environmental", text("Environmental", "Environmental")]] as const).map(([value, label]) => (
+                    <button className={hseForm.category === value ? "active" : ""} type="button" onClick={() => setHseForm({ ...hseForm, category: value })} key={value}>{label}</button>
+                  ))}
+                </div>
+              </div>
               {/* The situation chips already set the type. A second Type dropdown next to
                   them said the same thing twice, so it moved into the manual block below. */}
               <div className="quick-issue-presets" aria-label={text("Choose a standard HSE record", "Kies een standaard HSE-registratie")}>{hsePresets.map((preset) => <button className={hseForm.title === preset.title ? "active" : ""} type="button" onClick={() => setHseForm({ ...hseForm, ...preset })} key={preset.title}>{preset.title}</button>)}</div>
               <label className="form-field"><span>{text("Severity", "Ernst")}</span><select value={hseForm.severity} onChange={(event) => setHseForm({ ...hseForm, severity: event.target.value })}><option value="low">{text("Low", "Laag")}</option><option value="medium">{text("Medium", "Middel")}</option><option value="high">{text("High", "Hoog")}</option><option value="critical">{text("Critical", "Kritiek")}</option></select></label>
-              <details className="optional-text-entry">
-                <summary>{text("Different HSE situation", "Andere HSE-situatie")}</summary>
-                <div className="form-grid">
-                  <label className="form-field"><span>{text("Type", "Type")}</span><select value={hseForm.type} onChange={(event) => setHseForm({ ...hseForm, type: event.target.value })}><option value="positive_observation">{text("Positive observation", "Positieve observatie")}</option><option value="unsafe_act">{text("Unsafe act", "Onveilige handeling")}</option><option value="unsafe_condition">{text("Unsafe condition", "Onveilige situatie")}</option><option value="near_miss">Near miss</option><option value="incident">Incident</option><option value="stop_work">Stop work</option><option value="toolbox">Toolbox meeting</option></select></label>
-                  <label className="form-field"><span>{text("Title", "Titel")}</span><input value={hseForm.title} onChange={(event) => setHseForm({ ...hseForm, title: event.target.value })} /></label>
-                  <label className="form-field"><span>{text("What was observed?", "Wat is waargenomen?")}</span><textarea value={hseForm.description} onChange={(event) => setHseForm({ ...hseForm, description: event.target.value })} rows={3} /><DictateButton onText={(transcript) => setHseForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} /></label>
-                  <label className="form-field"><span>{text("Immediate measure", "Directe maatregel")}</span><textarea value={hseForm.immediateMeasure} onChange={(event) => setHseForm({ ...hseForm, immediateMeasure: event.target.value })} rows={2} /><DictateButton onText={(transcript) => setHseForm((current) => ({ ...current, immediateMeasure: appendDictation(current.immediateMeasure, transcript) }))} /></label>
-                </div>
-              </details>
+              {/* "Kunnen deze 2 gelijk onder elkaar?" — the observation and the measure
+                  stand under each other, in the open, instead of side by side inside a
+                  fold-out that has to be opened first. */}
+              <div className="form-grid-2">
+                <label className="form-field"><span>{text("Type", "Type")}</span><select value={hseForm.type} onChange={(event) => setHseForm({ ...hseForm, type: event.target.value })}><option value="positive_observation">{text("Positive observation", "Positieve observatie")}</option><option value="unsafe_act">{text("Unsafe act", "Onveilige handeling")}</option><option value="unsafe_condition">{text("Unsafe condition", "Onveilige situatie")}</option><option value="near_miss">Near miss</option><option value="incident">Incident</option><option value="stop_work">Stop work</option><option value="toolbox">Toolbox meeting</option></select></label>
+                <label className="form-field"><span>{text("Title", "Titel")}</span><input value={hseForm.title} onChange={(event) => setHseForm({ ...hseForm, title: event.target.value })} /></label>
+              </div>
+              <label className="form-field"><span>{text("What was observed?", "Wat is waargenomen?")}</span><textarea value={hseForm.description} onChange={(event) => setHseForm({ ...hseForm, description: event.target.value })} rows={3} /><DictateButton onText={(transcript) => setHseForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} /></label>
+              <label className="form-field"><span>{text("Immediate measure", "Directe maatregel")}</span><textarea value={hseForm.immediateMeasure} onChange={(event) => setHseForm({ ...hseForm, immediateMeasure: event.target.value })} rows={3} /><DictateButton onText={(transcript) => setHseForm((current) => ({ ...current, immediateMeasure: appendDictation(current.immediateMeasure, transcript) }))} /></label>
+              {/* "Ik vermoed dat dag, datum & tijd zelf komen" — they do, and the form says so. */}
+              <p className="form-helper"><Clock3 size={13} /> {text(`Day, date and time are recorded automatically · ${issueDate} ${issueTime}`, `Dag, datum en tijd worden automatisch vastgelegd · ${issueDate} ${issueTime}`)}</p>
               <label className="finding-photo-capture hse-photo-capture">
                 <Camera size={22} />
                 <span><strong>{hsePhotos.length ? text(`${hsePhotos.length} photos ready`, `${hsePhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
@@ -2063,7 +2156,7 @@ function ProjectOperations({
               <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && hseBuildingId !== ALL_BUILDINGS && !hseLocationNodeId) || hseForm.title.trim().length < 3 || hseForm.description.trim().length < 3} onClick={() => void addHse()}><ShieldCheck size={15} /> {text("Save HSE record", "HSE-registratie opslaan")}</button>
             </div>
           ) : null}
-          <RecordList empty={text("No formal HSE records yet.", "Nog geen formele HSE-registraties.")} rows={data.hseEvents.map((event) => ({ id: event.id, icon: ShieldCheck, title: event.confidential ? `${event.title} · ${text("confidential", "vertrouwelijk")}` : event.title, meta: `${event.event_number} · ${recordContextLabel(event.building_id, event.location_node_id)} · ${event.event_type.replaceAll("_", " ")} · ${formatDate(event.occurred_at, locale)}`, status: event.status.replaceAll("_", " "), tone: event.severity === "critical" ? "red" : event.status === "closed" ? "green" : "" }))} />
+          <RecordList empty={text("No formal HSE records yet.", "Nog geen formele HSE-registraties.")} rows={data.hseEvents.map((event) => ({ id: event.id, icon: ShieldCheck, title: event.confidential ? `${event.title} · ${text("confidential", "vertrouwelijk")}` : event.title, meta: `${event.event_number} · ${event.hse_category ? `${hseCategoryLabels[event.hse_category] ?? event.hse_category} · ` : ""}${recordContextLabel(event.building_id, event.location_node_id)} · ${event.event_type.replaceAll("_", " ")} · ${formatDate(event.occurred_at, locale)}`, status: event.status.replaceAll("_", " "), tone: event.severity === "critical" ? "red" : event.status === "closed" ? "green" : "" }))} />
         </section>
       ) : null}
 
@@ -2071,7 +2164,10 @@ function ProjectOperations({
         <section className="operation-panel">
           {showForm ? (
             <div className={`operation-form ${controlledRegister ? "wide controlled-document-form" : ""}`}>
-              <div className="operation-form-heading"><div><span className="record-number">{controlledRegister ? text("Client-controlled form", "Klantgestuurd formulier") : text("Project register", "Projectregister")}</span><h2>{controlledRegister ? registerNames[registerForm.type] : text("Add project register item", "Projectregister aanvullen")}</h2></div>{controlledRegister ? <span className="controlled-document-badge">{projectCode} · {registerContextLabel}</span> : null}</div>
+              {/* The form says what is being recorded — Materials delivery, Agreement,
+                  RFI — instead of a general register heading with the answer hidden in a
+                  dropdown below it. */}
+              <div className="operation-form-heading"><div><span className="record-number">{controlledRegister ? text("Client-controlled form", "Klantgestuurd formulier") : text("Project register", "Projectregister")}</span><h2>{registerNames[registerForm.type] ?? text("Project register item", "Projectregistratie")}</h2></div>{controlledRegister ? <span className="controlled-document-badge">{projectCode} · {registerContextLabel}</span> : null}</div>
               {/* A controlled document starts with the project information and the dates:
                   that is the head of the paper form the client hands out. */}
               {controlledRegister ? (
@@ -2093,9 +2189,12 @@ function ProjectOperations({
                 </>
               ) : null}
               <div className="form-grid-2">
-                <BuildingPicker id="register-building" buildings={buildings} value={registerBuildingId} onChange={(next) => { setRegisterBuildingId(next); setRegisterLocationNodeId(""); }} allowAll label={controlledRegister ? text("Building · or project-wide", "Gebouw · of projectbreed") : text("Building · or general material", "Gebouw · of algemeen materiaal")} />
+                <BuildingPicker id="register-building" buildings={buildings} value={registerBuildingId} onChange={(next) => { setRegisterBuildingId(next); setRegisterLocationNodeId(""); }} allowAll />
                 <LocationPicker id="register-location" nodes={data.locationNodes} buildingId={registerBuildingId} value={registerLocationNodeId} onChange={setRegisterLocationNodeId} requiredDepth={registerBuildingId === ALL_BUILDINGS ? "building" : requiredLocationDepth} />
-                <label className="form-field"><span>{text("Register / document format", "Register / documentformaat")}</span><select value={registerForm.type} onChange={(event) => setRegisterForm({ ...emptyControlledDocumentDraft, type: event.target.value })}>{Object.entries(registerNames).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+                <details className="optional-text-entry register-type-switch">
+                  <summary>{text("Record something else", "Iets anders vastleggen")}</summary>
+                  <label className="form-field"><span>{text("Register / document format", "Register / documentformaat")}</span><select value={registerForm.type} onChange={(event) => setRegisterForm({ ...emptyControlledDocumentDraft, type: event.target.value })}>{Object.entries(registerNames).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+                </details>
                 {registerBuildingId !== ALL_BUILDINGS && registerDrawings.length ? (
                   <label className="form-field"><span>{text("Location on drawing", "Locatie op tekening")}</span>
                     <select value={registerDrawingId} onChange={(event) => setRegisterDrawingId(event.target.value)}>
@@ -2133,19 +2232,25 @@ function ProjectOperations({
                         ))}
                       </div>
                     </div>
-                    <div className="form-grid-2">
-                      <label className="form-field"><span>{text("Quantity", "Hoeveelheid")}</span><input type="number" min="0" step="0.01" value={registerQuantity} onChange={(event) => setRegisterQuantity(event.target.value)} /></label>
-                      <label className="form-field"><span>{text("Unit", "Eenheid")}</span><input value={registerUnit} onChange={(event) => setRegisterUnit(event.target.value)} placeholder={text("pcs, m³, kg", "st, m³, kg")} /></label>
+                    <div className="register-line-list">
+                      {registerLines.map((line, index) => (
+                        <div className="register-line" key={index}>
+                          <label className="form-field"><span>{text("Quantity", "Hoeveelheid")}</span><input type="number" min="0" step="0.01" value={line.quantity} onChange={(event) => setRegisterLines((lines) => lines.map((item, position) => position === index ? { ...item, quantity: event.target.value } : item))} /></label>
+                          <label className="form-field"><span>{text("Unit", "Eenheid")}</span><input value={line.unit} onChange={(event) => setRegisterLines((lines) => lines.map((item, position) => position === index ? { ...item, unit: event.target.value } : item))} placeholder={text("pcs, m³, kg", "st, m³, kg")} /></label>
+                          <label className="form-field"><span>{text("Description · optional", "Omschrijving · optioneel")}</span><input value={line.description} onChange={(event) => setRegisterLines((lines) => lines.map((item, position) => position === index ? { ...item, description: event.target.value } : item))} placeholder={text("What was delivered on this line", "Wat op deze regel is geleverd")} /></label>
+                          <button className="ghost-button register-line-remove" type="button" disabled={registerLines.length === 1} aria-label={text("Remove this line", "Verwijder deze regel")} onClick={() => setRegisterLines((lines) => lines.filter((item, position) => position !== index))}><X size={14} /></button>
+                        </div>
+                      ))}
+                      <button className="secondary-button register-line-add" type="button" onClick={() => setRegisterLines((lines) => [...lines, { quantity: "", unit: "", description: "" }])}><Plus size={15} /> {text("Add a line", "Regel toevoegen")}</button>
                     </div>
                   </div>
                 ) : null}
-                <details className="optional-text-entry">
-                  <summary>{text("Different title or document content", "Andere titel of documentinhoud")}</summary>
-                  <div className="form-grid">
-                    <label className="form-field"><span>{text("Title / reference", "Titel / referentie")}</span><input value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} /></label>
-                    <label className="form-field"><span>{text("Details, quantity, measure or decision", "Details, hoeveelheid, maatregel of besluit")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={3} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
-                  </div>
-                </details>
+                {/* The title and the words of the record stand in the open: the client
+                    crossed out the fold-out that hid them. */}
+                <div className="form-grid">
+                  <label className="form-field"><span>{text("Title / reference", "Titel / referentie")}</span><input value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} /></label>
+                  <label className="form-field"><span>{text("Details, measure or decision", "Details, maatregel of besluit")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={3} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
+                </div>
                 </>
               )}
               {controlledRegister ? <>
@@ -2219,7 +2324,7 @@ function ProjectOperations({
                 <div className="operation-alert warning"><FileCheck2 size={17} /><div><strong>{text("Numbering and metadata are automatic", "Nummering en metadata zijn automatisch")}</strong><span>{submittedRegister
                   ? text("Project, building, receipt date and audit history are filled from the current context. This form was drawn up and signed by the submitting party; CODECO's own signature belongs to the formal response below.", "Project, gebouw, ontvangstdatum en auditgeschiedenis komen uit de actuele context. Dit formulier is door de indienende partij opgesteld en ondertekend; de handtekening van CODECO hoort bij het formele antwoord hieronder.")
                   : text("Project, building, issue date, author and audit history are filled from the current context. Approval, acknowledgement and signature remain explicit human actions.", "Project, gebouw, uitgiftedatum, opsteller en auditgeschiedenis komen uit de actuele context. Goedkeuring, ontvangst en ondertekening blijven expliciete menselijke acties.")}</span></div></div>
-              </> : agreementRegister ? null : <label className="form-field"><span>{text("Involved party", "Betrokken partij")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>}
+              </> : null}
               {/* Every register item can carry site photos, with the text that says what
                   the photo shows. Documents alone were not enough for the client. */}
               <label className="finding-photo-capture register-photo-capture">
@@ -2227,8 +2332,6 @@ function ProjectOperations({
                 <span><strong>{registerPhotos.length ? text(`${registerPhotos.length} photos ready`, `${registerPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
                 <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setRegisterPhotos, setRegisterPhotoError); event.currentTarget.value = ""; }} />
               </label>
-              <button className="ghost-button sketch-open-button" type="button" onClick={() => setRegisterSketching(true)}><PenLine size={15} /> {text("Make a sketch", "Schets maken")}</button>
-              {registerSketching ? <SketchPad close={() => setRegisterSketching(false)} save={(file) => { setRegisterPhotos((current) => [...current, toPhotoEvidence(file, { category: "overview" })]); setRegisterSketching(false); }} /> : null}
               <PhotoEvidenceList
                 photos={registerPhotos}
                 setPhotos={setRegisterPhotos}
@@ -2322,7 +2425,7 @@ function ProjectOperations({
 
       {tab === "documents" ? <ProjectDocumentsHome data={data} client={client} openDrawings={() => switchTab("drawings")} openFiles={() => switchTab("files")} openRegisters={() => switchTab("registers")} createDocument={() => openTask("registers", true)} /> : null}
 
-      {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} client={client} busy={busy} run={run} initialFindingId={drawingFindingId} pendingRecord={pendingRecordPin} onPlaceRecordPin={onPlaceRecordPin} onOpenLinkedRecord={(recordType) => switchTab(recordType === "observation" ? "findings" : recordType === "inspection" ? "inspections" : recordType === "visual" ? "visual" : recordType === "registration" ? "daily" : "registers")} /> : null}
+      {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} client={client} busy={busy} run={run} initialFindingId={drawingFindingId} initialInspectionId={drawingInspectionId} pendingRecord={pendingRecordPin} onPlaceRecordPin={onPlaceRecordPin} onOpenLinkedRecord={(recordType) => switchTab(recordType === "observation" ? "findings" : recordType === "inspection" ? "inspections" : recordType === "visual" ? "visual" : recordType === "registration" ? "daily" : "registers")} /> : null}
 
       {tab === "tools" ? <FieldTools data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} parties={parties} reportId={reportId} client={client} busy={busy} run={run} /> : null}
 

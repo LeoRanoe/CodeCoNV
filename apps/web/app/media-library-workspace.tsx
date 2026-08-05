@@ -389,7 +389,7 @@ export function MediaLibraryWorkspace({
       </div>
 
       <div className="media-actions-panel">
-        <BuildingPicker id="media-library-building" buildings={buildings} value={libraryBuildingId} onChange={(next) => { setLibraryBuildingId(next); setFolderId("all"); }} label={text("Building shown / upload target", "Getoond gebouw / uploaddoel")} />
+        <BuildingPicker id="media-library-building" buildings={buildings} value={libraryBuildingId} onChange={(next) => { setLibraryBuildingId(next); setFolderId("all"); }} />
         <div className="media-kind-toggle">
           <button className={kind === "photo" ? "active" : ""} type="button" onClick={() => setKind("photo")}><ImageIcon size={16} /> {text("Photo", "Foto")}</button>
           <button className={kind === "drawing" ? "active" : ""} type="button" onClick={() => setKind("drawing")}><HardDrive size={16} /> {text("Drawing", "Tekening")}</button>

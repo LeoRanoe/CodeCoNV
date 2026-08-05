@@ -43,6 +43,8 @@ type DrawingWorkspaceProps = {
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
   /** Preselects "observation" plus this finding, so an issue can be pinned straight from its card. */
   initialFindingId?: string;
+  /** The same for a checklist that is being filled in: "locatie pinnen" on the drawing. */
+  initialInspectionId?: string;
   /**
    * The field record that is still open on the record screen. Tapping the drawing places
    * that record: the client does not want to choose from a list of everything in the
@@ -87,7 +89,7 @@ const pinTypeClass: Record<DrawingPin["linked_record_type"], string> = {
   registration: "amber",
 };
 
-export function DrawingWorkspace({ data, projectId, buildingId, buildings, client, busy, run, initialFindingId = "", pendingRecord = null, onPlaceRecordPin, onOpenLinkedRecord }: DrawingWorkspaceProps) {
+export function DrawingWorkspace({ data, projectId, buildingId, buildings, client, busy, run, initialFindingId = "", initialInspectionId = "", pendingRecord = null, onPlaceRecordPin, onOpenLinkedRecord }: DrawingWorkspaceProps) {
   const { language, text } = useLanguage();
   const maxFileSizeBytes = (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024;
   const drawings = data.files.filter((file) => file.category === "drawing" && file.status === "available" && supportedDrawingMimeTypes.includes(file.mime_type));
@@ -115,6 +117,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
     : [];
 
   const incomingFinding = initialFindingId ? data.findings.find((finding) => finding.id === initialFindingId) ?? null : null;
+  const incomingInspection = initialInspectionId ? data.inspections.find((inspection) => inspection.id === initialInspectionId) ?? null : null;
   const incomingPin = incomingFinding
     ? data.drawingPins.find((pin) => pin.linked_record_type === "observation" && pin.linked_record_id === incomingFinding.id && pin.status === "active") ?? null
     : null;
@@ -161,15 +164,15 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
       onPlaceRecordPin?.({ drawingId: activeDrawing.id, pageNumber, xRatio: nextPoint.xRatio, yRatio: nextPoint.yRatio });
       return;
     }
-    if (!incomingFinding) return;
+    if (!incomingFinding && !incomingInspection) return;
     const okay = await run(
       () => createDrawingPin(client, {
         drawingFileId: activeDrawing.id,
         pageNumber,
         xRatio: nextPoint.xRatio,
         yRatio: nextPoint.yRatio,
-        linkedRecordType: "observation",
-        linkedRecordId: incomingFinding.id,
+        linkedRecordType: incomingFinding ? "observation" : "inspection",
+        linkedRecordId: incomingFinding ? incomingFinding.id : incomingInspection!.id,
       }),
       text("The drawing location and project record are now linked and auditable.", "De tekenlocatie en het projectrecord zijn nu gekoppeld en auditeerbaar."),
     );
@@ -211,6 +214,16 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
             <span>{pendingRecord.point
               ? text("The spot is chosen. Go back to the record and save it; the pin is placed with the record's own number, name and date.", "De plek is gekozen. Ga terug naar de registratie en sla op; de pin wordt geplaatst met het eigen nummer, de naam en de datum van de registratie.")
               : text("Choose the drawing and the page, then tap the exact spot. The pin takes the name, number and date of this record.", "Kies de tekening en de pagina en tik daarna de exacte plek aan. De pin krijgt de naam, het nummer en de datum van deze registratie.")}</span>
+          </div>
+        </div>
+      ) : null}
+
+      {incomingInspection && !incomingFinding ? (
+        <div className="operation-alert success drawing-finding-handoff">
+          <MapPin size={18} />
+          <div>
+            <strong>{text(`Place ${incomingInspection.inspection_number} on a drawing`, `Plaats ${incomingInspection.inspection_number} op een tekening`)}</strong>
+            <span>{text("Choose the drawing and the page, then tap the exact spot the checklist covers.", "Kies de tekening en de pagina en tik daarna de exacte plek aan die de checklist betreft.")}</span>
           </div>
         </div>
       ) : null}
@@ -309,11 +322,11 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
           </div>
 
           <aside className="drawing-link-panel">
-            {point && (pendingRecord || incomingFinding) ? (
+            {point && (pendingRecord || incomingFinding || incomingInspection) ? (
               <div className="drawing-link-form">
                 <div>
                   <span className="record-number">{text("Placed", "Geplaatst")}</span>
-                  <h2>{pendingRecord ? pendingRecord.label : incomingFinding?.finding_number}</h2>
+                  <h2>{pendingRecord ? pendingRecord.label : incomingFinding?.finding_number ?? incomingInspection?.inspection_number}</h2>
                   <p>X {Math.round(point.xRatio * 100)}% · Y {Math.round(point.yRatio * 100)}% · {text("page", "pagina")} {pageNumber}</p>
                 </div>
                 <div className="operation-alert success">
@@ -321,10 +334,10 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                   <div>
                     <strong>{pendingRecord
                       ? text("The pin is placed when you save the record", "De pin wordt geplaatst zodra je de registratie opslaat")
-                      : text("This issue now stands on the drawing", "Dit issue staat nu op de tekening")}</strong>
+                      : text("This record now stands on the drawing", "Deze registratie staat nu op de tekening")}</strong>
                     <span>{pendingRecord
                       ? text("It takes the name, the number and the date of the record itself. Tap another spot to move it.", "Hij krijgt de naam, het nummer en de datum van de registratie zelf. Tik een andere plek aan om hem te verplaatsen.")
-                      : text("The pin carries the issue number and title, and opens the issue when it is tapped.", "De pin draagt het issuenummer en de titel en opent het issue wanneer je erop tikt.")}</span>
+                      : text("The pin carries the record number and title, and opens the record when it is tapped.", "De pin draagt het recordnummer en de titel en opent het record wanneer je erop tikt.")}</span>
                   </div>
                 </div>
                 <div className="button-row"><button className="secondary-button" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button></div>

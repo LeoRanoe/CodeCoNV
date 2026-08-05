@@ -50,6 +50,10 @@ export type Inspection = {
   planned_at: string | null;
   started_at: string | null;
   completed_at: string | null;
+  /** Who signed the completed checklist, and the signature they wrote for it. */
+  signed_by?: string | null;
+  signed_at?: string | null;
+  signature_image?: string | null;
 };
 
 export type Finding = {
@@ -119,6 +123,8 @@ export type HseEvent = {
   location_node_id: string | null;
   event_number: string;
   event_type: string;
+  /** Health, Safety or Environmental: the heading of the client's own HSE form. */
+  hse_category?: "health" | "safety" | "environmental" | null;
   title: string;
   description: string;
   severity: "low" | "medium" | "high" | "critical";
@@ -487,10 +493,10 @@ export async function loadProjectOperations(
   const [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, registerResult, boqProgressResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult, dayReportResult, fileLinkResult, dailyWorkResult] = await Promise.all([
     client.from("checklist_templates").select("id,project_id,module,code,name,description,version_number,status").or(`project_id.is.null,project_id.eq.${projectId}`).order("name"),
     client.from("checklist_library_templates").select("code,module,category,name,description,prompts,sort_order").eq("active", true).order("sort_order"),
-    client.from("inspections").select("id,building_id,location_node_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
+    client.from("inspections").select("id,building_id,location_node_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at,signed_by,signed_at,signature_image").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
     client.from("findings").select("id,building_id,location_node_id,finding_number,finding_type,title,description,severity,priority,status,responsible_party_id,assigned_user_id,due_at,cause,proposed_correction,final_measure,issue_management,verified_by,verified_at,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
     client.from("finding_progress_updates").select("id,finding_id,progress_percent,disposition,note,inspected_at,created_at").eq("project_id", projectId).order("inspected_at", { ascending: false }).limit(1000),
-    client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,title,description,severity,status,confidential,immediate_measure,occurred_at").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100),
+    client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,hse_category,title,description,severity,status,confidential,immediate_measure,occurred_at").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100),
     client.from("project_register_entries").select("id,building_id,location_node_id,register_type,entry_number,title,status,occurred_at,due_at,details").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(5000),
     client.from("boq_progress_updates").select("id,register_entry_id,building_id,progress_percent,quantity_completed,note,recorded_at,created_at").eq("project_id", projectId).order("recorded_at", { ascending: false }).limit(5000),
     client.from("files").select("id,building_id,folder_id,original_name,mime_type,size_bytes,category,status,document_code,created_at").eq("project_id", projectId).neq("status", "deleted").order("created_at", { ascending: false }).limit(500),
@@ -511,6 +517,14 @@ export async function loadProjectOperations(
   const compatibleRegisterResult = schemaFeatureMissing(registerResult.error, "location_node_id")
     ? await client.from("project_register_entries").select("id,building_id,register_type,entry_number,title,status,occurred_at,due_at,details").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(5000)
     : registerResult;
+  // The signature on an inspection and the HSE heading are new columns; a database that
+  // has not run that migration yet still has to load its records.
+  const compatibleInspectionResult = schemaFeatureMissing(inspectionResult.error, "signature_image")
+    ? await client.from("inspections").select("id,building_id,location_node_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100)
+    : inspectionResult;
+  const compatibleHseResult = schemaFeatureMissing(hseResult.error, "hse_category")
+    ? await client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,title,description,severity,status,confidential,immediate_measure,occurred_at").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100)
+    : hseResult;
   // A database that has not been given the document numbering yet still has to load; the
   // files then simply carry no code until the migration has run.
   const compatibleFileResult = schemaFeatureMissing(fileResult.error, "document_code")
@@ -530,7 +544,7 @@ export async function loadProjectOperations(
   const compatibleSettingsResult = legacySettingsSchema
     ? await client.from("project_settings").select("id,project_id,report_prefix,default_language,max_file_size_mb,notification_lead_hours,email_notifications_enabled,push_notifications_enabled,retention_days,branding,modules,signing_workflow").eq("project_id", projectId).maybeSingle()
     : settingsResult;
-  [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, compatibleRegisterResult, compatibleBoqProgressResult, compatibleFileResult, compatibleSettingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, compatibleVisualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult, dayReportResult].forEach((result) => fail(result.error));
+  [templateResult, libraryResult, compatibleInspectionResult, findingResult, findingProgressResult, compatibleHseResult, compatibleRegisterResult, compatibleBoqProgressResult, compatibleFileResult, compatibleSettingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, compatibleVisualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult, dayReportResult].forEach((result) => fail(result.error));
   const templateRows = (templateResult.data ?? []) as Omit<ChecklistTemplate, "items">[];
   const itemResult = templateRows.length
     ? await client.from("checklist_items").select("id,template_id,section,prompt,response_type,required,sort_order,unit,minimum_value,maximum_value,failure_severity,guidance").in("template_id", templateRows.map((template) => template.id)).order("sort_order")
@@ -560,10 +574,10 @@ export async function loadProjectOperations(
         .filter((builtIn) => !(libraryResult.data ?? []).some((row) => row.code === builtIn.code))
         .map((builtIn) => ({ ...builtIn, prompts: [...builtIn.prompts] })),
     ].sort((left, right) => left.sort_order - right.sort_order),
-    inspections: (inspectionResult.data ?? []) as Inspection[],
+    inspections: (compatibleInspectionResult.data ?? []) as Inspection[],
     findings: (findingResult.data ?? []) as Finding[],
     findingProgressUpdates: (findingProgressResult.data ?? []) as FindingProgressUpdate[],
-    hseEvents: (hseResult.data ?? []) as HseEvent[],
+    hseEvents: (compatibleHseResult.data ?? []) as HseEvent[],
     registerEntries: (compatibleRegisterResult.data ?? []).map((entry) => ({
       ...entry,
       location_node_id: "location_node_id" in entry
@@ -743,6 +757,22 @@ export async function finishInspection(
   return completed.data as Inspection;
 }
 
+/**
+ * The signature under a completed checklist. "Geen optie om te ondertekenen!" stood beside
+ * the inspection screen: an inspection is the one record that says somebody stood there and
+ * checked it, so it carries the name and the signature of that person.
+ */
+export async function signInspection(client: SupabaseClient, inspectionId: string, signature: { name: string; signedAt: string; image: string }) {
+  const result = await client.from("inspections").update({
+    signed_by: signature.name,
+    signed_at: signature.signedAt,
+    signature_image: signature.image,
+  }).eq("id", inspectionId);
+  // A database without the signature columns must not lose the completed checklist.
+  if (schemaFeatureMissing(result.error, "signature_image")) return;
+  fail(result.error);
+}
+
 export async function createFinding(client: SupabaseClient, input: {
   projectId: string;
   buildingId: string;
@@ -859,9 +889,26 @@ export async function transitionFinding(client: SupabaseClient, findingId: strin
   return result.data as Finding;
 }
 
-export async function createHseEvent(client: SupabaseClient, input: { projectId: string; buildingId: string; locationNodeId?: string; reportId?: string | null; type: string; title: string; description: string; severity: string; immediateMeasure: string; confidential: boolean; idempotencyKey?: string }) {
+export async function createHseEvent(client: SupabaseClient, input: { projectId: string; buildingId: string; locationNodeId?: string; reportId?: string | null; type: string; title: string; description: string; severity: string; immediateMeasure: string; confidential: boolean; category?: string; idempotencyKey?: string }) {
   const reportId = await ensureProjectDayReport(client, input.projectId, input.reportId);
+  // Health, Safety or Environmental is the heading of the client's own form. A database
+  // that does not know it yet still records the event itself.
   let result = await client.rpc("create_project_hse_event", {
+    p_project_id: input.projectId,
+    p_building_id: input.buildingId,
+    p_day_report_id: reportId,
+    p_event_type: input.type,
+    p_title: input.title,
+    p_description: input.description,
+    p_severity: input.severity,
+    p_immediate_measure: input.immediateMeasure,
+    p_confidential: input.confidential,
+    p_occurred_at: new Date().toISOString(),
+    p_idempotency_key: input.idempotencyKey ?? `hse:${crypto.randomUUID()}`,
+    p_location_node_id: input.locationNodeId || null,
+    p_hse_category: input.category || null,
+  });
+  if (rpcSignatureMissing(result.error, "create_project_hse_event")) result = await client.rpc("create_project_hse_event", {
     p_project_id: input.projectId,
     p_building_id: input.buildingId,
     p_day_report_id: reportId,

@@ -13396,3 +13396,33 @@ button {
 .drawing-pin-legend .green::before { background: #23805e; }
 .drawing-pin-legend .cyan::before { background: #157f91; }
 .drawing-pin-legend .amber::before { background: #c08016; }
+
+/* ---------------------------------------------------------------------------
+   A delivery is several lines under each other, each with its own words.
+   --------------------------------------------------------------------------- */
+.register-line-list { display: grid; gap: 8px; }
+
+.register-line {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(90px, 0.7fr) minmax(80px, 0.6fr) minmax(140px, 1.4fr) auto;
+}
+
+.register-line-remove {
+  align-items: center;
+  display: inline-flex;
+  height: 40px;
+  justify-content: center;
+  width: 36px;
+}
+
+.register-line-add { justify-self: start; }
+.register-type-switch { margin-top: 2px; }
+.inspection-ncr-button { justify-self: start; }
+
+@media (max-width: 640px) {
+  .register-line { grid-template-columns: 1fr 1fr; }
+  .register-line > label:nth-child(3) { grid-column: 1 / -1; }
+  .register-line-remove { grid-column: 2; justify-self: end; }
+}

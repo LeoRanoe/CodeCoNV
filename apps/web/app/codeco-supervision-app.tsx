@@ -3985,13 +3985,13 @@ function EntryModal({
                   requiredDepth={requiredLocationDepth}
                 />
                 <div className="form-field">
-                  <label htmlFor="entry-drawing">{text("Location on drawing", "Locatie op tekening")}</label>
+                  <label htmlFor="entry-drawing">{text("Location on the PDF drawing", "Locatie op de PDF-tekening")}</label>
                   <select id="entry-drawing" value={drawingId} onChange={(event) => { setDrawingId(event.target.value); setLocation(describeLocation(locationNodeId, event.target.value)); }}>
-                    <option value="">{text("No drawing selected", "Geen tekening gekozen")}</option>
+                    <option value="">{text("No PDF selected", "Geen PDF gekozen")}</option>
                     {buildingDrawings.map((drawing) => <option value={drawing.id} key={drawing.id}>{drawing.name}</option>)}
                   </select>
                   {buildingDrawings.length
-                    ? <button className="field-inline-link" type="button" onClick={openDrawings}><MapPin size={12} /> {drawingPoint ? text("Change the spot on the drawing", "Plek op de tekening wijzigen") : text("Open the drawing to place a pin", "Open de tekening om een pin te plaatsen")}</button>
+                    ? <button className="field-inline-link" type="button" onClick={openDrawings}><MapPin size={12} /> {drawingPoint ? text("Change the spot on the PDF", "Plek op de PDF wijzigen") : text("Open the PDF to place a pin", "Open de PDF om een pin te plaatsen")}</button>
                     : <small>{text("No drawing has been uploaded for this building yet. Upload the PDF under Project Docs.", "Voor dit gebouw is nog geen tekening geüpload. Upload de PDF bij Project Docs.")}</small>}
                   {/* The pin itself is created when this record is saved, so it carries the
                       record's own number, name and date instead of a hand-picked link. */}
