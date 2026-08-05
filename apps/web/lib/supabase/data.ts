@@ -162,6 +162,13 @@ export type AttendanceInput = {
   count: number;
   shiftStart: string;
   shiftEnd: string;
+  /** The gang within the organisation, when the project works with named crews (§4.3). */
+  crew?: string;
+  /** Present on a recorded site visit; a counted crew has no name (§4.3). */
+  visitorName?: string;
+  entryType?: "workforce" | "visitor";
+  /** Why today's manning deviates from the plan or from the last workday (§4.3). */
+  notes?: string;
 };
 
 function fail(error: { message: string } | null) {
@@ -540,7 +547,7 @@ export async function loadProjectDay(
       .limit(100),
     client
       .from("attendance_entries")
-      .select("id,party_id,discipline,shift_start,shift_end,headcount,building_id")
+      .select("id,party_id,discipline,shift_start,shift_end,headcount,building_id,entry_type,crew,visitor_name,notes")
       .eq("day_report_id", reportId)
       .order("created_at"),
   ]);
@@ -552,10 +559,19 @@ export async function loadProjectDay(
         .order("occurred_at", { ascending: false })
         .limit(100)
     : registrationResult;
+  // Crew, visitors and the entry type arrive with a later migration. Before it has run the
+  // day must still open, so the day falls back to the columns that were always there.
+  const compatibleAttendanceResult = ["entry_type", "crew", "visitor_name"].some((column) => schemaColumnMissing(attendanceResult.error, column))
+    ? await client
+        .from("attendance_entries")
+        .select("id,party_id,discipline,shift_start,shift_end,headcount,building_id,notes")
+        .eq("day_report_id", reportId)
+        .order("created_at")
+    : attendanceResult;
   fail(startResult.error);
   fail(closeoutResult.error);
   fail(compatibleRegistrationResult.error);
-  fail(attendanceResult.error);
+  fail(compatibleAttendanceResult.error);
 
   return {
     report,
@@ -565,7 +581,7 @@ export async function loadProjectDay(
       ...registration,
       location_node_id: "location_node_id" in registration ? registration.location_node_id : null,
     })) as Array<Record<string, unknown>>,
-    attendance: (attendanceResult.data ?? []) as Array<Record<string, unknown>>,
+    attendance: (compatibleAttendanceResult.data ?? []) as Array<Record<string, unknown>>,
     parties: (partyResult.data ?? []).map((party) => ({ id: party.id as string, name: String(party.name), type: String(party.party_type) })),
     actions: actionRows,
     actionUpdates: (actionUpdateResult.data ?? []) as ActionUpdate[],
@@ -752,6 +768,7 @@ export type PreviousWorkdayAttendance = {
     headcount: number;
     shiftStart: string;
     shiftEnd: string;
+    crew?: string;
   }>;
 };
 
@@ -775,19 +792,31 @@ export async function loadPreviousWorkdayAttendance(
     .limit(14);
   fail(reportResult.error);
   for (const report of reportResult.data ?? []) {
-    const attendanceResult = await client
+    const read = (columns: string) => client
       .from("attendance_entries")
-      .select("party_id,discipline,shift_start,shift_end,headcount")
+      .select(columns)
       .eq("day_report_id", report.id as string)
       .eq("building_id", buildingId)
+      .eq("entry_type", "workforce")
       .gt("headcount", 0);
+    const withCrew = await read("party_id,discipline,shift_start,shift_end,headcount,crew");
+    // Before the crew migration has run, yesterday can still be copied without its gangs.
+    const attendanceResult = ["crew", "entry_type"].some((column) => schemaColumnMissing(withCrew.error, column))
+      ? await client
+          .from("attendance_entries")
+          .select("party_id,discipline,shift_start,shift_end,headcount")
+          .eq("day_report_id", report.id as string)
+          .eq("building_id", buildingId)
+          .gt("headcount", 0)
+      : withCrew;
     fail(attendanceResult.error);
-    const rows = (attendanceResult.data ?? []).map((row) => ({
+    const rows = ((attendanceResult.data ?? []) as Array<Record<string, unknown>>).map((row) => ({
       partyId: String(row.party_id),
       discipline: String(row.discipline),
       headcount: Number(row.headcount),
       shiftStart: String(row.shift_start).slice(0, 5),
       shiftEnd: String(row.shift_end).slice(0, 5),
+      crew: row.crew ? String(row.crew) : undefined,
     }));
     if (rows.length) return { reportDate: String(report.report_date), rows };
   }
@@ -983,7 +1012,7 @@ export async function saveAttendance(
 
   for (const row of input.rows) {
     const key = `${row.partyId}:${row.discipline}`;
-    const payload = {
+    const core = {
       organization_id: input.report.organization_id,
       project_id: input.projectId,
       building_id: input.buildingId,
@@ -993,19 +1022,27 @@ export async function saveAttendance(
       shift_start: row.shiftStart,
       shift_end: row.shiftEnd,
       headcount: row.count,
+      notes: row.notes?.trim() || null,
+    };
+    // Crew, visitors and the entry type arrived with a later migration. Until it has run the
+    // count itself must still reach the report, so the row is written without them.
+    const payload = {
+      ...core,
+      entry_type: row.entryType ?? "workforce",
+      crew: row.crew?.trim() || null,
+      visitor_name: row.visitorName?.trim() || null,
     };
     const existingId = existing.get(key);
-    if (existingId) {
-      const update = await client.from("attendance_entries").update(payload).eq("id", existingId);
-      fail(update.error);
-    } else {
-      const insert = await client.from("attendance_entries").insert({
-        ...payload,
-        idempotency_key: `attendance:${reportId}:${input.buildingId}:${row.partyId}:${row.discipline}`.slice(0, 200),
-        created_by: user.id,
-      });
-      fail(insert.error);
-    }
+    const write = async (body: Record<string, unknown>) => existingId
+      ? client.from("attendance_entries").update(body).eq("id", existingId)
+      : client.from("attendance_entries").insert({
+          ...body,
+          idempotency_key: `attendance:${reportId}:${input.buildingId}:${row.partyId}:${row.discipline}`.slice(0, 200),
+          created_by: user.id,
+        });
+    const result = await write(payload);
+    const missing = ["entry_type", "crew", "visitor_name"].find((column) => schemaColumnMissing(result.error, column));
+    fail(missing ? (await write(core)).error : result.error);
   }
 }
 

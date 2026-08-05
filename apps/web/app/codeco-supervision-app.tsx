@@ -253,6 +253,7 @@ type AttendanceRow = {
   count: number;
   shiftStart: string;
   shiftEnd: string;
+  crew?: string;
 };
 
 const constructionDisciplines = [
@@ -496,7 +497,9 @@ function attendanceRowsForBuilding(
   defaultShiftEnd = "16:00",
 ): AttendanceRow[] {
   const partyById = new Map(day.parties.map((party) => [party.id, party]));
-  const buildingAttendance = day.attendance.filter((row) => row.building_id === buildingId);
+  // A visitor is on site but is not manning the work, so it never joins the counted crew.
+  const buildingAttendance = day.attendance.filter((row) => row.building_id === buildingId
+    && (row.entry_type ?? "workforce") === "workforce");
   if (buildingAttendance.length) {
     return buildingAttendance.map((row) => {
       const party = partyById.get(String(row.party_id));
@@ -508,6 +511,7 @@ function attendanceRowsForBuilding(
         count: Number(row.headcount),
         shiftStart: String(row.shift_start).slice(0, 5),
         shiftEnd: String(row.shift_end).slice(0, 5),
+        crew: row.crew ? String(row.crew) : undefined,
       };
     });
   }
@@ -700,6 +704,24 @@ export function CodecoSupervisionApp() {
     },
     enabled: Boolean(supabase && session && selectedProject),
   });
+
+  /**
+   * The explanation already given today for a deviating manning level. It is written on every
+   * attendance line of the day, so the first line that carries one is the answer.
+   */
+  const attendanceNote = String((dayQuery.data?.attendance ?? [])
+    .find((row) => String(row.building_id) === selectedBuilding?.id && row.notes)?.notes ?? "");
+  /** The site visits already recorded today, kept apart from the counted crew. */
+  const attendanceVisitors = (dayQuery.data?.attendance ?? [])
+    .filter((row) => String(row.building_id) === selectedBuilding?.id && row.entry_type === "visitor")
+    .map((row) => ({
+      partyId: String(row.party_id),
+      party: (dayQuery.data?.parties ?? []).find((party) => party.id === String(row.party_id))?.name ?? "",
+      visitorName: String(row.visitor_name ?? ""),
+      count: Number(row.headcount) || 1,
+      shiftStart: String(row.shift_start).slice(0, 5),
+      shiftEnd: String(row.shift_end).slice(0, 5),
+    }));
 
   const projectConfigurationQuery = useQuery({
     queryKey: ["project-configuration", selectedProject?.id],
@@ -2122,6 +2144,9 @@ export function CodecoSupervisionApp() {
           defaultBuildingId={selectedBuilding.id}
           buildingName={buildingName}
           weatherLabel={projectStartAnswers ? `${projectStartAnswers.temperatureC}°C` : ""}
+          expectedWorkers={projectStartAnswers?.expectedWorkers ?? null}
+          initialNote={attendanceNote}
+          initialVisitors={attendanceVisitors}
           busy={syncState === "saving"}
           copyPreviousWorkday={async (workforceBuildingId) => {
             const previous = await loadPreviousWorkdayAttendance(supabase, selectedProject.id, reportDate, workforceBuildingId);
@@ -2136,11 +2161,12 @@ export function CodecoSupervisionApp() {
                 count: row.headcount,
                 shiftStart: row.shiftStart,
                 shiftEnd: row.shiftEnd,
+                crew: row.crew,
               })),
             };
           }}
           close={() => setModal(null)}
-          save={async (rows, attendanceBuildingId) => {
+          save={async (rows, attendanceBuildingId, note, visitors) => {
             const total = rows.reduce((sum, row) => sum + row.count, 0);
             const saved = await runSynced(
               async () => {
@@ -2152,14 +2178,36 @@ export function CodecoSupervisionApp() {
                   report,
                   projectId: selectedProject.id,
                   buildingId: attendanceBuildingId,
+                  // The explanation belongs to the day, so every line of it carries the same
+                  // sentence: a report reader sees it whichever line they open.
                   rows: rows.map((row) => ({
                     partyId: row.partyId,
                     discipline: row.discipline,
                     count: row.count,
                     shiftStart: row.shiftStart,
                     shiftEnd: row.shiftEnd,
+                    crew: row.crew,
+                    notes: note,
                   })),
                 });
+                if (visitors.length) {
+                  await saveAttendance(supabase, {
+                    report,
+                    projectId: selectedProject.id,
+                    buildingId: attendanceBuildingId,
+                    rows: visitors.map((visitor) => ({
+                      partyId: visitor.partyId,
+                      // The visitor's own name distinguishes the line from the crew of the
+                      // same organisation, which is counted rather than named.
+                      discipline: visitor.visitorName.slice(0, 100),
+                      visitorName: visitor.visitorName,
+                      entryType: "visitor" as const,
+                      count: visitor.count,
+                      shiftStart: visitor.shiftStart,
+                      shiftEnd: visitor.shiftEnd,
+                    })),
+                  });
+                }
               },
               text(
                 `${total} people present are now linked to today's day report.`,
