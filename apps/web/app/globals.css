@@ -8757,7 +8757,9 @@ textarea:focus-visible {
 .record-heading-draft { flex: 0 0 auto; }
 
 /* Section 6: the pictures themselves, with the tile that adds one beside them. */
-.record-photo-strip { display: flex; flex-wrap: wrap; gap: 9px; }
+/* Not .record-photo-strip: that name already belongs to the strip of photos under a
+   saved record, whose own button and image rules would resize these tiles. */
+.record-evidence-strip { display: flex; flex-wrap: wrap; gap: 9px; }
 .photo-evidence-gallery { display: contents; }
 .photo-evidence-tile { position: relative; }
 .photo-evidence-tile-open {

@@ -1287,9 +1287,11 @@ test("keeps the action centre and makes its deadlines and choices true on site",
   // #16 · A photo says in every form that it can be described, marked or removed.
   assert.match(workspace, /const photoCaptureHint = text\(/);
   assert.match(workspace, /describe, mark or remove it|omschrijven, markeren of verwijderen/);
-  // Five photo blocks, five times the same sentence: three inside the capture button and
-  // two under the strip of thumbnails the client's record screens draw.
-  assert.equal(workspace.match(/\{photoCaptureHint\}/g)?.length, 5);
+  // Three forms keep the list of photos and its sentence; the two record screens the
+  // client drew show a strip of pictures, and say so in their own words.
+  assert.equal(workspace.match(/\{photoCaptureHint\}/g)?.length, 3);
+  assert.match(workspace, /const photoStripHint = text\(/);
+  assert.equal(workspace.match(/\{photoStripHint\}/g)?.length, 2);
 
   // #16 · The building and location choice is the same field in every form, and
   // "all buildings" is stored instead of failing.
@@ -2213,11 +2215,19 @@ test("builds the HSE observation / issue screen the client sent, section by sect
   assert.match(operations, /Provisional · fixed on submit|Voorlopig · vast bij indienen/);
 
   // Section 6 is the strip of pictures with the tile that adds one, not a list of rows.
-  assert.match(operations, /className="record-photo-strip"/);
+  assert.match(operations, /className="record-evidence-strip"/);
   assert.match(operations, /layout="gallery"/);
   assert.match(evidence, /layout\?: "list" \| "gallery";/);
   assert.match(evidence, /className="photo-evidence-tile-remove"/);
   assert.match(styles, /\.record-add-photo \{/);
+
+  // The strip has a class of its own: .record-photo-strip already belonged to the photos
+  // under a saved record, and its button and image rules resized these tiles into a grey
+  // square with a cross on it.
+  assert.match(operations, /className="record-evidence-strip"/);
+  assert.doesNotMatch(operations, /className="record-photo-strip">\s*\n\s*<PhotoEvidenceList/);
+  assert.match(styles, /\.record-evidence-strip \{ display: flex; flex-wrap: wrap; gap: 9px; \}/);
+  assert.match(styles, /\.photo-evidence-tile-open \{[^}]*width: 108px;/);
 
   // Section 9 says what the deadline means, and a chosen person can be cleared again.
   assert.match(operations, /function deadlineDistanceLabel\(/);

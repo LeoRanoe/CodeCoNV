@@ -1132,6 +1132,11 @@ function ProjectOperations({
     "Tap again for another photo. Tap a photo in the list to describe, mark or remove it.",
     "Tik opnieuw voor nog een foto. Tik op een foto in de lijst om te omschrijven, markeren of verwijderen.",
   );
+  /** The record screens show a strip of pictures, not a list, so the sentence says so. */
+  const photoStripHint = text(
+    "Tap a photo to describe it, mark it or remove it.",
+    "Tik op een foto om die te omschrijven, te markeren of te verwijderen.",
+  );
   const scopedFindings = data.findings.filter((finding) => findingScope === "ncr"
     ? finding.finding_type === "ncr"
     : finding.finding_type !== "ncr");
@@ -2528,7 +2533,7 @@ function ProjectOperations({
                     {/* The strip the client drew: the pictures themselves with a cross on
                         them, and the tile that adds one right next to them. Tapping a
                         picture still opens the one screen where it is described. */}
-                    <div className="record-photo-strip">
+                    <div className="record-evidence-strip">
                       <PhotoEvidenceList
                         photos={findingPhotos}
                         setPhotos={setFindingPhotos}
@@ -2541,7 +2546,7 @@ function ProjectOperations({
                         <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
                       </label>
                     </div>
-                    <small className="record-photo-hint">{photoCaptureHint}</small>
+                    <small className="record-photo-hint">{photoStripHint}</small>
                     {findingPhotoError ? <p className="field-error" role="alert">{findingPhotoError}</p> : null}
                   </section>
 
@@ -3008,7 +3013,7 @@ function ProjectOperations({
 
                   <section className="record-section record-order-6" aria-label={text("Photos / evidence", "Foto's / bewijs")}>
                     <h3><span className="record-section-number">6</span> {text("Photos / evidence", "Foto's / bewijs")}</h3>
-                    <div className="record-photo-strip">
+                    <div className="record-evidence-strip">
                       <PhotoEvidenceList
                         photos={hsePhotos}
                         setPhotos={setHsePhotos}
@@ -3021,7 +3026,7 @@ function ProjectOperations({
                         <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setHsePhotos, setHsePhotoError); event.currentTarget.value = ""; }} />
                       </label>
                     </div>
-                    <small className="record-photo-hint">{photoCaptureHint}</small>
+                    <small className="record-photo-hint">{photoStripHint}</small>
                     {hsePhotoError ? <p className="field-error" role="alert">{hsePhotoError}</p> : null}
                   </section>
 
