@@ -1965,3 +1965,50 @@ test("processes the annotated screens of 4 August: ordered photos, a named pin, 
   // #21: Workforce counts people per contractor and per trade, on its own screen.
   assert.match(app, /if \(type === "workforce"\) \{[\s\S]{0,320}setModal\("attendance"\)/);
 });
+
+test("covers section 4.3 of the product plan on the workforce screen", async () => {
+  const [register, app, dataLayer, migration, plan] = await Promise.all([
+    readFile(new URL("../app/workforce-register.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/data.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202608050001_workforce_crew_visitors_and_notes.sql", import.meta.url), "utf8"),
+    readFile(new URL("../../../docs/productplan-constructiesupervisie-webapp.md", import.meta.url), "utf8"),
+  ]);
+
+  // The section this screen answers to, quoted so the test fails if the plan is rewritten.
+  assert.match(plan, /### 4\.3 Aanwezige partijen en mankracht/);
+
+  // Functionaliteit: organisatie, ploeg, discipline en aantal personen.
+  assert.match(register, /\{text\("Party", "Partij"\)\}/);
+  assert.match(register, /\{text\("Crew · optional", "Ploeg · optioneel"\)\}/);
+  assert.match(register, /\{text\("Trade", "Discipline"\)\}/);
+  // Werktijd of dienst.
+  assert.match(register, /type="time"/);
+  // Bezoekersregistratie.
+  assert.match(register, /export type VisitorRow/);
+  assert.match(register, /Visitors on site|Bezoekers op de bouwplaats/);
+  assert.match(app, /entryType: "visitor" as const/);
+  // Toelichting bij afwijkende bezetting.
+  assert.match(register, /Explain the deviating workforce|Toelichting bij de afwijkende bezetting/);
+  assert.match(dataLayer, /notes: row\.notes\?\.trim\(\) \|\| null/);
+
+  // Automatisering: vorige werkdag kopiëren, totalen per organisatie en discipline,
+  // en grote afwijkingen signaleren.
+  assert.match(dataLayer, /export async function loadPreviousWorkdayAttendance/);
+  assert.match(register, /workforceByParty/);
+  assert.match(register, /workforceByDiscipline/);
+  assert.match(register, /workforceDeviations/);
+  assert.match(register, /workforce-totals/);
+
+  // The columns the screen writes have a migration, and it stays additive: a column that
+  // already exists must never be recreated on a live database.
+  assert.match(migration, /add column if not exists entry_type/);
+  assert.match(migration, /add column if not exists crew/);
+  assert.match(migration, /add column if not exists visitor_name/);
+  // Until that migration has run the count itself still has to reach the report.
+  assert.match(dataLayer, /schemaColumnMissing\(withCrew\.error, column\)/);
+  assert.match(dataLayer, /\["entry_type", "crew", "visitor_name"\]/);
+
+  // A visitor is on site but is not manning the work, so no headcount counts them.
+  assert.match(app, /\(row\.entry_type \?\? "workforce"\) === "workforce"/);
+});

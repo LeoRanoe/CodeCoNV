@@ -1,9 +1,16 @@
 "use client";
 
-import { Check, CloudSun, Copy, Loader2, MapPin, Minus, Plus, Users, X } from "lucide-react";
-import { useState } from "react";
+import { AlertTriangle, Check, CloudSun, Copy, Loader2, MapPin, Minus, Plus, Users, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { useLanguage } from "@/lib/i18n";
+import {
+  workforceByDiscipline,
+  workforceByParty,
+  workforceDeviations,
+  workforceNoteRequired,
+} from "@/lib/forms/workforce.mjs";
 
 /**
  * Who was on site today, per contractor and per trade.
@@ -20,9 +27,25 @@ export type WorkforceRow = {
   count: number;
   shiftStart: string;
   shiftEnd: string;
+  /** The gang within the organisation. Optional: not every project names its crews. */
+  crew?: string;
 };
 
 export type WorkforceParty = { id: string; name: string };
+
+/**
+ * A recorded site visit. §4.3 asks for a visitor registration next to the counted crew: an
+ * inspector, a client representative or a supplier is on site without manning the work, and
+ * the report has to be able to say who was there.
+ */
+export type VisitorRow = {
+  partyId: string;
+  party: string;
+  visitorName: string;
+  count: number;
+  shiftStart: string;
+  shiftEnd: string;
+};
 
 export function workforceTotal(rows: WorkforceRow[]) {
   return rows.reduce((sum, row) => sum + row.count, 0);
@@ -34,8 +57,13 @@ export function addWorkforceRow(
   party: WorkforceParty,
   discipline: string,
   shift: { start: string; end: string },
+  crew = "",
 ): WorkforceRow[] {
-  const existing = rows.findIndex((row) => row.partyId === party.id && row.discipline === discipline);
+  // The same organisation can field two crews of the same trade, so the gang is part of
+  // what makes a line unique — otherwise "ploeg 1" and "ploeg 2" would count as one.
+  const existing = rows.findIndex((row) => row.partyId === party.id
+    && row.discipline === discipline
+    && (row.crew ?? "") === crew);
   if (existing >= 0) {
     return rows.map((row, index) => index === existing ? { ...row, count: row.count + 1 } : row);
   }
@@ -46,6 +74,7 @@ export function addWorkforceRow(
     count: 1,
     shiftStart: shift.start,
     shiftEnd: shift.end,
+    crew: crew || undefined,
   }];
 }
 
@@ -73,12 +102,12 @@ export function WorkforceRegister({
   editShifts?: boolean;
 }) {
   const { text } = useLanguage();
-  const [draft, setDraft] = useState(() => ({ partyId: parties[0]?.id ?? "", discipline: disciplines[0] ?? "" }));
+  const [draft, setDraft] = useState(() => ({ partyId: parties[0]?.id ?? "", discipline: disciplines[0] ?? "", crew: "" }));
 
   const add = () => {
     const party = parties.find((item) => item.id === draft.partyId);
     if (!party || !draft.discipline) return;
-    setRows(addWorkforceRow(rows, party, draft.discipline, { start: defaultShiftStart, end: defaultShiftEnd }));
+    setRows(addWorkforceRow(rows, party, draft.discipline, { start: defaultShiftStart, end: defaultShiftEnd }, draft.crew.trim()));
   };
   const setCount = (index: number, delta: number) => setRows(rows.map((row, rowIndex) =>
     rowIndex === index ? { ...row, count: Math.max(0, row.count + delta) } : row));
@@ -116,6 +145,15 @@ export function WorkforceRegister({
             {disciplines.map((discipline) => <option value={discipline} key={discipline}>{discipline}</option>)}
           </select>
         </label>
+        <label className="form-field">
+          <span>{text("Crew · optional", "Ploeg · optioneel")}</span>
+          <input
+            value={draft.crew}
+            onChange={(event) => setDraft({ ...draft, crew: event.target.value })}
+            placeholder={text("For example: crew 2", "Bijvoorbeeld: ploeg 2")}
+            maxLength={100}
+          />
+        </label>
         <button className="secondary-button workforce-add-button" type="button" onClick={add}>
           <Plus size={15} /> {text("Add person", "Persoon toevoegen")}
         </button>
@@ -123,10 +161,10 @@ export function WorkforceRegister({
 
       <div className="workforce-rows">
         {rows.map((row, index) => (
-          <div className="workforce-row" key={`${row.partyId}:${row.discipline}`}>
+          <div className="workforce-row" key={`${row.partyId}:${row.discipline}:${row.crew ?? ""}`}>
             <span className="workforce-row-name">
               <strong>{row.discipline}</strong>
-              <small>{row.party}</small>
+              <small>{row.crew ? `${row.party} · ${row.crew}` : row.party}</small>
             </span>
             {editShifts ? (
               <span className="workforce-shift">
@@ -175,6 +213,9 @@ export function WorkforceModal({
   defaultShiftStart,
   defaultShiftEnd,
   weatherLabel,
+  expectedWorkers,
+  initialNote,
+  initialVisitors,
   busy,
   close,
   copyPreviousWorkday,
@@ -191,53 +232,87 @@ export function WorkforceModal({
   defaultShiftStart: string;
   defaultShiftEnd: string;
   weatherLabel: string;
+  /** What the project start planned for today, so a deviation can be seen instead of guessed. */
+  expectedWorkers: number | null;
+  initialNote: string;
+  initialVisitors: VisitorRow[];
   busy: boolean;
   close: () => void;
   /** Returns the crew of the last workday that had one, or null when there is none yet. */
   copyPreviousWorkday: (buildingId: string) => Promise<{ reportDate: string; rows: WorkforceRow[] } | null>;
-  save: (rows: WorkforceRow[], buildingId: string) => void | Promise<void>;
+  save: (rows: WorkforceRow[], buildingId: string, note: string, visitors: VisitorRow[]) => void | Promise<void>;
 }) {
   const { text } = useLanguage();
   const [buildingId, setBuildingId] = useState(() => resolveDefaultBuildingId(buildings, defaultBuildingId));
   const [rows, setRows] = useState(initialRows);
-  const [copying, setCopying] = useState(false);
   const [copyNote, setCopyNote] = useState("");
+  /** undefined while the last workday is still being looked up, null when there is none. */
+  const [previousDay, setPreviousDay] = useState<{ reportDate: string; rows: WorkforceRow[] } | null | undefined>(undefined);
+  const [note, setNote] = useState(initialNote);
+  const [visitors, setVisitors] = useState(initialVisitors);
+  const [visitorDraft, setVisitorDraft] = useState(() => ({ partyId: parties[0]?.id ?? "", visitorName: "" }));
   const total = workforceTotal(rows);
   const chosenBuildingName = buildings.find((building) => building.id === buildingId)?.name ?? buildingName;
+  const byParty = workforceByParty(rows);
+  const byDiscipline = workforceByDiscipline(rows);
+  const previousTotal = previousDay ? workforceTotal(previousDay.rows) : null;
+  const deviations = workforceDeviations({ total, expected: expectedWorkers, previous: previousTotal });
+  const noteMissing = workforceNoteRequired(deviations, note);
+
+  const addVisitor = () => {
+    const party = parties.find((item) => item.id === visitorDraft.partyId);
+    const visitorName = visitorDraft.visitorName.trim();
+    if (!party || visitorName.length < 2) return;
+    setVisitors([...visitors, {
+      partyId: party.id,
+      party: party.name,
+      visitorName,
+      count: 1,
+      shiftStart: defaultShiftStart,
+      shiftEnd: defaultShiftEnd,
+    }]);
+    setVisitorDraft({ ...visitorDraft, visitorName: "" });
+  };
 
   const switchBuilding = (nextBuildingId: string) => {
     setBuildingId(nextBuildingId);
     setCopyNote("");
+    setPreviousDay(undefined);
     setRows(nextBuildingId === defaultBuildingId ? initialRows : rowsForBuilding(nextBuildingId));
   };
 
-  const copyPrevious = async () => {
-    setCopying(true);
+  // The last workday is loaded as soon as the screen opens, not only when the button is
+  // pressed: §4.3 asks the app to signal a large deviation, and it cannot do that without
+  // knowing what yesterday looked like.
+  useEffect(() => {
+    let active = true;
+    void copyPreviousWorkday(buildingId)
+      .then((previous) => { if (active) setPreviousDay(previous); })
+      .catch(() => { if (active) setPreviousDay(null); });
+    return () => { active = false; };
+    // The loader is rebuilt on every render of the parent; the building is what changes here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buildingId]);
+
+  const copyPrevious = () => {
     setCopyNote("");
-    try {
-      const previous = await copyPreviousWorkday(buildingId);
-      if (!previous) {
-        setCopyNote(text(
-          "No earlier workday with a recorded crew was found for this building.",
-          "Er is voor dit gebouw geen eerdere werkdag met vastgelegde bezetting gevonden.",
-        ));
-        return;
-      }
-      // Taking over yesterday never wipes what was already counted today: the trades that are
-      // already on the list keep the number the supervisor gave them.
-      const merged = previous.rows.reduce((current, row) => current.some((existing) => existing.partyId === row.partyId && existing.discipline === row.discipline)
-        ? current
-        : [...current, row], rows);
-      setRows(merged);
-      setCopyNote(text(`Crew of ${previous.reportDate} taken over.`, `Bezetting van ${previous.reportDate} overgenomen.`));
-    } catch {
+    if (!previousDay) {
       setCopyNote(text(
-        "The earlier workday could not be loaded. Check the connection and try again.",
-        "De eerdere werkdag kon niet worden geladen. Controleer de verbinding en probeer opnieuw.",
+        "No earlier workday with a recorded crew was found for this building.",
+        "Er is voor dit gebouw geen eerdere werkdag met vastgelegde bezetting gevonden.",
       ));
-    } finally {
-      setCopying(false);
+      return;
     }
+    // Taking over yesterday never wipes what was already counted today: the lines that are
+    // already there keep the number the supervisor gave them.
+    const merged = previousDay.rows.reduce((current, row) => current.some((existing) =>
+      existing.partyId === row.partyId
+      && existing.discipline === row.discipline
+      && (existing.crew ?? "") === (row.crew ?? ""))
+      ? current
+      : [...current, row], rows);
+    setRows(merged);
+    setCopyNote(text(`Crew of ${previousDay.reportDate} taken over.`, `Bezetting van ${previousDay.reportDate} overgenomen.`));
   };
 
   return (
@@ -262,8 +337,8 @@ export function WorkforceModal({
           <BuildingPicker id="workforce-building" buildings={buildings} value={buildingId} onChange={switchBuilding} />
 
           <div className="workforce-toolbar">
-            <button className="ghost-button" type="button" disabled={copying} onClick={() => void copyPrevious()}>
-              {copying ? <Loader2 className="spin" size={13} /> : <Copy size={13} />} {text("Copy previous workday", "Vorige werkdag overnemen")}
+            <button className="ghost-button" type="button" disabled={previousDay === undefined} onClick={copyPrevious}>
+              {previousDay === undefined ? <Loader2 className="spin" size={13} /> : <Copy size={13} />} {text("Copy previous workday", "Vorige werkdag overnemen")}
             </button>
             {copyNote ? <small aria-live="polite">{copyNote}</small> : null}
           </div>
@@ -278,9 +353,113 @@ export function WorkforceModal({
             editShifts
           />
 
+          {/* §4.3: the visitor registration. Kept apart from the counted crew on purpose —
+              an inspector on site is not manning the work and must never inflate the
+              headcount the contractor is held to. */}
+          {parties.length ? (
+            <section className="workforce-visitors">
+              <h3>{text("Visitors on site", "Bezoekers op de bouwplaats")}</h3>
+              <div className="workforce-add">
+                <label className="form-field">
+                  <span>{text("Organisation", "Organisatie")}</span>
+                  <select value={visitorDraft.partyId} onChange={(event) => setVisitorDraft({ ...visitorDraft, partyId: event.target.value })}>
+                    {parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}
+                  </select>
+                </label>
+                <label className="form-field">
+                  <span>{text("Name", "Naam")}</span>
+                  <input
+                    value={visitorDraft.visitorName}
+                    onChange={(event) => setVisitorDraft({ ...visitorDraft, visitorName: event.target.value })}
+                    onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addVisitor(); } }}
+                    placeholder={text("Who visited the site?", "Wie was er op bezoek?")}
+                    maxLength={160}
+                  />
+                </label>
+                <button className="secondary-button workforce-add-button" type="button" disabled={visitorDraft.visitorName.trim().length < 2} onClick={addVisitor}>
+                  <Plus size={15} /> {text("Add visitor", "Bezoeker toevoegen")}
+                </button>
+              </div>
+              <div className="workforce-rows">
+                {visitors.map((visitor, index) => (
+                  <div className="workforce-row" key={`${visitor.partyId}:${visitor.visitorName}`}>
+                    <span className="workforce-row-name">
+                      <strong>{visitor.visitorName}</strong>
+                      <small>{visitor.party}</small>
+                    </span>
+                    <span className="workforce-shift">
+                      <label>
+                        <span className="sr-only">{text(`Arrival of ${visitor.visitorName}`, `Aankomst van ${visitor.visitorName}`)}</span>
+                        <input type="time" value={visitor.shiftStart} onChange={(event) => setVisitors(visitors.map((entry, entryIndex) => entryIndex === index ? { ...entry, shiftStart: event.target.value } : entry))} />
+                      </label>
+                      <em>–</em>
+                      <label>
+                        <span className="sr-only">{text(`Departure of ${visitor.visitorName}`, `Vertrek van ${visitor.visitorName}`)}</span>
+                        <input type="time" value={visitor.shiftEnd} onChange={(event) => setVisitors(visitors.map((entry, entryIndex) => entryIndex === index ? { ...entry, shiftEnd: event.target.value } : entry))} />
+                      </label>
+                    </span>
+                    <button className="workforce-row-remove" type="button" onClick={() => setVisitors(visitors.filter((_, entryIndex) => entryIndex !== index))} aria-label={text(`Remove ${visitor.visitorName}`, `Verwijder ${visitor.visitorName}`)}><X size={14} /></button>
+                  </div>
+                ))}
+                {!visitors.length ? <p className="form-helper">{text("No visitors recorded today.", "Vandaag geen bezoekers vastgelegd.")}</p> : null}
+              </div>
+            </section>
+          ) : null}
+
+          {/* §4.3: totals per organisation and per discipline. The report is read per
+              contractor, and the planning is read per trade. */}
+          {byParty.length || byDiscipline.length ? (
+            <div className="workforce-totals">
+              <section>
+                <h3>{text("Per organisation", "Per organisatie")}</h3>
+                <dl>{byParty.map((entry) => <div key={entry.key}><dt>{entry.label}</dt><dd>{entry.count}</dd></div>)}</dl>
+              </section>
+              <section>
+                <h3>{text("Per trade", "Per discipline")}</h3>
+                <dl>{byDiscipline.map((entry) => <div key={entry.key}><dt>{entry.label}</dt><dd>{entry.count}</dd></div>)}</dl>
+              </section>
+            </div>
+          ) : null}
+
+          {/* §4.3: signal a large deviation. It states the fact and the number behind it;
+              deciding whether it is a problem is the supervisor's job, not the app's. */}
+          {deviations.map((deviation) => (
+            <div className="operation-alert warning workforce-deviation" key={deviation.id}>
+              <AlertTriangle size={18} />
+              <div>
+                <strong>{deviation.kind === "planned"
+                  ? text("Deviates from the planned workforce", "Wijkt af van de geplande bezetting")
+                  : text("Deviates from the last workday", "Wijkt af van de vorige werkdag")}</strong>
+                <span>{text(
+                  `${deviation.total} on site against ${deviation.reference} ${deviation.kind === "planned" ? "planned" : "on the last workday"} — ${Math.round(deviation.share * 100)}% ${deviation.direction === "above" ? "more" : "fewer"}.`,
+                  `${deviation.total} aanwezig tegenover ${deviation.reference} ${deviation.kind === "planned" ? "gepland" : "op de vorige werkdag"} — ${Math.round(deviation.share * 100)}% ${deviation.direction === "above" ? "meer" : "minder"}.`,
+                )}</span>
+              </div>
+            </div>
+          ))}
+
+          {/* §4.3: an explanation with a deviating manning level. Asked for only when there is
+              something to explain, so a normal day stays two taps. */}
+          {deviations.length ? (
+            <label className="form-field">
+              <span>{text("Explain the deviating workforce", "Toelichting bij de afwijkende bezetting")}</span>
+              <textarea
+                rows={2}
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                placeholder={text("For example: two crews moved to the other building.", "Bijvoorbeeld: twee ploegen zijn naar het andere gebouw verplaatst.")}
+              />
+              <DictateButton onText={(transcript) => setNote((current) => appendDictation(current, transcript))} />
+            </label>
+          ) : null}
+
           <div className="modal-actions">
-            <span className="form-note"><Check size={13} /> {text("Project, building, date and report are linked automatically.", "Project, gebouw, datum en rapport worden automatisch gekoppeld.")}</span>
-            <button className="primary-button" type="button" disabled={busy || !rows.length} onClick={() => void save(rows, buildingId)}>
+            <span className="form-note">
+              <Check size={13} /> {noteMissing
+                ? text("Explain the deviation to confirm.", "Licht de afwijking toe om te bevestigen.")
+                : text("Project, building, date and report are linked automatically.", "Project, gebouw, datum en rapport worden automatisch gekoppeld.")}
+            </span>
+            <button className="primary-button" type="button" disabled={busy || !rows.length || noteMissing} onClick={() => void save(rows, buildingId, note, visitors)}>
               {busy ? <Loader2 className="spin" size={15} /> : <Check size={15} />} {text("Confirm attendance", "Aanwezigheid bevestigen")}
             </button>
           </div>

@@ -93,3 +93,43 @@ Bij het nalopen van het scherm bleken `.form-helper` (vier formulieren) en `.inl
 (tweestapsverificatie) wel gebruikt maar nooit opgemaakt. Een mislukte stap kwam er dus uit als
 gewone lopende tekst naast een groene bevestiging. Beide hebben nu de opmaak die ze horen te
 hebben.
+
+---
+
+# Naschrift — Workforce tegen §4.3 van het productplan
+
+De tegel *Workforce* opende het dagrapport. Bij het rechtzetten daarvan is eerst het
+verkeerde scherm aangewezen (`AttendanceModal`, een ouder en dunner scherm dat naast het
+echte was blijven staan) en daarna het register herbouwd. Pas daarna is §4.3 van het
+productplan ernaast gelegd, en dat had andersom gemoeten.
+
+Wat §4.3 *Aanwezige partijen en mankracht* vraagt, en waar het nu staat:
+
+| Productplan | Status |
+| --- | --- |
+| organisatie, ploeg, discipline en aantal personen | compleet — *ploeg* is nieuw |
+| werktijd of dienst | per regel aanpasbaar |
+| bezoekersregistratie | nieuw, apart van de getelde ploeg |
+| optioneel individuele aanwezigheidsregistratie | niet gebouwd — het plan noemt dit optioneel |
+| toelichting bij afwijkende bezetting | nieuw, en verplicht zodra er een afwijking is |
+| vorige werkdag als voorstel kopiëren | werkt echt, tot veertien dagen terug |
+| totalen per organisatie en discipline | nieuw |
+| grote afwijkingen signaleren | nieuw, tegen planning én vorige werkdag |
+| importeren uit toegangscontrole | niet gebouwd — het plan noemt dit optioneel |
+
+**Bezoekers tellen niet mee.** Een inspecteur of opdrachtgever is op de bouwplaats maar
+bemant het werk niet. Zou een bezoeker in de bezetting meetellen, dan groeit het getal
+waar de aannemer aan gehouden wordt zonder dat er iemand meer werkt. Bezoekers staan
+daarom in een eigen blok en blijven buiten elk totaal.
+
+**De afwijkingsmelding oordeelt niet.** Ze noemt het feit en het getal erachter — "12
+aanwezig tegenover 20 gepland, 40% minder" — en vraagt om een toelichting. Of een
+halve ploeg terecht is, weet alleen de supervisor; op een dag afwerking kan dat kloppen.
+De drempel is 20%, dezelfde die het dagrapport al hanteert.
+
+**Migratie.** `entry_type`, `crew` en `visitor_name` zijn toegevoegd aan
+`attendance_entries` (`202608050001`), bewust niet als tweede tabel: row level security,
+de creator-guard, de touch-trigger en het auditspoor gelden daar al. De kolom `notes`
+bestond al maar werd nooit geschreven; die draagt nu de toelichting. Zolang de migratie
+niet is gedraaid blijft de telling gewoon werken — het scherm valt terug op de kolommen
+die er altijd waren.

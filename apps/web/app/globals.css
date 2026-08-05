@@ -8499,6 +8499,21 @@ textarea:focus-visible {
 .workforce-row-remove:hover { border-color: var(--red); color: var(--red); }
 .workforce-empty { margin: 4px 0; }
 
+/* §4.3: the totals the report is read by — per organisation and per trade. */
+.workforce-totals { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.workforce-totals section { background: #f5f8f8; border-radius: 11px; padding: 11px 13px; }
+.workforce-totals h3 { color: var(--ink-500); font-size: 9px; font-weight: 800; letter-spacing: .05em; margin: 0 0 7px; text-transform: uppercase; }
+.workforce-totals dl { display: grid; gap: 5px; margin: 0; }
+.workforce-totals dl > div { display: flex; gap: 10px; justify-content: space-between; }
+.workforce-totals dt { color: var(--ink-700); font-size: 11px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workforce-totals dd { color: var(--ink-900); font-size: 12px; font-weight: 750; margin: 0; }
+
+.workforce-deviation { align-items: flex-start; }
+
+/* Visitors stand apart from the counted crew: on site, but not manning the work. */
+.workforce-visitors { border-top: 1px solid var(--border); display: grid; gap: 10px; padding-top: 13px; }
+.workforce-visitors h3 { color: var(--ink-900); font-size: 13px; margin: 0; }
+
 @media (max-width: 640px) {
   .workforce-add { grid-template-columns: 1fr 1fr; }
   .workforce-add-button { grid-column: 1 / -1; }

@@ -19,6 +19,13 @@ import {
 } from "../lib/actions/action-center.mjs";
 import { exifImageDirection } from "../lib/images/exif-direction.mjs";
 import {
+  workforceByDiscipline,
+  workforceByParty,
+  workforceDeviations,
+  workforceHeadcount,
+  workforceNoteRequired,
+} from "../lib/forms/workforce.mjs";
+import {
   dayGroupLabel,
   filesInFolder,
   groupFilesByDay,
@@ -41,7 +48,7 @@ import {
   signatureFromDetails,
   signatureImageBytes,
   signatureInkBounds,
-} from "../lib/signatures/handwritten-signature.mjs";
+} from "../lib/signatures/handwritten-signature.mjs"
 import {
   compassPointFromDegrees,
   compassPoints,
@@ -739,4 +746,48 @@ test("orders the photo library by folder and by the day a photo was taken", () =
   assert.equal(dayGroupLabel("2026-08-03", labels), "Gisteren");
   assert.equal(dayGroupLabel("2026-08-01", labels), "datum 2026-08-01");
   assert.equal(dayGroupLabel("", labels), "Zonder datum");
+});
+
+test("totals the workforce per organisation and per trade, and signals a deviation", () => {
+  const rows = [
+    { partyId: "a", party: "Bouwbedrijf A", discipline: "Metselaar", count: 4 },
+    { partyId: "a", party: "Bouwbedrijf A", discipline: "Timmerman", count: 3 },
+    { partyId: "b", party: "Installateur B", discipline: "Metselaar", count: 2 },
+    { partyId: "c", party: "Inspectie C", discipline: "Inspecteur", count: 1, entryType: "visitor" },
+  ];
+
+  // §4.3: a visitor is on site but is not manning the work, so no total counts them.
+  assert.equal(workforceHeadcount(rows), 9);
+  assert.deepEqual(workforceByParty(rows), [
+    { key: "a", label: "Bouwbedrijf A", count: 7 },
+    { key: "b", label: "Installateur B", count: 2 },
+  ]);
+  // Two contractors both supplying masons is one masonry total, largest trade first.
+  assert.deepEqual(workforceByDiscipline(rows), [
+    { key: "Metselaar", label: "Metselaar", count: 6 },
+    { key: "Timmerman", label: "Timmerman", count: 3 },
+  ]);
+  assert.deepEqual(workforceByParty([]), []);
+
+  // §4.3: signal a large deviation against the plan and against the last workday.
+  assert.deepEqual(workforceDeviations({ total: 9, expected: 9, previous: 9 }), []);
+  // Within the threshold nothing is said; a crew is never exactly the same two days running.
+  assert.deepEqual(workforceDeviations({ total: 10, expected: 9, previous: null }), []);
+  const [planned] = workforceDeviations({ total: 4, expected: 10, previous: null });
+  assert.equal(planned.kind, "planned");
+  assert.equal(planned.direction, "below");
+  assert.equal(planned.reference, 10);
+  assert.equal(planned.share, 0.6);
+  const [above] = workforceDeviations({ total: 15, expected: null, previous: 10 });
+  assert.equal(above.kind, "previous");
+  assert.equal(above.direction, "above");
+  // A missing or nonsensical reference never produces a signal.
+  assert.deepEqual(workforceDeviations({ total: 9, expected: 0, previous: null }), []);
+  assert.deepEqual(workforceDeviations({ total: 9 }), []);
+
+  // The explanation is only demanded when there is something to explain.
+  assert.equal(workforceNoteRequired([], ""), false);
+  assert.equal(workforceNoteRequired(workforceDeviations({ total: 4, expected: 10 }), ""), true);
+  assert.equal(workforceNoteRequired(workforceDeviations({ total: 4, expected: 10 }), "  "), true);
+  assert.equal(workforceNoteRequired(workforceDeviations({ total: 4, expected: 10 }), "Twee ploegen elders."), false);
 });
