@@ -2346,3 +2346,33 @@ test("shows the spot on a satellite view without opening the application to the 
   assert.match(checklist, /GOOGLE_MAPS_API_KEY/);
   assert.match(checklist, /Maps Static API/);
 });
+
+test("keeps the record screens and the photo library usable on a phone and a tablet", async () => {
+  const [styles, media] = await Promise.all([
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/media-library-workspace.tsx", import.meta.url), "utf8"),
+  ]);
+
+  // In one column the sections are as wide as the screen. Without this they keep the
+  // align-items: start of the two-column rule and every box is as wide as its own text.
+  const stacked = styles.match(/\.sectioned-record-columns \{ align-items: stretch; display: flex; flex-direction: column; \}/g);
+  assert.equal(stacked?.length, 2, "both the narrow container and the narrow window stack into full-width sections");
+
+  // Two columns when the form is wide enough, not when the window is: the workspace has a
+  // module switcher beside it, so a wide tablet can still leave a phone-width form.
+  assert.match(styles, /\.sectioned-record-form \{ container-type: inline-size; \}/);
+  assert.match(styles, /@container \(max-width: 780px\)/);
+
+  // The head of the form wraps instead of squeezing the title to a few pixels.
+  assert.match(styles, /\.sectioned-record-heading \{[^}]*flex-wrap: wrap;/);
+  // A date and time field has a wide minimum of its own; the row wraps around it.
+  assert.match(styles, /\.record-due-field \{ align-items: center; display: flex; flex-wrap: wrap;/);
+  assert.match(styles, /\.record-due-field input \{ flex: 1 1 150px; min-width: 0; \}/);
+
+  // The photo in the library opens when it is tapped, like a photo everywhere else, and
+  // the icons beside it are big enough for a thumb.
+  assert.match(media, /className="media-card-open"/);
+  assert.match(media, /onClick=\{\(\) => void openProjectFile\(client, file\.id, file\.original_name\)\}/);
+  assert.match(styles, /\.media-card-open \{/);
+  assert.match(styles, /\.media-file-actions button \{[^}]*min-height: 42px; min-width: 42px;/);
+});

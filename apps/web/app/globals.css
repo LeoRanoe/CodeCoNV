@@ -8139,7 +8139,23 @@ textarea:focus-visible {
 .offline-queue-list button { background: transparent; border: 0; color: var(--red); }
 .media-gallery { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
 .media-card { background: #fff; border: 1px solid var(--border); border-radius: 13px; display: grid; grid-template-columns: 1fr auto; overflow: hidden; }
-.media-card > img, .media-preview-loading, .media-preview-error, .media-file-icon { background: #edf2f3; display: grid; grid-column: 1 / -1; height: 155px; object-fit: cover; place-items: center; width: 100%; }
+/* The picture is the way in: tapping it opens the file, on a phone as well as a desktop. */
+.media-card-open { background: transparent; border: 0; cursor: pointer; display: block; grid-column: 1 / -1; padding: 0; position: relative; width: 100%; }
+.media-card > img, .media-card-open > img, .media-preview-loading, .media-preview-error, .media-file-icon { background: #edf2f3; display: grid; grid-column: 1 / -1; height: 155px; object-fit: cover; place-items: center; width: 100%; }
+.media-card-open-hint {
+  align-items: center;
+  background: rgba(20, 21, 26, .66);
+  border-radius: 8px;
+  bottom: 8px;
+  color: #fff;
+  display: flex;
+  font-size: 11px;
+  gap: 5px;
+  padding: 5px 9px;
+  position: absolute;
+  right: 8px;
+}
+.media-card-open:hover .media-card-open-hint, .media-card-open:focus-visible .media-card-open-hint { background: var(--signal); }
 .media-preview-error { align-content: center; color: #9c4c3f; gap: 6px; padding: 12px; text-align: center; }
 .media-preview-error small { font-size: 10px; }
 .media-preview-error button { align-items: center; background: #fff; border: 1px solid #d8c4c0; border-radius: 8px; color: #7d3b31; cursor: pointer; display: inline-flex; gap: 5px; min-height: 36px; padding: 7px 10px; }
@@ -8216,7 +8232,8 @@ textarea:focus-visible {
 .record-photo-fallback { align-items: center; color: var(--ink-400); display: flex; height: 100%; justify-content: center; width: 100%; }
 
 .media-file-actions { align-self: center; display: flex; padding-right: 6px; }
-.media-file-actions button { background: transparent; border: 0; color: var(--green); cursor: pointer; padding: 8px; }
+/* A thumb needs something to hit: these were 31 pixels of icon on a phone screen. */
+.media-file-actions button { align-items: center; background: transparent; border: 0; color: var(--green); cursor: pointer; display: flex; justify-content: center; min-height: 42px; min-width: 42px; padding: 8px; }
 .media-file-actions button:hover { background: var(--green-soft); border-radius: 7px; }
 @media (max-width: 760px) {
   .media-library-toolbar { align-items: stretch; flex-direction: column; }
@@ -8435,6 +8452,12 @@ textarea:focus-visible {
 .record-status-preview { color: var(--green); }
 .record-draft-notice { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; }
 
+/*
+ * Two columns when the form itself is wide enough for them — not when the window is. The
+ * workspace has a module switcher beside it, so a wide tablet can still leave this form
+ * with the width of a phone.
+ */
+.sectioned-record-form { container-type: inline-size; }
 .sectioned-record-columns {
   align-items: start;
   display: grid;
@@ -8537,11 +8560,13 @@ textarea:focus-visible {
 .record-description-field textarea { min-height: 108px; }
 
 .record-responsible-field,
-.record-due-field { align-items: center; display: flex; gap: 9px; }
+.record-due-field { align-items: center; display: flex; flex-wrap: wrap; gap: 9px; }
 .record-responsible-field svg,
 .record-due-field svg { color: var(--ink-500); flex: 0 0 auto; }
-.record-responsible-field select,
-.record-due-field input { flex: 1; min-width: 0; }
+/* A date and time field has a wide minimum of its own; on a phone the rest of the row
+   moves under it instead of pushing the whole form off the screen. */
+.record-responsible-field select { flex: 1 1 140px; min-width: 0; }
+.record-due-field input { flex: 1 1 150px; min-width: 0; }
 
 /* Section 9: what the deadline, the priority and the owner become once it is submitted. */
 .record-derived-block {
@@ -8670,9 +8695,12 @@ textarea:focus-visible {
    and the button that parks it. */
 .sectioned-record-heading {
   align-items: center;
+  flex-wrap: wrap;
   gap: 11px;
 }
-.sectioned-record-heading > div { flex: 1; min-width: 0; }
+/* On a phone the title keeps its line and the chip and the draft button move under it,
+   instead of squeezing the heading to two pixels of text. */
+.sectioned-record-heading > div { flex: 1 1 210px; min-width: 0; }
 .sectioned-record-heading .form-intro { margin: 3px 0 0; }
 .record-back-button {
   align-items: center;
@@ -8847,8 +8875,15 @@ textarea:focus-visible {
  * down the left column and back up the right one. The two columns exist for the desktop
  * screen; the numbers exist for the person reading the form out loud on site.
  */
-@media (max-width: 900px) {
-  .sectioned-record-columns { display: flex; flex-direction: column; }
+/*
+ * In one column the sections read in the client's own numbering — 1 to 12 — instead of
+ * down the left column and back up the right one. The numbers are how the form is read
+ * out loud on site.
+ */
+@container (max-width: 780px) {
+  /* A column of flex items keeps align-items: start from the two-column rule, which sizes
+     every section to its own text: a page of ragged boxes. In one column they stretch. */
+  .sectioned-record-columns { align-items: stretch; display: flex; flex-direction: column; }
   .sectioned-record-column { display: contents; }
   .record-order-1 { order: 1; }
   .record-order-2 { order: 2; }
@@ -8863,7 +8898,30 @@ textarea:focus-visible {
   .record-order-11 { order: 11; }
   .record-order-12 { order: 12; }
 }
+
+@media (max-width: 900px) {
+  /* A column of flex items keeps align-items: start from the two-column rule, which sizes
+     every section to its own text: a page of ragged boxes. In one column they stretch. */
+  .sectioned-record-columns { align-items: stretch; display: flex; flex-direction: column; }
+  .sectioned-record-column { display: contents; }
+  .record-order-1 { order: 1; }
+  .record-order-2 { order: 2; }
+  .record-order-3 { order: 3; }
+  .record-order-4 { order: 4; }
+  .record-order-5 { order: 5; }
+  .record-order-6 { order: 6; }
+  .record-order-7 { order: 7; }
+  .record-order-8 { order: 8; }
+  .record-order-9 { order: 9; }
+  .record-order-10 { order: 10; }
+  .record-order-11 { order: 11; }
+  .record-order-12 { order: 12; }
+}
+
 @media (max-width: 560px) {
+  /* The chip and the draft button share the row under the title instead of taking one
+     line each; on a phone the head of the form was half the first screen. */
+  .record-sync-chip, .record-heading-draft { flex: 1 1 auto; justify-content: center; }
   .record-tile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .record-severity-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .record-action-grid { grid-template-columns: 1fr; }
