@@ -141,6 +141,7 @@ import {
   type WorkspaceBuilding,
   type WorkspaceProject,
 } from "@/lib/supabase/data";
+import { createDrawingPin } from "@/lib/supabase/operations";
 import type { DailyReportPdfSnapshot } from "@/lib/reports/daily-report-pdf";
 import type { CurrentProjectWeather } from "@/lib/weather";
 
@@ -162,6 +163,9 @@ function CompanyLogo({ subtitle }: { subtitle?: string }) {
 }
 
 type NavKey = "vandaag" | "project" | "acties" | "projectdocs" | "punchlist" | "verify" | "rapporten" | "meer";
+/** What a field record is about, in the words of the daily work register. */
+type DailyActivityKind = "" | "works_ongoing" | "works_completed" | "delay";
+
 type ProjectTabKey = "home" | "inspections" | "findings" | "ncr" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files";
 const navKeys: NavKey[] = ["vandaag", "project", "acties", "projectdocs", "punchlist", "verify", "rapporten", "meer"];
 const projectTabKeys: ProjectTabKey[] = ["home", "inspections", "findings", "ncr", "hse", "daily", "documents", "registers", "visual", "drawings", "tools", "files"];
@@ -569,8 +573,17 @@ export function CodecoSupervisionApp() {
   const [entryDrawingId, setEntryDrawingId] = useState("");
   const [entryWorkPackage, setEntryWorkPackage] = useState(workPackageOptions[0].en);
   const [entryPhotos, setEntryPhotos] = useState<PhotoEvidence[]>([]);
+  /**
+   * What the record on the field form is about: work that is running, work that is
+   * finished, or a delay. The client asked the record screen itself to say it — "kan hier
+   * staan waarin ik bezig ben? bv works ongoing, works completed" — so the same word ends
+   * up on the record, in the day lists and on the pin that is placed for it.
+   */
+  const [entryActivityKind, setEntryActivityKind] = useState<DailyActivityKind>("");
   // Set while the supervisor is on the drawing screen with a field record still open.
   const [entryDraftParked, setEntryDraftParked] = useState(false);
+  /** Where on the drawing this record was placed, picked on the drawing screen itself. */
+  const [entryDrawingPoint, setEntryDrawingPoint] = useState<{ drawingId: string; pageNumber: number; xRatio: number; yRatio: number } | null>(null);
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
   const [completedTodos, setCompletedTodos] = useState<number[]>([]);
@@ -1068,6 +1081,8 @@ export function CodecoSupervisionApp() {
     setEntryDrawingId("");
     setEntryWorkPackage(workPackageOptions[0].en);
     setEntryPhotos([]);
+    setEntryActivityKind("");
+    setEntryDrawingPoint(null);
     setEntryDraftParked(false);
   };
 
@@ -1112,6 +1127,33 @@ export function CodecoSupervisionApp() {
     setModal(type === "action" ? "action_create" : "entry");
   };
 
+  /** The words the client uses for each kind, on the form and on the record itself. */
+  const activityKindLabel = (kind: DailyActivityKind) => kind === "works_ongoing"
+    ? text("Works ongoing", "Werkzaamheden gaande")
+    : kind === "works_completed"
+      ? text("Works completed", "Werkzaamheden afgerond")
+      : kind === "delay"
+        ? text("Delay", "Vertraging")
+        : "";
+
+  /**
+   * Choosing what you are busy with on the record form: it sets the record type, so a
+   * delay is filed as a delay, and proposes the sentence that belongs to it.
+   */
+  const chooseActivityKind = (kind: DailyActivityKind) => {
+    setEntryActivityKind(kind);
+    setSelectedType(kind === "delay" ? "delay" : "activity");
+    if (!description.trim() || descriptionSuggestedRef.current) {
+      writeDescription(kind === "works_ongoing"
+        ? text("Work is ongoing", "Werkzaamheden zijn gaande")
+        : kind === "works_completed"
+          ? text("Work completed", "Werkzaamheden afgerond")
+          : kind === "delay"
+            ? text("Delay recorded", "Vertraging geregistreerd")
+            : "", true);
+    }
+  };
+
   const openWorkspaceDailyRecord = (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => {
     if (type === "workforce") {
       // Workforce opens the attendance screen itself. It used to open the whole daily log
@@ -1122,6 +1164,7 @@ export function CodecoSupervisionApp() {
     }
     const isDelay = type === "delay";
     prepareEntry(isDelay ? "delay" : "activity");
+    setEntryActivityKind(type);
     writeDescription(type === "works_ongoing"
       ? text("Work is ongoing", "Werkzaamheden zijn gaande")
       : type === "works_completed"
@@ -1141,6 +1184,9 @@ export function CodecoSupervisionApp() {
     const workPackageNote = workPackageLabel && !["finding", "hse", "action"].includes(selectedType)
       ? ` · ${text(workPackageLabel.en, workPackageLabel.nl)}`
       : "";
+    // What the record is about stands in the line itself, so the day lists and the pin on
+    // the drawing read the same words the supervisor chose.
+    const activityNote = activityKindLabel(entryActivityKind);
     const saved = await runSynced(
       () => Promise.all(targetBuildings.map((entryBuilding) => saveSiteRegistration(supabase, {
         projectId: selectedProject.id,
@@ -1148,12 +1194,29 @@ export function CodecoSupervisionApp() {
         locationNodeId: singleBuilding ? entryLocationNodeId : "",
         type: selectedType,
         title: description.trim(),
-        description: `${singleBuilding ? location || entryBuilding.name : entryBuilding.name} · ${description.trim()}${workPackageNote}`,
+        description: `${singleBuilding ? location || entryBuilding.name : entryBuilding.name}${activityNote ? ` · ${activityNote}` : ""} · ${description.trim()}${workPackageNote}`,
         priority: priorityMap[priority] ?? "normal",
       }))),
       text(`${entryTitlesEnglish[selectedType]} was saved centrally and linked to the daily report.`, `${entryTitles[selectedType]} is centraal opgeslagen en aan het dagrapport gekoppeld.`),
     );
     if (!saved) return;
+    // The spot that was tapped on the drawing becomes a pin now that the record exists:
+    // the database names it after the record itself, with its type and its date.
+    const savedRecord = (Array.isArray(saved) ? saved[0] : saved) as { id?: string } | null;
+    if (entryDrawingPoint && savedRecord?.id) {
+      await createDrawingPin(supabase, {
+        drawingFileId: entryDrawingPoint.drawingId,
+        pageNumber: entryDrawingPoint.pageNumber,
+        xRatio: entryDrawingPoint.xRatio,
+        yRatio: entryDrawingPoint.yRatio,
+        linkedRecordType: "registration",
+        linkedRecordId: savedRecord.id,
+      }).catch(() => setToast(text(
+        "The record was saved; the pin on the drawing could not be placed.",
+        "De registratie is opgeslagen; de pin op de tekening kon niet worden geplaatst.",
+      )));
+      setEntryDrawingPoint(null);
+    }
     // Photos taken inside the record ride along with it: they are queued for the first
     // target building and linked to that registration, so evidence keeps its origin.
     if (entryPhotos.length) {
@@ -1746,6 +1809,15 @@ export function CodecoSupervisionApp() {
               focusRecordId={focusRecordId}
               initialCameraFiles={pendingQuickPhotos}
               onInitialCameraFilesConsumed={() => setPendingQuickPhotos([])}
+              pendingRecordPin={entryDraftParked && description.trim() ? {
+                label: activityKindLabel(entryActivityKind) || text("Field record", "Veldregistratie"),
+                title: description.trim(),
+                point: entryDrawingPoint ? { ...entryDrawingPoint } : null,
+              } : null}
+              onPlaceRecordPin={(placed) => {
+                setEntryDrawingPoint(placed);
+                setEntryDrawingId(placed.drawingId);
+              }}
               openDailyRecord={openWorkspaceDailyRecord}
               projectActions={dayActions}
               openProjectAction={(actionId) => {
@@ -1901,6 +1973,10 @@ export function CodecoSupervisionApp() {
       {modal === "entry" && selectedProject ? (
         <EntryModal
           selectedType={selectedType}
+          activityKind={entryActivityKind}
+          activityKindLabel={activityKindLabel}
+          chooseActivityKind={chooseActivityKind}
+          drawingPoint={entryDrawingPoint}
           description={description}
           descriptionSuggested={descriptionSuggested}
           priority={priority}
@@ -1937,6 +2013,7 @@ export function CodecoSupervisionApp() {
             setInitialProjectTab("drawings");
             setActiveNav("project");
           }}
+          clearDrawingPoint={() => setEntryDrawingPoint(null)}
           requiredLocationDepth={projectConfigurationQuery.data?.required_location_depth ?? "building"}
           busy={syncState === "saving"}
         />
@@ -3727,6 +3804,11 @@ function QuickAddModal({ close, chooseType }: { close: () => void; chooseType: (
 
 function EntryModal({
   selectedType,
+  activityKind,
+  activityKindLabel,
+  chooseActivityKind,
+  drawingPoint,
+  clearDrawingPoint,
   description,
   descriptionSuggested,
   priority,
@@ -3759,6 +3841,13 @@ function EntryModal({
   busy,
 }: {
   selectedType: string;
+  /** What this record is about: work running, work finished or a delay. */
+  activityKind: DailyActivityKind;
+  activityKindLabel: (kind: DailyActivityKind) => string;
+  chooseActivityKind: (kind: DailyActivityKind) => void;
+  /** The spot that was tapped on the drawing for this record, if there is one. */
+  drawingPoint: { drawingId: string; pageNumber: number; xRatio: number; yRatio: number } | null;
+  clearDrawingPoint: () => void;
   description: string;
   /** The text was proposed by the app, not typed. It must disappear on the first keystroke. */
   descriptionSuggested: boolean;
@@ -3838,6 +3927,19 @@ function EntryModal({
         </header>
         <div className="modal-body">
           <div className="form-grid">
+            {/* "Kan hier staan waarin ik bezig ben?" — the record says which part of the
+                day it belongs to, so it lands under Works ongoing, Works completed or
+                Delays instead of in an unnamed pile of activities. */}
+            {selectedType === "activity" || selectedType === "delay" ? (
+              <div className="entry-activity-kind full" role="group" aria-label={text("What are you recording?", "Waar ben je mee bezig?")}>
+                <strong>{text("What are you recording?", "Waar ben je mee bezig?")}</strong>
+                <div className="quick-issue-presets">
+                  {(["works_ongoing", "works_completed", "delay"] as const).map((kind) => (
+                    <button className={activityKind === kind ? "active" : ""} type="button" onClick={() => chooseActivityKind(activityKind === kind ? "" : kind)} key={kind}>{activityKindLabel(kind)}</button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {descriptionChoices.length ? <div className="quick-issue-presets full" aria-label={text("Choose a standard description", "Kies een standaardomschrijving")}>{descriptionChoices.map((choice) => <button className={description.trim() === choice ? "active" : ""} type="button" onClick={() => setDescription(description.trim() === choice ? "" : choice)} key={choice}>{choice}</button>)}</div> : null}
             <div className="form-field full">
               <div className="field-label-row">
@@ -3889,8 +3991,16 @@ function EntryModal({
                     {buildingDrawings.map((drawing) => <option value={drawing.id} key={drawing.id}>{drawing.name}</option>)}
                   </select>
                   {buildingDrawings.length
-                    ? <button className="field-inline-link" type="button" onClick={openDrawings}><MapPin size={12} /> {text("Open the drawing to place a pin", "Open de tekening om een pin te plaatsen")}</button>
+                    ? <button className="field-inline-link" type="button" onClick={openDrawings}><MapPin size={12} /> {drawingPoint ? text("Change the spot on the drawing", "Plek op de tekening wijzigen") : text("Open the drawing to place a pin", "Open de tekening om een pin te plaatsen")}</button>
                     : <small>{text("No drawing has been uploaded for this building yet. Upload the PDF under Project Docs.", "Voor dit gebouw is nog geen tekening geüpload. Upload de PDF bij Project Docs.")}</small>}
+                  {/* The pin itself is created when this record is saved, so it carries the
+                      record's own number, name and date instead of a hand-picked link. */}
+                  {drawingPoint ? (
+                    <small className="entry-pin-set">
+                      <MapPin size={12} /> {text(`Spot chosen on page ${drawingPoint.pageNumber} · the pin is placed when you save`, `Plek gekozen op pagina ${drawingPoint.pageNumber} · de pin wordt geplaatst bij opslaan`)}
+                      <button className="field-inline-link" type="button" onClick={clearDrawingPoint}>{text("Remove", "Verwijderen")}</button>
+                    </small>
+                  ) : null}
                 </div>
               </>
             ) : null}

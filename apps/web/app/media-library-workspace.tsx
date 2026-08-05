@@ -9,6 +9,14 @@ import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { photoFiles, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
 import { useLanguage } from "@/lib/i18n";
 import {
+  dayGroupLabel,
+  filesInFolder,
+  groupFilesByDay,
+  libraryDayKey,
+  orderMediaFolders,
+  visibleLibraryFiles,
+} from "@/lib/media/photo-library.mjs";
+import {
   compressFieldPhoto,
   connectionIsMetered,
   dataSaverEnabled,
@@ -23,7 +31,7 @@ import {
 import { syncOfflineRecords } from "@/lib/offline/record-queue";
 import { downloadProjectFile, loadProjectFileObjectUrl, openProjectFile } from "@/lib/storage/gateway";
 import { createFileOriginResolver, type FileOriginKind } from "@/lib/supabase/file-origins";
-import { createMediaFolder, type FileRecord, type OperationSnapshot } from "@/lib/supabase/operations";
+import { createMediaFolder, type FileRecord, type MediaFolder, type OperationSnapshot } from "@/lib/supabase/operations";
 
 function automaticTitle(filename: string) {
   const title = filename.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
@@ -91,7 +99,7 @@ export function MediaLibraryWorkspace({
   onInitialFilesConsumed?: () => void;
   open360Upload: () => void;
 }) {
-  const { language, text } = useLanguage();
+  const { language, locale, text } = useLanguage();
   const queryClient = useQueryClient();
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const photoImportRef = useRef<HTMLInputElement>(null);
@@ -109,9 +117,12 @@ export function MediaLibraryWorkspace({
   const [libraryBuildingId, setLibraryBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const libraryBuildingName = buildings.find((building) => building.id === libraryBuildingId)?.name ?? buildingName;
   const [originFilter, setOriginFilter] = useState<"all" | FileOriginKind>("all");
-  const folders = useMemo(() => data.mediaFolders.filter((folder) => !folder.building_id || folder.building_id === libraryBuildingId), [libraryBuildingId, data.mediaFolders]);
   const originResolver = useMemo(() => createFileOriginResolver(data), [data]);
-  const folderFiles = useMemo(() => data.files.filter((file) => file.status === "available" && (!file.building_id || file.building_id === libraryBuildingId) && (folderId === "all" || (folderId === "unfiled" ? !file.folder_id : file.folder_id === folderId))), [libraryBuildingId, data.files, folderId]);
+  // One rule for the whole screen: what a folder counts is exactly what the gallery shows
+  // inside it. The counts used to come from the whole project while the gallery showed one
+  // building, so photos looked lost that were simply filed under another building.
+  const buildingFiles = useMemo<FileRecord[]>(() => visibleLibraryFiles(data.files, libraryBuildingId), [data.files, libraryBuildingId]);
+  const folderFiles = useMemo<FileRecord[]>(() => filesInFolder(buildingFiles, folderId), [buildingFiles, folderId]);
   const files = useMemo(() => folderFiles.filter((file) => {
     if (originFilter === "all") return true;
     const origins = originResolver.origins(file.id);
@@ -133,9 +144,19 @@ export function MediaLibraryWorkspace({
     if (id === "unlinked") return origins.length === 0;
     return origins.some((origin) => origin.kind === id);
   }).length;
-  const standardFolderNames = kind === "photo"
+  const standardFolderNames = useMemo(() => kind === "photo"
     ? [text("Daily progress", "Dagvoortgang"), text("Inspections", "Inspecties"), text("Findings", "Bevindingen"), "HSE", text("Deliveries", "Leveringen"), text("360° tours", "360°-rondgangen")]
-    : [text("Approved drawings", "Goedgekeurde tekeningen"), text("Revisions", "Revisies"), text("As-built", "As-built")];
+    : [text("Approved drawings", "Goedgekeurde tekeningen"), text("Revisions", "Revisies"), text("As-built", "As-built")], [kind, text]);
+  // The folders of the daily routine first, in the order the client works in; folders made
+  // by hand follow alphabetically instead of in whatever order they were created.
+  const folders = useMemo<MediaFolder[]>(
+    () => orderMediaFolders(data.mediaFolders.filter((folder) => !folder.building_id || folder.building_id === libraryBuildingId), standardFolderNames),
+    [data.mediaFolders, libraryBuildingId, standardFolderNames],
+  );
+  // Which day is "today" is read once per mount: a heading that recalculates on every
+  // render would be an impure read of the clock during rendering.
+  const [todayKey] = useState(() => libraryDayKey(new Date().toISOString()));
+  const [yesterdayKey] = useState(() => libraryDayKey(new Date(new Date().getTime() - 86_400_000).toISOString()));
 
   const reloadQueue = useCallback(async () => setQueue(await listOfflineUploads(projectId)), [projectId]);
 
@@ -362,9 +383,9 @@ export function MediaLibraryWorkspace({
       </div>
 
       <div className="media-folder-bar">
-        <button className={folderId === "all" ? "active" : ""} type="button" onClick={() => setFolderId("all")}><Folder size={16} /> {text("All", "Alles")} <b>{data.files.length}</b></button>
-        <button className={folderId === "unfiled" ? "active" : ""} type="button" onClick={() => setFolderId("unfiled")}><Folder size={16} /> {text("Unfiled", "Zonder map")} <b>{data.files.filter((file) => !file.folder_id).length}</b></button>
-        {folders.map((folder) => <button className={folderId === folder.id ? "active" : ""} type="button" onClick={() => setFolderId(folder.id)} key={folder.id}><Folder size={16} /> {folder.name} <b>{data.files.filter((file) => file.folder_id === folder.id).length}</b></button>)}
+        <button className={folderId === "all" ? "active" : ""} type="button" onClick={() => setFolderId("all")}><Folder size={16} /> {text("All", "Alles")} <b>{filesInFolder(buildingFiles, "all").length}</b></button>
+        <button className={folderId === "unfiled" ? "active" : ""} type="button" onClick={() => setFolderId("unfiled")}><Folder size={16} /> {text("Unfiled", "Zonder map")} <b>{filesInFolder(buildingFiles, "unfiled").length}</b></button>
+        {folders.map((folder) => <button className={folderId === folder.id ? "active" : ""} type="button" onClick={() => setFolderId(folder.id)} key={folder.id}><Folder size={16} /> {folder.name} <b>{filesInFolder(buildingFiles, folder.id).length}</b></button>)}
       </div>
 
       <div className="media-actions-panel">
@@ -451,15 +472,32 @@ export function MediaLibraryWorkspace({
         ))}
       </div>
 
+      {/* The pictures stand under the day they were taken, newest day first: that is the
+          order a supervisor remembers them in, and the order the day report reads in. */}
+      {(groupFilesByDay(files) as Array<{ key: string; files: FileRecord[] }>).map((group) => (
+        <section className="media-day-group" key={group.key || "undated"}>
+          <header className="media-day-heading">
+            <strong>{dayGroupLabel(group.key, {
+              todayKey,
+              yesterdayKey,
+              today: text("Today", "Vandaag"),
+              yesterday: text("Yesterday", "Gisteren"),
+              undated: text("Without a date", "Zonder datum"),
+              formatDate: (key: string) => new Intl.DateTimeFormat(locale, { dateStyle: "full", timeZone: "America/Paramaribo" }).format(new Date(`${key}T12:00:00-03:00`)),
+            })}</strong>
+            <small>{group.files.length} {text(group.files.length === 1 ? "file" : "files", group.files.length === 1 ? "bestand" : "bestanden")}</small>
+          </header>
       <div className="media-gallery">
-        {files.map((file) => {
+        {group.files.map((file) => {
           const folder = data.mediaFolders.find((item) => item.id === file.folder_id);
           const capture = data.visualCaptures.find((item) => item.file_id === file.id);
           const origins = originResolver.origins(file.id);
           return <article className="media-card" key={file.id}>{file.mime_type.startsWith("image/") ? <SecureImage client={client} file={file} /> : <span className="media-file-icon"><HardDrive size={28} /></span>}<div>{file.document_code ? <span className="media-code-chip">{file.document_code}</span> : null}<strong>{file.original_name}</strong><span>{libraryBuildingName} · {folder?.name ?? text("Unfiled", "Zonder map")} · {file.category} · {humanSize(file.size_bytes)}</span>{capture ? <small>{capture.capture_type === "panorama" ? "360°" : text("Photo", "Foto")} · {capture.location_label}</small> : null}<span className="media-origin-chips">{origins.length ? origins.map((origin) => <em className={`media-origin-chip tone-${origin.kind}`} title={origin.title} key={`${origin.kind}:${origin.recordId}`}>{origin.number || origin.kind}</em>) : <em className="media-origin-chip tone-unlinked">{text("Not linked to a record yet", "Nog niet aan een record gekoppeld")}</em>}</span></div><span className="media-file-actions"><button type="button" onClick={() => void openProjectFile(client, file.id, file.original_name)} aria-label={text("Open file", "Bestand openen")}><ExternalLink size={15} /></button><button type="button" onClick={() => void downloadProjectFile(client, file.id, file.original_name)} aria-label={text("Download file", "Bestand downloaden")}><Download size={15} /></button></span></article>;
         })}
-        {!files.length ? <div className="empty-list-state"><Folder size={24} /><strong>{originFilter === "all" ? text("This folder is empty", "Deze map is leeg") : text("No photo matches this filter", "Geen foto voldoet aan dit filter")}</strong><span>{originFilter === "all" ? text("Take a photo or select files; they can also be queued offline.", "Maak een foto of kies bestanden; dit kan ook volledig offline.") : text("Choose another link filter to see the rest of this folder.", "Kies een ander koppelfilter om de rest van deze map te zien.")}</span></div> : null}
       </div>
+        </section>
+      ))}
+      {!files.length ? <div className="empty-list-state"><Folder size={24} /><strong>{originFilter === "all" ? text("This folder is empty", "Deze map is leeg") : text("No photo matches this filter", "Geen foto voldoet aan dit filter")}</strong><span>{originFilter === "all" ? text("Take a photo or select files; they can also be queued offline.", "Maak een foto of kies bestanden; dit kan ook volledig offline.") : text("Choose another link filter to see the rest of this folder.", "Kies een ander koppelfilter om de rest van deze map te zien.")}</span></div> : null}
     </section>
   );
 }

@@ -342,7 +342,7 @@ export type DrawingPin = {
   page_number: number;
   x_ratio: number;
   y_ratio: number;
-  linked_record_type: "rfi" | "submittal" | "document" | "observation" | "inspection" | "visual";
+  linked_record_type: "rfi" | "submittal" | "document" | "observation" | "inspection" | "visual" | "registration";
   linked_record_id: string;
   linked_record_number: string;
   linked_record_title: string;

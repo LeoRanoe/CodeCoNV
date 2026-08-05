@@ -302,6 +302,8 @@ export function OperationalWorkspace({
   actionCenterView = "work",
   initialCameraFiles = [],
   onInitialCameraFilesConsumed,
+  pendingRecordPin = null,
+  onPlaceRecordPin,
   openDailyRecord,
   openProjectArea,
   openActionCenter,
@@ -342,6 +344,9 @@ export function OperationalWorkspace({
   actionCenterView?: ActionCenterView;
   initialCameraFiles?: File[];
   onInitialCameraFilesConsumed?: () => void;
+  /** The field record that is still open on the record screen, waiting for its spot. */
+  pendingRecordPin?: { label: string; title: string; point: { xRatio: number; yRatio: number; drawingId: string; pageNumber: number } | null } | null;
+  onPlaceRecordPin?: (point: { drawingId: string; pageNumber: number; xRatio: number; yRatio: number }) => void;
   openDailyRecord: (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => void;
   /** The optional record id opens that record itself, instead of the list it stands in. */
   openProjectArea: (tab: "inspections" | "findings" | "ncr" | "hse" | "documents" | "registers" | "visual" | "drawings" | "files" | "submissions", recordId?: string) => void;
@@ -477,6 +482,8 @@ export function OperationalWorkspace({
           externalSubmissionIntent={externalSubmissionIntent}
           initialCameraFiles={initialCameraFiles}
           onInitialCameraFilesConsumed={onInitialCameraFilesConsumed}
+          pendingRecordPin={pendingRecordPin}
+          onPlaceRecordPin={onPlaceRecordPin}
           openDailyRecord={openDailyRecord}
           openProjectArea={openProjectArea}
           openActionCenter={openActionCenter}
@@ -563,6 +570,8 @@ function ProjectOperations({
   onTabChange,
   initialCameraFiles,
   onInitialCameraFilesConsumed,
+  pendingRecordPin = null,
+  onPlaceRecordPin,
   openDailyRecord,
   openProjectArea,
   openActionCenter,
@@ -593,6 +602,9 @@ function ProjectOperations({
   onTabChange: (tab: ProjectTab) => void;
   initialCameraFiles: File[];
   onInitialCameraFilesConsumed?: () => void;
+  /** The field record that is still open on the record screen, waiting for its spot. */
+  pendingRecordPin?: { label: string; title: string; point: { xRatio: number; yRatio: number; drawingId: string; pageNumber: number } | null } | null;
+  onPlaceRecordPin?: (point: { drawingId: string; pageNumber: number; xRatio: number; yRatio: number }) => void;
   openDailyRecord: (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => void;
   /** Opens a module on one record: how the workspace search reaches what it found. */
   openProjectArea: (tab: "inspections" | "findings" | "ncr" | "hse" | "documents" | "registers" | "visual" | "drawings" | "files" | "submissions", recordId?: string) => void;
@@ -801,6 +813,18 @@ function ProjectOperations({
     { title: text("Incorrect dimensions", "Verkeerde maatvoering"), description: text("The executed dimensions do not match the approved drawing.", "De uitgevoerde maatvoering komt niet overeen met de goedgekeurde tekening.") },
     { title: text("Safety risk", "Veiligheidsrisico"), description: text("An unsafe condition requires immediate attention.", "Een onveilige situatie vraagt directe opvolging.") },
     { title: text("Finish or cleaning", "Afwerking of schoonmaak"), description: text("The finish or work area does not meet the required condition.", "De afwerking of werkzone voldoet niet aan de vereiste staat.") },
+  ];
+  /**
+   * The kinds of issue the client registers, written on the issue screen itself:
+   * "safety / quality / equipment / materials / schedule / operational".
+   */
+  const issueTypeOptions = [
+    { id: "safety", label: text("Safety", "Veiligheid") },
+    { id: "quality", label: text("Quality", "Kwaliteit") },
+    { id: "equipment", label: text("Equipment", "Materieel") },
+    { id: "materials", label: text("Materials", "Materialen") },
+    { id: "schedule", label: text("Schedule", "Planning") },
+    { id: "operational", label: text("Operational", "Operationeel") },
   ];
   const findingImpactPresets = [
     text("No schedule impact identified.", "Geen planningimpact vastgesteld."),
@@ -1807,9 +1831,15 @@ function ProjectOperations({
                 markupContext={{ ...markupOptions, defaultBuildingId: findingBuildingId }}
               />
               {findingPhotoError ? <p className="field-error" role="alert">{findingPhotoError}</p> : null}
-              <div className="quick-issue-presets" aria-label={text("Common issue choices", "Veelvoorkomende problemen")}>
-                {findingPresets.map((preset) => <button className={findingForm.title === preset.title ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, title: preset.title, description: preset.description, type: preset.title === text("Safety risk", "Veiligheidsrisico") ? "observation" : "deficiency", severity: preset.title === text("Safety risk", "Veiligheidsrisico") ? "high" : findingForm.severity })} key={preset.title}>{preset.title}</button>)}
-              </div>
+              {/* The client struck the ready-made problems and the historic B1 catalog off
+                  the issue screen: an issue is written in the words of the site. The NCR
+                  form keeps both, because that is where they were asked for. */}
+              {findingScope === "ncr" ? (
+                <div className="quick-issue-presets" aria-label={text("Common issue choices", "Veelvoorkomende problemen")}>
+                  {findingPresets.map((preset) => <button className={findingForm.title === preset.title ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, title: preset.title, description: preset.description, type: preset.title === text("Safety risk", "Veiligheidsrisico") ? "observation" : "deficiency", severity: preset.title === text("Safety risk", "Veiligheidsrisico") ? "high" : findingForm.severity })} key={preset.title}>{preset.title}</button>)}
+                </div>
+              ) : null}
+              {findingScope === "ncr" ? (
               <label className="form-field"><span>{text("Client B1 issue catalog (35 reusable categories)", "Klantcatalogus B1 (35 herbruikbare categorieën)")}</span><select value={findingForm.sourceCatalogSubject} onChange={(event) => {
                 const preset = issueCatalogPresets.find((item) => item.subject === event.target.value);
                 if (!preset) {
@@ -1827,18 +1857,27 @@ function ProjectOperations({
                   issueType: "quality",
                 });
               }}><option value="">{text("Choose only when applicable", "Kies alleen indien van toepassing")}</option>{issueCatalogPresets.map((preset) => <option value={preset.subject} key={preset.subject}>{preset.subject}</option>)}</select><small>{text("The historic spreadsheet is used as a quick-entry catalog; choosing an item does not mark it as an active project issue until you submit it.", "Het historische spreadsheet is een snelinvoercatalogus; een keuze wordt pas een actief projectpunt nadat je het indient.")}</small></label>
+              ) : null}
               <div className="form-grid-2">
                 {/* In the NCR module the type is the NCR itself; a dropdown that can only
                     say "NCR" is one box too many on the client's form. */}
                 {findingScope === "ncr"
                   ? <label className="form-field"><span>{text("Reference checklist / earlier report", "Referentiechecklist / eerder rapport")}</span><input value={findingForm.referenceChecklist} onChange={(event) => setFindingForm({ ...findingForm, referenceChecklist: event.target.value })} placeholder="NCR - 51" /></label>
-                  : <label className="form-field"><span>{text("Type", "Type")}</span><select value={findingForm.type} onChange={(event) => setFindingForm({ ...findingForm, type: event.target.value })}><option value="observation">{text("Observation", "Observatie")}</option><option value="deficiency">{text("Deficiency", "Tekortkoming")}</option><option value="deviation">{text("Deviation", "Afwijking")}</option><option value="ncr">NCR</option><option value="improvement">{text("Improvement opportunity", "Verbeterkans")}</option></select></label>}
-                <label className="form-field"><span>{text("Priority", "Priority")}</span><select value={findingForm.severity} onChange={(event) => setFindingForm({ ...findingForm, severity: event.target.value })}><option value="low">{text("Low · 14 days", "Low · 14 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label>
+                  // "Type" on the issue screen is the kind of issue the client actually
+                  // registers — safety, quality, equipment, materials, schedule or
+                  // operational — instead of the internal record type. Every issue is
+                  // filed as a deficiency; the NCR module writes NCRs.
+                  : <label className="form-field"><span>{text("Type", "Type")}</span><select value={findingForm.issueType} onChange={(event) => setFindingForm({ ...findingForm, issueType: event.target.value })}>{issueTypeOptions.map((option) => <option value={option.id} key={option.id}>{option.label}</option>)}</select></label>}
+                {/* Priority is High, Medium or Low, in the client's own words. The deadline
+                    that follows from it stays visible, because it is rule-driven. */}
+                <label className="form-field"><span>{text("Priority", "Priority")}</span><select value={findingForm.severity} onChange={(event) => setFindingForm({ ...findingForm, severity: event.target.value })}><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="low">{text("Low · 14 days", "Laag · 14 dagen")}</option>{findingScope === "ncr" ? <option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option> : null}</select></label>
               </div>
-              <div className="form-grid-2">
-                <label className="form-field"><span>{text("Issue type", "Issue Type")}</span><select value={findingForm.issueType} onChange={(event) => setFindingForm({ ...findingForm, issueType: event.target.value })}><option value="informational">Informational</option><option value="procedural">Procedural</option><option value="system">System</option><option value="other">Other</option><option value="quality">{text("Quality / workmanship", "Kwaliteit / uitvoering")}</option></select></label>
-                <label className="form-field"><span>{text("Disposition", "Beoordeling")}</span><select value={findingForm.disposition} onChange={(event) => setFindingForm({ ...findingForm, disposition: event.target.value as typeof findingForm.disposition })}><option value="validated">{text("Validated", "Gevalideerd")}</option><option value="to_be_corrected">{text("To be corrected", "Te corrigeren")}</option><option value="alternative_solution">{text("Alternative solution required", "Alternatieve oplossing nodig")}</option></select></label>
-              </div>
+              {findingScope === "ncr" ? (
+                <div className="form-grid-2">
+                  <label className="form-field"><span>{text("Issue type", "Issue Type")}</span><select value={findingForm.issueType} onChange={(event) => setFindingForm({ ...findingForm, issueType: event.target.value })}>{issueTypeOptions.map((option) => <option value={option.id} key={option.id}>{option.label}</option>)}</select></label>
+                  <label className="form-field"><span>{text("Disposition", "Beoordeling")}</span><select value={findingForm.disposition} onChange={(event) => setFindingForm({ ...findingForm, disposition: event.target.value as typeof findingForm.disposition })}><option value="validated">{text("Validated", "Gevalideerd")}</option><option value="to_be_corrected">{text("To be corrected", "Te corrigeren")}</option><option value="alternative_solution">{text("Alternative solution required", "Alternatieve oplossing nodig")}</option></select></label>
+                </div>
+              ) : null}
               <div className="form-grid">
                 <label className="form-field"><span>{findingScope === "ncr" ? text("Subject", "Onderwerp") : text("Issue title · used as the log line", "Issuetitel · wordt de regel in het log")}</span><input value={findingForm.title} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} placeholder={findingScope === "ncr" ? text("What the non-conformance is about", "Waar de afwijking over gaat") : text("Short title for the issue log", "Korte titel voor het issuelog")} /></label>
                 <label className="form-field"><span>{findingScope === "ncr" ? text("Description of non-conformance", "Omschrijving van de afwijking") : text("Issue description", "Issue Description")}</span><textarea rows={findingScope === "ncr" ? 5 : 3} value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} /></label>
@@ -1856,15 +1895,19 @@ function ProjectOperations({
                   <label className="form-field"><span>{text("What the contractor has to do", "Wat de aannemer moet doen")}</span><textarea rows={2} value={findingForm.recommendedActionDetail} onChange={(event) => setFindingForm({ ...findingForm, recommendedActionDetail: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, recommendedActionDetail: appendDictation(current.recommendedActionDetail, transcript) }))} /></label>
                 </div>
               ) : null}
-              <div className="click-answer-block"><strong>{text("Impact", "Impact")}</strong><div className="quick-issue-presets">{findingImpactPresets.map((option) => <button className={findingForm.impactSummary === option ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, impactSummary: option })} key={option}>{option}</button>)}</div></div>
-              <div className="click-answer-block"><strong>{text("Required follow-up", "Vereiste opvolging")}</strong><div className="quick-issue-presets">{findingActionPresets.map((option) => <button className={findingForm.actionSteps === option ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, actionSteps: option })} key={option}>{option}</button>)}</div></div>
-              <details className="optional-text-entry">
-                <summary>{text("Different impact or action", "Andere impact of actie")}</summary>
-                <div className="form-grid">
-                  <label className="form-field"><span>{text("Different impact", "Andere impact")}</span><textarea value={findingForm.impactSummary} onChange={(event) => setFindingForm({ ...findingForm, impactSummary: event.target.value })} rows={2} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, impactSummary: appendDictation(current.impactSummary, transcript) }))} /></label>
-                  <label className="form-field"><span>{text("Different action", "Andere actie")}</span><textarea value={findingForm.actionSteps} onChange={(event) => setFindingForm({ ...findingForm, actionSteps: event.target.value })} rows={2} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, actionSteps: appendDictation(current.actionSteps, transcript) }))} /></label>
-                </div>
-              </details>
+              {/* "Moet ook kunnen invoeren": the impact and the follow-up are typed here,
+                  in the same block as the ready-made sentences. A choice fills the field
+                  and stays editable, instead of hiding the writing behind a fold-out. */}
+              <div className="click-answer-block">
+                <strong>{text("Impact", "Impact")}</strong>
+                <div className="quick-issue-presets">{findingImpactPresets.map((option) => <button className={findingForm.impactSummary === option ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, impactSummary: findingForm.impactSummary === option ? "" : option })} key={option}>{option}</button>)}</div>
+                <label className="form-field"><span>{text("Impact in your own words", "Impact in eigen woorden")}</span><textarea rows={2} value={findingForm.impactSummary} onChange={(event) => setFindingForm({ ...findingForm, impactSummary: event.target.value })} placeholder={text("Choose above, or write what this means for the work.", "Kies hierboven of schrijf wat dit voor het werk betekent.")} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, impactSummary: appendDictation(current.impactSummary, transcript) }))} /></label>
+              </div>
+              <div className="click-answer-block">
+                <strong>{text("Required follow-up", "Vereiste opvolging")}</strong>
+                <div className="quick-issue-presets">{findingActionPresets.map((option) => <button className={findingForm.actionSteps === option ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, actionSteps: findingForm.actionSteps === option ? "" : option })} key={option}>{option}</button>)}</div>
+                <label className="form-field"><span>{text("Follow-up in your own words", "Opvolging in eigen woorden")}</span><textarea rows={2} value={findingForm.actionSteps} onChange={(event) => setFindingForm({ ...findingForm, actionSteps: event.target.value })} placeholder={text("Choose above, or write what has to happen.", "Kies hierboven of schrijf wat er moet gebeuren.")} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, actionSteps: appendDictation(current.actionSteps, transcript) }))} /></label>
+              </div>
               <div className="form-grid-2">
                 <label className="form-field"><span>{text("Date identified", "Date Identified")}</span><input type="date" value={findingForm.dateIdentified} onChange={(event) => setFindingForm({ ...findingForm, dateIdentified: event.target.value })} /></label>
                 <label className="form-field"><span>{text("Expected resolution date", "Expected Resolution Date")}</span><input type="date" value={findingForm.expectedResolutionDate} onChange={(event) => setFindingForm({ ...findingForm, expectedResolutionDate: event.target.value })} /></label>
@@ -1879,29 +1922,37 @@ function ProjectOperations({
               {/* The last two boxes of the client's NCR form: free remarks and the
                   signature of the engineer who issues it. */}
               {findingScope === "ncr" ? (
-                <>
-                  <label className="form-field"><span>{text("Remarks", "Opmerkingen")}</span><textarea rows={2} value={findingForm.remarks} onChange={(event) => setFindingForm({ ...findingForm, remarks: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, remarks: appendDictation(current.remarks, transcript) }))} /></label>
-                  {/* Signing is the signature itself, written here, on this form, at this
-                      moment — not a box that records that somebody clicked. */}
-                  <SignatureField
-                    label={text("Sign as the engineer who issues this NCR", "Ondertekenen als ingenieur die deze NCR uitgeeft")}
-                    declaration={text(
-                      "By signing you issue this non-conformance report to the contractor named above.",
-                      "Met je handtekening geef je dit non-conformance report uit aan de hierboven genoemde aannemer.",
-                    )}
-                    hint={text("The signature, the name and the moment of signing are stored with the report.", "De handtekening, de naam en het moment van ondertekenen worden bij het rapport opgeslagen.")}
-                    nameSuggestion={currentUserName}
-                    nameOptions={documentIssuerOptions}
-                    value={signatureFromDetails(findingForm.signedBy, findingForm.signedAt, findingForm.signatureImage)}
-                    onChange={(signature) => setFindingForm({
-                      ...findingForm,
-                      signedBy: signature?.name ?? "",
-                      signedAt: signature?.signedAt ?? "",
-                      signatureImage: signature?.image ?? "",
-                    })}
-                  />
+                <label className="form-field"><span>{text("Remarks", "Opmerkingen")}</span><textarea rows={2} value={findingForm.remarks} onChange={(event) => setFindingForm({ ...findingForm, remarks: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, remarks: appendDictation(current.remarks, transcript) }))} /></label>
+              ) : null}
+              {/* Signing is the signature itself, written here, on this form, at this
+                  moment — not a box that records that somebody clicked. The client wrote
+                  "signature" beside the issue form too, so both are signed the same way. */}
+              <SignatureField
+                label={findingScope === "ncr"
+                  ? text("Sign as the engineer who issues this NCR", "Ondertekenen als ingenieur die deze NCR uitgeeft")
+                  : text("Sign as the supervisor who reports this issue", "Ondertekenen als supervisor die dit issue meldt")}
+                declaration={findingScope === "ncr"
+                  ? text(
+                    "By signing you issue this non-conformance report to the contractor named above.",
+                    "Met je handtekening geef je dit non-conformance report uit aan de hierboven genoemde aannemer.",
+                  )
+                  : text(
+                    "By signing you report this issue under your own name.",
+                    "Met je handtekening meld je dit issue onder je eigen naam.",
+                  )}
+                hint={text("The signature, the name and the moment of signing are stored with the report.", "De handtekening, de naam en het moment van ondertekenen worden bij het rapport opgeslagen.")}
+                nameSuggestion={currentUserName}
+                nameOptions={documentIssuerOptions}
+                value={signatureFromDetails(findingForm.signedBy, findingForm.signedAt, findingForm.signatureImage)}
+                onChange={(signature) => setFindingForm({
+                  ...findingForm,
+                  signedBy: signature?.name ?? "",
+                  signedAt: signature?.signedAt ?? "",
+                  signatureImage: signature?.image ?? "",
+                })}
+              />
+              {findingScope === "ncr" ? (
                   <div className="operation-alert warning"><RotateCcw size={17} /><div><strong>{text("The contractor fills in the correction", "De aannemer vult de correctie in")}</strong><span>{text("After submitting you send this NCR to the contractor with one tap. The contractor fills in the proposed corrective action and sends it back; the quality-control close-out stays with CODECO.", "Na indienen stuur je deze NCR met één tik naar de aannemer. De aannemer vult de voorgestelde correctieve actie in en stuurt die terug; de eindcontrole blijft bij CODECO.")}</span></div></div>
-                </>
               ) : null}
               <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && findingBuildingId !== ALL_BUILDINGS && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : findingScope === "ncr" ? text("Submit NCR", "NCR indienen") : text("Submit issue", "Probleem indienen")}</button>
             </div>
@@ -2271,7 +2322,7 @@ function ProjectOperations({
 
       {tab === "documents" ? <ProjectDocumentsHome data={data} client={client} openDrawings={() => switchTab("drawings")} openFiles={() => switchTab("files")} openRegisters={() => switchTab("registers")} createDocument={() => openTask("registers", true)} /> : null}
 
-      {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} client={client} busy={busy} run={run} initialFindingId={drawingFindingId} onOpenLinkedRecord={(recordType) => switchTab(recordType === "observation" ? "findings" : recordType === "inspection" ? "inspections" : recordType === "visual" ? "visual" : "registers")} /> : null}
+      {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} client={client} busy={busy} run={run} initialFindingId={drawingFindingId} pendingRecord={pendingRecordPin} onPlaceRecordPin={onPlaceRecordPin} onOpenLinkedRecord={(recordType) => switchTab(recordType === "observation" ? "findings" : recordType === "inspection" ? "inspections" : recordType === "visual" ? "visual" : recordType === "registration" ? "daily" : "registers")} /> : null}
 
       {tab === "tools" ? <FieldTools data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} parties={parties} reportId={reportId} client={client} busy={busy} run={run} /> : null}
 

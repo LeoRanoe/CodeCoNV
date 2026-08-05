@@ -3,11 +3,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   AlertTriangle,
-  Camera,
   Cloud,
   ChevronLeft,
   ChevronRight,
-  ClipboardCheck,
   FileQuestion,
   FileText,
   FileUp,
@@ -16,15 +14,13 @@ import {
   Loader2,
   MapPin,
   MousePointer2,
-  PenLine,
   Plus,
   ShieldCheck,
   Type,
   ArrowUpRight,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
-import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { useLanguage } from "@/lib/i18n";
 import { loadProjectFilePreviewObjectUrl, uploadProjectFile } from "@/lib/storage/gateway";
 import {
@@ -47,18 +43,19 @@ type DrawingWorkspaceProps = {
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
   /** Preselects "observation" plus this finding, so an issue can be pinned straight from its card. */
   initialFindingId?: string;
+  /**
+   * The field record that is still open on the record screen. Tapping the drawing places
+   * that record: the client does not want to choose from a list of everything in the
+   * project — "daar ik de pin moet kiezen, daar hoeft geen freehand drawing", and
+   * "dit kan voor nu weg" beside the list of link types.
+   */
+  pendingRecord?: { label: string; title: string; point: PinPoint & { drawingId: string; pageNumber: number } | null } | null;
+  onPlaceRecordPin?: (point: { drawingId: string; pageNumber: number; xRatio: number; yRatio: number }) => void;
   onOpenLinkedRecord: (recordType: DrawingPin["linked_record_type"], recordId: string) => void;
 };
 
 type PinPoint = { xRatio: number; yRatio: number };
 type DrawingTool = "pin" | DrawingMarkup["markup_type"];
-
-type LinkOption = {
-  id: string;
-  number: string;
-  title: string;
-  meta: string;
-};
 
 const supportedDrawingMimeTypes = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
 const dwgMimeTypes = ["application/octet-stream", "application/acad", "application/dwg", "application/x-acad", "image/vnd.dwg"];
@@ -69,13 +66,15 @@ function isDwgFile(file: { name?: string; original_name?: string; type?: string;
   return name.toLowerCase().endsWith(".dwg") && (dwgMimeTypes.includes(mimeType) || !mimeType);
 }
 
+/** What each pin colour stands for, so the drawing can be read without opening a pin. */
 const linkTypeLabels: Record<DrawingPin["linked_record_type"], { en: string; nl: string }> = {
-  rfi: { en: "Link an RFI", nl: "Koppel een RFI" },
-  submittal: { en: "Link a submittal", nl: "Koppel een submittal" },
-  document: { en: "Link a document", nl: "Koppel een document" },
-  observation: { en: "Link an observation / NCR", nl: "Koppel een observatie / NCR" },
-  inspection: { en: "Link an inspection", nl: "Koppel een inspectie" },
-  visual: { en: "Link a photo / 360° camera image", nl: "Koppel een foto / 360°-camerabeeld" },
+  rfi: { en: "RFI", nl: "RFI" },
+  submittal: { en: "Submittal", nl: "Submittal" },
+  document: { en: "Document", nl: "Document" },
+  observation: { en: "Issue / NCR", nl: "Issue / NCR" },
+  inspection: { en: "Inspection", nl: "Inspectie" },
+  visual: { en: "Photo / 360°", nl: "Foto / 360°" },
+  registration: { en: "Daily works", nl: "Dagwerk" },
 };
 
 const pinTypeClass: Record<DrawingPin["linked_record_type"], string> = {
@@ -85,9 +84,10 @@ const pinTypeClass: Record<DrawingPin["linked_record_type"], string> = {
   observation: "purple",
   inspection: "green",
   visual: "cyan",
+  registration: "amber",
 };
 
-export function DrawingWorkspace({ data, projectId, buildingId, buildings, client, busy, run, initialFindingId = "", onOpenLinkedRecord }: DrawingWorkspaceProps) {
+export function DrawingWorkspace({ data, projectId, buildingId, buildings, client, busy, run, initialFindingId = "", pendingRecord = null, onPlaceRecordPin, onOpenLinkedRecord }: DrawingWorkspaceProps) {
   const { language, text } = useLanguage();
   const maxFileSizeBytes = (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024;
   const drawings = data.files.filter((file) => file.category === "drawing" && file.status === "available" && supportedDrawingMimeTypes.includes(file.mime_type));
@@ -98,9 +98,6 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
   const [pageCount, setPageCount] = useState(1);
   const [point, setPoint] = useState<PinPoint | null>(null);
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
-  const [linkType, setLinkType] = useState<DrawingPin["linked_record_type"]>(initialFindingId ? "observation" : "rfi");
-  const [linkedRecordId, setLinkedRecordId] = useState(initialFindingId);
-  const [note, setNote] = useState("");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [tool, setTool] = useState<DrawingTool>("pin");
@@ -116,33 +113,6 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
   const activeMarkups = activeDrawing
     ? data.drawingMarkups.filter((markup) => markup.drawing_file_id === activeDrawing.id && markup.page_number === pageNumber && markup.status === "active")
     : [];
-
-  const linkOptions = useMemo<LinkOption[]>(() => {
-    if (linkType === "rfi" || linkType === "submittal") {
-      return data.registerEntries
-        .filter((entry) => entry.register_type === linkType)
-        .map((entry) => ({ id: entry.id, number: entry.entry_number, title: entry.title, meta: entry.status }));
-    }
-    if (linkType === "document") {
-      const registerDocuments = data.registerEntries
-        .filter((entry) => entry.register_type === "document")
-        .map((entry) => ({ id: entry.id, number: entry.entry_number, title: entry.title, meta: entry.status }));
-      const projectFiles = data.files
-        .filter((file) => file.status === "available" && ["document", "certificate"].includes(file.category))
-        .map((file) => ({ id: file.id, number: "FILE", title: file.original_name, meta: file.category }));
-      return [...registerDocuments, ...projectFiles];
-    }
-    if (linkType === "observation") {
-      return data.findings.map((finding) => ({ id: finding.id, number: finding.finding_number, title: finding.title, meta: `${finding.finding_type} · ${finding.status}` }));
-    }
-    if (linkType === "inspection") {
-      return data.inspections.map((inspection) => ({ id: inspection.id, number: inspection.inspection_number, title: inspection.title, meta: inspection.status }));
-    }
-    return data.visualCaptures
-      .filter((capture) => capture.status === "active")
-      .map((capture) => ({ id: capture.id, number: capture.capture_type === "panorama" ? "360" : "PHOTO", title: capture.title, meta: capture.location_label }));
-  }, [data.files, data.findings, data.inspections, data.registerEntries, data.visualCaptures, linkType]);
-  const selectedRecordId = linkOptions.some((option) => option.id === linkedRecordId) ? linkedRecordId : linkOptions[0]?.id ?? "";
 
   const incomingFinding = initialFindingId ? data.findings.find((finding) => finding.id === initialFindingId) ?? null : null;
   const incomingPin = incomingFinding
@@ -180,24 +150,30 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
     }
   };
 
-  const savePin = async () => {
-    if (!activeDrawing || !point || !selectedRecordId) return;
+  /**
+   * The pin is placed for the record the supervisor came here with. There is no list to
+   * choose from any more: an issue arrives from its own card, a field record arrives from
+   * the record screen, and the pin takes that record's number, name and date by itself.
+   */
+  const placePin = async (nextPoint: PinPoint) => {
+    if (!activeDrawing) return;
+    if (pendingRecord) {
+      onPlaceRecordPin?.({ drawingId: activeDrawing.id, pageNumber, xRatio: nextPoint.xRatio, yRatio: nextPoint.yRatio });
+      return;
+    }
+    if (!incomingFinding) return;
     const okay = await run(
       () => createDrawingPin(client, {
         drawingFileId: activeDrawing.id,
         pageNumber,
-        xRatio: point.xRatio,
-        yRatio: point.yRatio,
-        linkedRecordType: linkType,
-        linkedRecordId: selectedRecordId,
-        note,
+        xRatio: nextPoint.xRatio,
+        yRatio: nextPoint.yRatio,
+        linkedRecordType: "observation",
+        linkedRecordId: incomingFinding.id,
       }),
       text("The drawing location and project record are now linked and auditable.", "De tekenlocatie en het projectrecord zijn nu gekoppeld en auditeerbaar."),
     );
-    if (okay) {
-      setPoint(null);
-      setNote("");
-    }
+    if (okay) setPoint(null);
   };
 
   const saveMarkup = async (geometry: DrawingMarkup["geometry"]) => {
@@ -225,6 +201,19 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
           <p>{text("Upload a PDF or drawing image, choose a page and link an exact location to an RFI, submittal, document, observation, inspection or site image.", "Upload een PDF of tekeningsafbeelding, kies een pagina en koppel een exacte locatie aan een RFI, submittal, document, observatie, inspectie of terreinbeeld.")}</p>
         </div>
       </div>
+
+      {/* The record that is still open says so here, and says what tapping does. */}
+      {pendingRecord ? (
+        <div className="operation-alert success drawing-finding-handoff">
+          <MapPin size={18} />
+          <div>
+            <strong>{text(`Place ${pendingRecord.label} on a drawing`, `Plaats ${pendingRecord.label} op een tekening`)}</strong>
+            <span>{pendingRecord.point
+              ? text("The spot is chosen. Go back to the record and save it; the pin is placed with the record's own number, name and date.", "De plek is gekozen. Ga terug naar de registratie en sla op; de pin wordt geplaatst met het eigen nummer, de naam en de datum van de registratie.")
+              : text("Choose the drawing and the page, then tap the exact spot. The pin takes the name, number and date of this record.", "Kies de tekening en de pagina en tik daarna de exacte plek aan. De pin krijgt de naam, het nummer en de datum van deze registratie.")}</span>
+          </div>
+        </div>
+      ) : null}
 
       {incomingFinding ? (
         <div className="operation-alert success drawing-finding-handoff">
@@ -279,9 +268,10 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
               </div>
             </div>
             <div className="drawing-markup-toolbar" role="toolbar" aria-label={text("Drawing and linking tools", "Teken- en koppelingstools")}>
+              {/* Freehand is gone: placing a pin is the job here, and a hand-drawn line over
+                  a contract drawing was the one tool the client crossed out. */}
               {([
                 ["pin", MapPin, text("Link pin", "Koppelpin")],
-                ["freehand", PenLine, text("Freehand", "Vrij tekenen")],
                 ["cloud", Cloud, text("Revision cloud", "Revisiewolk")],
                 ["arrow", ArrowUpRight, text("Arrow", "Pijl")],
                 ["text", Type, "Tekst"],
@@ -291,6 +281,12 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
               <label className="drawing-color-control"><span>{text("Color", "Kleur")}</span><input type="color" value={markupColor} onChange={(event) => setMarkupColor(event.target.value.toUpperCase())} /></label>
               <label className="drawing-stroke-control"><span>{text("Line", "Lijn")}</span><select value={strokeWidth} onChange={(event) => setStrokeWidth(Number(event.target.value))}><option value={2}>2 px</option><option value={3}>3 px</option><option value={5}>5 px</option><option value={8}>8 px</option></select></label>
               {tool === "text" ? <label className="drawing-text-control"><span>{text("Text to place", "Te plaatsen tekst")}</span><input maxLength={500} value={markupText} onChange={(event) => setMarkupText(event.target.value)} placeholder={text("Type the drawing note", "Typ de tekeningnotitie")} /></label> : null}
+            </div>
+            {/* A pin has a colour and carries its code; the legend says what a colour means. */}
+            <div className="drawing-pin-legend" aria-label={text("Pin colours", "Pinkleuren")}>
+              {(Object.keys(linkTypeLabels) as Array<DrawingPin["linked_record_type"]>).map((type) => (
+                <span className={pinTypeClass[type]} key={type}>{linkTypeLabels[type][language]}</span>
+              ))}
             </div>
             <DrawingCanvas
               key={activeDrawing.id}
@@ -305,7 +301,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
               textContent={markupText}
               client={client}
               onPageCount={(count) => { setPageCount(count); setPageNumber((page) => Math.min(page, count)); }}
-              onPoint={(nextPoint) => { setPoint(nextPoint); setSelectedPinId(null); }}
+              onPoint={(nextPoint) => { setPoint(nextPoint); setSelectedPinId(null); void placePin(nextPoint); }}
               onSelectPin={(pinId) => { setSelectedPinId(pinId); setPoint(null); }}
               onCreateMarkup={saveMarkup}
             />
@@ -313,25 +309,37 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
           </div>
 
           <aside className="drawing-link-panel">
-            {point ? (
+            {point && (pendingRecord || incomingFinding) ? (
               <div className="drawing-link-form">
-                <div><span className="record-number">{text("Link item", "Item koppelen")}</span><h2>{text("Select item to be linked", "Selecteer het te koppelen item")}</h2><p>X {Math.round(point.xRatio * 100)}% · Y {Math.round(point.yRatio * 100)}% · {text("page", "pagina")} {pageNumber}</p></div>
-                <div className="drawing-link-types">
-                  {(Object.keys(linkTypeLabels) as Array<DrawingPin["linked_record_type"]>).map((type) => (
-                    <button type="button" className={linkType === type ? "active" : ""} onClick={() => { setLinkType(type); setLinkedRecordId(""); }} key={type}>
-                      {type === "visual" ? <Camera size={15} /> : type === "inspection" ? <ClipboardCheck size={15} /> : type === "observation" ? <AlertTriangle size={15} /> : type === "document" ? <FileText size={15} /> : <FileQuestion size={15} />}
-                      {linkTypeLabels[type][language]}
-                    </button>
-                  ))}
+                <div>
+                  <span className="record-number">{text("Placed", "Geplaatst")}</span>
+                  <h2>{pendingRecord ? pendingRecord.label : incomingFinding?.finding_number}</h2>
+                  <p>X {Math.round(point.xRatio * 100)}% · Y {Math.round(point.yRatio * 100)}% · {text("page", "pagina")} {pageNumber}</p>
                 </div>
-                {linkOptions.length ? (
-                  <label className="form-field"><span>{text("Project record", "Projectrecord")}</span><select value={selectedRecordId} onChange={(event) => setLinkedRecordId(event.target.value)}>{linkOptions.map((option) => <option value={option.id} key={option.id}>{option.number} · {option.title} · {option.meta}</option>)}</select></label>
-                ) : <div className="operation-alert warning"><AlertTriangle size={18} /><div><strong>{text("No records available for this type", "Geen records van dit type beschikbaar")}</strong><span>{text("Create the record in the appropriate project register first.", "Maak het record eerst aan in het bijbehorende projectregister.")}</span></div></div>}
-                <details className="optional-text-entry">
-                  <summary>{text("Add an exceptional pin note", "Uitzonderlijke pinnotitie toevoegen")}</summary>
-                  <label className="form-field"><span>{text("Pin note · optional", "Notitie bij pin · optioneel")}</span><textarea rows={3} maxLength={1000} value={note} onChange={(event) => setNote(event.target.value)} /><DictateButton onText={(transcript) => setNote((current) => appendDictation(current, transcript))} /></label>
-                </details>
-                <div className="button-row"><button className="secondary-button" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button><button className="primary-button" type="button" disabled={busy || !selectedRecordId} onClick={() => void savePin()}><Link2 size={15} /> {text("Create link", "Koppeling maken")}</button></div>
+                <div className="operation-alert success">
+                  <MapPin size={18} />
+                  <div>
+                    <strong>{pendingRecord
+                      ? text("The pin is placed when you save the record", "De pin wordt geplaatst zodra je de registratie opslaat")
+                      : text("This issue now stands on the drawing", "Dit issue staat nu op de tekening")}</strong>
+                    <span>{pendingRecord
+                      ? text("It takes the name, the number and the date of the record itself. Tap another spot to move it.", "Hij krijgt de naam, het nummer en de datum van de registratie zelf. Tik een andere plek aan om hem te verplaatsen.")
+                      : text("The pin carries the issue number and title, and opens the issue when it is tapped.", "De pin draagt het issuenummer en de titel en opent het issue wanneer je erop tikt.")}</span>
+                  </div>
+                </div>
+                <div className="button-row"><button className="secondary-button" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button></div>
+              </div>
+            ) : point ? (
+              <div className="drawing-link-form">
+                <div><span className="record-number">{text("Pin", "Pin")}</span><h2>{text("A pin belongs to a record", "Een pin hoort bij een registratie")}</h2><p>X {Math.round(point.xRatio * 100)}% · Y {Math.round(point.yRatio * 100)}% · {text("page", "pagina")} {pageNumber}</p></div>
+                <div className="operation-alert">
+                  <FileQuestion size={18} />
+                  <div>
+                    <strong>{text("Open the record first, then place it here", "Open eerst de registratie en plaats hem daarna hier")}</strong>
+                    <span>{text("From a field record, an issue or an NCR you tap \"place on drawing\" and land here with that record. The pin then carries its number, name and date by itself.", "Vanuit een veldregistratie, een issue of een NCR tik je op \"plaats op tekening\" en kom je hier met die registratie. De pin draagt dan vanzelf het nummer, de naam en de datum.")}</span>
+                  </div>
+                </div>
+                <div className="button-row"><button className="secondary-button" type="button" onClick={() => setPoint(null)}>{text("Close", "Sluiten")}</button></div>
               </div>
             ) : selectedPin ? <DrawingPinDetails pin={selectedPin} onOpen={() => onOpenLinkedRecord(selectedPin.linked_record_type, selectedPin.linked_record_id)} /> : (
               <div className="visual-panel-empty"><MapPin size={24} /><strong>{text("Place or select a drawing pin", "Plaats of selecteer een tekeningspin")}</strong><span>{text("Every pin keeps its page, exact position and record identity in the audit trail.", "Elke pin bewaart pagina, exacte positie en recordidentiteit in het auditspoor.")}</span></div>
@@ -508,7 +516,14 @@ function DrawingCanvas({ file, pageNumber, pins, markups, pendingPoint, tool, co
             {markups.map((markup) => <MarkupShape markup={markup} arrowMarkerId={`drawing-arrow-${file.id}`} key={markup.id} />)}
             {draftPoints.length > 1 ? tool === "arrow" ? <line x1={draftPoints[0].x * 1000} y1={draftPoints[0].y * 1000} x2={draftPoints[draftPoints.length - 1].x * 1000} y2={draftPoints[draftPoints.length - 1].y * 1000} stroke={color} strokeWidth={strokeWidth * 2.5} vectorEffect="non-scaling-stroke" markerEnd={`url(#drawing-arrow-${file.id})`} /> : <polyline points={draftPoints.map((point) => `${point.x * 1000},${point.y * 1000}`).join(" ")} fill="none" stroke={color} strokeWidth={strokeWidth * 2.5} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={tool === "cloud" ? "1 10" : undefined} vectorEffect="non-scaling-stroke" /> : null}
           </svg>
-          {pins.map((pin, index) => <button className={`drawing-pin ${pinTypeClass[pin.linked_record_type]}`} style={{ left: `${Number(pin.x_ratio) * 100}%`, top: `${Number(pin.y_ratio) * 100}%` }} type="button" aria-label={`${pin.linked_record_number} · ${pin.linked_record_title}`} onClick={(event) => { event.stopPropagation(); onSelectPin(pin.id); }} key={pin.id}><span>{index + 1}</span></button>)}
+          {/* The pin itself carries the colour of its record type; the chip under it
+              carries the code, so a drawing can be read without opening anything. */}
+          {pins.map((pin, index) => (
+            <span className="drawing-pin-anchor" style={{ left: `${Number(pin.x_ratio) * 100}%`, top: `${Number(pin.y_ratio) * 100}%` }} key={pin.id}>
+              <button className={`drawing-pin ${pinTypeClass[pin.linked_record_type]}`} type="button" aria-label={`${pin.linked_record_number} · ${pin.linked_record_title}`} onClick={(event) => { event.stopPropagation(); onSelectPin(pin.id); }}><span>{index + 1}</span></button>
+              <em className={`drawing-pin-code ${pinTypeClass[pin.linked_record_type]}`}>{pin.linked_record_number}</em>
+            </span>
+          ))}
           {pendingPoint ? <span className="drawing-pin pending" style={{ left: `${pendingPoint.xRatio * 100}%`, top: `${pendingPoint.yRatio * 100}%` }}><Plus size={13} /></span> : null}
           {loading ? <div className="drawing-loading"><Loader2 className="spin" size={22} /> {text("Rendering secured drawing…", "Beveiligde tekening wordt weergegeven…")}</div> : null}
         </div>

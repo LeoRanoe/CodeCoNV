@@ -26,6 +26,14 @@ import {
   workforceNoteRequired,
 } from "../lib/forms/workforce.mjs";
 import {
+  dayGroupLabel,
+  filesInFolder,
+  groupFilesByDay,
+  libraryDayKey,
+  orderMediaFolders,
+  visibleLibraryFiles,
+} from "../lib/media/photo-library.mjs";
+import {
   buildRecordDirectory,
   normalizeRecordCode,
   searchRecordDirectory,
@@ -692,6 +700,53 @@ function jpegWithoutExif() {
   file.setUint16(2, 0xffd9);
   return bytes.buffer;
 }
+
+test("orders the photo library by folder and by the day a photo was taken", () => {
+  const files = [
+    { id: "a", status: "available", building_id: "b1", folder_id: "f1", created_at: "2026-08-04T09:00:00Z" },
+    { id: "b", status: "available", building_id: "b1", folder_id: null, created_at: "2026-08-04T14:30:00Z" },
+    { id: "c", status: "available", building_id: "b2", folder_id: "f1", created_at: "2026-08-03T10:00:00Z" },
+    { id: "d", status: "archived", building_id: "b1", folder_id: "f1", created_at: "2026-08-04T10:00:00Z" },
+    { id: "e", status: "available", building_id: null, folder_id: "f1", created_at: "2026-08-02T08:00:00Z" },
+    { id: "f", status: "available", building_id: "b1", folder_id: "f1", created_at: "" },
+  ];
+
+  // The folder bar counts what the gallery shows: this building, nothing archived, and a
+  // file that belongs to the whole project counts everywhere.
+  const shown = visibleLibraryFiles(files, "b1");
+  assert.deepEqual(shown.map((file) => file.id), ["a", "b", "e", "f"]);
+  assert.deepEqual(filesInFolder(shown, "all").map((file) => file.id), ["a", "b", "e", "f"]);
+  assert.deepEqual(filesInFolder(shown, "unfiled").map((file) => file.id), ["b"]);
+  assert.deepEqual(filesInFolder(shown, "f1").map((file) => file.id), ["a", "e", "f"]);
+
+  // The folders of the daily routine stand first, everything made by hand after them.
+  const folders = [
+    { id: "1", name: "Zolder" },
+    { id: "2", name: "Findings" },
+    { id: "3", name: "Daily progress" },
+    { id: "4", name: "Aannemer B" },
+  ];
+  assert.deepEqual(
+    orderMediaFolders(folders, ["Daily progress", "Inspections", "Findings"]).map((folder) => folder.name),
+    ["Daily progress", "Findings", "Aannemer B", "Zolder"],
+  );
+
+  // Newest day on top, newest photo inside a day on top, undated pictures last.
+  const grouped = groupFilesByDay(shown);
+  assert.deepEqual(grouped.map((group) => group.key), ["2026-08-04", "2026-08-02", ""]);
+  assert.deepEqual(grouped[0].files.map((file) => file.id), ["b", "a"]);
+  assert.deepEqual(grouped[2].files.map((file) => file.id), ["f"]);
+
+  // A day is read in Suriname time, so a photo taken at 21:30 local is not tomorrow.
+  assert.equal(libraryDayKey("2026-08-05T00:30:00Z"), "2026-08-04");
+  assert.equal(libraryDayKey(""), "");
+
+  const labels = { todayKey: "2026-08-04", yesterdayKey: "2026-08-03", today: "Vandaag", yesterday: "Gisteren", undated: "Zonder datum", formatDate: (key) => `datum ${key}` };
+  assert.equal(dayGroupLabel("2026-08-04", labels), "Vandaag");
+  assert.equal(dayGroupLabel("2026-08-03", labels), "Gisteren");
+  assert.equal(dayGroupLabel("2026-08-01", labels), "datum 2026-08-01");
+  assert.equal(dayGroupLabel("", labels), "Zonder datum");
+});
 
 test("totals the workforce per organisation and per trade, and signals a deviation", () => {
   const rows = [
