@@ -38,6 +38,7 @@ import {
   normalizeRecordCode,
   searchRecordDirectory,
 } from "../lib/records/record-directory.mjs";
+import { schemaFeatureMissing } from "../lib/supabase/schema-compatibility.mjs";
 import {
   handwrittenSignature,
   isSigned,
@@ -64,6 +65,28 @@ import {
   photoTitleFromDescription,
   validatePanoramaDimensions,
 } from "../lib/images/field-image.mjs";
+
+test("recognizes every PostgREST shape for missing inspection signature columns", () => {
+  const signatureColumns = ["signature_image", "signed_by", "signed_at"];
+  assert.equal(
+    schemaFeatureMissing(
+      { message: "column inspections.signed_by does not exist" },
+      signatureColumns,
+    ),
+    true,
+  );
+  assert.equal(
+    schemaFeatureMissing(
+      { message: "Could not find the 'signed_at' column of 'inspections' in the schema cache" },
+      signatureColumns,
+    ),
+    true,
+  );
+  assert.equal(
+    schemaFeatureMissing({ message: "permission denied for table inspections" }, signatureColumns),
+    false,
+  );
+});
 
 test("accepts only narrow normalized external share tokens", () => {
   const lowercase = "a1".repeat(24);

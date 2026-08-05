@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { anchorChecklistLibrary, legacyAnchorPrompts } from "@/lib/checklists/anchor-library";
 import { normalizeExternalShareToken } from "@/lib/external-share/token.mjs";
+import { schemaFeatureMissing } from "@/lib/supabase/schema-compatibility.mjs";
 
 export type ChecklistItem = {
   id: string;
@@ -467,12 +468,6 @@ function fail(error: { message: string } | null) {
   if (error) throw new Error(error.message);
 }
 
-function schemaFeatureMissing(error: { message: string } | null, feature: string) {
-  const message = error?.message.toLowerCase() ?? "";
-  return message.includes(feature.toLowerCase())
-    && (message.includes("does not exist") || message.includes("schema cache") || message.includes("could not find"));
-}
-
 function rpcSignatureMissing(error: { message: string } | null, functionName: string) {
   const message = error?.message.toLowerCase() ?? "";
   return message.includes(functionName.toLowerCase())
@@ -540,38 +535,46 @@ export async function loadProjectOperations(
     client.from("file_links").select("id,file_id,record_type,record_id,relationship,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(5000),
     client.from("day_closeouts").select("id,building_id,day_report_id,day_summary,work_ongoing,work_performed,progress_percent,delay_cause,delay_hours,tomorrow_plan,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(400),
   ]);
-  const compatibleRegisterResult = schemaFeatureMissing(registerResult.error, "location_node_id")
+  const compatibleRegisterResult = schemaFeatureMissing(registerResult.error, ["location_node_id"])
     ? await client.from("project_register_entries").select("id,building_id,register_type,entry_number,title,status,occurred_at,due_at,details").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(5000)
     : registerResult;
   // The signature on an inspection and the HSE heading are new columns; a database that
   // has not run that migration yet still has to load its records.
-  const compatibleInspectionResult = schemaFeatureMissing(inspectionResult.error, "signature_image")
+  const compatibleInspectionResult = schemaFeatureMissing(inspectionResult.error, ["signed_by", "signed_at", "signature_image"])
     ? await client.from("inspections").select("id,building_id,location_node_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100)
     : inspectionResult;
   // The twelve boxes of the client's HSE screen are newer still, so the load steps back
   // one column set at a time instead of failing on the first database that is behind.
-  const hseWithoutIssueFormResult = schemaFeatureMissing(hseResult.error, "issue_type")
+  const hseWithoutIssueFormResult = schemaFeatureMissing(hseResult.error, [
+    "issue_type", "issue_category", "immediate_actions", "immediate_action_other",
+    "responsible_person", "responsible_user_id", "due_at", "priority", "root_cause",
+    "corrective_action", "notes", "latitude", "longitude", "location_label",
+  ])
     ? await client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,hse_category,title,description,severity,status,confidential,immediate_measure,occurred_at").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100)
     : hseResult;
-  const compatibleHseResult = schemaFeatureMissing(hseWithoutIssueFormResult.error, "hse_category")
+  const compatibleHseResult = schemaFeatureMissing(hseWithoutIssueFormResult.error, ["hse_category"])
     ? await client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,title,description,severity,status,confidential,immediate_measure,occurred_at").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100)
     : hseWithoutIssueFormResult;
   // A database that has not been given the document numbering yet still has to load; the
   // files then simply carry no code until the migration has run.
-  const compatibleFileResult = schemaFeatureMissing(fileResult.error, "document_code")
+  const compatibleFileResult = schemaFeatureMissing(fileResult.error, ["document_code"])
     ? await client.from("files").select("id,building_id,folder_id,original_name,mime_type,size_bytes,category,status,created_at").eq("project_id", projectId).neq("status", "deleted").order("created_at", { ascending: false }).limit(500)
     : fileResult;
-  const compatibleBoqProgressResult = schemaFeatureMissing(boqProgressResult.error, "boq_progress_updates")
+  const compatibleBoqProgressResult = schemaFeatureMissing(boqProgressResult.error, ["boq_progress_updates"])
     ? { data: [], error: null }
     : boqProgressResult;
   // File links only enrich the UI. A snapshot must still load when a role cannot read them.
   const compatibleFileLinkResult = fileLinkResult.error ? { data: [], error: null } : fileLinkResult;
   // Daily work only enriches the workspace; a missing column must not break the snapshot.
   const compatibleDailyWorkResult = dailyWorkResult.error ? { data: [], error: null } : dailyWorkResult;
-  const compatibleVisualAnnotationResult = schemaFeatureMissing(visualAnnotationResult.error, "disposition")
+  const compatibleVisualAnnotationResult = schemaFeatureMissing(visualAnnotationResult.error, ["disposition"])
     ? await client.from("visual_annotations").select("id,capture_id,finding_id,coordinate_mode,x_ratio,y_ratio,yaw,pitch,title,description,severity,status,created_at").eq("project_id", projectId).order("created_at").limit(1000)
     : visualAnnotationResult;
-  const legacySettingsSchema = schemaFeatureMissing(settingsResult.error, "project_settings");
+  const legacySettingsSchema = schemaFeatureMissing(settingsResult.error, [
+    "project_settings", "configuration_status", "default_shift_start", "default_shift_end",
+    "disciplines", "finding_deadlines", "report_sections", "default_units",
+    "required_location_depth", "report_header", "report_footer",
+  ]);
   const compatibleSettingsResult = legacySettingsSchema
     ? await client.from("project_settings").select("id,project_id,report_prefix,default_language,max_file_size_mb,notification_lead_hours,email_notifications_enabled,push_notifications_enabled,retention_days,branding,modules,signing_workflow").eq("project_id", projectId).maybeSingle()
     : settingsResult;
@@ -592,7 +595,7 @@ export async function loadProjectOperations(
     : [];
   // The written signature on a report version is new; without that column the report
   // history still has to load.
-  const signatureResult = reportId && schemaFeatureMissing(reportFilters[2]?.error ?? null, "signature_image")
+  const signatureResult = reportId && schemaFeatureMissing(reportFilters[2]?.error ?? null, ["signature_image"])
     ? await client.from("report_signatures").select("id,report_version_id,signer_name,signer_role,declaration,legal_level,signed_at").eq("day_report_id", reportId).order("signed_at", { ascending: false })
     : reportFilters[2];
   [reportFilters[0], reportFilters[1], signatureResult, reportFilters[3]].forEach((result) => fail(result?.error ?? null));
@@ -800,7 +803,7 @@ export async function signInspection(client: SupabaseClient, inspectionId: strin
     signature_image: signature.image,
   }).eq("id", inspectionId);
   // A database without the signature columns must not lose the completed checklist.
-  if (schemaFeatureMissing(result.error, "signature_image")) return;
+  if (schemaFeatureMissing(result.error, ["signed_by", "signed_at", "signature_image"])) return;
   fail(result.error);
 }
 
@@ -1232,7 +1235,11 @@ export async function installChecklistLibraryTemplate(client: SupabaseClient, pr
 export async function saveProjectSettings(client: SupabaseClient, settings: ProjectSettings, update: Partial<ProjectSettings>) {
   const result = await client.from("project_settings").update(update).eq("id", settings.id).select("*").single();
   if (!result.error) return result.data as ProjectSettings;
-  if (!schemaFeatureMissing(result.error, "project_settings")) fail(result.error);
+  if (!schemaFeatureMissing(result.error, [
+    "project_settings", "configuration_status", "default_shift_start", "default_shift_end",
+    "disciplines", "finding_deadlines", "report_sections", "default_units",
+    "required_location_depth", "report_header", "report_footer",
+  ])) fail(result.error);
 
   const legacyKeys: Array<keyof ProjectSettings> = [
     "report_prefix",

@@ -1206,7 +1206,7 @@ test("processes the annotated screens of 1 August: NCR form, agreement and deadl
   assert.match(workspace, /setSubmittedFinding\(queuedOffline \? null : created\)/);
   // The record is written with or without a connection: without one it waits on the
   // device and stands in the list, instead of the save simply failing.
-  assert.match(workspace, /kind: "finding",\n\s+projectId,/);
+  assert.match(workspace, /kind: "finding",\r?\n\s+projectId,/);
   assert.match(workspace, /send: \(\) => createFinding\(client, \{ \.\.\.draft, buildingId: targetBuildingId/);
   assert.match(workspace, /send: \(\) => createFinding\(client, \{ \.\.\.draft, buildingId: targetBuildingId/);
   assert.match(styles, /\.submitted-record-share/);
@@ -1828,7 +1828,7 @@ test("processes the feedback of 4 August: photos first, written signatures, an N
   assert.match(migration, /when 'photo' then 'PHO'/);
   assert.match(migration, /when 'drawing' then 'DWG'/);
   assert.match(findings, /document_code: string \| null;/);
-  assert.match(findings, /schemaFeatureMissing\(fileResult\.error, "document_code"\)/);
+  assert.match(findings, /schemaFeatureMissing\(fileResult\.error, \["document_code"\]\)/);
   assert.match(operations, /buildRecordDirectory\(data\)/);
   assert.match(workspaceHome, /searchRecordDirectory\(records, query, 8\)/);
   assert.match(workspaceHome, /workspace-code-results/);
@@ -2190,7 +2190,7 @@ test("builds the HSE observation / issue screen the client sent, section by sect
 
   // A database that has not run the migration yet still records the event and still loads
   // its own list: the newer boxes step back one signature at a time.
-  assert.match(dataLayer, /schemaFeatureMissing\(hseResult\.error, "issue_type"\)/);
+  assert.match(dataLayer, /schemaFeatureMissing\(hseResult\.error, \[/);
   assert.match(dataLayer, /const fallbackType = input\.type === "observation" \|\| input\.type === "other" \? "positive_observation" : input\.type/);
 
   // A box that is filled in on the screen is printed in the period report; a box that is
