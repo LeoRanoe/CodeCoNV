@@ -43,6 +43,8 @@ export type ChecklistLibraryTemplate = {
 export type Inspection = {
   id: string;
   building_id: string;
+  /** All buildings this one numbered record belongs to; the first remains building_id. */
+  building_ids?: string[];
   location_node_id: string | null;
   template_id: string;
   inspection_number: string;
@@ -60,6 +62,7 @@ export type Inspection = {
 export type Finding = {
   id: string;
   building_id: string;
+  building_ids?: string[];
   location_node_id: string | null;
   finding_number: string;
   finding_type: "observation" | "deficiency" | "deviation" | "ncr" | "improvement";
@@ -91,6 +94,7 @@ export type Finding = {
     disposition?: "validated" | "to_be_corrected" | "alternative_solution";
     expected_resolution_date?: string | null;
     source_catalog_subject?: string;
+    date_identified?: string | null;
     /** The boxes of the client's own non-conformance report. */
     reference_checklist?: string;
     recommended_action?: "rework" | "repair" | "alternative";
@@ -130,6 +134,7 @@ export type FindingProgressUpdate = {
 export type HseEvent = {
   id: string;
   building_id: string;
+  building_ids?: string[];
   location_node_id: string | null;
   event_number: string;
   event_type: string;
@@ -159,11 +164,15 @@ export type HseEvent = {
   latitude?: number | null;
   longitude?: number | null;
   location_label?: string | null;
+  signed_by?: string | null;
+  signed_at?: string | null;
+  signature_image?: string | null;
 };
 
 export type RegisterEntry = {
   id: string;
   building_id: string | null;
+  building_ids?: string[];
   location_node_id: string | null;
   register_type: string;
   entry_number: string;
@@ -172,11 +181,15 @@ export type RegisterEntry = {
   occurred_at: string;
   due_at: string | null;
   details: Record<string, unknown>;
+  signed_by?: string | null;
+  signed_at?: string | null;
+  signature_image?: string | null;
 };
 
 export type FileRecord = {
   id: string;
   building_id: string | null;
+  building_ids?: string[];
   folder_id: string | null;
   original_name: string;
   mime_type: string;
@@ -241,6 +254,7 @@ export type FileLink = {
 export type DailyWorkRecord = {
   id: string;
   building_id: string;
+  building_ids?: string[];
   day_report_id: string;
   day_summary: string;
   work_ongoing: string | null;
@@ -464,6 +478,12 @@ export type OperationSnapshot = {
   _offlineSavedAt?: string;
 };
 
+export type RecordBuilding = {
+  record_type: "inspection" | "finding" | "hse" | "register_entry" | "daily_work" | "attendance" | "visual" | "file" | "action";
+  record_id: string;
+  building_id: string;
+};
+
 function fail(error: { message: string } | null) {
   if (error) throw new Error(error.message);
 }
@@ -480,6 +500,20 @@ function legacySettingsCompatibility(branding: unknown) {
   return compatibility && typeof compatibility === "object" && !Array.isArray(compatibility)
     ? compatibility as Partial<ProjectSettings>
     : {};
+}
+
+function buildingsForRecord(
+  associations: RecordBuilding[],
+  recordType: RecordBuilding["record_type"],
+  recordId: string,
+  primaryBuildingId?: string | null,
+) {
+  return Array.from(new Set([
+    ...(primaryBuildingId ? [primaryBuildingId] : []),
+    ...associations
+      .filter((association) => association.record_type === recordType && association.record_id === recordId)
+      .map((association) => association.building_id),
+  ]));
 }
 
 export async function ensureProjectDayReport(
@@ -511,14 +545,14 @@ export async function loadProjectOperations(
   organizationId: string,
   reportId?: string | null,
 ): Promise<OperationSnapshot> {
-  const [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, registerResult, boqProgressResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult, dayReportResult, fileLinkResult, dailyWorkResult] = await Promise.all([
+  const [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, registerResult, boqProgressResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult, dayReportResult, fileLinkResult, dailyWorkResult, recordBuildingResult] = await Promise.all([
     client.from("checklist_templates").select("id,project_id,module,code,name,description,version_number,status").or(`project_id.is.null,project_id.eq.${projectId}`).order("name"),
     client.from("checklist_library_templates").select("code,module,category,name,description,prompts,sort_order").eq("active", true).order("sort_order"),
     client.from("inspections").select("id,building_id,location_node_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at,signed_by,signed_at,signature_image").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
     client.from("findings").select("id,building_id,location_node_id,finding_number,finding_type,title,description,severity,priority,status,responsible_party_id,assigned_user_id,due_at,cause,proposed_correction,final_measure,issue_management,verified_by,verified_at,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
     client.from("finding_progress_updates").select("id,finding_id,progress_percent,disposition,note,inspected_at,created_at").eq("project_id", projectId).order("inspected_at", { ascending: false }).limit(1000),
-    client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,hse_category,title,description,severity,status,confidential,immediate_measure,occurred_at,issue_type,issue_category,immediate_actions,immediate_action_other,responsible_person,responsible_user_id,due_at,priority,root_cause,corrective_action,notes,latitude,longitude,location_label").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100),
-    client.from("project_register_entries").select("id,building_id,location_node_id,register_type,entry_number,title,status,occurred_at,due_at,details").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(5000),
+    client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,hse_category,title,description,severity,status,confidential,immediate_measure,occurred_at,issue_type,issue_category,immediate_actions,immediate_action_other,responsible_person,responsible_user_id,due_at,priority,root_cause,corrective_action,notes,latitude,longitude,location_label,signed_by,signed_at,signature_image").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100),
+    client.from("project_register_entries").select("id,building_id,location_node_id,register_type,entry_number,title,status,occurred_at,due_at,details,signed_by,signed_at,signature_image").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(5000),
     client.from("boq_progress_updates").select("id,register_entry_id,building_id,progress_percent,quantity_completed,note,recorded_at,created_at").eq("project_id", projectId).order("recorded_at", { ascending: false }).limit(5000),
     client.from("files").select("id,building_id,folder_id,original_name,mime_type,size_bytes,category,status,document_code,created_at").eq("project_id", projectId).neq("status", "deleted").order("created_at", { ascending: false }).limit(500),
     client.from("project_settings").select("id,project_id,report_prefix,default_language,max_file_size_mb,notification_lead_hours,email_notifications_enabled,push_notifications_enabled,retention_days,branding,modules,signing_workflow,configuration_status,default_shift_start,default_shift_end,disciplines,finding_deadlines,report_sections,default_units,required_location_depth,report_header,report_footer").eq("project_id", projectId).maybeSingle(),
@@ -534,10 +568,14 @@ export async function loadProjectOperations(
     client.from("day_reports").select("id,report_date,report_number,status,completeness_percent,created_at,updated_at").eq("project_id", projectId).order("report_date", { ascending: false }).limit(1000),
     client.from("file_links").select("id,file_id,record_type,record_id,relationship,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(5000),
     client.from("day_closeouts").select("id,building_id,day_report_id,day_summary,work_ongoing,work_performed,progress_percent,delay_cause,delay_hours,tomorrow_plan,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(400),
+    client.from("record_buildings").select("record_type,record_id,building_id").eq("project_id", projectId).limit(20000),
   ]);
-  const compatibleRegisterResult = schemaFeatureMissing(registerResult.error, ["location_node_id"])
-    ? await client.from("project_register_entries").select("id,building_id,register_type,entry_number,title,status,occurred_at,due_at,details").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(5000)
+  const registerWithoutSignatureResult = schemaFeatureMissing(registerResult.error, ["signed_by", "signed_at", "signature_image"])
+    ? await client.from("project_register_entries").select("id,building_id,location_node_id,register_type,entry_number,title,status,occurred_at,due_at,details").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(5000)
     : registerResult;
+  const compatibleRegisterResult = schemaFeatureMissing(registerWithoutSignatureResult.error, ["location_node_id"])
+    ? await client.from("project_register_entries").select("id,building_id,register_type,entry_number,title,status,occurred_at,due_at,details").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(5000)
+    : registerWithoutSignatureResult;
   // The signature on an inspection and the HSE heading are new columns; a database that
   // has not run that migration yet still has to load its records.
   const compatibleInspectionResult = schemaFeatureMissing(inspectionResult.error, ["signed_by", "signed_at", "signature_image"])
@@ -545,13 +583,16 @@ export async function loadProjectOperations(
     : inspectionResult;
   // The twelve boxes of the client's HSE screen are newer still, so the load steps back
   // one column set at a time instead of failing on the first database that is behind.
-  const hseWithoutIssueFormResult = schemaFeatureMissing(hseResult.error, [
+  const hseWithoutSignatureResult = schemaFeatureMissing(hseResult.error, ["signed_by", "signed_at", "signature_image"])
+    ? await client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,hse_category,title,description,severity,status,confidential,immediate_measure,occurred_at,issue_type,issue_category,immediate_actions,immediate_action_other,responsible_person,responsible_user_id,due_at,priority,root_cause,corrective_action,notes,latitude,longitude,location_label").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100)
+    : hseResult;
+  const hseWithoutIssueFormResult = schemaFeatureMissing(hseWithoutSignatureResult.error, [
     "issue_type", "issue_category", "immediate_actions", "immediate_action_other",
     "responsible_person", "responsible_user_id", "due_at", "priority", "root_cause",
     "corrective_action", "notes", "latitude", "longitude", "location_label",
   ])
     ? await client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,hse_category,title,description,severity,status,confidential,immediate_measure,occurred_at").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100)
-    : hseResult;
+    : hseWithoutSignatureResult;
   const compatibleHseResult = schemaFeatureMissing(hseWithoutIssueFormResult.error, ["hse_category"])
     ? await client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,title,description,severity,status,confidential,immediate_measure,occurred_at").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100)
     : hseWithoutIssueFormResult;
@@ -567,6 +608,7 @@ export async function loadProjectOperations(
   const compatibleFileLinkResult = fileLinkResult.error ? { data: [], error: null } : fileLinkResult;
   // Daily work only enriches the workspace; a missing column must not break the snapshot.
   const compatibleDailyWorkResult = dailyWorkResult.error ? { data: [], error: null } : dailyWorkResult;
+  const compatibleRecordBuildingResult = recordBuildingResult.error ? { data: [], error: null } : recordBuildingResult;
   const compatibleVisualAnnotationResult = schemaFeatureMissing(visualAnnotationResult.error, ["disposition"])
     ? await client.from("visual_annotations").select("id,capture_id,finding_id,coordinate_mode,x_ratio,y_ratio,yaw,pitch,title,description,severity,status,created_at").eq("project_id", projectId).order("created_at").limit(1000)
     : visualAnnotationResult;
@@ -600,6 +642,13 @@ export async function loadProjectOperations(
     : reportFilters[2];
   [reportFilters[0], reportFilters[1], signatureResult, reportFilters[3]].forEach((result) => fail(result?.error ?? null));
   const items = (itemResult.data ?? []) as ChecklistItem[];
+  const recordBuildings = (compatibleRecordBuildingResult.data ?? []) as RecordBuilding[];
+  const inspectionRows = (compatibleInspectionResult.data ?? []) as Inspection[];
+  const findingRows = (findingResult.data ?? []) as Finding[];
+  const hseRows = (compatibleHseResult.data ?? []) as HseEvent[];
+  const registerRows = (compatibleRegisterResult.data ?? []) as RegisterEntry[];
+  const fileRows = (compatibleFileResult.data ?? []) as FileRecord[];
+  const dailyWorkRows = (compatibleDailyWorkResult.data ?? []) as DailyWorkRecord[];
   return {
     templates: templateRows.map((template) => ({ ...template, items: items.filter((item) => item.template_id === template.id) })),
     checklistLibrary: [
@@ -608,20 +657,20 @@ export async function loadProjectOperations(
         .filter((builtIn) => !(libraryResult.data ?? []).some((row) => row.code === builtIn.code))
         .map((builtIn) => ({ ...builtIn, prompts: [...builtIn.prompts] })),
     ].sort((left, right) => left.sort_order - right.sort_order),
-    inspections: (compatibleInspectionResult.data ?? []) as Inspection[],
-    findings: (findingResult.data ?? []) as Finding[],
+    inspections: inspectionRows.map((record) => ({ ...record, building_ids: buildingsForRecord(recordBuildings, "inspection", record.id, record.building_id) })),
+    findings: findingRows.map((record) => ({ ...record, building_ids: buildingsForRecord(recordBuildings, "finding", record.id, record.building_id) })),
     findingProgressUpdates: (findingProgressResult.data ?? []) as FindingProgressUpdate[],
-    hseEvents: (compatibleHseResult.data ?? []) as HseEvent[],
-    registerEntries: (compatibleRegisterResult.data ?? []).map((entry) => ({
+    hseEvents: hseRows.map((record) => ({ ...record, building_ids: buildingsForRecord(recordBuildings, "hse", record.id, record.building_id) })),
+    registerEntries: registerRows.map((entry) => ({
       ...entry,
-      location_node_id: "location_node_id" in entry
-        ? entry.location_node_id
-        : typeof entry.details === "object" && entry.details && "location_node_id" in entry.details
+      building_ids: buildingsForRecord(recordBuildings, "register_entry", entry.id, entry.building_id),
+      location_node_id: entry.location_node_id
+        ?? (typeof entry.details === "object" && entry.details && "location_node_id" in entry.details
           ? String(entry.details.location_node_id || "") || null
-          : null,
+          : null),
     })) as RegisterEntry[],
     boqProgressUpdates: (compatibleBoqProgressResult.data ?? []) as BoqProgressUpdate[],
-    files: (compatibleFileResult.data ?? []) as FileRecord[],
+    files: fileRows.map((record) => ({ ...record, building_ids: buildingsForRecord(recordBuildings, "file", record.id, record.building_id) })),
     settings: compatibleSettingsResult.data ? {
       configuration_status: "setup",
       default_shift_start: "07:00",
@@ -651,7 +700,7 @@ export async function loadProjectOperations(
     mediaFolders: (mediaFolderResult.data ?? []) as MediaFolder[],
     externalShareLinks: (externalShareResult.data ?? []) as ExternalShareLink[],
     fileLinks: (compatibleFileLinkResult.data ?? []) as FileLink[],
-    dailyWork: (compatibleDailyWorkResult.data ?? []) as DailyWorkRecord[],
+    dailyWork: dailyWorkRows.map((record) => ({ ...record, building_ids: buildingsForRecord(recordBuildings, "daily_work", record.id, record.building_id) })),
   };
 }
 
@@ -718,7 +767,33 @@ export async function revokeExternalShareLink(client: SupabaseClient, shareId: s
   return data as RevokeExternalShareResult;
 }
 
-export async function startInspection(client: SupabaseClient, input: { projectId: string; buildingId: string; locationNodeId?: string; reportId?: string | null; templateId: string; title: string }) {
+/**
+ * Assign one numbered record to all selected buildings. Older databases simply keep the
+ * primary building, which is deliberately still written on every source table.
+ */
+export async function setRecordBuildings(
+  client: SupabaseClient,
+  input: {
+    projectId: string;
+    recordType: RecordBuilding["record_type"];
+    recordId: string;
+    buildingIds: string[];
+  },
+) {
+  const buildingIds = Array.from(new Set(input.buildingIds.filter(Boolean)));
+  if (!buildingIds.length) return [] as RecordBuilding[];
+  const result = await client.rpc("set_record_buildings", {
+    p_project_id: input.projectId,
+    p_record_type: input.recordType,
+    p_record_id: input.recordId,
+    p_building_ids: buildingIds,
+  });
+  if (rpcSignatureMissing(result.error, "set_record_buildings")) return [] as RecordBuilding[];
+  fail(result.error);
+  return (result.data ?? []) as RecordBuilding[];
+}
+
+export async function startInspection(client: SupabaseClient, input: { projectId: string; buildingId: string; buildingIds?: string[]; locationNodeId?: string; reportId?: string | null; templateId: string; title: string }) {
   const reportId = await ensureProjectDayReport(client, input.projectId, input.reportId);
   let result = await client.rpc("start_project_inspection", {
     p_project_id: input.projectId,
@@ -740,7 +815,9 @@ export async function startInspection(client: SupabaseClient, input: { projectId
     });
   }
   fail(result.error);
-  return { ...(result.data as Inspection), location_node_id: (result.data as Inspection).location_node_id ?? input.locationNodeId ?? null };
+  const created = { ...(result.data as Inspection), location_node_id: (result.data as Inspection).location_node_id ?? input.locationNodeId ?? null };
+  await setRecordBuildings(client, { projectId: input.projectId, recordType: "inspection", recordId: created.id, buildingIds: input.buildingIds ?? [input.buildingId] });
+  return { ...created, building_ids: input.buildingIds ?? [input.buildingId] };
 }
 
 /**
@@ -810,6 +887,7 @@ export async function signInspection(client: SupabaseClient, inspectionId: strin
 export async function createFinding(client: SupabaseClient, input: {
   projectId: string;
   buildingId: string;
+  buildingIds?: string[];
   reportId?: string | null;
   type: string;
   title: string;
@@ -899,7 +977,9 @@ export async function createFinding(client: SupabaseClient, input: {
     },
   });
   fail(result.error);
-  return result.data as Finding;
+  const created = result.data as Finding;
+  await setRecordBuildings(client, { projectId: input.projectId, recordType: "finding", recordId: created.id, buildingIds: input.buildingIds ?? [input.buildingId] });
+  return { ...created, building_ids: input.buildingIds ?? [input.buildingId] };
 }
 
 export async function linkFileToRecord(
@@ -945,7 +1025,7 @@ export async function transitionFinding(client: SupabaseClient, findingId: strin
   return result.data as Finding;
 }
 
-export async function createHseEvent(client: SupabaseClient, input: { projectId: string; buildingId: string; locationNodeId?: string; reportId?: string | null; type: string; title: string; description: string; severity: string; immediateMeasure: string; confidential: boolean; category?: string; issueType?: string; issueCategory?: string; immediateActions?: string[]; immediateActionOther?: string; responsiblePerson?: string; responsibleUserId?: string; dueAt?: string | null; rootCause?: string; correctiveAction?: string; notes?: string; latitude?: number | null; longitude?: number | null; locationLabel?: string; idempotencyKey?: string }) {
+export async function createHseEvent(client: SupabaseClient, input: { projectId: string; buildingId: string; buildingIds?: string[]; locationNodeId?: string; reportId?: string | null; type: string; title: string; description: string; severity: string; immediateMeasure: string; confidential: boolean; category?: string; issueType?: string; issueCategory?: string; immediateActions?: string[]; immediateActionOther?: string; responsiblePerson?: string; responsibleUserId?: string; dueAt?: string | null; rootCause?: string; correctiveAction?: string; notes?: string; latitude?: number | null; longitude?: number | null; locationLabel?: string; signedBy?: string; signedAt?: string; signatureImage?: string | null; idempotencyKey?: string }) {
   const reportId = await ensureProjectDayReport(client, input.projectId, input.reportId);
   const occurredAt = new Date().toISOString();
   const idempotencyKey = input.idempotencyKey ?? `hse:${crypto.randomUUID()}`;
@@ -1027,10 +1107,26 @@ export async function createHseEvent(client: SupabaseClient, input: { projectId:
     });
   }
   fail(result.error);
-  return { ...(result.data as HseEvent), location_node_id: (result.data as HseEvent).location_node_id ?? input.locationNodeId ?? null };
+  const created = { ...(result.data as HseEvent), location_node_id: (result.data as HseEvent).location_node_id ?? input.locationNodeId ?? null };
+  await setRecordBuildings(client, { projectId: input.projectId, recordType: "hse", recordId: created.id, buildingIds: input.buildingIds ?? [input.buildingId] });
+  if (input.signatureImage && input.signedBy && input.signedAt) {
+    const signatureResult = await client.from("hse_events").update({
+      signed_by: input.signedBy,
+      signed_at: input.signedAt,
+      signature_image: input.signatureImage,
+    }).eq("id", created.id);
+    if (!schemaFeatureMissing(signatureResult.error, ["signed_by", "signed_at", "signature_image"])) fail(signatureResult.error);
+  }
+  return {
+    ...created,
+    building_ids: input.buildingIds ?? [input.buildingId],
+    signed_by: input.signedBy ?? null,
+    signed_at: input.signedAt ?? null,
+    signature_image: input.signatureImage ?? null,
+  };
 }
 
-export async function createRegisterEntry(client: SupabaseClient, input: { projectId: string; buildingId: string | null; locationNodeId?: string; reportId?: string | null; type: string; title: string; responsiblePartyId?: string; dueAt?: string | null; details: Record<string, unknown>; idempotencyKey?: string }) {
+export async function createRegisterEntry(client: SupabaseClient, input: { projectId: string; buildingId: string | null; buildingIds?: string[]; locationNodeId?: string; reportId?: string | null; type: string; title: string; responsiblePartyId?: string; dueAt?: string | null; details: Record<string, unknown>; signedBy?: string; signedAt?: string; signatureImage?: string | null; idempotencyKey?: string }) {
   const reportId = await ensureProjectDayReport(client, input.projectId, input.reportId);
   const result = await client.rpc("create_project_register_entry", {
     p_project_id: input.projectId,
@@ -1045,7 +1141,208 @@ export async function createRegisterEntry(client: SupabaseClient, input: { proje
     p_idempotency_key: input.idempotencyKey ?? `register:${crypto.randomUUID()}`,
   });
   fail(result.error);
-  return result.data as RegisterEntry;
+  const created = result.data as RegisterEntry;
+  const buildingIds = input.buildingIds ?? (input.buildingId ? [input.buildingId] : []);
+  if (buildingIds.length) await setRecordBuildings(client, { projectId: input.projectId, recordType: "register_entry", recordId: created.id, buildingIds });
+  if (input.signatureImage && input.signedBy && input.signedAt) {
+    const signatureResult = await client.from("project_register_entries").update({
+      signed_by: input.signedBy,
+      signed_at: input.signedAt,
+      signature_image: input.signatureImage,
+    }).eq("id", created.id);
+    if (!schemaFeatureMissing(signatureResult.error, ["signed_by", "signed_at", "signature_image"])) fail(signatureResult.error);
+  }
+  return {
+    ...created,
+    building_ids: buildingIds,
+    signed_by: input.signedBy ?? null,
+    signed_at: input.signedAt ?? null,
+    signature_image: input.signatureImage ?? null,
+  };
+}
+
+export async function updateInspectionRecord(client: SupabaseClient, input: {
+  projectId: string;
+  id: string;
+  buildingId: string;
+  buildingIds: string[];
+  locationNodeId?: string;
+  title: string;
+}) {
+  let result = await client.from("inspections").update({
+    building_id: input.buildingId,
+    location_node_id: input.locationNodeId || null,
+    title: input.title.trim(),
+  }).eq("id", input.id).select("id,building_id,location_node_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at,signed_by,signed_at,signature_image").single();
+  if (schemaFeatureMissing(result.error, ["signed_by", "signed_at", "signature_image"])) {
+    result = await client.from("inspections").update({
+      building_id: input.buildingId,
+      location_node_id: input.locationNodeId || null,
+      title: input.title.trim(),
+    }).eq("id", input.id).select("id,building_id,location_node_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at").single();
+  }
+  fail(result.error);
+  await setRecordBuildings(client, { projectId: input.projectId, recordType: "inspection", recordId: input.id, buildingIds: input.buildingIds });
+  return { ...(result.data as Inspection), building_ids: input.buildingIds };
+}
+
+export async function updateFindingRecord(client: SupabaseClient, input: {
+  projectId: string;
+  id: string;
+  buildingId: string;
+  buildingIds: string[];
+  locationNodeId?: string;
+  title: string;
+  description: string;
+  severity: Finding["severity"];
+  priority: Finding["priority"];
+  responsiblePartyId?: string;
+  assignedUserId?: string;
+  dueAt?: string | null;
+  issueManagement: Finding["issue_management"];
+}) {
+  const result = await client.from("findings").update({
+    building_id: input.buildingId,
+    location_node_id: input.locationNodeId || null,
+    title: input.title.trim(),
+    description: input.description.trim(),
+    severity: input.severity,
+    priority: input.priority,
+    responsible_party_id: input.responsiblePartyId || null,
+    assigned_user_id: input.assignedUserId || null,
+    due_at: input.dueAt || null,
+    issue_management: input.issueManagement,
+  }).eq("id", input.id).select("id,building_id,location_node_id,finding_number,finding_type,title,description,severity,priority,status,responsible_party_id,assigned_user_id,due_at,cause,proposed_correction,final_measure,issue_management,verified_by,verified_at,created_at").single();
+  fail(result.error);
+  await setRecordBuildings(client, { projectId: input.projectId, recordType: "finding", recordId: input.id, buildingIds: input.buildingIds });
+  return { ...(result.data as Finding), building_ids: input.buildingIds };
+}
+
+export async function updateHseRecord(client: SupabaseClient, input: {
+  projectId: string;
+  id: string;
+  buildingId: string;
+  buildingIds: string[];
+  locationNodeId?: string;
+  type: string;
+  category?: string;
+  title: string;
+  description: string;
+  severity: HseEvent["severity"];
+  confidential: boolean;
+  immediateMeasure: string;
+  issueType?: string;
+  issueCategory?: string;
+  immediateActions?: string[];
+  immediateActionOther?: string;
+  responsiblePerson?: string;
+  responsibleUserId?: string;
+  dueAt?: string | null;
+  rootCause?: string;
+  correctiveAction?: string;
+  notes?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  locationLabel?: string;
+  signature?: { name: string; signedAt: string; image: string } | null;
+}) {
+  const modernUpdate = {
+    building_id: input.buildingId,
+    location_node_id: input.locationNodeId || null,
+    event_type: input.type,
+    hse_category: input.category || null,
+    title: input.title.trim(),
+    description: input.description.trim(),
+    severity: input.severity,
+    confidential: input.confidential,
+    immediate_measure: input.immediateMeasure || null,
+    issue_type: input.issueType || null,
+    issue_category: input.issueCategory || null,
+    immediate_actions: input.immediateActions ?? [],
+    immediate_action_other: input.immediateActionOther || null,
+    responsible_person: input.responsiblePerson || null,
+    responsible_user_id: input.responsibleUserId || null,
+    due_at: input.dueAt || null,
+    root_cause: input.rootCause || null,
+    corrective_action: input.correctiveAction || null,
+    notes: input.notes || null,
+    latitude: input.latitude ?? null,
+    longitude: input.longitude ?? null,
+    location_label: input.locationLabel || null,
+    signed_by: input.signature?.name || null,
+    signed_at: input.signature?.signedAt || null,
+    signature_image: input.signature?.image || null,
+  };
+  let result = await client.from("hse_events").update(modernUpdate).eq("id", input.id).select("id,building_id,location_node_id,event_number,event_type,hse_category,title,description,severity,status,confidential,immediate_measure,occurred_at,issue_type,issue_category,immediate_actions,immediate_action_other,responsible_person,responsible_user_id,due_at,priority,root_cause,corrective_action,notes,latitude,longitude,location_label,signed_by,signed_at,signature_image").single();
+  if (schemaFeatureMissing(result.error, ["signed_by", "signed_at", "signature_image"])) {
+    const { signed_by: _signedBy, signed_at: _signedAt, signature_image: _signatureImage, ...withoutSignature } = modernUpdate;
+    void _signedBy; void _signedAt; void _signatureImage;
+    result = await client.from("hse_events").update(withoutSignature).eq("id", input.id).select("id,building_id,location_node_id,event_number,event_type,hse_category,title,description,severity,status,confidential,immediate_measure,occurred_at,issue_type,issue_category,immediate_actions,immediate_action_other,responsible_person,responsible_user_id,due_at,priority,root_cause,corrective_action,notes,latitude,longitude,location_label").single();
+  }
+  fail(result.error);
+  await setRecordBuildings(client, { projectId: input.projectId, recordType: "hse", recordId: input.id, buildingIds: input.buildingIds });
+  return { ...(result.data as HseEvent), building_ids: input.buildingIds };
+}
+
+export async function updateRegisterRecord(client: SupabaseClient, input: {
+  projectId: string;
+  id: string;
+  buildingId: string | null;
+  buildingIds: string[];
+  locationNodeId?: string;
+  title: string;
+  dueAt?: string | null;
+  details: Record<string, unknown>;
+  signature?: { name: string; signedAt: string; image: string } | null;
+}) {
+  const modernUpdate = {
+    building_id: input.buildingId,
+    location_node_id: input.locationNodeId || null,
+    title: input.title.trim(),
+    due_at: input.dueAt || null,
+    details: { ...input.details, location_node_id: input.locationNodeId || null },
+    signed_by: input.signature?.name || null,
+    signed_at: input.signature?.signedAt || null,
+    signature_image: input.signature?.image || null,
+  };
+  let result = await client.from("project_register_entries").update(modernUpdate).eq("id", input.id).select("id,building_id,location_node_id,register_type,entry_number,title,status,occurred_at,due_at,details,signed_by,signed_at,signature_image").single();
+  if (schemaFeatureMissing(result.error, ["signed_by", "signed_at", "signature_image"])) {
+    const { signed_by: _signedBy, signed_at: _signedAt, signature_image: _signatureImage, ...withoutSignature } = modernUpdate;
+    void _signedBy; void _signedAt; void _signatureImage;
+    result = await client.from("project_register_entries").update(withoutSignature).eq("id", input.id).select("id,building_id,location_node_id,register_type,entry_number,title,status,occurred_at,due_at,details").single();
+  }
+  fail(result.error);
+  await setRecordBuildings(client, { projectId: input.projectId, recordType: "register_entry", recordId: input.id, buildingIds: input.buildingIds });
+  return { ...(result.data as RegisterEntry), building_ids: input.buildingIds };
+}
+
+export async function withdrawWorkspaceRecord(
+  client: SupabaseClient,
+  kind: "inspection" | "finding" | "hse" | "register_entry",
+  recordId: string,
+  reason: string,
+) {
+  const explanation = reason.trim();
+  if (explanation.length < 5) throw new Error("A withdrawal reason of at least five characters is required.");
+  const table = kind === "inspection" ? "inspections"
+    : kind === "finding" ? "findings"
+      : kind === "hse" ? "hse_events"
+        : "project_register_entries";
+  let update: Record<string, unknown> = kind === "inspection"
+    ? { status: "cancelled", cancellation_reason: explanation }
+    : kind === "finding"
+      ? { status: "cancelled", status_reason: explanation }
+      : kind === "hse"
+        ? { status: "cancelled", closed_at: new Date().toISOString(), closure_reason: explanation }
+        : { status: "cancelled" };
+  if (kind === "register_entry") {
+    const current = await client.from("project_register_entries").select("details").eq("id", recordId).single();
+    fail(current.error);
+    const details = current.data?.details && typeof current.data.details === "object" ? current.data.details : {};
+    update = { status: "cancelled", details: { ...details, withdrawal_reason: explanation, withdrawn_at: new Date().toISOString() } };
+  }
+  const result = await client.from(table).update(update).eq("id", recordId);
+  fail(result.error);
 }
 
 export async function respondToControlledDocument(client: SupabaseClient, entryId: string, response: {

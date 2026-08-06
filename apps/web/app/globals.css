@@ -13681,6 +13681,156 @@ button {
 }
 
 .signature-field.signed { background: #f2fbf6; border-color: #8fc9ae; }
+
+/* One shared family for every record form. Existing operation-form and section classes
+   stay in place; these additions provide the common rhythm and sticky action bar. */
+.record-form-shell {
+  position: relative;
+  padding-bottom: 0;
+  overflow: clip;
+}
+
+.record-form-heading-aside {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.record-form-sections {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.record-form-section {
+  border: 1px solid var(--line, #d8dfda);
+  border-radius: 16px;
+  background: var(--surface, #fff);
+  overflow: hidden;
+}
+
+.record-form-section-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.85rem 0.95rem;
+  border-bottom: 1px solid var(--line, #d8dfda);
+}
+
+.record-form-section-heading h3,
+.record-form-section-heading p { margin: 0; }
+.record-form-section-heading p { margin-top: 0.2rem; color: var(--muted, #66736b); font-size: 0.82rem; }
+
+.record-form-section-number {
+  width: 1.8rem;
+  height: 1.8rem;
+  flex: 0 0 1.8rem;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #153f2d;
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.record-form-section-body { display: grid; gap: 0.8rem; padding: 0.95rem; }
+
+.record-form-field-block { display: grid; gap: 0.55rem; }
+.record-form-field-copy { display: grid; gap: 0.15rem; }
+.record-form-field-copy small { color: var(--muted, #66736b); }
+.record-form-field-control { min-width: 0; }
+
+.record-form-validation {
+  margin-bottom: 0.85rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #e4a89b;
+  border-radius: 12px;
+  background: #fff7f5;
+  color: #7d2719;
+}
+.record-form-validation ul { margin: 0.35rem 0 0; padding-left: 1.2rem; }
+
+.record-form-footer {
+  position: sticky;
+  z-index: 4;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  margin: 1rem -1rem 0;
+  padding: 0.8rem 1rem calc(0.8rem + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line, #d8dfda);
+  background: color-mix(in srgb, var(--surface, #fff) 94%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.record-row-clickable {
+  cursor: pointer;
+}
+
+.record-row-clickable:focus-within,
+.record-row-clickable:hover {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+}
+
+.record-row-actions,
+.record-readonly-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.record-row-actions button {
+  min-height: 36px;
+  padding: 0.45rem 0.65rem;
+}
+
+.record-readonly-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: start;
+  margin: 0 0 1rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.record-readonly-panel h2,
+.record-readonly-panel p {
+  margin: 0.25rem 0;
+}
+
+.record-readonly-panel small {
+  color: var(--muted);
+}
+
+.record-readonly-actions {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 760px) {
+  .record-readonly-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .record-row-actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .record-form-section { border-radius: 13px; }
+  .record-form-section-heading,
+  .record-form-section-body { padding: 0.75rem; }
+  .record-form-footer { justify-content: stretch; }
+  .record-form-footer > button { min-height: 44px; flex: 1 1 0; }
+}
 .signature-field-copy { display: grid; gap: 3px; }
 .signature-field-copy strong { color: var(--ink-900); font-size: 12px; }
 .signature-field-copy small { color: var(--ink-500); font-size: 10px; line-height: 1.45; }

@@ -50,6 +50,7 @@ const styles = StyleSheet.create({
   rowBody: { flex: 1 },
   rowTitle: { color: "#1c303a", fontSize: 9, fontWeight: 700, lineHeight: 1.25 },
   rowMeta: { color: "#65747d", fontSize: 7.5, lineHeight: 1.3, marginTop: 2 },
+  recordSignature: { height: 24, marginTop: 4, objectFit: "contain", width: 90 },
   empty: { color: "#74848d", fontStyle: "italic", paddingBottom: 8, paddingTop: 4 },
   dailyCard: { borderColor: "#dce4e7", borderRadius: 4, borderWidth: 1, marginBottom: 7, padding: 9 },
   dailyDate: { color: "#a52b24", fontSize: 8, fontWeight: 700, marginBottom: 4 },
@@ -147,7 +148,8 @@ function RecordRows({ rows, empty = "Geen registraties in deze periode." }: { ro
       <Text style={styles.rowNumber}>{value(row, "entry_number", value(row, "finding_number", value(row, "inspection_number", value(row, "event_number", `#${index + 1}`))))}</Text>
       <View style={styles.rowBody}>
         <Text style={styles.rowTitle}>{value(row, "title", value(row, "day_summary", "Registratie"))}</Text>
-        <Text style={styles.rowMeta}>{[humanizeToken(value(row, "status")), humanizeToken(value(row, "severity")), value(row, "occurred_at") ? formatDate(value(row, "occurred_at")) : "", detailsText(row)].filter(Boolean).join(" | ")}</Text>
+        <Text style={styles.rowMeta}>{[humanizeToken(value(row, "status")), humanizeToken(value(row, "severity")), value(row, "occurred_at") ? formatDate(value(row, "occurred_at")) : "", detailsText(row), value(row, "signed_by") ? `Ondertekend door ${value(row, "signed_by")} · ${formatDate(value(row, "signed_at"))}` : ""].filter(Boolean).join(" | ")}</Text>
+        {value(row, "signature_image") ? <Image src={value(row, "signature_image")} style={styles.recordSignature} /> : null}
       </View>
     </View>
   ))}</View>;

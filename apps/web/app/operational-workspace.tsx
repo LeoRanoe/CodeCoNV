@@ -56,6 +56,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { AgreementSignatureFields, agreementSignatureDetails, agreementSummaryLine, emptyAgreementSignature } from "@/app/agreement-signature";
 import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
+import { RecordBuildingsField, RecordFormSection, RecordFormShell, RecordSignatureField } from "@/app/forms/record-form-shell";
+import { RecordList } from "@/app/forms/record-list";
 import { photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
 import { RecordLocationMap } from "@/app/record-location-map";
 import { StoredPhotoDetail } from "@/app/stored-photo-detail";
@@ -76,7 +78,7 @@ import { recordAnchorId, useRecordFocus } from "@/lib/navigation/record-focus";
 import { buildRecordDirectory } from "@/lib/records/record-directory.mjs";
 import { signatureFromDetails } from "@/lib/signatures/handwritten-signature.mjs";
 import { isPendingRecordId, listOfflineRecords, saveRecordOnlineOrQueue, syncOfflineRecords } from "@/lib/offline/record-queue";
-import { pendingStatus, withPendingRecords } from "@/lib/offline/pending-records";
+import { withPendingRecords } from "@/lib/offline/pending-records";
 import { downloadBoqCsvTemplate, parseBoqCsv, type BoqImportItem } from "@/lib/boq/csv";
 import {
   createControlledDocumentDetails,
@@ -125,18 +127,35 @@ import {
   startInspection,
   startRevision,
   transitionFinding,
+  updateFindingRecord,
+  updateHseRecord,
+  updateInspectionRecord,
   updateProductionReadiness,
+  updateRegisterRecord,
   validateBackupDryRun,
+  withdrawWorkspaceRecord,
   type FileRecord,
   type Finding,
+  type HseEvent,
   type ChecklistItem,
   type Inspection,
   type OperationSnapshot,
   type ProductionReadinessItem,
+  type RegisterEntry,
 } from "@/lib/supabase/operations";
 
 type WorkspaceMode = "project" | "actions" | "verify" | "reports" | "admin";
 type ProjectTab = "home" | "inspections" | "findings" | "ncr" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files";
+
+type ViewedWorkspaceRecord = {
+  kind: "inspection" | "finding" | "hse" | "register_entry";
+  id: string;
+  code: string;
+  title: string;
+  status: string;
+  meta: string;
+  description?: string;
+};
 
 const findingStatusLabels: Record<string, string> = {
   draft: "Concept",
@@ -957,6 +976,10 @@ function ProjectOperations({
   const [drawingInspectionId, setDrawingInspectionId] = useState("");
   const [dailyWorkView, setDailyWorkView] = useState<DailyWorkView>("works_ongoing");
   const [showForm, setShowForm] = useState(initialTab !== "home");
+  const [viewedRecord, setViewedRecord] = useState<ViewedWorkspaceRecord | null>(null);
+  const [editingFindingId, setEditingFindingId] = useState("");
+  const [editingHseId, setEditingHseId] = useState("");
+  const [editingRegisterId, setEditingRegisterId] = useState("");
   const [activeInspection, setActiveInspection] = useState<Inspection | null>(null);
   const [inspectionResumeError, setInspectionResumeError] = useState("");
   const [inspectionTitle, setInspectionTitle] = useState("");
@@ -978,6 +1001,7 @@ function ProjectOperations({
    */
   const [hseForm, setHseForm] = useState({ ...emptyHseIssueForm });
   const [hsePhotos, setHsePhotos] = useState<PhotoEvidence[]>([]);
+  const [hseSignature, setHseSignature] = useState<HandwrittenSignature | null>(null);
   // One short text per evidence photo, in the same order as the photos themselves.
   const [hsePhotoError, setHsePhotoError] = useState("");
   /** Set while the phone is asked for the spot the issue was seen at. */
@@ -1006,6 +1030,7 @@ function ProjectOperations({
     () => null,
   ), emptyFindingForm);
   const [registerForm, setRegisterForm] = useState<ControlledDocumentDraft>({ ...emptyControlledDocumentDraft });
+  const [registerSignature, setRegisterSignature] = useState<HandwrittenSignature | null>(null);
   const [registerFiles, setRegisterFiles] = useState<File[]>([]);
   const [boqFile, setBoqFile] = useState<File | null>(null);
   const [boqItems, setBoqItems] = useState<BoqImportItem[]>([]);
@@ -1018,6 +1043,10 @@ function ProjectOperations({
   const [findingBuildingId, setFindingBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [hseBuildingId, setHseBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [registerBuildingId, setRegisterBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
+  const [inspectionBuildingIds, setInspectionBuildingIds] = useState(() => [resolveDefaultBuildingId(buildings, buildingId)].filter(Boolean));
+  const [findingBuildingIds, setFindingBuildingIds] = useState(() => [resolveDefaultBuildingId(buildings, buildingId)].filter(Boolean));
+  const [hseBuildingIds, setHseBuildingIds] = useState(() => [resolveDefaultBuildingId(buildings, buildingId)].filter(Boolean));
+  const [registerBuildingIds, setRegisterBuildingIds] = useState(() => [resolveDefaultBuildingId(buildings, buildingId)].filter(Boolean));
   const [boqBuildingId, setBoqBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [inspectionFilterBuildingId, setInspectionFilterBuildingId] = useState("");
   const [inspectionFilterLocationNodeId, setInspectionFilterLocationNodeId] = useState("");
@@ -1059,9 +1088,9 @@ function ProjectOperations({
   }), [buildings, data.locationNodes, parties]);
   const requiredLocationDepth = data.settings?.required_location_depth ?? "building";
   const exactLocationRequired = requiredLocationDepth !== "building";
-  const registerContextLabel = registerBuildingId === ALL_BUILDINGS
+  const registerContextLabel = registerBuildingIds.length === buildings.length
     ? text("Whole project · all buildings", "Hele project · alle gebouwen")
-    : buildings.find((building) => building.id === registerBuildingId)?.name ?? buildingName;
+    : registerBuildingIds.map((selectedId) => buildings.find((building) => building.id === selectedId)?.name).filter(Boolean).join(" · ") || buildingName;
   // Drawings of the chosen building, so a controlled document can point at the plan it
   // belongs to instead of only naming a floor.
   const registerDrawings = data.files.filter((file) => (
@@ -1082,14 +1111,17 @@ function ProjectOperations({
     currentUserName,
     ...companyEmployees.map((employee) => employee.displayName?.trim() || employee.email),
   ].filter(Boolean)));
-  const recordContextLabel = (recordBuildingId: string | null, locationNodeId?: string | null) => {
-    const recordBuilding = buildings.find((building) => building.id === recordBuildingId)?.name
-      ?? text("Project-wide", "Projectbreed");
+  const recordContextLabel = (recordBuildingId: string | null, locationNodeId?: string | null, recordBuildingIds?: string[]) => {
+    const linkedIds = recordBuildingIds?.length ? recordBuildingIds : recordBuildingId ? [recordBuildingId] : [];
+    const recordBuilding = linkedIds
+      .map((linkedId) => buildings.find((building) => building.id === linkedId)?.name)
+      .filter(Boolean)
+      .join(" · ") || text("Project-wide", "Projectbreed");
     const exactLocation = locationBreadcrumb(data.locationNodes, locationNodeId);
     return exactLocation ? `${recordBuilding} → ${exactLocation}` : recordBuilding;
   };
   const filteredInspections = data.inspections.filter((inspection) => {
-    if (inspectionFilterBuildingId && inspection.building_id !== inspectionFilterBuildingId) return false;
+    if (inspectionFilterBuildingId && !(inspection.building_ids?.length ? inspection.building_ids : [inspection.building_id]).includes(inspectionFilterBuildingId)) return false;
     if (inspectionFilterLocationNodeId && inspection.location_node_id !== inspectionFilterLocationNodeId) return false;
     if (inspectionFilterDate) {
       const recordedAt = inspection.completed_at ?? inspection.started_at ?? inspection.planned_at;
@@ -1295,7 +1327,6 @@ function ProjectOperations({
     text("Everything on this device has been offered to the central project.", "Alles op dit apparaat is aan het centrale project aangeboden."),
   );
   /** The line the client's own screens carry: what the app already filled in by itself. */
-  const capturedAutomatically = text("All key info captured automatically", "Alle kerngegevens worden automatisch vastgelegd");
   // Before the phone has been asked anything, the map already knows roughly where the
   // project stands: the same place the live weather was resolved for.
   const projectCenter = liveWeather ? { latitude: liveWeather.latitude, longitude: liveWeather.longitude } : null;
@@ -1352,6 +1383,10 @@ function ProjectOperations({
     setFindingLocationNodeId("");
     setIssueLocationError("");
     setIssueManualPosition(false);
+    const defaultId = resolveDefaultBuildingId(buildings, buildingId);
+    setFindingBuildingId(defaultId);
+    setFindingBuildingIds(defaultId ? [defaultId] : []);
+    setEditingFindingId("");
   };
   const resetHseForm = () => {
     setHseForm({ ...emptyHseIssueForm });
@@ -1360,6 +1395,156 @@ function ProjectOperations({
     setHseLocationError("");
     setHseManualPosition(false);
     setHseLocationNodeId("");
+    setHseSignature(null);
+    const defaultId = resolveDefaultBuildingId(buildings, buildingId);
+    setHseBuildingId(defaultId);
+    setHseBuildingIds(defaultId ? [defaultId] : []);
+    setEditingHseId("");
+  };
+  const storedCategoryId = (value: string | null | undefined, options: ReadonlyArray<{ id: string; en: string; nl: string }>) => {
+    const normalized = (value ?? "").trim().toLocaleLowerCase();
+    return options.find((option) => [option.id, option.en, option.nl].some((candidate) => candidate.toLocaleLowerCase() === normalized))?.id ?? "";
+  };
+  const viewInspection = (inspection: Inspection) => setViewedRecord({
+    kind: "inspection", id: inspection.id, code: inspection.inspection_number, title: inspection.title,
+    status: inspection.status.replaceAll("_", " "),
+    meta: `${recordContextLabel(inspection.building_id, inspection.location_node_id, inspection.building_ids)} · ${formatDate(inspection.completed_at ?? inspection.started_at, locale)}`,
+  });
+  const editFinding = (finding: Finding) => {
+    const issue = finding.issue_management ?? {};
+    setFindingForm({
+      ...emptyFindingForm,
+      type: finding.finding_type,
+      title: finding.title,
+      description: finding.description,
+      severity: finding.severity,
+      responsiblePartyId: finding.responsible_party_id ?? "",
+      responsibleUserId: finding.assigned_user_id ?? "",
+      responsiblePerson: issue.responsible_person ?? "",
+      issueType: issue.issue_type ?? "quality",
+      issueCategory: storedCategoryId(issue.issue_category, issueCategories),
+      immediateActions: issue.immediate_actions ?? [],
+      immediateActionOther: issue.immediate_action_other ?? "",
+      rootCause: issue.root_cause ?? "",
+      latitude: issue.latitude == null ? "" : String(issue.latitude),
+      longitude: issue.longitude == null ? "" : String(issue.longitude),
+      impactSummary: issue.impact_summary ?? "",
+      actionSteps: issue.action_steps ?? "",
+      escalationRequired: Boolean(issue.escalation_required),
+      disposition: issue.disposition ?? "to_be_corrected",
+      expectedResolutionDate: (issue.expected_resolution_date ?? finding.due_at ?? "").slice(0, 10),
+      sourceCatalogSubject: issue.source_catalog_subject ?? "",
+      dateIdentified: (issue.date_identified ?? finding.created_at).slice(0, 10),
+      referenceChecklist: issue.reference_checklist ?? "",
+      recommendedAction: issue.recommended_action ?? "",
+      recommendedActionDetail: issue.recommended_action_detail ?? "",
+      remarks: issue.remarks ?? "",
+      signedBy: issue.signed_by ?? "",
+      signedAt: issue.signed_at ?? "",
+      signatureImage: issue.signature_image ?? "",
+    });
+    setFindingBuildingId(finding.building_id);
+    setFindingBuildingIds(finding.building_ids?.length ? finding.building_ids : [finding.building_id]);
+    setFindingLocationNodeId(finding.location_node_id ?? "");
+    setFindingPhotos([]);
+    setEditingFindingId(finding.id);
+    setViewedRecord(null);
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const viewFinding = (finding: Finding) => setViewedRecord({
+    kind: "finding", id: finding.id, code: finding.finding_number, title: finding.title,
+    status: finding.status.replaceAll("_", " "), description: finding.description,
+    meta: `${recordContextLabel(finding.building_id, finding.location_node_id, finding.building_ids)} · ${formatDate(finding.created_at, locale)}`,
+  });
+  const editHse = (event: HseEvent) => {
+    setHseForm({
+      ...emptyHseIssueForm,
+      issueType: event.issue_type ?? "safety",
+      category: event.hse_category ?? "safety",
+      type: event.event_type,
+      issueCategory: storedCategoryId(event.issue_category, hseIssueCategories),
+      severity: event.severity,
+      description: event.description,
+      immediateActions: event.immediate_actions ?? [],
+      immediateActionOther: event.immediate_action_other ?? "",
+      responsibleUserId: event.responsible_user_id ?? "",
+      responsiblePerson: event.responsible_person ?? "",
+      dueAt: event.due_at?.slice(0, 16) ?? "",
+      rootCause: event.root_cause ?? "",
+      correctiveAction: event.corrective_action ?? "",
+      notes: event.notes ?? "",
+      latitude: event.latitude == null ? "" : String(event.latitude),
+      longitude: event.longitude == null ? "" : String(event.longitude),
+      confidential: event.confidential,
+    });
+    setHseBuildingId(event.building_id);
+    setHseBuildingIds(event.building_ids?.length ? event.building_ids : [event.building_id]);
+    setHseLocationNodeId(event.location_node_id ?? "");
+    setHseSignature(signatureFromDetails(event.signed_by, event.signed_at, event.signature_image));
+    setHsePhotos([]);
+    setEditingHseId(event.id);
+    setViewedRecord(null);
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const viewHse = (event: HseEvent) => setViewedRecord({
+    kind: "hse", id: event.id, code: event.event_number, title: event.title,
+    status: event.status.replaceAll("_", " "), description: event.description,
+    meta: `${recordContextLabel(event.building_id, event.location_node_id, event.building_ids)} · ${formatDate(event.occurred_at, locale)}`,
+  });
+  const editRegister = (entry: RegisterEntry) => {
+    const details = entry.details ?? {};
+    setRegisterForm({
+      ...emptyControlledDocumentDraft,
+      type: entry.register_type,
+      title: entry.title,
+      details: String(details.description ?? ""),
+      dueDate: entry.due_at?.slice(0, 10) ?? "",
+      revision: String(details.revision ?? "0"),
+      requestedTo: String(details.requested_to ?? ""),
+      issuerName: String(details.issued_by ?? ""),
+      signedBy: entry.signed_by ?? String(details.signed_by ?? ""),
+      signedAt: entry.signed_at ?? String(details.signed_at ?? ""),
+      signatureImage: entry.signature_image ?? String(details.signature_image ?? ""),
+      issuerPosition: String(details.issuer_position ?? emptyControlledDocumentDraft.issuerPosition),
+      issuerCompany: String(details.issuer_company ?? emptyControlledDocumentDraft.issuerCompany),
+      discipline: String(details.discipline ?? emptyControlledDocumentDraft.discipline),
+      priority: String(details.priority ?? emptyControlledDocumentDraft.priority),
+      relatedReference: String(details.related_reference ?? ""),
+      referenceDocuments: String(details.reference_documents ?? ""),
+      attachments: String(details.attachments ?? ""),
+      reason: String(details.reason ?? ""),
+      requiredAction: String(details.required_action ?? emptyControlledDocumentDraft.requiredAction),
+      scheduleImpact: String(details.schedule_impact ?? emptyControlledDocumentDraft.scheduleImpact),
+      costImpact: String(details.cost_impact ?? emptyControlledDocumentDraft.costImpact),
+      impactExplanation: String(details.impact_explanation ?? ""),
+      readyDate: String(details.ready_date ?? ""), readyTime: String(details.ready_time ?? emptyControlledDocumentDraft.readyTime),
+      inspectionCategory: String(details.inspection_category ?? emptyControlledDocumentDraft.inspectionCategory),
+      periodStart: String(details.period_start ?? ""), periodEnd: String(details.period_end ?? ""),
+      lostHours: String(details.lost_hours ?? "0"), lostHoursReason: String(details.lost_hours_reason ?? ""),
+      responsiblePartyId: "",
+    });
+    setRegisterBuildingId(entry.building_id ?? resolveDefaultBuildingId(buildings, buildingId));
+    setRegisterBuildingIds(entry.building_ids?.length ? entry.building_ids : entry.building_id ? [entry.building_id] : []);
+    setRegisterLocationNodeId(entry.location_node_id ?? "");
+    setRegisterSignature(signatureFromDetails(entry.signed_by, entry.signed_at, entry.signature_image));
+    setEditingRegisterId(entry.id);
+    setViewedRecord(null);
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const viewRegister = (entry: RegisterEntry) => setViewedRecord({
+    kind: "register_entry", id: entry.id, code: entry.entry_number, title: entry.title,
+    status: entry.status.replaceAll("_", " "), description: String(entry.details?.description ?? ""),
+    meta: `${recordContextLabel(entry.building_id, entry.location_node_id, entry.building_ids)} · ${formatDate(entry.occurred_at, locale)}`,
+  });
+  const withdrawRecord = (record: ViewedWorkspaceRecord) => {
+    const reason = window.prompt(text("Why is this record being withdrawn?", "Waarom wordt deze registratie ingetrokken?"), "");
+    if (!reason) return;
+    void run(() => withdrawWorkspaceRecord(client, record.kind, record.id, reason), text(`${record.code} withdrawn; its audit history remains available.`, `${record.code} ingetrokken; de auditgeschiedenis blijft beschikbaar.`)).then((okay) => {
+      if (okay) setViewedRecord(null);
+    });
   };
   const registerPresets: Record<string, Array<Partial<ControlledDocumentDraft> & { title: string; details: string }>> = {
     delivery: [
@@ -1455,6 +1640,8 @@ function ProjectOperations({
   const openRegister = (type: "change_order" | "delivery" | "technical_instruction" | "agreement") => {
     setRegisterForm({ ...emptyControlledDocumentDraft, type });
     setRegisterFiles([]);
+    setRegisterSignature(null);
+    setEditingRegisterId("");
     setRegisterLocationNodeId("");
     openTask("registers", true);
   };
@@ -1490,7 +1677,7 @@ function ProjectOperations({
     if (!templateId) return;
     let created: Inspection | null = null;
     const okay = await run(async () => {
-      created = await startInspection(client, { projectId, buildingId: inspectionBuildingId, locationNodeId: inspectionLocationNodeId, reportId, templateId, title: resolvedTitle });
+      created = await startInspection(client, { projectId, buildingId: inspectionBuildingId, buildingIds: inspectionBuildingIds, locationNodeId: inspectionLocationNodeId, reportId, templateId, title: resolvedTitle });
     }, text("Inspection started; complete every required checkpoint.", "Inspectie gestart; vul nu ieder verplicht controlepunt in."));
     if (okay && created) {
       setActiveInspection(created);
@@ -1537,6 +1724,11 @@ function ProjectOperations({
     }
     setInspectionResumeError("");
     setActiveInspection(inspection);
+    setInspectionBuildingId(inspection.building_id);
+    setInspectionBuildingIds(inspection.building_ids?.length ? inspection.building_ids : [inspection.building_id]);
+    setInspectionLocationNodeId(inspection.location_node_id ?? "");
+    setInspectionTitle(inspection.title);
+    setInspectionSignature(signatureFromDetails(inspection.signed_by, inspection.signed_at, inspection.signature_image));
     setShowForm(false);
     setInspectionAnswers(Object.fromEntries(template.items.map((item) => [item.id, { result: "", notes: "" }])));
     try {
@@ -1596,6 +1788,7 @@ function ProjectOperations({
         : ""),
     }));
     setFindingBuildingId(inspection.building_id);
+    setFindingBuildingIds(inspection.building_ids?.length ? inspection.building_ids : [inspection.building_id]);
     setFindingLocationNodeId(inspection.location_node_id ?? "");
     setShowForm(true);
     switchTab("ncr");
@@ -1608,7 +1801,17 @@ function ProjectOperations({
     const okay = await run(
       async () => {
         const effectiveReportId = await ensureProjectDayReport(client, projectId, reportId);
-        await finishInspection(client, activeInspection, inspectionAnswers);
+        const inspectionToFinish = await updateInspectionRecord(client, {
+          projectId,
+          id: activeInspection.id,
+          buildingId: inspectionBuildingIds[0] ?? activeInspection.building_id,
+          buildingIds: inspectionBuildingIds.length ? inspectionBuildingIds : [activeInspection.building_id],
+          locationNodeId: inspectionLocationNodeId || activeInspection.location_node_id || undefined,
+          title: inspectionTitle.trim() || activeInspection.title,
+        });
+        if (!["passed", "cancelled"].includes(activeInspection.status)) {
+          await finishInspection(client, inspectionToFinish, inspectionAnswers);
+        }
         if (inspectionSignature) await signInspection(client, activeInspection.id, inspectionSignature);
         if (inspectionPhotos.length) {
           const folderName = text("Inspections", "Inspecties");
@@ -1706,24 +1909,25 @@ function ProjectOperations({
       ? findingForm.title
       : recordLogLine(findingForm.description, `${issueTileLabel(issueTile)}${issueCategoryOption ? ` · ${text(issueCategoryOption.en, issueCategoryOption.nl)}` : ""}`);
     if (findingTitle.trim().length < 3) return;
-    // A finding always belongs to a building in the database. "All buildings" therefore
-    // means the same record in every building, exactly as the daily log and the field
-    // notes already do it; before this it produced an error on saving.
+    // The primary building remains on the finding; the association list makes this one
+    // numbered record visible under every selected building without cloning it.
     const online = typeof navigator === "undefined" || navigator.onLine;
     let createdRecordId = "";
-    const projectWideFinding = findingBuildingId === ALL_BUILDINGS;
-    const findingBuildingIds = projectWideFinding ? buildings.map((building) => building.id) : [findingBuildingId];
-    const findingPhotoBuildingId = projectWideFinding ? resolveDefaultBuildingId(buildings, buildingId) : findingBuildingId;
+    const selectedFindingBuildingIds = findingBuildingIds.length ? findingBuildingIds : [findingBuildingId];
+    const primaryFindingBuildingId = selectedFindingBuildingIds[0] ?? findingBuildingId;
+    const projectWideFinding = selectedFindingBuildingIds.length === buildings.length;
+    const findingPhotoBuildingId = primaryFindingBuildingId;
     const findingBuildingName = projectWideFinding
       ? text("All buildings", "Alle gebouwen")
-      : buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName;
+      : selectedFindingBuildingIds.map((selectedId) => buildings.find((building) => building.id === selectedId)?.name).filter(Boolean).join(" · ") || buildingName;
     // The module decides what is created here. Without this an NCR opened from the
     // module switcher would be stored as an ordinary deficiency and vanish from the
     // NCR list it was entered in.
     const findingType = findingScope === "ncr" ? "ncr" : findingForm.type === "ncr" ? "deficiency" : findingForm.type;
     const draft = {
       projectId,
-      buildingId: findingBuildingIds[0] ?? findingBuildingId,
+      buildingId: primaryFindingBuildingId,
+      buildingIds: selectedFindingBuildingIds,
       type: findingType,
       title: findingTitle,
       description: findingForm.description,
@@ -1755,7 +1959,7 @@ function ProjectOperations({
       signedBy: findingForm.signedBy,
       signedAt: findingForm.signedAt,
       signatureImage: findingForm.signatureImage || null,
-      locationNodeId: projectWideFinding ? "" : findingLocationNodeId,
+      locationNodeId: findingLocationNodeId,
     };
     // The record itself is created first whenever there is a connection. That is what
     // makes the link to the contractor available the moment the NCR is submitted; the
@@ -1772,29 +1976,70 @@ function ProjectOperations({
       // The record is written first, with or without a connection: without one it goes
       // to the device and appears in the list marked as waiting, so a supervisor sees
       // that the issue is registered instead of nothing at all.
-      {
-        for (const targetBuildingId of findingBuildingIds) {
-          const saved = await saveRecordOnlineOrQueue({
-            kind: "finding",
-            projectId,
-            input: { ...draft, buildingId: targetBuildingId, reportId: effectiveReportId },
-            preview: {
-              title: draft.title,
-              description: draft.description,
-              buildingId: targetBuildingId,
-              locationNodeId: draft.locationNodeId || null,
-              severity: draft.severity,
-              priority: issuePriority,
-              dueAt: draft.expectedResolutionDate ? `${draft.expectedResolutionDate}T23:59:59-03:00` : null,
-              recordType: findingType,
-            },
-            send: () => createFinding(client, { ...draft, buildingId: targetBuildingId, reportId: effectiveReportId }),
-          });
-          if (saved.queued) queuedOffline = true;
-          // The photos hang under the first record; the others carry the same words.
-          if (!created) created = saved.record;
-          if (!createdRecordId) createdRecordId = saved.id;
-        }
+      if (editingFindingId) {
+        if (!online) throw new Error(text("Reconnect before editing an existing issue; the original remains safely stored.", "Maak opnieuw verbinding voordat je een bestaand issue bewerkt; het origineel blijft veilig opgeslagen."));
+        created = await updateFindingRecord(client, {
+          projectId,
+          id: editingFindingId,
+          buildingId: primaryFindingBuildingId,
+          buildingIds: selectedFindingBuildingIds,
+          locationNodeId: draft.locationNodeId,
+          title: findingTitle,
+          description: draft.description,
+          severity: draft.severity as Finding["severity"],
+          priority: issuePriority as Finding["priority"],
+          responsiblePartyId: draft.responsiblePartyId,
+          assignedUserId: draft.assignedUserId,
+          dueAt: draft.expectedResolutionDate ? `${draft.expectedResolutionDate}T23:59:59-03:00` : null,
+          issueManagement: {
+            issue_type: draft.issueType,
+            issue_category: draft.issueCategory,
+            immediate_actions: draft.immediateActions,
+            immediate_action_other: draft.immediateActionOther,
+            responsible_person: draft.responsiblePerson,
+            root_cause: draft.rootCause,
+            latitude: draft.latitude,
+            longitude: draft.longitude,
+            location_label: draft.locationLabel,
+            impact_summary: draft.impactSummary,
+            action_steps: draft.actionSteps,
+            escalation_required: draft.escalationRequired,
+            disposition: draft.disposition,
+            expected_resolution_date: draft.expectedResolutionDate || null,
+            source_catalog_subject: draft.sourceCatalogSubject,
+            date_identified: findingForm.dateIdentified || null,
+            reference_checklist: draft.referenceChecklist,
+            recommended_action: draft.recommendedAction,
+            recommended_action_detail: draft.recommendedActionDetail,
+            remarks: draft.remarks,
+            issued_by: currentUserName,
+            issued_at: new Date().toISOString(),
+            signed_by: draft.signedBy,
+            signed_at: draft.signedAt || null,
+            signature_image: draft.signatureImage,
+          },
+        });
+        createdRecordId = editingFindingId;
+      } else {
+        const saved = await saveRecordOnlineOrQueue({
+          kind: "finding",
+          projectId,
+          input: { ...draft, reportId: effectiveReportId },
+          preview: {
+            title: draft.title,
+            description: draft.description,
+            buildingId: primaryFindingBuildingId,
+            locationNodeId: draft.locationNodeId || null,
+            severity: draft.severity,
+            priority: issuePriority,
+            dueAt: draft.expectedResolutionDate ? `${draft.expectedResolutionDate}T23:59:59-03:00` : null,
+            recordType: findingType,
+          },
+          send: () => createFinding(client, { ...draft, reportId: effectiveReportId }),
+        });
+        queuedOffline = saved.queued;
+        created = saved.record;
+        createdRecordId = saved.id;
       }
       if (findingPhotos.length) {
         const folderName = text("Findings", "Bevindingen");
@@ -1817,7 +2062,7 @@ function ProjectOperations({
             title: photoTitle(photo) || findingTitle,
             description: photoUploadDescription(photo, findingForm.description, language),
             locationLabel: findingBuildingName,
-            locationNodeId: photo.details.locationNodeId || (projectWideFinding ? null : findingLocationNodeId) || null,
+            locationNodeId: photo.details.locationNodeId || findingLocationNodeId || null,
             capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
             originalSize: photo.original.size,
             queuedSize: prepared.blob.size,
@@ -1860,7 +2105,8 @@ function ProjectOperations({
                 signedBy: findingForm.signedBy,
                 signedAt: findingForm.signedAt,
                 signatureImage: findingForm.signatureImage || null,
-                locationNodeId: (projectWideFinding ? "" : findingLocationNodeId) || undefined,
+                locationNodeId: findingLocationNodeId || undefined,
+                buildingIds: selectedFindingBuildingIds,
               },
             },
           });
@@ -1872,6 +2118,7 @@ function ProjectOperations({
       // The issue is filed, so the parked draft of it has nothing left to protect.
       clearRecordDraft("issue", projectId);
       resetFindingForm();
+      setEditingFindingId("");
       setShowForm(false);
       // Right after submitting, the record itself offers the link to the contractor:
       // an NCR only works when the party that must correct it actually receives it.
@@ -1888,24 +2135,22 @@ function ProjectOperations({
     const hseLatitude = hseForm.latitude.trim() === "" ? null : Number(hseForm.latitude);
     const hseLongitude = hseForm.longitude.trim() === "" ? null : Number(hseForm.longitude);
     const hseDueAt = new Date(hseDueValue);
-    // The same building choice as every other field record, and it has to work: an HSE
-    // event needs a building, so "all buildings" writes the event in each of them.
-    const projectWideHse = hseBuildingId === ALL_BUILDINGS;
-    const hseBuildingIds = projectWideHse ? buildings.map((building) => building.id) : [hseBuildingId];
-    const hsePhotoBuildingId = projectWideHse ? resolveDefaultBuildingId(buildings, buildingId) : hseBuildingId;
+    const selectedHseBuildingIds = hseBuildingIds.length ? hseBuildingIds : [hseBuildingId];
+    const primaryHseBuildingId = selectedHseBuildingIds[0] ?? hseBuildingId;
+    const projectWideHse = selectedHseBuildingIds.length === buildings.length;
+    const hsePhotoBuildingId = primaryHseBuildingId;
     const hseBuildingName = projectWideHse
       ? text("All buildings", "Alle gebouwen")
-      : buildings.find((building) => building.id === hseBuildingId)?.name ?? buildingName;
+      : selectedHseBuildingIds.map((selectedId) => buildings.find((building) => building.id === selectedId)?.name).filter(Boolean).join(" · ") || buildingName;
     const hseOnline = typeof navigator === "undefined" || navigator.onLine;
     const okay = await run(
       async () => {
         const effectiveReportId = hseOnline ? await ensureProjectDayReport(client, projectId, reportId) : reportId;
-        let eventId = "";
-        for (const targetBuildingId of hseBuildingIds) {
-          const input = {
+        const input = {
             projectId,
-            buildingId: targetBuildingId,
-            locationNodeId: projectWideHse ? "" : hseLocationNodeId,
+            buildingId: primaryHseBuildingId,
+            buildingIds: selectedHseBuildingIds,
+            locationNodeId: hseLocationNodeId,
             reportId: effectiveReportId,
             type: hseForm.type,
             category: hseForm.category,
@@ -1927,7 +2172,42 @@ function ProjectOperations({
             latitude: hseLatitude,
             longitude: hseLongitude,
             locationLabel: hseBuildingName,
-          };
+            signedBy: hseSignature?.name,
+            signedAt: hseSignature?.signedAt,
+            signatureImage: hseSignature?.image ?? null,
+        };
+        let eventId = editingHseId;
+        if (editingHseId) {
+          if (!hseOnline) throw new Error(text("Reconnect before editing an existing HSE record; the original remains safely stored.", "Maak opnieuw verbinding voordat je een bestaande HSE-registratie bewerkt; het origineel blijft veilig opgeslagen."));
+          await updateHseRecord(client, {
+            projectId,
+            id: editingHseId,
+            buildingId: primaryHseBuildingId,
+            buildingIds: selectedHseBuildingIds,
+            locationNodeId: hseLocationNodeId,
+            type: hseForm.type,
+            category: hseForm.category,
+            title: hseTitle,
+            description: hseForm.description,
+            severity: hseForm.severity as HseEvent["severity"],
+            confidential: hseForm.confidential,
+            immediateMeasure: hseImmediateMeasure(hseForm),
+            issueType: hseForm.issueType,
+            issueCategory: hseCategoryOption ? text(hseCategoryOption.en, hseCategoryOption.nl) : "",
+            immediateActions: hseForm.immediateActions,
+            immediateActionOther: hseForm.immediateActionOther,
+            responsiblePerson: hseForm.responsiblePerson,
+            responsibleUserId: hseForm.responsibleUserId,
+            dueAt: Number.isNaN(hseDueAt.getTime()) ? null : hseDueAt.toISOString(),
+            rootCause: hseForm.rootCause,
+            correctiveAction: hseForm.correctiveAction,
+            notes: hseForm.notes,
+            latitude: hseLatitude,
+            longitude: hseLongitude,
+            locationLabel: hseBuildingName,
+            signature: hseSignature,
+          });
+        } else {
           const saved = await saveRecordOnlineOrQueue({
             kind: "hse",
             projectId,
@@ -1935,8 +2215,8 @@ function ProjectOperations({
             preview: {
               title: hseTitle,
               description: hseForm.description,
-              buildingId: targetBuildingId,
-              locationNodeId: projectWideHse ? null : hseLocationNodeId || null,
+              buildingId: primaryHseBuildingId,
+              locationNodeId: hseLocationNodeId || null,
               severity: hseForm.severity,
               priority: hsePriority,
               dueAt: Number.isNaN(hseDueAt.getTime()) ? null : hseDueAt.toISOString(),
@@ -1944,8 +2224,7 @@ function ProjectOperations({
             },
             send: () => createHseEvent(client, input),
           });
-          // The photos hang under the first event; the others carry the same words.
-          if (!eventId) eventId = saved.id;
+          eventId = saved.id;
         }
         if (hsePhotos.length && eventId) {
           const folderName = "HSE";
@@ -1967,7 +2246,7 @@ function ProjectOperations({
               title: caption || hseTitle,
               description: photoUploadDescription(photo, hseForm.description, language),
               locationLabel: hseBuildingName,
-              locationNodeId: photo.details.locationNodeId || (projectWideHse ? null : hseLocationNodeId) || null,
+              locationNodeId: photo.details.locationNodeId || hseLocationNodeId || null,
               capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
               originalSize: photo.original.size,
               queuedSize: prepared.blob.size,
@@ -1984,20 +2263,22 @@ function ProjectOperations({
       // The issue is filed, so the parked draft of it has nothing left to protect.
       clearRecordDraft("hse", projectId);
       resetHseForm();
+      setEditingHseId("");
       setShowForm(false);
     }
   };
 
   const addRegisterEntry = async () => {
     if (registerTitle.length < 3) return;
-    // A controlled document may apply to the whole project; then it has no building.
-    const projectWideRegister = registerBuildingId === ALL_BUILDINGS;
-    const registerRecordBuildingId = projectWideRegister ? null : registerBuildingId;
-    const registerPhotoBuildingId = projectWideRegister ? resolveDefaultBuildingId(buildings, buildingId) : registerBuildingId;
+    const selectedRegisterBuildingIds = registerBuildingIds.length ? registerBuildingIds : [registerBuildingId];
+    const registerRecordBuildingId = selectedRegisterBuildingIds[0] ?? registerBuildingId;
+    const projectWideRegister = selectedRegisterBuildingIds.length === buildings.length;
+    const registerPhotoBuildingId = registerRecordBuildingId;
     const registerBuildingName = projectWideRegister
       ? registerContextLabel
-      : buildings.find((building) => building.id === registerBuildingId)?.name ?? buildingName;
+      : selectedRegisterBuildingIds.map((selectedId) => buildings.find((building) => building.id === selectedId)?.name).filter(Boolean).join(" · ") || buildingName;
     const selectedDrawing = registerDrawings.find((drawing) => drawing.id === registerDrawingId);
+    const editingRegister = data.registerEntries.find((entry) => entry.id === editingRegisterId);
     // Only the lines that were actually filled in; an empty extra line is not a delivery.
     const deliveryLines = registerLines.filter((line) => line.quantity.trim() !== "" && Number.isFinite(Number(line.quantity)));
     const baseDetails = controlledRegister
@@ -2051,6 +2332,7 @@ function ProjectOperations({
         const registerInput = {
           projectId,
           buildingId: registerRecordBuildingId,
+          buildingIds: selectedRegisterBuildingIds,
           locationNodeId: registerLocationNodeId,
           reportId: effectiveReportId,
           type: registerForm.type,
@@ -2058,30 +2340,51 @@ function ProjectOperations({
           responsiblePartyId: registerForm.responsiblePartyId,
           dueAt: registerForm.dueDate || null,
           details: {
+            ...(editingRegister?.details ?? {}),
             ...baseDetails,
-            attachment_files: uploadedFiles,
-            drawing_file_id: selectedDrawing?.id ?? null,
-            drawing_name: selectedDrawing?.original_name ?? null,
+            attachment_files: uploadedFiles.length ? uploadedFiles : editingRegister?.details?.attachment_files ?? [],
+            drawing_file_id: selectedDrawing?.id ?? editingRegister?.details?.drawing_file_id ?? null,
+            drawing_name: selectedDrawing?.original_name ?? editingRegister?.details?.drawing_name ?? null,
           },
+          signedBy: controlledRegister ? registerForm.signedBy : registerSignature?.name,
+          signedAt: controlledRegister ? registerForm.signedAt : registerSignature?.signedAt,
+          signatureImage: controlledRegister ? registerForm.signatureImage || null : registerSignature?.image ?? null,
         };
-        const savedEntry = await saveRecordOnlineOrQueue({
-          kind: "register",
-          projectId,
-          input: registerInput,
-          preview: {
-            title: registerTitle,
-            description: String(baseDetails.description ?? ""),
+        let entry: Pick<RegisterEntry, "id" | "entry_number">;
+        if (editingRegisterId) {
+          if (!registerOnline) throw new Error(text("Reconnect before editing an existing register item; the original remains safely stored.", "Maak opnieuw verbinding voordat je een bestaand registeritem bewerkt; het origineel blijft veilig opgeslagen."));
+          const updated = await updateRegisterRecord(client, {
+            projectId,
+            id: editingRegisterId,
             buildingId: registerRecordBuildingId,
-            locationNodeId: registerLocationNodeId || null,
-            severity: "medium",
-            priority: "normal",
+            buildingIds: selectedRegisterBuildingIds,
+            locationNodeId: registerLocationNodeId,
+            title: registerTitle,
             dueAt: registerForm.dueDate || null,
-            recordType: registerForm.type,
-          },
-          send: () => createRegisterEntry(client, registerInput),
-        });
-        // A queued item has no number yet; the database assigns it when the item is sent.
-        const entry = savedEntry.record ?? { id: savedEntry.id, entry_number: "" };
+            details: registerInput.details,
+            signature: signatureFromDetails(registerInput.signedBy, registerInput.signedAt, registerInput.signatureImage),
+          });
+          entry = updated;
+        } else {
+          const savedEntry = await saveRecordOnlineOrQueue({
+            kind: "register",
+            projectId,
+            input: registerInput,
+            preview: {
+              title: registerTitle,
+              description: String(baseDetails.description ?? ""),
+              buildingId: registerRecordBuildingId,
+              locationNodeId: registerLocationNodeId || null,
+              severity: "medium",
+              priority: "normal",
+              dueAt: registerForm.dueDate || null,
+              recordType: registerForm.type,
+            },
+            send: () => createRegisterEntry(client, registerInput),
+          });
+          // A queued item has no number yet; the database assigns it when the item is sent.
+          entry = savedEntry.record ?? { id: savedEntry.id, entry_number: "" };
+        }
         // Site photos belong to a register item as much as documents do.
         if (registerPhotos.length) {
           const folderName = text("Register evidence", "Registerbewijs");
@@ -2112,7 +2415,7 @@ function ProjectOperations({
           }
           if (navigator.onLine) await syncQueuedEvidenceNow();
         }
-        if (registerForm.type === "punch_list") {
+        if (!editingRegisterId && registerForm.type === "punch_list") {
           const punchInput = {
             projectId,
             buildingId: registerPhotoBuildingId,
@@ -2152,8 +2455,10 @@ function ProjectOperations({
     );
     if (okay) {
       setRegisterForm({ ...emptyControlledDocumentDraft, type: registerForm.type });
+      setEditingRegisterId("");
       setAgreementForm({ ...emptyAgreementSignature });
       setRegisterFiles([]);
+      setRegisterSignature(null);
       setRegisterOutcome("");
       setRegisterLines([{ quantity: "", unit: "", description: "" }]);
       setRegisterPhotos([]);
@@ -2275,11 +2580,41 @@ function ProjectOperations({
         </>
       )}
 
+      {tab !== "home" && viewedRecord ? (
+        <aside className="record-readonly-panel" aria-label={text("Record details", "Registratiedetails")}>
+          <div>
+            <span className="record-number">{viewedRecord.code}</span>
+            <h2>{viewedRecord.title}</h2>
+            {viewedRecord.description ? <p>{viewedRecord.description}</p> : null}
+            <small>{viewedRecord.meta}</small>
+          </div>
+          <span className="task-status">{viewedRecord.status}</span>
+          <div className="record-readonly-actions">
+            {viewedRecord.status !== "cancelled" ? <button className="secondary-button" type="button" onClick={() => {
+              if (viewedRecord.kind === "inspection") {
+                const record = data.inspections.find((item) => item.id === viewedRecord.id);
+                if (record) void resumeInspection(record);
+              } else if (viewedRecord.kind === "finding") {
+                const record = data.findings.find((item) => item.id === viewedRecord.id);
+                if (record) editFinding(record);
+              } else if (viewedRecord.kind === "hse") {
+                const record = data.hseEvents.find((item) => item.id === viewedRecord.id);
+                if (record) editHse(record);
+              } else {
+                const record = data.registerEntries.find((item) => item.id === viewedRecord.id);
+                if (record) editRegister(record);
+              }
+            }}><Wrench size={14} /> {text("Edit in form", "Bewerken in formulier")}</button> : null}
+            {viewedRecord.status !== "cancelled" ? <button className="ghost-button" type="button" onClick={() => withdrawRecord(viewedRecord)}>{text("Withdraw", "Intrekken")}</button> : null}
+            <button className="ghost-button" type="button" onClick={() => setViewedRecord(null)}><X size={14} /> {text("Close", "Sluiten")}</button>
+          </div>
+        </aside>
+      ) : null}
+
       {tab === "inspections" ? (
         <section className="operation-panel">
           {activeInspection && activeTemplate ? (
-            <div className="operation-form wide">
-              <div className="operation-form-heading"><div><span className="record-number">{activeInspection.inspection_number}</span><h2>{activeInspection.title}</h2></div><span className="task-status">{text("In progress", "In uitvoering")}</span></div>
+            <RecordFormShell code={activeInspection.inspection_number} title={activeInspection.title} status={text("In progress", "In uitvoering")} busy={busy} className="wide">
               <p className="form-intro">{text("Answer every required checkpoint. A failed point automatically creates a traceable finding on completion; the app never closes it by itself.", "Beantwoord alle verplichte controlepunten. Een afkeur maakt bij afronding automatisch een traceerbare bevinding; de app sluit die nooit zelf.")}</p>
               <div className="checklist-progress" aria-label={text("Checklist progress", "Checklistvoortgang")}>
                 <span><b>{answeredChecklistItems}</b> / {activeTemplate.items.length} {text("answered", "beantwoord")}</span>
@@ -2324,6 +2659,13 @@ function ProjectOperations({
                 <span><strong>{inspectionPhotos.length ? text(`${inspectionPhotos.length} photos ready`, `${inspectionPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
                 <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setInspectionPhotos, setInspectionPhotoError); event.currentTarget.value = ""; }} />
               </label>
+              <RecordBuildingsField
+                id="active-inspection-buildings"
+                buildings={buildings}
+                value={inspectionBuildingIds}
+                onChange={(next) => { setInspectionBuildingIds(next); setInspectionBuildingId(next[0] ?? inspectionBuildingId); setInspectionLocationNodeId(""); }}
+              />
+              <LocationPicker id="active-inspection-location" nodes={data.locationNodes} buildingId={inspectionBuildingId} value={inspectionLocationNodeId} onChange={setInspectionLocationNodeId} requiredDepth={requiredLocationDepth} />
               <PhotoEvidenceList
                 photos={inspectionPhotos}
                 setPhotos={setInspectionPhotos}
@@ -2332,8 +2674,7 @@ function ProjectOperations({
               {inspectionPhotoError ? <p className="field-error" role="alert">{inspectionPhotoError}</p> : null}
               {/* "Geen optie om te ondertekenen! Naam etc." — the person who walked the
                   checklist signs it, here, before it is completed. */}
-              <SignatureField
-                label={text("Sign as the inspector", "Ondertekenen als inspecteur")}
+              <RecordSignatureField
                 declaration={text(
                   "By signing you confirm that you checked every point of this checklist yourself.",
                   "Met je handtekening bevestig je dat je elk punt van deze checklist zelf hebt gecontroleerd.",
@@ -2343,6 +2684,7 @@ function ProjectOperations({
                 nameOptions={documentIssuerOptions}
                 value={inspectionSignature}
                 onChange={setInspectionSignature}
+                required
               />
               {/* "Locatie pinnen": the checklist itself gets its spot on the drawing. */}
               <button className="secondary-button" type="button" onClick={() => { setDrawingInspectionId(activeInspection.id); setDrawingFindingId(""); switchTab("drawings"); }}>
@@ -2355,11 +2697,10 @@ function ProjectOperations({
               </button>
               <div className="form-actions checklist-sticky-actions"><button className="secondary-button" type="button" onClick={() => setActiveInspection(null)}>{text("Complete later", "Later afronden")}</button><button className="primary-button" type="button" disabled={busy || !inspectionSignature || activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))} onClick={() => void submitInspection()}>{busy ? <Loader2 className="spin" size={15} /> : <FileCheck2 size={15} />} {text("Complete inspection", "Inspectie afronden")}</button></div>
               {!inspectionSignature ? <p className="form-intro">{text("Sign the checklist to complete it.", "Onderteken de checklist om hem af te ronden.")}</p> : null}
-            </div>
+            </RecordFormShell>
           ) : null}
           {showForm && !activeInspection ? (
-            <div className="operation-form">
-              <h2>{text("Start inspection", "Inspectie starten")}</h2>
+            <RecordFormShell code={text("Inspection", "Inspectie")} title={text("Start inspection", "Inspectie starten")} status={text("New", "Nieuw")} busy={busy}>
               {!reportId ? <p className="form-helper">{text("Starting this checklist prepares today’s draft report automatically.", "Bij het starten van deze checklist wordt het conceptrapport van vandaag automatisch klaargezet.")}</p> : null}
               {anchorWorkPlanned && missingAnchorChecklistCodes.length ? (
                 <div className="operation-alert success recommended-checklist-install">
@@ -2374,14 +2715,14 @@ function ProjectOperations({
                   </div>
                 </div>
               ) : null}
-              {inspectionTemplates.length ? <>
-                <BuildingPicker id="inspection-building" buildings={buildings} value={inspectionBuildingId} onChange={(next) => { setInspectionBuildingId(next); setInspectionLocationNodeId(""); }} />
+              {inspectionTemplates.length ? <RecordFormSection number={1} title={text("Checklist and location", "Checklist en locatie")} description={text("Choose every building this one numbered inspection covers.", "Kies ieder gebouw waarop deze ene genummerde inspectie betrekking heeft.")}>
+                <RecordBuildingsField id="inspection-buildings" buildings={buildings} value={inspectionBuildingIds} onChange={(next) => { setInspectionBuildingIds(next); setInspectionBuildingId(next[0] ?? inspectionBuildingId); setInspectionLocationNodeId(""); }} />
                 <LocationPicker id="inspection-location" nodes={data.locationNodes} buildingId={inspectionBuildingId} value={inspectionLocationNodeId} onChange={setInspectionLocationNodeId} requiredDepth={requiredLocationDepth} />
                 <label className="form-field"><span>{text("Checklist · recommended for today's work first", "Checklist · aanbevolen voor vandaag eerst")}</span><select value={inspectionTemplateId || inspectionTemplates[0]?.id || ""} onChange={(event) => { setInspectionTemplateId(event.target.value); setInspectionTitle(""); }}>{inspectionTemplates.map((template) => <option value={template.id} key={template.id}>{["LIB-101", "LIB-102", "LIB-103"].includes(template.code) ? "★ " : ""}{template.name} · v{template.version_number}</option>)}</select></label>
                 <details className="inspection-subject-details"><summary>{text("Add a different subject or element · optional", "Ander onderwerp of element toevoegen · optioneel")}</summary><label className="form-field"><span>{text("Subject / element", "Onderwerp / element")}</span><input value={inspectionTitle} onChange={(event) => setInspectionTitle(event.target.value)} placeholder={`${inspectionTemplates.find((template) => template.id === (inspectionTemplateId || inspectionTemplates[0]?.id))?.name ?? text("Inspection", "Inspectie")} · ${buildingName}`} /></label></details>
                 <button className="primary-button start-checklist-button" type="button" disabled={busy || (exactLocationRequired && !inspectionLocationNodeId)} onClick={() => void beginInspection()}><ClipboardCheck size={15} /> {text("Start recommended checklist", "Start aanbevolen checklist")}</button>
-              </> : <div className="operation-alert warning"><AlertTriangle size={18} /><div><strong>{text("No project checklist is published yet", "Nog geen projectchecklist gepubliceerd")}</strong><span>{text("An administrator can install the ready-made CODECO checklist package under More.", "Een beheerder kan het kant-en-klare CODECO-pakket onder Meer installeren.")}</span></div></div>}
-            </div>
+              </RecordFormSection> : <div className="operation-alert warning"><AlertTriangle size={18} /><div><strong>{text("No project checklist is published yet", "Nog geen projectchecklist gepubliceerd")}</strong><span>{text("An administrator can install the ready-made CODECO checklist package under More.", "Een beheerder kan het kant-en-klare CODECO-pakket onder Meer installeren.")}</span></div></div>}
+            </RecordFormShell>
           ) : null}
           <div className="operation-form inspection-search">
             <div className="operation-form-heading"><div><span className="record-number">{text("Inspection lookup", "Inspecties terugvinden")}</span><h2>{text("Search by building, exact location and date", "Zoek op gebouw, exacte locatie en datum")}</h2></div><span>{filteredInspections.length}</span></div>
@@ -2407,20 +2748,12 @@ function ProjectOperations({
             id: inspection.id,
             icon: ClipboardCheck,
             title: inspection.title,
-            meta: `${inspection.inspection_number} · ${recordContextLabel(inspection.building_id, inspection.location_node_id)} · ${formatDate(inspection.completed_at ?? inspection.started_at, locale)}${inspection.signed_by ? ` · ${text("signed by", "ondertekend door")} ${inspection.signed_by}` : ""}`,
+            meta: `${inspection.inspection_number} · ${recordContextLabel(inspection.building_id, inspection.location_node_id, inspection.building_ids)} · ${formatDate(inspection.completed_at ?? inspection.started_at, locale)}${inspection.signed_by ? ` · ${text("signed by", "ondertekend door")} ${inspection.signed_by}` : ""}`,
             status: inspection.status.replaceAll("_", " "),
             tone: inspection.status === "passed" ? "green" : inspection.status === "failed" ? "red" : "",
-            open: ["planned", "in_progress", "ready_for_reinspection", "failed"].includes(inspection.status)
-              ? {
-                label: activeInspection?.id === inspection.id
-                  ? text("Open below", "Staat hieronder")
-                  : text("Fill in checklist", "Checklist invullen"),
-                onOpen: () => {
-                  void resumeInspection(inspection);
-                  window.scrollTo({ top: 0, behavior: "smooth" });
-                },
-              }
-              : undefined,
+            onOpen: () => viewInspection(inspection),
+            onEdit: inspection.status !== "cancelled" ? () => { void resumeInspection(inspection); window.scrollTo({ top: 0, behavior: "smooth" }); } : undefined,
+            onWithdraw: inspection.status !== "cancelled" ? () => withdrawRecord({ kind: "inspection", id: inspection.id, code: inspection.inspection_number, title: inspection.title, status: inspection.status, meta: recordContextLabel(inspection.building_id, inspection.location_node_id, inspection.building_ids) }) : undefined,
           }))} />
         </section>
       ) : null}
@@ -2433,22 +2766,24 @@ function ProjectOperations({
             * module keeps the client's paper NCR form, below.
             */}
           {showForm && findingScope === "issue" ? (
-            <div className="operation-form wide sectioned-record-form">
-              <div className="operation-form-heading sectioned-record-heading">
+            <RecordFormShell
+              code={data.findings.find((item) => item.id === editingFindingId)?.finding_number ?? nextIssueNumber}
+              title={editingFindingId ? text("Edit issue", "Issue bewerken") : text("Create issue", "Issue registreren")}
+              status={issueStatusLabel}
+              busy={busy}
+              className="wide sectioned-record-form"
+              headerAside={<>
                 <button className="record-back-button" type="button" onClick={() => { resetFindingForm(); setShowForm(false); }} aria-label={text("Leave this screen", "Dit scherm verlaten")}><ArrowLeft size={18} /></button>
-                <div>
-                  <h2>{text("Create issue", "Issue registreren")}</h2>
-                  <p className="form-intro">{capturedAutomatically}</p>
-                </div>
                 <button className={`record-sync-chip${online ? "" : " offline"}`} type="button" disabled={busy} onClick={syncWaitingRecordsNow} title={text("Send what is still waiting on this device", "Verstuur wat nog op dit apparaat wacht")}>{online ? <CloudSun size={15} /> : <WifiOff size={15} />}<span><strong>{syncChip.label}</strong><small>{syncChip.detail}</small></span></button>
                 <button className="secondary-button record-heading-draft" type="button" onClick={() => writeRecordDraft("issue", projectId, findingForm)}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
-              </div>
+              </>}
+            >
               <section className="controlled-document-context sectioned-record-context" aria-label={text("Issue header", "Kop van het issue")}>
                 <div><small>{text("Issue ID", "Issue ID")}</small><strong>{nextIssueNumber}</strong><span>{text("Provisional · fixed on submit", "Voorlopig · vast bij indienen")}</span></div>
                 <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDate}</strong><span>{issueTime}</span></div>
                 <div><small>{text("Reporter", "Melder")}</small><strong>{currentUserName}</strong><span>{reporterDepartment}</span></div>
                 <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
-                <div><small>{text("Site / location", "Locatie")}</small><strong>{findingBuildingId === ALL_BUILDINGS ? text("All buildings", "Alle gebouwen") : buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName}</strong><span>{findingForm.latitude && findingForm.longitude ? `${findingForm.latitude}, ${findingForm.longitude}` : projectLocation || text("No coordinates yet", "Nog geen coördinaten")}</span></div>
+                <div><small>{text("Site / location", "Locatie")}</small><strong>{findingBuildingIds.map((selectedId) => buildings.find((building) => building.id === selectedId)?.name).filter(Boolean).join(" · ") || buildingName}</strong><span>{findingForm.latitude && findingForm.longitude ? `${findingForm.latitude}, ${findingForm.longitude}` : projectLocation || text("No coordinates yet", "Nog geen coördinaten")}</span></div>
                 <div><small>{text("Weather", "Weer")}</small><strong>{liveWeatherLabel}</strong><span>{liveWeather ? `${liveWeather.temperatureC}°C` : "—"}</span></div>
                 <div><small>{text("Department", "Afdeling")}</small><strong>{reporterDepartment}</strong><span>{text("Of the reporter", "Van de melder")}</span></div>
                 <div><small>{text("Status", "Status")}</small><strong className="record-status-preview">{issueStatusLabel}</strong><span>{text("On submit", "Bij indienen")}</span></div>
@@ -2511,15 +2846,13 @@ function ProjectOperations({
 
                   <section className="record-section record-order-5" aria-label={text("Location", "Locatie")}>
                     <h3><span className="record-section-number">5</span> {text("Location", "Locatie")} <em className="record-section-required">*</em></h3>
-                    <div className="form-grid-2">
-                      <BuildingPicker id="finding-building" buildings={buildings} value={findingBuildingId} onChange={(next) => { setFindingBuildingId(next); setFindingLocationNodeId(""); }} allowAll />
-                      <LocationPicker id="finding-location" nodes={data.locationNodes} buildingId={findingBuildingId} value={findingLocationNodeId} onChange={setFindingLocationNodeId} requiredDepth={requiredLocationDepth} />
-                    </div>
+                    <RecordBuildingsField id="finding-buildings" buildings={buildings} value={findingBuildingIds} onChange={(next) => { setFindingBuildingIds(next); setFindingBuildingId(next[0] ?? findingBuildingId); setFindingLocationNodeId(""); }} />
+                    <LocationPicker id="finding-location" nodes={data.locationNodes} buildingId={findingBuildingId} value={findingLocationNodeId} onChange={setFindingLocationNodeId} requiredDepth={requiredLocationDepth} />
                     <RecordLocationMap
                       client={client}
                       value={{ latitude: findingForm.latitude, longitude: findingForm.longitude }}
                       fallbackCenter={projectCenter}
-                      contextLabel={findingBuildingId === ALL_BUILDINGS ? projectName : `${buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName}, ${projectName}`}
+                      contextLabel={`${buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName}, ${projectName}`}
                       onChange={(coordinates) => setFindingForm((current) => ({ ...current, ...coordinates }))}
                       onUseMyLocation={captureIssuePosition}
                       locating={issueLocating}
@@ -2668,13 +3001,19 @@ function ProjectOperations({
                   <Paperclip size={14} /> {text(`Attachments (${findingPhotos.length})`, `Bijlagen (${findingPhotos.length})`)}
                   <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
                 </label>
-                <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && findingBuildingId !== ALL_BUILDINGS && !findingLocationNodeId) || (!online && !findingPhotos.length) || !findingForm.issueCategory || findingForm.responsiblePerson.trim().length < 2 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><Send size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Issue indienen")}</button>
+                <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !findingLocationNodeId) || (!online && !findingPhotos.length) || !findingForm.issueCategory || findingForm.responsiblePerson.trim().length < 2 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><Send size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Issue indienen")}</button>
               </div>
-            </div>
+            </RecordFormShell>
           ) : null}
           {showForm && findingScope === "ncr" ? (
-            <div className="operation-form snap-assign-form">
-              <div className="operation-form-heading"><div><span className="record-number">{text("Formal non-conformance", "Formele afwijking")}</span><h2>{text("Non-conformance report", "Non-conformance report")}</h2></div>{!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}</div>
+            <RecordFormShell
+              code={data.findings.find((item) => item.id === editingFindingId)?.finding_number ?? text("New NCR", "Nieuwe NCR")}
+              title={editingFindingId ? text("Edit non-conformance report", "Non-conformance report bewerken") : text("Non-conformance report", "Non-conformance report")}
+              status={issueStatusLabel}
+              busy={busy}
+              className="snap-assign-form"
+              headerAside={!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}
+            >
               {/* The head of the client's own NCR form: project, contractor, subject and
                   the reference, with the date and the report number filled by the app. */}
               <section className="controlled-document-context ncr-form-context" aria-label={text("Non-conformance report header", "Kop van het non-conformance report")}>
@@ -2767,7 +3106,7 @@ function ProjectOperations({
               <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required (Y/N)", "Escalation Required (Y/N)")}</label>
               <p className="form-helper">{text(`Entered by ${currentUserName} · the ID, current status and actual resolution date are kept by the app itself.`, `Entered By ${currentUserName} · het ID, de status en de Actual Resolution Date houdt de app zelf bij.`)}</p>
               <div className="form-grid-2">
-                <BuildingPicker id="finding-building" buildings={buildings} value={findingBuildingId} onChange={(next) => { setFindingBuildingId(next); setFindingLocationNodeId(""); }} allowAll />
+                <RecordBuildingsField id="ncr-buildings" buildings={buildings} value={findingBuildingIds} onChange={(next) => { setFindingBuildingIds(next); setFindingBuildingId(next[0] ?? findingBuildingId); setFindingLocationNodeId(""); }} />
                 <label className="form-field"><span>{text("Contractor · receives this NCR", "Aannemer · ontvangt deze NCR")}</span><select value={findingForm.responsiblePartyId} onChange={(event) => setFindingForm({ ...findingForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Nog niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
               </div>
               <LocationPicker id="finding-location" nodes={data.locationNodes} buildingId={findingBuildingId} value={findingLocationNodeId} onChange={setFindingLocationNodeId} requiredDepth={requiredLocationDepth} />
@@ -2795,8 +3134,8 @@ function ProjectOperations({
                 })}
               />
                 <div className="operation-alert warning"><RotateCcw size={17} /><div><strong>{text("The contractor fills in the correction", "De aannemer vult de correctie in")}</strong><span>{text("After submitting you send this NCR to the contractor with one tap. The contractor fills in the proposed corrective action and sends it back; the quality-control close-out stays with CODECO.", "Na indienen stuur je deze NCR met één tik naar de aannemer. De aannemer vult de voorgestelde correctieve actie in en stuurt die terug; de eindcontrole blijft bij CODECO.")}</span></div></div>
-              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && findingBuildingId !== ALL_BUILDINGS && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit NCR", "NCR indienen")}</button>
-            </div>
+              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit NCR", "NCR indienen")}</button>
+            </RecordFormShell>
           ) : null}
           {/* Submitting is not the end of an NCR: the contractor has to receive it and
               send the correction back, so the link stands right where you submitted. */}
@@ -2865,6 +3204,9 @@ function ProjectOperations({
               setDrawingFindingId(finding.id);
               switchTab("drawings");
             }}
+            viewRecord={viewFinding}
+            editRecord={editFinding}
+            withdrawRecord={(finding) => withdrawRecord({ kind: "finding", id: finding.id, code: finding.finding_number, title: finding.title, status: finding.status, meta: recordContextLabel(finding.building_id, finding.location_node_id, finding.building_ids), description: finding.description })}
           />
         </section>
       ) : null}
@@ -2872,16 +3214,18 @@ function ProjectOperations({
       {tab === "hse" ? (
         <section className="operation-panel">
           {showForm ? (
-            <div className="operation-form wide sectioned-record-form">
-              <div className="operation-form-heading sectioned-record-heading">
+            <RecordFormShell
+              code={data.hseEvents.find((item) => item.id === editingHseId)?.event_number ?? nextHseNumber}
+              title={editingHseId ? text("Edit HSE observation / issue", "HSE-observatie / issue bewerken") : text("HSE observation / issue", "HSE-observatie / issue")}
+              status={hseStatusLabel}
+              busy={busy}
+              className="wide sectioned-record-form"
+              headerAside={<>
                 <button className="record-back-button" type="button" onClick={() => { resetHseForm(); setShowForm(false); }} aria-label={text("Leave this screen", "Dit scherm verlaten")}><ArrowLeft size={18} /></button>
-                <div>
-                  <h2>{text("HSE observation / issue", "HSE-observatie / issue")}</h2>
-                  <p className="form-intro">{text("Report an unsafe act, condition or incident", "Meld een onveilige handeling, situatie of incident")}</p>
-                </div>
                 <button className={`record-sync-chip${online ? "" : " offline"}`} type="button" disabled={busy} onClick={syncWaitingRecordsNow} title={text("Send what is still waiting on this device", "Verstuur wat nog op dit apparaat wacht")}>{online ? <CloudSun size={15} /> : <WifiOff size={15} />}<span><strong>{syncChip.label}</strong><small>{syncChip.detail}</small></span></button>
                 <button className="secondary-button record-heading-draft" type="button" onClick={() => writeRecordDraft("hse", projectId, hseForm)}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
-              </div>
+              </>}
+            >
               {/* The head of the client's own screen: what the app already knows before a
                   single box is filled in. "Ik vermoed dat dag, datum & tijd zelf komen" —
                   they do, and so do the reporter, the project, the site and the weather. */}
@@ -2890,7 +3234,7 @@ function ProjectOperations({
                 <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDate}</strong><span>{issueTime}</span></div>
                 <div><small>{text("Reporter", "Melder")}</small><strong>{currentUserName}</strong><span>{reporterDepartment}</span></div>
                 <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
-                <div><small>{text("Site / location", "Locatie")}</small><strong>{hseBuildingId === ALL_BUILDINGS ? text("All buildings", "Alle gebouwen") : buildings.find((building) => building.id === hseBuildingId)?.name ?? buildingName}</strong><span>{hseForm.latitude && hseForm.longitude ? `${hseForm.latitude}, ${hseForm.longitude}` : projectLocation || text("No coordinates yet", "Nog geen coördinaten")}</span></div>
+                <div><small>{text("Site / location", "Locatie")}</small><strong>{hseBuildingIds.map((selectedId) => buildings.find((building) => building.id === selectedId)?.name).filter(Boolean).join(" · ") || buildingName}</strong><span>{hseForm.latitude && hseForm.longitude ? `${hseForm.latitude}, ${hseForm.longitude}` : projectLocation || text("No coordinates yet", "Nog geen coördinaten")}</span></div>
                 <div><small>{text("Weather", "Weer")}</small><strong>{liveWeatherLabel}</strong><span>{liveWeather ? `${liveWeather.temperatureC}°C` : "—"}</span></div>
                 <div><small>{text("Department", "Afdeling")}</small><strong>{reporterDepartment}</strong><span>{text("Of the reporter", "Van de melder")}</span></div>
                 <div><small>{text("Status", "Status")}</small><strong className="record-status-preview">{hseStatusLabel}</strong><span>{text("On submit", "Bij indienen")}</span></div>
@@ -2997,16 +3341,14 @@ function ProjectOperations({
                 <div className="sectioned-record-column">
                   <section className="record-section record-order-5" aria-label={text("Location", "Locatie")}>
                     <h3><span className="record-section-number">5</span> {text("Location", "Locatie")} <em className="record-section-required">*</em></h3>
-                    <div className="form-grid-2">
-                      <BuildingPicker id="hse-building" buildings={buildings} value={hseBuildingId} onChange={(next) => { setHseBuildingId(next); setHseLocationNodeId(""); }} allowAll />
-                      <LocationPicker id="hse-location" nodes={data.locationNodes} buildingId={hseBuildingId} value={hseLocationNodeId} onChange={setHseLocationNodeId} requiredDepth={hseBuildingId === ALL_BUILDINGS ? "building" : requiredLocationDepth} />
-                    </div>
+                    <RecordBuildingsField id="hse-buildings" buildings={buildings} value={hseBuildingIds} onChange={(next) => { setHseBuildingIds(next); setHseBuildingId(next[0] ?? hseBuildingId); setHseLocationNodeId(""); }} />
+                    <LocationPicker id="hse-location" nodes={data.locationNodes} buildingId={hseBuildingId} value={hseLocationNodeId} onChange={setHseLocationNodeId} requiredDepth={requiredLocationDepth} />
                     {/* Where on earth it was seen, next to where in the works it was seen. */}
                     <RecordLocationMap
                       client={client}
                       value={{ latitude: hseForm.latitude, longitude: hseForm.longitude }}
                       fallbackCenter={projectCenter}
-                      contextLabel={hseBuildingId === ALL_BUILDINGS ? projectName : `${buildings.find((building) => building.id === hseBuildingId)?.name ?? buildingName}, ${projectName}`}
+                      contextLabel={`${buildings.find((building) => building.id === hseBuildingId)?.name ?? buildingName}, ${projectName}`}
                       onChange={(coordinates) => setHseForm((current) => ({ ...current, ...coordinates }))}
                       onUseMyLocation={captureHsePosition}
                       locating={hseLocating}
@@ -3022,7 +3364,7 @@ function ProjectOperations({
                       <PhotoEvidenceList
                         photos={hsePhotos}
                         setPhotos={setHsePhotos}
-                        markupContext={{ ...markupOptions, defaultBuildingId: hseBuildingId === ALL_BUILDINGS ? "" : hseBuildingId }}
+                        markupContext={{ ...markupOptions, defaultBuildingId: hseBuildingId }}
                         layout="gallery"
                       />
                       <label className="record-add-photo">
@@ -3078,6 +3420,12 @@ function ProjectOperations({
               </div>
 
               <label className="check-field"><input type="checkbox" checked={hseForm.confidential} onChange={(event) => setHseForm({ ...hseForm, confidential: event.target.checked })} /> {text("Restrict this sensitive incident to authorized HSE roles", "Beperk dit gevoelige incident tot bevoegde HSE-rollen")}</label>
+              <RecordSignatureField
+                value={hseSignature}
+                onChange={setHseSignature}
+                nameSuggestion={currentUserName}
+                declaration={text("I confirm this HSE record is complete and accurate.", "Ik bevestig dat deze HSE-registratie volledig en juist is.")}
+              />
               {/* The bar of the client's screen: leave it, park it, count the evidence,
                   submit it. */}
               <div className="record-form-actions">
@@ -3087,9 +3435,9 @@ function ProjectOperations({
                   <Paperclip size={14} /> {text(`Attachments (${hsePhotos.length})`, `Bijlagen (${hsePhotos.length})`)}
                   <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setHsePhotos, setHsePhotoError); event.currentTarget.value = ""; }} />
                 </label>
-                <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && hseBuildingId !== ALL_BUILDINGS && !hseLocationNodeId) || !hseForm.issueCategory || hseForm.responsiblePerson.trim().length < 2 || hseForm.description.trim().length < 3} onClick={() => void addHse()}><Send size={15} /> {text("Submit issue", "Issue indienen")}</button>
+                <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !hseLocationNodeId) || !hseForm.issueCategory || hseForm.responsiblePerson.trim().length < 2 || hseForm.description.trim().length < 3} onClick={() => void addHse()}><Send size={15} /> {text("Submit issue", "Issue indienen")}</button>
               </div>
-            </div>
+            </RecordFormShell>
           ) : null}
           {/* The line under a record says what was filled in on the screen: the heading,
               the category, who has to act and by when. A box that is only asked for and
@@ -3102,7 +3450,7 @@ function ProjectOperations({
               event.event_number,
               event.hse_category ? hseCategoryLabels[event.hse_category] ?? event.hse_category : "",
               event.issue_category || "",
-              recordContextLabel(event.building_id, event.location_node_id),
+              recordContextLabel(event.building_id, event.location_node_id, event.building_ids),
               event.event_type.replaceAll("_", " "),
               formatDate(event.occurred_at, locale),
               event.responsible_person ? text(`for ${event.responsible_person}`, `voor ${event.responsible_person}`) : "",
@@ -3111,6 +3459,9 @@ function ProjectOperations({
             ].filter(Boolean).join(" · "),
             status: event.status.replaceAll("_", " "),
             tone: event.severity === "critical" ? "red" : event.status === "closed" ? "green" : "",
+            onOpen: () => viewHse(event),
+            onEdit: event.status !== "cancelled" ? () => editHse(event) : undefined,
+            onWithdraw: event.status !== "cancelled" ? () => withdrawRecord({ kind: "hse", id: event.id, code: event.event_number, title: event.title, status: event.status, meta: recordContextLabel(event.building_id, event.location_node_id, event.building_ids), description: event.description }) : undefined,
           }))} />
         </section>
       ) : null}
@@ -3118,11 +3469,17 @@ function ProjectOperations({
       {tab === "registers" ? (
         <section className="operation-panel">
           {showForm ? (
-            <div className={`operation-form ${controlledRegister ? "wide controlled-document-form" : ""}`}>
+            <RecordFormShell
+              code={data.registerEntries.find((item) => item.id === editingRegisterId)?.entry_number ?? (controlledRegister ? text("Client-controlled form", "Klantgestuurd formulier") : text("Project register", "Projectregister"))}
+              title={registerNames[registerForm.type] ?? text("Project register item", "Projectregistratie")}
+              status={editingRegisterId ? text("Editing", "Bewerken") : text("Draft", "Concept")}
+              busy={busy}
+              className={controlledRegister ? "wide controlled-document-form" : ""}
+              headerAside={controlledRegister ? <span className="controlled-document-badge">{projectCode} · {registerContextLabel}</span> : null}
+            >
               {/* The form says what is being recorded — Materials delivery, Agreement,
                   RFI — instead of a general register heading with the answer hidden in a
                   dropdown below it. */}
-              <div className="operation-form-heading"><div><span className="record-number">{controlledRegister ? text("Client-controlled form", "Klantgestuurd formulier") : text("Project register", "Projectregister")}</span><h2>{registerNames[registerForm.type] ?? text("Project register item", "Projectregistratie")}</h2></div>{controlledRegister ? <span className="controlled-document-badge">{projectCode} · {registerContextLabel}</span> : null}</div>
               {/* A controlled document starts with the project information and the dates:
                   that is the head of the paper form the client hands out. */}
               {controlledRegister ? (
@@ -3144,13 +3501,13 @@ function ProjectOperations({
                 </>
               ) : null}
               <div className="form-grid-2">
-                <BuildingPicker id="register-building" buildings={buildings} value={registerBuildingId} onChange={(next) => { setRegisterBuildingId(next); setRegisterLocationNodeId(""); }} allowAll />
-                <LocationPicker id="register-location" nodes={data.locationNodes} buildingId={registerBuildingId} value={registerLocationNodeId} onChange={setRegisterLocationNodeId} requiredDepth={registerBuildingId === ALL_BUILDINGS ? "building" : requiredLocationDepth} />
+                <RecordBuildingsField id="register-buildings" buildings={buildings} value={registerBuildingIds} onChange={(next) => { setRegisterBuildingIds(next); setRegisterBuildingId(next[0] ?? registerBuildingId); setRegisterLocationNodeId(""); }} />
+                <LocationPicker id="register-location" nodes={data.locationNodes} buildingId={registerBuildingId} value={registerLocationNodeId} onChange={setRegisterLocationNodeId} requiredDepth={requiredLocationDepth} />
                 <details className="optional-text-entry register-type-switch">
                   <summary>{text("Record something else", "Iets anders vastleggen")}</summary>
                   <label className="form-field"><span>{text("Register / document format", "Register / documentformaat")}</span><select value={registerForm.type} onChange={(event) => setRegisterForm({ ...emptyControlledDocumentDraft, type: event.target.value })}>{Object.entries(registerNames).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
                 </details>
-                {registerBuildingId !== ALL_BUILDINGS && registerDrawings.length ? (
+                {registerDrawings.length ? (
                   <label className="form-field"><span>{text("Location on drawing", "Locatie op tekening")}</span>
                     <select value={registerDrawingId} onChange={(event) => setRegisterDrawingId(event.target.value)}>
                       <option value="">{text("No drawing selected", "Geen tekening gekozen")}</option>
@@ -3280,6 +3637,17 @@ function ProjectOperations({
                   ? text("Project, building, receipt date and audit history are filled from the current context. This form was drawn up and signed by the submitting party; CODECO's own signature belongs to the formal response below.", "Project, gebouw, ontvangstdatum en auditgeschiedenis komen uit de actuele context. Dit formulier is door de indienende partij opgesteld en ondertekend; de handtekening van CODECO hoort bij het formele antwoord hieronder.")
                   : text("Project, building, issue date, author and audit history are filled from the current context. Approval, acknowledgement and signature remain explicit human actions.", "Project, gebouw, uitgiftedatum, opsteller en auditgeschiedenis komen uit de actuele context. Goedkeuring, ontvangst en ondertekening blijven expliciete menselijke acties.")}</span></div></div>
               </> : null}
+              {!controlledRegister && !agreementRegister ? (
+                <RecordSignatureField
+                  value={registerSignature}
+                  onChange={setRegisterSignature}
+                  nameSuggestion={currentUserName}
+                  declaration={text(
+                    "I confirm that this register entry reflects what was recorded on site.",
+                    "Ik bevestig dat dit registeritem weergeeft wat op de bouwplaats is vastgelegd.",
+                  )}
+                />
+              ) : null}
               {/* Every register item can carry site photos, with the text that says what
                   the photo shows. Documents alone were not enough for the client. */}
               <label className="finding-photo-capture register-photo-capture">
@@ -3290,11 +3658,11 @@ function ProjectOperations({
               <PhotoEvidenceList
                 photos={registerPhotos}
                 setPhotos={setRegisterPhotos}
-                markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId === ALL_BUILDINGS ? "" : registerBuildingId }}
+                markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
               />
               {registerPhotoError ? <p className="field-error" role="alert">{registerPhotoError}</p> : null}
-              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && registerBuildingId !== ALL_BUILDINGS && !registerLocationNodeId) || registerTitle.length < 3 || !controlledFormReady} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : text("Save register item", "Registeritem opslaan")}</button>
-            </div>
+              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerTitle.length < 3 || !controlledFormReady} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : text("Save register item", "Registeritem opslaan")}</button>
+            </RecordFormShell>
           ) : null}
           {/* The bill of quantities has nothing to do with a delivery or any other
               register item you are filling in, so it no longer sits open underneath the
@@ -3352,7 +3720,7 @@ function ProjectOperations({
               title: entry.title,
               meta: [
                 entry.entry_number,
-                recordContextLabel(entry.building_id, entry.location_node_id),
+                recordContextLabel(entry.building_id, entry.location_node_id, entry.building_ids),
                 registerNames[entry.register_type] ?? allRegisterNames[entry.register_type] ?? entry.register_type,
                 quantityLabel,
                 outcomeLabel,
@@ -3362,6 +3730,9 @@ function ProjectOperations({
               ].filter(Boolean).join(" · "),
               status: entry.status,
               tone: outcome === "not_compliant" ? "red" : entry.status === "closed" || entry.status === "approved" ? "green" : "",
+              onOpen: () => viewRegister(entry),
+              onEdit: entry.status !== "cancelled" ? () => editRegister(entry) : undefined,
+              onWithdraw: entry.status !== "cancelled" ? () => withdrawRecord({ kind: "register_entry", id: entry.id, code: entry.entry_number, title: entry.title, status: entry.status, meta: recordContextLabel(entry.building_id, entry.location_node_id, entry.building_ids), description: String(entry.details?.description ?? "") }) : undefined,
             };
           })} focusRecordId={focusRecordId} />
         </section>
@@ -3382,7 +3753,7 @@ function ProjectOperations({
 
       {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} client={client} busy={busy} run={run} initialFindingId={drawingFindingId} initialInspectionId={drawingInspectionId} pendingRecord={pendingRecordPin} onPlaceRecordPin={onPlaceRecordPin} onOpenLinkedRecord={(recordType) => switchTab(recordType === "observation" ? "findings" : recordType === "inspection" ? "inspections" : recordType === "visual" ? "visual" : recordType === "registration" ? "daily" : "registers")} /> : null}
 
-      {tab === "tools" ? <FieldTools data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} parties={parties} reportId={reportId} client={client} busy={busy} run={run} /> : null}
+      {tab === "tools" ? <FieldTools data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} parties={parties} reportId={reportId} currentUserName={currentUserName} client={client} busy={busy} run={run} /> : null}
 
       {tab === "files" ? <MediaLibraryWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} open360Upload={() => { setVisual360Intent(true); setTab("visual"); }} markPhotoIssue={(fileId) => { setVisualFileId(fileId); switchTab("visual"); }} /> : null}
     </>
@@ -3421,7 +3792,9 @@ function BoqProgressRegister({
           const details = entry.details ?? {};
           const latest = updates.find((update) => update.register_entry_id === entry.id);
           const currentProgress = Number(latest?.progress_percent ?? details.progress_percent ?? 0);
-          const building = buildings.find((item) => item.id === entry.building_id)?.name ?? text("Project-wide", "Projectbreed");
+          const building = (entry.building_ids?.length ? entry.building_ids : entry.building_id ? [entry.building_id] : [])
+            .map((id) => buildings.find((item) => item.id === id)?.name)
+            .filter(Boolean).join(" · ") || text("Project-wide", "Projectbreed");
           return (
             <article className="controlled-document-card" key={entry.id}>
               <div className="controlled-document-card-main">
@@ -3521,7 +3894,9 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
       <div className="record-stack">
         {entries.map((entry) => {
           const details = entry.details ?? {};
-          const entryBuildingName = buildings.find((building) => building.id === entry.building_id)?.name ?? text("Project-wide", "Projectbreed");
+          const entryBuildingName = (entry.building_ids?.length ? entry.building_ids : entry.building_id ? [entry.building_id] : [])
+            .map((id) => buildings.find((building) => building.id === id)?.name)
+            .filter(Boolean).join(" · ") || text("Project-wide", "Projectbreed");
           const entryLocation = locationBreadcrumb(locationNodes, entry.location_node_id);
           const responseData = details.response && typeof details.response === "object" && !Array.isArray(details.response) ? details.response as Record<string, unknown> : {};
           // Every recorded decision, oldest first. Falls back to the single current
@@ -3728,7 +4103,7 @@ function SubmittedRecordShare({ finding, scope, projectName, projectCode, buildi
   );
 }
 
-function FindingList({ data, client, run, findings, progressUpdates, visualAnnotations, externalShareLinks, projectId, projectName, projectCode, buildings, locationNodes, currentUserName, resolveUserName, parties, busy, focusRecordId = "", transition, recordProgress, share, revoke, linkVisual, linkDrawing, openPhotoMarking }: {
+function FindingList({ data, client, run, findings, progressUpdates, visualAnnotations, externalShareLinks, projectId, projectName, projectCode, buildings, locationNodes, currentUserName, resolveUserName, parties, busy, focusRecordId = "", transition, recordProgress, share, revoke, linkVisual, linkDrawing, openPhotoMarking, viewRecord, editRecord, withdrawRecord }: {
   data: OperationSnapshot;
   client: SupabaseClient;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
@@ -3756,6 +4131,9 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   linkDrawing: (finding: Finding) => void;
   /** Opens the screen where problems are marked on a photo, on the photo that was tapped. */
   openPhotoMarking?: (fileId: string) => void;
+  viewRecord: (finding: Finding) => void;
+  editRecord: (finding: Finding) => void;
+  withdrawRecord: (finding: Finding) => void;
 }) {
   const { language, locale, text } = useLanguage();
   const statusLabels = language === "en" ? findingStatusLabelsEnglish : findingStatusLabels;
@@ -3792,7 +4170,9 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
     setCreatingShareFor(null);
   };
   useRecordFocus(focusRecordId, findings.some((finding) => finding.id === focusRecordId));
-  const findingBuildingName = (finding: Finding) => buildings.find((building) => building.id === finding.building_id)?.name ?? "";
+  const findingBuildingName = (finding: Finding) => (finding.building_ids?.length ? finding.building_ids : [finding.building_id])
+    .map((id) => buildings.find((building) => building.id === id)?.name)
+    .filter(Boolean).join(" · ");
   /**
    * The signature lines of the client's NCR form. "QC verification" is the person the
    * database recorded as verifier, never the person who happens to download the file.
@@ -3849,6 +4229,9 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
             ) : null}
             <div className="finding-card-main"><span className={`record-severity ${finding.severity}`}>{finding.severity}</span><div><span className="record-number">{finding.finding_number} · {finding.finding_type.toUpperCase()}</span><h3>{finding.title}</h3><p>{finding.description}</p>{issue.action_steps ? <p className="finding-required-action"><strong>{text("Required action:", "Vereiste actie:")}</strong> {issue.action_steps}</p> : null}{issue.immediate_actions?.length || issue.immediate_action_other ? <p className="finding-immediate-action"><strong>{text("Already done:", "Al gedaan:")}</strong> {[...(issue.immediate_actions ?? []).map((action) => action.replaceAll("_", " ")), issue.immediate_action_other ?? ""].filter(Boolean).join(" · ")}</p> : null}<small>{[issue.issue_category, issue.root_cause ? `${text("cause", "oorzaak")}: ${issue.root_cause.replaceAll("_", " ")}` : "", issue.responsible_person].filter(Boolean).join(" · ")}{[issue.issue_category, issue.root_cause, issue.responsible_person].some(Boolean) ? " · " : ""}{recordBuildingName}{recordLocation ? ` → ${recordLocation}` : ""} · Deadline {formatDate(finding.due_at, locale)}{latestProgress ? ` · ${text("progress", "voortgang")} ${latestProgress.progress_percent}% · ${latestProgress.disposition.replaceAll("_", " ")}` : ""}{finding.verified_at ? ` · ${text("verified", "geverifieerd")} ${formatDate(finding.verified_at, locale)}` : ""}</small></div><span className={`task-status ${finding.status === "closed" ? "green" : finding.severity === "critical" ? "red" : ""}`}>{statusLabels[finding.status] ?? finding.status}</span></div>
             <div className="finding-actions" hidden={waitingToBeSent}>
+              <button className="secondary-button" type="button" onClick={() => viewRecord(finding)}><FileText size={16} /> {text("View record", "Registratie bekijken")}</button>
+              {finding.status !== "cancelled" ? <button className="secondary-button" type="button" onClick={() => editRecord(finding)}><Wrench size={16} /> {text("Edit", "Bewerken")}</button> : null}
+              {finding.status !== "cancelled" ? <button className="ghost-button" type="button" onClick={() => withdrawRecord(finding)}>{text("Withdraw", "Intrekken")}</button> : null}
               <button className="secondary-button" type="button" onClick={() => linkVisual(finding)}><Camera size={16} /> {visualAnnotation ? text("View photo marker", "Bekijk fotomarker") : text("Mark on photo / 360°", "Markeer op foto / 360°")}</button>
               <button className="secondary-button" type="button" onClick={() => linkDrawing(finding)}><MapPin size={16} /> {drawingPin ? text("View on drawing", "Bekijk op tekening") : text("Place on drawing", "Plaats op tekening")}</button>
               <button className="external-party-button" type="button" disabled={busy || creatingShareFor === finding.id} onClick={() => void createShare(finding)}>
@@ -4590,26 +4973,6 @@ function MfaSecurityCard({ client }: { client: SupabaseClient }) {
       {qrCode ? <div className="mfa-enroll"><NextImage src={qrCode} alt={text("QR code for CODECO two-step verification", "QR-code voor CODECO tweestapsverificatie")} width={150} height={150} unoptimized /><div><span>{text("Scan with your authenticator app or use this key:", "Scan met je authenticator-app of gebruik deze sleutel:")}</span><code>{secret}</code><label className="form-field"><span>{text("6-digit code", "6-cijferige code")}</span><input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} /></label><button className="primary-button" type="button" disabled={loading || code.length !== 6} onClick={() => void verify()}>{text("Confirm authenticator", "Bevestig authenticator")}</button></div></div> : null}
     </div>
   );
-}
-
-function RecordList({ empty, rows, focusRecordId = "" }: { empty: string; rows: Array<{ id: string; icon: typeof ClipboardCheck; title: string; meta: string; status: string; tone: string; open?: { label: string; onOpen: () => void } }>; focusRecordId?: string }) {
-  const { text } = useLanguage();
-  // A row that is still waiting on the device offers no actions: its number, its deadline
-  // and its formal answer are decided centrally.
-
-  useRecordFocus(focusRecordId, rows.some((row) => row.id === focusRecordId));
-  if (!rows.length) return <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No records", "Geen registraties")}</strong><span>{empty}</span></div>;
-  return <div className="record-stack">{rows.map((row) => {
-    const Icon = row.icon;
-    return (
-      <article className={`record-row ${isPendingRecordId(row.id) ? "record-waiting" : ""} ${focusRecordId === row.id ? "record-focused" : ""}`} id={recordAnchorId(row.id)} key={row.id}>
-        <span className="action-icon"><Icon size={18} /></span>
-        <div><strong>{row.title}</strong><span>{row.meta}</span></div>
-        {row.open && !isPendingRecordId(row.id) ? <button className="secondary-button record-row-open" type="button" onClick={row.open.onOpen}>{row.open.label}</button> : null}
-        <span className={`task-status ${isPendingRecordId(row.id) ? "waiting" : row.tone}`}>{row.status === pendingStatus ? text("waiting to be sent", "wacht op verzending") : row.status}</span>
-      </article>
-    );
-  })}</div>;
 }
 
 function HistoryColumn({ title, empty, rows }: { title: string; empty: string; rows: React.ReactNode[] }) {

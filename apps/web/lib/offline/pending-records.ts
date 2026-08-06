@@ -20,6 +20,7 @@ function pendingFinding(record: OfflineRecord): Finding {
   return {
     id: record.id,
     building_id: record.preview.buildingId ?? "",
+    building_ids: (input.buildingIds as string[]) ?? (record.preview.buildingId ? [record.preview.buildingId] : []),
     location_node_id: record.preview.locationNodeId,
     finding_number: "",
     finding_type: (record.preview.recordType || "deficiency") as Finding["finding_type"],
@@ -62,6 +63,7 @@ function pendingHseEvent(record: OfflineRecord): HseEvent {
   return {
     id: record.id,
     building_id: record.preview.buildingId ?? "",
+    building_ids: (input.buildingIds as string[]) ?? (record.preview.buildingId ? [record.preview.buildingId] : []),
     location_node_id: record.preview.locationNodeId,
     event_number: "",
     event_type: record.preview.recordType || "unsafe_condition",
@@ -97,6 +99,7 @@ function pendingRegisterEntry(record: OfflineRecord): RegisterEntry {
   return {
     id: record.id,
     building_id: record.preview.buildingId,
+    building_ids: (input.buildingIds as string[]) ?? (record.preview.buildingId ? [record.preview.buildingId] : []),
     location_node_id: record.preview.locationNodeId,
     register_type: record.preview.recordType || "note",
     entry_number: "",

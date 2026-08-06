@@ -6,6 +6,7 @@ import {
   loadLogoImageBytes,
   metadataTable,
   sectionHeading,
+  signatureBlock,
 } from "@/lib/reports/docx-shared";
 import { allPeriodReportSections, allPeriodReportTopics, hseIncidentTypes, immediateActionText, type PeriodReportOptions } from "@/lib/reports/period-report-pdf";
 import type { PeriodReportSnapshot } from "@/lib/supabase/operations";
@@ -62,13 +63,13 @@ function heading(title: string): Paragraph {
   return sectionHeading(title);
 }
 
-function recordRows(rows: Array<Record<string, unknown>>, empty = "Geen registraties in deze periode."): Paragraph[] {
+function recordRows(rows: Array<Record<string, unknown>>, empty = "Geen registraties in deze periode."): Array<Paragraph | Table> {
   if (!rows.length) return [new Paragraph({ children: [new TextRun({ text: empty, italics: true, color: "74848D", size: 16 })], spacing: { after: 120 } })];
-  return rows.map((row, index) => {
+  return rows.flatMap((row, index) => {
     const number = value(row, "entry_number", value(row, "finding_number", value(row, "inspection_number", value(row, "event_number", `#${index + 1}`))));
     const title = value(row, "title", value(row, "day_summary", "Registratie"));
-    const meta = [humanizeToken(value(row, "status")), humanizeToken(value(row, "severity")), value(row, "occurred_at") ? formatDate(value(row, "occurred_at")) : "", detailsText(row)].filter(Boolean).join(" | ");
-    return new Paragraph({
+    const meta = [humanizeToken(value(row, "status")), humanizeToken(value(row, "severity")), value(row, "occurred_at") ? formatDate(value(row, "occurred_at")) : "", detailsText(row), value(row, "signed_by") ? `Ondertekend door ${value(row, "signed_by")} · ${formatDate(value(row, "signed_at"))}` : ""].filter(Boolean).join(" | ");
+    const paragraph = new Paragraph({
       children: [
         new TextRun({ text: `${number} · `, bold: true, color: "A52B24", size: 16 }),
         new TextRun({ text: title, bold: true, size: 16 }),
@@ -76,6 +77,9 @@ function recordRows(rows: Array<Record<string, unknown>>, empty = "Geen registra
       ],
       spacing: { after: 100 },
     });
+    return value(row, "signed_by")
+      ? [paragraph, signatureBlock([["Handtekening", `${value(row, "signed_by")} · ${formatDate(value(row, "signed_at"))}`, value(row, "signature_image")]])]
+      : [paragraph];
   });
 }
 

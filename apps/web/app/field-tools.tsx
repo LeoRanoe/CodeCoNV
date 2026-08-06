@@ -4,9 +4,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { Calculator, CheckCircle2, NotebookPen, Save, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AgreementSignatureFields, agreementSignatureDetails, emptyAgreementSignature } from "@/app/agreement-signature";
-import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton, speechToTextAvailable } from "@/app/dictate-button";
+import { RecordBuildingsField, RecordFormSection, RecordFormShell, RecordSignatureField } from "@/app/forms/record-form-shell";
 import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
+import type { HandwrittenSignature } from "@/app/signature-pad";
 import { useLanguage } from "@/lib/i18n";
 import type { ProjectParty } from "@/lib/supabase/data";
 import { createRegisterEntry, type OperationSnapshot } from "@/lib/supabase/operations";
@@ -47,13 +49,14 @@ function calculateExpression(source: string) {
   return result;
 }
 
-export function FieldTools({ data, projectId, buildingId, buildings, parties, reportId, client, busy, run }: {
+export function FieldTools({ data, projectId, buildingId, buildings, parties, reportId, currentUserName, client, busy, run }: {
   data: OperationSnapshot;
   projectId: string;
   buildingId: string;
   buildings: BuildingOption[];
   parties: ProjectParty[];
   reportId: string | null;
+  currentUserName: string;
   client: SupabaseClient;
   busy: boolean;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
@@ -66,6 +69,8 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
   // The same agreement record as on the register form, so it can be signed here too.
   const [agreement, setAgreement] = useState({ ...emptyAgreementSignature });
   const [noteBuildingId, setNoteBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
+  const [noteBuildingIds, setNoteBuildingIds] = useState(() => [resolveDefaultBuildingId(buildings, buildingId)].filter(Boolean));
+  const [noteSignature, setNoteSignature] = useState<HandwrittenSignature | null>(null);
   const [noteLocationNodeId, setNoteLocationNodeId] = useState("");
   const [dictated, setDictated] = useState(false);
   const [dimensions, setDimensions] = useState({ length: "", width: "", height: "", quantity: "1" });
@@ -83,9 +88,9 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
 
   const saveNote = async () => {
     if (note.title.trim().length < 3 || note.body.trim().length < 3) return;
-    const targetBuildingIds = noteBuildingId === ALL_BUILDINGS ? buildings.map((building) => building.id) : [noteBuildingId];
-    const okay = await run(() => Promise.all(targetBuildingIds.map((targetBuildingId) => createRegisterEntry(client, {
-      projectId, buildingId: targetBuildingId, locationNodeId: noteBuildingId === ALL_BUILDINGS ? "" : noteLocationNodeId, reportId, type: note.type, title: note.title.trim(),
+    const targetBuildingIds = noteBuildingIds.length ? noteBuildingIds : [noteBuildingId];
+    const okay = await run(() => createRegisterEntry(client, {
+      projectId, buildingId: targetBuildingIds[0], buildingIds: targetBuildingIds, locationNodeId: noteLocationNodeId, reportId, type: note.type, title: note.title.trim(),
       responsiblePartyId: note.responsiblePartyId || undefined,
       dueAt: note.dueDate || null,
       details: {
@@ -99,10 +104,13 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
         responsible_party_name: parties.find((party) => party.id === note.responsiblePartyId)?.name ?? "",
         due_date: note.dueDate || null,
       },
-    }))), note.type === "agreement"
+      signedBy: note.type === "agreement" ? undefined : noteSignature?.name,
+      signedAt: note.type === "agreement" ? undefined : noteSignature?.signedAt,
+      signatureImage: note.type === "agreement" ? null : noteSignature?.image ?? null,
+    }), note.type === "agreement"
       ? text("Agreement stored with date, time, responsible party and deadline.", "Afspraak opgeslagen met datum, tijd, verantwoordelijke partij en deadline.")
       : text("Field note stored centrally with its automatic date and time.", "Veldnotitie centraal opgeslagen met automatische datum en tijd."));
-    if (okay) { setNote({ ...emptyNote }); setAgreement({ ...emptyAgreementSignature }); setNoteLocationNodeId(""); setDictated(false); }
+    if (okay) { setNote({ ...emptyNote }); setAgreement({ ...emptyAgreementSignature }); setNoteSignature(null); setNoteLocationNodeId(""); setDictated(false); }
   };
 
   const runExpression = () => {
@@ -113,10 +121,12 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
 
   return (
     <section className="field-tools-grid">
-      <div className="field-tool-card note-tool-card">
-        <div className="field-tool-heading"><span className="module-card-icon"><NotebookPen size={19} /></span><div><span className="record-number">{text("Field notepad", "Veldnotitieblok")}</span><h2>{text("Type or dictate a dated project note", "Typ of dicteer een gedateerde projectnotitie")}</h2></div></div>
-        <div className="form-grid-2"><BuildingPicker id="note-building" buildings={buildings} value={noteBuildingId} onChange={(next) => { setNoteBuildingId(next); setNoteLocationNodeId(""); }} allowAll /><label className="form-field"><span>{text("Record type", "Type registratie")}</span><select value={note.type} onChange={(event) => setNote({ ...note, type: event.target.value })}><option value="notepad">{text("Notepad", "Notitieblok")}</option><option value="agreement">{text("Formal agreement", "Formele afspraak")}</option></select></label><label className="form-field"><span>{note.type === "agreement" ? text("Agreement subject", "Onderwerp afspraak") : text("Subject", "Onderwerp")}</span><input value={note.title} onChange={(event) => setNote({ ...note, title: event.target.value })} /></label></div>
-        {noteBuildingId !== ALL_BUILDINGS ? <LocationPicker id="note-location" nodes={data.locationNodes} buildingId={noteBuildingId} value={noteLocationNodeId} onChange={setNoteLocationNodeId} requiredDepth={data.settings?.required_location_depth ?? "building"} /> : null}
+      <RecordFormShell code={text("Field notepad", "Veldnotitieblok")} title={text("Type or dictate a dated project note", "Typ of dicteer een gedateerde projectnotitie")} status={text("New", "Nieuw")} busy={busy} className="field-tool-card note-tool-card">
+        <RecordFormSection number={1} title={text("Context and subject", "Context en onderwerp")}>
+        <RecordBuildingsField id="note-buildings" buildings={buildings} value={noteBuildingIds} onChange={(next) => { setNoteBuildingIds(next); setNoteBuildingId(next[0] ?? noteBuildingId); setNoteLocationNodeId(""); }} />
+        <div className="form-grid-2"><label className="form-field"><span>{text("Record type", "Type registratie")}</span><select value={note.type} onChange={(event) => setNote({ ...note, type: event.target.value })}><option value="notepad">{text("Notepad", "Notitieblok")}</option><option value="agreement">{text("Formal agreement", "Formele afspraak")}</option></select></label><label className="form-field"><span>{note.type === "agreement" ? text("Agreement subject", "Onderwerp afspraak") : text("Subject", "Onderwerp")}</span><input value={note.title} onChange={(event) => setNote({ ...note, title: event.target.value })} /></label></div>
+        <LocationPicker id="note-location" nodes={data.locationNodes} buildingId={noteBuildingId} value={noteLocationNodeId} onChange={setNoteLocationNodeId} requiredDepth={data.settings?.required_location_depth ?? "building"} />
+        </RecordFormSection>
         {note.type === "agreement" ? <div className="agreement-fields">
           <div className="form-grid-2">
             <label className="form-field"><span>{text("Agreement date", "Datum afspraak")}</span><input type="date" value={note.agreementDate} onChange={(event) => setNote({ ...note, agreementDate: event.target.value })} /></label>
@@ -129,9 +139,10 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
           <div className="operation-alert"><CheckCircle2 size={17} /><div><strong>{text("Traceable agreement", "Traceerbare afspraak")}</strong><span>{text("Project, building, author and registration time are added automatically. The agreement date and deadline remain visible in reports.", "Project, gebouw, maker en registratietijd worden automatisch toegevoegd. De afspraakdatum en deadline blijven zichtbaar in rapporten.")}</span></div></div>
         </div> : null}
         <label className="form-field"><span>{text("Text", "Tekst")}</span><textarea rows={7} value={note.body} onChange={(event) => setNote({ ...note, body: event.target.value })} /><DictateButton onText={(transcript) => { setNote((current) => ({ ...current, body: appendDictation(current.body, transcript) })); setDictated(true); }} /></label>
-        <div className="button-row"><button className="primary-button" type="button" disabled={busy || (noteBuildingId !== ALL_BUILDINGS && (data.settings?.required_location_depth ?? "building") !== "building" && !noteLocationNodeId) || note.title.trim().length < 3 || note.body.trim().length < 3 || (note.type === "agreement" && (!note.agreementDate || !note.agreementTime))} onClick={() => void saveNote()}><Save size={15} /> {note.type === "agreement" ? text("Save agreement", "Afspraak opslaan") : text("Save note", "Notitie opslaan")}</button></div>
+        {note.type !== "agreement" ? <RecordSignatureField value={noteSignature} onChange={setNoteSignature} nameSuggestion={currentUserName} declaration={text("I confirm that this note reflects what I recorded on site.", "Ik bevestig dat deze notitie weergeeft wat ik op de bouwplaats heb vastgelegd.")} /> : null}
+        <div className="button-row"><button className="primary-button" type="button" disabled={busy || ((data.settings?.required_location_depth ?? "building") !== "building" && !noteLocationNodeId) || note.title.trim().length < 3 || note.body.trim().length < 3 || (note.type === "agreement" && (!note.agreementDate || !note.agreementTime))} onClick={() => void saveNote()}><Save size={15} /> {note.type === "agreement" ? text("Save agreement", "Afspraak opslaan") : text("Save note", "Notitie opslaan")}</button></div>
         {!speechAvailable ? <p className="field-tool-hint">{text("This browser does not provide speech recognition; keyboard entry remains available.", "Deze browser biedt geen spraakherkenning; invoer met het toetsenbord blijft beschikbaar.")}</p> : null}
-      </div>
+      </RecordFormShell>
 
       <div className="field-tool-card calculator-card">
         <div className="field-tool-heading"><span className="module-card-icon"><Calculator size={19} /></span><div><span className="record-number">{text("Construction calculator", "Bouwcalculator")}</span><h2>{text("Area, volume and arithmetic", "Oppervlakte, inhoud en rekenwerk")}</h2></div></div>

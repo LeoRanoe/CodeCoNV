@@ -1022,7 +1022,7 @@ test("processes the second batch of annotated screens from 31 July", async () =>
   // A started checklist can be reopened from the list and completed.
   assert.match(operations, /export async function loadInspectionResponses/);
   assert.match(workspace, /const resumeInspection = async/);
-  assert.match(workspace, /Fill in checklist|Checklist invullen/);
+  assert.match(workspace, /onEdit: inspection\.status[^\n]+resumeInspection\(inspection\)/);
   assert.match(styles, /\.record-row-open/);
 
   // Controlled documents: project information and dates on top, a chosen author, an
@@ -1036,7 +1036,8 @@ test("processes the second batch of annotated screens from 31 July", async () =>
   assert.doesNotMatch(workspace, /Replacing generator of Central Lab/);
   // A controlled document can apply to the whole project; the building field is the same
   // one as everywhere else, with "All buildings" as its first option.
-  assert.match(workspace, /<BuildingPicker id="register-building"[^/]*allowAll/);
+  assert.match(workspace, /<RecordBuildingsField id="register-buildings"/);
+  assert.match(workspace, /buildingIds: selectedRegisterBuildingIds/);
   assert.match(workspace, /registerRecordBuildingId/);
   assert.match(operations, /buildingId: string \| null;/);
 
@@ -1104,7 +1105,7 @@ test("processes the third batch of annotated screens from 31 July", async () => 
   assert.doesNotMatch(workspace, /Initial completion date|Eerste opleverdatum/);
 
   // A register item can be about general material, and a delivery is judged and counted.
-  assert.match(workspace, /<BuildingPicker id="register-building"/);
+  assert.match(workspace, /<RecordBuildingsField id="register-buildings"/);
   assert.match(workspace, /registerQuantityTypes/);
   assert.match(workspace, /Does the delivered material comply\?|Voldoet het geleverde materiaal\?/);
   assert.match(workspace, /text\("Quantity", "Hoeveelheid"\)/);
@@ -1207,8 +1208,9 @@ test("processes the annotated screens of 1 August: NCR form, agreement and deadl
   // The record is written with or without a connection: without one it waits on the
   // device and stands in the list, instead of the save simply failing.
   assert.match(workspace, /kind: "finding",\r?\n\s+projectId,/);
-  assert.match(workspace, /send: \(\) => createFinding\(client, \{ \.\.\.draft, buildingId: targetBuildingId/);
-  assert.match(workspace, /send: \(\) => createFinding\(client, \{ \.\.\.draft, buildingId: targetBuildingId/);
+  assert.match(workspace, /buildingIds: selectedFindingBuildingIds/);
+  assert.match(workspace, /send: \(\) => createFinding\(client, \{ \.\.\.draft, reportId: effectiveReportId \}\)/);
+  assert.doesNotMatch(workspace, /createFinding\(client, \{ \.\.\.draft, buildingId: targetBuildingId/);
   assert.match(styles, /\.submitted-record-share/);
 
   // #14 · The contractor fills the correction in through the link and sends it back.
@@ -1295,11 +1297,11 @@ test("keeps the action centre and makes its deadlines and choices true on site",
 
   // #16 · The building and location choice is the same field in every form, and
   // "all buildings" is stored instead of failing.
-  assert.match(workspace, /BuildingPicker id="hse-building"[^/]*allowAll/);
-  assert.match(workspace, /const projectWideHse = hseBuildingId === ALL_BUILDINGS/);
-  assert.match(workspace, /const projectWideFinding = findingBuildingId === ALL_BUILDINGS/);
-  assert.match(workspace, /for \(const targetBuildingId of hseBuildingIds\)/);
-  assert.match(workspace, /for \(const targetBuildingId of findingBuildingIds\)/);
+  assert.match(workspace, /RecordBuildingsField id="hse-buildings"/);
+  assert.match(workspace, /const projectWideHse = selectedHseBuildingIds\.length === buildings\.length/);
+  assert.match(workspace, /const projectWideFinding = selectedFindingBuildingIds\.length === buildings\.length/);
+  assert.match(workspace, /buildingIds: selectedHseBuildingIds/);
+  assert.match(workspace, /buildingIds: selectedFindingBuildingIds/);
 
   // #16 · An SMS reaches a contractor who does not use WhatsApp.
   assert.match(workspace, /function openSms\(message: string\)/);
@@ -1428,13 +1430,14 @@ test("gives the phone back button a screen to go back to", async () => {
 });
 
 test("makes the action centre say what the user has to do and open the record itself", async () => {
-  const [actionCenter, rules, workspace, app, focus, styles] = await Promise.all([
+  const [actionCenter, rules, workspace, app, focus, styles, recordList] = await Promise.all([
     readFile(new URL("../app/project-action-center.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/actions/action-center.mjs", import.meta.url), "utf8"),
     readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/navigation/record-focus.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/forms/record-list.tsx", import.meta.url), "utf8"),
   ]);
 
   // The product plan's action board: my work, project work, deadlines, status and
@@ -1465,7 +1468,8 @@ test("makes the action centre say what the user has to do and open the record it
   assert.match(actionCenter, /openProjectArea\("registers", item\.id\)/);
   assert.match(workspace, /id=\{recordAnchorId\(finding\.id\)\}/);
   assert.match(workspace, /id=\{recordAnchorId\(entry\.id\)\}/);
-  assert.match(workspace, /id=\{recordAnchorId\(row\.id\)\}/);
+  assert.match(workspace, /from "@\/app\/forms\/record-list"/);
+  assert.match(recordList, /id=\{recordAnchorId\(row\.id\)\}/);
   assert.match(workspace, /focusRecordId === finding\.id \? "record-focused" : ""/);
   assert.match(app, /setFocusRecordId\(recordId \?\? ""\)/);
   assert.match(styles, /\.record-focused/);
@@ -2081,7 +2085,7 @@ test("processes the annotated screens of 5 August: one building field, a signed 
   assert.match(operations, /Pin this location on the drawing|Locatie op de tekening pinnen/);
   assert.match(drawings, /initialInspectionId\?: string;/);
   assert.match(drawings, /linkedRecordType: incomingFinding \? "observation" : "inspection"/);
-  assert.match(operations, /Sign as the inspector|Ondertekenen als inspecteur/);
+  assert.match(operations, /<RecordSignatureField[\s\S]{0,500}By signing you confirm that you checked every point/);
   assert.match(operations, /disabled=\{busy \|\| !inspectionSignature/);
   assert.match(operations, /const raiseNcrFromInspection = \(inspection: Inspection\)/);
   assert.match(operations, /Raise an NCR from this checklist|NCR opstellen vanuit deze checklist/);
@@ -2100,7 +2104,7 @@ test("processes the annotated screens of 5 August: one building field, a signed 
 
   // #25: the form says it is a materials delivery, the format hides away, a delivery is
   // several lines with their own words, and the crossed-out fields are gone.
-  assert.match(operations, /<h2>\{registerNames\[registerForm\.type\]/);
+  assert.match(operations, /title=\{registerNames\[registerForm\.type\]/);
   assert.doesNotMatch(operations, /Add project register item|Projectregister aanvullen/);
   assert.match(operations, /register-type-switch/);
   assert.match(operations, /const \[registerLines, setRegisterLines\]/);

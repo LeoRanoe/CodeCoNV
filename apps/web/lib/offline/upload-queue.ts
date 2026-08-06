@@ -39,6 +39,7 @@ export type QueuedFindingDraft = {
   signedAt?: string;
   signatureImage?: string | null;
   locationNodeId?: string;
+  buildingIds?: string[];
 };
 
 export type OfflineFindingGroup = {
@@ -301,6 +302,7 @@ async function syncOfflineUploadsUnlocked(
           const finding = await createFinding(client, {
             projectId: upload.projectId,
             buildingId: upload.buildingId,
+            buildingIds: draft.buildingIds,
             reportId: upload.reportId,
             type: draft.type,
             title: draft.title,
@@ -348,6 +350,7 @@ async function syncOfflineUploadsUnlocked(
         const finding = await createFinding(client, {
           projectId: upload.projectId,
           buildingId: upload.buildingId,
+          buildingIds: upload.findingDraft.buildingIds,
           reportId: upload.reportId,
           type: upload.findingDraft.type,
           title: upload.findingDraft.title,

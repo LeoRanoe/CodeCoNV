@@ -12,15 +12,7 @@ export function resolveDefaultBuildingId(buildings: BuildingOption[], preferredI
   return buildings[0]?.id ?? "";
 }
 
-export function BuildingPicker({
-  id,
-  buildings,
-  value,
-  onChange,
-  label,
-  disabled = false,
-  allowAll = false,
-}: {
+type SingleBuildingPickerProps = {
   id: string;
   buildings: BuildingOption[];
   value: string;
@@ -28,18 +20,66 @@ export function BuildingPicker({
   label?: string;
   disabled?: boolean;
   allowAll?: boolean;
-}) {
+  multiple?: false;
+  hint?: string;
+};
+
+type MultiBuildingPickerProps = {
+  id: string;
+  buildings: BuildingOption[];
+  value: string[];
+  onChange: (buildingIds: string[]) => void;
+  label?: string;
+  disabled?: boolean;
+  multiple: true;
+  hint?: string;
+  allowAll?: never;
+};
+
+export function BuildingPicker(props: SingleBuildingPickerProps | MultiBuildingPickerProps) {
   const { text } = useLanguage();
+  const { id, buildings, label, disabled = false } = props;
   if (buildings.length < 2) return null;
+  if (props.multiple) {
+    const allSelected = props.value.length === buildings.length;
+    const toggle = (buildingId: string) => {
+      const selected = new Set(props.value);
+      if (selected.has(buildingId)) selected.delete(buildingId);
+      else selected.add(buildingId);
+      if (!selected.size) return;
+      props.onChange(buildings.filter((building) => selected.has(building.id)).map((building) => building.id));
+    };
+    return (
+      <fieldset className="form-field building-multi-picker" id={id} disabled={disabled}>
+        <legend>{label ?? text("Buildings", "Gebouwen")}</legend>
+        <div className="building-multi-options">
+          <label className={allSelected ? "active" : ""}>
+            <input type="checkbox" checked={allSelected} onChange={() => props.onChange(allSelected ? [buildings[0].id] : buildings.map((building) => building.id))} />
+            <span>{text("All buildings", "Alle gebouwen")}</span>
+          </label>
+          {buildings.map((building) => (
+            <label className={props.value.includes(building.id) ? "active" : ""} key={building.id}>
+              <input type="checkbox" checked={props.value.includes(building.id)} onChange={() => toggle(building.id)} />
+              <span>{building.name}</span>
+            </label>
+          ))}
+        </div>
+        <small>{props.hint ?? text(
+          "Choose one building, several, or all. One numbered record is filed under every selected building.",
+          "Kies één gebouw, meerdere of alle. Eén genummerde registratie wordt onder elk gekozen gebouw getoond.",
+        )}</small>
+      </fieldset>
+    );
+  }
   const fieldLabel = label ?? text("Building", "Gebouw");
-  const options = allowAll ? [{ id: ALL_BUILDINGS, name: text("All buildings", "Alle gebouwen") }, ...buildings] : buildings;
+  const options = props.allowAll ? [{ id: ALL_BUILDINGS, name: text("All buildings", "Alle gebouwen") }, ...buildings] : buildings;
 
   // Always a dropdown: a row of buttons grows with every building and pushed the
   // rest of the form off screen on a phone. It must never stick to the viewport.
   return (
     <label className="form-field building-picker-field" htmlFor={id}>
       <span>{fieldLabel}</span>
-      <select id={id} disabled={disabled} value={value} onChange={(event) => onChange(event.target.value)}>
+      <select id={id} disabled={disabled} value={props.value} onChange={(event) => props.onChange(event.target.value)}>
         {options.map((option) => <option value={option.id} key={option.id}>{option.name}</option>)}
       </select>
     </label>
@@ -149,41 +189,7 @@ export function BuildingMultiPicker({
   label?: string;
   hint?: string;
 }) {
-  const { text } = useLanguage();
-  if (buildings.length < 2) return null;
-  const allSelected = value.length === buildings.length;
-  const toggle = (buildingId: string) => {
-    const selected = new Set(value);
-    if (selected.has(buildingId)) selected.delete(buildingId);
-    else selected.add(buildingId);
-    // Never leave the record without a building; the last checkbox stays on.
-    if (!selected.size) return;
-    onChange(buildings.filter((building) => selected.has(building.id)).map((building) => building.id));
-  };
-
   return (
-    <fieldset className="form-field building-multi-picker" id={id}>
-      <legend>{label ?? text("Buildings", "Gebouwen")}</legend>
-      <div className="building-multi-options">
-        <label className={allSelected ? "active" : ""}>
-          <input
-            type="checkbox"
-            checked={allSelected}
-            onChange={() => onChange(allSelected ? [buildings[0].id] : buildings.map((building) => building.id))}
-          />
-          <span>{text("All buildings", "Alle gebouwen")}</span>
-        </label>
-        {buildings.map((building) => (
-          <label className={value.includes(building.id) ? "active" : ""} key={building.id}>
-            <input type="checkbox" checked={value.includes(building.id)} onChange={() => toggle(building.id)} />
-            <span>{building.name}</span>
-          </label>
-        ))}
-      </div>
-      <small>{hint ?? text(
-        "Choose one building, several, or all of them. The record is saved once per selected building.",
-        "Kies één gebouw, meerdere of alle. De registratie wordt per gekozen gebouw opgeslagen.",
-      )}</small>
-    </fieldset>
+    <BuildingPicker id={id} buildings={buildings} value={value} onChange={onChange} label={label} hint={hint} multiple />
   );
 }
