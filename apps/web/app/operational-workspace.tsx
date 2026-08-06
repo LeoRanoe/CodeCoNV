@@ -1078,7 +1078,7 @@ function ProjectOperations({
    * Every numbered record in this project, so the workspace search can find a document
    * back from the unique code that stands on it — on paper, in an e-mail or on a photo.
    */
-  const recordDirectory = useMemo(() => buildRecordDirectory(data), [data]);
+  const recordDirectory = useMemo(() => buildRecordDirectory({ ...data, buildings }), [buildings, data]);
   // Everything this workspace already knows about the project is offered inside the marking
   // pad, so a marker on a photo can say which building, floor, room and party it belongs to.
   const markupOptions = useMemo(() => ({
@@ -1635,15 +1635,6 @@ function ProjectOperations({
     setSubmittedFinding(null);
     setShowForm(createRecord);
     setActiveInspection(null);
-  };
-
-  const openRegister = (type: "change_order" | "delivery" | "technical_instruction" | "agreement") => {
-    setRegisterForm({ ...emptyControlledDocumentDraft, type });
-    setRegisterFiles([]);
-    setRegisterSignature(null);
-    setEditingRegisterId("");
-    setRegisterLocationNodeId("");
-    openTask("registers", true);
   };
 
   /**
@@ -2550,12 +2541,20 @@ function ProjectOperations({
             }}
             modules={data.settings?.modules ?? {}}
             records={recordDirectory}
-            openRecord={(recordTab, recordId) => openProjectArea(recordTab as Parameters<typeof openProjectArea>[0], recordId)}
+            buildings={buildings}
+            openRecord={(recordTab, recordId, kind) => {
+              if (recordTab === "daily") {
+                setDailyWorkView(kind === "delay" ? "delays" : "works_completed");
+                openTask("daily", false);
+              } else if (recordTab === "home") {
+                openTask("home", false);
+              } else {
+                openProjectArea(recordTab as Parameters<typeof openProjectArea>[0], recordId);
+              }
+            }}
             openPhotoLibrary={() => switchTab("files")}
             openTask={openTask}
             openFinding={openFinding}
-            openRegister={openRegister}
-            openDailyRecord={openDailyRecord}
             openDailyWork={(view) => { setDailyWorkView(view); switchTab("daily"); }}
             openActionCenter={openActionCenter}
             openRapidVerify={openRapidVerify}

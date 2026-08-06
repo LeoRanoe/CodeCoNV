@@ -25,7 +25,8 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
-import { searchRecordDirectory } from "@/lib/records/record-directory.mjs";
+import { filterRecordDirectory } from "@/lib/records/record-directory.mjs";
+import type { BuildingOption } from "@/app/building-picker";
 
 type WorkspaceDestination = "inspections" | "findings" | "ncr" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files";
 
@@ -37,9 +38,11 @@ export type WorkspaceRecord = {
   code: string;
   title: string;
   subtitle: string;
+  buildingIds: string[];
+  date: string;
+  status: string;
+  author: string;
 };
-type RegisterShortcut = "change_order" | "delivery" | "technical_instruction" | "agreement";
-type DailyShortcut = "works_ongoing" | "works_completed" | "workforce" | "delay";
 
 type ProjectWorkspaceHomeProps = {
   counts: {
@@ -55,12 +58,11 @@ type ProjectWorkspaceHomeProps = {
   modules: Record<string, boolean>;
   /** Everything in this project that carries a unique code, for the search box. */
   records: WorkspaceRecord[];
-  openRecord: (tab: string, recordId: string) => void;
+  buildings: BuildingOption[];
+  openRecord: (tab: string, recordId: string, kind: string) => void;
   openPhotoLibrary: () => void;
   openTask: (destination: WorkspaceDestination, create?: boolean) => void;
   openFinding: (scope: "issue" | "ncr", create?: boolean) => void;
-  openRegister: (type: RegisterShortcut) => void;
-  openDailyRecord: (type: DailyShortcut) => void;
   openDailyWork: (view: "works_ongoing" | "works_completed" | "delays") => void;
   openActionCenter: (view?: "work" | "deadlines") => void;
   openRapidVerify: () => void;
@@ -83,12 +85,11 @@ export function ProjectWorkspaceHome({
   counts,
   modules,
   records,
+  buildings,
   openRecord,
   openPhotoLibrary,
   openTask,
   openFinding,
-  openRegister,
-  openDailyRecord,
   openDailyWork,
   openActionCenter,
   openRapidVerify,
@@ -97,6 +98,7 @@ export function ProjectWorkspaceHome({
 }: ProjectWorkspaceHomeProps) {
   const { locale, text } = useLanguage();
   const [query, setQuery] = useState("");
+  const [filters, setFilters] = useState({ kind: "", buildingId: "", status: "", dateFrom: "", dateTo: "", author: "" });
   const moduleEnabled = (module?: string) => !module || modules[module] !== false;
 
   const tiles = useMemo<WorkspaceTile[]>(() => [
@@ -135,7 +137,7 @@ export function ProjectWorkspaceHome({
       copy: text("Attendance by contractor and trade", "Bezetting per aannemer en vakdiscipline"),
       icon: Users,
       tone: "teal",
-      action: () => openDailyRecord("workforce"),
+      action: () => openTask("daily", false),
     },
     {
       id: "delays",
@@ -153,7 +155,7 @@ export function ProjectWorkspaceHome({
       tone: "orange",
       count: counts.issues,
       module: "quality",
-      action: () => openFinding("issue"),
+      action: () => openFinding("issue", false),
     },
     {
       id: "hse",
@@ -163,7 +165,7 @@ export function ProjectWorkspaceHome({
       tone: "green",
       count: counts.hse,
       module: "hse",
-      action: () => openTask("hse"),
+      action: () => openTask("hse", false),
     },
     {
       id: "materials-delivery",
@@ -172,7 +174,7 @@ export function ProjectWorkspaceHome({
       icon: PackageCheck,
       tone: "teal",
       count: counts.deliveries,
-      action: () => openRegister("delivery"),
+      action: () => openTask("registers", false),
     },
     {
       id: "inspections",
@@ -182,7 +184,7 @@ export function ProjectWorkspaceHome({
       tone: "purple",
       count: counts.inspections,
       module: "inspections",
-      action: () => openTask("inspections"),
+      action: () => openTask("inspections", false),
     },
     {
       id: "technical-instructions",
@@ -190,7 +192,7 @@ export function ProjectWorkspaceHome({
       copy: text("Controlled instruction with deadline", "Beheerde instructie met deadline"),
       icon: Wrench,
       tone: "blue",
-      action: () => openRegister("technical_instruction"),
+      action: () => openTask("registers", false),
     },
     {
       id: "change-order",
@@ -198,7 +200,7 @@ export function ProjectWorkspaceHome({
       copy: text("Controlled scope, cost and schedule change", "Beheerde scope-, kosten- en planningswijziging"),
       icon: FileCheck2,
       tone: "purple",
-      action: () => openRegister("change_order"),
+      action: () => openTask("registers", false),
     },
     {
       id: "ncr",
@@ -208,7 +210,7 @@ export function ProjectWorkspaceHome({
       tone: "orange",
       count: counts.ncr,
       module: "quality",
-      action: () => openFinding("ncr"),
+      action: () => openFinding("ncr", false),
     },
     {
       id: "deadlines",
@@ -227,7 +229,7 @@ export function ProjectWorkspaceHome({
       icon: ShieldAlert,
       tone: "orange",
       module: "hse",
-      action: () => openTask("hse", true),
+      action: () => openTask("hse", false),
     },
     {
       id: "agreements-made",
@@ -236,9 +238,9 @@ export function ProjectWorkspaceHome({
       icon: MessageSquareText,
       tone: "blue",
       count: counts.agreements,
-      action: () => openRegister("agreement"),
+      action: () => openTask("registers", false),
     },
-  ], [counts, openActionCenter, openDailyRecord, openDailyWork, openFinding, openPhotoLibrary, openRegister, openTask, text]);
+  ], [counts, openActionCenter, openDailyWork, openFinding, openPhotoLibrary, openTask, text]);
 
   const visibleTiles = tiles.filter((tile) => {
     if (!moduleEnabled(tile.module)) return false;
@@ -251,7 +253,22 @@ export function ProjectWorkspaceHome({
    * stands on the document: type Q-2026-0004, NCR - 51 or PHO-2026-0031 and the record
    * itself is one tap away, instead of hunting through the module it happens to live in.
    */
-  const matches = useMemo(() => searchRecordDirectory(records, query, 8) as WorkspaceRecord[], [query, records]);
+  const matches = useMemo(() => filterRecordDirectory(records, query, {
+    kind: filters.kind,
+    buildingIds: filters.buildingId ? [filters.buildingId] : [],
+    status: filters.status,
+    dateFrom: filters.dateFrom,
+    dateTo: filters.dateTo,
+    author: filters.author,
+  }, { buildings }, 50) as WorkspaceRecord[], [buildings, filters, query, records]);
+  const filtersActive = Object.values(filters).some(Boolean);
+  const authors = useMemo(() => Array.from(new Set(records.map((record) => record.author).filter(Boolean))).sort(), [records]);
+  const groupedMatches = useMemo(() => Array.from(matches.reduce((groups, record) => {
+    const group = groups.get(record.kind) ?? [];
+    group.push(record);
+    groups.set(record.kind, group);
+    return groups;
+  }, new Map<string, WorkspaceRecord[]>()).entries()), [matches]);
   const kindLabels: Record<string, string> = {
     ncr: "NCR",
     finding: text("Issue", "Issue"),
@@ -262,6 +279,10 @@ export function ProjectWorkspaceHome({
     photo: text("Photo", "Foto"),
     drawing: text("Drawing", "Tekening"),
     file: text("File", "Bestand"),
+    folder: text("Folder", "Map"),
+    building: text("Building", "Gebouw"),
+    daily_work: text("Daily work", "Dagwerk"),
+    delay: text("Delay", "Vertraging"),
   };
 
   return (
@@ -279,18 +300,30 @@ export function ProjectWorkspaceHome({
         </label>
       </div>
 
-      {query.trim().length >= 2 ? (
+      <div className="workspace-search-filters" aria-label={text("Search filters", "Zoekfilters")}>
+        <label><span>{text("Kind", "Soort")}</span><select value={filters.kind} onChange={(event) => setFilters({ ...filters, kind: event.target.value })}><option value="">{text("All kinds", "Alle soorten")}</option>{Object.entries(kindLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+        <label><span>{text("Building", "Gebouw")}</span><select value={filters.buildingId} onChange={(event) => setFilters({ ...filters, buildingId: event.target.value })}><option value="">{text("All buildings", "Alle gebouwen")}</option>{buildings.map((building) => <option value={building.id} key={building.id}>{building.name}</option>)}</select></label>
+        <label><span>{text("Status", "Status")}</span><select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}><option value="">{text("All statuses", "Alle statussen")}</option><option value="open">Open</option><option value="closed">{text("Closed", "Gesloten")}</option><option value="completed">{text("Completed", "Afgerond")}</option><option value="urgent">Urgent</option></select></label>
+        <label><span>{text("From", "Vanaf")}</span><input type="date" value={filters.dateFrom} onChange={(event) => setFilters({ ...filters, dateFrom: event.target.value })} /></label>
+        <label><span>{text("To", "Tot")}</span><input type="date" value={filters.dateTo} onChange={(event) => setFilters({ ...filters, dateTo: event.target.value })} /></label>
+        <label><span>{text("Author", "Auteur")}</span><select value={filters.author} onChange={(event) => setFilters({ ...filters, author: event.target.value })}><option value="">{text("All authors", "Alle auteurs")}</option>{authors.map((author) => <option value={author} key={author}>{author}</option>)}</select></label>
+        {filtersActive ? <button className="ghost-button" type="button" onClick={() => setFilters({ kind: "", buildingId: "", status: "", dateFrom: "", dateTo: "", author: "" })}>{text("Clear filters", "Wis filters")}</button> : null}
+      </div>
+
+      {query.trim().length >= 2 || filtersActive ? (
         <div className="workspace-code-results" aria-label={text("Records found by code", "Gevonden registraties op code")}>
           <header><Hash size={15} /> <strong>{matches.length
             ? text(`${matches.length} record${matches.length === 1 ? "" : "s"} with this code`, `${matches.length} registratie${matches.length === 1 ? "" : "s"} met deze code`)
             : text("No record with this code", "Geen registratie met deze code")}</strong></header>
-          {matches.map((record) => (
-            <button type="button" onClick={() => openRecord(record.tab, record.id)} key={`${record.kind}:${record.id}`}>
+          {groupedMatches.map(([kind, group]) => <section className="workspace-code-group" key={kind}>
+            <h3>{kindLabels[kind] ?? kind} <span>{group.length}</span></h3>
+          {group.map((record) => (
+            <button type="button" onClick={() => openRecord(record.tab, record.id, record.kind)} key={`${record.kind}:${record.id}`}>
               <span className="workspace-code-chip">{record.code || text("no code yet", "nog geen code")}</span>
               <span><strong>{record.title}</strong><small>{kindLabels[record.kind] ?? record.kind}{record.subtitle ? ` · ${record.subtitle.replaceAll("_", " ")}` : ""}</small></span>
               <ArrowRight size={15} />
             </button>
-          ))}
+          ))}</section>)}
         </div>
       ) : null}
 
@@ -314,8 +347,8 @@ export function ProjectWorkspaceHome({
       <div className="workspace-support-strip" aria-label={text("Supporting project tools", "Ondersteunende projecttools")}>
         <span><Clock3 size={15} /> {text("Supporting tools", "Ondersteunende tools")}</span>
         <button type="button" onClick={openRapidVerify}><BookOpenCheck size={15} /> Rapid Verify</button>
-        <button type="button" onClick={() => openTask("documents")}><FileText size={15} /> Project Docs</button>
-        <button type="button" onClick={() => openTask("drawings")}><AlertTriangle size={15} /> {text("Drawings & pins", "Tekeningen & pins")}</button>
+        <button type="button" onClick={() => openTask("documents", false)}><FileText size={15} /> Project Docs</button>
+        <button type="button" onClick={() => openTask("drawings", false)}><AlertTriangle size={15} /> {text("Drawings & pins", "Tekeningen & pins")}</button>
         <button type="button" onClick={openReports}><FileText size={15} /> {text("Reports", "Rapporten")}</button>
         <button type="button" onClick={openManagement}><Users size={15} /> {text("Submissions & management", "Indieningen & management")}</button>
       </div>

@@ -687,13 +687,15 @@ test("keeps the project workspace mobile-first and task driven", async () => {
   assert.match(workspaceHome, /openPhotoLibrary/);
   assert.match(workspaceHome, /works_ongoing/);
   assert.match(workspaceHome, /works_completed/);
-  assert.match(workspaceHome, /openFinding\("issue"\)/);
-  assert.match(workspaceHome, /openFinding\("ncr"\)/);
-  assert.match(workspaceHome, /openRegister\("technical_instruction"\)/);
-  assert.match(workspaceHome, /openRegister\("change_order"\)/);
+  // Overview is now a visit surface: every tile opens the populated tab and never a
+  // blank create form. Creation remains available after the user reaches that tab.
+  assert.match(workspaceHome, /openFinding\("issue", false\)/);
+  assert.match(workspaceHome, /openFinding\("ncr", false\)/);
+  assert.match(workspaceHome, /id: "technical-instructions"[\s\S]{0,420}openTask\("registers", false\)/);
+  assert.match(workspaceHome, /id: "change-order"[\s\S]{0,420}openTask\("registers", false\)/);
   assert.match(workspaceHome, /agreements-made/);
   assert.doesNotMatch(workspaceHome, /openRegister\("(wcr|rfi|rfa|inspection_request)"\)/);
-  assert.match(workspaceHome, /openTask\("documents"\)/);
+  assert.match(workspaceHome, /openTask\("documents", false\)/);
   assert.match(styles, /\.workspace-task-hub/);
   assert.match(styles, /\.overview-shortcut\.mobile-redundant\s*\{\s*display: none/);
   assert.match(app, /Project, building, time and folder automatic/);
@@ -1833,10 +1835,12 @@ test("processes the feedback of 4 August: photos first, written signatures, an N
   assert.match(migration, /when 'drawing' then 'DWG'/);
   assert.match(findings, /document_code: string \| null;/);
   assert.match(findings, /schemaFeatureMissing\(fileResult\.error, \["document_code"\]\)/);
-  assert.match(operations, /buildRecordDirectory\(data\)/);
-  assert.match(workspaceHome, /searchRecordDirectory\(records, query, 8\)/);
+  assert.match(operations, /buildRecordDirectory\(\{ \.\.\.data, buildings \}\)/);
+  assert.match(workspaceHome, /filterRecordDirectory\(records, query/);
+  assert.match(workspaceHome, /workspace-search-filters/);
+  assert.match(workspaceHome, /groupedMatches\.map/);
   assert.match(workspaceHome, /workspace-code-results/);
-  assert.match(workspaceHome, /openRecord\(record\.tab, record\.id\)/);
+  assert.match(workspaceHome, /openRecord\(record\.tab, record\.id, record\.kind\)/);
   assert.match(media, /file\.document_code \? <span className="media-code-chip"/);
   assert.match(styles, /\.workspace-code-results/);
 
@@ -1851,15 +1855,15 @@ test("processes the feedback of 4 August: photos first, written signatures, an N
   assert.match(styles, /\.drawing-choice-list/);
 });
 
-test("sends the workforce tile to the attendance screen, not to the day log", async () => {
+test("sends the workforce overview tile to its browse screen and keeps quick attendance", async () => {
   const [app, workspaceHome] = await Promise.all([
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/project-workspace-home.tsx", import.meta.url), "utf8"),
   ]);
 
-  // The tile promises attendance by contractor and trade, so it opens the attendance screen
-  // instead of the whole day report with the workforce block folded shut.
-  assert.match(workspaceHome, /id: "workforce"[\s\S]{0,220}openDailyRecord\("workforce"\)/);
+  // A workspace Overview tile is a browse destination, not an implicit create action.
+  // The dashboard quick-add route below still opens attendance directly.
+  assert.match(workspaceHome, /id: "workforce"[\s\S]{0,300}openTask\("daily", false\)/);
   assert.match(app, /if \(type === "workforce"\) \{[\s\S]{0,320}setModal\("attendance"\)/);
   assert.doesNotMatch(app, /if \(type === "workforce"\) \{[\s\S]{0,320}setModal\("one_tap_log"\)/);
 

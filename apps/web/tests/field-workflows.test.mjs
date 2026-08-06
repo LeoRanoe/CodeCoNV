@@ -35,7 +35,9 @@ import {
 } from "../lib/media/photo-library.mjs";
 import {
   buildRecordDirectory,
+  filterRecordDirectory,
   normalizeRecordCode,
+  parseRecordQuery,
   searchRecordDirectory,
 } from "../lib/records/record-directory.mjs";
 import { schemaFeatureMissing } from "../lib/supabase/schema-compatibility.mjs";
@@ -613,6 +615,7 @@ test("finds any record back from the unique code that stands on the document", (
     directory.map((item) => `${item.kind}:${item.tab}:${item.code}`).sort(),
     [
       "drawing:drawings:DWG-2026-0002",
+      "file:files:",
       "finding:findings:Q-2026-0011",
       "hse:hse:HSE-2026-0001",
       "inspection:inspections:INS-2026-0002",
@@ -635,6 +638,42 @@ test("finds any record back from the unique code that stands on the document", (
   assert.deepEqual(searchRecordDirectory(directory, "z"), []);
   assert.deepEqual(searchRecordDirectory(directory, "Q-2026", 1).length, 1);
   assert.equal(normalizeRecordCode("hse 2026/0001"), "HSE20260001");
+});
+
+test("parses Dutch and English overview searches without an LLM", () => {
+  const context = {
+    now: new Date("2026-08-05T12:00:00-03:00"),
+    buildings: [{ id: "b", name: "B", code: "B" }, { id: "b1", name: "Gebouw B1", code: "B1" }],
+  };
+  assert.deepEqual(parseRecordQuery("foto's van gebouw B vorige week", context), {
+    kind: "photo", buildingIds: ["b"], status: "", dateFrom: "2026-07-27", dateTo: "2026-08-02", author: "", minDelayHours: null, freeText: "",
+  });
+  assert.deepEqual(parseRecordQuery("open NCR van deze maand", context), {
+    kind: "ncr", buildingIds: [], status: "open", dateFrom: "2026-08-01", dateTo: "2026-08-05", author: "", minDelayHours: null, freeText: "",
+  });
+  assert.deepEqual(parseRecordQuery("inspecties door Leo in juli", context), {
+    kind: "inspection", buildingIds: [], status: "", dateFrom: "2026-07-01", dateTo: "2026-07-31", author: "leo", minDelayHours: null, freeText: "",
+  });
+  assert.deepEqual(parseRecordQuery("documenten met code DOC-2026", context), {
+    kind: "file", buildingIds: [], status: "", author: "", minDelayHours: null, freeText: "doc-2026",
+  });
+  assert.deepEqual(parseRecordQuery("alle vertragingen met vertraging langer dan 4 uur", context), {
+    kind: "delay", buildingIds: [], status: "", author: "", minDelayHours: 4, freeText: "",
+  });
+});
+
+test("overview filters keep exact document codes first at project scale", () => {
+  const entries = [
+    { id: "partial", kind: "file", code: "DOC-2026-0100", normalizedCode: "DOC20260100", title: "Other", subtitle: "document", buildingIds: ["b"], date: "2026-08-04", status: "available", author: "Mila", delayHours: 0 },
+    { id: "exact", kind: "file", code: "DOC-2026", normalizedCode: "DOC2026", title: "Contract", subtitle: "document", buildingIds: ["b"], date: "2026-08-03", status: "available", author: "Leo", delayHours: 0 },
+    ...Array.from({ length: 5_000 }, (_, index) => ({
+      id: `register-${index}`, kind: "register", code: `RFI-2026-${String(index).padStart(4, "0")}`,
+      normalizedCode: `RFI2026${String(index).padStart(4, "0")}`, title: `Register ${index}`, subtitle: "open",
+      buildingIds: ["b"], date: "2026-08-01", status: "open", author: "Mila", delayHours: 0,
+    })),
+  ];
+  assert.deepEqual(filterRecordDirectory(entries, "documenten met code doc 2026", {}, { buildings: [] }).map((item) => item.id), ["exact", "partial"]);
+  assert.deepEqual(filterRecordDirectory(entries, "documenten door Leo", {}, { buildings: [] }).map((item) => item.id), ["exact"]);
 });
 
 test("keeps a written signature small, named and dated", () => {
