@@ -1044,7 +1044,6 @@ function ProjectOperations({
   const [hseBuildingId, setHseBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [registerBuildingId, setRegisterBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [inspectionBuildingIds, setInspectionBuildingIds] = useState(() => [resolveDefaultBuildingId(buildings, buildingId)].filter(Boolean));
-  const [findingBuildingIds, setFindingBuildingIds] = useState(() => [resolveDefaultBuildingId(buildings, buildingId)].filter(Boolean));
   const [hseBuildingIds, setHseBuildingIds] = useState(() => [resolveDefaultBuildingId(buildings, buildingId)].filter(Boolean));
   const [registerBuildingIds, setRegisterBuildingIds] = useState(() => [resolveDefaultBuildingId(buildings, buildingId)].filter(Boolean));
   const [boqBuildingId, setBoqBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
@@ -1335,6 +1334,7 @@ function ProjectOperations({
     : { label: text("Offline", "Offline"), detail: text("Data will sync", "Gegevens synchroniseren later") };
   const issueTile = issueTypeTiles.find((tile) => tile.id === findingForm.issueType) ?? issueTypeTiles[0];
   const issueTileLabel = (tile: (typeof issueTypeTiles)[number]) => text(tile.en, tile.nl);
+  const capturedAutomatically = text("All key info captured automatically", "Alle kerngegevens worden automatisch vastgelegd");
   const issueCategoryOption = issueCategories.find((option) => option.id === findingForm.issueCategory);
   const issuePriority = findingForm.severity === "critical" ? "critical" : findingForm.severity === "high" ? "high" : findingForm.severity === "medium" ? "normal" : "low";
   // A record with somebody's name on it opens as assigned; without one it opens as open.
@@ -1385,7 +1385,6 @@ function ProjectOperations({
     setIssueManualPosition(false);
     const defaultId = resolveDefaultBuildingId(buildings, buildingId);
     setFindingBuildingId(defaultId);
-    setFindingBuildingIds(defaultId ? [defaultId] : []);
     setEditingFindingId("");
   };
   const resetHseForm = () => {
@@ -1444,7 +1443,6 @@ function ProjectOperations({
       signatureImage: issue.signature_image ?? "",
     });
     setFindingBuildingId(finding.building_id);
-    setFindingBuildingIds(finding.building_ids?.length ? finding.building_ids : [finding.building_id]);
     setFindingLocationNodeId(finding.location_node_id ?? "");
     setFindingPhotos([]);
     setEditingFindingId(finding.id);
@@ -1779,7 +1777,6 @@ function ProjectOperations({
         : ""),
     }));
     setFindingBuildingId(inspection.building_id);
-    setFindingBuildingIds(inspection.building_ids?.length ? inspection.building_ids : [inspection.building_id]);
     setFindingLocationNodeId(inspection.location_node_id ?? "");
     setShowForm(true);
     switchTab("ncr");
@@ -1904,13 +1901,17 @@ function ProjectOperations({
     // numbered record visible under every selected building without cloning it.
     const online = typeof navigator === "undefined" || navigator.onLine;
     let createdRecordId = "";
-    const selectedFindingBuildingIds = findingBuildingIds.length ? findingBuildingIds : [findingBuildingId];
+    // The punchlist screen picks one building, or "All buildings". A finding always
+    // belongs to a building in the database, so project-wide means the same numbered
+    // record associated with every building — the association list carries that without
+    // cloning the record.
+    const projectWideFinding = findingBuildingId === ALL_BUILDINGS;
+    const selectedFindingBuildingIds = projectWideFinding ? buildings.map((building) => building.id) : [findingBuildingId];
     const primaryFindingBuildingId = selectedFindingBuildingIds[0] ?? findingBuildingId;
-    const projectWideFinding = selectedFindingBuildingIds.length === buildings.length;
-    const findingPhotoBuildingId = primaryFindingBuildingId;
+    const findingPhotoBuildingId = projectWideFinding ? resolveDefaultBuildingId(buildings, buildingId) : findingBuildingId;
     const findingBuildingName = projectWideFinding
       ? text("All buildings", "Alle gebouwen")
-      : selectedFindingBuildingIds.map((selectedId) => buildings.find((building) => building.id === selectedId)?.name).filter(Boolean).join(" · ") || buildingName;
+      : buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName;
     // The module decides what is created here. Without this an NCR opened from the
     // module switcher would be stored as an ordinary deficiency and vanish from the
     // NCR list it was entered in.
@@ -2767,24 +2768,22 @@ function ProjectOperations({
             * module keeps the client's paper NCR form, below.
             */}
           {showForm && findingScope === "issue" ? (
-            <RecordFormShell
-              code={data.findings.find((item) => item.id === editingFindingId)?.finding_number ?? nextIssueNumber}
-              title={editingFindingId ? text("Edit issue", "Issue bewerken") : text("Create issue", "Issue registreren")}
-              status={issueStatusLabel}
-              busy={busy}
-              className="wide sectioned-record-form"
-              headerAside={<>
+            <div className="operation-form wide sectioned-record-form">
+              <div className="operation-form-heading sectioned-record-heading">
                 <button className="record-back-button" type="button" onClick={() => { resetFindingForm(); setShowForm(false); }} aria-label={text("Leave this screen", "Dit scherm verlaten")}><ArrowLeft size={18} /></button>
+                <div>
+                  <h2>{text("Create issue", "Issue registreren")}</h2>
+                  <p className="form-intro">{capturedAutomatically}</p>
+                </div>
                 <button className={`record-sync-chip${online ? "" : " offline"}`} type="button" disabled={busy} onClick={syncWaitingRecordsNow} title={text("Send what is still waiting on this device", "Verstuur wat nog op dit apparaat wacht")}>{online ? <CloudSun size={15} /> : <WifiOff size={15} />}<span><strong>{syncChip.label}</strong><small>{syncChip.detail}</small></span></button>
                 <button className="secondary-button record-heading-draft" type="button" onClick={() => writeRecordDraft("issue", projectId, findingForm)}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
-              </>}
-            >
+              </div>
               <section className="controlled-document-context sectioned-record-context" aria-label={text("Issue header", "Kop van het issue")}>
                 <div><small>{text("Issue ID", "Issue ID")}</small><strong>{nextIssueNumber}</strong><span>{text("Provisional · fixed on submit", "Voorlopig · vast bij indienen")}</span></div>
                 <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDate}</strong><span>{issueTime}</span></div>
                 <div><small>{text("Reporter", "Melder")}</small><strong>{currentUserName}</strong><span>{reporterDepartment}</span></div>
                 <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
-                <div><small>{text("Site / location", "Locatie")}</small><strong>{findingBuildingIds.map((selectedId) => buildings.find((building) => building.id === selectedId)?.name).filter(Boolean).join(" · ") || buildingName}</strong><span>{findingForm.latitude && findingForm.longitude ? `${findingForm.latitude}, ${findingForm.longitude}` : projectLocation || text("No coordinates yet", "Nog geen coördinaten")}</span></div>
+                <div><small>{text("Site / location", "Locatie")}</small><strong>{findingBuildingId === ALL_BUILDINGS ? text("All buildings", "Alle gebouwen") : buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName}</strong><span>{findingForm.latitude && findingForm.longitude ? `${findingForm.latitude}, ${findingForm.longitude}` : projectLocation || text("No coordinates yet", "Nog geen coördinaten")}</span></div>
                 <div><small>{text("Weather", "Weer")}</small><strong>{liveWeatherLabel}</strong><span>{liveWeather ? `${liveWeather.temperatureC}°C` : "—"}</span></div>
                 <div><small>{text("Department", "Afdeling")}</small><strong>{reporterDepartment}</strong><span>{text("Of the reporter", "Van de melder")}</span></div>
                 <div><small>{text("Status", "Status")}</small><strong className="record-status-preview">{issueStatusLabel}</strong><span>{text("On submit", "Bij indienen")}</span></div>
@@ -2847,13 +2846,15 @@ function ProjectOperations({
 
                   <section className="record-section record-order-5" aria-label={text("Location", "Locatie")}>
                     <h3><span className="record-section-number">5</span> {text("Location", "Locatie")} <em className="record-section-required">*</em></h3>
-                    <RecordBuildingsField id="finding-buildings" buildings={buildings} value={findingBuildingIds} onChange={(next) => { setFindingBuildingIds(next); setFindingBuildingId(next[0] ?? findingBuildingId); setFindingLocationNodeId(""); }} />
-                    <LocationPicker id="finding-location" nodes={data.locationNodes} buildingId={findingBuildingId} value={findingLocationNodeId} onChange={setFindingLocationNodeId} requiredDepth={requiredLocationDepth} />
+                    <div className="form-grid-2">
+                      <BuildingPicker id="finding-building" buildings={buildings} value={findingBuildingId} onChange={(next) => { setFindingBuildingId(next); setFindingLocationNodeId(""); }} allowAll />
+                      <LocationPicker id="finding-location" nodes={data.locationNodes} buildingId={findingBuildingId} value={findingLocationNodeId} onChange={setFindingLocationNodeId} requiredDepth={requiredLocationDepth} />
+                    </div>
                     <RecordLocationMap
                       client={client}
                       value={{ latitude: findingForm.latitude, longitude: findingForm.longitude }}
                       fallbackCenter={projectCenter}
-                      contextLabel={`${buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName}, ${projectName}`}
+                      contextLabel={findingBuildingId === ALL_BUILDINGS ? projectName : `${buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName}, ${projectName}`}
                       onChange={(coordinates) => setFindingForm((current) => ({ ...current, ...coordinates }))}
                       onUseMyLocation={captureIssuePosition}
                       locating={issueLocating}
@@ -3002,19 +3003,13 @@ function ProjectOperations({
                   <Paperclip size={14} /> {text(`Attachments (${findingPhotos.length})`, `Bijlagen (${findingPhotos.length})`)}
                   <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
                 </label>
-                <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !findingLocationNodeId) || (!online && !findingPhotos.length) || !findingForm.issueCategory || findingForm.responsiblePerson.trim().length < 2 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><Send size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Issue indienen")}</button>
+                <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && findingBuildingId !== ALL_BUILDINGS && !findingLocationNodeId) || (!online && !findingPhotos.length) || !findingForm.issueCategory || findingForm.responsiblePerson.trim().length < 2 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><Send size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Issue indienen")}</button>
               </div>
-            </RecordFormShell>
+            </div>
           ) : null}
           {showForm && findingScope === "ncr" ? (
-            <RecordFormShell
-              code={data.findings.find((item) => item.id === editingFindingId)?.finding_number ?? text("New NCR", "Nieuwe NCR")}
-              title={editingFindingId ? text("Edit non-conformance report", "Non-conformance report bewerken") : text("Non-conformance report", "Non-conformance report")}
-              status={issueStatusLabel}
-              busy={busy}
-              className="snap-assign-form"
-              headerAside={!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}
-            >
+            <div className="operation-form snap-assign-form">
+              <div className="operation-form-heading"><div><span className="record-number">{text("Formal non-conformance", "Formele afwijking")}</span><h2>{text("Non-conformance report", "Non-conformance report")}</h2></div>{!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}</div>
               {/* The head of the client's own NCR form: project, contractor, subject and
                   the reference, with the date and the report number filled by the app. */}
               <section className="controlled-document-context ncr-form-context" aria-label={text("Non-conformance report header", "Kop van het non-conformance report")}>
@@ -3107,7 +3102,7 @@ function ProjectOperations({
               <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required (Y/N)", "Escalation Required (Y/N)")}</label>
               <p className="form-helper">{text(`Entered by ${currentUserName} · the ID, current status and actual resolution date are kept by the app itself.`, `Entered By ${currentUserName} · het ID, de status en de Actual Resolution Date houdt de app zelf bij.`)}</p>
               <div className="form-grid-2">
-                <RecordBuildingsField id="ncr-buildings" buildings={buildings} value={findingBuildingIds} onChange={(next) => { setFindingBuildingIds(next); setFindingBuildingId(next[0] ?? findingBuildingId); setFindingLocationNodeId(""); }} />
+                <BuildingPicker id="finding-building" buildings={buildings} value={findingBuildingId} onChange={(next) => { setFindingBuildingId(next); setFindingLocationNodeId(""); }} allowAll />
                 <label className="form-field"><span>{text("Contractor · receives this NCR", "Aannemer · ontvangt deze NCR")}</span><select value={findingForm.responsiblePartyId} onChange={(event) => setFindingForm({ ...findingForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Nog niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
               </div>
               <LocationPicker id="finding-location" nodes={data.locationNodes} buildingId={findingBuildingId} value={findingLocationNodeId} onChange={setFindingLocationNodeId} requiredDepth={requiredLocationDepth} />
@@ -3135,8 +3130,8 @@ function ProjectOperations({
                 })}
               />
                 <div className="operation-alert warning"><RotateCcw size={17} /><div><strong>{text("The contractor fills in the correction", "De aannemer vult de correctie in")}</strong><span>{text("After submitting you send this NCR to the contractor with one tap. The contractor fills in the proposed corrective action and sends it back; the quality-control close-out stays with CODECO.", "Na indienen stuur je deze NCR met één tik naar de aannemer. De aannemer vult de voorgestelde correctieve actie in en stuurt die terug; de eindcontrole blijft bij CODECO.")}</span></div></div>
-              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit NCR", "NCR indienen")}</button>
-            </RecordFormShell>
+              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && findingBuildingId !== ALL_BUILDINGS && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit NCR", "NCR indienen")}</button>
+            </div>
           ) : null}
           {/* Submitting is not the end of an NCR: the contractor has to receive it and
               send the correction back, so the link stands right where you submitted. */}
@@ -3211,7 +3206,6 @@ function ProjectOperations({
           />
         </section>
       ) : null}
-
       {tab === "hse" ? (
         <section className="operation-panel">
           {showForm ? (
@@ -3756,7 +3750,7 @@ function ProjectOperations({
 
       {tab === "tools" ? <FieldTools data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} parties={parties} reportId={reportId} currentUserName={currentUserName} client={client} busy={busy} run={run} /> : null}
 
-      {tab === "files" ? <MediaLibraryWorkspace mode="photos" focusRecordId={focusRecordId} data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} open360Upload={() => { setVisual360Intent(true); setTab("visual"); }} /> : null}
+      {tab === "files" ? <MediaLibraryWorkspace mode="photos" focusRecordId={focusRecordId} markPhotoIssue={(fileId) => { setVisualFileId(fileId); switchTab("visual"); }} data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} open360Upload={() => { setVisual360Intent(true); setTab("visual"); }} /> : null}
 
       {tab === "assets" ? <MediaLibraryWorkspace mode="assets" focusRecordId={focusRecordId} organizationId={organizationId} data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} open360Upload={() => { setVisual360Intent(true); setTab("visual"); }} markPhotoIssue={(fileId) => { setVisualFileId(fileId); switchTab("visual"); }} openRecord={(recordTab, recordId) => openProjectArea(recordTab as Parameters<typeof openProjectArea>[0], recordId)} /> : null}
     </>

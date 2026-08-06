@@ -1303,7 +1303,11 @@ test("keeps the action centre and makes its deadlines and choices true on site",
   // "all buildings" is stored instead of failing.
   assert.match(workspace, /RecordBuildingsField id="hse-buildings"/);
   assert.match(workspace, /const projectWideHse = selectedHseBuildingIds\.length === buildings\.length/);
-  assert.match(workspace, /const projectWideFinding = selectedFindingBuildingIds\.length === buildings\.length/);
+  // The punchlist screen keeps its own single building picker with "All buildings" on it,
+  // the way the client's punch list is organised. Project-wide still associates the one
+  // numbered record with every building instead of cloning it.
+  assert.match(workspace, /const projectWideFinding = findingBuildingId === ALL_BUILDINGS/);
+  assert.match(workspace, /const selectedFindingBuildingIds = projectWideFinding \? buildings\.map\(\(building\) => building\.id\) : \[findingBuildingId\]/);
   assert.match(workspace, /buildingIds: selectedHseBuildingIds/);
   assert.match(workspace, /buildingIds: selectedFindingBuildingIds/);
 
@@ -1789,7 +1793,10 @@ test("processes the feedback of 4 August: photos first, written signatures, an N
   assert.match(media, /ref=\{drawingImportRef\}/);
   assert.match(media, /uploadKind: "photo" \| "drawing" \| "document" = kind/);
   assert.match(media, /mode\?: "photos" \| "assets"/);
-  assert.match(media, /allowMarkup=\{false\}/);
+  // Marking a problem on a picture belongs on every screen a photo appears on, the Photos
+  // tab included: the client asked for that route back after it was cut here.
+  assert.doesNotMatch(media, /allowMarkup=\{false\}/);
+  assert.match(media, /openMarking=\{markPhotoIssue\}/);
   assert.match(styles, /\.media-choice-bar/);
 
   // "bij Signing document moet gebeuren op dat moment; nu gebeurt het door een check te
@@ -2491,7 +2498,7 @@ test("keeps Photos photo-only and gives complete asset and historical visual rou
   assert.match(media, /asset-record-library/);
   assert.match(media, /updateProjectFile/);
   assert.match(media, /linkFileToRecord/);
-  assert.match(media, /allowMarkup=\{false\}/);
+  assert.doesNotMatch(media, /allowMarkup=\{false\}/);
   assert.doesNotMatch(evidence, /FacingDirectionField/);
   assert.doesNotMatch(visual, /FacingDirectionField/);
 
@@ -2564,4 +2571,31 @@ test("a search result opens, the assets tab survives, and a shared day stays on 
   // A day recorded for two buildings belongs to both of them, in the filter and on the card.
   assert.match(dailyRegister, /recordBuildings\(record\)\.includes\(buildingFilter\)/);
   assert.match(dailyRegister, /recordBuildings\(record\)\.map\(buildingName\)/);
+});
+
+test("the punchlist screen is the client's punchlist again, and a photo can be marked anywhere", async () => {
+  const [workspace, media] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/media-library-workspace.tsx", import.meta.url), "utf8"),
+  ]);
+
+  // The module behind the Punchlist button keeps the client's own screen: its plain form
+  // heading, one building with "All buildings" on it, and the staged list with the
+  // contractor-to-supervisor review cycle above it.
+  assert.match(workspace, /className="operation-form wide sectioned-record-form"/);
+  assert.match(workspace, /<p className="form-intro">\{capturedAutomatically\}<\/p>/);
+  assert.match(workspace, /<BuildingPicker id="finding-building"[\s\S]*?allowAll \/>/);
+  assert.match(workspace, /punchlist-command/);
+  assert.match(workspace, /punchlist-stages/);
+  assert.match(workspace, /punchlist-cycle-card/);
+  // A project-wide issue does not have to name an exact location to be submittable.
+  assert.match(workspace, /exactLocationRequired && findingBuildingId !== ALL_BUILDINGS && !findingLocationNodeId/);
+  // The record list keeps the actions the client asked for in the round before this one.
+  assert.match(workspace, /viewRecord=\{viewFinding\}/);
+  assert.match(workspace, /editRecord=\{editFinding\}/);
+
+  // Every photo surface can carry a marked problem: the capture list and the stored photo.
+  assert.doesNotMatch(media, /allowMarkup=\{false\}/);
+  assert.match(media, /openMarking=\{markPhotoIssue\}/);
+  assert.match(workspace, /mode="photos"[\s\S]*?markPhotoIssue=/);
 });

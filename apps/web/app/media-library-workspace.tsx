@@ -662,15 +662,17 @@ export function MediaLibraryWorkspace({
               </div>
             </div>
             {/* Marking and describing happen before the photo leaves the device, so what is
-                stored centrally already says what it is and where it belongs. */}
+                stored centrally already says what it is and where it belongs. Marking a
+                problem on the picture belongs here as much as anywhere else: the client
+                asked for it back on every screen a photo appears on. */}
             <PhotoEvidenceList
               photos={pendingCapture}
               setPhotos={setPendingCapture}
-              allowMarkup={false}
               markupContext={{
-                // The library building is shared by the complete stack; it is never
-                // overridden frame by frame.
-                buildings: [],
+                // The stack shares the library building, but a marker on the picture may
+                // name its own: one image can cover more than one building, and the
+                // client's punch list is organised per building.
+                buildings: buildings.map((building) => ({ id: building.id, label: building.name })),
                 defaultBuildingId: libraryBuildingId,
                 locations: data.locationNodes.map((node) => ({ id: node.id, label: `${node.code} · ${node.name}`, buildingId: node.building_id })),
               }}
@@ -782,7 +784,7 @@ export function MediaLibraryWorkspace({
           run={run}
           projectId={projectId}
           close={() => { setOpenFileId(""); setOpenStackIds([]); }}
-          openMarking={assetsMode ? markPhotoIssue : undefined}
+          openMarking={markPhotoIssue}
           stackFiles={openStackFiles.length ? openStackFiles : [openFile]}
           onDelete={(targets) => { setOpenFileId(""); setOpenStackIds([]); void softDeleteFiles(targets); }}
           onDescribe={(targets) => void describeFiles(targets)}
