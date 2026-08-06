@@ -14433,3 +14433,65 @@ button {
   .asset-bulk-actions button { width: 100%; min-width: 0; }
   .media-gallery.asset-list-view .media-card { grid-template-columns: 110px minmax(0, 1fr); }
 }
+
+/*
+ * Phone corrections after the grid round.
+ *
+ * Making the workspace a grid on phone and tablet was right for tiles and cards, and it
+ * was applied to rows it should have left alone. A row of selects and date inputs squeezed
+ * two-up on a 320px screen clips its own labels and its values; a tab strip cut into a
+ * two-column block loses the order the tabs are read in; and a column of module groups is
+ * a list, not a tile.
+ *
+ * So: tiles and cards keep their columns, and the things below go back to one column, or
+ * back to scrolling, on a phone. Tablet and desktop are untouched.
+ */
+@media (max-width: 620px) {
+  /* Filter and form rows: one field per line, full width, nothing clipped. */
+  .workspace-search-filters,
+  .project-document-filters,
+  .asset-library-filters,
+  .asset-bulk-actions,
+  .document-link-panel { grid-template-columns: minmax(0, 1fr); }
+
+  .workspace-search-filters > label,
+  .project-document-filters > label,
+  .asset-library-filters > label,
+  .asset-bulk-actions > label { min-width: 0; }
+
+  .workspace-search-filters input,
+  .workspace-search-filters select,
+  .project-document-filters input,
+  .project-document-filters select { min-height: 44px; min-width: 0; width: 100%; }
+
+  /* A module group is a list of modules; two lists side by side on a phone is neither. */
+  .workspace-module-groups { grid-template-columns: minmax(0, 1fr); }
+
+  /* The document tabs read in order and there are six of them: scroll, do not wrap. */
+  .project-document-tabs {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 3px;
+    scroll-snap-type: x proximity;
+  }
+
+  .project-document-tabs > button {
+    flex: 0 0 auto;
+    min-width: 145px;
+    scroll-snap-align: start;
+  }
+
+  /* Three daily-work tabs in two columns leaves one stranded; let them size themselves. */
+  .daily-work-tabs { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+}
+
+/* At the narrowest phone the tile grids give up their second column rather than clip. */
+@media (max-width: 360px) {
+  .workspace-launcher-tile { padding: 11px; }
+  .workspace-launcher-tile strong { font-size: 12px; }
+  .workspace-launcher-tile small { font-size: 10px; }
+  .overview-metrics,
+  .action-center-summary,
+  .workspace-support-strip { grid-template-columns: minmax(0, 1fr); }
+}
