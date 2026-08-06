@@ -58,7 +58,7 @@ function StoredImage({ client, file }: { client: SupabaseClient; file: FileRecor
   return <img className="media-detail-image" src={source} alt={file.original_name} />;
 }
 
-export function StoredPhotoDetail({ data, buildings, file, client, busy, run, close, openMarking, projectId }: {
+export function StoredPhotoDetail({ data, buildings, file, client, busy, run, close, openMarking, projectId, stackFiles = [file], onDelete, onDescribe }: {
   data: OperationSnapshot;
   buildings: BuildingOption[];
   file: FileRecord;
@@ -69,6 +69,9 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
   /** Where the marking screen lives; without it the photo simply has no marking button. */
   openMarking?: (fileId: string) => void;
   projectId: string;
+  stackFiles?: FileRecord[];
+  onDelete?: (files: FileRecord[]) => void;
+  onDescribe?: (files: FileRecord[]) => void;
 }) {
   const { locale, text } = useLanguage();
   const isImage = file.mime_type.startsWith("image/");
@@ -120,7 +123,7 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
       <section className="modal media-detail-modal" role="dialog" aria-modal="true" aria-labelledby="stored-photo-title">
         <header className="modal-header">
           <div>
-            <p className="eyebrow">{capture?.capture_type === "panorama" ? "360°" : isImage ? text("Photo", "Foto") : text("File", "Bestand")}</p>
+            <p className="eyebrow">{stackFiles.length > 1 ? text(`${stackFiles.length} photo stack`, `Fotostapel met ${stackFiles.length} foto's`) : capture?.capture_type === "panorama" ? "360°" : isImage ? text("Photo", "Foto") : text("File", "Bestand")}</p>
             <h2 id="stored-photo-title">{capture?.title?.trim() || readableFileLabel(file, {
               kindLabel: isImage ? text("Photo", "Foto") : text("File", "Bestand"),
               formatDate: (value) => value ? new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "America/Paramaribo" }).format(new Date(value)) : "",
@@ -134,7 +137,7 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
         </header>
 
         <div className="modal-body media-detail-body">
-          {isImage ? <StoredImage client={client} file={file} /> : <span className="media-file-icon"><HardDrive size={28} /></span>}
+          {stackFiles.length > 1 ? <div className="media-stack-detail-strip">{stackFiles.map((frame) => <figure key={frame.id}><StoredImage client={client} file={frame} /><figcaption>{frame.original_name}</figcaption></figure>)}</div> : isImage ? <StoredImage client={client} file={file} /> : <span className="media-file-icon"><HardDrive size={28} /></span>}
           <dl className="media-detail-facts">
             <div><dt>{text("Building", "Gebouw")}</dt><dd>{buildingName}</dd></div>
             <div><dt>{text("Location", "Locatie")}</dt><dd>{capture?.location_label || "—"}</dd></div>
@@ -166,6 +169,8 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
         <footer className="modal-actions media-detail-actions">
           <button className="ghost-button" type="button" onClick={() => void downloadProjectFile(client, file.id, file.original_name)}><Download size={15} /> {text("Download", "Downloaden")}</button>
           <button className="ghost-button" type="button" onClick={() => void openProjectFile(client, file.id, file.original_name)}><ExternalLink size={15} /> {text("Open the file", "Bestand openen")}</button>
+          {onDescribe && isImage ? <button className="ghost-button" type="button" onClick={() => onDescribe(stackFiles)}><ScanLine size={15} /> {text(stackFiles.length > 1 ? "Describe stack" : "Describe photo", stackFiles.length > 1 ? "Stapel omschrijven" : "Foto omschrijven")}</button> : null}
+          {onDelete ? <button className="ghost-button" type="button" onClick={() => onDelete(stackFiles)}><X size={15} /> {text(stackFiles.length > 1 ? "Delete stack" : "Delete", stackFiles.length > 1 ? "Stapel verwijderen" : "Verwijderen")}</button> : null}
           {isImage && openMarking ? (
             <button className="primary-button" type="button" disabled={busy} onClick={() => void markProblem()}>
               <ScanLine size={15} /> {markers.length ? text("Mark another problem", "Nog een probleem markeren") : text("Mark a problem on this photo", "Probleem op deze foto markeren")}

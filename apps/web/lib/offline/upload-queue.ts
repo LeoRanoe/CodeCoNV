@@ -61,7 +61,7 @@ export type OfflineUpload = {
   reportId: string | null;
   folderId: string | null;
   folderName?: string | null;
-  kind: "photo" | "panorama" | "drawing";
+  kind: "photo" | "panorama" | "drawing" | "document";
   file: Blob;
   fileName: string;
   mimeType: string;
@@ -75,6 +75,8 @@ export type OfflineUpload = {
   originalSize: number;
   queuedSize: number;
   compressed: boolean;
+  /** Shared by every frame in one media-library photo stack. */
+  evidenceGroupId?: string | null;
   /**
    * The spot the supervisor pointed at on the building drawing. It becomes a pin on that
    * drawing as soon as the photo reaches the server, so the picture can be found back from
@@ -218,6 +220,7 @@ async function ensureVisualCapture(client: SupabaseClient, upload: OfflineUpload
     locationLabel: upload.locationLabel,
     tourName: upload.tourName || undefined,
     tourOrder: upload.tourOrder ?? null,
+    stackId: upload.evidenceGroupId || null,
     capturedAt: upload.capturedAt,
   });
   if (!upload.drawingPin || !capture?.id) return;
@@ -286,7 +289,7 @@ async function syncOfflineUploadsUnlocked(
         projectId: upload.projectId,
         buildingId: upload.buildingId,
         folderId,
-        category: upload.kind === "drawing" ? "drawing" : "photo",
+        category: upload.kind === "drawing" ? "drawing" : upload.kind === "document" ? "document" : "photo",
         file: asFile(upload),
       });
       if (upload.findingGroup) {

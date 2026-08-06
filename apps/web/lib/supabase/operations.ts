@@ -360,9 +360,13 @@ export type VisualCapture = {
   location_label: string;
   tour_name: string | null;
   tour_order: number | null;
+  /** One situation with several photo frames; null means a single-photo stack. */
+  stack_id?: string | null;
   captured_at: string;
   status: "active" | "archived";
   created_at: string;
+  /** Client-side projection for an older image file that has no visual_captures row yet. */
+  derived_from_file?: boolean;
 };
 
 export type VisualAnnotation = {
@@ -559,7 +563,7 @@ export async function loadProjectOperations(
     client.from("backup_runs").select("id,run_type,status,schema_version,size_bytes,sha256,verified_at,created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(25),
     client.from("location_nodes").select("id,building_id,parent_id,node_type,code,name,description,status").eq("project_id", projectId).order("sort_order").limit(500),
     client.from("production_readiness_items").select("id,code,category,title,description,owner_hint,blocking,status,evidence,completed_at,sort_order").eq("organization_id", organizationId).order("sort_order"),
-    client.from("visual_captures").select("id,building_id,file_id,location_node_id,day_report_id,capture_type,title,description,location_label,tour_name,tour_order,captured_at,status,created_at").eq("project_id", projectId).order("captured_at", { ascending: false }).limit(250),
+    client.from("visual_captures").select("id,building_id,file_id,location_node_id,day_report_id,capture_type,title,description,location_label,tour_name,tour_order,stack_id,captured_at,status,created_at").eq("project_id", projectId).order("captured_at", { ascending: false }).limit(250),
     client.from("visual_annotations").select("id,capture_id,finding_id,coordinate_mode,x_ratio,y_ratio,yaw,pitch,title,description,severity,disposition,status,created_at").eq("project_id", projectId).order("created_at").limit(1000),
     client.from("drawing_pins").select("id,drawing_file_id,page_number,x_ratio,y_ratio,linked_record_type,linked_record_id,linked_record_number,linked_record_title,note,status,created_at").eq("project_id", projectId).order("created_at").limit(2000),
     client.from("drawing_markups").select("id,drawing_file_id,page_number,markup_type,geometry,color,stroke_width,text_content,status,created_at").eq("project_id", projectId).order("created_at").limit(5000),
@@ -601,6 +605,9 @@ export async function loadProjectOperations(
   const compatibleFileResult = schemaFeatureMissing(fileResult.error, ["document_code"])
     ? await client.from("files").select("id,building_id,folder_id,original_name,mime_type,size_bytes,category,status,created_at").eq("project_id", projectId).neq("status", "deleted").order("created_at", { ascending: false }).limit(500)
     : fileResult;
+  const compatibleVisualCaptureResult = schemaFeatureMissing(visualCaptureResult.error, ["stack_id"])
+    ? await client.from("visual_captures").select("id,building_id,file_id,location_node_id,day_report_id,capture_type,title,description,location_label,tour_name,tour_order,captured_at,status,created_at").eq("project_id", projectId).order("captured_at", { ascending: false }).limit(250)
+    : visualCaptureResult;
   const compatibleBoqProgressResult = schemaFeatureMissing(boqProgressResult.error, ["boq_progress_updates"])
     ? { data: [], error: null }
     : boqProgressResult;
@@ -620,7 +627,7 @@ export async function loadProjectOperations(
   const compatibleSettingsResult = legacySettingsSchema
     ? await client.from("project_settings").select("id,project_id,report_prefix,default_language,max_file_size_mb,notification_lead_hours,email_notifications_enabled,push_notifications_enabled,retention_days,branding,modules,signing_workflow").eq("project_id", projectId).maybeSingle()
     : settingsResult;
-  [templateResult, libraryResult, compatibleInspectionResult, findingResult, findingProgressResult, compatibleHseResult, compatibleRegisterResult, compatibleBoqProgressResult, compatibleFileResult, compatibleSettingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, compatibleVisualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult, dayReportResult].forEach((result) => fail(result.error));
+  [templateResult, libraryResult, compatibleInspectionResult, findingResult, findingProgressResult, compatibleHseResult, compatibleRegisterResult, compatibleBoqProgressResult, compatibleFileResult, compatibleSettingsResult, backupResult, locationResult, readinessResult, compatibleVisualCaptureResult, compatibleVisualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult, dayReportResult].forEach((result) => fail(result.error));
   const templateRows = (templateResult.data ?? []) as Omit<ChecklistTemplate, "items">[];
   const itemResult = templateRows.length
     ? await client.from("checklist_items").select("id,template_id,section,prompt,response_type,required,sort_order,unit,minimum_value,maximum_value,failure_severity,guidance").in("template_id", templateRows.map((template) => template.id)).order("sort_order")
@@ -648,6 +655,31 @@ export async function loadProjectOperations(
   const hseRows = (compatibleHseResult.data ?? []) as HseEvent[];
   const registerRows = (compatibleRegisterResult.data ?? []) as RegisterEntry[];
   const fileRows = (compatibleFileResult.data ?? []) as FileRecord[];
+  const storedVisualCaptureRows = (compatibleVisualCaptureResult.data ?? []) as VisualCapture[];
+  const capturedFileIds = new Set(storedVisualCaptureRows.map((capture) => capture.file_id));
+  // Files are the durable source of truth for project images. Older media-library uploads
+  // predate visual_captures, so project them into Visual Evidence and materialise a capture
+  // only if somebody adds a marker. This repairs history without a data migration.
+  const historicalImageCaptures = fileRows
+    .filter((file) => file.status === "available" && file.mime_type.startsWith("image/") && !capturedFileIds.has(file.id))
+    .map((file): VisualCapture => ({
+      id: `file:${file.id}`,
+      building_id: file.building_id ?? "",
+      file_id: file.id,
+      location_node_id: null,
+      day_report_id: null,
+      capture_type: "photo",
+      title: file.original_name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " "),
+      description: null,
+      location_label: "",
+      tour_name: null,
+      tour_order: null,
+      stack_id: null,
+      captured_at: file.created_at,
+      status: "active",
+      created_at: file.created_at,
+      derived_from_file: true,
+    }));
   const dailyWorkRows = (compatibleDailyWorkResult.data ?? []) as DailyWorkRecord[];
   return {
     templates: templateRows.map((template) => ({ ...template, items: items.filter((item) => item.template_id === template.id) })),
@@ -693,7 +725,7 @@ export async function loadProjectOperations(
     dayReports: (dayReportResult.data ?? []) as DayReportSummary[],
     locationNodes: (locationResult.data ?? []) as LocationNode[],
     productionReadiness: (readinessResult.data ?? []) as ProductionReadinessItem[],
-    visualCaptures: (visualCaptureResult.data ?? []) as VisualCapture[],
+    visualCaptures: [...storedVisualCaptureRows, ...historicalImageCaptures],
     visualAnnotations: (compatibleVisualAnnotationResult.data ?? []) as VisualAnnotation[],
     drawingPins: (drawingPinResult.data ?? []) as DrawingPin[],
     drawingMarkups: (drawingMarkupResult.data ?? []) as DrawingMarkup[],
@@ -720,6 +752,42 @@ export async function createMediaFolder(client: SupabaseClient, input: {
   });
   fail(result.error);
   return result.data as MediaFolder;
+}
+
+/** Asset-library mutations stay on the existing project-scoped tables and their RLS. */
+export async function updateMediaFolder(client: SupabaseClient, folderId: string, patch: {
+  name?: string;
+  parentId?: string | null;
+  buildingId?: string | null;
+  status?: MediaFolder["status"];
+}) {
+  const values: Record<string, unknown> = {};
+  if (patch.name !== undefined) values.name = patch.name.trim();
+  if (patch.parentId !== undefined) values.parent_id = patch.parentId || null;
+  if (patch.buildingId !== undefined) values.building_id = patch.buildingId || null;
+  if (patch.status !== undefined) values.status = patch.status;
+  const result = await client.from("media_folders").update(values).eq("id", folderId).select("id,building_id,parent_id,name,folder_type,status,created_at").single();
+  fail(result.error);
+  return result.data as MediaFolder;
+}
+
+export async function updateProjectFile(client: SupabaseClient, fileId: string, patch: {
+  name?: string;
+  folderId?: string | null;
+  buildingId?: string | null;
+  status?: string;
+}) {
+  const values: Record<string, unknown> = {};
+  if (patch.name !== undefined) values.original_name = patch.name.trim();
+  if (patch.folderId !== undefined) values.folder_id = patch.folderId || null;
+  if (patch.buildingId !== undefined) values.building_id = patch.buildingId || null;
+  if (patch.status !== undefined) values.status = patch.status;
+  const result = await client.from("files").update(values).eq("id", fileId).select("id,building_id,folder_id,original_name,mime_type,size_bytes,category,status,document_code,created_at").single();
+  const compatibleResult = schemaFeatureMissing(result.error, ["document_code"])
+    ? await client.from("files").update(values).eq("id", fileId).select("id,building_id,folder_id,original_name,mime_type,size_bytes,category,status,created_at").single()
+    : result;
+  fail(compatibleResult.error);
+  return compatibleResult.data as FileRecord;
 }
 
 export async function createExternalShareLink(client: SupabaseClient, projectId: string, sourceType: "finding" | "action" | "inspection" | "visual", sourceId: string) {
@@ -1622,6 +1690,7 @@ export async function createVisualCapture(client: SupabaseClient, input: {
   locationLabel: string;
   tourName?: string;
   tourOrder?: number | null;
+  stackId?: string | null;
   capturedAt?: string;
 }) {
   const result = await client.rpc("create_visual_capture", {
@@ -1639,7 +1708,40 @@ export async function createVisualCapture(client: SupabaseClient, input: {
     p_captured_at: input.capturedAt || new Date().toISOString(),
   });
   fail(result.error);
-  return result.data as VisualCapture;
+  const capture = result.data as VisualCapture;
+  if (input.stackId && capture?.id) {
+    const stackResult = await client.from("visual_captures").update({ stack_id: input.stackId }).eq("id", capture.id);
+    if (!schemaFeatureMissing(stackResult.error, ["stack_id"])) fail(stackResult.error);
+  }
+  return { ...capture, stack_id: input.stackId || capture.stack_id || null };
+}
+
+export async function updateVisualCaptureDetails(client: SupabaseClient, captureId: string, input: {
+  title: string;
+  description: string;
+}) {
+  const result = await client.from("visual_captures").update({
+    title: input.title.trim(),
+    description: input.description.trim() || null,
+  }).eq("id", captureId).select("id").single();
+  fail(result.error);
+}
+
+export async function updateVisualCaptureStack(client: SupabaseClient, captureId: string, input: {
+  stackId: string;
+  buildingId: string;
+  title: string;
+  description: string;
+  capturedAt: string;
+}) {
+  const result = await client.from("visual_captures").update({
+    stack_id: input.stackId,
+    building_id: input.buildingId,
+    title: input.title.trim(),
+    description: input.description.trim() || null,
+    captured_at: input.capturedAt,
+  }).eq("id", captureId).select("id").single();
+  fail(result.error);
 }
 
 export async function createVisualAnnotationFinding(client: SupabaseClient, input: {

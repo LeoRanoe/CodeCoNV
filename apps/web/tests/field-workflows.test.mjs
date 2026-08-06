@@ -29,6 +29,7 @@ import {
   dayGroupLabel,
   filesInFolder,
   groupFilesByDay,
+  groupPhotoStacks,
   libraryDayKey,
   orderMediaFolders,
   visibleLibraryFiles,
@@ -185,7 +186,7 @@ test("writes what was marked on a photo back into the record's own words", () =>
   assert.deepEqual(Object.keys(photoMarkupToneColors), ["to_be_corrected", "alternative_solution", "validated"]);
 });
 
-test("gives every attached photo one written field, its location and an automatic direction", async () => {
+test("gives every attached photo one written field and location without a direction input", async () => {
   const [evidence, entry, dailyLog, operations, media, visualCapture, css] = await Promise.all([
     readFile(new URL("../app/photo-evidence.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
@@ -202,7 +203,8 @@ test("gives every attached photo one written field, its location and an automati
   // typed room name are gone; the description carries the words and names the file.
   assert.match(evidence, /What is on this photo, and why does it matter\?/);
   assert.match(evidence, /Exact location/);
-  assert.match(evidence, /<FacingDirectionField/);
+  assert.doesNotMatch(evidence, /FacingDirectionField/);
+  assert.doesNotMatch(visualCapture, /FacingDirectionField/);
   assert.doesNotMatch(evidence, /placeholder=\{text\("For example: rebar column line B/);
   assert.doesNotMatch(evidence, /\{text\("Category", "Categorie"\)\}/);
   assert.match(evidence, /export function photoTitle/);
@@ -242,8 +244,8 @@ test("gives every attached photo one written field, its location and an automati
   assert.doesNotMatch(visualCapture, /Adjust title, location or context/);
   // The building is a row of buttons that can hold more than one building, not a dropdown.
   assert.match(visualCapture, /<BuildingChoiceField/);
-  // The direction is measured, not asked, and the spot can be pointed at on the drawing.
-  assert.match(visualCapture, /<FacingDirectionField/);
+  // No facing-direction field is shown; an old/automatic value can still be read safely.
+  assert.doesNotMatch(visualCapture, /FacingDirectionField/);
   assert.match(visualCapture, /<DrawingLocationPicker/);
   assert.match(visualCapture, /readPhotoDirection/);
 
@@ -615,7 +617,7 @@ test("finds any record back from the unique code that stands on the document", (
     directory.map((item) => `${item.kind}:${item.tab}:${item.code}`).sort(),
     [
       "drawing:drawings:DWG-2026-0002",
-      "file:files:",
+      "file:assets:",
       "finding:findings:Q-2026-0011",
       "hse:hse:HSE-2026-0001",
       "inspection:inspections:INS-2026-0002",
@@ -798,6 +800,13 @@ test("orders the photo library by folder and by the day a photo was taken", () =
   assert.deepEqual(grouped.map((group) => group.key), ["2026-08-04", "2026-08-02", ""]);
   assert.deepEqual(grouped[0].files.map((file) => file.id), ["b", "a"]);
   assert.deepEqual(grouped[2].files.map((file) => file.id), ["f"]);
+
+  // One persisted stack survives reload; old photos without a key remain stacks of one.
+  const stacks = groupPhotoStacks(shown, [
+    { file_id: "a", stack_id: "stack-1" },
+    { file_id: "b", stack_id: "stack-1" },
+  ]);
+  assert.deepEqual(stacks.map((stack) => stack.files.map((file) => file.id)), [["a", "b"], ["e"], ["f"]]);
 
   // A day is read in Suriname time, so a photo taken at 21:30 local is not tomorrow.
   assert.equal(libraryDayKey("2026-08-05T00:30:00Z"), "2026-08-04");

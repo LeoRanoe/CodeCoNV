@@ -11,6 +11,7 @@ import {
   Clock3,
   FileCheck2,
   FileText,
+  FolderOpen,
   HardHat,
   Hash,
   MessageSquareText,
@@ -28,7 +29,7 @@ import { useLanguage } from "@/lib/i18n";
 import { filterRecordDirectory } from "@/lib/records/record-directory.mjs";
 import type { BuildingOption } from "@/app/building-picker";
 
-type WorkspaceDestination = "inspections" | "findings" | "ncr" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files";
+type WorkspaceDestination = "inspections" | "findings" | "ncr" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files" | "assets";
 
 /** One record in the project, as the code search knows it. */
 export type WorkspaceRecord = {
@@ -348,6 +349,7 @@ export function ProjectWorkspaceHome({
         <span><Clock3 size={15} /> {text("Supporting tools", "Ondersteunende tools")}</span>
         <button type="button" onClick={openRapidVerify}><BookOpenCheck size={15} /> Rapid Verify</button>
         <button type="button" onClick={() => openTask("documents", false)}><FileText size={15} /> Project Docs</button>
+        <button type="button" onClick={() => openTask("assets", false)}><FolderOpen size={15} /> {text("Assets & folders", "Middelen & mappen")}</button>
         <button type="button" onClick={() => openTask("drawings", false)}><AlertTriangle size={15} /> {text("Drawings & pins", "Tekeningen & pins")}</button>
         <button type="button" onClick={openReports}><FileText size={15} /> {text("Reports", "Rapporten")}</button>
         <button type="button" onClick={openManagement}><Users size={15} /> {text("Submissions & management", "Indieningen & management")}</button>

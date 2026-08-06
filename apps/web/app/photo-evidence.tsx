@@ -3,7 +3,6 @@
 import { Check, ChevronRight, MapPin, RotateCcw, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
-import { FacingDirectionField } from "@/app/facing-direction";
 import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad, type MarkupOption, type PhotoMarkupContext } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
 import { compassPointFromDegrees, photoTitleFromDescription } from "@/lib/images/field-image.mjs";
@@ -154,6 +153,7 @@ export function PhotoEvidenceList({
   setPhotos,
   markupContext,
   layout = "list",
+  allowMarkup = true,
 }: {
   photos: PhotoEvidence[];
   setPhotos: (photos: PhotoEvidence[]) => void;
@@ -164,6 +164,8 @@ export function PhotoEvidenceList({
    * the same detail screen, the same marking pad — shown as a strip instead of a list.
    */
   layout?: "list" | "gallery";
+  /** Photos/Assets are filing surfaces; marking stays in record evidence and Visual Evidence. */
+  allowMarkup?: boolean;
 }) {
   const { language, text } = useLanguage();
   const [openId, setOpenId] = useState("");
@@ -202,6 +204,7 @@ export function PhotoEvidenceList({
             photo={openPhoto}
             index={photos.findIndex((photo) => photo.id === openPhoto.id)}
             markupContext={markupContext}
+            allowMarkup={allowMarkup}
             close={() => setOpenId("")}
             onChange={(next) => setPhotos(photos.map((photo) => photo.id === next.id ? next : photo))}
             onRemove={() => { remove(openPhoto.id); setOpenId(""); }}
@@ -246,6 +249,7 @@ export function PhotoEvidenceList({
           photo={openPhoto}
           index={photos.findIndex((photo) => photo.id === openPhoto.id)}
           markupContext={markupContext}
+          allowMarkup={allowMarkup}
           close={() => setOpenId("")}
           onChange={(next) => setPhotos(photos.map((photo) => photo.id === next.id ? next : photo))}
           onRemove={() => { remove(openPhoto.id); setOpenId(""); }}
@@ -266,6 +270,7 @@ export function PhotoDetailSheet({
   close,
   onChange,
   onRemove,
+  allowMarkup = true,
 }: {
   photo: PhotoEvidence;
   index: number;
@@ -273,6 +278,7 @@ export function PhotoDetailSheet({
   close: () => void;
   onChange: (photo: PhotoEvidence) => void;
   onRemove?: () => void;
+  allowMarkup?: boolean;
 }) {
   const { text } = useLanguage();
   const [marking, setMarking] = useState(false);
@@ -319,8 +325,8 @@ export function PhotoDetailSheet({
           <div className="photo-detail-visual">
             <PhotoThumbnail file={photo.file} large />
             <div className="photo-detail-visual-actions">
-              <MarkPhotoButton markerCount={photo.markerCount} onClick={() => setMarking(true)} />
-              {photo.file !== photo.original ? (
+              {allowMarkup ? <MarkPhotoButton markerCount={photo.markerCount} onClick={() => setMarking(true)} /> : null}
+              {allowMarkup && photo.file !== photo.original ? (
                 <button className="photo-evidence-restore" type="button" onClick={() => onChange({ ...photo, file: photo.original, markerCount: 0 })}>
                   <RotateCcw size={12} /> {text("Restore original", "Origineel herstellen")}
                 </button>
@@ -361,11 +367,6 @@ export function PhotoDetailSheet({
                 </select>
               </label>
             ) : null}
-            <FacingDirectionField
-              value={photo.details.direction}
-              automatic={photo.details.directionAutomatic ?? false}
-              onChange={(direction, automatic) => patch({ direction, directionAutomatic: automatic })}
-            />
           </div>
         </div>
 
@@ -376,7 +377,7 @@ export function PhotoDetailSheet({
           <button className="primary-button" type="button" onClick={close}><Check size={15} /> {text("Done", "Klaar")}</button>
         </footer>
 
-        {marking ? (
+        {allowMarkup && marking ? (
           <PhotoMarkupPad
             file={photo.file}
             context={markupContext}

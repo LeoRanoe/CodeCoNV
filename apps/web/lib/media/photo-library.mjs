@@ -65,6 +65,23 @@ export function groupFilesByDay(files, { timeZone = "America/Paramaribo", dateOf
     }));
 }
 
+/**
+ * A photo stack is persisted on visual_captures.stack_id. Historical and ordinary photos
+ * have no key and therefore remain valid stacks of one. The order of the incoming file list
+ * is preserved so a stack never jumps around after synchronization or reload.
+ */
+export function groupPhotoStacks(files, captures = []) {
+  const captureByFile = new Map((captures ?? []).map((capture) => [capture.file_id, capture]));
+  const groups = new Map();
+  for (const file of files ?? []) {
+    const capture = captureByFile.get(file.id);
+    const key = capture?.stack_id ? `stack:${capture.stack_id}` : `file:${file.id}`;
+    if (!groups.has(key)) groups.set(key, { key, files: [], capture });
+    groups.get(key).files.push(file);
+  }
+  return [...groups.values()];
+}
+
 /** "Today", "Yesterday" or the date itself, so a day heading reads like a day. */
 export function dayGroupLabel(key, { todayKey, yesterdayKey, today, yesterday, undated, formatDate }) {
   if (!key) return undated;

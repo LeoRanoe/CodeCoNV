@@ -656,7 +656,7 @@ test("minimizes repetitive field typing with controlled quick choices", async ()
   assert.match(operations, /Choose a standard register item|Kies een standaard registeritem/);
   assert.match(operations, /Choose the completed measure|Kies de uitgevoerde maatregel/);
   assert.match(visuals, /Choose a common issue|Kies een veelvoorkomend probleem/);
-  assert.match(media, /Choose a photo folder|Kies een fotomap/);
+  assert.match(media, /Choose an asset folder|Kies een middelenmap/);
 });
 
 test("keeps the project workspace mobile-first and task driven", async () => {
@@ -1683,11 +1683,10 @@ test("lets a field record be written without a connection and sends it by itself
 });
 
 test("processes the three annotated capture screens from 2 August", async () => {
-  const [evidence, visual, picker, facing, drawingPicker, compass, queue, operations, styles] = await Promise.all([
+  const [evidence, visual, picker, drawingPicker, compass, queue, operations, styles] = await Promise.all([
     readFile(new URL("../app/photo-evidence.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/visual-evidence-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/building-picker.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/facing-direction.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/drawing-location-picker.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/images/compass.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/offline/upload-queue.ts", import.meta.url), "utf8"),
@@ -1714,13 +1713,11 @@ test("processes the three annotated capture screens from 2 August", async () => 
 
   // #17 and #18: "kan dit automatisch?" — the direction comes from the photo itself, and
   // otherwise from the compass of the device, and only then from a tap.
-  assert.match(facing, /export function FacingDirectionField/);
-  assert.match(facing, /measured automatically|automatisch bepaald/);
   assert.match(compass, /webkitCompassHeading/);
   assert.match(compass, /deviceorientationabsolute/);
   for (const source of [evidence, visual]) {
     assert.match(source, /readPhotoDirection/);
-    assert.match(source, /<FacingDirectionField/);
+    assert.doesNotMatch(source, /FacingDirectionField/);
   }
 
   // #18: "locatie kunnen kiezen in PDF" — the spot is pointed at on the drawing and stays
@@ -1783,7 +1780,9 @@ test("processes the feedback of 4 August: photos first, written signatures, an N
   // never pick up the accepted file types of the other one.
   assert.match(media, /ref=\{photoImportRef\}/);
   assert.match(media, /ref=\{drawingImportRef\}/);
-  assert.match(media, /uploadKind: "photo" \| "drawing" = kind/);
+  assert.match(media, /uploadKind: "photo" \| "drawing" \| "document" = kind/);
+  assert.match(media, /mode\?: "photos" \| "assets"/);
+  assert.match(media, /allowMarkup=\{false\}/);
   assert.match(styles, /\.media-choice-bar/);
 
   // "bij Signing document moet gebeuren op dat moment; nu gebeurt het door een check te
@@ -2456,11 +2455,48 @@ test("opens a stored photo on its own screen everywhere it is shown", async () =
   // Tapping a photo no longer drops the raw file into a browser tab.
   assert.doesNotMatch(workspace, /onClick=\{\(\) => void run\(\(\) => openProjectFile\(client, file\.id, file\.original_name\)/);
   assert.match(workspace, /onClick=\{\(\) => setOpenFileId\(file\.id\)\}/);
-  assert.match(media, /onClick=\{\(\) => setOpenFileId\(file\.id\)\}/);
+  assert.match(media, /setOpenFileId\(file\.id\); setOpenStackIds/);
 
   // And the marking screen opens on that photo instead of on whatever was first.
   assert.match(workspace, /markPhotoIssue=\{\(fileId\) => \{ setVisualFileId\(fileId\); switchTab\("visual"\); \}\}/);
   assert.match(workspace, /openPhotoMarking=\{\(fileId\) => \{ setVisualFileId\(fileId\); switchTab\("visual"\); \}\}/);
   assert.match(visual, /const \[pendingSelectionFileId, setPendingSelectionFileId\] = useState\(initialFileId\)/);
   assert.match(visual, /if \(initialFileId\) onInitialFileConsumed\?\.\(\)/);
+});
+
+test("keeps Photos photo-only and gives complete asset and historical visual routes", async () => {
+  const [workspace, media, evidence, visual, operations, queue, migration, styles] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/media-library-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/photo-evidence.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/visual-evidence-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/offline/upload-queue.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202608050006_photo_stack_identity.sql", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(workspace, /ProjectTab = [^;]*"assets"/);
+  assert.match(workspace, /mode="photos"/);
+  assert.match(workspace, /mode="assets"/);
+  assert.match(media, /assetsMode \? <button[\s\S]{0,600}Upload drawing/);
+  assert.match(media, /assetsMode \? <div className="media-folder-bar/);
+  assert.match(media, /asset-record-library/);
+  assert.match(media, /updateProjectFile/);
+  assert.match(media, /linkFileToRecord/);
+  assert.match(media, /allowMarkup=\{false\}/);
+  assert.doesNotMatch(evidence, /FacingDirectionField/);
+  assert.doesNotMatch(visual, /FacingDirectionField/);
+
+  assert.match(media, /evidenceGroupId/);
+  assert.match(queue, /stackId: upload\.evidenceGroupId/);
+  assert.match(migration, /add column if not exists stack_id uuid/);
+  assert.match(migration, /notify pgrst, 'reload schema'/);
+  assert.match(styles, /\.media-stack-thumbnails/);
+  assert.match(styles, /\.media-stack-detail-strip/);
+
+  assert.match(operations, /const historicalImageCaptures/);
+  assert.match(operations, /derived_from_file: true/);
+  assert.match(visual, /if \(activeCapture\.derived_from_file\)/);
+  assert.match(visual, /No project photos yet/);
 });

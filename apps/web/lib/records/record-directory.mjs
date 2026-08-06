@@ -29,8 +29,8 @@ export const recordKindTabs = {
   // A photo is opened in the library, where its code and its links are shown.
   photo: "files",
   drawing: "drawings",
-  file: "files",
-  folder: "files",
+  file: "assets",
+  folder: "assets",
   building: "home",
   daily_work: "daily",
   delay: "daily",

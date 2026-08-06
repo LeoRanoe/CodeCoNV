@@ -28,7 +28,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BuildingChoiceField, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { DrawingLocationPicker, drawingLocationLabel, pickableDrawings, type DrawingLocation } from "@/app/drawing-location-picker";
-import { FacingDirectionField } from "@/app/facing-direction";
 import { dutchDirectionLabels } from "@/app/photo-evidence";
 import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
@@ -38,6 +37,7 @@ import { compassPointFromDegrees, fieldPhotoMimeTypes, normalizedImagePoint, pho
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload } from "@/lib/offline/upload-queue";
 import { downloadProjectFile, isStorageGatewayConfigured, loadProjectFileObjectUrl, openProjectFile } from "@/lib/storage/gateway";
 import {
+  createVisualCapture,
   createVisualAnnotationFinding,
   linkVisualAnnotationToFinding,
   type FileRecord,
@@ -370,10 +370,29 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
 
   const saveIssue = async () => {
     if (!activeCapture || !point || issue.title.trim().length < 3 || issue.description.trim().length < 3) return;
+    let savedCaptureId = activeCapture.id;
     const okay = await run(
-      () => existingFinding
+      async () => {
+        // Historical media-library images are projected into this screen without a data
+        // migration. The first marker materialises their capture row before writing the link.
+        if (activeCapture.derived_from_file) {
+          const materialized = await createVisualCapture(client, {
+            projectId,
+            buildingId: activeCapture.building_id || captureBuildingId,
+            dayReportId: activeCapture.day_report_id,
+            fileId: activeCapture.file_id,
+            locationNodeId: activeCapture.location_node_id || undefined,
+            captureType: "photo",
+            title: activeCapture.title,
+            description: activeCapture.description || undefined,
+            locationLabel: activeCapture.location_label || captureBuildingName,
+            capturedAt: activeCapture.captured_at,
+          });
+          savedCaptureId = materialized.id;
+        }
+        return existingFinding
         ? linkVisualAnnotationToFinding(client, {
-            captureId: activeCapture.id,
+            captureId: savedCaptureId,
             findingId: existingFinding.id,
             coordinateMode: point.mode,
             xRatio: point.mode === "photo" ? point.xRatio : null,
@@ -383,7 +402,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
             description: issue.description,
           })
         : createVisualAnnotationFinding(client, {
-            captureId: activeCapture.id,
+            captureId: savedCaptureId,
             coordinateMode: point.mode,
             xRatio: point.mode === "photo" ? point.xRatio : null,
             yRatio: point.mode === "photo" ? point.yRatio : null,
@@ -396,12 +415,15 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
             responsiblePartyId: issue.responsiblePartyId,
             buildingId: issue.buildingId || captureBuildingId,
             disposition: issue.disposition,
-          }),
+          });
+      },
       existingFinding
         ? text(`Marker linked to ${existingFinding.finding_number}.`, `Marker gekoppeld aan ${existingFinding.finding_number}.`)
         : text("Issue marker and traceable finding created together.", "Probleemmarker en traceerbare bevinding zijn samen aangemaakt."),
     );
     if (okay) {
+      setActiveCaptureId(savedCaptureId);
+      setPendingSelectionFileId("");
       setPoint(null);
       setIssue(emptyIssue);
       setExistingFindingId("");
@@ -525,11 +547,6 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
                   : text(`Saved as: ${captureLocationLabel}`, `Wordt opgeslagen als: ${captureLocationLabel}`)}</small>
               </div>
             ) : null}
-            <FacingDirectionField
-              value={captureForm.direction}
-              automatic={captureForm.directionAutomatic}
-              onChange={(direction, automatic) => setCaptureForm((current) => ({ ...current, direction, directionAutomatic: automatic }))}
-            />
           </div>
 
           {pickingDrawingLocation ? (
@@ -581,7 +598,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
             {point && activeCapture ? <IssueForm point={point} capture={activeCapture} issue={issue} setIssue={setIssue} findings={data.findings} annotations={data.visualAnnotations} existingFindingId={existingFindingId} setExistingFindingId={setExistingFindingId} parties={parties} buildings={buildings} captureBuildingId={captureBuildingId} busy={busy} save={() => void saveIssue()} cancel={() => { setPoint(null); setIssue(emptyIssue); setExistingFindingId(""); }} /> : selectedAnnotation && selectedFinding ? <AnnotationDetails annotation={selectedAnnotation} finding={selectedFinding} /> : <div className="visual-panel-empty"><ScanLine size={24} /><strong>{text("Select or place a marker", "Selecteer of plaats een marker")}</strong><span>{text("The exact image position and the formal finding remain linked.", "De exacte beeldpositie en de formele bevinding blijven gekoppeld.")}</span></div>}
           </aside>
         </div>
-      ) : showUpload ? null : <div className="empty-list-state visual-empty"><Camera size={24} /><strong>{text("No visual evidence yet", "Nog geen visueel bewijs")}</strong><span>{text("Start with a standard photo, or add a dedicated 360° camera export for an interactive site tour.", "Start met een gewone foto of voeg een export uit een speciale 360°-camera toe voor een interactieve terreinrondgang.")}</span></div>}
+      ) : showUpload ? null : <div className="empty-list-state visual-empty"><Camera size={24} /><strong>{text("No project photos yet", "Nog geen projectfoto's")}</strong><span>{text("Take the first photo here; it appears in Visual Evidence and Photos after synchronization.", "Maak hier de eerste foto; die verschijnt na synchronisatie in Visueel bewijs en Foto's.")}</span><button className="primary-button" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={15} /> {text("Take photo", "Maak foto")}</button></div>}
     </section>
   );
 }
