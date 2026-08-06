@@ -1587,7 +1587,8 @@ test("opens and works as an installed app with or without internet", async () =>
 
   // Evidence is private and travels with a token, so it is stored by the app itself
   // instead of in the service worker cache, and read from there when the network fails.
-  assert.match(idb, /const databaseVersion = 3/);
+  assert.match(idb, /const databaseVersion = 4/);
+  assert.match(idb, /createObjectStore\("drawingPins"/);
   assert.match(idb, /createObjectStore\("files"/);
   assert.match(fileCache, /export async function cacheProjectFile/);
   assert.match(gateway, /const cached = await readCachedProjectFile\(fileId\)/);

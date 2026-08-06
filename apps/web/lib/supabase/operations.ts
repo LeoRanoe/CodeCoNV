@@ -400,6 +400,8 @@ export type DrawingPin = {
   note: string | null;
   status: "active" | "void";
   created_at: string;
+  updated_at?: string;
+  version?: number;
 };
 
 export type NormalizedPoint = { x: number; y: number };
@@ -565,7 +567,7 @@ export async function loadProjectOperations(
     client.from("production_readiness_items").select("id,code,category,title,description,owner_hint,blocking,status,evidence,completed_at,sort_order").eq("organization_id", organizationId).order("sort_order"),
     client.from("visual_captures").select("id,building_id,file_id,location_node_id,day_report_id,capture_type,title,description,location_label,tour_name,tour_order,stack_id,captured_at,status,created_at").eq("project_id", projectId).order("captured_at", { ascending: false }).limit(250),
     client.from("visual_annotations").select("id,capture_id,finding_id,coordinate_mode,x_ratio,y_ratio,yaw,pitch,title,description,severity,disposition,status,created_at").eq("project_id", projectId).order("created_at").limit(1000),
-    client.from("drawing_pins").select("id,drawing_file_id,page_number,x_ratio,y_ratio,linked_record_type,linked_record_id,linked_record_number,linked_record_title,note,status,created_at").eq("project_id", projectId).order("created_at").limit(2000),
+    client.from("drawing_pins").select("id,drawing_file_id,page_number,x_ratio,y_ratio,linked_record_type,linked_record_id,linked_record_number,linked_record_title,note,status,created_at,updated_at,version").eq("project_id", projectId).order("created_at").limit(2000),
     client.from("drawing_markups").select("id,drawing_file_id,page_number,markup_type,geometry,color,stroke_width,text_content,status,created_at").eq("project_id", projectId).order("created_at").limit(5000),
     client.from("media_folders").select("id,building_id,parent_id,name,folder_type,status,created_at").eq("project_id", projectId).eq("status", "active").order("name").limit(500),
     client.from("external_share_links").select("id,organization_id,project_id,building_id,source_type,source_id,source_number,title,summary,source_file_id,expires_at,revoked_at,view_count,last_viewed_at,created_by,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(500),
@@ -1813,6 +1815,7 @@ export async function createDrawingPin(client: SupabaseClient, input: {
   linkedRecordType: DrawingPin["linked_record_type"];
   linkedRecordId: string;
   note?: string;
+  idempotencyKey?: string;
 }) {
   const result = await client.rpc("create_drawing_pin", {
     p_drawing_file_id: input.drawingFileId,
@@ -1822,8 +1825,24 @@ export async function createDrawingPin(client: SupabaseClient, input: {
     p_linked_record_type: input.linkedRecordType,
     p_linked_record_id: input.linkedRecordId,
     p_note: input.note || null,
-    p_idempotency_key: `drawing-pin:${crypto.randomUUID()}`,
+    p_idempotency_key: input.idempotencyKey ?? `drawing-pin:${crypto.randomUUID()}`,
   });
+  fail(result.error);
+  return result.data as DrawingPin;
+}
+
+export async function moveDrawingPin(client: SupabaseClient, input: { pinId: string; xRatio: number; yRatio: number }) {
+  const result = await client.rpc("move_drawing_pin", {
+    p_pin_id: input.pinId,
+    p_x_ratio: input.xRatio,
+    p_y_ratio: input.yRatio,
+  });
+  fail(result.error);
+  return result.data as DrawingPin;
+}
+
+export async function voidDrawingPin(client: SupabaseClient, input: { pinId: string; reason: string }) {
+  const result = await client.rpc("void_drawing_pin", { p_pin_id: input.pinId, p_reason: input.reason });
   fail(result.error);
   return result.data as DrawingPin;
 }

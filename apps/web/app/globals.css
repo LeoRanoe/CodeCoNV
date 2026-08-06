@@ -248,8 +248,20 @@
   width: 100%;
 }
 
+.drawing-canvas-surface.is-panning { cursor: grab; }
+.drawing-canvas-surface.is-panning:active { cursor: grabbing; }
+.drawing-canvas-surface.is-placing-pin { cursor: crosshair; }
+
+.drawing-viewport-content {
+  height: 100%;
+  inset: 0;
+  position: absolute;
+  transform-origin: 0 0;
+  width: 100%;
+}
+
 .drawing-canvas-surface canvas,
-.drawing-canvas-surface > img {
+.drawing-canvas-surface img {
   display: block;
   height: 100%;
   object-fit: contain;
@@ -298,6 +310,7 @@
 
 button.drawing-pin {
   cursor: pointer;
+  touch-action: none;
 }
 
 .drawing-pin > * {
@@ -311,6 +324,7 @@ button.drawing-pin {
 .drawing-pin.green { background: #23805e; }
 .drawing-pin.cyan { background: #157f91; }
 .drawing-pin.pending { background: #152f3c; pointer-events: none; }
+.drawing-pin.pending.drawing-pin-scaled { transform: translate(-50%, -100%) rotate(-45deg) scale(var(--pin-inverse-scale, 1)); }
 
 .drawing-link-panel {
   max-height: 740px;

@@ -4,9 +4,10 @@ const databaseName = "codeco-field-v1";
 // v2 adds the "files" store: the photos, drawings and documents themselves, so a project
 // that was made available offline still shows its evidence without a connection.
 // v3 adds "records": field registrations written without a connection, waiting to be sent.
-const databaseVersion = 3;
+// v4 adds normalized drawing-pin mutations. They are tiny, ordered and safe to replay.
+const databaseVersion = 4;
 
-export type OfflineStore = "uploads" | "snapshots" | "settings" | "files" | "records";
+export type OfflineStore = "uploads" | "snapshots" | "settings" | "files" | "records" | "drawingPins";
 
 function openDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
@@ -22,6 +23,7 @@ function openDatabase() {
       if (!database.objectStoreNames.contains("settings")) database.createObjectStore("settings", { keyPath: "id" });
       if (!database.objectStoreNames.contains("files")) database.createObjectStore("files", { keyPath: "id" });
       if (!database.objectStoreNames.contains("records")) database.createObjectStore("records", { keyPath: "id" });
+      if (!database.objectStoreNames.contains("drawingPins")) database.createObjectStore("drawingPins", { keyPath: "id" });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error("Offline opslag kon niet worden geopend."));

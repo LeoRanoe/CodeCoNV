@@ -9,6 +9,7 @@ import {
   FileQuestion,
   FileText,
   FileUp,
+  Hand,
   Image as ImageIcon,
   Link2,
   Loader2,
@@ -16,17 +17,30 @@ import {
   MousePointer2,
   Plus,
   ShieldCheck,
+  Trash2,
   Type,
   ArrowUpRight,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import {
+  drawingPointFromClient,
+  panDrawingViewport,
+  resetDrawingViewport,
+  zoomDrawingViewport,
+} from "@/lib/drawings/viewport.mjs";
 import { useLanguage } from "@/lib/i18n";
 import { readableFileLabel } from "@/lib/media/photo-library.mjs";
+import {
+  listDrawingPinMutations,
+  saveDrawingPinOnlineOrQueue,
+  syncDrawingPinMutations,
+} from "@/lib/offline/drawing-pin-queue";
 import { loadProjectFilePreviewObjectUrl, uploadProjectFile } from "@/lib/storage/gateway";
 import {
   createDrawingMarkup,
-  createDrawingPin,
   type DrawingMarkup,
   type DrawingPin,
   type FileRecord,
@@ -64,7 +78,8 @@ type DrawingWorkspaceProps = {
 };
 
 type PinPoint = { xRatio: number; yRatio: number };
-type DrawingTool = "pin" | DrawingMarkup["markup_type"];
+type DrawingTool = "pan" | "pin" | DrawingMarkup["markup_type"];
+type DrawingViewport = { scale: number; offset: { x: number; y: number }; page: number };
 
 const supportedDrawingMimeTypes = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
 const dwgMimeTypes = ["application/octet-stream", "application/acad", "application/dwg", "application/x-acad", "image/vnd.dwg"];
@@ -103,7 +118,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
   const dwgSources = data.files.filter((file) => file.category === "drawing" && file.status === "available" && isDwgFile(file));
   const [activeDrawingId, setActiveDrawingId] = useState(drawings[0]?.id ?? "");
   const activeDrawing = drawings.find((file) => file.id === activeDrawingId) ?? drawings[0] ?? null;
-  const [pageNumber, setPageNumber] = useState(1);
+  const [viewport, setViewport] = useState<DrawingViewport>(() => resetDrawingViewport(1));
+  const pageNumber = viewport.page;
   /** A drawing is known by its sheet name, not by the code a phone gave the file. */
   const drawingLabel = (drawing: FileRecord) => readableFileLabel(drawing, {
     kindLabel: drawing.mime_type === "application/pdf" ? "PDF" : text("Drawing", "Tekening"),
@@ -114,18 +130,27 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
   const [pageCount, setPageCount] = useState(1);
   const [point, setPoint] = useState<PinPoint | null>(null);
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
+  const [pinOverrides, setPinOverrides] = useState<Record<string, PinPoint>>({});
+  const [hiddenPinIds, setHiddenPinIds] = useState<string[]>([]);
+  const [localPins, setLocalPins] = useState<DrawingPin[]>([]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [tool, setTool] = useState<DrawingTool>("pin");
+  const [tool, setTool] = useState<DrawingTool>(pendingRecord || initialFindingId || initialInspectionId ? "pin" : "pan");
   const [markupColor, setMarkupColor] = useState("#D92D20");
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [markupText, setMarkupText] = useState("");
   const [uploadBuildingId, setUploadBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
 
+  const allPins = [...data.drawingPins, ...localPins.filter((local) => !data.drawingPins.some((pin) => pin.linked_record_type === local.linked_record_type && pin.linked_record_id === local.linked_record_id && pin.drawing_file_id === local.drawing_file_id))];
   const activePins = activeDrawing
-    ? data.drawingPins.filter((pin) => pin.drawing_file_id === activeDrawing.id && pin.page_number === pageNumber && pin.status === "active")
+    ? allPins
+      .filter((pin) => pin.drawing_file_id === activeDrawing.id && pin.page_number === pageNumber && pin.status === "active" && !hiddenPinIds.includes(pin.id))
+      .map((pin) => pinOverrides[pin.id] ? { ...pin, x_ratio: pinOverrides[pin.id].xRatio, y_ratio: pinOverrides[pin.id].yRatio } : pin)
     : [];
-  const selectedPin = data.drawingPins.find((pin) => pin.id === selectedPinId) ?? null;
+  const selectedPinSource = allPins.find((pin) => pin.id === selectedPinId && !hiddenPinIds.includes(pin.id)) ?? null;
+  const selectedPin = selectedPinSource && pinOverrides[selectedPinSource.id]
+    ? { ...selectedPinSource, x_ratio: pinOverrides[selectedPinSource.id].xRatio, y_ratio: pinOverrides[selectedPinSource.id].yRatio }
+    : selectedPinSource;
   const activeMarkups = activeDrawing
     ? data.drawingMarkups.filter((markup) => markup.drawing_file_id === activeDrawing.id && markup.page_number === pageNumber && markup.status === "active")
     : [];
@@ -142,14 +167,40 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
     if (!incomingPin || incomingPinHandled.current === incomingPin.id) return;
     incomingPinHandled.current = incomingPin.id;
     setActiveDrawingId(incomingPin.drawing_file_id);
-    setPageNumber(incomingPin.page_number);
+    setViewport(resetDrawingViewport(incomingPin.page_number));
     setSelectedPinId(incomingPin.id);
     setPoint(null);
   }, [incomingPin]);
 
+  const changePage = useCallback((page: number) => {
+    setViewport(resetDrawingViewport(page));
+    setPoint(null);
+    setSelectedPinId(null);
+  }, []);
+
+  const handlePageCount = useCallback((count: number) => {
+    setPageCount(count);
+    setViewport((current) => current.page <= count ? current : resetDrawingViewport(count));
+  }, []);
+
+  useEffect(() => {
+    const synchronize = () => {
+      void listDrawingPinMutations(projectId).then((queued) => {
+        if (!queued.length || !navigator.onLine) return;
+        void run(
+          () => syncDrawingPinMutations(client, projectId),
+          text("Queued drawing-pin changes synchronized.", "Wachtende tekeningspinwijzigingen gesynchroniseerd."),
+        );
+      });
+    };
+    window.addEventListener("online", synchronize);
+    synchronize();
+    return () => window.removeEventListener("online", synchronize);
+  }, [client, projectId, run, text]);
+
   const selectDrawing = (drawingId: string) => {
     setActiveDrawingId(drawingId);
-    setPageNumber(1);
+    setViewport(resetDrawingViewport(1));
     setPageCount(1);
     setPoint(null);
     setSelectedPinId(null);
@@ -176,25 +227,91 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
     if (!activeDrawing) return;
     if (pendingRecord) {
       onPlaceRecordPin?.({ drawingId: activeDrawing.id, pageNumber, xRatio: nextPoint.xRatio, yRatio: nextPoint.yRatio });
+      setPoint(null);
       return;
     }
     if (!incomingFinding && !incomingInspection) return;
+    const mutationId = `drawing-pin:${crypto.randomUUID()}`;
+    let saved: Awaited<ReturnType<typeof saveDrawingPinOnlineOrQueue>> | null = null;
     const okay = await run(
-      () => createDrawingPin(client, {
-        drawingFileId: activeDrawing.id,
-        pageNumber,
-        xRatio: nextPoint.xRatio,
-        yRatio: nextPoint.yRatio,
-        linkedRecordType: incomingFinding ? "observation" : "inspection",
-        linkedRecordId: incomingFinding ? incomingFinding.id : incomingInspection!.id,
-      }),
-      text("The drawing location and project record are now linked and auditable.", "De tekenlocatie en het projectrecord zijn nu gekoppeld en auditeerbaar."),
+      async () => {
+        saved = await saveDrawingPinOnlineOrQueue(client, {
+          id: mutationId,
+          projectId,
+          kind: "create",
+          input: {
+            drawingFileId: activeDrawing.id,
+            pageNumber,
+            xRatio: nextPoint.xRatio,
+            yRatio: nextPoint.yRatio,
+            linkedRecordType: incomingFinding ? "observation" : "inspection",
+            linkedRecordId: incomingFinding ? incomingFinding.id : incomingInspection!.id,
+            idempotencyKey: `offline-drawing-pin:${mutationId}`,
+          },
+        });
+        return saved;
+      },
+      text("The pin is saved centrally or safely waiting for synchronization.", "De pin is centraal opgeslagen of wacht veilig op synchronisatie."),
     );
+    const wasQueued = (saved as Awaited<ReturnType<typeof saveDrawingPinOnlineOrQueue>> | null)?.queued ?? false;
+    if (okay && wasQueued) {
+      const linked = incomingFinding ?? incomingInspection!;
+      setLocalPins((current) => [...current, {
+        id: `pending:${mutationId}`,
+        drawing_file_id: activeDrawing.id,
+        page_number: pageNumber,
+        x_ratio: nextPoint.xRatio,
+        y_ratio: nextPoint.yRatio,
+        linked_record_type: incomingFinding ? "observation" : "inspection",
+        linked_record_id: linked.id,
+        linked_record_number: incomingFinding ? incomingFinding.finding_number : incomingInspection!.inspection_number,
+        linked_record_title: linked.title,
+        note: null,
+        status: "active",
+        created_at: new Date().toISOString(),
+      }]);
+    }
     if (okay) setPoint(null);
   };
 
+  const movePin = async (pin: DrawingPin, nextPoint: PinPoint) => {
+    if (pin.id.startsWith("pending:")) return false;
+    const previous = pinOverrides[pin.id] ?? { xRatio: Number(pin.x_ratio), yRatio: Number(pin.y_ratio) };
+    setPinOverrides((current) => ({ ...current, [pin.id]: nextPoint }));
+    const okay = await run(
+      () => saveDrawingPinOnlineOrQueue(client, {
+        id: `drawing-pin-move:${pin.id}:${crypto.randomUUID()}`,
+        projectId,
+        kind: "move",
+        input: { pinId: pin.id, xRatio: nextPoint.xRatio, yRatio: nextPoint.yRatio },
+      }),
+      text("Pin position saved or queued safely.", "Pinpositie opgeslagen of veilig in de wachtrij gezet."),
+    );
+    if (!okay) setPinOverrides((current) => ({ ...current, [pin.id]: previous }));
+    return okay;
+  };
+
+  const deletePin = async (pin: DrawingPin) => {
+    if (pin.id.startsWith("pending:")) return;
+    setHiddenPinIds((current) => [...current, pin.id]);
+    setSelectedPinId(null);
+    const okay = await run(
+      () => saveDrawingPinOnlineOrQueue(client, {
+        id: `drawing-pin-void:${pin.id}`,
+        projectId,
+        kind: "void",
+        input: { pinId: pin.id, reason: text("Removed from drawing by supervisor", "Door toezichthouder van tekening verwijderd") },
+      }),
+      text("Drawing pin removed or queued safely.", "Tekeningspin verwijderd of veilig in de wachtrij gezet."),
+    );
+    if (!okay) {
+      setHiddenPinIds((current) => current.filter((id) => id !== pin.id));
+      setSelectedPinId(pin.id);
+    }
+  };
+
   const saveMarkup = async (geometry: DrawingMarkup["geometry"]) => {
-    if (!activeDrawing || tool === "pin") return false;
+    if (!activeDrawing || tool === "pin" || tool === "pan") return false;
     return run(
       () => createDrawingMarkup(client, {
         drawingFileId: activeDrawing.id,
@@ -297,15 +414,19 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
             <div className="drawing-stage-header">
               <div><span className="record-number">{activeDrawing.mime_type === "application/pdf" ? "PDF" : text("Drawing image", "Tekeningsafbeelding")}</span><h2 title={activeDrawing.original_name}>{drawingLabel(activeDrawing)}</h2></div>
               <div className="tour-controls">
-                <button type="button" aria-label={text("Previous page", "Vorige pagina")} disabled={pageNumber <= 1} onClick={() => { setPageNumber((page) => Math.max(1, page - 1)); setPoint(null); }}><ChevronLeft size={17} /></button>
+                <button type="button" aria-label={text("Previous page", "Vorige pagina")} disabled={pageNumber <= 1} onClick={() => changePage(Math.max(1, pageNumber - 1))}><ChevronLeft size={17} /></button>
                 <span>{pageNumber} / {pageCount}</span>
-                <button type="button" aria-label={text("Next page", "Volgende pagina")} disabled={pageNumber >= pageCount} onClick={() => { setPageNumber((page) => Math.min(pageCount, page + 1)); setPoint(null); }}><ChevronRight size={17} /></button>
+                <button type="button" aria-label={text("Next page", "Volgende pagina")} disabled={pageNumber >= pageCount} onClick={() => changePage(Math.min(pageCount, pageNumber + 1))}><ChevronRight size={17} /></button>
+                <button type="button" aria-label={text("Zoom out", "Uitzoomen")} disabled={viewport.scale <= 1} onClick={() => setViewport((current) => zoomDrawingViewport(current, current.scale / 1.25, { x: 0, y: 0 }))}><ZoomOut size={17} /></button>
+                <span>{Math.round(viewport.scale * 100)}%</span>
+                <button type="button" aria-label={text("Zoom in", "Inzoomen")} disabled={viewport.scale >= 6} onClick={() => setViewport((current) => zoomDrawingViewport(current, current.scale * 1.25, { x: 0, y: 0 }))}><ZoomIn size={17} /></button>
               </div>
             </div>
             <div className="drawing-markup-toolbar" role="toolbar" aria-label={text("Drawing and linking tools", "Teken- en koppelingstools")}>
               {/* Freehand is gone: placing a pin is the job here, and a hand-drawn line over
                   a contract drawing was the one tool the client crossed out. */}
               {([
+                ["pan", Hand, text("Pan", "Verschuif")],
                 ["pin", MapPin, text("Link pin", "Koppelpin")],
                 ["cloud", Cloud, text("Revision cloud", "Revisiewolk")],
                 ["arrow", ArrowUpRight, text("Arrow", "Pijl")],
@@ -326,7 +447,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
             <DrawingCanvas
               key={activeDrawing.id}
               file={activeDrawing}
-              pageNumber={pageNumber}
+              viewport={viewport}
               pins={activePins}
               markups={activeMarkups}
               pendingPoint={point}
@@ -335,9 +456,11 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
               strokeWidth={strokeWidth}
               textContent={markupText}
               client={client}
-              onPageCount={(count) => { setPageCount(count); setPageNumber((page) => Math.min(page, count)); }}
-              onPoint={(nextPoint) => { setPoint(nextPoint); setSelectedPinId(null); void placePin(nextPoint); }}
+              onPageCount={handlePageCount}
+              onViewportChange={setViewport}
+              onPoint={(nextPoint) => { setPoint(nextPoint); setSelectedPinId(null); }}
               onSelectPin={(pinId) => { setSelectedPinId(pinId); setPoint(null); }}
+              onMovePin={movePin}
               onCreateMarkup={saveMarkup}
             />
             <div className="visual-stage-help">{tool === "pin" ? <MapPin size={15} /> : <MousePointer2 size={15} />}<span>{tool === "pin" ? text("Click the exact drawing location, then choose the record to link. Pins use normalized coordinates and remain correctly positioned when the drawing scales.", "Klik op de exacte locatie in de tekening en kies daarna het te koppelen record. Pins gebruiken genormaliseerde coördinaten en blijven correct staan wanneer de tekening schaalt.") : text("Draw directly over the secured preview. Freehand lines, clouds, arrows and text are stored as normalized, auditable overlays without changing the original.", "Teken direct over de beveiligde weergave. Vrije lijnen, wolken, pijlen en tekst worden genormaliseerd en geaudit opgeslagen zonder het origineel te wijzigen.")}</span></div>
@@ -347,7 +470,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
             {point && (pendingRecord || incomingFinding || incomingInspection) ? (
               <div className="drawing-link-form">
                 <div>
-                  <span className="record-number">{text("Placed", "Geplaatst")}</span>
+                  <span className="record-number">{text("Location ready", "Locatie gereed")}</span>
                   <h2>{pendingRecord ? pendingRecord.label : incomingFinding?.finding_number ?? incomingInspection?.inspection_number}</h2>
                   <p>X {Math.round(point.xRatio * 100)}% · Y {Math.round(point.yRatio * 100)}% · {text("page", "pagina")} {pageNumber}</p>
                 </div>
@@ -356,13 +479,13 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                   <div>
                     <strong>{pendingRecord
                       ? text("The pin is placed when you save the record", "De pin wordt geplaatst zodra je de registratie opslaat")
-                      : text("This record now stands on the drawing", "Deze registratie staat nu op de tekening")}</strong>
+                      : text("Confirm this exact location", "Bevestig deze exacte locatie")}</strong>
                     <span>{pendingRecord
                       ? text("It takes the name, the number and the date of the record itself. Tap another spot to move it.", "Hij krijgt de naam, het nummer en de datum van de registratie zelf. Tik een andere plek aan om hem te verplaatsen.")
-                      : text("The pin carries the record number and title, and opens the record when it is tapped.", "De pin draagt het recordnummer en de titel en opent het record wanneer je erop tikt.")}</span>
+                      : text("Nothing is saved until you confirm. The pin will carry the record number and title.", "Er wordt niets opgeslagen totdat je bevestigt. De pin krijgt het registratienummer en de titel.")}</span>
                   </div>
                 </div>
-                <div className="button-row"><button className="secondary-button" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button></div>
+                <div className="button-row"><button className="primary-button" type="button" disabled={busy} onClick={() => void placePin(point)}><MapPin size={15} /> {text("Confirm pin", "Pin bevestigen")}</button><button className="secondary-button" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button></div>
               </div>
             ) : point ? (
               <div className="drawing-link-form">
@@ -376,7 +499,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                 </div>
                 <div className="button-row"><button className="secondary-button" type="button" onClick={() => setPoint(null)}>{text("Close", "Sluiten")}</button></div>
               </div>
-            ) : selectedPin ? <DrawingPinDetails pin={selectedPin} onOpen={() => onOpenLinkedRecord(selectedPin.linked_record_type, selectedPin.linked_record_id)} /> : (
+            ) : selectedPin ? <DrawingPinDetails pin={selectedPin} onOpen={() => onOpenLinkedRecord(selectedPin.linked_record_type, selectedPin.linked_record_id)} onDelete={() => void deletePin(selectedPin)} /> : (
               <div className="visual-panel-empty"><MapPin size={24} /><strong>{text("Place or select a drawing pin", "Plaats of selecteer een tekeningspin")}</strong><span>{text("Every pin keeps its page, exact position and record identity in the audit trail.", "Elke pin bewaart pagina, exacte positie en recordidentiteit in het auditspoor.")}</span></div>
             )}
           </aside>
@@ -390,9 +513,9 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
   );
 }
 
-function DrawingCanvas({ file, pageNumber, pins, markups, pendingPoint, tool, color, strokeWidth, textContent, client, onPageCount, onPoint, onSelectPin, onCreateMarkup }: {
+function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, color, strokeWidth, textContent, client, onPageCount, onViewportChange, onPoint, onSelectPin, onMovePin, onCreateMarkup }: {
   file: FileRecord;
-  pageNumber: number;
+  viewport: DrawingViewport;
   pins: DrawingPin[];
   markups: DrawingMarkup[];
   pendingPoint: PinPoint | null;
@@ -402,20 +525,29 @@ function DrawingCanvas({ file, pageNumber, pins, markups, pendingPoint, tool, co
   textContent: string;
   client: SupabaseClient;
   onPageCount: (count: number) => void;
+  onViewportChange: React.Dispatch<React.SetStateAction<DrawingViewport>>;
   onPoint: (point: PinPoint) => void;
   onSelectPin: (pinId: string) => void;
+  onMovePin: (pin: DrawingPin, point: PinPoint) => Promise<boolean>;
   onCreateMarkup: (geometry: DrawingMarkup["geometry"]) => Promise<boolean>;
 }) {
   const { text } = useLanguage();
+  const pageNumber = viewport.page;
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [mimeType, setMimeType] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [aspectRatio, setAspectRatio] = useState("4 / 3");
+  const [renderWidth, setRenderWidth] = useState(900);
   const [draftPoints, setDraftPoints] = useState<NormalizedPoint[]>([]);
   const drawingRef = useRef(false);
   const draftPointsRef = useRef<NormalizedPoint[]>([]);
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const singleGestureRef = useRef<{ start: { x: number; y: number }; last: { x: number; y: number }; moved: boolean } | null>(null);
+  const pinchRef = useRef<{ distance: number; center: { x: number; y: number }; viewport: DrawingViewport } | null>(null);
+  const [draggedPin, setDraggedPin] = useState<{ id: string; point: PinPoint } | null>(null);
 
   const updateDraftPoints = (points: NormalizedPoint[]) => {
     draftPointsRef.current = points;
@@ -441,9 +573,22 @@ function DrawingCanvas({ file, pageNumber, pins, markups, pendingPoint, tool, co
   }, [client, file.id, text]);
 
   useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setRenderWidth(Math.max(1, Math.round(entry.contentRect.width)));
+    });
+    observer.observe(surface);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     if (!previewUrl || mimeType !== "application/pdf" || !canvasRef.current) return;
     let cancelled = false;
     let loadingTask: { destroy: () => Promise<void> } | null = null;
+    let renderTask: { cancel: () => void; promise: Promise<unknown> } | null = null;
+    setLoading(true);
+    setError("");
     void import("pdfjs-dist").then(async (pdfjs) => {
       pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
       const task = pdfjs.getDocument({ url: previewUrl });
@@ -452,17 +597,20 @@ function DrawingCanvas({ file, pageNumber, pins, markups, pendingPoint, tool, co
       if (cancelled) return;
       onPageCount(pdf.numPages);
       const page = await pdf.getPage(pageNumber);
-      const viewport = page.getViewport({ scale: 1.45 });
+      if (cancelled) return;
+      const naturalViewport = page.getViewport({ scale: 1 });
+      const pdfViewport = page.getViewport({ scale: renderWidth / naturalViewport.width });
       const canvas = canvasRef.current;
       if (!canvas || cancelled) return;
       const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.floor(viewport.width * pixelRatio);
-      canvas.height = Math.floor(viewport.height * pixelRatio);
-      canvas.style.aspectRatio = `${viewport.width} / ${viewport.height}`;
-      setAspectRatio(`${viewport.width} / ${viewport.height}`);
+      canvas.width = Math.floor(pdfViewport.width * pixelRatio);
+      canvas.height = Math.floor(pdfViewport.height * pixelRatio);
+      canvas.style.aspectRatio = `${pdfViewport.width} / ${pdfViewport.height}`;
+      setAspectRatio(`${pdfViewport.width} / ${pdfViewport.height}`);
       const context = canvas.getContext("2d");
       if (!context) throw new Error("Drawing canvas is unavailable.");
-      await page.render({ canvas, canvasContext: context, viewport, transform: pixelRatio === 1 ? undefined : [pixelRatio, 0, 0, pixelRatio, 0, 0] }).promise;
+      renderTask = page.render({ canvas, canvasContext: context, viewport: pdfViewport, transform: pixelRatio === 1 ? undefined : [pixelRatio, 0, 0, pixelRatio, 0, 0] });
+      await renderTask.promise;
       if (!cancelled) setLoading(false);
     }).catch((caught: unknown) => {
       if (!cancelled) {
@@ -472,30 +620,21 @@ function DrawingCanvas({ file, pageNumber, pins, markups, pendingPoint, tool, co
     });
     return () => {
       cancelled = true;
+      renderTask?.cancel();
       void loadingTask?.destroy();
     };
-  }, [mimeType, onPageCount, pageNumber, previewUrl, text]);
+  }, [mimeType, onPageCount, pageNumber, previewUrl, renderWidth, text]);
 
-  const placePoint = (clientX: number, clientY: number, target: HTMLElement) => {
-    const bounds = target.getBoundingClientRect();
-    onPoint({
-      xRatio: Math.min(1, Math.max(0, (clientX - bounds.left) / bounds.width)),
-      yRatio: Math.min(1, Math.max(0, (clientY - bounds.top) / bounds.height)),
-    });
-  };
-
-  const normalizedPoint = (clientX: number, clientY: number, target: HTMLElement): NormalizedPoint => {
-    const bounds = target.getBoundingClientRect();
-    return {
-      x: Math.min(1, Math.max(0, (clientX - bounds.left) / bounds.width)),
-      y: Math.min(1, Math.max(0, (clientY - bounds.top) / bounds.height)),
-    };
+  const normalizedPoint = (clientX: number, clientY: number): NormalizedPoint => {
+    const surface = surfaceRef.current;
+    if (!surface) return { x: 0.5, y: 0.5 };
+    return drawingPointFromClient({ x: clientX, y: clientY }, surface.getBoundingClientRect(), viewport);
   };
 
   const beginMarkup = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (tool === "pin") return;
+    if (tool === "pin" || tool === "pan") return;
     event.preventDefault();
-    const start = normalizedPoint(event.clientX, event.clientY, event.currentTarget);
+    const start = normalizedPoint(event.clientX, event.clientY);
     if (tool === "text") {
       if (textContent.trim()) void onCreateMarkup({ position: start });
       return;
@@ -506,18 +645,18 @@ function DrawingCanvas({ file, pageNumber, pins, markups, pendingPoint, tool, co
   };
 
   const continueMarkup = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!drawingRef.current || tool === "pin" || tool === "text") return;
-    const point = normalizedPoint(event.clientX, event.clientY, event.currentTarget);
+    if (!drawingRef.current || tool === "pin" || tool === "pan" || tool === "text") return;
+    const point = normalizedPoint(event.clientX, event.clientY);
     const points = draftPointsRef.current;
     updateDraftPoints(tool === "arrow" ? [points[0], point] : [...points, point]);
   };
 
   const finishMarkup = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!drawingRef.current || tool === "pin" || tool === "text") return;
+    if (!drawingRef.current || tool === "pin" || tool === "pan" || tool === "text") return;
     event.preventDefault();
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     drawingRef.current = false;
-    const finalPoint = normalizedPoint(event.clientX, event.clientY, event.currentTarget);
+    const finalPoint = normalizedPoint(event.clientX, event.clientY);
     const currentPoints = draftPointsRef.current;
     const points = tool === "arrow" ? [currentPoints[0], finalPoint].filter(Boolean) : [...currentPoints, finalPoint];
     updateDraftPoints([]);
@@ -525,24 +664,125 @@ function DrawingCanvas({ file, pageNumber, pins, markups, pendingPoint, tool, co
     void onCreateMarkup(tool === "arrow" ? { start: points[0], end: points[points.length - 1] } : { points });
   };
 
+  const beginPointer = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointersRef.current.size === 2) {
+      drawingRef.current = false;
+      updateDraftPoints([]);
+      const [left, right] = [...pointersRef.current.values()];
+      const bounds = event.currentTarget.getBoundingClientRect();
+      pinchRef.current = {
+        distance: Math.hypot(right.x - left.x, right.y - left.y),
+        center: { x: (left.x + right.x) / 2 - bounds.left, y: (left.y + right.y) / 2 - bounds.top },
+        viewport,
+      };
+      return;
+    }
+    singleGestureRef.current = {
+      start: { x: event.clientX, y: event.clientY },
+      last: { x: event.clientX, y: event.clientY },
+      moved: false,
+    };
+    beginMarkup(event);
+  };
+
+  const movePointer = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!pointersRef.current.has(event.pointerId)) return;
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointersRef.current.size >= 2 && pinchRef.current) {
+      const [left, right] = [...pointersRef.current.values()];
+      const bounds = event.currentTarget.getBoundingClientRect();
+      const distance = Math.max(1, Math.hypot(right.x - left.x, right.y - left.y));
+      const center = { x: (left.x + right.x) / 2 - bounds.left, y: (left.y + right.y) / 2 - bounds.top };
+      const zoomed = zoomDrawingViewport(pinchRef.current.viewport, pinchRef.current.viewport.scale * distance / Math.max(1, pinchRef.current.distance), pinchRef.current.center);
+      onViewportChange(panDrawingViewport(zoomed, { x: center.x - pinchRef.current.center.x, y: center.y - pinchRef.current.center.y }));
+      return;
+    }
+    const gesture = singleGestureRef.current;
+    if ((tool === "pan" || tool === "pin") && gesture) {
+      const totalDistance = Math.hypot(event.clientX - gesture.start.x, event.clientY - gesture.start.y);
+      if (totalDistance > 4) gesture.moved = true;
+      if (gesture.moved) {
+        onViewportChange((current) => panDrawingViewport(current, { x: event.clientX - gesture.last.x, y: event.clientY - gesture.last.y }));
+        gesture.last = { x: event.clientX, y: event.clientY };
+      }
+      return;
+    }
+    continueMarkup(event);
+  };
+
+  const finishPointer = (event: React.PointerEvent<HTMLDivElement>) => {
+    const wasSinglePointer = pointersRef.current.size === 1;
+    const gesture = singleGestureRef.current;
+    if (tool === "pin" && wasSinglePointer && gesture && !gesture.moved) {
+      const point = normalizedPoint(event.clientX, event.clientY);
+      onPoint({ xRatio: point.x, yRatio: point.y });
+    } else {
+      finishMarkup(event);
+    }
+    pointersRef.current.delete(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (pointersRef.current.size < 2) pinchRef.current = null;
+    if (!pointersRef.current.size) singleGestureRef.current = null;
+  };
+
+  const cancelPointers = () => {
+    pointersRef.current.clear();
+    pinchRef.current = null;
+    singleGestureRef.current = null;
+    drawingRef.current = false;
+    updateDraftPoints([]);
+  };
+
+  const beginPinDrag = (event: React.PointerEvent<HTMLButtonElement>, pin: DrawingPin) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    onSelectPin(pin.id);
+    setDraggedPin({ id: pin.id, point: { xRatio: Number(pin.x_ratio), yRatio: Number(pin.y_ratio) } });
+  };
+
+  const movePinDrag = (event: React.PointerEvent<HTMLButtonElement>, pin: DrawingPin) => {
+    if (draggedPin?.id !== pin.id) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const point = normalizedPoint(event.clientX, event.clientY);
+    setDraggedPin({ id: pin.id, point: { xRatio: point.x, yRatio: point.y } });
+  };
+
+  const finishPinDrag = (event: React.PointerEvent<HTMLButtonElement>, pin: DrawingPin) => {
+    if (draggedPin?.id !== pin.id) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    const point = draggedPin.point;
+    setDraggedPin(null);
+    void onMovePin(pin, point);
+  };
+
   return (
     <div className="drawing-canvas-frame">
       {error ? <div className="visual-load-state error"><AlertTriangle size={21} /> {error}</div> : null}
       {!error ? (
         <div
-          className="drawing-canvas-surface"
+          className={`drawing-canvas-surface ${tool === "pan" ? "is-panning" : tool === "pin" ? "is-placing-pin" : "is-marking"}`}
+          ref={surfaceRef}
           style={{ aspectRatio }}
-          role="button"
+          role="application"
           tabIndex={0}
-          aria-label={text("Drawing. Click to place a linked pin.", "Tekening. Klik om een gekoppelde pin te plaatsen.")}
-          onClick={(event) => { if (tool === "pin") placePoint(event.clientX, event.clientY, event.currentTarget); }}
+          data-page={pageNumber}
+          data-scale={viewport.scale.toFixed(3)}
+          aria-label={text("Interactive drawing. Pan, zoom or place a linked pin.", "Interactieve tekening. Verschuif, zoom of plaats een gekoppelde pin.")}
           onKeyDown={(event) => { if (tool === "pin" && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onPoint({ xRatio: 0.5, yRatio: 0.5 }); } }}
-          onPointerDown={beginMarkup}
-          onPointerMove={continueMarkup}
-          onPointerUp={finishMarkup}
-          onPointerCancel={() => { drawingRef.current = false; updateDraftPoints([]); }}
+          onPointerDown={beginPointer}
+          onPointerMove={movePointer}
+          onPointerUp={finishPointer}
+          onPointerCancel={cancelPointers}
         >
-          {mimeType === "application/pdf" ? <canvas ref={canvasRef} /> : previewUrl ? (
+          <div className="drawing-viewport-content" style={{ transform: `translate(${viewport.offset.x}px, ${viewport.offset.y}px) scale(${viewport.scale})` }}>
+            {mimeType === "application/pdf" ? <canvas ref={canvasRef} /> : previewUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={previewUrl} alt={file.original_name} onLoad={(event) => { setAspectRatio(`${event.currentTarget.naturalWidth} / ${event.currentTarget.naturalHeight}`); setLoading(false); onPageCount(1); }} onError={() => { setLoading(false); setError(text("Drawing image could not be displayed.", "De tekeningafbeelding kon niet worden weergegeven.")); }} />
           ) : null}
@@ -553,13 +793,17 @@ function DrawingCanvas({ file, pageNumber, pins, markups, pendingPoint, tool, co
           </svg>
           {/* The pin itself carries the colour of its record type; the chip under it
               carries the code, so a drawing can be read without opening anything. */}
-          {pins.map((pin, index) => (
-            <span className="drawing-pin-anchor" style={{ left: `${Number(pin.x_ratio) * 100}%`, top: `${Number(pin.y_ratio) * 100}%` }} key={pin.id}>
-              <button className={`drawing-pin ${pinTypeClass[pin.linked_record_type]}`} type="button" aria-label={`${pin.linked_record_number} · ${pin.linked_record_title}`} onClick={(event) => { event.stopPropagation(); onSelectPin(pin.id); }}><span>{index + 1}</span></button>
+          {pins.map((pin, index) => {
+            const shownPoint = draggedPin?.id === pin.id ? draggedPin.point : { xRatio: Number(pin.x_ratio), yRatio: Number(pin.y_ratio) };
+            return (
+            <span className="drawing-pin-anchor" style={{ left: `${shownPoint.xRatio * 100}%`, top: `${shownPoint.yRatio * 100}%`, transform: `scale(${1 / viewport.scale})`, transformOrigin: "0 0" }} key={pin.id}>
+              <button className={`drawing-pin ${pinTypeClass[pin.linked_record_type]}`} type="button" aria-label={`${pin.linked_record_number} · ${pin.linked_record_title}`} onPointerDown={(event) => beginPinDrag(event, pin)} onPointerMove={(event) => movePinDrag(event, pin)} onPointerUp={(event) => finishPinDrag(event, pin)}><span>{index + 1}</span></button>
               <em className={`drawing-pin-code ${pinTypeClass[pin.linked_record_type]}`}>{pin.linked_record_number}</em>
             </span>
-          ))}
-          {pendingPoint ? <span className="drawing-pin pending" style={{ left: `${pendingPoint.xRatio * 100}%`, top: `${pendingPoint.yRatio * 100}%` }}><Plus size={13} /></span> : null}
+            );
+          })}
+          {pendingPoint ? <span className="drawing-pin pending drawing-pin-scaled" style={{ left: `${pendingPoint.xRatio * 100}%`, top: `${pendingPoint.yRatio * 100}%`, "--pin-inverse-scale": 1 / viewport.scale } as React.CSSProperties}><Plus size={13} /></span> : null}
+          </div>
           {loading ? <div className="drawing-loading"><Loader2 className="spin" size={22} /> {text("Rendering secured drawing…", "Beveiligde tekening wordt weergegeven…")}</div> : null}
         </div>
       ) : null}
@@ -581,7 +825,7 @@ function MarkupShape({ markup, arrowMarkerId }: { markup: DrawingMarkup; arrowMa
   return null;
 }
 
-function DrawingPinDetails({ pin, onOpen }: { pin: DrawingPin; onOpen: () => void }) {
+function DrawingPinDetails({ pin, onOpen, onDelete }: { pin: DrawingPin; onOpen: () => void; onDelete: () => void }) {
   const { text } = useLanguage();
   return (
     <div className="visual-annotation-details">
@@ -594,6 +838,7 @@ function DrawingPinDetails({ pin, onOpen }: { pin: DrawingPin; onOpen: () => voi
         <div><dt>{text("Exact position", "Exacte positie")}</dt><dd>X {Math.round(Number(pin.x_ratio) * 100)}% · Y {Math.round(Number(pin.y_ratio) * 100)}%</dd></div>
       </dl>
       <button className="primary-button" type="button" onClick={onOpen}><ArrowUpRight size={15} /> {text("Open linked project record", "Open gekoppeld projectrecord")}</button>
+      <button className="secondary-button danger-button" type="button" disabled={pin.id.startsWith("pending:")} onClick={() => { if (window.confirm(text("Remove this pin from the drawing? The audit trail is retained.", "Deze pin van de tekening verwijderen? Het auditspoor blijft behouden."))) onDelete(); }}><Trash2 size={15} /> {text("Remove pin", "Pin verwijderen")}</button>
       <div className="operation-alert"><Link2 size={18} /><div><strong>{text("Traceable project link", "Traceerbare projectkoppeling")}</strong><span>{text("The drawing, page, coordinate and linked record identity remain together in the audit trail.", "Tekening, pagina, coördinaat en identiteit van het gekoppelde record blijven samen in het auditspoor.")}</span></div></div>
     </div>
   );

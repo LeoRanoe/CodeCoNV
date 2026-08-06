@@ -145,18 +145,55 @@ async function uploadDrawingAndCreatePin(page: Page, findingTitle: string) {
   const drawingButton = page.locator(".drawing-file-list button").filter({ hasText: drawingName }).first();
   await expect(drawingButton).toBeVisible({ timeout: 90_000 });
   await drawingButton.click();
-  const canvas = page.getByRole("button", { name: "Drawing. Click to place a linked pin." });
+
+  await openWorkspaceHome(page);
+  await page.locator('[data-workspace-destination="issues"]').click();
+  const finding = page.locator(".finding-card").filter({ hasText: findingTitle });
+  await finding.getByRole("button", { name: "Place on drawing" }).click();
+  await expect(page.getByRole("heading", { name: "Pins that open the exact project record" })).toBeVisible();
+  await page.locator(".drawing-file-list button").filter({ hasText: drawingName }).first().click();
+
+  const canvas = page.getByRole("application", { name: "Interactive drawing. Pan, zoom or place a linked pin." });
   await expect(canvas).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("toolbar").getByRole("button", { name: "Link pin" }).click();
   await canvas.press("Enter");
-  await page.getByRole("button", { name: "Link an observation / NCR" }).click();
-  const recordSelect = page.getByRole("combobox", { name: "Project record", exact: true });
-  const matchingRecordValue = () => recordSelect.evaluate((select, title) => (
-    Array.from((select as HTMLSelectElement).options).find((option) => option.text.includes(title))?.value ?? ""
-  ), findingTitle);
-  await expect.poll(matchingRecordValue, { timeout: 30_000 }).not.toBe("");
-  await recordSelect.selectOption(await matchingRecordValue());
-  await page.getByRole("button", { name: "Create link" }).click();
+  await page.getByRole("button", { name: "Confirm pin" }).click();
   await expect(page.locator(".drawing-pin").first()).toBeVisible({ timeout: 60_000 });
+
+  const pin = page.locator("button.drawing-pin").first();
+  const normalizedPosition = async () => pin.evaluate((element) => {
+    const anchor = element.closest(".drawing-pin-anchor") as HTMLElement;
+    return { left: anchor.style.left, top: anchor.style.top };
+  });
+  const positionBeforeZoom = await normalizedPosition();
+  await page.getByRole("button", { name: "Zoom in" }).click();
+  await page.getByRole("button", { name: "Zoom in" }).click();
+  expect(await normalizedPosition()).toEqual(positionBeforeZoom);
+
+  const pinBox = await pin.boundingBox();
+  expect(pinBox).not.toBeNull();
+  await page.mouse.move(pinBox!.x + pinBox!.width / 2, pinBox!.y + pinBox!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(pinBox!.x + 110, pinBox!.y + 70, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.locator(".toast")).toContainText(/position saved|queued safely/i);
+
+  const pager = await page.locator(".tour-controls span").first().textContent();
+  const pageTotal = Number(pager?.split("/")[1]?.trim() ?? "1");
+  if (pageTotal > 1) {
+    await page.getByRole("button", { name: "Next page" }).click();
+    await expect(canvas).toHaveAttribute("data-page", "2");
+    await expect(page.locator("button.drawing-pin")).toHaveCount(0);
+    await page.getByRole("button", { name: "Previous page" }).click();
+    await expect(canvas).toHaveAttribute("data-page", "1");
+  }
+
+  await page.reload();
+  await page.locator(".sidebar").getByRole("button", { name: "Workspace", exact: true }).click();
+  await openWorkspaceHome(page);
+  await page.locator('[data-workspace-destination="issues"]').click();
+  await page.locator(".finding-card").filter({ hasText: findingTitle }).getByRole("button", { name: "View on drawing" }).click();
+  await expect(page.locator("button.drawing-pin").first()).toBeVisible({ timeout: 60_000 });
 
   const existingMarkups = await page.locator(".drawing-markup-layer line").count();
   await page.getByRole("toolbar").getByRole("button", { name: "Arrow" }).click();
@@ -164,19 +201,48 @@ async function uploadDrawingAndCreatePin(page: Page, findingTitle: string) {
     document.documentElement.style.scrollBehavior = "auto";
     document.body.style.scrollBehavior = "auto";
   });
-  await canvas.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest" }));
+  const reloadedCanvas = page.getByRole("application", { name: "Interactive drawing. Pan, zoom or place a linked pin." });
+  await reloadedCanvas.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest" }));
   await expect.poll(async () => {
-    const bounds = await canvas.boundingBox();
+    const bounds = await reloadedCanvas.boundingBox();
     const viewport = page.viewportSize();
     return Boolean(bounds && viewport && bounds.y >= 0 && bounds.y + bounds.height <= viewport.height);
   }, { timeout: 10_000 }).toBe(true);
-  const box = await canvas.boundingBox();
+  const box = await reloadedCanvas.boundingBox();
   expect(box).not.toBeNull();
   await page.mouse.move(box!.x + box!.width * 0.3, box!.y + box!.height * 0.35);
   await page.mouse.down();
   await page.mouse.move(box!.x + box!.width * 0.7, box!.y + box!.height * 0.65, { steps: 12 });
   await page.mouse.up();
   await expect(page.locator(".drawing-markup-layer line")).toHaveCount(existingMarkups + 1, { timeout: 60_000 });
+
+  await page.context().setOffline(true);
+  const offlinePin = page.locator("button.drawing-pin").first();
+  const offlinePinBox = await offlinePin.boundingBox();
+  expect(offlinePinBox).not.toBeNull();
+  await page.mouse.move(offlinePinBox!.x + 8, offlinePinBox!.y + 8);
+  await page.mouse.down();
+  await page.mouse.move(offlinePinBox!.x + 55, offlinePinBox!.y + 40, { steps: 6 });
+  await page.mouse.up();
+  const queuedPinMutations = () => page.evaluate(async () => new Promise<number>((resolve, reject) => {
+    const open = indexedDB.open("codeco-field-v1", 4);
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const database = open.result;
+      const request = database.transaction("drawingPins", "readonly").objectStore("drawingPins").count();
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => { resolve(request.result); database.close(); };
+    };
+  }));
+  await expect.poll(queuedPinMutations).toBeGreaterThan(0);
+  await page.context().setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect.poll(queuedPinMutations, { timeout: 60_000 }).toBe(0);
+
+  await offlinePin.click();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Remove pin" }).click();
+  await expect(page.locator("button.drawing-pin")).toHaveCount(0, { timeout: 60_000 });
 }
 
 async function testExternalShareAndRevocation(page: Page, browser: Browser, findingTitle: string) {

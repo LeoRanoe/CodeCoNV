@@ -9,7 +9,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs tests/field-workflows.test.mjs",
+    "test": "npm run build && node --test tests/rendered-html.test.mjs tests/field-workflows.test.mjs tests/drawing-viewport.test.mjs",
     "test:e2e": "playwright test",
     "lint": "eslint app lib tests next.config.ts"
   },
