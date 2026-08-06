@@ -39,9 +39,18 @@ export default defineConfig({
       },
     },
     {
+      name: "tablet-field",
+      use: {
+        viewport: { width: 820, height: 1180 },
+        deviceScaleFactor: 1,
+        hasTouch: true,
+        isMobile: true,
+      },
+    },
+    {
       name: "desktop-office",
       use: {
-        viewport: { width: 1440, height: 900 },
+        viewport: { width: 1280, height: 800 },
         deviceScaleFactor: 1,
         hasTouch: false,
         isMobile: false,
@@ -51,7 +60,9 @@ export default defineConfig({
   webServer: reuseExistingServer
     ? undefined
     : {
-        command: "npm run dev",
+        // Service-worker takeover and offline boot are production behaviours. Running
+        // them against `next dev` introduces HMR worker updates that never exist on site.
+        command: "npm run start:e2e",
         url: `${baseURL}/supervisie`,
         reuseExistingServer: true,
         timeout: 120_000,

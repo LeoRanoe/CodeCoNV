@@ -1061,7 +1061,7 @@ test("lets a new deployment reach an installed field app", async () => {
 
   // Documents are never served from the cache first; that is what kept a deployed
   // change invisible on a phone that had the app installed.
-  assert.match(serviceWorker, /const CACHE = "codeco-field-shell-v3"/);
+  assert.match(serviceWorker, /const CACHE = "codeco-field-shell-v4"/);
   assert.match(serviceWorker, /const isDocument = request\.mode === "navigate"/);
   assert.match(serviceWorker, /_rsc/);
   assert.doesNotMatch(serviceWorker, /SHELL = \["\/supervisie"/);
@@ -1073,6 +1073,8 @@ test("lets a new deployment reach an installed field app", async () => {
   assert.match(providers, /registration\.update\(\)/);
   assert.match(providers, /controllerchange/);
   assert.match(providers, /hadController/);
+  assert.match(providers, /offlineShellReady/);
+  assert.match(serviceWorker, /codeco-precache-complete/);
 });
 
 test("processes the third batch of annotated screens from 31 July", async () => {
@@ -1725,6 +1727,10 @@ test("processes the three annotated capture screens from 2 August", async () => 
   // there as a pin next to the photo.
   assert.match(drawingPicker, /export function DrawingLocationPicker/);
   assert.match(drawingPicker, /pdfjs-dist/);
+  assert.match(drawingPicker, /ResizeObserver/);
+  assert.match(drawingPicker, /onPointerDown/);
+  assert.match(drawingPicker, /renderTask\?\.cancel/);
+  assert.doesNotMatch(drawingPicker, /onClick=\{\(event\) => onPoint/);
   assert.match(visual, /<DrawingLocationPicker/);
   assert.match(queue, /drawingPin\?: \{/);
   assert.match(queue, /linkedRecordType: "visual"/);
@@ -2500,4 +2506,37 @@ test("keeps Photos photo-only and gives complete asset and historical visual rou
   assert.match(operations, /derived_from_file: true/);
   assert.match(visual, /if \(activeCapture\.derived_from_file\)/);
   assert.match(visual, /No project photos yet/);
+});
+
+test("records accountable delays and keeps project documents in one short flow", async () => {
+  const [delayForm, operations, dailyPdf, periodPdf, periodDocx, projectDocuments, migration, styles] = await Promise.all([
+    readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/daily-report-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/period-report-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/period-report-docx.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/project-documents-home.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202608050008_delay_contractor_acknowledgement.sql", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(delayForm, /Reason for delay/);
+  assert.match(delayForm, /<SignatureField/);
+  assert.match(delayForm, /contractor is responsible for the work affected by this delay/);
+  assert.match(operations, /schemaFeatureMissing\(dailyWorkResult\.error, \[/);
+  for (const source of [dailyPdf, periodPdf, periodDocx]) {
+    assert.match(source, /delay_reason/);
+    assert.match(source, /contractor_signature_image/);
+  }
+  assert.match(migration, /add column if not exists contractor_signature_image text/);
+  assert.match(migration, /notify pgrst, 'reload schema'/);
+
+  assert.match(projectDocuments, /createMediaFolder/);
+  assert.match(projectDocuments, /queueOfflineUpload/);
+  assert.match(projectDocuments, /onDrop=/);
+  assert.match(projectDocuments, /normalizeRecordCode/);
+  assert.match(projectDocuments, /linkFileToRecord/);
+  assert.match(projectDocuments, /Document linked without copying the file/);
+  assert.match(styles, /@media \(max-width: 1180px\)[\s\S]*\.client-workspace-grid \{ grid-template-columns: repeat\(3/);
+  assert.match(styles, /@media \(max-width: 760px\)[\s\S]*\.client-workspace-grid \{ grid-template-columns: repeat\(2/);
 });

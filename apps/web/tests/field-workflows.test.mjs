@@ -91,6 +91,48 @@ test("recognizes every PostgREST shape for missing inspection signature columns"
   );
 });
 
+test("requires a factual delay reason and contractor acknowledgement only for new delays", async () => {
+  const { createDailyCloseoutSchema } = await import("../lib/forms/daily-report.ts");
+  const base = {
+    daySummary: "The planned construction work was reviewed and recorded today.",
+    weatherSummary: "Dry and calm",
+    workOngoing: "Facade work",
+    workPerformed: "Completed facade section A",
+    progressPercent: 55,
+    inspectionResult: "none",
+    qualityIssues: "no",
+    qualityDetails: "",
+    hseEvent: "none",
+    hseDetails: "",
+    equipmentStatus: "Operational",
+    deliveries: "None",
+    testsMeasurements: "None",
+    variationWork: "none",
+    delayCause: "none",
+    delayHours: 0,
+    communication: "Recorded",
+    risks: "None",
+    tomorrowPlan: "Continue facade work",
+    photoCount: 0,
+    attachmentsConfirmed: true,
+  };
+  const schema = createDailyCloseoutSchema("en");
+  assert.equal(schema.safeParse(base).success, true, "an ordinary closeout needs no contractor signature");
+  const unsigned = schema.safeParse({ ...base, delayCause: "delivery", delayHours: 4 });
+  assert.equal(unsigned.success, false);
+  assert.match(unsigned.error.issues.map((issue) => issue.message).join(" "), /contractor signature is required because the contractor is responsible/i);
+  assert.equal(schema.safeParse({
+    ...base,
+    delayCause: "delivery",
+    delayHours: 4,
+    delayReason: "The approved facade panels arrived four hours after the agreed slot.",
+    contractorCompany: "Demo Contractor N.V.",
+    contractorSignedBy: "Alex Contractor",
+    contractorSignedAt: "2026-08-05T13:00:00.000Z",
+    contractorSignatureImage: `data:image/png;base64,${"a".repeat(64)}`,
+  }).success, true);
+});
+
 test("accepts only narrow normalized external share tokens", () => {
   const lowercase = "a1".repeat(24);
   const uppercase = lowercase.toUpperCase();

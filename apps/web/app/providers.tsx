@@ -56,7 +56,22 @@ export function Providers({ children }: { children: React.ReactNode }) {
           const assets = performance.getEntriesByType("resource")
             .map((entry) => entry.name)
             .filter((name) => name.startsWith(window.location.origin) && (name.includes("/_next/static/") || /\.(?:woff2?|css)$/.test(name)));
-          if (assets.length) ready.active?.postMessage({ type: "codeco-precache", urls: Array.from(new Set(assets)) });
+          if (assets.length && ready.active) {
+            // A first visit is not controlled yet, so its build chunks have to be handed
+            // to the newly activated worker. Wait for an acknowledgement: without it a
+            // phone that loses coverage immediately after opening can retain only the
+            // first few chunks and paint an unhydrated shell on its next cold start.
+            const channel = new MessageChannel();
+            channel.port1.addEventListener("message", () => {
+              document.documentElement.dataset.offlineShellReady = "true";
+              channel.port1.close();
+            }, { once: true });
+            channel.port1.start();
+            ready.active.postMessage(
+              { type: "codeco-precache", urls: Array.from(new Set(assets)) },
+              [channel.port2],
+            );
+          }
         }).catch(() => undefined);
       }
     }).catch(() => undefined);

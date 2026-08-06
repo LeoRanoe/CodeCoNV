@@ -262,6 +262,11 @@ export type DailyWorkRecord = {
   progress_percent: number;
   delay_cause: string;
   delay_hours: number;
+  delay_reason?: string | null;
+  contractor_company?: string | null;
+  contractor_signed_by?: string | null;
+  contractor_signed_at?: string | null;
+  contractor_signature_image?: string | null;
   tomorrow_plan: string;
   created_at: string;
 };
@@ -573,7 +578,7 @@ export async function loadProjectOperations(
     client.from("external_share_links").select("id,organization_id,project_id,building_id,source_type,source_id,source_number,title,summary,source_file_id,expires_at,revoked_at,view_count,last_viewed_at,created_by,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(500),
     client.from("day_reports").select("id,report_date,report_number,status,completeness_percent,created_at,updated_at").eq("project_id", projectId).order("report_date", { ascending: false }).limit(1000),
     client.from("file_links").select("id,file_id,record_type,record_id,relationship,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(5000),
-    client.from("day_closeouts").select("id,building_id,day_report_id,day_summary,work_ongoing,work_performed,progress_percent,delay_cause,delay_hours,tomorrow_plan,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(400),
+    client.from("day_closeouts").select("id,building_id,day_report_id,day_summary,work_ongoing,work_performed,progress_percent,delay_cause,delay_hours,delay_reason,contractor_company,contractor_signed_by,contractor_signed_at,contractor_signature_image,tomorrow_plan,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(400),
     client.from("record_buildings").select("record_type,record_id,building_id").eq("project_id", projectId).limit(20000),
   ]);
   const registerWithoutSignatureResult = schemaFeatureMissing(registerResult.error, ["signed_by", "signed_at", "signature_image"])
@@ -615,8 +620,15 @@ export async function loadProjectOperations(
     : boqProgressResult;
   // File links only enrich the UI. A snapshot must still load when a role cannot read them.
   const compatibleFileLinkResult = fileLinkResult.error ? { data: [], error: null } : fileLinkResult;
-  // Daily work only enriches the workspace; a missing column must not break the snapshot.
-  const compatibleDailyWorkResult = dailyWorkResult.error ? { data: [], error: null } : dailyWorkResult;
+  // A database one migration behind still shows the old delay rows. The required signature
+  // applies only when a newly updated closeout records a delay.
+  const dailyWorkWithoutContractorResult = schemaFeatureMissing(dailyWorkResult.error, [
+    "delay_reason", "contractor_company", "contractor_signed_by", "contractor_signed_at", "contractor_signature_image",
+  ])
+    ? await client.from("day_closeouts").select("id,building_id,day_report_id,day_summary,work_ongoing,work_performed,progress_percent,delay_cause,delay_hours,tomorrow_plan,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(400)
+    : dailyWorkResult;
+  // Daily work only enriches the workspace; a database without the table must not break the snapshot.
+  const compatibleDailyWorkResult = dailyWorkWithoutContractorResult.error ? { data: [], error: null } : dailyWorkWithoutContractorResult;
   const compatibleRecordBuildingResult = recordBuildingResult.error ? { data: [], error: null } : recordBuildingResult;
   const compatibleVisualAnnotationResult = schemaFeatureMissing(visualAnnotationResult.error, ["disposition"])
     ? await client.from("visual_annotations").select("id,capture_id,finding_id,coordinate_mode,x_ratio,y_ratio,yaw,pitch,title,description,severity,status,created_at").eq("project_id", projectId).order("created_at").limit(1000)

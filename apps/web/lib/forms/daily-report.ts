@@ -63,6 +63,11 @@ export function createDailyCloseoutSchema(language: "en" | "nl" = "en") {
     variationWork: z.enum(["none", "pending", "approved", "rejected"]),
     delayCause: z.enum(["none", "weather", "delivery", "material", "equipment", "other"]),
     delayHours: z.number().min(0).max(24),
+    delayReason: z.string().trim().max(1500).optional(),
+    contractorCompany: z.string().trim().max(240).optional(),
+    contractorSignedBy: z.string().trim().max(240).optional(),
+    contractorSignedAt: z.string().trim().max(80).optional(),
+    contractorSignatureImage: z.string().max(300000).optional(),
     communication: z.string().trim().max(1000).optional(),
     risks: z.string().trim().max(1000).optional(),
     tomorrowPlan: z.string().trim().min(3, text("Choose tomorrow's plan", "Kies de planning voor morgen")).max(1000),
@@ -78,6 +83,22 @@ export function createDailyCloseoutSchema(language: "en" | "nl" = "en") {
     }
     if (answers.delayCause !== "none" && answers.delayHours <= 0) {
       context.addIssue({ code: "custom", path: ["delayHours"], message: text("Enter the time lost", "Vul het tijdverlies in") });
+    }
+    if (answers.delayCause !== "none" && (answers.delayReason?.length ?? 0) < 10) {
+      context.addIssue({ code: "custom", path: ["delayReason"], message: text("Describe what actually caused this delay", "Beschrijf wat deze vertraging daadwerkelijk heeft veroorzaakt") });
+    }
+    if (answers.delayCause !== "none" && (answers.contractorCompany?.length ?? 0) < 2) {
+      context.addIssue({ code: "custom", path: ["contractorCompany"], message: text("Enter the responsible contractor company", "Vul het verantwoordelijke aannemersbedrijf in") });
+    }
+    if (answers.delayCause !== "none" && (!(answers.contractorSignedBy?.length ?? 0) || !answers.contractorSignedAt || !answers.contractorSignatureImage)) {
+      context.addIssue({
+        code: "custom",
+        path: ["contractorSignatureImage"],
+        message: text(
+          "The contractor signature is required because the contractor is responsible for the work affected by this delay",
+          "De handtekening van de aannemer is verplicht omdat de aannemer verantwoordelijk is voor het werk waarop deze vertraging betrekking heeft",
+        ),
+      });
     }
     if (!answers.attachmentsConfirmed) {
       context.addIssue({ code: "custom", path: ["attachmentsConfirmed"], message: text("Confirm that the attachments were checked", "Bevestig dat de bijlagen zijn gecontroleerd") });

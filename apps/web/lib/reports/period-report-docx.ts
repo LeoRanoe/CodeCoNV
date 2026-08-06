@@ -219,6 +219,10 @@ export function buildPeriodReportDocxDocument(snapshot: PeriodReportSnapshot, op
         if (start) children.push(new Paragraph({ children: [new TextRun({ text: `Weer: ${value(start, "weather_condition")} · ${value(start, "temperature_c")} °C · wind ${value(start, "wind_condition")} | Werkuren: ${value(start, "shift_start")}–${value(start, "shift_end")} | Gepland: ${value(start, "planned_work")}`, color: "5E707B", size: 14 })] }));
         if (closeout && topics.has("works_ongoing")) children.push(new Paragraph({ children: [new TextRun({ text: `Lopend: ${value(closeout, "work_ongoing", "-")} | Morgen: ${value(closeout, "tomorrow_plan", "-")}`, color: "5E707B", size: 14 })] }));
         if (closeout && topics.has("works_completed")) children.push(new Paragraph({ children: [new TextRun({ text: `Afgerond: ${value(closeout, "work_performed", "-")} | Voortgang: ${value(closeout, "progress_percent", "0")}%`, color: "5E707B", size: 14 })], spacing: { after: 100 } }));
+        if (closeout && value(closeout, "delay_cause", "none") !== "none") {
+          children.push(new Paragraph({ children: [new TextRun({ text: `Vertraging: ${value(closeout, "delay_cause")} · ${value(closeout, "delay_hours", "0")} uur | Reden: ${value(closeout, "delay_reason", "niet geregistreerd")}`, color: "A52B24", size: 14 })] }));
+          children.push(signatureBlock([["Aannemer", `${value(closeout, "contractor_signed_by", "oude registratie zonder handtekening")} · ${value(closeout, "contractor_company")} · ${formatDate(value(closeout, "contractor_signed_at"))}`, value(closeout, "contractor_signature_image") || null]]));
+        }
       });
     } else {
       children.push(new Paragraph({ children: [new TextRun({ text: "Geen dagrapporten in deze periode.", italics: true, size: 16 })] }));

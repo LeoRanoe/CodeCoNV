@@ -202,6 +202,12 @@ export function DailyReportDocument({ snapshot, logoSource = "/codeco-logo-pdf.p
           <Row label="Testen/meten" value={closeout.testsMeasurements} />
           <Row label="Wijzigingswerk" value={closeout.variationWork} />
           <Row label="Vertraging" value={closeout.delayCause === "none" ? "Geen vertraging" : `${closeout.delayCause}; ${closeout.delayHours} uur`} />
+          {closeout.delayCause !== "none" ? <>
+            <Row label="Reden vertraging" value={closeout.delayReason} />
+            <Row label="Verantwoordelijke aannemer" value={[closeout.contractorSignedBy, closeout.contractorCompany].filter(Boolean).join(" · ")} />
+            {closeout.contractorSignatureImage ? <Image src={closeout.contractorSignatureImage} style={styles.signatureInk} /> : null}
+            <Row label="Ondertekend" value={closeout.contractorSignedAt?.slice(0, 16).replace("T", " ")} />
+          </> : null}
         </Section>
         <Section title="13–16. Communicatie, acties, risico's en morgen">
           <Row label="Communicatie" value={closeout.communication} />
@@ -234,6 +240,9 @@ export function DailyReportDocument({ snapshot, logoSource = "/codeco-logo-pdf.p
               <Row label="Voortgang" value={`${building.closeout.progressPercent}%`} />
               <Row label="Kwaliteit" value={building.closeout.qualityIssues === "yes" ? building.closeout.qualityDetails : "Geen afwijking gemeld"} />
               <Row label="HSE" value={building.closeout.hseEvent === "none" ? "Geen incident of near miss gemeld" : building.closeout.hseDetails} />
+              <Row label="Vertraging" value={building.closeout.delayCause === "none" ? "Geen vertraging" : `${building.closeout.delayCause}; ${building.closeout.delayHours} uur · ${building.closeout.delayReason || "geen reden"}`} />
+              {building.closeout.contractorSignatureImage ? <Image src={building.closeout.contractorSignatureImage} style={styles.signatureInk} /> : null}
+              <Row label="Aannemer" value={[building.closeout.contractorSignedBy, building.closeout.contractorCompany].filter(Boolean).join(" · ")} />
               <Row label="Planning morgen" value={building.closeout.tomorrowPlan} />
             </Section>
           ))}
@@ -295,6 +304,11 @@ function dailyCloseoutAnswersFromSnapshotRow(closeout: Record<string, unknown> |
     variationWork: value(closeout, "variation_work_status", "none") as DailyCloseoutAnswers["variationWork"],
     delayCause: value(closeout, "delay_cause", "none") as DailyCloseoutAnswers["delayCause"],
     delayHours: Number(closeout?.delay_hours ?? 0),
+    delayReason: value(closeout, "delay_reason"),
+    contractorCompany: value(closeout, "contractor_company"),
+    contractorSignedBy: value(closeout, "contractor_signed_by"),
+    contractorSignedAt: value(closeout, "contractor_signed_at"),
+    contractorSignatureImage: value(closeout, "contractor_signature_image"),
     communication: value(closeout, "communication"),
     risks: value(closeout, "risks"),
     tomorrowPlan: value(closeout, "tomorrow_plan", "Niet geregistreerd"),

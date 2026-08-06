@@ -5,9 +5,11 @@ import { useRef, useState } from "react";
 import { BuildingMultiPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
+import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
 import { workforceTotal, WorkforceRegister } from "@/app/workforce-register";
 import { useLanguage } from "@/lib/i18n";
 import type { DailyCloseoutAnswers, ProjectStartAnswers } from "@/lib/forms/daily-report";
+import { signatureFromDetails } from "@/lib/signatures/handwritten-signature.mjs";
 
 export type DailyLogAttendanceRow = {
   partyId: string;
@@ -96,8 +98,15 @@ export function DailyLogModal({
     adviceToContractor: initialCloseout?.communication ?? "",
     delayCause: initialCloseout?.delayCause ?? "none",
     delayHours: initialCloseout?.delayHours ?? 0,
+    delayReason: initialCloseout?.delayReason ?? "",
+    contractorCompany: initialCloseout?.contractorCompany ?? "",
     tomorrowPlan: initialCloseout?.tomorrowPlan ?? "",
   }));
+  const [contractorSignature, setContractorSignature] = useState<HandwrittenSignature | null>(() => signatureFromDetails(
+    initialCloseout?.contractorSignedBy,
+    initialCloseout?.contractorSignedAt,
+    initialCloseout?.contractorSignatureImage,
+  ) as HandwrittenSignature | null);
 
   const weatherLabel = projectStartAnswers
     ? `${({ sunny: text("Sunny", "Zonnig"), partly_cloudy: text("Partly cloudy", "Licht bewolkt"), cloudy: text("Cloudy", "Bewolkt"), rain: text("Rain", "Regen"), heavy_rain: text("Heavy rain", "Zware regen") } as Record<string, string>)[projectStartAnswers.weatherCondition]} · ${projectStartAnswers.temperatureC}°C`
@@ -151,6 +160,11 @@ export function DailyLogModal({
     variationWork: initialCloseout?.variationWork ?? "none",
     delayCause: log.delayCause,
     delayHours: log.delayCause === "none" ? 0 : log.delayHours,
+    delayReason: log.delayCause === "none" ? "" : log.delayReason.trim(),
+    contractorCompany: log.delayCause === "none" ? "" : log.contractorCompany.trim(),
+    contractorSignedBy: log.delayCause === "none" ? "" : contractorSignature?.name ?? "",
+    contractorSignedAt: log.delayCause === "none" ? "" : contractorSignature?.signedAt ?? "",
+    contractorSignatureImage: log.delayCause === "none" ? "" : contractorSignature?.image ?? "",
     communication: log.adviceToContractor.trim(),
     risks: initialCloseout?.risks ?? "",
     tomorrowPlan: log.tomorrowPlan.trim(),
@@ -164,6 +178,9 @@ export function DailyLogModal({
   if (answers.tomorrowPlan.length < 3) problems.push(text("Enter the plan for tomorrow.", "Vul de planning voor morgen in."));
   if (answers.inspectionResult === "issues" && (answers.qualityDetails?.length ?? 0) < 10) problems.push(text("Describe the quality finding.", "Omschrijf de kwaliteitsbevinding."));
   if (answers.hseEvent !== "none" && (answers.hseDetails?.length ?? 0) < 10) problems.push(text("Describe the HSE event.", "Omschrijf de HSE-gebeurtenis."));
+  if (answers.delayCause !== "none" && (answers.delayReason?.length ?? 0) < 10) problems.push(text("Describe what actually caused the delay in at least one sentence.", "Beschrijf in minimaal één zin wat de vertraging daadwerkelijk heeft veroorzaakt."));
+  if (answers.delayCause !== "none" && (answers.contractorCompany?.length ?? 0) < 2) problems.push(text("Enter the responsible contractor company.", "Vul het verantwoordelijke aannemersbedrijf in."));
+  if (answers.delayCause !== "none" && !contractorSignature) problems.push(text("The contractor signature is required because the contractor is responsible for the work affected by this delay.", "De handtekening van de aannemer is verplicht omdat de aannemer verantwoordelijk is voor het werk waarop deze vertraging betrekking heeft."));
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
@@ -291,6 +308,24 @@ export function DailyLogModal({
                 </label>
               ) : null}
             </div>
+            {log.delayCause !== "none" ? <div className="delay-responsibility-block">
+              <label className="form-field">
+                <span>{text("Reason for delay", "Reden van vertraging")}</span>
+                <textarea rows={3} value={log.delayReason} onChange={(event) => setLog({ ...log, delayReason: event.target.value })} placeholder={text("Describe what actually happened, not only the category.", "Beschrijf wat er daadwerkelijk is gebeurd, niet alleen de categorie.")} />
+                <DictateButton onText={(transcript) => setLog((current) => ({ ...current, delayReason: appendDictation(current.delayReason, transcript) }))} />
+              </label>
+              <label className="form-field">
+                <span>{text("Responsible contractor company", "Verantwoordelijk aannemersbedrijf")}</span>
+                <input value={log.contractorCompany} onChange={(event) => setLog({ ...log, contractorCompany: event.target.value })} />
+              </label>
+              <SignatureField
+                label={text("Required contractor signature", "Verplichte handtekening aannemer")}
+                declaration={text("I acknowledge this delay and my responsibility for the affected work.", "Ik erken deze vertraging en mijn verantwoordelijkheid voor het betreffende werk.")}
+                hint={text("Required because the contractor is responsible for the affected work.", "Verplicht omdat de aannemer verantwoordelijk is voor het betreffende werk.")}
+                value={contractorSignature}
+                onChange={setContractorSignature}
+              />
+            </div> : null}
             <label className="form-field">
               <span>{text("Plan for tomorrow", "Planning voor morgen")}</span>
               <textarea rows={2} value={log.tomorrowPlan} onChange={(event) => setLog({ ...log, tomorrowPlan: event.target.value })} />

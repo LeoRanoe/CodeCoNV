@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
  * connection. These checks need no account: they prove the shell itself boots, hydrates and
  * reacts with the network switched off, which is the part a login cannot rescue.
  */
-const shellCache = "codeco-field-shell-v3";
+const shellCache = "codeco-field-shell-v4";
 
 test.describe("offline field app", () => {
   test("boots, hydrates and reacts with the network switched off", async ({ page, context }) => {
@@ -14,6 +14,7 @@ test.describe("offline field app", () => {
     // The worker takes control on the first visit, and the code this page is running is
     // handed to it: an app opened exactly once must still open again without a connection.
     await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 25_000 });
+    await page.waitForFunction(() => document.documentElement.dataset.offlineShellReady === "true", null, { timeout: 25_000 });
     await expect.poll(
       () => page.evaluate(async (cacheName) => {
         const cache = await caches.open(cacheName);
@@ -38,13 +39,14 @@ test.describe("offline field app", () => {
     // A cold start: a new tab, still offline, as when the phone reopens the installed app.
     const coldPage = await context.newPage();
     await coldPage.goto("/supervisie", { waitUntil: "domcontentloaded" });
-    await coldPage.waitForFunction(() => typeof (window as { next?: unknown }).next !== "undefined", null, { timeout: 20_000 });
 
-    // Hydrated is not the same as alive: the page has to answer an interaction.
+    // Hydrated is not the same as painted: the React state has to answer an interaction.
+    // Do not wait on a private Next.js global; Next 16 no longer exposes the old `next`
+    // object even though the application is fully hydrated.
     const languageSelect = coldPage.locator(".language-switcher select").first();
     await expect(languageSelect).toBeVisible();
-    await languageSelect.selectOption("nl");
-    await expect(coldPage.locator("body")).toContainText(/Taal|Nederlands/i);
+    await languageSelect.selectOption("en");
+    await expect(coldPage.getByRole("heading", { name: "Welcome back" })).toBeVisible();
 
     await context.setOffline(false);
   });

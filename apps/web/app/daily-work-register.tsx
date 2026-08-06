@@ -115,7 +115,8 @@ export function DailyWorkRegister({
             </> : null}
             {view === "delays" ? <>
               <p>{delayCauseLabels[record.delay_cause]?.[language] ?? record.delay_cause} · {Number(record.delay_hours)} {text("hours lost", "uur verlies")}</p>
-              <small>{record.day_summary}</small>
+              <small>{record.delay_reason || record.day_summary}</small>
+              {record.contractor_signed_by ? <small className="delay-contractor-proof">{text("Acknowledged by", "Erkend door")} {record.contractor_signed_by}{record.contractor_company ? ` · ${record.contractor_company}` : ""} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(record.contractor_signed_at!))}</small> : <small>{text("Historical record · no contractor signature stored", "Historische registratie · geen aannemershandtekening opgeslagen")}</small>}
             </> : null}
           </article>
         ))}

@@ -88,7 +88,7 @@ export function DrawingLocationPicker({
   };
 
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+    <div className="modal-backdrop" role="presentation" onPointerDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal drawing-location-modal" role="dialog" aria-modal="true" aria-labelledby="drawing-location-title">
         <header className="modal-header">
           <div>
@@ -193,11 +193,24 @@ function DrawingPointCanvas({ file, pageNumber, client, point, onPageCount, onPo
 }) {
   const { text } = useLanguage();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const pointerStartRef = useRef<{ id: number; x: number; y: number } | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [mimeType, setMimeType] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [aspectRatio, setAspectRatio] = useState("4 / 3");
+  const [surfaceWidth, setSurfaceWidth] = useState(0);
+
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    const measure = () => setSurfaceWidth(Math.max(1, Math.round(surface.getBoundingClientRect().width)));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(surface);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -221,9 +234,12 @@ function DrawingPointCanvas({ file, pageNumber, client, point, onPageCount, onPo
   }, [client, file.id, text]);
 
   useEffect(() => {
-    if (!previewUrl || mimeType !== "application/pdf" || !canvasRef.current) return;
+    if (!previewUrl || mimeType !== "application/pdf" || !canvasRef.current || !surfaceWidth) return;
     let cancelled = false;
     let loadingTask: { destroy: () => Promise<void> } | null = null;
+    let renderTask: { promise: Promise<void>; cancel: () => void } | null = null;
+    setLoading(true);
+    setError("");
     void import("pdfjs-dist").then(async (pdfjs) => {
       pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
       const task = pdfjs.getDocument({ url: previewUrl });
@@ -232,7 +248,8 @@ function DrawingPointCanvas({ file, pageNumber, client, point, onPageCount, onPo
       if (cancelled) return;
       onPageCount(pdf.numPages);
       const page = await pdf.getPage(pageNumber);
-      const viewport = page.getViewport({ scale: 1.45 });
+      const naturalViewport = page.getViewport({ scale: 1 });
+      const viewport = page.getViewport({ scale: surfaceWidth / naturalViewport.width });
       const canvas = canvasRef.current;
       if (!canvas || cancelled) return;
       const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
@@ -242,31 +259,46 @@ function DrawingPointCanvas({ file, pageNumber, client, point, onPageCount, onPo
       setAspectRatio(`${viewport.width} / ${viewport.height}`);
       const context = canvas.getContext("2d");
       if (!context) throw new Error("Drawing canvas is unavailable.");
-      await page.render({ canvas, canvasContext: context, viewport, transform: pixelRatio === 1 ? undefined : [pixelRatio, 0, 0, pixelRatio, 0, 0] }).promise;
+      renderTask = page.render({ canvas, canvasContext: context, viewport, transform: pixelRatio === 1 ? undefined : [pixelRatio, 0, 0, pixelRatio, 0, 0] });
+      await renderTask.promise;
       if (!cancelled) setLoading(false);
     }).catch((caught: unknown) => {
-      if (!cancelled) {
+      if (!cancelled && !(caught instanceof Error && caught.name === "RenderingCancelledException")) {
         setLoading(false);
         setError(caught instanceof Error ? caught.message : text("PDF page could not be rendered.", "PDF-pagina kon niet worden weergegeven."));
       }
     });
     return () => {
       cancelled = true;
+      renderTask?.cancel();
       void loadingTask?.destroy();
     };
-  }, [mimeType, onPageCount, pageNumber, previewUrl, text]);
+  }, [mimeType, onPageCount, pageNumber, previewUrl, surfaceWidth, text]);
 
   if (error) return <div className="visual-load-state error"><AlertTriangle size={21} /> {error}</div>;
 
   return (
     <div className="drawing-canvas-frame drawing-location-frame">
       <div
+        ref={surfaceRef}
         className="drawing-canvas-surface"
         style={{ aspectRatio }}
         role="button"
         tabIndex={0}
         aria-label={text("Drawing. Tap the spot where the photo was taken.", "Tekening. Tik op de plek waar de foto is genomen.")}
-        onClick={(event) => onPoint(event.clientX, event.clientY, event.currentTarget)}
+        onPointerDown={(event) => {
+          if (!event.isPrimary || event.button !== 0) return;
+          pointerStartRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerUp={(event) => {
+          const start = pointerStartRef.current;
+          pointerStartRef.current = null;
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+          if (!start || start.id !== event.pointerId || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) return;
+          onPoint(event.clientX, event.clientY, event.currentTarget);
+        }}
+        onPointerCancel={() => { pointerStartRef.current = null; }}
         onKeyDown={(event) => {
           if (event.key !== "Enter" && event.key !== " ") return;
           event.preventDefault();

@@ -328,6 +328,11 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
             {start ? <Text style={styles.dailyDetail}>Weer: {value(start, "weather_condition")} · {value(start, "temperature_c")} °C · wind {value(start, "wind_condition")} | Werkuren: {value(start, "shift_start")}–{value(start, "shift_end")} | Gepland: {value(start, "planned_work")}</Text> : null}
             {closeout && topics.has("works_ongoing") ? <Text style={styles.dailyDetail}>Lopend: {value(closeout, "work_ongoing", "-")} | Morgen: {value(closeout, "tomorrow_plan", "-")}</Text> : null}
             {closeout && topics.has("works_completed") ? <Text style={styles.dailyDetail}>Afgerond: {value(closeout, "work_performed", "-")} | Voortgang: {value(closeout, "progress_percent", "0")}%</Text> : null}
+            {closeout && value(closeout, "delay_cause", "none") !== "none" ? <>
+              <Text style={styles.dailyDetail}>Vertraging: {value(closeout, "delay_cause")} · {value(closeout, "delay_hours", "0")} uur | Reden: {value(closeout, "delay_reason", "niet geregistreerd")}</Text>
+              <Text style={styles.dailyDetail}>Aannemer: {value(closeout, "contractor_signed_by", "oude registratie zonder handtekening")} · {value(closeout, "contractor_company")} · {formatDate(value(closeout, "contractor_signed_at"))}</Text>
+              {value(closeout, "contractor_signature_image") ? <Image src={value(closeout, "contractor_signature_image")} style={styles.recordSignature} /> : null}
+            </> : null}
             {closeout ? <Text style={styles.dailyDetail}>QC: {value(closeout, "inspection_result")} · {value(closeout, "quality_details", "geen afwijking")} | HSE: {value(closeout, "hse_event")} · {value(closeout, "hse_details", "geen bijzonderheden")} | Advies/besluit: {value(closeout, "communication", "-")}</Text> : null}
           </View>;
         }) : <Text style={styles.empty}>Geen dagrapporten in deze periode.</Text>}

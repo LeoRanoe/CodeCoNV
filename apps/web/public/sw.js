@@ -1,6 +1,6 @@
 // Field shell cache. Bump the version on every change to this file: the activate
 // handler deletes every other cache, so a new version wipes what the old one stored.
-const CACHE = "codeco-field-shell-v3";
+const CACHE = "codeco-field-shell-v4";
 
 // Only content-addressed or stable assets may be served from the cache. Documents are
 // never cache-first: doing that kept a deployed change invisible until the browser
@@ -66,6 +66,7 @@ self.addEventListener("message", (event) => {
         if (!(await cache.match(url))) missing.push(url);
       }
       await Promise.allSettled(missing.map((url) => cache.add(new Request(url, { credentials: "same-origin" }))));
+      event.ports[0]?.postMessage({ type: "codeco-precache-complete", stored: event.data.urls.length });
     })());
   }
 });

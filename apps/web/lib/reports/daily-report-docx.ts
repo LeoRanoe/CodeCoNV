@@ -56,6 +56,8 @@ export function buildDailyReportDocxDocument(snapshot: DailyReportPdfSnapshot, l
           labelValue("Voortgang", `${building.closeout.progressPercent}%`),
           labelValue("Kwaliteit", building.closeout.qualityIssues === "yes" ? building.closeout.qualityDetails : "Geen afwijking gemeld"),
           labelValue("HSE", building.closeout.hseEvent === "none" ? "Geen incident of near miss gemeld" : building.closeout.hseDetails),
+          labelValue("Vertraging", building.closeout.delayCause === "none" ? "Geen vertraging" : `${building.closeout.delayCause}; ${building.closeout.delayHours} uur · ${building.closeout.delayReason || "geen reden"}`),
+          ...(building.closeout.contractorSignedBy ? [signatureBlock([["Aannemer", `${building.closeout.contractorSignedBy} · ${building.closeout.contractorCompany || ""} · ${building.closeout.contractorSignedAt?.slice(0, 16).replace("T", " ") || ""}`, building.closeout.contractorSignatureImage ?? null]])] : []),
           labelValue("Planning morgen", building.closeout.tomorrowPlan),
         ]),
       ]
@@ -93,7 +95,12 @@ export function buildDailyReportDocxDocument(snapshot: DailyReportPdfSnapshot, l
             labelValue("Testen/meten", closeout.testsMeasurements),
             labelValue("Wijzigingswerk", closeout.variationWork),
             labelValue("Vertraging", closeout.delayCause === "none" ? "Geen vertraging" : `${closeout.delayCause}; ${closeout.delayHours} uur`),
+            ...(closeout.delayCause !== "none" ? [
+              labelValue("Reden vertraging", closeout.delayReason),
+              labelValue("Aannemersbedrijf", closeout.contractorCompany),
+            ] : []),
           ),
+          ...(closeout.delayCause !== "none" ? [signatureBlock([["Handtekening aannemer", `${closeout.contractorSignedBy || ""} · ${closeout.contractorSignedAt?.slice(0, 16).replace("T", " ") || ""}`, closeout.contractorSignatureImage ?? null]])] : []),
           ...section("13–16. Communicatie, acties, risico's en morgen",
             labelValue("Communicatie", closeout.communication),
             labelValue("Registraties", `${snapshot.registrationCount} dagregistraties`),

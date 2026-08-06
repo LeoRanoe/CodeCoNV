@@ -29,7 +29,7 @@ const contentSecurityPolicy = [
   "form-action 'self'",
   // PDF.js uses WebAssembly for document/image decoding. This narrowly permits
   // WASM compilation without enabling general JavaScript eval().
-  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+  `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' blob: data:",
   "media-src 'self' blob:",
@@ -42,6 +42,9 @@ const contentSecurityPolicy = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Playwright and field devices may reach the local dev server through its numeric host.
+  // Production CSP stays strict; this only lets Next's development HMR origin through.
+  allowedDevOrigins: ["127.0.0.1"],
   async headers() {
     return [{
       source: "/:path*",

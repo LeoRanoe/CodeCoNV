@@ -56,6 +56,7 @@ import { photoEvidenceLine, photoTitle, photoUploadDescription, PhotoEvidenceLis
 import { SketchPad } from "@/app/sketch-pad";
 import { ClientDashboard } from "@/app/client-dashboard";
 import { DailyLogModal } from "@/app/daily-log-modal";
+import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
 import { LiveWeatherChip } from "@/app/live-weather-chip";
 import { LocationPicker, locationBreadcrumb, type ProjectLocationOption } from "@/app/location-picker";
 import { FieldGuide } from "@/app/field-guide";
@@ -64,6 +65,7 @@ import type { ActionCenterView } from "@/app/project-action-center";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { ensureDailyBackup } from "@/lib/backups/client";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
+import { signatureFromDetails } from "@/lib/signatures/handwritten-signature.mjs";
 import { startCompassWatch } from "@/lib/images/compass";
 import { WorkforceModal } from "@/app/workforce-register";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
@@ -467,6 +469,11 @@ function closeoutFromRow(row: Record<string, unknown> | null): DailyCloseoutAnsw
     variationWork: row.variation_work_status as DailyCloseoutAnswers["variationWork"],
     delayCause: row.delay_cause as DailyCloseoutAnswers["delayCause"],
     delayHours: Number(row.delay_hours),
+    delayReason: String(row.delay_reason ?? ""),
+    contractorCompany: String(row.contractor_company ?? ""),
+    contractorSignedBy: String(row.contractor_signed_by ?? ""),
+    contractorSignedAt: String(row.contractor_signed_at ?? ""),
+    contractorSignatureImage: String(row.contractor_signature_image ?? ""),
     communication: String(row.communication ?? ""),
     risks: String(row.risks ?? ""),
     tomorrowPlan: String(row.tomorrow_plan),
@@ -1162,8 +1169,13 @@ export function CodecoSupervisionApp() {
       setModal("attendance");
       return;
     }
-    const isDelay = type === "delay";
-    prepareEntry(isDelay ? "delay" : "activity");
+    if (type === "delay") {
+      // A delay is part of the confirmed day closeout: its category, factual reason and
+      // contractor acknowledgement must travel together into daily and period reports.
+      setModal("one_tap_log");
+      return;
+    }
+    prepareEntry("activity");
     setEntryActivityKind(type);
     writeDescription(type === "works_ongoing"
       ? text("Work is ongoing", "Werkzaamheden zijn gaande")
@@ -4341,6 +4353,11 @@ function DailyQuestionsModal({
       variationWork: "none",
       delayCause: "none",
       delayHours: 0,
+      delayReason: "",
+      contractorCompany: "",
+      contractorSignedBy: "",
+      contractorSignedAt: "",
+      contractorSignatureImage: "",
       communication: "",
       risks: projectStartAnswers?.riskNotes ?? "",
       tomorrowPlan: "",
@@ -4348,9 +4365,9 @@ function DailyQuestionsModal({
       attachmentsConfirmed: false,
     },
   });
-  const [qualityIssues, hseEvent, delayCause, workOngoing, workPerformed, tomorrowPlan, daySummary, weatherSummary, equipmentStatus, deliveries, testsMeasurements, communication, risks] = useWatch({
+  const [qualityIssues, hseEvent, delayCause, workOngoing, workPerformed, tomorrowPlan, daySummary, weatherSummary, equipmentStatus, deliveries, testsMeasurements, communication, risks, contractorSignedBy, contractorSignedAt, contractorSignatureImage] = useWatch({
     control,
-    name: ["qualityIssues", "hseEvent", "delayCause", "workOngoing", "workPerformed", "tomorrowPlan", "daySummary", "weatherSummary", "equipmentStatus", "deliveries", "testsMeasurements", "communication", "risks"],
+    name: ["qualityIssues", "hseEvent", "delayCause", "workOngoing", "workPerformed", "tomorrowPlan", "daySummary", "weatherSummary", "equipmentStatus", "deliveries", "testsMeasurements", "communication", "risks", "contractorSignedBy", "contractorSignedAt", "contractorSignatureImage"],
   });
   const dailySummaryOptions = [
     text("Work proceeded according to plan.", "Werk is volgens planning verlopen."),
@@ -4404,7 +4421,7 @@ function DailyQuestionsModal({
   const stepFields: Array<Array<keyof DailyCloseoutAnswers>> = [
     ["daySummary", "weatherSummary", "workOngoing", "workPerformed", "progressPercent"],
     ["inspectionResult", "qualityIssues", "qualityDetails", "hseEvent", "hseDetails"],
-    ["equipmentStatus", "deliveries", "testsMeasurements", "variationWork", "delayCause", "delayHours"],
+    ["equipmentStatus", "deliveries", "testsMeasurements", "variationWork", "delayCause", "delayHours", "delayReason", "contractorCompany", "contractorSignedBy", "contractorSignedAt", "contractorSignatureImage"],
     ["communication", "risks", "tomorrowPlan", "photoCount", "attachmentsConfirmed"],
   ];
   const stepTitles = [text("Progress & work", "Verloop & werk"), text("Quality & HSE", "Kwaliteit & HSE"), text("Logistics & delay", "Logistiek & vertraging"), text("Agreements & tomorrow", "Afspraken & morgen")];
@@ -4492,7 +4509,25 @@ function DailyQuestionsModal({
                 <div className="click-answer-block wide"><strong>{text("Tests and measurements", "Testen en meetwaarden")}</strong><div className="quick-issue-presets">{testOptions.map((option) => <button className={testsMeasurements === option ? "active" : ""} type="button" onClick={() => setValue("testsMeasurements", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Add a numeric test result", "Numerieke testwaarde toevoegen")}</summary><label className="form-field"><span>{text("Test name, value and unit", "Testnaam, waarde en eenheid")}</span><textarea rows={3} placeholder={text("Example: slump 90 mm", "Bijvoorbeeld: slump 90 mm")} {...register("testsMeasurements")} /><DictateButton onText={(transcript) => setValue("testsMeasurements", appendDictation(getValues("testsMeasurements") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details></div>
                 <label className="form-field"><span>{text("Variation work", "Meer- of minderwerk")}</span><select {...register("variationWork")}><option value="none">{text("Not applicable", "Niet van toepassing")}</option><option value="pending">{text("Pending", "In behandeling")}</option><option value="approved">{text("Approved", "Goedgekeurd")}</option><option value="rejected">{text("Rejected", "Afgewezen")}</option></select></label>
                 <label className="form-field"><span>{text("Was there a delay?", "Was er vertraging?")}</span><select {...register("delayCause")}><option value="none">{text("No delay", "Geen vertraging")}</option><option value="weather">{text("Weather", "Weer")}</option><option value="delivery">{text("Late delivery", "Levering te laat")}</option><option value="material">{text("Material shortage", "Materiaaltekort")}</option><option value="equipment">{text("Equipment failure", "Materieelstoring")}</option><option value="other">{text("Other cause", "Andere oorzaak")}</option></select></label>
-                {delayCause !== "none" ? <label className="form-field"><span>{text("Time lost", "Tijdverlies")}</span><span className="input-with-unit"><input type="number" min="0" max="24" step="0.25" {...register("delayHours", { valueAsNumber: true })} /><em>{text("hours", "uur")}</em></span>{errors.delayHours ? <small className="field-error">{errors.delayHours.message}</small> : null}</label> : null}
+                {delayCause !== "none" ? <>
+                  <label className="form-field"><span>{text("Time lost", "Tijdverlies")}</span><span className="input-with-unit"><input type="number" min="0" max="24" step="0.25" {...register("delayHours", { valueAsNumber: true })} /><em>{text("hours", "uur")}</em></span>{errors.delayHours ? <small className="field-error">{errors.delayHours.message}</small> : null}</label>
+                  <label className="form-field wide"><span>{text("Reason for delay", "Reden van vertraging")}</span><textarea rows={3} placeholder={text("Describe what actually happened, not only the category.", "Beschrijf wat er daadwerkelijk is gebeurd, niet alleen de categorie.")} {...register("delayReason")} />{errors.delayReason ? <small className="field-error">{errors.delayReason.message}</small> : null}</label>
+                  <label className="form-field"><span>{text("Responsible contractor company", "Verantwoordelijk aannemersbedrijf")}</span><input {...register("contractorCompany")} />{errors.contractorCompany ? <small className="field-error">{errors.contractorCompany.message}</small> : null}</label>
+                  <div className="wide">
+                    <SignatureField
+                      label={text("Required contractor signature", "Verplichte handtekening aannemer")}
+                      declaration={text("I acknowledge this delay and my responsibility for the affected work.", "Ik erken deze vertraging en mijn verantwoordelijkheid voor het betreffende werk.")}
+                      hint={text("Required because the contractor is responsible for the affected work.", "Verplicht omdat de aannemer verantwoordelijk is voor het betreffende werk.")}
+                      value={signatureFromDetails(contractorSignedBy, contractorSignedAt, contractorSignatureImage) as HandwrittenSignature | null}
+                      onChange={(signature) => {
+                        setValue("contractorSignedBy", signature?.name ?? "", { shouldDirty: true, shouldValidate: true });
+                        setValue("contractorSignedAt", signature?.signedAt ?? "", { shouldDirty: true, shouldValidate: true });
+                        setValue("contractorSignatureImage", signature?.image ?? "", { shouldDirty: true, shouldValidate: true });
+                      }}
+                    />
+                    {errors.contractorSignatureImage ? <small className="field-error">{errors.contractorSignatureImage.message}</small> : null}
+                  </div>
+                </> : null}
               </div>
             </section>
           ) : null}

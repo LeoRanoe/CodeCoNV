@@ -46,9 +46,27 @@ async function expectMinimumTarget(page: Page, selector: string, minimum = 44) {
 }
 
 test.beforeEach(async ({ page }, testInfo) => {
-  const isMobileTest = testInfo.title.startsWith("mobile ");
-  test.skip(isMobileTest !== (testInfo.project.name === "mobile-field"));
+  if (testInfo.title.startsWith("mobile ")) test.skip(testInfo.project.name !== "mobile-field");
+  if (testInfo.title.startsWith("desktop ")) test.skip(testInfo.project.name !== "desktop-office");
   await openAuthenticatedWorkspace(page);
+});
+
+test("responsive workspace keeps a multi-column tile grid without horizontal overflow", async ({ page }, testInfo) => {
+  if (testInfo.project.name === "desktop-office") await page.locator(".sidebar").getByRole("button", { name: "Workspace", exact: true }).click();
+  else await page.locator(".mobile-bottom-nav").getByRole("button", { name: "Workspace", exact: true }).click();
+  const grid = page.locator(".client-workspace-grid");
+  await expect(grid).toBeVisible();
+  const columns = await grid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").filter(Boolean).length);
+  if (testInfo.project.name === "mobile-field") expect(columns).toBe(2);
+  else if (testInfo.project.name === "tablet-field") expect(columns).toBeGreaterThanOrEqual(2);
+  else expect(columns).toBeGreaterThanOrEqual(4);
+  await expectMinimumTarget(page, ".client-workspace-grid [data-workspace-destination]");
+  await expectNoHorizontalOverflow(page);
+  if (testInfo.project.name === "mobile-field") {
+    await page.setViewportSize({ width: 320, height: 844 });
+    await expect(grid).toHaveCSS("grid-template-columns", /\S+px \S+px/);
+    await expectNoHorizontalOverflow(page);
+  }
 });
 
 test("mobile navigation exposes reports, management and uncluttered report steps", async ({ page }) => {
