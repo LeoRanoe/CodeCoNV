@@ -93,6 +93,7 @@ export function MediaLibraryWorkspace({
   mode = "photos",
   organizationId = "",
   openRecord,
+  focusRecordId = "",
 }: {
   data: OperationSnapshot;
   projectId: string;
@@ -111,6 +112,11 @@ export function MediaLibraryWorkspace({
   mode?: "photos" | "assets";
   organizationId?: string;
   openRecord?: (tab: string, recordId: string, kind: string) => void;
+  /**
+   * The photo, document or folder the workspace search asked for. Tapping a result used to
+   * open this tab and leave the person to find the file again themselves.
+   */
+  focusRecordId?: string;
 }) {
   const assetsMode = mode === "assets";
   const { language, locale, text } = useLanguage();
@@ -200,6 +206,41 @@ export function MediaLibraryWorkspace({
   // render would be an impure read of the clock during rendering.
   const [todayKey] = useState(() => libraryDayKey(new Date().toISOString()));
   const [yesterdayKey] = useState(() => libraryDayKey(new Date(new Date().getTime() - 86_400_000).toISOString()));
+
+  /**
+   * A result tapped in the workspace search is a photo, a document or a folder. It arrives
+   * here as the id the search index knows it by — a capture id, a file id, or the
+   * "file:<id>" of a picture that predates visual_captures — so all three are resolved back
+   * to the file itself, and the library is put on the building and folder that show it.
+   */
+  const focusHandled = useRef("");
+  useEffect(() => {
+    if (!focusRecordId || focusHandled.current === focusRecordId) return;
+    // The request is answered on the next tick, after the library has rendered its own
+    // state once: the same handover the camera hand-off below uses.
+    const focusTimer = window.setTimeout(() => {
+      const folder = data.mediaFolders.find((item) => item.id === focusRecordId);
+      if (folder) {
+        focusHandled.current = focusRecordId;
+        if (folder.building_id) setLibraryBuildingId(folder.building_id);
+        setFolderId(folder.id);
+        return;
+      }
+      const capture = data.visualCaptures.find((item) => item.id === focusRecordId);
+      const fileId = focusRecordId.startsWith("file:") ? focusRecordId.slice(5) : capture?.file_id ?? focusRecordId;
+      const file = data.files.find((item) => item.id === fileId);
+      if (!file) return;
+      focusHandled.current = focusRecordId;
+      if (file.building_id) setLibraryBuildingId(file.building_id);
+      setFolderId("all");
+      setOpenFileId(file.id);
+      const stackId = data.visualCaptures.find((item) => item.file_id === file.id)?.stack_id ?? null;
+      setOpenStackIds(stackId
+        ? data.visualCaptures.filter((item) => item.stack_id === stackId).map((item) => item.file_id)
+        : [file.id]);
+    }, 0);
+    return () => window.clearTimeout(focusTimer);
+  }, [data.files, data.mediaFolders, data.visualCaptures, focusRecordId]);
 
   const reloadQueue = useCallback(async () => setQueue(await listOfflineUploads(projectId)), [projectId]);
 

@@ -666,7 +666,7 @@ export function OperationalWorkspace({
   onPlaceRecordPin?: (point: { drawingId: string; pageNumber: number; xRatio: number; yRatio: number }) => void;
   openDailyRecord: (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => void;
   /** The optional record id opens that record itself, instead of the list it stands in. */
-  openProjectArea: (tab: "inspections" | "findings" | "ncr" | "hse" | "documents" | "registers" | "visual" | "drawings" | "files" | "submissions", recordId?: string) => void;
+  openProjectArea: (tab: "inspections" | "findings" | "ncr" | "hse" | "documents" | "registers" | "visual" | "drawings" | "files" | "assets" | "submissions", recordId?: string) => void;
   openActionCenter: (view?: ActionCenterView) => void;
   openRapidVerify: () => void;
   openReports: () => void;
@@ -932,7 +932,7 @@ function ProjectOperations({
   onPlaceRecordPin?: (point: { drawingId: string; pageNumber: number; xRatio: number; yRatio: number }) => void;
   openDailyRecord: (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => void;
   /** Opens a module on one record: how the workspace search reaches what it found. */
-  openProjectArea: (tab: "inspections" | "findings" | "ncr" | "hse" | "documents" | "registers" | "visual" | "drawings" | "files" | "submissions", recordId?: string) => void;
+  openProjectArea: (tab: "inspections" | "findings" | "ncr" | "hse" | "documents" | "registers" | "visual" | "drawings" | "files" | "assets" | "submissions", recordId?: string) => void;
   openActionCenter: (view?: ActionCenterView) => void;
   openRapidVerify: () => void;
   openReports: () => void;
@@ -3756,9 +3756,9 @@ function ProjectOperations({
 
       {tab === "tools" ? <FieldTools data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} parties={parties} reportId={reportId} currentUserName={currentUserName} client={client} busy={busy} run={run} /> : null}
 
-      {tab === "files" ? <MediaLibraryWorkspace mode="photos" data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} open360Upload={() => { setVisual360Intent(true); setTab("visual"); }} /> : null}
+      {tab === "files" ? <MediaLibraryWorkspace mode="photos" focusRecordId={focusRecordId} data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} open360Upload={() => { setVisual360Intent(true); setTab("visual"); }} /> : null}
 
-      {tab === "assets" ? <MediaLibraryWorkspace mode="assets" organizationId={organizationId} data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} open360Upload={() => { setVisual360Intent(true); setTab("visual"); }} markPhotoIssue={(fileId) => { setVisualFileId(fileId); switchTab("visual"); }} openRecord={(recordTab, recordId) => openProjectArea(recordTab as Parameters<typeof openProjectArea>[0], recordId)} /> : null}
+      {tab === "assets" ? <MediaLibraryWorkspace mode="assets" focusRecordId={focusRecordId} organizationId={organizationId} data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} open360Upload={() => { setVisual360Intent(true); setTab("visual"); }} markPhotoIssue={(fileId) => { setVisualFileId(fileId); switchTab("visual"); }} openRecord={(recordTab, recordId) => openProjectArea(recordTab as Parameters<typeof openProjectArea>[0], recordId)} /> : null}
     </>
   );
 }

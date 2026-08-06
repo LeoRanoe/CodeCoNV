@@ -2540,3 +2540,28 @@ test("records accountable delays and keeps project documents in one short flow",
   assert.match(styles, /@media \(max-width: 1180px\)[\s\S]*\.client-workspace-grid \{ grid-template-columns: repeat\(3/);
   assert.match(styles, /@media \(max-width: 760px\)[\s\S]*\.client-workspace-grid \{ grid-template-columns: repeat\(2/);
 });
+
+test("a search result opens, the assets tab survives, and a shared day stays on every building", async () => {
+  const [shell, workspace, mediaLibrary, dailyRegister] = await Promise.all([
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/media-library-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/daily-work-register.tsx", import.meta.url), "utf8"),
+  ]);
+
+  // Assets is a real tab: leaving it and coming back has to land on it again, so it has to
+  // be one of the keys the restored session accepts.
+  assert.match(shell, /const projectTabKeys: ProjectTabKey\[\] = \[[^\]]*"assets"/);
+  assert.match(workspace, /openProjectArea: \(tab: [^)]*\| "assets" \| "submissions"/);
+
+  // A photo or document found in the workspace search opens itself, instead of dropping the
+  // supervisor on the tab to look for it a second time.
+  assert.match(workspace, /<MediaLibraryWorkspace mode="photos" focusRecordId=\{focusRecordId\}/);
+  assert.match(workspace, /<MediaLibraryWorkspace mode="assets" focusRecordId=\{focusRecordId\}/);
+  assert.match(mediaLibrary, /focusRecordId\.startsWith\("file:"\)/);
+  assert.match(mediaLibrary, /setOpenFileId\(file\.id\)/);
+
+  // A day recorded for two buildings belongs to both of them, in the filter and on the card.
+  assert.match(dailyRegister, /recordBuildings\(record\)\.includes\(buildingFilter\)/);
+  assert.match(dailyRegister, /recordBuildings\(record\)\.map\(buildingName\)/);
+});

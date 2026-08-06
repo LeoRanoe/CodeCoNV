@@ -28,7 +28,10 @@ import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@
 import {
   drawingPointFromClient,
   panDrawingViewport,
+  pinDragMoved,
+  pointerLiftPlacesPin,
   resetDrawingViewport,
+  tapSlopPixels,
   zoomDrawingViewport,
 } from "@/lib/drawings/viewport.mjs";
 import { useLanguage } from "@/lib/i18n";
@@ -545,7 +548,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
   const drawingRef = useRef(false);
   const draftPointsRef = useRef<NormalizedPoint[]>([]);
   const pointersRef = useRef(new Map<number, { x: number; y: number }>());
-  const singleGestureRef = useRef<{ start: { x: number; y: number }; last: { x: number; y: number }; moved: boolean } | null>(null);
+  const singleGestureRef = useRef<{ start: { x: number; y: number }; last: { x: number; y: number }; moved: boolean; multiTouch: boolean } | null>(null);
   const pinchRef = useRef<{ distance: number; center: { x: number; y: number }; viewport: DrawingViewport } | null>(null);
   const [draggedPin, setDraggedPin] = useState<{ id: string; point: PinPoint } | null>(null);
 
@@ -671,6 +674,9 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
     if (pointersRef.current.size === 2) {
       drawingRef.current = false;
       updateDraftPoints([]);
+      // The gesture that started as one finger is a pinch from here on. Marking it stops the
+      // final lift of that pinch from being read as a tap that places a pin.
+      if (singleGestureRef.current) singleGestureRef.current.multiTouch = true;
       const [left, right] = [...pointersRef.current.values()];
       const bounds = event.currentTarget.getBoundingClientRect();
       pinchRef.current = {
@@ -684,6 +690,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
       start: { x: event.clientX, y: event.clientY },
       last: { x: event.clientX, y: event.clientY },
       moved: false,
+      multiTouch: false,
     };
     beginMarkup(event);
   };
@@ -703,7 +710,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
     const gesture = singleGestureRef.current;
     if ((tool === "pan" || tool === "pin") && gesture) {
       const totalDistance = Math.hypot(event.clientX - gesture.start.x, event.clientY - gesture.start.y);
-      if (totalDistance > 4) gesture.moved = true;
+      if (totalDistance > tapSlopPixels) gesture.moved = true;
       if (gesture.moved) {
         onViewportChange((current) => panDrawingViewport(current, { x: event.clientX - gesture.last.x, y: event.clientY - gesture.last.y }));
         gesture.last = { x: event.clientX, y: event.clientY };
@@ -714,9 +721,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
   };
 
   const finishPointer = (event: React.PointerEvent<HTMLDivElement>) => {
-    const wasSinglePointer = pointersRef.current.size === 1;
-    const gesture = singleGestureRef.current;
-    if (tool === "pin" && wasSinglePointer && gesture && !gesture.moved) {
+    if (pointerLiftPlacesPin({ tool, activePointerCount: pointersRef.current.size, gesture: singleGestureRef.current })) {
       const point = normalizedPoint(event.clientX, event.clientY);
       onPoint({ xRatio: point.x, yRatio: point.y });
     } else {
@@ -759,7 +764,9 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     const point = draggedPin.point;
     setDraggedPin(null);
-    void onMovePin(pin, point);
+    // Tapping a pin selects it. Only a pin that actually travelled is written back, so
+    // selecting one no longer costs a request and a "position saved" confirmation.
+    if (pinDragMoved({ xRatio: Number(pin.x_ratio), yRatio: Number(pin.y_ratio) }, point)) void onMovePin(pin, point);
   };
 
   return (

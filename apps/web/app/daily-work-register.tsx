@@ -47,7 +47,10 @@ export function DailyWorkRegister({
     return new Intl.DateTimeFormat(locale, { dateStyle: "full", timeZone: "America/Paramaribo" }).format(date);
   };
 
-  const scoped = records.filter((record) => buildingFilter === "all" || record.building_id === buildingFilter);
+  // A day can cover several buildings. Filtering on the primary building alone made a
+  // multi-building day disappear from every building but the first one it was saved under.
+  const recordBuildings = (record: DailyWorkRecord) => record.building_ids?.length ? record.building_ids : [record.building_id];
+  const scoped = records.filter((record) => buildingFilter === "all" || recordBuildings(record).includes(buildingFilter));
   const visible = scoped.filter((record) => {
     if (view === "works_ongoing") return Boolean(record.work_ongoing?.trim());
     if (view === "works_completed") return Boolean(record.work_performed?.trim());
@@ -100,7 +103,7 @@ export function DailyWorkRegister({
           <article key={`${record.id}:${view}`}>
             <header>
               <span className="daily-work-date"><CalendarDays size={14} /> {formatDay(record)}</span>
-              <span className="daily-work-building">{buildingName(record.building_id)}</span>
+              <span className="daily-work-building">{recordBuildings(record).map(buildingName).join(" · ")}</span>
             </header>
             {view === "works_ongoing" ? <>
               <p>{record.work_ongoing}</p>

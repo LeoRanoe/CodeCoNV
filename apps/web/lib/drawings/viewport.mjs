@@ -47,3 +47,26 @@ export function zoomDrawingViewport(viewport, nextScale, focalPoint) {
 export function resetDrawingViewport(page = 1) {
   return { scale: 1, offset: { x: 0, y: 0 }, page };
 }
+
+/** How far a finger may travel and still count as a tap rather than a drag. */
+export const tapSlopPixels = 4;
+
+/**
+ * Whether lifting a finger should place a pin. A pinch is two fingers, and the second one
+ * comes up on its own: without this the last lift of a pinch-zoom looked exactly like a
+ * tap and dropped a pin the supervisor never asked for.
+ */
+export function pointerLiftPlacesPin({ tool, activePointerCount, gesture }) {
+  if (tool !== "pin" || activePointerCount !== 1 || !gesture) return false;
+  return !gesture.moved && !gesture.multiTouch;
+}
+
+/**
+ * Whether a pin that was touched actually has to be written back. Selecting a pin is a tap
+ * on it, and a tap used to save the position it already had: a request and a confirmation
+ * toast for a move that never happened.
+ */
+export function pinDragMoved(from, to, slop = 1e-4) {
+  if (!from || !to) return false;
+  return Math.abs(from.xRatio - to.xRatio) > slop || Math.abs(from.yRatio - to.yRatio) > slop;
+}
