@@ -44,6 +44,7 @@ import {
 import { loadProjectFilePreviewObjectUrl, uploadProjectFile } from "@/lib/storage/gateway";
 import {
   createDrawingMarkup,
+  createFinding,
   type DrawingMarkup,
   type DrawingPin,
   type FileRecord,
@@ -143,6 +144,18 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [markupText, setMarkupText] = useState("");
   const [uploadBuildingId, setUploadBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
+  const [uploadError, setUploadError] = useState("");
+  /**
+   * What a tapped spot becomes when the supervisor did not arrive here from a record.
+   * "link" hangs an existing record on it, "issue" writes a new one on the spot. Before
+   * this, tapping the drawing on its own screen led to a panel that only said no.
+   */
+  const [spotMode, setSpotMode] = useState<"link" | "issue">("issue");
+  const [spotRecord, setSpotRecord] = useState("");
+  const [spotIssue, setSpotIssue] = useState({ title: "", description: "", severity: "medium" });
+  /** Sheet names read out of the PDF itself, so a page is known by its own label. */
+  const [pageLabels, setPageLabels] = useState<string[]>([]);
+  const [documentTitle, setDocumentTitle] = useState("");
 
   const allPins = [...data.drawingPins, ...localPins.filter((local) => !data.drawingPins.some((pin) => pin.linked_record_type === local.linked_record_type && pin.linked_record_id === local.linked_record_id && pin.drawing_file_id === local.drawing_file_id))];
   const activePins = activeDrawing
@@ -186,6 +199,14 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
     setViewport((current) => current.page <= count ? current : resetDrawingViewport(count));
   }, []);
 
+  const handleDocumentDetails = useCallback((details: { labels: string[]; title: string }) => {
+    setPageLabels(details.labels);
+    setDocumentTitle(details.title);
+  }, []);
+
+  /** What this page is called: its own sheet label when the drawing carries one. */
+  const pageLabel = (page: number) => pageLabels[page - 1]?.trim() || String(page);
+
   useEffect(() => {
     const synchronize = () => {
       void listDrawingPinMutations(projectId).then((queued) => {
@@ -205,19 +226,58 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
     setActiveDrawingId(drawingId);
     setViewport(resetDrawingViewport(1));
     setPageCount(1);
+    setPageLabels([]);
+    setDocumentTitle("");
     setPoint(null);
     setSelectedPinId(null);
   };
 
+  /**
+   * Why an upload cannot go through, in the words of the thing that is wrong with it,
+   * instead of a button that is disabled and says nothing.
+   */
+  const uploadRefusal = (file: File | null) => {
+    if (!file) return "";
+    if (file.size > maxFileSizeBytes) {
+      return text(
+        `This drawing is ${humanFileSize(file.size)}; the project limit is ${data.settings?.max_file_size_mb ?? 25} MB.`,
+        `Deze tekening is ${humanFileSize(file.size)}; de projectlimiet is ${data.settings?.max_file_size_mb ?? 25} MB.`,
+      );
+    }
+    if (!supportedDrawingMimeTypes.includes(file.type) && !isDwgFile(file)) {
+      return text(
+        "Choose a PDF, JPEG, PNG, WebP or a DWG source file.",
+        "Kies een PDF, JPEG, PNG, WebP of een DWG-bronbestand.",
+      );
+    }
+    return "";
+  };
+
   const uploadDrawing = async () => {
-    if (!uploadFile || uploadFile.size > maxFileSizeBytes || (!supportedDrawingMimeTypes.includes(uploadFile.type) && !isDwgFile(uploadFile))) return;
+    const refusal = uploadRefusal(uploadFile);
+    if (!uploadFile || refusal) {
+      setUploadError(refusal);
+      return;
+    }
+    setUploadError("");
+    const dwgSource = isDwgFile(uploadFile);
     const okay = await run(
       () => uploadProjectFile(client, { projectId, buildingId: uploadBuildingId, category: "drawing", file: uploadFile, onProgress: setUploadProgress }),
-      text("Drawing uploaded securely. Open it here to place project links.", "Tekening veilig geüpload. Open deze hier om projectkoppelingen te plaatsen."),
+      dwgSource
+        ? text(
+          "DWG source stored. It is kept and downloadable; upload its PDF export beside it to place pins in the browser.",
+          "DWG-bron opgeslagen. Die blijft bewaard en downloadbaar; upload er de PDF-export naast om in de browser pins te plaatsen.",
+        )
+        : text("Drawing uploaded securely. Open it here to place project links.", "Tekening veilig geüpload. Open deze hier om projectkoppelingen te plaatsen."),
     );
     if (okay) {
       setUploadFile(null);
       setUploadProgress(0);
+    } else {
+      setUploadError(text(
+        "The drawing did not reach central storage. Check the connection and try again; the file on this device is untouched.",
+        "De tekening heeft de centrale opslag niet bereikt. Controleer de verbinding en probeer opnieuw; het bestand op dit toestel blijft ongewijzigd.",
+      ));
     }
   };
 
@@ -275,6 +335,119 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
       }]);
     }
     if (okay) setPoint(null);
+  };
+
+  /**
+   * Everything in the project that a pin may point at, newest first. This is what makes a
+   * spot on the drawing usable on its own: the supervisor no longer has to leave, open a
+   * record and come back to place it.
+   */
+  /* Deliberately plain: the pin list is derived from arrays that are rebuilt each render,
+     so a memo here could not be preserved and bought nothing. */
+  const pinnableRecords = (() => {
+    const pinned = new Set(allPins.filter((pin) => pin.status === "active").map((pin) => `${pin.linked_record_type}:${pin.linked_record_id}`));
+    const rows = [
+      ...data.findings.map((record) => ({ value: `observation:${record.id}`, type: "observation" as const, id: record.id, code: record.finding_number, title: record.title, date: record.created_at, buildingId: record.building_id })),
+      ...data.inspections.map((record) => ({ value: `inspection:${record.id}`, type: "inspection" as const, id: record.id, code: record.inspection_number, title: record.title, date: record.started_at ?? record.planned_at ?? "", buildingId: record.building_id })),
+      ...data.registerEntries.filter((entry) => ["rfi", "submittal", "document"].includes(entry.register_type))
+        .map((record) => ({ value: `${record.register_type}:${record.id}`, type: record.register_type as "rfi" | "submittal" | "document", id: record.id, code: record.entry_number, title: record.title, date: record.occurred_at, buildingId: record.building_id })),
+      ...data.visualCaptures.filter((capture) => capture.status === "active" && !capture.derived_from_file)
+        .map((record) => ({ value: `visual:${record.id}`, type: "visual" as const, id: record.id, code: record.capture_type === "panorama" ? "360" : "PHOTO", title: record.title, date: record.captured_at, buildingId: record.building_id })),
+    ];
+    return rows
+      .map((row) => ({ ...row, placed: pinned.has(`${row.type}:${row.id}`) }))
+      .sort((left, right) => Number(left.placed) - Number(right.placed) || String(right.date).localeCompare(String(left.date)));
+  })();
+
+  /** The records of this drawing's building that still have no spot on any drawing. */
+  const unplacedRecords = pinnableRecords
+    .filter((record) => !record.placed && (!activeDrawing?.building_id || !record.buildingId || record.buildingId === activeDrawing.building_id))
+    .slice(0, 12);
+
+  const savePinFor = async (
+    nextPoint: PinPoint,
+    linkedRecordType: DrawingPin["linked_record_type"],
+    linkedRecordId: string,
+    known: { number: string; title: string },
+  ) => {
+    if (!activeDrawing) return false;
+    const mutationId = `drawing-pin:${crypto.randomUUID()}`;
+    let saved: Awaited<ReturnType<typeof saveDrawingPinOnlineOrQueue>> | null = null;
+    const okay = await run(async () => {
+      saved = await saveDrawingPinOnlineOrQueue(client, {
+        id: mutationId,
+        projectId,
+        kind: "create",
+        input: {
+          drawingFileId: activeDrawing.id,
+          pageNumber,
+          xRatio: nextPoint.xRatio,
+          yRatio: nextPoint.yRatio,
+          linkedRecordType,
+          linkedRecordId,
+          idempotencyKey: `offline-drawing-pin:${mutationId}`,
+        },
+      });
+      return saved;
+    }, text("The pin is saved centrally or safely waiting for synchronization.", "De pin is centraal opgeslagen of wacht veilig op synchronisatie."));
+    if (okay && ((saved as Awaited<ReturnType<typeof saveDrawingPinOnlineOrQueue>> | null)?.queued ?? false)) {
+      setLocalPins((current) => [...current, {
+        id: `pending:${mutationId}`,
+        drawing_file_id: activeDrawing.id,
+        page_number: pageNumber,
+        x_ratio: nextPoint.xRatio,
+        y_ratio: nextPoint.yRatio,
+        linked_record_type: linkedRecordType,
+        linked_record_id: linkedRecordId,
+        linked_record_number: known.number,
+        linked_record_title: known.title,
+        note: null,
+        status: "active",
+        created_at: new Date().toISOString(),
+      }]);
+    }
+    return okay;
+  };
+
+  /** Hang an existing record on the tapped spot. */
+  const linkRecordToPoint = async (nextPoint: PinPoint) => {
+    const target = pinnableRecords.find((record) => record.value === spotRecord);
+    if (!target) return;
+    const okay = await savePinFor(nextPoint, target.type, target.id, { number: target.code, title: target.title });
+    if (okay) {
+      setPoint(null);
+      setSpotRecord("");
+    }
+  };
+
+  /**
+   * Write the issue on the spot and pin it in the same action. The record is created first
+   * because a pin cannot exist without one; if the pin then fails, the issue is still
+   * safely recorded and says so.
+   */
+  const createIssueAtPoint = async (nextPoint: PinPoint) => {
+    if (!activeDrawing || spotIssue.title.trim().length < 3) return;
+    const pinBuildingId = activeDrawing.building_id || resolveDefaultBuildingId(buildings, buildingId);
+    let created: Awaited<ReturnType<typeof createFinding>> | null = null;
+    const recorded = await run(async () => {
+      created = await createFinding(client, {
+        projectId,
+        buildingId: pinBuildingId,
+        type: "deficiency",
+        title: spotIssue.title.trim(),
+        description: spotIssue.description.trim() || spotIssue.title.trim(),
+        severity: spotIssue.severity,
+        locationLabel: `${drawingLabel(activeDrawing)} · ${text("page", "pagina")} ${pageNumber}`,
+      });
+      return created;
+    }, text("Issue recorded from the drawing.", "Issue vanaf de tekening vastgelegd."));
+    const finding = created as Awaited<ReturnType<typeof createFinding>> | null;
+    if (!recorded || !finding) return;
+    const okay = await savePinFor(nextPoint, "observation", finding.id, { number: finding.finding_number, title: finding.title });
+    if (okay) {
+      setPoint(null);
+      setSpotIssue({ title: "", description: "", severity: "medium" });
+    }
   };
 
   const movePin = async (pin: DrawingPin, nextPoint: PinPoint) => {
@@ -388,12 +561,12 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
               ? humanFileSize(uploadFile.size)
               : text(`DWG source, PDF, JPEG, PNG or WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`, `DWG-bron, PDF, JPEG, PNG of WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`)}</small>
           </span>
-          <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp,.dwg,.pdf,.jpg,.jpeg,.png,.webp" onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)} />
+          <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp,.dwg,.pdf,.jpg,.jpeg,.png,.webp" onChange={(event) => { setUploadFile(event.target.files?.[0] ?? null); setUploadError(uploadRefusal(event.target.files?.[0] ?? null)); }} />
         </label>
         <button className="primary-button" type="button" disabled={busy || !uploadFile || uploadFile.size > maxFileSizeBytes || (!supportedDrawingMimeTypes.includes(uploadFile.type) && !isDwgFile(uploadFile))} onClick={() => void uploadDrawing()}>
           {busy ? <Loader2 className="spin" size={15} /> : <FileUp size={15} />} {text("Upload drawing", "Tekening uploaden")}
         </button>
-        {uploadFile && uploadFile.size > maxFileSizeBytes ? <p className="field-error">{text("This drawing exceeds the project file limit.", "Deze tekening is groter dan de bestandslimiet van het project.")}</p> : null}
+        {uploadError ? <p className="field-error" role="alert">{uploadError}</p> : null}
         {uploadProgress > 0 ? <div className="upload-progress" aria-label={`${text("Upload", "Upload")} ${uploadProgress}%`}><span style={{ width: `${uploadProgress}%` }} /><small>{uploadProgress}%</small></div> : null}
       </div>
 
@@ -415,10 +588,16 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
 
           <div className="drawing-stage-column">
             <div className="drawing-stage-header">
-              <div><span className="record-number">{activeDrawing.mime_type === "application/pdf" ? "PDF" : text("Drawing image", "Tekeningsafbeelding")}</span><h2 title={activeDrawing.original_name}>{drawingLabel(activeDrawing)}</h2></div>
+              {/* The drawing's own title wins over the name the file happened to get. */}
+              <div><span className="record-number">{activeDrawing.mime_type === "application/pdf" ? "PDF" : text("Drawing image", "Tekeningsafbeelding")}</span><h2 title={activeDrawing.original_name}>{documentTitle || drawingLabel(activeDrawing)}</h2>{documentTitle ? <small className="drawing-sheet-source">{drawingLabel(activeDrawing)}</small> : null}</div>
               <div className="tour-controls">
                 <button type="button" aria-label={text("Previous page", "Vorige pagina")} disabled={pageNumber <= 1} onClick={() => changePage(Math.max(1, pageNumber - 1))}><ChevronLeft size={17} /></button>
-                <span>{pageNumber} / {pageCount}</span>
+                {/* Jumping straight to a sheet, by the name the sheet carries itself. */}
+                {pageCount > 1 ? (
+                  <select className="drawing-page-select" value={pageNumber} onChange={(event) => changePage(Number(event.target.value))} aria-label={text("Drawing page", "Tekeningspagina")}>
+                    {Array.from({ length: pageCount }, (_, index) => <option value={index + 1} key={index}>{text(`Sheet ${pageLabel(index + 1)}`, `Blad ${pageLabel(index + 1)}`)}</option>)}
+                  </select>
+                ) : <span>{pageLabel(pageNumber)} / {pageCount}</span>}
                 <button type="button" aria-label={text("Next page", "Volgende pagina")} disabled={pageNumber >= pageCount} onClick={() => changePage(Math.min(pageCount, pageNumber + 1))}><ChevronRight size={17} /></button>
                 <button type="button" aria-label={text("Zoom out", "Uitzoomen")} disabled={viewport.scale <= 1} onClick={() => setViewport((current) => zoomDrawingViewport(current, current.scale / 1.25, { x: 0, y: 0 }))}><ZoomOut size={17} /></button>
                 <span>{Math.round(viewport.scale * 100)}%</span>
@@ -460,6 +639,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
               textContent={markupText}
               client={client}
               onPageCount={handlePageCount}
+              onDocumentDetails={handleDocumentDetails}
               onViewportChange={setViewport}
               onPoint={(nextPoint) => { setPoint(nextPoint); setSelectedPinId(null); }}
               onSelectPin={(pinId) => { setSelectedPinId(pinId); setPoint(null); }}
@@ -491,19 +671,58 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                 <div className="button-row"><button className="primary-button" type="button" disabled={busy} onClick={() => void placePin(point)}><MapPin size={15} /> {text("Confirm pin", "Pin bevestigen")}</button><button className="secondary-button" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button></div>
               </div>
             ) : point ? (
-              <div className="drawing-link-form">
-                <div><span className="record-number">{text("Pin", "Pin")}</span><h2>{text("A pin belongs to a record", "Een pin hoort bij een registratie")}</h2><p>X {Math.round(point.xRatio * 100)}% · Y {Math.round(point.yRatio * 100)}% · {text("page", "pagina")} {pageNumber}</p></div>
-                <div className="operation-alert">
-                  <FileQuestion size={18} />
-                  <div>
-                    <strong>{text("Open the record first, then place it here", "Open eerst de registratie en plaats hem daarna hier")}</strong>
-                    <span>{text("From a field record, an issue or an NCR you tap \"place on drawing\" and land here with that record. The pin then carries its number, name and date by itself.", "Vanuit een veldregistratie, een issue of een NCR tik je op \"plaats op tekening\" en kom je hier met die registratie. De pin draagt dan vanzelf het nummer, de naam en de datum.")}</span>
-                  </div>
+              /* A spot on the drawing is usable on its own: write the issue here, or hang
+                 an existing record on it. Leaving the screen to fetch a record first was
+                 the dead end the client ran into. */
+              <div className="drawing-link-form drawing-spot-form">
+                <div><span className="record-number">{text("This spot", "Deze plek")}</span><h2>{text("What belongs here?", "Wat hoort hier?")}</h2><p>X {Math.round(point.xRatio * 100)}% · Y {Math.round(point.yRatio * 100)}% · {text("page", "pagina")} {pageNumber}</p></div>
+                <div className="drawing-spot-modes" role="group" aria-label={text("What to place", "Wat te plaatsen")}>
+                  <button className={spotMode === "issue" ? "active" : ""} type="button" onClick={() => setSpotMode("issue")}><Plus size={14} /> {text("New issue here", "Nieuw issue hier")}</button>
+                  <button className={spotMode === "link" ? "active" : ""} type="button" onClick={() => setSpotMode("link")}><Link2 size={14} /> {text("Existing record", "Bestaande registratie")}</button>
                 </div>
-                <div className="button-row"><button className="secondary-button" type="button" onClick={() => setPoint(null)}>{text("Close", "Sluiten")}</button></div>
+                {spotMode === "issue" ? (
+                  <>
+                    <label className="form-field"><span>{text("What is wrong here?", "Wat is hier mis?")}</span><input value={spotIssue.title} onChange={(event) => setSpotIssue({ ...spotIssue, title: event.target.value })} placeholder={text("Short subject", "Kort onderwerp")} /></label>
+                    <label className="form-field"><span>{text("Description", "Omschrijving")}</span><textarea rows={3} value={spotIssue.description} onChange={(event) => setSpotIssue({ ...spotIssue, description: event.target.value })} /></label>
+                    <label className="form-field"><span>{text("Severity", "Ernst")}</span><select value={spotIssue.severity} onChange={(event) => setSpotIssue({ ...spotIssue, severity: event.target.value })}><option value="low">{text("Low", "Laag")}</option><option value="medium">{text("Medium", "Middel")}</option><option value="high">{text("High", "Hoog")}</option><option value="critical">{text("Critical", "Kritiek")}</option></select></label>
+                    <div className="button-row">
+                      <button className="primary-button" type="button" disabled={busy || spotIssue.title.trim().length < 3} onClick={() => void createIssueAtPoint(point)}><MapPin size={15} /> {text("Record and pin it", "Vastleggen en pinnen")}</button>
+                      <button className="secondary-button" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <label className="form-field">
+                      <span>{text("Record to place here", "Registratie voor deze plek")}</span>
+                      <select value={spotRecord} onChange={(event) => setSpotRecord(event.target.value)}>
+                        <option value="">{text("Choose a record", "Kies een registratie")}</option>
+                        {pinnableRecords.map((record) => <option value={record.value} key={record.value}>{record.placed ? "• " : ""}{record.code} · {record.title}</option>)}
+                      </select>
+                    </label>
+                    <p className="form-helper">{text("A dot marks a record that already stands somewhere on a drawing.", "Een stip markeert een registratie die al ergens op een tekening staat.")}</p>
+                    <div className="button-row">
+                      <button className="primary-button" type="button" disabled={busy || !spotRecord} onClick={() => void linkRecordToPoint(point)}><MapPin size={15} /> {text("Place pin", "Pin plaatsen")}</button>
+                      <button className="secondary-button" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button>
+                    </div>
+                  </>
+                )}
               </div>
             ) : selectedPin ? <DrawingPinDetails pin={selectedPin} onOpen={() => onOpenLinkedRecord(selectedPin.linked_record_type, selectedPin.linked_record_id)} onDelete={() => void deletePin(selectedPin)} /> : (
-              <div className="visual-panel-empty"><MapPin size={24} /><strong>{text("Place or select a drawing pin", "Plaats of selecteer een tekeningspin")}</strong><span>{text("Every pin keeps its page, exact position and record identity in the audit trail.", "Elke pin bewaart pagina, exacte positie en recordidentiteit in het auditspoor.")}</span></div>
+              <div className="drawing-unplaced-panel">
+                <div className="visual-panel-empty"><MapPin size={24} /><strong>{text("Place or select a drawing pin", "Plaats of selecteer een tekeningspin")}</strong><span>{text("Choose the pin tool and tap the drawing. Every pin keeps its page, exact position and record identity in the audit trail.", "Kies de pin-tool en tik op de tekening. Elke pin bewaart pagina, exacte positie en recordidentiteit in het auditspoor.")}</span></div>
+                {/* Everything in this building that has no spot yet, so placing the backlog
+                    is a tap on a name rather than a hunt through the modules. */}
+                {unplacedRecords.length ? <section className="drawing-unplaced-list" aria-label={text("Records without a spot", "Registraties zonder plek")}>
+                  <header><FileQuestion size={15} /> <strong>{text("Not on a drawing yet", "Nog niet op een tekening")}</strong> <b>{unplacedRecords.length}</b></header>
+                  {unplacedRecords.map((record) => (
+                    <button type="button" onClick={() => { setTool("pin"); setSpotMode("link"); setSpotRecord(record.value); }} key={record.value}>
+                      <span className={`drawing-pin ${pinTypeClass[record.type]}`}><MapPin size={12} /></span>
+                      <span><strong>{record.code}</strong><small>{record.title}</small></span>
+                      <ArrowUpRight size={14} />
+                    </button>
+                  ))}
+                </section> : null}
+              </div>
             )}
           </aside>
         </div>
@@ -516,7 +735,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
   );
 }
 
-function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, color, strokeWidth, textContent, client, onPageCount, onViewportChange, onPoint, onSelectPin, onMovePin, onCreateMarkup }: {
+function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, color, strokeWidth, textContent, client, onPageCount, onDocumentDetails, onViewportChange, onPoint, onSelectPin, onMovePin, onCreateMarkup }: {
   file: FileRecord;
   viewport: DrawingViewport;
   pins: DrawingPin[];
@@ -528,6 +747,8 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
   textContent: string;
   client: SupabaseClient;
   onPageCount: (count: number) => void;
+  /** Sheet labels and the title the drawing carries itself. */
+  onDocumentDetails: (details: { labels: string[]; title: string }) => void;
   onViewportChange: React.Dispatch<React.SetStateAction<DrawingViewport>>;
   onPoint: (point: PinPoint) => void;
   onSelectPin: (pinId: string) => void;
@@ -599,6 +820,19 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
       const pdf = await task.promise;
       if (cancelled) return;
       onPageCount(pdf.numPages);
+      // The drawing knows its own sheet names and its own title. Reading them here means a
+      // page is chosen by what the drawing calls it, not by a number the app invented.
+      void Promise.all([
+        pdf.getPageLabels().catch(() => null),
+        pdf.getMetadata().catch(() => null),
+      ]).then(([labels, metadata]) => {
+        if (cancelled) return;
+        const info = metadata?.info as { Title?: unknown } | undefined;
+        onDocumentDetails({
+          labels: Array.isArray(labels) ? labels.map((label) => String(label ?? "")) : [],
+          title: typeof info?.Title === "string" ? info.Title.trim() : "",
+        });
+      });
       const page = await pdf.getPage(pageNumber);
       if (cancelled) return;
       const naturalViewport = page.getViewport({ scale: 1 });
@@ -626,7 +860,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
       renderTask?.cancel();
       void loadingTask?.destroy();
     };
-  }, [mimeType, onPageCount, pageNumber, previewUrl, renderWidth, text]);
+  }, [mimeType, onDocumentDetails, onPageCount, pageNumber, previewUrl, renderWidth, text]);
 
   const normalizedPoint = (clientX: number, clientY: number): NormalizedPoint => {
     const surface = surfaceRef.current;

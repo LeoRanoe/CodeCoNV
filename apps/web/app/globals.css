@@ -347,6 +347,81 @@ button.drawing-pin {
   margin: 0;
 }
 
+/* Choosing what a tapped spot becomes: a new issue written here, or an existing record. */
+.drawing-spot-modes {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 4px;
+}
+
+.drawing-spot-modes button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  color: var(--ink-700, #445);
+  cursor: pointer;
+  display: flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 6px;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 10px;
+}
+
+.drawing-spot-modes button.active {
+  background: var(--accent-soft, #eaf3ff);
+  color: var(--accent-strong, #14507d);
+}
+
+/* The backlog: records in this building that do not stand on any drawing yet. */
+.drawing-unplaced-panel { display: grid; gap: 14px; }
+
+.drawing-unplaced-list {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  display: grid;
+  overflow: hidden;
+}
+
+.drawing-unplaced-list > header {
+  align-items: center;
+  background: #f7f9fb;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.drawing-unplaced-list > header strong { flex: 1 1 auto; font-size: 12px; }
+.drawing-unplaced-list > header b { color: var(--muted); font-size: 12px; }
+
+.drawing-unplaced-list > button {
+  align-items: center;
+  background: #fff;
+  border: 0;
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 26px minmax(0, 1fr) 16px;
+  min-height: 44px;
+  padding: 9px 12px;
+  text-align: left;
+}
+
+.drawing-unplaced-list > button:first-of-type { border-top: 0; }
+.drawing-unplaced-list > button:hover { background: #f4f8fb; }
+.drawing-unplaced-list > button strong { display: block; font-size: 12px; }
+.drawing-unplaced-list > button small { color: var(--muted); display: block; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.drawing-sheet-source { color: var(--muted); display: block; font-size: 11px; }
+.drawing-page-select { border: 1px solid var(--border); border-radius: 9px; font-size: 12px; min-height: 36px; padding: 4px 8px; }
+
 .drawing-link-types {
   border: 1px solid var(--border);
   border-radius: 14px;

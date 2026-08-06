@@ -2599,3 +2599,33 @@ test("the punchlist screen is the client's punchlist again, and a photo can be m
   assert.match(media, /openMarking=\{markPhotoIssue\}/);
   assert.match(workspace, /mode="photos"[\s\S]*?markPhotoIssue=/);
 });
+
+test("a spot on a drawing carries its own record, and a sheet is known by its own name", async () => {
+  const [drawing, styles] = await Promise.all([
+    readFile(new URL("../app/drawing-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // Tapping the drawing on its own screen used to end in a panel that only said no.
+  assert.doesNotMatch(drawing, /Open the record first, then place it here/);
+  assert.match(drawing, /const createIssueAtPoint = async/);
+  assert.match(drawing, /const linkRecordToPoint = async/);
+  assert.match(drawing, /createFinding\(client, \{/);
+  assert.match(drawing, /drawing-spot-modes/);
+  assert.match(styles, /\.drawing-spot-modes/);
+
+  // The backlog of records that stand on no drawing yet is one tap from being placed.
+  assert.match(drawing, /const unplacedRecords = pinnableRecords/);
+  assert.match(styles, /\.drawing-unplaced-list/);
+
+  // Sheet labels and the title come out of the drawing itself.
+  assert.match(drawing, /pdf\.getPageLabels\(\)/);
+  assert.match(drawing, /pdf\.getMetadata\(\)/);
+  assert.match(drawing, /onDocumentDetails/);
+  assert.match(drawing, /const pageLabel = \(page: number\)/);
+
+  // An upload that cannot go through says what is wrong with it.
+  assert.match(drawing, /const uploadRefusal = \(file: File \| null\)/);
+  assert.match(drawing, /the project limit is/);
+  assert.match(drawing, /DWG source stored/);
+});
