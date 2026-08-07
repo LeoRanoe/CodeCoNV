@@ -54,6 +54,7 @@ export function DailyLogModal({
   openProjectStart,
   openFullQuestionnaire,
   save,
+  focus,
 }: {
   buildings: BuildingOption[];
   defaultBuildingId: string;
@@ -64,6 +65,12 @@ export function DailyLogModal({
   disciplines: string[];
   parties: Array<{ id: string; name: string }>;
   busy: boolean;
+  /**
+   * Which record the supervisor came here for. The day closeout holds the works and the
+   * delay alike, so both open this one screen — but on the block they were asked for,
+   * instead of a whole day report to read past.
+   */
+  focus?: "delay" | "work";
   close: () => void;
   openProjectStart: () => void;
   openFullQuestionnaire: () => void;
@@ -172,10 +179,17 @@ export function DailyLogModal({
     attachmentsConfirmed: initialCloseout?.attachmentsConfirmed ?? photos.length > 0,
   };
 
+  const delayOnly = focus === "delay";
+  const workOnly = focus === "work";
+  // The delay lives in the day closeout, so the day still has to say what happened. When
+  // the closeout already exists this screen only asks about the delay; when it does not,
+  // the day's own blocks are required too, and stand open for that reason.
+  const dayContextRequired = !delayOnly || !initialCloseout;
   const problems: string[] = [];
-  if (answers.daySummary.length < 20) problems.push(text("Describe the construction activity and location in at least one full sentence.", "Beschrijf de bouwactiviteit en locatie in minimaal één volledige zin."));
-  if (answers.workPerformed.length < 10) problems.push(text("Describe the work completed today.", "Beschrijf het werk dat vandaag is afgerond."));
-  if (answers.tomorrowPlan.length < 3) problems.push(text("Enter the plan for tomorrow.", "Vul de planning voor morgen in."));
+  if (delayOnly && answers.delayCause === "none") problems.push(text("Choose what caused the delay.", "Kies waardoor de vertraging is ontstaan."));
+  if (dayContextRequired && answers.daySummary.length < 20) problems.push(text("Describe the construction activity and location in at least one full sentence.", "Beschrijf de bouwactiviteit en locatie in minimaal één volledige zin."));
+  if (dayContextRequired && answers.workPerformed.length < 10) problems.push(text("Describe the work completed today.", "Beschrijf het werk dat vandaag is afgerond."));
+  if (dayContextRequired && answers.tomorrowPlan.length < 3) problems.push(text("Enter the plan for tomorrow.", "Vul de planning voor morgen in."));
   if (answers.inspectionResult === "issues" && (answers.qualityDetails?.length ?? 0) < 10) problems.push(text("Describe the quality finding.", "Omschrijf de kwaliteitsbevinding."));
   if (answers.hseEvent !== "none" && (answers.hseDetails?.length ?? 0) < 10) problems.push(text("Describe the HSE event.", "Omschrijf de HSE-gebeurtenis."));
   if (answers.delayCause !== "none" && (answers.delayReason?.length ?? 0) < 10) problems.push(text("Describe what actually caused the delay in at least one sentence.", "Beschrijf in minimaal één zin wat de vertraging daadwerkelijk heeft veroorzaakt."));
@@ -187,14 +201,20 @@ export function DailyLogModal({
       <section className="modal daily-log-modal" role="dialog" aria-modal="true" aria-labelledby="daily-log-title">
         <header className="modal-header">
           <div>
-            <p className="eyebrow">{text("Daily log", "Daglog")}</p>
-            <h2 id="daily-log-title">{text("Today on site", "Vandaag op de bouwplaats")}</h2>
-            <p>{text("The same blocks as your weekly report, in the same order.", "Dezelfde blokken als in je weekrapport, in dezelfde volgorde.")}</p>
+            <p className="eyebrow">{delayOnly ? text("Delay", "Vertraging") : workOnly ? text("Works", "Werkzaamheden") : text("Daily log", "Daglog")}</p>
+            <h2 id="daily-log-title">{delayOnly
+              ? text("Record a delay", "Vertraging vastleggen")
+              : workOnly ? text("Record the works", "Werkzaamheden vastleggen") : text("Today on site", "Vandaag op de bouwplaats")}</h2>
+            <p>{delayOnly
+              ? text("Cause, time lost, what actually happened and the contractor's acknowledgement, stored with today's closeout.", "Oorzaak, tijdverlies, wat er werkelijk gebeurde en de erkenning van de aannemer, bewaard bij de dagafsluiting van vandaag.")
+              : workOnly
+                ? text("What is running and what was finished today. This is the record the works lists show.", "Wat er loopt en wat vandaag is afgerond. Dit is de registratie die de werkzaamhedenlijsten tonen.")
+                : text("The same blocks as your weekly report, in the same order.", "Dezelfde blokken als in je weekrapport, in dezelfde volgorde.")}</p>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
 
-        <div className="daily-log-body">
+        <div className={`daily-log-body${delayOnly ? " focus-delay" : workOnly ? " focus-works" : ""}`}>
           <BuildingMultiPicker
             id="daily-log-building"
             buildings={buildings}
@@ -218,7 +238,7 @@ export function DailyLogModal({
             )}
           </section>
 
-          <section className="daily-log-block">
+          <section className="daily-log-block daily-log-works">
             <h3><HardHat size={16} /> {text("Construction activity & location", "Bouwactiviteit & locatie")}</h3>
             <div className="quick-issue-presets" aria-label={text("Common activities", "Veelvoorkomende activiteiten")}>
               {activityChoices.map((choice) => (
@@ -287,7 +307,7 @@ export function DailyLogModal({
             </label>
           </section>
 
-          <section className="daily-log-block">
+          <section className="daily-log-block daily-log-delay">
             <h3><TimerOff size={16} /> {text("Delay and plan for tomorrow", "Vertraging en planning morgen")}</h3>
             <div className="form-grid-2">
               <label className="form-field">

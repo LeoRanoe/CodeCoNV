@@ -14503,6 +14503,21 @@ button {
  * So: tiles and cards keep their columns, and the things below go back to one column, or
  * back to scrolling, on a phone. Tablet and desktop are untouched.
  */
+/* The daily log opens on the record that was asked for. The closeout holds the works and
+   the delay alike, so both are this one screen; only the order of its blocks changes, and
+   the block in question is marked so it reads as the subject rather than a stop on a list. */
+.daily-log-body.focus-delay,
+.daily-log-body.focus-works { display: flex; flex-direction: column; }
+.daily-log-body.focus-delay > *,
+.daily-log-body.focus-works > * { order: 2; }
+.daily-log-body.focus-delay > .daily-log-delay,
+.daily-log-body.focus-works > .daily-log-works { order: 1; }
+.daily-log-body.focus-delay > .daily-log-delay,
+.daily-log-body.focus-works > .daily-log-works {
+  border: 1px solid var(--green, #23805e);
+  box-shadow: 0 0 0 3px rgb(35 128 94 / 10%);
+}
+
 /* A real picture fills its slot; the placeholder tone stays for photos still loading. */
 .evidence-thumbnail { overflow: hidden; padding: 0; position: relative; }
 .evidence-thumbnail img { display: block; height: 100%; object-fit: cover; width: 100%; }

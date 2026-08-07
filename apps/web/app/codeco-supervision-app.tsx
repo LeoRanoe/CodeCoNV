@@ -559,6 +559,8 @@ export function CodecoSupervisionApp() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [selectedType, setSelectedType] = useState<string>("activity");
   const [initialProjectTab, setInitialProjectTab] = useState<ProjectTabKey>("home");
+  /** Which block the daily log opens on: the whole day, or the delay it was asked for. */
+  const [dailyLogFocus, setDailyLogFocus] = useState<"delay" | "work" | undefined>(undefined);
   const quickCameraInputRef = useRef<HTMLInputElement>(null);
   const dailyBackupCheckRef = useRef("");
   const [pendingQuickPhotos, setPendingQuickPhotos] = useState<File[]>([]);
@@ -1187,18 +1189,17 @@ export function CodecoSupervisionApp() {
     if (type === "delay") {
       // A delay is part of the confirmed day closeout: its category, factual reason and
       // contractor acknowledgement must travel together into daily and period reports.
+      // It opens on the delay itself, with the rest of the day folded away — recording
+      // one used to mean reading past a whole day report to reach the block it is about.
+      setDailyLogFocus("delay");
       setModal("one_tap_log");
       return;
     }
-    prepareEntry("activity");
-    setEntryActivityKind(type);
-    writeDescription(type === "works_ongoing"
-      ? text("Work is ongoing", "Werkzaamheden zijn gaande")
-      : type === "works_completed"
-        ? text("Work completed", "Werkzaamheden afgerond")
-        : text("Delay recorded", "Vertraging geregistreerd"), true);
-    setLocation(selectedBuilding?.name ?? "");
-    setModal("entry");
+    // Works ongoing and works completed are read from the day closeout, so this is where
+    // they are written. Writing an activity registration instead meant the record never
+    // turned up in the list the button sits under.
+    setDailyLogFocus("work");
+    setModal("one_tap_log");
   };
 
   const saveEntry = async () => {
@@ -1791,7 +1792,7 @@ export function CodecoSupervisionApp() {
               openProjectStart={() => selectedBuilding && openProjectStartForAllBuildings()}
               openDailyQuestions={() => selectedBuilding && openDailyQuestionsForAllBuildings()}
               openQuickAdd={openQuickAdd}
-              openOneTapLog={() => setModal("one_tap_log")}
+              openOneTapLog={() => { setDailyLogFocus(undefined); setModal("one_tap_log"); }}
               openActions={() => navigate("acties")}
               openWorkspace={() => navigate("project")}
               openSettings={() => navigate("meer")}
@@ -2330,6 +2331,7 @@ export function CodecoSupervisionApp() {
       ) : null}
       {modal === "one_tap_log" && selectedProject && selectedBuilding ? (
         <DailyLogModal
+          focus={dailyLogFocus}
           buildings={selectedProject.buildings}
           defaultBuildingId={selectedBuilding.id}
           buildingName={buildingName}

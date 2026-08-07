@@ -145,6 +145,9 @@ import {
 } from "@/lib/supabase/operations";
 
 type WorkspaceMode = "project" | "actions" | "verify" | "reports" | "admin";
+/** What a workspace tile asks the module to open on: its own record, not the last one. */
+type WorkspaceTilePreset = { registerType?: string; hseEventType?: string };
+
 /** The modules that are a record form plus the list of what was recorded before it. */
 const recordModuleTabs = ["inspections", "findings", "ncr", "hse", "registers"];
 
@@ -1631,7 +1634,7 @@ function ProjectOperations({
 
   // Every way into a module is the same way: the entry form is open. Reaching NCR and
   // then still having to press "New" was the client's own remark.
-  const openTask = (next: ProjectTab, createRecord = true) => {
+  const openTask = (next: ProjectTab, createRecord = true, preset?: WorkspaceTilePreset) => {
     setTab(next);
     setSubmittedFinding(null);
     // The client's own record screens open with their form ready and the "New" button
@@ -1639,6 +1642,17 @@ function ProjectOperations({
     // still only navigates; nothing is submitted on the way in.
     setShowForm(createRecord || recordModuleTabs.includes(next));
     setActiveInspection(null);
+    // A tile that promises a delivery, a technical instruction, a change order, an
+    // agreement or an incident opens that record. Four tiles used to land on the same
+    // register form holding whatever type happened to be chosen last.
+    if (preset?.registerType) {
+      setRegisterForm({ ...emptyControlledDocumentDraft, type: preset.registerType });
+      setEditingRegisterId("");
+    }
+    if (preset?.hseEventType) {
+      setHseForm((current) => ({ ...current, type: preset.hseEventType!, issueType: "safety", category: "safety" }));
+      setEditingHseId("");
+    }
   };
 
   /**
@@ -2565,6 +2579,7 @@ function ProjectOperations({
             }}
             openPhotoLibrary={() => switchTab("files")}
             openTask={openTask}
+            openWorkforce={() => openDailyRecord("workforce")}
             openFinding={openFinding}
             openDailyWork={(view) => { setDailyWorkView(view); switchTab("daily"); }}
             openActionCenter={openActionCenter}
@@ -3751,6 +3766,9 @@ function ProjectOperations({
         buildings={buildings}
         view={dailyWorkView}
         onViewChange={setDailyWorkView}
+        // The works lists read the day closeout, so recording one writes that closeout.
+        // The button used to write an activity registration, which never appeared in the
+        // list it was pressed from.
         onRecord={(view) => openDailyRecord(view === "delays" ? "delay" : view)}
       /> : null}
 

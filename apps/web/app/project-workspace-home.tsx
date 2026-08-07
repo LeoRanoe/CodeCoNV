@@ -63,7 +63,9 @@ type ProjectWorkspaceHomeProps = {
   buildings: BuildingOption[];
   openRecord: (tab: string, recordId: string, kind: string) => void;
   openPhotoLibrary: () => void;
-  openTask: (destination: WorkspaceDestination, create?: boolean) => void;
+  openTask: (destination: WorkspaceDestination, create?: boolean, preset?: { registerType?: string; hseEventType?: string }) => void;
+  /** The workforce register itself: organisation, crew, discipline, headcount, visitors. */
+  openWorkforce: () => void;
   openFinding: (scope: "issue" | "ncr", create?: boolean) => void;
   openDailyWork: (view: "works_ongoing" | "works_completed" | "delays") => void;
   openActionCenter: (view?: "work" | "deadlines") => void;
@@ -91,6 +93,7 @@ export function ProjectWorkspaceHome({
   openRecord,
   openPhotoLibrary,
   openTask,
+  openWorkforce,
   openFinding,
   openDailyWork,
   openActionCenter,
@@ -141,7 +144,8 @@ export function ProjectWorkspaceHome({
       copy: text("Attendance by contractor and trade", "Bezetting per aannemer en vakdiscipline"),
       icon: Users,
       tone: "teal",
-      action: () => openTask("daily", false),
+      // §4.3 of the product plan: the workforce register, not the day's work list.
+      action: openWorkforce,
     },
     {
       id: "delays",
@@ -178,7 +182,7 @@ export function ProjectWorkspaceHome({
       icon: PackageCheck,
       tone: "teal",
       count: counts.deliveries,
-      action: () => openTask("registers", false),
+      action: () => openTask("registers", false, { registerType: "delivery" }),
     },
     {
       id: "inspections",
@@ -196,7 +200,7 @@ export function ProjectWorkspaceHome({
       copy: text("Controlled instruction with deadline", "Beheerde instructie met deadline"),
       icon: Wrench,
       tone: "blue",
-      action: () => openTask("registers", false),
+      action: () => openTask("registers", false, { registerType: "technical_instruction" }),
     },
     {
       id: "change-order",
@@ -204,7 +208,7 @@ export function ProjectWorkspaceHome({
       copy: text("Controlled scope, cost and schedule change", "Beheerde scope-, kosten- en planningswijziging"),
       icon: FileCheck2,
       tone: "purple",
-      action: () => openTask("registers", false),
+      action: () => openTask("registers", false, { registerType: "change_order" }),
     },
     {
       id: "ncr",
@@ -233,7 +237,7 @@ export function ProjectWorkspaceHome({
       icon: ShieldAlert,
       tone: "orange",
       module: "hse",
-      action: () => openTask("hse", false),
+      action: () => openTask("hse", false, { hseEventType: "incident" }),
     },
     {
       id: "agreements-made",
@@ -242,9 +246,9 @@ export function ProjectWorkspaceHome({
       icon: MessageSquareText,
       tone: "blue",
       count: counts.agreements,
-      action: () => openTask("registers", false),
+      action: () => openTask("registers", false, { registerType: "agreement" }),
     },
-  ], [counts, openActionCenter, openDailyWork, openFinding, openPhotoLibrary, openTask, text]);
+  ], [counts, openActionCenter, openDailyWork, openFinding, openPhotoLibrary, openTask, openWorkforce, text]);
 
   const visibleTiles = tiles.filter((tile) => {
     if (!moduleEnabled(tile.module)) return false;

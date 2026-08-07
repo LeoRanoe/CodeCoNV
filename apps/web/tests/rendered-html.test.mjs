@@ -691,8 +691,13 @@ test("keeps the project workspace mobile-first and task driven", async () => {
   // blank create form. Creation remains available after the user reaches that tab.
   assert.match(workspaceHome, /openFinding\("issue", false\)/);
   assert.match(workspaceHome, /openFinding\("ncr", false\)/);
-  assert.match(workspaceHome, /id: "technical-instructions"[\s\S]{0,420}openTask\("registers", false\)/);
-  assert.match(workspaceHome, /id: "change-order"[\s\S]{0,420}openTask\("registers", false\)/);
+  // Four tiles used to land on the same register form holding whatever type was chosen
+  // last. Each opens the record it names.
+  assert.match(workspaceHome, /id: "technical-instructions"[\s\S]{0,420}registerType: "technical_instruction"/);
+  assert.match(workspaceHome, /id: "materials-delivery"[\s\S]{0,420}registerType: "delivery"/);
+  assert.match(workspaceHome, /id: "change-order"[\s\S]{0,420}registerType: "change_order"/);
+  assert.match(workspaceHome, /id: "agreements-made"[\s\S]{0,420}registerType: "agreement"/);
+
   assert.match(workspaceHome, /agreements-made/);
   assert.doesNotMatch(workspaceHome, /openRegister\("(wcr|rfi|rfa|inspection_request)"\)/);
   assert.match(workspaceHome, /openTask\("documents", false\)/);
@@ -1189,7 +1194,7 @@ test("processes the annotated screens of 1 August: NCR form, agreement and deadl
 
   // #14 · The NCR module opens on its own entry form, and that form carries the boxes
   // of the client's own non-conformance report.
-  assert.match(workspace, /const openTask = \(next: ProjectTab, createRecord = true\)/);
+  assert.match(workspace, /const openTask = \(next: ProjectTab, createRecord = true, preset\?: WorkspaceTilePreset\)/);
   assert.match(workspace, /const openFinding = \(scope: "issue" \| "ncr", createRecord = true\)/);
   assert.match(workspace, /ncr-form-context/);
   assert.match(workspace, /Reference checklist \/ earlier report|Referentiechecklist \/ eerder rapport/);
@@ -1874,9 +1879,11 @@ test("sends the workforce overview tile to its browse screen and keeps quick att
     readFile(new URL("../app/project-workspace-home.tsx", import.meta.url), "utf8"),
   ]);
 
-  // A workspace Overview tile is a browse destination, not an implicit create action.
-  // The dashboard quick-add route below still opens attendance directly.
-  assert.match(workspaceHome, /id: "workforce"[\s\S]{0,300}openTask\("daily", false\)/);
+  // §4.3 of the product plan: the Workforce tile opens the workforce register itself —
+  // organisation, crew, discipline, headcount, visitors — not the day's work list, which
+  // is what "Attendance by contractor and trade" had been landing on.
+  assert.match(workspaceHome, /id: "workforce"[\s\S]{0,300}action: openWorkforce/);
+  assert.doesNotMatch(workspaceHome, /id: "workforce"[\s\S]{0,300}openTask\("daily", false\)/);
   assert.match(app, /if \(type === "workforce"\) \{[\s\S]{0,320}setModal\("attendance"\)/);
   assert.doesNotMatch(app, /if \(type === "workforce"\) \{[\s\S]{0,320}setModal\("one_tap_log"\)/);
 
@@ -2691,4 +2698,39 @@ test("the drawing overlay draws in the page's own pixels, with real arrowheads a
 
   // The overlay is measured from the page, so rotation and split-screen keep it true.
   assert.match(drawing, /setPageSize\(\{ width, height \}\)/);
+});
+
+test("every workspace button opens the record it names", async () => {
+  const [workspaceHome, workspace, app, dailyLog, styles] = await Promise.all([
+    readFile(new URL("../app/project-workspace-home.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // Workforce is the register of §4.3, not the day's work list.
+  assert.match(workspaceHome, /action: openWorkforce/);
+  assert.match(workspace, /openWorkforce=\{\(\) => openDailyRecord\("workforce"\)\}/);
+  assert.match(app, /if \(type === "workforce"\)[\s\S]{0,320}setModal\("attendance"\)/);
+
+  // A tile that names a register opens that register, not the last type chosen.
+  assert.match(workspace, /if \(preset\?\.registerType\)/);
+  assert.match(workspace, /setRegisterForm\(\{ \.\.\.emptyControlledDocumentDraft, type: preset\.registerType \}\)/);
+  assert.match(workspace, /if \(preset\?\.hseEventType\)/);
+  assert.match(workspaceHome, /hseEventType: "incident"/);
+
+  // Works and delays are read from the day closeout, so they are written there too. The
+  // record button used to write an activity registration, which never appeared in the
+  // list it was pressed from.
+  assert.match(app, /setDailyLogFocus\("work"\)/);
+  assert.match(app, /setDailyLogFocus\("delay"\)/);
+  assert.doesNotMatch(app, /setEntryActivityKind\(type\)/);
+  assert.match(dailyLog, /focus\?: "delay" \| "work"/);
+
+  // Opening on a block means that block reads as the subject, and the delay screen only
+  // demands the day's own answers when there is no closeout to attach itself to.
+  assert.match(dailyLog, /const dayContextRequired = !delayOnly \|\| !initialCloseout/);
+  assert.match(dailyLog, /daily-log-body\$\{delayOnly \? " focus-delay" : workOnly \? " focus-works" : ""\}/);
+  assert.match(styles, /\.daily-log-body\.focus-delay > \.daily-log-delay/);
 });
