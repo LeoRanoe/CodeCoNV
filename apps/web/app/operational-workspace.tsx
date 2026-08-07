@@ -618,6 +618,8 @@ export function OperationalWorkspace({
   canManageOrganization,
   openUserAdmin,
   initialProjectTab = "home",
+  initialRecordPreset,
+  onRecordPresetConsumed,
   onProjectTabChange,
   externalSubmissionIntent = false,
   actionCenterView = "work",
@@ -659,6 +661,9 @@ export function OperationalWorkspace({
   canManageOrganization: boolean;
   openUserAdmin: () => void;
   initialProjectTab?: ProjectTab;
+  /** Which record a shortcut elsewhere promised; the module opens on it, once. */
+  initialRecordPreset?: WorkspaceTilePreset;
+  onRecordPresetConsumed?: () => void;
   /** The app shell keeps the open module, so it can be reached with the back button. */
   onProjectTabChange: (tab: ProjectTab) => void;
   /** Set when Management sends the user here to record a contractor submission. */
@@ -803,6 +808,8 @@ export function OperationalWorkspace({
           busy={busy}
           run={run}
           initialTab={initialProjectTab}
+          initialRecordPreset={initialRecordPreset}
+          onRecordPresetConsumed={onRecordPresetConsumed}
           onTabChange={onProjectTabChange}
           externalSubmissionIntent={externalSubmissionIntent}
           initialCameraFiles={initialCameraFiles}
@@ -894,6 +901,8 @@ function ProjectOperations({
   busy,
   run,
   initialTab,
+  initialRecordPreset,
+  onRecordPresetConsumed,
   onTabChange,
   initialCameraFiles,
   onInitialCameraFilesConsumed,
@@ -929,6 +938,8 @@ function ProjectOperations({
   busy: boolean;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
   initialTab: ProjectTab;
+  initialRecordPreset?: WorkspaceTilePreset;
+  onRecordPresetConsumed?: () => void;
   /** Reports the chosen module upwards, so it becomes a history entry. */
   onTabChange: (tab: ProjectTab) => void;
   initialCameraFiles: File[];
@@ -1651,6 +1662,30 @@ function ProjectOperations({
 
   // Every way into a module is the same way: the entry form is open. Reaching NCR and
   // then still having to press "New" was the client's own remark.
+  /**
+   * A shortcut elsewhere in the app can say which record it meant. It is applied once, on
+   * arrival, so the module opens on that record instead of on whatever was chosen last.
+   */
+  const presetHandled = useRef("");
+  useEffect(() => {
+    const key = `${initialRecordPreset?.registerType ?? ""}:${initialRecordPreset?.hseEventType ?? ""}`;
+    if (key === ":" || presetHandled.current === key) return;
+    presetHandled.current = key;
+    const applyPreset = window.setTimeout(() => {
+      if (initialRecordPreset?.registerType) {
+        setRegisterForm({ ...emptyControlledDocumentDraft, type: initialRecordPreset.registerType });
+        setEditingRegisterId("");
+      }
+      if (initialRecordPreset?.hseEventType) {
+        setHseForm((current) => ({ ...current, type: initialRecordPreset.hseEventType!, issueType: "safety", category: "safety" }));
+        setEditingHseId("");
+      }
+      setShowForm(true);
+      onRecordPresetConsumed?.();
+    }, 0);
+    return () => window.clearTimeout(applyPreset);
+  }, [initialRecordPreset, onRecordPresetConsumed]);
+
   const openTask = (next: ProjectTab, createRecord = true, preset?: WorkspaceTilePreset) => {
     setTab(next);
     setSubmittedFinding(null);

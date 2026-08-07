@@ -9205,21 +9205,23 @@ textarea:focus-visible {
  * replaced. Every card says what it is for and carries its own count, so no number on the
  * screen is left wondering which question it answers.
  */
-.workforce-section { border: 1px solid var(--ink-200); border-radius: 13px; display: grid; gap: 11px; padding: 13px; }
-.workforce-section > header { align-items: center; display: grid; gap: 10px; grid-template-columns: auto minmax(0, 1fr) auto; }
+/* The card itself is the shared .record-form-section every other form uses; only the icon
+   and the running count are workforce's own. */
+.workforce-sections { gap: 0.85rem; }
+.workforce-section .record-form-section-body { gap: 0.75rem; }
+.workforce-section-count { align-items: center; display: inline-flex; gap: 9px; }
+.workforce-section-count > strong { color: var(--green); font-size: 20px; line-height: 1; }
 .workforce-section-icon {
   align-items: center;
   background: var(--green-soft);
   border-radius: 9px;
   color: var(--green);
   display: flex;
+  flex: 0 0 auto;
   height: 34px;
   justify-content: center;
   width: 34px;
 }
-.workforce-section > header h3 { color: var(--ink-900); font-size: 13px; margin: 0; }
-.workforce-section > header p { color: var(--ink-500); font-size: 10px; line-height: 1.4; margin: 2px 0 0; }
-.workforce-section > header > strong { color: var(--green); font-size: 20px; }
 
 /* §4.3: the totals the report is read by — per organisation and per trade. */
 .workforce-totals { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
@@ -9243,11 +9245,16 @@ textarea:focus-visible {
 .workforce-deviation-list span { color: var(--ink-600); font-size: 11px; }
 
 @media (max-width: 640px) {
-  .workforce-add { grid-template-columns: 1fr 1fr; }
+  /* One field per phone line, like every other form row in the app. Side by side, the
+     party select cut its own contractor's name off halfway. */
+  .workforce-add { grid-template-columns: minmax(0, 1fr); }
   .workforce-add-button { grid-column: 1 / -1; }
   /* The counter and the shift each get a full row rather than four columns on a phone. */
   .workforce-row { grid-template-columns: minmax(0, 1fr) auto; }
   .workforce-shift { grid-column: 1 / -1; }
+  /* Without this the counter stretches across the row it shares with the remove button
+     and reads as an empty input box. */
+  .workforce-row .counter-control { justify-self: start; }
 }
 
 .external-source-image { background: #edf2f2; border-radius: 12px; max-height: 360px; object-fit: cover; width: 100%; }
@@ -13896,6 +13903,17 @@ button {
   border-bottom: 1px solid var(--line, #d8dfda);
 }
 
+/* The title block takes the room that is left, so an aside stays pinned to the right edge
+   instead of sitting against the heading. */
+.record-form-section-heading > div { flex: 1 1 auto; min-width: 0; }
+.record-form-section-aside {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
 .record-form-section-heading h3,
 .record-form-section-heading p { margin: 0; }
 .record-form-section-heading p { margin-top: 0.2rem; color: var(--muted, #66736b); font-size: 0.82rem; }
@@ -14515,6 +14533,18 @@ button {
 .daily-log-body.focus-delay > .daily-log-delay,
 .daily-log-body.focus-works > .daily-log-works {
   border: 1px solid var(--green, #23805e);
+  box-shadow: 0 0 0 3px rgb(35 128 94 / 10%);
+}
+
+/* Works ongoing and works completed are two answers on the same closeout, so the screen
+   marks the one that was asked for instead of showing the pair and letting the supervisor
+   guess which button they pressed. */
+.daily-log-body.focus-ongoing .daily-log-field-completed,
+.daily-log-body.focus-completed .daily-log-field-ongoing { opacity: .62; }
+.daily-log-body.focus-ongoing .daily-log-field-ongoing > span::after { content: " ·"; }
+.daily-log-body.focus-ongoing .daily-log-field-ongoing textarea,
+.daily-log-body.focus-completed .daily-log-field-completed textarea {
+  border-color: var(--green, #23805e);
   box-shadow: 0 0 0 3px rgb(35 128 94 / 10%);
 }
 

@@ -54,6 +54,16 @@ const fixture = `<main style="padding:12px">
       ${[["Open", 1], ["In uitvoering", 0], ["Gereed voor verificatie", 0], ["Geverifieerd", 0]].map(([label, count], index) => `<div${index === 2 ? ' class="attention"' : ""}><span>${index + 1}</span><strong>${count}</strong><small>${label}</small></div>`).join("")}
     </div>
   </div>
+  <div class="record-form-sections workforce-sections">
+    <section class="record-form-section workforce-section">
+      <header class="record-form-section-heading">
+        <span class="record-form-section-number">1</span>
+        <div><h3>Bezetting per discipline</h3><p>Kies de discipline die er echt is en zet het aantal van vandaag.</p></div>
+        <div class="record-form-section-aside"><span class="workforce-section-count"><span class="workforce-section-icon"></span><strong>24</strong></span></div>
+      </header>
+      <div class="record-form-section-body"><p>Body</p></div>
+    </section>
+  </div>
   <section class="drawing-unplaced-list">
     <header><strong>Nog niet op een tekening</strong><b>12</b></header>
     ${["INS-2026-0007", "PHOTO", "INS-2026-0006"].map((code, index) => `<button type="button"><span class="drawing-unplaced-dot tone-${index === 1 ? "cyan" : "green"}"></span><span><strong>${code}</strong><small>Cast-in anchors installation</small></span></button>`).join("")}
@@ -72,6 +82,9 @@ type Measurements = {
   dotHeight: number;
   clippedStageLabels: number;
   shortTargets: number;
+  /** Gap between the section's running count and the right edge of its card. */
+  workforceCountGap: number;
+  workforceHeadingRows: number;
   overflow: number;
 };
 
@@ -87,6 +100,12 @@ async function measure(page: import("@playwright/test").Page, html: string): Pro
     };
     const actions = document.querySelector(".record-row-actions");
     const actionButtons = [...(actions?.querySelectorAll("button") ?? [])];
+    const workforceCard = document.querySelector(".workforce-section");
+    const workforceCount = document.querySelector(".workforce-section-count");
+    const workforceNumber = document.querySelector(".workforce-section .record-form-section-number");
+    const cardBox = workforceCard?.getBoundingClientRect();
+    const countBox = workforceCount?.getBoundingClientRect();
+    const numberBox = workforceNumber?.getBoundingClientRect();
     const dot = document.querySelector(".drawing-unplaced-dot");
     const dotRow = document.querySelector(".drawing-unplaced-list > button");
     const dotBox = dot?.getBoundingClientRect();
@@ -106,6 +125,11 @@ async function measure(page: import("@playwright/test").Page, html: string): Pro
       shortTargets: [
         ...document.querySelectorAll(".workspace-launcher-tile, .project-document-tabs > button, .daily-work-tabs button, .record-row-actions button"),
       ].filter((element) => element.getBoundingClientRect().height < 36).length,
+      workforceCountGap: !cardBox || !countBox ? Number.POSITIVE_INFINITY : cardBox.right - countBox.right,
+      // The step number and the count sit on one line with the title between them; when the
+      // heading breaks into two rows the count has been pushed under the title.
+      workforceHeadingRows: !numberBox || !countBox ? -1
+        : new Set([Math.round(numberBox.top / 8), Math.round(countBox.top / 8)]).size,
       overflow: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - document.documentElement.clientWidth,
     };
   }, html);
@@ -142,6 +166,11 @@ for (const size of widths) {
     // A dot in the unplaced list stays inside its row instead of escaping as a map pin.
     expect(seen.dotEscapesRow, `unplaced dot escapes its row at ${size.width}px`).toBe(false);
     expect(seen.dotHeight, `unplaced dot height at ${size.width}px`).toBeLessThanOrEqual(30);
+
+    // Workforce is the shared record-form card now: its running count stays pinned to the
+    // right edge of the heading instead of sitting against the title or dropping a line.
+    expect(seen.workforceCountGap, `workforce count gap at ${size.width}px`).toBeLessThan(40);
+    expect(seen.workforceHeadingRows, `workforce heading rows at ${size.width}px`).toBe(1);
 
     // Stage labels are readable, touch targets reachable, and the page never scrolls sideways.
     expect(seen.clippedStageLabels, `clipped stage labels at ${size.width}px`).toBe(0);

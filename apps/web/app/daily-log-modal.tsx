@@ -70,7 +70,7 @@ export function DailyLogModal({
    * delay alike, so both open this one screen — but on the block they were asked for,
    * instead of a whole day report to read past.
    */
-  focus?: "delay" | "work";
+  focus?: "delay" | "works_ongoing" | "works_completed";
   close: () => void;
   openProjectStart: () => void;
   openFullQuestionnaire: () => void;
@@ -189,15 +189,22 @@ export function DailyLogModal({
   };
 
   const delayOnly = focus === "delay";
-  const workOnly = focus === "work";
-  // The delay lives in the day closeout, so the day still has to say what happened. When
-  // the closeout already exists this screen only asks about the delay; when it does not,
-  // the day's own blocks are required too, and stand open for that reason.
-  const dayContextRequired = !delayOnly || !initialCloseout;
+  const ongoingOnly = focus === "works_ongoing";
+  const completedOnly = focus === "works_completed";
+  const workOnly = ongoingOnly || completedOnly;
+  // A focused entry lives in the day closeout, so the day still has to say what happened.
+  // When the closeout already exists this screen only asks about the one thing the button
+  // was pressed for; when it does not, the day's own blocks are required too, and stand
+  // open for that reason.
+  const dayContextRequired = !(delayOnly || workOnly) || !initialCloseout;
+  // Works ongoing and works completed are the same form; each button still has to end up
+  // with the field it was pressed for filled in.
+  const summaryRequired = dayContextRequired || ongoingOnly;
+  const performedRequired = dayContextRequired || completedOnly;
   const problems: string[] = [];
   if (delayOnly && answers.delayCause === "none") problems.push(text("Choose what caused the delay.", "Kies waardoor de vertraging is ontstaan."));
-  if (dayContextRequired && answers.daySummary.length < 20) problems.push(text("Describe the construction activity and location in at least one full sentence.", "Beschrijf de bouwactiviteit en locatie in minimaal één volledige zin."));
-  if (dayContextRequired && answers.workPerformed.length < 10) problems.push(text("Describe the work completed today.", "Beschrijf het werk dat vandaag is afgerond."));
+  if (summaryRequired && answers.daySummary.length < 20) problems.push(text("Describe the construction activity and location in at least one full sentence.", "Beschrijf de bouwactiviteit en locatie in minimaal één volledige zin."));
+  if (performedRequired && answers.workPerformed.length < 10) problems.push(text("Describe the work completed today.", "Beschrijf het werk dat vandaag is afgerond."));
   if (dayContextRequired && answers.tomorrowPlan.length < 3) problems.push(text("Enter the plan for tomorrow.", "Vul de planning voor morgen in."));
   if (answers.inspectionResult === "issues" && (answers.qualityDetails?.length ?? 0) < 10) problems.push(text("Describe the quality finding.", "Omschrijf de kwaliteitsbevinding."));
   if (answers.hseEvent !== "none" && (answers.hseDetails?.length ?? 0) < 10) problems.push(text("Describe the HSE event.", "Omschrijf de HSE-gebeurtenis."));
@@ -210,20 +217,24 @@ export function DailyLogModal({
       <section className="modal daily-log-modal" role="dialog" aria-modal="true" aria-labelledby="daily-log-title">
         <header className="modal-header">
           <div>
-            <p className="eyebrow">{delayOnly ? text("Delay", "Vertraging") : workOnly ? text("Works", "Werkzaamheden") : text("Daily log", "Daglog")}</p>
+            <p className="eyebrow">{delayOnly ? text("Delay", "Vertraging") : ongoingOnly ? text("Works ongoing", "Werkzaamheden gaande") : completedOnly ? text("Works completed", "Werkzaamheden afgerond") : text("Daily log", "Daglog")}</p>
             <h2 id="daily-log-title">{delayOnly
               ? text("Record a delay", "Vertraging vastleggen")
-              : workOnly ? text("Record the works", "Werkzaamheden vastleggen") : text("Today on site", "Vandaag op de bouwplaats")}</h2>
+              : ongoingOnly ? text("Record works ongoing", "Werkzaamheden gaande vastleggen")
+                : completedOnly ? text("Record works completed", "Werkzaamheden afgerond vastleggen")
+                  : text("Today on site", "Vandaag op de bouwplaats")}</h2>
             <p>{delayOnly
               ? text("Cause, time lost, what actually happened and the contractor's acknowledgement, stored with today's closeout.", "Oorzaak, tijdverlies, wat er werkelijk gebeurde en de erkenning van de aannemer, bewaard bij de dagafsluiting van vandaag.")
-              : workOnly
-                ? text("What is running and what was finished today. This is the record the works lists show.", "Wat er loopt en wat vandaag is afgerond. Dit is de registratie die de werkzaamhedenlijsten tonen.")
+              : ongoingOnly
+                ? text("What is running right now, and where. This is the record the works-ongoing list shows.", "Wat er op dit moment loopt, en waar. Dit is de registratie die de lijst Werkzaamheden gaande toont.")
+                : completedOnly
+                  ? text("What was finished today, and how far the work stands. This is the record the works-completed list shows.", "Wat vandaag is afgerond, en hoe ver het werk staat. Dit is de registratie die de lijst Werkzaamheden afgerond toont.")
                 : text("The same blocks as your weekly report, in the same order.", "Dezelfde blokken als in je weekrapport, in dezelfde volgorde.")}</p>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
 
-        <div className={`daily-log-body${delayOnly ? " focus-delay" : workOnly ? " focus-works" : ""}`}>
+        <div className={`daily-log-body${delayOnly ? " focus-delay" : ongoingOnly ? " focus-works focus-ongoing" : completedOnly ? " focus-works focus-completed" : ""}`}>
           <BuildingMultiPicker
             id="daily-log-building"
             buildings={buildings}
@@ -254,13 +265,13 @@ export function DailyLogModal({
                 <button type="button" onClick={() => setLog((current) => ({ ...current, constructionActivity: appendDictation(current.constructionActivity, `${choice} · ${buildings.find((building) => building.id === buildingId)?.name ?? buildingName}`) }))} key={choice}>{choice}</button>
               ))}
             </div>
-            <label className="form-field">
+            <label className="form-field daily-log-field-ongoing">
               <span>{text("What is in progress, and where?", "Wat is er gaande, en waar?")}</span>
               <textarea rows={3} value={log.constructionActivity} onChange={(event) => setLog({ ...log, constructionActivity: event.target.value })} />
               <DictateButton onText={(transcript) => setLog((current) => ({ ...current, constructionActivity: appendDictation(current.constructionActivity, transcript) }))} />
             </label>
             <div className="form-grid-2">
-              <label className="form-field">
+              <label className="form-field daily-log-field-completed">
                 <span>{text("Work completed today", "Werk vandaag afgerond")}</span>
                 <textarea rows={2} value={log.workPerformed} onChange={(event) => setLog({ ...log, workPerformed: event.target.value })} />
                 <DictateButton onText={(transcript) => setLog((current) => ({ ...current, workPerformed: appendDictation(current.workPerformed, transcript) }))} />

@@ -563,7 +563,9 @@ export function CodecoSupervisionApp() {
   const [selectedType, setSelectedType] = useState<string>("activity");
   const [initialProjectTab, setInitialProjectTab] = useState<ProjectTabKey>("home");
   /** Which block the daily log opens on: the whole day, or the delay it was asked for. */
-  const [dailyLogFocus, setDailyLogFocus] = useState<"delay" | "work" | undefined>(undefined);
+  const [dailyLogFocus, setDailyLogFocus] = useState<"delay" | "works_ongoing" | "works_completed" | undefined>(undefined);
+  /** Which record a shortcut promised, so the module opens on it and not on the last one. */
+  const [projectTabPreset, setProjectTabPreset] = useState<{ registerType?: string; hseEventType?: string } | undefined>(undefined);
   const quickCameraInputRef = useRef<HTMLInputElement>(null);
   const dailyBackupCheckRef = useRef("");
   const [pendingQuickPhotos, setPendingQuickPhotos] = useState<File[]>([]);
@@ -1125,27 +1127,23 @@ export function CodecoSupervisionApp() {
       "Photo ready. Confirm its project context, save it, then click the image to place a finding.",
       "Foto klaar. Bevestig de projectcontext, sla op en klik daarna op de foto om een bevinding te plaatsen.",
     ));
-    setInitialProjectTab("visual");
-    setActiveNav("project");
+    openWorkspaceModule("visual");
     setModal(null);
   };
 
   const chooseType = (type: string) => {
     if (type === "photo") {
-      setInitialProjectTab("visual");
-      setActiveNav("project");
+      openWorkspaceModule("visual");
       setModal(null);
       return;
     }
     if (type === "finding" || type === "inspection" || type === "hse") {
-      setInitialProjectTab(type === "finding" ? "findings" : type === "inspection" ? "inspections" : "hse");
-      setActiveNav("project");
+      openWorkspaceModule(type === "finding" ? "findings" : type === "inspection" ? "inspections" : "hse");
       setModal(null);
       return;
     }
     if (type === "note" || type === "agreement") {
-      setInitialProjectTab("tools");
-      setActiveNav("project");
+      openWorkspaceModule("tools");
       setModal(null);
       return;
     }
@@ -1200,8 +1198,9 @@ export function CodecoSupervisionApp() {
     }
     // Works ongoing and works completed are read from the day closeout, so this is where
     // they are written. Writing an activity registration instead meant the record never
-    // turned up in the list the button sits under.
-    setDailyLogFocus("work");
+    // turned up in the list the button sits under. They are two different answers on that
+    // closeout, so the screen opens on the one that was asked for.
+    setDailyLogFocus(type === "works_completed" ? "works_completed" : "works_ongoing");
     setModal("one_tap_log");
   };
 
@@ -1350,6 +1349,17 @@ export function CodecoSupervisionApp() {
     setMobileMenuOpen(false);
     setActiveNav(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  /**
+   * Every route into a workspace module runs through here. Setting the tab and the
+   * destination by hand skipped what navigate does — closing the mobile menu, dropping the
+   * record the previous screen pointed at, and starting at the top — so the same module
+   * opened differently depending on which tile, menu row or dialog asked for it.
+   */
+  const openWorkspaceModule = (tab: ProjectTabKey) => {
+    navigate("project");
+    setInitialProjectTab(tab);
   };
 
   const chooseProject = (project: ProjectContext) => {
@@ -1685,9 +1695,7 @@ export function CodecoSupervisionApp() {
             openQuickAdd();
             return;
           }
-          setInitialProjectTab(destination === "inspection" ? "inspections" : "findings");
-          setActiveNav("project");
-          window.scrollTo({ top: 0, behavior: "smooth" });
+          openWorkspaceModule(destination === "inspection" ? "inspections" : "findings");
         }}
       />
       <input
@@ -1837,6 +1845,8 @@ export function CodecoSupervisionApp() {
               canManageOrganization={canManageMembers}
               openUserAdmin={() => setModal("user_admin")}
               initialProjectTab={initialProjectTab}
+              initialRecordPreset={projectTabPreset}
+              onRecordPresetConsumed={() => setProjectTabPreset(undefined)}
               onProjectTabChange={setInitialProjectTab}
               externalSubmissionIntent={externalSubmissionIntent}
               actionCenterView={actionCenterView}
@@ -1873,12 +1883,12 @@ export function CodecoSupervisionApp() {
               openProjectArea={(tab, recordId) => {
                 // "submissions" is Management deliberately unlocking the contractor
                 // document types; every other destination is a normal workspace module.
+                openWorkspaceModule(tab === "submissions" ? "registers" : tab);
+                // Both of these are cleared by navigate, so they are set after it.
                 setExternalSubmissionIntent(tab === "submissions");
-                setInitialProjectTab(tab === "submissions" ? "registers" : tab);
                 // The action centre points at a record, so the module opens on that record
                 // instead of on the list it stands in.
                 setFocusRecordId(recordId ?? "");
-                setActiveNav("project");
               }}
               openActionCenter={(view = "work") => { navigate("acties"); setActionCenterView(view); }}
               openRapidVerify={() => navigate("verify")}
@@ -1894,6 +1904,7 @@ export function CodecoSupervisionApp() {
               buildingName={buildingName}
               attendanceTotal={projectAttendanceTotal}
               openAttendance={() => setModal("attendance")}
+              openDailyLog={() => { setDailyLogFocus(undefined); setModal("one_tap_log"); }}
               entries={entries}
               actions={dayActions}
               actionUpdates={dayQuery.data?.actionUpdates ?? []}
@@ -1903,12 +1914,13 @@ export function CodecoSupervisionApp() {
                 setModal("action_detail");
               }}
               openActionCreate={() => setModal("action_create")}
-              openProjectTab={(tab) => {
-                setInitialProjectTab(tab);
-                setActiveNav("project");
+              openProjectTab={(tab, preset) => {
+                openWorkspaceModule(tab);
+                setProjectTabPreset(preset);
               }}
               reportNumber={reportNumber}
               reportStatus={String(dayQuery.data?.report?.status ?? "draft")}
+              openReport={() => setModal("report")}
               canManageMembers={canManageMembers}
               openUserAdmin={() => setModal("user_admin")}
             />
@@ -2044,8 +2056,7 @@ export function CodecoSupervisionApp() {
           openDrawings={() => {
             setModal(null);
             setEntryDraftParked(true);
-            setInitialProjectTab("drawings");
-            setActiveNav("project");
+            openWorkspaceModule("drawings");
           }}
           clearDrawingPoint={() => setEntryDrawingPoint(null)}
           requiredLocationDepth={projectConfigurationQuery.data?.required_location_depth ?? "building"}
@@ -2098,7 +2109,7 @@ export function CodecoSupervisionApp() {
             );
             if (!saved) return false;
             setModal(null);
-            setActiveNav("acties");
+            navigate("acties");
             await queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] });
             return true;
           }}
@@ -2255,6 +2266,7 @@ export function CodecoSupervisionApp() {
           expectedWorkers={projectStartAnswers?.expectedWorkers ?? null}
           initialNote={attendanceNote}
           initialVisitors={attendanceVisitors}
+          currentUserName={currentUserName}
           busy={syncState === "saving"}
           copyPreviousWorkday={async (workforceBuildingId) => {
             const previous = await loadPreviousWorkdayAttendance(supabase, selectedProject.id, reportDate, workforceBuildingId);
@@ -3402,6 +3414,7 @@ function SecondaryView({
   buildingName,
   attendanceTotal,
   openAttendance,
+  openDailyLog,
   entries,
   actions,
   actionUpdates,
@@ -3411,6 +3424,7 @@ function SecondaryView({
   openProjectTab,
   reportNumber,
   reportStatus,
+  openReport,
   canManageMembers,
   openUserAdmin,
 }: {
@@ -3421,15 +3435,19 @@ function SecondaryView({
   buildingName: string;
   attendanceTotal: number;
   openAttendance: () => void;
+  /** The day's own log, where the plan for tomorrow is written. */
+  openDailyLog: () => void;
   entries: TimelineEntry[];
   actions: ProjectAction[];
   actionUpdates: ActionUpdate[];
   locationNodes: ProjectLocationOption[];
   openAction: (action: ProjectAction) => void;
   openActionCreate: () => void;
-  openProjectTab: (tab: "registers" | "findings" | "drawings") => void;
+  openProjectTab: (tab: "registers" | "findings" | "ncr" | "inspections" | "files" | "drawings", preset?: { registerType?: string; hseEventType?: string }) => void;
   reportNumber: string;
   reportStatus: string;
+  /** The day report itself, so the row that names it opens it. */
+  openReport: () => void;
   canManageMembers: boolean;
   openUserAdmin: () => void;
 }) {
@@ -3441,10 +3459,12 @@ function SecondaryView({
     const modules = [
       { title: text("Attendance", "Aanwezigheid"), copy: text("Parties, disciplines, headcounts and shifts", "Partijen, disciplines, aantallen en diensten"), icon: Users, count: `${attendanceTotal} ${text("today", "vandaag")}`, action: openAttendance },
       { title: text("Activities", "Activiteiten"), copy: text("Work packages, planning and progress", "Werkpakketten, planning en voortgang"), icon: Wrench, count: `${registrationsByKind("activity")} ${text("today", "vandaag")}`, action: openQuickAdd },
-      { title: text("Inspections", "Inspecties"), copy: text("Planned, completed and re-inspections", "Gepland, uitgevoerd en herinspecties"), icon: ClipboardCheck, count: `${registrationsByKind("inspection")} ${text("today", "vandaag")}`, action: openQuickAdd },
-      { title: text("Findings", "Bevindingen"), copy: text("Quality, NCR and repair verification", "Kwaliteit, NCR en herstelverificatie"), icon: AlertTriangle, count: `${registrationsByKind("finding")} ${text("today", "vandaag")}`, action: () => navigate("acties") },
+      // Each tile opens the module it names. Inspections, findings and photos all used to
+      // land on the quick-add sheet or the action centre instead.
+      { title: text("Inspections", "Inspecties"), copy: text("Planned, completed and re-inspections", "Gepland, uitgevoerd en herinspecties"), icon: ClipboardCheck, count: `${registrationsByKind("inspection")} ${text("today", "vandaag")}`, action: () => openProjectTab("inspections") },
+      { title: text("Findings", "Bevindingen"), copy: text("Quality, NCR and repair verification", "Kwaliteit, NCR en herstelverificatie"), icon: AlertTriangle, count: `${registrationsByKind("finding")} ${text("today", "vandaag")}`, action: () => openProjectTab("findings") },
       { title: text("Actions", "Acties"), copy: text("Assignment, deadlines and verification", "Toewijzing, deadlines en verificatie"), icon: ShieldCheck, count: `${actions.length} ${text("central", "centraal")}`, action: () => navigate("acties") },
-      { title: text("Photos", "Foto’s"), copy: text("Evidence, locations and links", "Bewijs, locaties en koppelingen"), icon: Image, count: `${registrationsByKind("photo")} ${text("today", "vandaag")}`, action: openQuickAdd },
+      { title: text("Photos", "Foto’s"), copy: text("Evidence, locations and links", "Bewijs, locaties en koppelingen"), icon: Image, count: `${registrationsByKind("photo")} ${text("today", "vandaag")}`, action: () => openProjectTab("files") },
     ];
     return (
       <>
@@ -3479,11 +3499,11 @@ function SecondaryView({
           <button className="primary-button" type="button" onClick={openActionCreate}><Plus size={15} /> {text("Add action", "Actie toevoegen")}</button>
         </header>
         <nav className="action-record-shortcuts" aria-label={text("Open work and document records", "Openstaande werk- en documentregistraties")}>
-          <button type="button" onClick={() => openProjectTab("registers")}><FileCheck2 size={16} /><span><strong>WCR</strong><small>{text("Work completion requests", "Werkcontroleverzoeken")}</small></span></button>
-          <button type="button" onClick={() => openProjectTab("registers")}><MessageSquareText size={16} /><span><strong>RFI</strong><small>{text("Information requests", "Informatieverzoeken")}</small></span></button>
-          <button type="button" onClick={() => openProjectTab("registers")}><PackageCheck size={16} /><span><strong>RFA</strong><small>{text("Approval requests", "Goedkeuringsverzoeken")}</small></span></button>
-          <button type="button" onClick={() => openProjectTab("registers")}><ClipboardCheck size={16} /><span><strong>WIR</strong><small>{text("Inspection requests", "Inspectieverzoeken")}</small></span></button>
-          <button type="button" onClick={() => openProjectTab("findings")}><AlertTriangle size={16} /><span><strong>{text("Issues / NCR", "Issues / NCR")}</strong><small>{text("Open findings", "Open bevindingen")}</small></span></button>
+          <button type="button" onClick={() => openProjectTab("registers", { registerType: "wcr" })}><FileCheck2 size={16} /><span><strong>WCR</strong><small>{text("Work completion requests", "Werkcontroleverzoeken")}</small></span></button>
+          <button type="button" onClick={() => openProjectTab("registers", { registerType: "rfi" })}><MessageSquareText size={16} /><span><strong>RFI</strong><small>{text("Information requests", "Informatieverzoeken")}</small></span></button>
+          <button type="button" onClick={() => openProjectTab("registers", { registerType: "rfa" })}><PackageCheck size={16} /><span><strong>RFA</strong><small>{text("Approval requests", "Goedkeuringsverzoeken")}</small></span></button>
+          <button type="button" onClick={() => openProjectTab("registers", { registerType: "inspection_request" })}><ClipboardCheck size={16} /><span><strong>WIR</strong><small>{text("Inspection requests", "Inspectieverzoeken")}</small></span></button>
+          <button type="button" onClick={() => openProjectTab("ncr")}><AlertTriangle size={16} /><span><strong>NCR</strong><small>{text("Open findings", "Open bevindingen")}</small></span></button>
           <button type="button" onClick={() => openProjectTab("findings")}><CheckCircle2 size={16} /><span><strong>Punchlist</strong><small>{text("Ready for review", "Gereed voor review")}</small></span></button>
           <button type="button" onClick={() => openProjectTab("drawings")}><MapPin size={16} /><span><strong>{text("Floor plan", "Plattegrond")}</strong><small>{text("All linked pins", "Alle gekoppelde pins")}</small></span></button>
         </nav>
@@ -3510,7 +3530,7 @@ function SecondaryView({
       <>
         <header className="secondary-header"><div><p className="eyebrow">{text("Daily reports", "Dagrapporten")}</p><h1>{text("Report history", "Rapporthistorie")}</h1><p>{text("Drafts, versions, reviews and distribution history.", "Concepten, versies, reviews en verzendhistorie.")}</p></div></header>
         <section className="actions-list">
-          <button className="action-row" type="button" style={{ textAlign: "left", cursor: "pointer" }}>
+          <button className="action-row" type="button" style={{ textAlign: "left", cursor: "pointer" }} onClick={openReport}>
               <span className="action-icon" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}><FileText size={18} /></span>
               <span className="action-copy"><strong>{reportNumber} · {text("Today", "Vandaag")}</strong><span>{projectName} · {text("all buildings", "alle gebouwen")}</span></span>
               <span className={`task-status ${reportStatus === "approved" ? "green" : ""}`}>{reportStatus.replaceAll("_", " ")}</span>
@@ -3520,11 +3540,16 @@ function SecondaryView({
     );
   }
 
+  // A row with a chevron promises a screen. These three had no action at all, so tapping
+  // them did nothing; each one now opens the screen that actually holds what it describes.
   const settings = [
     { title: text("Reports", "Rapporten"), copy: text("History, revisions and distribution", "Historie, revisies en distributie"), icon: FileText, action: () => navigate("rapporten") },
-    { title: "Dashboard", copy: text("KPIs, trends and source data", "KPI’s, trends en brongegevens"), icon: Gauge },
-    { title: text("Tomorrow's plan", "Planning morgen"), copy: text("Activities, risks and inspections", "Activiteiten, risico’s en inspecties"), icon: CalendarDays },
-    { title: text("Project settings", "Projectinstellingen"), copy: text("Locations, parties and configuration", "Locaties, partijen en configuratie"), icon: Settings },
+    { title: "Dashboard", copy: text("KPIs, trends and source data", "KPI’s, trends en brongegevens"), icon: Gauge, action: () => navigate("vandaag") },
+    { title: text("Tomorrow's plan", "Planning morgen"), copy: text("Activities, risks and inspections", "Activiteiten, risico’s en inspecties"), icon: CalendarDays, action: openDailyLog },
+    // "Project settings · locations, parties and configuration" used to stand here pointing
+    // at the access screen, which holds none of those three. Locations, parties and the
+    // project rules live in the management workspace, and that is where the row goes.
+    { title: text("Project settings", "Projectinstellingen"), copy: text("Locations, parties and configuration", "Locaties, partijen en configuratie"), icon: Settings, action: () => navigate("meer") },
     ...(canManageMembers ? [{ title: text("Users and access", "Gebruikers en toegang"), copy: text("Invite employees or external parties and assign roles", "Medewerkers of externe partijen uitnodigen en rollen toewijzen"), icon: Users, action: openUserAdmin }] : []),
   ];
   return (

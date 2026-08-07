@@ -3,7 +3,8 @@
 import { AlertTriangle, Check, Copy, Loader2, Minus, Plus, Sigma, UserCheck, Users, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
-import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
+import { type HandwrittenSignature } from "@/app/signature-pad";
+import { RecordFormSection, RecordSignatureField } from "@/app/forms/record-form-shell";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { useLanguage } from "@/lib/i18n";
 import {
@@ -200,12 +201,15 @@ export function WorkforceRegister({
 }
 
 /**
- * One block of the workforce screen. The old screen the client knew put every part in a
- * titled card with its own count; a flat stack of fields is what makes a supervisor lose
- * track of which number belongs to what.
+ * One block of the workforce screen. It is the shared record-form section every other form
+ * in the app is built from — inspections, HSE, registers and the field tools all render the
+ * same numbered card. Workforce used to carry its own look-alike, which is exactly how the
+ * two drifted apart; the icon and the running count are the only additions it needs.
  */
-function WorkforceSection({ icon, title, subtitle, count, action, children }: {
+function WorkforceSection({ icon, step, title, subtitle, count, action, children }: {
   icon: ReactNode;
+  /** Position in the form, so the screen reads as one numbered flow like every other form. */
+  step: number;
   title: string;
   subtitle?: string;
   count?: number;
@@ -213,15 +217,18 @@ function WorkforceSection({ icon, title, subtitle, count, action, children }: {
   children: ReactNode;
 }) {
   return (
-    <section className="workforce-section">
-      <header>
-        <span className="workforce-section-icon">{icon}</span>
-        <div><h3>{title}</h3>{subtitle ? <p>{subtitle}</p> : null}</div>
-        {typeof count === "number" ? <strong>{count}</strong> : null}
-      </header>
+    <RecordFormSection
+      className="workforce-section"
+      number={step}
+      title={title}
+      description={subtitle}
+      aside={typeof count === "number"
+        ? <span className="workforce-section-count"><span className="workforce-section-icon">{icon}</span><strong>{count}</strong></span>
+        : <span className="workforce-section-count"><span className="workforce-section-icon">{icon}</span></span>}
+    >
       {action}
       {children}
-    </section>
+    </RecordFormSection>
   );
 }
 
@@ -241,6 +248,7 @@ export function WorkforceModal({
   expectedWorkers,
   initialNote,
   initialVisitors,
+  currentUserName,
   busy,
   close,
   copyPreviousWorkday,
@@ -259,6 +267,8 @@ export function WorkforceModal({
   expectedWorkers: number | null;
   initialNote: string;
   initialVisitors: VisitorRow[];
+  /** Filled into the signature by default, exactly as every other record form does it. */
+  currentUserName?: string;
   busy: boolean;
   close: () => void;
   /** Returns the crew of the last workday that had one, or null when there is none yet. */
@@ -316,6 +326,15 @@ export function WorkforceModal({
   const previousTotal = previousDay ? workforceTotal(previousDay.rows) : null;
   const deviations = workforceDeviations({ total, expected: expectedWorkers, previous: previousTotal });
   const noteMissing = workforceNoteRequired(deviations, note);
+
+  // Every other form in the app numbers its sections, and a number that jumps from 1 to 3
+  // because a block did not apply today reads as a step that was skipped. The blocks that
+  // are actually on screen are numbered 1, 2, 3.
+  const showVisitors = parties.length > 0;
+  const showTotals = byParty.length > 0 || byDiscipline.length > 0;
+  const showDeviations = deviations.length > 0;
+  const stepTotals = showVisitors ? 3 : 2;
+  const stepDeviations = stepTotals + (showTotals ? 1 : 0);
 
   const addVisitor = () => {
     const party = parties.find((item) => item.id === visitorDraft.partyId);
@@ -417,8 +436,10 @@ export function WorkforceModal({
             </div>
           ) : null}
 
+          <div className="record-form-sections workforce-sections">
           <WorkforceSection
             icon={<Users size={17} />}
+            step={1}
             title={text("Workforce by trade", "Bezetting per discipline")}
             subtitle={text("Choose the trade that is really on site and set today's headcount.", "Kies de discipline die er echt is en zet het aantal van vandaag.")}
             count={workforceTotal(rows)}
@@ -445,9 +466,10 @@ export function WorkforceModal({
           {/* §4.3: the visitor registration. Kept apart from the counted crew on purpose —
               an inspector on site is not manning the work and must never inflate the
               headcount the contractor is held to. */}
-          {parties.length ? (
+          {showVisitors ? (
             <WorkforceSection
               icon={<UserCheck size={17} />}
+              step={2}
               title={text("Visitors", "Bezoekers")}
               subtitle={text("On site, but not manning the work. They stay outside every headcount.", "Wel op de bouwplaats, maar niet aan het werk. Ze tellen in geen enkel totaal mee.")}
               count={visitors.length}
@@ -502,9 +524,10 @@ export function WorkforceModal({
           {/* §4.3: totals per organisation and per discipline. The report is read per
               contractor, and the planning is read per trade. Over the whole day, so a crew
               moved between buildings is counted once. */}
-          {byParty.length || byDiscipline.length ? (
+          {showTotals ? (
             <WorkforceSection
               icon={<Sigma size={17} />}
+              step={stepTotals}
               title={text("Totals for today", "Totalen van vandaag")}
               subtitle={buildings.length > 1
                 ? text("Across all buildings together.", "Over alle gebouwen samen.")
@@ -527,9 +550,10 @@ export function WorkforceModal({
           {/* §4.3: signal a large deviation and ask for the sentence that explains it. Both
               stand in one block: a warning whose answer sits somewhere else on the screen is
               a warning that gets read twice and answered once. */}
-          {deviations.length ? (
+          {showDeviations ? (
             <WorkforceSection
               icon={<AlertTriangle size={17} />}
+              step={stepDeviations}
               title={text("Deviating workforce", "Afwijkende bezetting")}
               subtitle={text("Say why, so the report explains the number instead of only stating it.", "Zeg waarom, zodat het rapport het getal uitlegt in plaats van het alleen te noemen.")}
             >
@@ -559,17 +583,19 @@ export function WorkforceModal({
             </WorkforceSection>
           ) : null}
 
-          {/* The count is signed by the person who made it, like every other record. */}
-          <SignatureField
-            label={text("Sign this attendance record", "Onderteken deze aanwezigheidsregistratie")}
+          {/* The count is signed by the person who made it, like every other record — and
+              through the same field, in the same place under the last section, so a
+              supervisor recognises it from the forms they already fill in. */}
+          <RecordSignatureField
+            value={signature}
+            onChange={setSignature}
+            nameSuggestion={currentUserName}
             declaration={text(
               "I confirm that this attendance reflects the crew I counted on site.",
               "Ik bevestig dat deze aanwezigheid de bezetting weergeeft die ik op de bouwplaats heb geteld.",
             )}
-            hint={text("Optional; the name and moment are stored with the record.", "Optioneel; de naam en het moment worden bij de registratie opgeslagen.")}
-            value={signature}
-            onChange={setSignature}
           />
+          </div>
           <div className="modal-actions">
             <span className="form-note">
               <Check size={13} /> {noteMissing

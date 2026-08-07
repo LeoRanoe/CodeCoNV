@@ -272,7 +272,7 @@ test("keeps standard photo and validated 360 camera annotation production paths"
   assert.match(workspace, /yaw/);
   assert.match(workspace, /createVisualAnnotationFinding/);
   assert.match(app, /type === "photo"/);
-  assert.match(app, /setInitialProjectTab\("visual"\)/);
+  assert.match(app, /openWorkspaceModule\("visual"\)/);
   assert.match(operations, /create_visual_annotation_finding/);
   assert.match(migration, /create table public\.visual_captures/);
   assert.match(migration, /create table public\.visual_annotations/);
@@ -1956,8 +1956,17 @@ test("gives the workforce screen the full register, not a counter per party", as
   // "Geordend, hoe het was": every block is a titled card with its own count, in a fixed
   // order, instead of one flat stack of fields a supervisor has to read top to bottom.
   assert.match(register, /function WorkforceSection/);
-  assert.match(styles, /\.workforce-section \{/);
   assert.match(styles, /\.workforce-section-icon/);
+  // The card itself is the shared record-form section every other form is built from, so
+  // workforce cannot drift away from the rest of the app's forms again.
+  assert.match(register, /<RecordFormSection/);
+  assert.match(register, /className="workforce-section"/);
+  assert.match(register, /<RecordSignatureField/);
+  assert.match(register, /record-form-sections workforce-sections/);
+  assert.match(styles, /\.record-form-section \{/);
+  // Numbered like every other form, and numbered on what is actually on screen.
+  assert.match(register, /step=\{1\}/);
+  assert.match(register, /const stepTotals = showVisitors \? 3 : 2;/);
   const blocks = ["Workforce by trade", "Visitors", "Totals for today", "Deviating workforce"]
     .map((title) => register.indexOf(`title={text("${title}"`));
   assert.ok(blocks.every((position) => position > 0), `every block needs its own heading: ${blocks}`);
@@ -2724,16 +2733,28 @@ test("every workspace button opens the record it names", async () => {
   // Works and delays are read from the day closeout, so they are written there too. The
   // record button used to write an activity registration, which never appeared in the
   // list it was pressed from.
-  assert.match(app, /setDailyLogFocus\("work"\)/);
+  assert.match(app, /setDailyLogFocus\(type === "works_completed" \? "works_completed" : "works_ongoing"\)/);
   assert.match(app, /setDailyLogFocus\("delay"\)/);
   assert.doesNotMatch(app, /setEntryActivityKind\(type\)/);
-  assert.match(dailyLog, /focus\?: "delay" \| "work"/);
+  assert.match(dailyLog, /focus\?: "delay" \| "works_ongoing" \| "works_completed"/);
 
-  // Opening on a block means that block reads as the subject, and the delay screen only
+  // Works ongoing and works completed are the same form, opened on their own question, so
+  // each button ends up with the field it was pressed for filled in.
+  assert.match(dailyLog, /const summaryRequired = dayContextRequired \|\| ongoingOnly/);
+  assert.match(dailyLog, /const performedRequired = dayContextRequired \|\| completedOnly/);
+  assert.match(dailyLog, /daily-log-field-ongoing/);
+  assert.match(dailyLog, /daily-log-field-completed/);
+  assert.match(styles, /\.daily-log-body\.focus-ongoing \.daily-log-field-completed/);
+
+  // Opening on a block means that block reads as the subject, and a focused screen only
   // demands the day's own answers when there is no closeout to attach itself to.
-  assert.match(dailyLog, /const dayContextRequired = !delayOnly \|\| !initialCloseout/);
-  assert.match(dailyLog, /daily-log-body\$\{delayOnly \? " focus-delay" : workOnly \? " focus-works" : ""\}/);
+  assert.match(dailyLog, /const dayContextRequired = !\(delayOnly \|\| workOnly\) \|\| !initialCloseout/);
   assert.match(styles, /\.daily-log-body\.focus-delay > \.daily-log-delay/);
+
+  // Every route into a workspace module runs through one helper, so a tile, a menu row and
+  // a dialog all land on the module the same way.
+  assert.match(app, /const openWorkspaceModule = \(tab: ProjectTabKey\) => \{/);
+  assert.doesNotMatch(app, /setInitialProjectTab\("visual"\);\n\s*setActiveNav\("project"\)/);
 });
 
 test("every record form is signed and can name more than one building", async () => {

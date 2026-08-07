@@ -78,12 +78,15 @@ export function RecordFormSection({
   number,
   title,
   description,
+  aside,
   children,
   className = "",
 }: {
   number?: number | string;
   title: string;
   description?: string;
+  /** Sits at the right of the heading: a running total, a badge, a small button. */
+  aside?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
@@ -95,6 +98,7 @@ export function RecordFormSection({
           <h3>{title}</h3>
           {description ? <p>{description}</p> : null}
         </div>
+        {aside !== undefined && aside !== null ? <div className="record-form-section-aside">{aside}</div> : null}
       </header>
       <div className="record-form-section-body">{children}</div>
     </section>
