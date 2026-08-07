@@ -30,6 +30,7 @@ import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { DrawingLocationPicker, drawingLocationLabel, pickableDrawings, type DrawingLocation } from "@/app/drawing-location-picker";
 import { dutchDirectionLabels } from "@/app/photo-evidence";
 import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
+import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
 import { useLanguage } from "@/lib/i18n";
 import { currentCompassPoint, startCompassWatch } from "@/lib/images/compass";
 import { readPhotoDirection } from "@/lib/images/exif-direction.mjs";
@@ -172,6 +173,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     buildingId: initialFinding.building_id,
   } : emptyIssue);
   const [existingFindingId, setExistingFindingId] = useState(initialFinding?.id ?? "");
+  /** A marker that creates a formal finding is signed like every other record screen. */
+  const [issueSignature, setIssueSignature] = useState<HandwrittenSignature | null>(null);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(initialAnnotation?.id ?? null);
   /** One photo can show two buildings at once, so the choice is a list, never a single value. */
   const [captureBuildingIds, setCaptureBuildingIds] = useState<string[]>(() => [initialFinding?.building_id ?? resolveDefaultBuildingId(buildings, buildingId)].filter(Boolean));
@@ -415,6 +418,9 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
             responsiblePartyId: issue.responsiblePartyId,
             buildingId: issue.buildingId || captureBuildingId,
             disposition: issue.disposition,
+            signedBy: issueSignature?.name,
+            signedAt: issueSignature?.signedAt,
+            signatureImage: issueSignature?.image ?? null,
           });
       },
       existingFinding
@@ -426,6 +432,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       setPendingSelectionFileId("");
       setPoint(null);
       setIssue(emptyIssue);
+      setIssueSignature(null);
       setExistingFindingId("");
     }
   };
@@ -595,7 +602,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
             ) : null}
           </div>
           <aside className="visual-issue-panel">
-            {point && activeCapture ? <IssueForm point={point} capture={activeCapture} issue={issue} setIssue={setIssue} findings={data.findings} annotations={data.visualAnnotations} existingFindingId={existingFindingId} setExistingFindingId={setExistingFindingId} parties={parties} buildings={buildings} captureBuildingId={captureBuildingId} busy={busy} save={() => void saveIssue()} cancel={() => { setPoint(null); setIssue(emptyIssue); setExistingFindingId(""); }} /> : selectedAnnotation && selectedFinding ? <AnnotationDetails annotation={selectedAnnotation} finding={selectedFinding} /> : <div className="visual-panel-empty"><ScanLine size={24} /><strong>{text("Select or place a marker", "Selecteer of plaats een marker")}</strong><span>{text("The exact image position and the formal finding remain linked.", "De exacte beeldpositie en de formele bevinding blijven gekoppeld.")}</span></div>}
+            {point && activeCapture ? <IssueForm point={point} capture={activeCapture} issue={issue} setIssue={setIssue} findings={data.findings} annotations={data.visualAnnotations} existingFindingId={existingFindingId} setExistingFindingId={setExistingFindingId} parties={parties} buildings={buildings} captureBuildingId={captureBuildingId} busy={busy} signature={issueSignature} setSignature={setIssueSignature} save={() => void saveIssue()} cancel={() => { setPoint(null); setIssue(emptyIssue); setIssueSignature(null); setExistingFindingId(""); }} /> : selectedAnnotation && selectedFinding ? <AnnotationDetails annotation={selectedAnnotation} finding={selectedFinding} /> : <div className="visual-panel-empty"><ScanLine size={24} /><strong>{text("Select or place a marker", "Selecteer of plaats een marker")}</strong><span>{text("The exact image position and the formal finding remain linked.", "De exacte beeldpositie en de formele bevinding blijven gekoppeld.")}</span></div>}
           </aside>
         </div>
       ) : showUpload ? null : <div className="empty-list-state visual-empty"><Camera size={24} /><strong>{text("No project photos yet", "Nog geen projectfoto's")}</strong><span>{text("Take the first photo here; it appears in Visual Evidence and Photos after synchronization.", "Maak hier de eerste foto; die verschijnt na synchronisatie in Visueel bewijs en Foto's.")}</span><button className="primary-button" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={15} /> {text("Take photo", "Maak foto")}</button></div>}
@@ -922,7 +929,7 @@ function panoramaMarkers(annotations: VisualAnnotation[], pendingPoint: Extract<
   return markers;
 }
 
-function IssueForm({ point, capture, issue, setIssue, findings, annotations, existingFindingId, setExistingFindingId, parties, buildings, captureBuildingId, busy, save, cancel }: { point: VisualPoint; capture: VisualCapture; issue: typeof emptyIssue; setIssue: (issue: typeof emptyIssue) => void; findings: Finding[]; annotations: VisualAnnotation[]; existingFindingId: string; setExistingFindingId: (id: string) => void; parties: ProjectParty[]; buildings: BuildingOption[]; captureBuildingId: string; busy: boolean; save: () => void; cancel: () => void }) {
+function IssueForm({ point, capture, issue, setIssue, findings, annotations, existingFindingId, setExistingFindingId, parties, buildings, captureBuildingId, busy, signature, setSignature, save, cancel }: { point: VisualPoint; capture: VisualCapture; issue: typeof emptyIssue; setIssue: (issue: typeof emptyIssue) => void; findings: Finding[]; annotations: VisualAnnotation[]; existingFindingId: string; setExistingFindingId: (id: string) => void; parties: ProjectParty[]; buildings: BuildingOption[]; captureBuildingId: string; busy: boolean; signature: HandwrittenSignature | null; setSignature: (value: HandwrittenSignature | null) => void; save: () => void; cancel: () => void }) {
   const { text } = useLanguage();
   const existingFinding = findings.find((finding) => finding.id === existingFindingId) ?? null;
   const availableFindings = findings.filter((finding) => finding.id === existingFindingId || !annotations.some((annotation) => annotation.finding_id === finding.id && annotation.status === "active"));
@@ -959,6 +966,21 @@ function IssueForm({ point, capture, issue, setIssue, findings, annotations, exi
         <label className="form-field"><span>{text("Responsible party", "Verantwoordelijke partij")}</span><select value={issue.responsiblePartyId} onChange={(event) => setIssue({ ...issue, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
       </>}
       <label className="form-field"><span>{existingFinding ? text("What does the pointer indicate?", "Wat wijst de pointer precies aan?") : text("Factual description", "Feitelijke omschrijving")}</span><textarea rows={3} value={issue.description} onChange={(event) => setIssue({ ...issue, description: event.target.value })} /><DictateButton onText={(transcript) => setIssue({ ...issue, description: appendDictation(issue.description, transcript) })} /></label>
+      {/* A marker that creates a formal finding is signed here, the way the punchlist and
+          HSE screens sign theirs. Linking a pointer to an existing issue is not a new
+          record, so it does not ask for one. */}
+      {existingFinding ? null : (
+        <SignatureField
+          label={text("Signature", "Handtekening")}
+          declaration={text(
+            "I confirm that this finding reflects what I marked on the image.",
+            "Ik bevestig dat deze bevinding weergeeft wat ik op het beeld heb gemarkeerd.",
+          )}
+          hint={text("Optional; the name and moment are stored with the finding.", "Optioneel; de naam en het moment worden bij de bevinding opgeslagen.")}
+          value={signature}
+          onChange={setSignature}
+        />
+      )}
       <div className="button-row"><button className="secondary-button" type="button" onClick={cancel}>{text("Cancel", "Annuleren")}</button><button className="primary-button" type="button" disabled={busy || issue.title.trim().length < 3 || issue.description.trim().length < 3} onClick={save}><AlertTriangle size={15} /> {existingFinding ? text("Link pointer to issue", "Koppel pointer aan issue") : text("Create finding", "Bevinding maken")}</button></div>
     </div>
   );

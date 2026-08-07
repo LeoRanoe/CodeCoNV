@@ -29,8 +29,10 @@ import {
   dayGroupLabel,
   filesInFolder,
   groupFilesByDay,
+  folderMoveTargets,
   groupPhotoStacks,
   libraryDayKey,
+  nestMediaFolders,
   orderMediaFolders,
   visibleLibraryFiles,
 } from "../lib/media/photo-library.mjs";
@@ -903,4 +905,23 @@ test("totals the workforce per organisation and per trade, and signals a deviati
   assert.equal(workforceNoteRequired(workforceDeviations({ total: 4, expected: 10 }), ""), true);
   assert.equal(workforceNoteRequired(workforceDeviations({ total: 4, expected: 10 }), "  "), true);
   assert.equal(workforceNoteRequired(workforceDeviations({ total: 4, expected: 10 }), "Twee ploegen elders."), false);
+});
+
+test("folders read as a tree, and a folder cannot be moved inside itself", () => {
+  const folders = [
+    { id: "a", parent_id: null, name: "Drawings" },
+    { id: "b", parent_id: "a", name: "Revisions" },
+    { id: "c", parent_id: "b", name: "2026" },
+    { id: "d", parent_id: null, name: "Certificates" },
+    { id: "e", parent_id: "gone", name: "Orphan" },
+  ];
+  const nested = nestMediaFolders(folders);
+  assert.deepEqual(nested.map((folder) => `${folder.depth}:${folder.name}`), [
+    "0:Certificates", "0:Drawings", "1:Revisions", "2:2026", "0:Orphan",
+  ]);
+  assert.equal(nested.find((folder) => folder.id === "c").path, "Drawings › Revisions › 2026");
+
+  // Moving "Drawings" may not offer itself, its child or its grandchild as a destination.
+  assert.deepEqual(folderMoveTargets(folders, "a").map((folder) => folder.id), ["d", "e"]);
+  assert.deepEqual(folderMoveTargets(folders, "d").map((folder) => folder.id), ["a", "b", "c", "e"]);
 });

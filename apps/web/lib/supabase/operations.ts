@@ -1773,6 +1773,10 @@ export async function createVisualAnnotationFinding(client: SupabaseClient, inpu
   /** Building the marker belongs to; may differ from the building the photo was filed under. */
   buildingId?: string;
   disposition?: "validated" | "to_be_corrected" | "alternative_solution";
+  /** The handwritten signature under the finding this marker creates. */
+  signedBy?: string;
+  signedAt?: string;
+  signatureImage?: string | null;
 }) {
   const result = await client.rpc("create_visual_annotation_finding", {
     p_capture_id: input.captureId,
@@ -1791,7 +1795,28 @@ export async function createVisualAnnotationFinding(client: SupabaseClient, inpu
     p_disposition: input.disposition || "to_be_corrected",
   });
   fail(result.error);
-  return result.data as VisualAnnotation;
+  const annotation = result.data as VisualAnnotation;
+  // The routine that creates the marker and its finding predates signing, and it stores
+  // the finding's signature in issue_management like every other finding does. Writing it
+  // here keeps a marker-born issue signed the same way a typed one is, without changing a
+  // routine that other screens depend on.
+  if (input.signedBy && annotation?.finding_id) {
+    const current = await client.from("findings").select("issue_management").eq("id", annotation.finding_id).maybeSingle();
+    if (!schemaFeatureMissing(current.error, ["issue_management"])) {
+      fail(current.error);
+      const existing = (current.data?.issue_management ?? {}) as Record<string, unknown>;
+      const signed = await client.from("findings").update({
+        issue_management: {
+          ...existing,
+          signed_by: input.signedBy.trim(),
+          signed_at: input.signedAt || new Date().toISOString(),
+          signature_image: input.signatureImage || null,
+        },
+      }).eq("id", annotation.finding_id);
+      if (!schemaFeatureMissing(signed.error, ["issue_management"])) fail(signed.error);
+    }
+  }
+  return annotation;
 }
 
 export async function linkVisualAnnotationToFinding(client: SupabaseClient, input: {

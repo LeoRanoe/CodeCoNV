@@ -14435,6 +14435,11 @@ button {
 .asset-folder-bar { align-items: stretch; }
 .asset-folder-control { display: inline-flex; align-items: stretch; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
 .asset-folder-control > button { border: 0; border-radius: 0; }
+.asset-folder-depth { color: var(--muted); font-style: normal; font-weight: 800; opacity: .65; }
+.asset-folder-control.depth-1 { margin-left: 10px; }
+.asset-folder-control.depth-2 { margin-left: 20px; }
+.asset-folder-control.depth-3 { margin-left: 30px; }
+.asset-folder-move { border: 0; border-left: 1px solid var(--border); background: #fff; color: var(--muted); font-size: 11px; max-width: 92px; min-height: 38px; padding: 0 4px; }
 .asset-library-controls { display: grid; gap: 12px; margin: 14px 0; }
 .photo-stack-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 14px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--paper); }
 .asset-library-filters,

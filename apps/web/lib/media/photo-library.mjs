@@ -35,6 +35,56 @@ export function orderMediaFolders(folders, preferredNames = []) {
   });
 }
 
+/**
+ * Folders as a tree, flattened for a list: a parent is followed by its children, each
+ * carrying how deep it sits and the path a person reads it by. The bar showed a flat row
+ * of names, so a folder inside another was indistinguishable from one beside it.
+ */
+export function nestMediaFolders(folders, preferredNames = []) {
+  const all = orderMediaFolders(folders, preferredNames);
+  const byParent = new Map();
+  const known = new Set(all.map((folder) => folder.id));
+  for (const folder of all) {
+    // A folder whose parent is archived or filtered away is shown at the top level
+    // rather than disappearing with it.
+    const parent = folder.parent_id && known.has(folder.parent_id) ? folder.parent_id : null;
+    if (!byParent.has(parent)) byParent.set(parent, []);
+    byParent.get(parent).push(folder);
+  }
+  const flattened = [];
+  const walk = (parent, depth, trail) => {
+    for (const folder of byParent.get(parent) ?? []) {
+      // A cycle would otherwise loop forever; depth is the cheapest guard that also
+      // keeps the list readable.
+      if (depth > 6 || flattened.some((item) => item.id === folder.id)) continue;
+      const path = [...trail, folder.name];
+      flattened.push({ ...folder, depth, path: path.join(" › ") });
+      walk(folder.id, depth + 1, path);
+    }
+  };
+  walk(null, 0, []);
+  return flattened;
+}
+
+/** Which folders a folder may be moved into: anything but itself and its own descendants. */
+export function folderMoveTargets(folders, folderId) {
+  const children = new Map();
+  for (const folder of folders ?? []) {
+    if (!children.has(folder.parent_id)) children.set(folder.parent_id, []);
+    children.get(folder.parent_id).push(folder.id);
+  }
+  const blocked = new Set([folderId]);
+  const walk = (id) => {
+    for (const child of children.get(id) ?? []) {
+      if (blocked.has(child)) continue;
+      blocked.add(child);
+      walk(child);
+    }
+  };
+  walk(folderId);
+  return (folders ?? []).filter((folder) => !blocked.has(folder.id));
+}
+
 /** The day a photo belongs to, in the project's own timezone. */
 export function libraryDayKey(value, timeZone = "America/Paramaribo") {
   const date = value ? new Date(value) : null;

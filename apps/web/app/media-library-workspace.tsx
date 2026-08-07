@@ -12,9 +12,11 @@ import { normalizeRecordCode } from "@/lib/records/record-directory.mjs";
 import {
   dayGroupLabel,
   filesInFolder,
+  folderMoveTargets,
   groupFilesByDay,
   groupPhotoStacks,
   libraryDayKey,
+  nestMediaFolders,
   orderMediaFolders,
   readableFileLabel,
   visibleLibraryFiles,
@@ -203,6 +205,11 @@ export function MediaLibraryWorkspace({
   const folders = useMemo<MediaFolder[]>(
     () => orderMediaFolders(data.mediaFolders.filter((folder) => !folder.building_id || folder.building_id === libraryBuildingId), standardFolderNames),
     [data.mediaFolders, libraryBuildingId, standardFolderNames],
+  );
+  /** The same folders as a tree: a folder inside another reads as one, with its full path. */
+  const folderTree = useMemo<Array<MediaFolder & { depth: number; path: string }>>(
+    () => nestMediaFolders(folders, standardFolderNames) as Array<MediaFolder & { depth: number; path: string }>,
+    [folders, standardFolderNames],
   );
   // Which day is "today" is read once per mount: a heading that recalculates on every
   // render would be an impure read of the clock during rendering.
@@ -570,6 +577,20 @@ export function MediaLibraryWorkspace({
     await run(() => updateMediaFolder(client, folder.id, { name }), text("Folder renamed.", "Map hernoemd."));
   };
 
+  /**
+   * Moving a folder under another one. The picker never offers the folder itself or
+   * anything inside it, so a folder cannot be made its own parent.
+   */
+  const moveFolder = async (folder: MediaFolder, parentId: string) => {
+    if (parentId === (folder.parent_id ?? "")) return;
+    await run(
+      () => updateMediaFolder(client, folder.id, { parentId: parentId || null }),
+      parentId
+        ? text("Folder moved into the chosen folder.", "Map in de gekozen map geplaatst.")
+        : text("Folder moved to the top level.", "Map naar het hoofdniveau verplaatst."),
+    );
+  };
+
   const archiveFolder = async (folder: MediaFolder) => {
     if (!window.confirm(text(`Archive folder ${folder.name}? Its files stay available under All.`, `Map ${folder.name} archiveren? De bestanden blijven onder Alles beschikbaar.`))) return;
     const okay = await run(() => updateMediaFolder(client, folder.id, { status: "archived" }), text("Folder archived; no file was deleted.", "Map gearchiveerd; er is geen bestand verwijderd."));
@@ -618,7 +639,24 @@ export function MediaLibraryWorkspace({
       {assetsMode ? <div className="media-folder-bar asset-folder-bar">
         <button className={folderId === "all" ? "active" : ""} type="button" onClick={() => setFolderId("all")}><Folder size={16} /> {text("All", "Alles")} <b>{filesInFolder(buildingFiles, "all").length}</b></button>
         <button className={folderId === "unfiled" ? "active" : ""} type="button" onClick={() => setFolderId("unfiled")}><Folder size={16} /> {text("Unfiled", "Zonder map")} <b>{filesInFolder(buildingFiles, "unfiled").length}</b></button>
-        {folders.map((folder) => <span className="asset-folder-control" key={folder.id}><button className={folderId === folder.id ? "active" : ""} type="button" onClick={() => setFolderId(folder.id)}><Folder size={16} /> {folder.name} <b>{filesInFolder(buildingFiles, folder.id).length}</b></button><button type="button" onClick={() => void renameFolder(folder)} aria-label={text(`Rename ${folder.name}`, `${folder.name} hernoemen`)}><Pencil size={13} /></button><button type="button" onClick={() => void archiveFolder(folder)} aria-label={text(`Archive ${folder.name}`, `${folder.name} archiveren`)}><Trash2 size={13} /></button></span>)}
+        {folderTree.map((folder) => <span className={`asset-folder-control depth-${Math.min(folder.depth, 3)}`} key={folder.id}>
+          <button className={folderId === folder.id ? "active" : ""} type="button" onClick={() => setFolderId(folder.id)} title={folder.path}>
+            <Folder size={16} /> {folder.depth ? <em className="asset-folder-depth" aria-hidden="true">{"›".repeat(folder.depth)}</em> : null} {folder.name} <b>{filesInFolder(buildingFiles, folder.id).length}</b>
+          </button>
+          {/* Where this folder sits. Choosing another folder moves it, with itself and
+              everything inside it left out of the list. */}
+          <select
+            className="asset-folder-move"
+            value={folder.parent_id ?? ""}
+            onChange={(event) => void moveFolder(folder, event.target.value)}
+            aria-label={text(`Move ${folder.name}`, `${folder.name} verplaatsen`)}
+          >
+            <option value="">{text("Top level", "Hoofdniveau")}</option>
+            {(folderMoveTargets(folders, folder.id) as MediaFolder[]).map((target) => <option value={target.id} key={target.id}>{target.name}</option>)}
+          </select>
+          <button type="button" onClick={() => void renameFolder(folder)} aria-label={text(`Rename ${folder.name}`, `${folder.name} hernoemen`)}><Pencil size={13} /></button>
+          <button type="button" onClick={() => void archiveFolder(folder)} aria-label={text(`Archive ${folder.name}`, `${folder.name} archiveren`)}><Trash2 size={13} /></button>
+        </span>)}
       </div> : null}
 
       <div className="media-actions-panel">
@@ -699,7 +737,7 @@ export function MediaLibraryWorkspace({
         ) : null}
         {assetsMode ? <details className="optional-text-entry media-folder-create">
           <summary>{text("Custom folder", "Eigen map")}</summary>
-          <span><input value={newFolder} onChange={(event) => setNewFolder(event.target.value)} placeholder={text("Folder name", "Mapnaam")} /><select value={parentFolderId} onChange={(event) => setParentFolderId(event.target.value)} aria-label={text("Parent folder", "Bovenliggende map")}><option value="">{text("At the top level", "Op hoofdniveau")}</option>{folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}</select><button className="secondary-button" type="button" disabled={busy || newFolder.trim().length < 2} onClick={() => void addFolder(newFolder)}><FolderPlus size={15} /> {text("Create", "Maken")}</button></span>
+          <span><input value={newFolder} onChange={(event) => setNewFolder(event.target.value)} placeholder={text("Folder name", "Mapnaam")} /><select value={parentFolderId} onChange={(event) => setParentFolderId(event.target.value)} aria-label={text("Parent folder", "Bovenliggende map")}><option value="">{text("At the top level", "Op hoofdniveau")}</option>{folderTree.map((folder) => <option value={folder.id} key={folder.id}>{folder.path}</option>)}</select><button className="secondary-button" type="button" disabled={busy || newFolder.trim().length < 2} onClick={() => void addFolder(newFolder)}><FolderPlus size={15} /> {text("Create", "Maken")}</button></span>
         </details> : null}
       </div>
       {assetsMode ? <div className="asset-library-controls">
@@ -717,7 +755,7 @@ export function MediaLibraryWorkspace({
         </details>
         {selectedFiles.length ? <div className="asset-bulk-actions">
           <strong>{selectedFiles.length} {text("selected", "geselecteerd")}</strong>
-          <label><span>{text("Move to folder", "Verplaats naar map")}</span><select value={bulkFolderId} onChange={(event) => setBulkFolderId(event.target.value)}><option value="">{text("Unfiled", "Zonder map")}</option>{folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}</select></label>
+          <label><span>{text("Move to folder", "Verplaats naar map")}</span><select value={bulkFolderId} onChange={(event) => setBulkFolderId(event.target.value)}><option value="">{text("Unfiled", "Zonder map")}</option>{folderTree.map((folder) => <option value={folder.id} key={folder.id}>{folder.path}</option>)}</select></label>
           <button className="secondary-button" type="button" onClick={() => void moveSelected()}><Folder size={15} /> {text("Move", "Verplaatsen")}</button>
           <label><span>{text("Link to record", "Koppel aan registratie")}</span><select value={recordTarget} onChange={(event) => setRecordTarget(event.target.value)}><option value="">{text("Choose a record", "Kies een registratie")}</option>{recordTargets.map((target) => <option value={target.value} key={target.value}>{target.label}</option>)}</select></label>
           <button className="secondary-button" type="button" disabled={!recordTarget || !organizationId} onClick={() => void linkSelected()}><Link2 size={15} /> {text("Link", "Koppelen")}</button>

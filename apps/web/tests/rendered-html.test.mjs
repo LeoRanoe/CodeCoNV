@@ -2629,3 +2629,33 @@ test("a spot on a drawing carries its own record, and a sheet is known by its ow
   assert.match(drawing, /the project limit is/);
   assert.match(drawing, /DWG source stored/);
 });
+
+test("nothing is left open: folders nest, a marker is signed, and a note can be corrected", async () => {
+  const [media, visual, operations, tools, styles] = await Promise.all([
+    readFile(new URL("../app/media-library-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/visual-evidence-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/field-tools.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // Assets: folders read as a tree and can be moved, not just made and renamed.
+  assert.match(media, /nestMediaFolders/);
+  assert.match(media, /folderMoveTargets\(folders, folder\.id\)/);
+  assert.match(media, /const moveFolder = async/);
+  assert.match(media, /updateMediaFolder\(client, folder\.id, \{ parentId/);
+  assert.match(styles, /\.asset-folder-move/);
+
+  // A marker that creates a formal finding is signed like every other record screen.
+  assert.match(visual, /<SignatureField/);
+  assert.match(visual, /setIssueSignature/);
+  assert.match(operations, /signedBy\?: string;[\s\S]{0,200}p_disposition|input\.signedBy && annotation\?\.finding_id/);
+  assert.match(operations, /input\.signedBy && annotation\?\.finding_id/);
+
+  // The field notepad opens a saved note back into its own form and updates it.
+  assert.match(tools, /const openNote =/);
+  assert.match(tools, /updateRegisterRecord\(client, \{/);
+  assert.match(tools, /Open and edit/);
+  // The number is assigned once, at creation; editing never mints a second one.
+  assert.doesNotMatch(tools, /editingNoteId[\s\S]{0,200}entry_number:/);
+});
