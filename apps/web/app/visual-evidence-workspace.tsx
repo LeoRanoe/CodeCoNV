@@ -25,7 +25,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BuildingChoiceField, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { BuildingChoiceField, BuildingMultiPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { DrawingLocationPicker, drawingLocationLabel, pickableDrawings, type DrawingLocation } from "@/app/drawing-location-picker";
 import { dutchDirectionLabels } from "@/app/photo-evidence";
@@ -84,6 +84,8 @@ const emptyIssue = {
   disposition: "to_be_corrected" as "validated" | "to_be_corrected" | "alternative_solution",
   /** Empty means "same building as the photo". One image can cover more than one building. */
   buildingId: "",
+  /** Every building the marked finding belongs to; the first is where it is filed. */
+  buildingIds: [] as string[],
 };
 
 function degrees(value: number | null) {
@@ -171,6 +173,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     responsiblePartyId: initialFinding.responsible_party_id ?? "",
     disposition: (initialFinding.issue_management?.disposition ?? "to_be_corrected") as typeof emptyIssue["disposition"],
     buildingId: initialFinding.building_id,
+    buildingIds: initialFinding.building_ids?.length ? initialFinding.building_ids : [initialFinding.building_id],
   } : emptyIssue);
   const [existingFindingId, setExistingFindingId] = useState(initialFinding?.id ?? "");
   /** A marker that creates a formal finding is signed like every other record screen. */
@@ -417,6 +420,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
             severity: issue.severity,
             responsiblePartyId: issue.responsiblePartyId,
             buildingId: issue.buildingId || captureBuildingId,
+            buildingIds: issue.buildingIds.length ? issue.buildingIds : undefined,
+            projectId,
             disposition: issue.disposition,
             signedBy: issueSignature?.name,
             signedAt: issueSignature?.signedAt,
@@ -954,13 +959,21 @@ function IssueForm({ point, capture, issue, setIssue, findings, annotations, exi
           responsiblePartyId: finding.responsible_party_id ?? "",
           disposition: finding.issue_management?.disposition ?? "to_be_corrected",
           buildingId: finding.building_id,
+          buildingIds: finding.building_ids?.length ? finding.building_ids : [finding.building_id],
         } : emptyIssue);
       }}><option value="">{text("Create a new issue", "Maak een nieuw issue")}</option>{availableFindings.map((finding) => <option value={finding.id} key={finding.id}>{finding.finding_number} · {finding.title}</option>)}</select></label>
       {existingFinding ? <div className="operation-alert success"><CircleDot size={18} /><div><strong>{existingFinding.finding_number} · {existingFinding.title}</strong><span>{text("This pointer will be added to the existing formal issue.", "Deze pointer wordt aan het bestaande formele issue toegevoegd.")}</span></div></div> : <>
         <div className="quick-issue-presets" aria-label={text("Choose a common issue", "Kies een veelvoorkomend probleem")}>{issuePresets.map((preset) => <button className={issue.title === preset.title ? "active" : ""} type="button" onClick={() => setIssue({ ...issue, ...preset })} key={preset.title}>{preset.title}</button>)}</div>
         <label className="form-field"><span>{text("Issue type", "Probleemtype")}</span><select value={issue.findingType} onChange={(event) => setIssue({ ...issue, findingType: event.target.value as Finding["finding_type"] })}><option value="observation">{text("Observation", "Observatie")}</option><option value="deficiency">{text("Deficiency", "Tekortkoming")}</option><option value="deviation">{text("Deviation", "Afwijking")}</option><option value="ncr">NCR</option><option value="improvement">{text("Improvement opportunity", "Verbeterkans")}</option></select></label>
         <label className="form-field"><span>{text("Marker classification · color", "Markerclassificatie · kleur")}</span><select value={issue.disposition} onChange={(event) => setIssue({ ...issue, disposition: event.target.value as typeof issue.disposition })}><option value="validated">{text("Validated · green", "Gevalideerd · groen")}</option><option value="to_be_corrected">{text("To be corrected · orange", "Te corrigeren · oranje")}</option><option value="alternative_solution">{text("Alternative solution required · red", "Alternatieve oplossing nodig · rood")}</option></select></label>
-        <BuildingPicker id="marker-building" buildings={buildings} value={issue.buildingId || captureBuildingId} onChange={(next) => setIssue({ ...issue, buildingId: next })} />
+        {/* One image can show more than one building, so the finding it creates may name
+            more than one too. The first is the building the record is filed under. */}
+        <BuildingMultiPicker
+          id="marker-buildings"
+          buildings={buildings}
+          value={issue.buildingIds.length ? issue.buildingIds : [issue.buildingId || captureBuildingId].filter(Boolean)}
+          onChange={(next) => setIssue({ ...issue, buildingIds: next, buildingId: next[0] ?? issue.buildingId })}
+        />
         <label className="form-field"><span>{text("Severity", "Ernst")}</span><select value={issue.severity} onChange={(event) => setIssue({ ...issue, severity: event.target.value as Finding["severity"] })}><option value="low">{text("Low · 14 days", "Laag · 14 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label>
         <label className="form-field"><span>{text("Title", "Titel")}</span><input value={issue.title} onChange={(event) => setIssue({ ...issue, title: event.target.value })} placeholder={text("Choose above or type a short title.", "Kies hierboven of typ een korte titel.")} /></label>
         <label className="form-field"><span>{text("Responsible party", "Verantwoordelijke partij")}</span><select value={issue.responsiblePartyId} onChange={(event) => setIssue({ ...issue, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>

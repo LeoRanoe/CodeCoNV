@@ -68,6 +68,10 @@ export function createDailyCloseoutSchema(language: "en" | "nl" = "en") {
     contractorSignedBy: z.string().trim().max(240).optional(),
     contractorSignedAt: z.string().trim().max(80).optional(),
     contractorSignatureImage: z.string().max(300000).optional(),
+    /** The supervisor who closed the day, signed on the day's own form. */
+    signedBy: z.string().trim().max(240).optional(),
+    signedAt: z.string().trim().max(80).optional(),
+    signatureImage: z.string().max(300000).optional(),
     communication: z.string().trim().max(1000).optional(),
     risks: z.string().trim().max(1000).optional(),
     tomorrowPlan: z.string().trim().min(3, text("Choose tomorrow's plan", "Kies de planning voor morgen")).max(1000),

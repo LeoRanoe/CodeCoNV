@@ -476,6 +476,9 @@ function closeoutFromRow(row: Record<string, unknown> | null): DailyCloseoutAnsw
     contractorSignedBy: String(row.contractor_signed_by ?? ""),
     contractorSignedAt: String(row.contractor_signed_at ?? ""),
     contractorSignatureImage: String(row.contractor_signature_image ?? ""),
+    signedBy: String(row.signed_by ?? ""),
+    signedAt: String(row.signed_at ?? ""),
+    signatureImage: String(row.signature_image ?? ""),
     communication: String(row.communication ?? ""),
     risks: String(row.risks ?? ""),
     tomorrowPlan: String(row.tomorrow_plan),
@@ -2271,7 +2274,7 @@ export function CodecoSupervisionApp() {
             };
           }}
           close={() => setModal(null)}
-          save={async (perBuilding, note) => {
+          save={async (perBuilding, note, signature) => {
             const total = perBuilding.reduce((sum, entry) => sum + entry.rows.reduce((rowSum, row) => rowSum + row.count, 0), 0);
             const saved = await runSynced(
               async () => {
@@ -2297,6 +2300,7 @@ export function CodecoSupervisionApp() {
                       crew: row.crew,
                       notes: note,
                     })),
+                    signature: signature ? { name: signature.name, signedAt: signature.signedAt, image: signature.image } : null,
                   });
                   if (entry.visitors.length) {
                     await saveAttendance(supabase, {

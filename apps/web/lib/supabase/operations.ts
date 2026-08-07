@@ -267,6 +267,10 @@ export type DailyWorkRecord = {
   contractor_signed_by?: string | null;
   contractor_signed_at?: string | null;
   contractor_signature_image?: string | null;
+  /** The supervisor who closed the day, signed on the day's own form. */
+  signed_by?: string | null;
+  signed_at?: string | null;
+  signature_image?: string | null;
   tomorrow_plan: string;
   created_at: string;
 };
@@ -578,7 +582,7 @@ export async function loadProjectOperations(
     client.from("external_share_links").select("id,organization_id,project_id,building_id,source_type,source_id,source_number,title,summary,source_file_id,expires_at,revoked_at,view_count,last_viewed_at,created_by,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(500),
     client.from("day_reports").select("id,report_date,report_number,status,completeness_percent,created_at,updated_at").eq("project_id", projectId).order("report_date", { ascending: false }).limit(1000),
     client.from("file_links").select("id,file_id,record_type,record_id,relationship,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(5000),
-    client.from("day_closeouts").select("id,building_id,day_report_id,day_summary,work_ongoing,work_performed,progress_percent,delay_cause,delay_hours,delay_reason,contractor_company,contractor_signed_by,contractor_signed_at,contractor_signature_image,tomorrow_plan,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(400),
+    client.from("day_closeouts").select("id,building_id,day_report_id,day_summary,work_ongoing,work_performed,progress_percent,delay_cause,delay_hours,delay_reason,contractor_company,contractor_signed_by,contractor_signed_at,contractor_signature_image,signed_by,signed_at,signature_image,tomorrow_plan,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(400),
     client.from("record_buildings").select("record_type,record_id,building_id").eq("project_id", projectId).limit(20000),
   ]);
   const registerWithoutSignatureResult = schemaFeatureMissing(registerResult.error, ["signed_by", "signed_at", "signature_image"])
@@ -622,11 +626,16 @@ export async function loadProjectOperations(
   const compatibleFileLinkResult = fileLinkResult.error ? { data: [], error: null } : fileLinkResult;
   // A database one migration behind still shows the old delay rows. The required signature
   // applies only when a newly updated closeout records a delay.
-  const dailyWorkWithoutContractorResult = schemaFeatureMissing(dailyWorkResult.error, [
+  // The supervisor's signature arrives with a later migration than the contractor's, so a
+  // database one step behind steps back once, and one two steps behind steps back twice.
+  const dailyWorkWithoutSignatureResult = schemaFeatureMissing(dailyWorkResult.error, ["signed_by", "signed_at", "signature_image"])
+    ? await client.from("day_closeouts").select("id,building_id,day_report_id,day_summary,work_ongoing,work_performed,progress_percent,delay_cause,delay_hours,delay_reason,contractor_company,contractor_signed_by,contractor_signed_at,contractor_signature_image,tomorrow_plan,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(400)
+    : dailyWorkResult;
+  const dailyWorkWithoutContractorResult = schemaFeatureMissing(dailyWorkWithoutSignatureResult.error, [
     "delay_reason", "contractor_company", "contractor_signed_by", "contractor_signed_at", "contractor_signature_image",
   ])
     ? await client.from("day_closeouts").select("id,building_id,day_report_id,day_summary,work_ongoing,work_performed,progress_percent,delay_cause,delay_hours,tomorrow_plan,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(400)
-    : dailyWorkResult;
+    : dailyWorkWithoutSignatureResult;
   // Daily work only enriches the workspace; a database without the table must not break the snapshot.
   const compatibleDailyWorkResult = dailyWorkWithoutContractorResult.error ? { data: [], error: null } : dailyWorkWithoutContractorResult;
   const compatibleRecordBuildingResult = recordBuildingResult.error ? { data: [], error: null } : recordBuildingResult;
@@ -1772,6 +1781,10 @@ export async function createVisualAnnotationFinding(client: SupabaseClient, inpu
   responsiblePartyId?: string;
   /** Building the marker belongs to; may differ from the building the photo was filed under. */
   buildingId?: string;
+  /** Every building the finding covers; one image can show more than one. */
+  buildingIds?: string[];
+  /** Needed only to associate those buildings with the finding the marker creates. */
+  projectId?: string;
   disposition?: "validated" | "to_be_corrected" | "alternative_solution";
   /** The handwritten signature under the finding this marker creates. */
   signedBy?: string;
@@ -1796,6 +1809,16 @@ export async function createVisualAnnotationFinding(client: SupabaseClient, inpu
   });
   fail(result.error);
   const annotation = result.data as VisualAnnotation;
+  // The routine files the finding under one building. The association list is what makes
+  // the same numbered record visible under every building the marker covers.
+  if (input.projectId && input.buildingIds?.length && annotation?.finding_id) {
+    await setRecordBuildings(client, {
+      projectId: input.projectId,
+      recordType: "finding",
+      recordId: annotation.finding_id,
+      buildingIds: input.buildingIds,
+    }).catch(() => undefined);
+  }
   // The routine that creates the marker and its finding predates signing, and it stores
   // the finding's signature in issue_management like every other finding does. Writing it
   // here keeps a marker-born issue signed the same way a typed one is, without changing a

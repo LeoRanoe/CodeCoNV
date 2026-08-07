@@ -3,6 +3,7 @@
 import { AlertTriangle, Check, Copy, Loader2, Minus, Plus, Sigma, UserCheck, Users, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { useLanguage } from "@/lib/i18n";
 import {
@@ -265,11 +266,14 @@ export function WorkforceModal({
   save: (
     perBuilding: Array<{ buildingId: string; rows: WorkforceRow[]; visitors: VisitorRow[] }>,
     note: string,
+    signature: HandwrittenSignature | null,
   ) => void | Promise<void>;
 }) {
   const { text } = useLanguage();
   const firstBuildingId = resolveDefaultBuildingId(buildings, defaultBuildingId);
   const [buildingId, setBuildingId] = useState(firstBuildingId);
+  /** The supervisor who counted the crew, signed on the register itself. */
+  const [signature, setSignature] = useState<HandwrittenSignature | null>(null);
   /**
    * A crew per building, all of them at once. The client wrote it on this screen: "ik kan
    * hier niet van beide gebouwen invullen!" Switching used to throw away what was typed, so
@@ -555,6 +559,17 @@ export function WorkforceModal({
             </WorkforceSection>
           ) : null}
 
+          {/* The count is signed by the person who made it, like every other record. */}
+          <SignatureField
+            label={text("Sign this attendance record", "Onderteken deze aanwezigheidsregistratie")}
+            declaration={text(
+              "I confirm that this attendance reflects the crew I counted on site.",
+              "Ik bevestig dat deze aanwezigheid de bezetting weergeeft die ik op de bouwplaats heb geteld.",
+            )}
+            hint={text("Optional; the name and moment are stored with the record.", "Optioneel; de naam en het moment worden bij de registratie opgeslagen.")}
+            value={signature}
+            onChange={setSignature}
+          />
           <div className="modal-actions">
             <span className="form-note">
               <Check size={13} /> {noteMissing
@@ -569,7 +584,7 @@ export function WorkforceModal({
                 buildingId: building.id,
                 rows: rowsByBuilding[building.id] ?? [],
                 visitors: visitorsByBuilding[building.id] ?? [],
-              })), note)}
+              })), note, signature)}
             >
               {busy ? <Loader2 className="spin" size={15} /> : <Check size={15} />} {filledBuildings.length > 1
                 ? text(`Confirm attendance · ${filledBuildings.length} buildings`, `Aanwezigheid bevestigen · ${filledBuildings.length} gebouwen`)

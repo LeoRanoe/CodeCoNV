@@ -109,6 +109,12 @@ export function DailyLogModal({
     contractorCompany: initialCloseout?.contractorCompany ?? "",
     tomorrowPlan: initialCloseout?.tomorrowPlan ?? "",
   }));
+  /** The supervisor who closed the day, signed on the day's own form. */
+  const [daySignature, setDaySignature] = useState<HandwrittenSignature | null>(() => signatureFromDetails(
+    initialCloseout?.signedBy,
+    initialCloseout?.signedAt,
+    initialCloseout?.signatureImage,
+  ) as HandwrittenSignature | null);
   const [contractorSignature, setContractorSignature] = useState<HandwrittenSignature | null>(() => signatureFromDetails(
     initialCloseout?.contractorSignedBy,
     initialCloseout?.contractorSignedAt,
@@ -172,6 +178,9 @@ export function DailyLogModal({
     contractorSignedBy: log.delayCause === "none" ? "" : contractorSignature?.name ?? "",
     contractorSignedAt: log.delayCause === "none" ? "" : contractorSignature?.signedAt ?? "",
     contractorSignatureImage: log.delayCause === "none" ? "" : contractorSignature?.image ?? "",
+    signedBy: daySignature?.name ?? "",
+    signedAt: daySignature?.signedAt ?? "",
+    signatureImage: daySignature?.image ?? "",
     communication: log.adviceToContractor.trim(),
     risks: initialCloseout?.risks ?? "",
     tomorrowPlan: log.tomorrowPlan.trim(),
@@ -399,6 +408,22 @@ export function DailyLogModal({
               }}
             />
           </details>
+
+          {/* The day is signed by the person who closed it, the way every other record in
+              the app is signed. Optional, so an unfinished day can still be saved. */}
+          <section className="daily-log-block daily-log-signature">
+            <h3><ShieldCheck size={16} /> {text("Signature", "Handtekening")}</h3>
+            <SignatureField
+              label={text("Sign this day", "Onderteken deze dag")}
+              declaration={text(
+                "I confirm that this record reflects what I saw and recorded on site today.",
+                "Ik bevestig dat deze registratie weergeeft wat ik vandaag op de bouwplaats heb gezien en vastgelegd.",
+              )}
+              hint={text("The name and the moment are stored with the day.", "De naam en het moment worden bij de dag opgeslagen.")}
+              value={daySignature}
+              onChange={setDaySignature}
+            />
+          </section>
 
           {problems.length ? (
             <div className="operation-alert warning" role="status">

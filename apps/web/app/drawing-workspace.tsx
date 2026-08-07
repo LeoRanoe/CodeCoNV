@@ -24,7 +24,8 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { BuildingMultiPicker, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
 import {
   arrowHeadPoints,
   arrowLineEnd,
@@ -161,6 +162,9 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
   const [spotMode, setSpotMode] = useState<"link" | "issue">("issue");
   const [spotRecord, setSpotRecord] = useState("");
   const [spotIssue, setSpotIssue] = useState({ title: "", description: "", severity: "medium" });
+  /** The buildings the issue written on this spot covers, and the signature under it. */
+  const [spotBuildingIds, setSpotBuildingIds] = useState<string[]>([]);
+  const [spotSignature, setSpotSignature] = useState<HandwrittenSignature | null>(null);
   /** Sheet names read out of the PDF itself, so a page is known by its own label. */
   const [pageLabels, setPageLabels] = useState<string[]>([]);
   const [documentTitle, setDocumentTitle] = useState("");
@@ -435,17 +439,24 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
    */
   const createIssueAtPoint = async (nextPoint: PinPoint) => {
     if (!activeDrawing || spotIssue.title.trim().length < 3) return;
-    const pinBuildingId = activeDrawing.building_id || resolveDefaultBuildingId(buildings, buildingId);
+    const chosenBuildings = spotBuildingIds.length
+      ? spotBuildingIds
+      : [activeDrawing.building_id || resolveDefaultBuildingId(buildings, buildingId)].filter(Boolean);
+    const pinBuildingId = chosenBuildings[0] ?? activeDrawing.building_id ?? resolveDefaultBuildingId(buildings, buildingId);
     let created: Awaited<ReturnType<typeof createFinding>> | null = null;
     const recorded = await run(async () => {
       created = await createFinding(client, {
         projectId,
         buildingId: pinBuildingId,
+        buildingIds: chosenBuildings,
         type: "deficiency",
         title: spotIssue.title.trim(),
         description: spotIssue.description.trim() || spotIssue.title.trim(),
         severity: spotIssue.severity,
         locationLabel: `${drawingLabel(activeDrawing)} · ${text("page", "pagina")} ${pageNumber}`,
+        signedBy: spotSignature?.name,
+        signedAt: spotSignature?.signedAt,
+        signatureImage: spotSignature?.image ?? null,
       });
       return created;
     }, text("Issue recorded from the drawing.", "Issue vanaf de tekening vastgelegd."));
@@ -455,6 +466,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
     if (okay) {
       setPoint(null);
       setSpotIssue({ title: "", description: "", severity: "medium" });
+      setSpotBuildingIds([]);
+      setSpotSignature(null);
     }
   };
 
@@ -693,6 +706,19 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                     <label className="form-field"><span>{text("What is wrong here?", "Wat is hier mis?")}</span><input value={spotIssue.title} onChange={(event) => setSpotIssue({ ...spotIssue, title: event.target.value })} placeholder={text("Short subject", "Kort onderwerp")} /></label>
                     <label className="form-field"><span>{text("Description", "Omschrijving")}</span><textarea rows={3} value={spotIssue.description} onChange={(event) => setSpotIssue({ ...spotIssue, description: event.target.value })} /></label>
                     <label className="form-field"><span>{text("Severity", "Ernst")}</span><select value={spotIssue.severity} onChange={(event) => setSpotIssue({ ...spotIssue, severity: event.target.value })}><option value="low">{text("Low", "Laag")}</option><option value="medium">{text("Medium", "Middel")}</option><option value="high">{text("High", "Hoog")}</option><option value="critical">{text("Critical", "Kritiek")}</option></select></label>
+                    <BuildingMultiPicker
+                      id="drawing-spot-buildings"
+                      buildings={buildings}
+                      value={spotBuildingIds.length ? spotBuildingIds : [activeDrawing?.building_id ?? ""].filter(Boolean)}
+                      onChange={setSpotBuildingIds}
+                    />
+                    <SignatureField
+                      label={text("Signature", "Handtekening")}
+                      declaration={text("I confirm that this issue reflects what I marked on the drawing.", "Ik bevestig dat dit issue weergeeft wat ik op de tekening heb gemarkeerd.")}
+                      hint={text("Optional; the name and moment are stored with the issue.", "Optioneel; de naam en het moment worden bij het issue opgeslagen.")}
+                      value={spotSignature}
+                      onChange={setSpotSignature}
+                    />
                     <div className="button-row">
                       <button className="primary-button" type="button" disabled={busy || spotIssue.title.trim().length < 3} onClick={() => void createIssueAtPoint(point)}><MapPin size={15} /> {text("Record and pin it", "Vastleggen en pinnen")}</button>
                       <button className="secondary-button" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button>

@@ -54,7 +54,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch, type SetStateAction } from "react";
 import { AgreementSignatureFields, agreementSignatureDetails, agreementSummaryLine, emptyAgreementSignature } from "@/app/agreement-signature";
-import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { ALL_BUILDINGS, BuildingMultiPicker, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { RecordBuildingsField, RecordFormSection, RecordFormShell, RecordSignatureField } from "@/app/forms/record-form-shell";
 import { RecordList } from "@/app/forms/record-list";
@@ -1047,6 +1047,21 @@ function ProjectOperations({
   const [registerLocationNodeId, setRegisterLocationNodeId] = useState("");
   const [inspectionBuildingId, setInspectionBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [findingBuildingId, setFindingBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
+  /**
+   * The buildings this issue or NCR covers. "All buildings" is selecting every one of
+   * them, so the choice the client asked to keep is still here — it is simply no longer
+   * the only way to name more than one.
+   */
+  const [findingBuildingIds, setFindingBuildingIds] = useState<string[]>(() => [resolveDefaultBuildingId(buildings, buildingId)].filter(Boolean));
+  const chooseFindingBuildings = (next: string[]) => {
+    setFindingBuildingIds(next);
+    setFindingBuildingId(next[0] ?? findingBuildingId);
+    setFindingLocationNodeId("");
+  };
+  const findingCoversEveryBuilding = buildings.length > 0 && findingBuildingIds.length === buildings.length;
+  const findingBuildingsLabel = findingCoversEveryBuilding
+    ? text("All buildings", "Alle gebouwen")
+    : findingBuildingIds.map((id) => buildings.find((building) => building.id === id)?.name).filter(Boolean).join(" · ") || buildingName;
   const [hseBuildingId, setHseBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [registerBuildingId, setRegisterBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [inspectionBuildingIds, setInspectionBuildingIds] = useState(() => [resolveDefaultBuildingId(buildings, buildingId)].filter(Boolean));
@@ -1391,6 +1406,7 @@ function ProjectOperations({
     setIssueManualPosition(false);
     const defaultId = resolveDefaultBuildingId(buildings, buildingId);
     setFindingBuildingId(defaultId);
+    setFindingBuildingIds(defaultId ? [defaultId] : []);
     setEditingFindingId("");
   };
   const resetHseForm = () => {
@@ -1449,6 +1465,7 @@ function ProjectOperations({
       signatureImage: issue.signature_image ?? "",
     });
     setFindingBuildingId(finding.building_id);
+    setFindingBuildingIds(finding.building_ids?.length ? finding.building_ids : [finding.building_id]);
     setFindingLocationNodeId(finding.location_node_id ?? "");
     setFindingPhotos([]);
     setEditingFindingId(finding.id);
@@ -1799,6 +1816,7 @@ function ProjectOperations({
         : ""),
     }));
     setFindingBuildingId(inspection.building_id);
+    setFindingBuildingIds(inspection.building_ids?.length ? inspection.building_ids : [inspection.building_id]);
     setFindingLocationNodeId(inspection.location_node_id ?? "");
     setShowForm(true);
     switchTab("ncr");
@@ -1927,13 +1945,13 @@ function ProjectOperations({
     // belongs to a building in the database, so project-wide means the same numbered
     // record associated with every building — the association list carries that without
     // cloning the record.
-    const projectWideFinding = findingBuildingId === ALL_BUILDINGS;
-    const selectedFindingBuildingIds = projectWideFinding ? buildings.map((building) => building.id) : [findingBuildingId];
+    const selectedFindingBuildingIds = findingBuildingIds.length ? findingBuildingIds : [findingBuildingId];
+    const projectWideFinding = buildings.length > 0 && selectedFindingBuildingIds.length === buildings.length;
     const primaryFindingBuildingId = selectedFindingBuildingIds[0] ?? findingBuildingId;
-    const findingPhotoBuildingId = projectWideFinding ? resolveDefaultBuildingId(buildings, buildingId) : findingBuildingId;
+    const findingPhotoBuildingId = primaryFindingBuildingId;
     const findingBuildingName = projectWideFinding
       ? text("All buildings", "Alle gebouwen")
-      : buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName;
+      : selectedFindingBuildingIds.map((selectedId) => buildings.find((building) => building.id === selectedId)?.name).filter(Boolean).join(" · ") || buildingName;
     // The module decides what is created here. Without this an NCR opened from the
     // module switcher would be stored as an ordinary deficiency and vanish from the
     // NCR list it was entered in.
@@ -2810,7 +2828,7 @@ function ProjectOperations({
                 <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDate}</strong><span>{issueTime}</span></div>
                 <div><small>{text("Reporter", "Melder")}</small><strong>{currentUserName}</strong><span>{reporterDepartment}</span></div>
                 <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
-                <div><small>{text("Site / location", "Locatie")}</small><strong>{findingBuildingId === ALL_BUILDINGS ? text("All buildings", "Alle gebouwen") : buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName}</strong><span>{findingForm.latitude && findingForm.longitude ? `${findingForm.latitude}, ${findingForm.longitude}` : projectLocation || text("No coordinates yet", "Nog geen coördinaten")}</span></div>
+                <div><small>{text("Site / location", "Locatie")}</small><strong>{findingBuildingsLabel}</strong><span>{findingForm.latitude && findingForm.longitude ? `${findingForm.latitude}, ${findingForm.longitude}` : projectLocation || text("No coordinates yet", "Nog geen coördinaten")}</span></div>
                 <div><small>{text("Weather", "Weer")}</small><strong>{liveWeatherLabel}</strong><span>{liveWeather ? `${liveWeather.temperatureC}°C` : "—"}</span></div>
                 <div><small>{text("Department", "Afdeling")}</small><strong>{reporterDepartment}</strong><span>{text("Of the reporter", "Van de melder")}</span></div>
                 <div><small>{text("Status", "Status")}</small><strong className="record-status-preview">{issueStatusLabel}</strong><span>{text("On submit", "Bij indienen")}</span></div>
@@ -2874,14 +2892,14 @@ function ProjectOperations({
                   <section className="record-section record-order-5" aria-label={text("Location", "Locatie")}>
                     <h3><span className="record-section-number">5</span> {text("Location", "Locatie")} <em className="record-section-required">*</em></h3>
                     <div className="form-grid-2">
-                      <BuildingPicker id="finding-building" buildings={buildings} value={findingBuildingId} onChange={(next) => { setFindingBuildingId(next); setFindingLocationNodeId(""); }} allowAll />
+                      <BuildingMultiPicker id="finding-buildings" buildings={buildings} value={findingBuildingIds} onChange={chooseFindingBuildings} />
                       <LocationPicker id="finding-location" nodes={data.locationNodes} buildingId={findingBuildingId} value={findingLocationNodeId} onChange={setFindingLocationNodeId} requiredDepth={requiredLocationDepth} />
                     </div>
                     <RecordLocationMap
                       client={client}
                       value={{ latitude: findingForm.latitude, longitude: findingForm.longitude }}
                       fallbackCenter={projectCenter}
-                      contextLabel={findingBuildingId === ALL_BUILDINGS ? projectName : `${buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName}, ${projectName}`}
+                      contextLabel={findingCoversEveryBuilding ? projectName : `${findingBuildingsLabel}, ${projectName}`}
                       onChange={(coordinates) => setFindingForm((current) => ({ ...current, ...coordinates }))}
                       onUseMyLocation={captureIssuePosition}
                       locating={issueLocating}
@@ -3030,7 +3048,7 @@ function ProjectOperations({
                   <Paperclip size={14} /> {text(`Attachments (${findingPhotos.length})`, `Bijlagen (${findingPhotos.length})`)}
                   <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
                 </label>
-                <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && findingBuildingId !== ALL_BUILDINGS && !findingLocationNodeId) || (!online && !findingPhotos.length) || !findingForm.issueCategory || findingForm.responsiblePerson.trim().length < 2 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><Send size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Issue indienen")}</button>
+                <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || !findingForm.issueCategory || findingForm.responsiblePerson.trim().length < 2 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><Send size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Issue indienen")}</button>
               </div>
             </div>
           ) : null}
@@ -3041,7 +3059,7 @@ function ProjectOperations({
                   the reference, with the date and the report number filled by the app. */}
               <section className="controlled-document-context ncr-form-context" aria-label={text("Non-conformance report header", "Kop van het non-conformance report")}>
                 <div><small>{text("Project name and number", "Projectnaam en -nummer")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
-                <div><small>{text("Contractor", "Aannemer")}</small><strong>{parties.find((party) => party.id === findingForm.responsiblePartyId)?.name || text("Not assigned yet", "Nog niet toegewezen")}</strong><span>{buildings.find((building) => building.id === findingBuildingId)?.name ?? buildingName}</span></div>
+                <div><small>{text("Contractor", "Aannemer")}</small><strong>{parties.find((party) => party.id === findingForm.responsiblePartyId)?.name || text("Not assigned yet", "Nog niet toegewezen")}</strong><span>{findingBuildingsLabel}</span></div>
                 <div><small>{text("Date", "Datum")}</small><strong>{issueDate}</strong><span>{issueTime}</span></div>
                 {/* An NCR says who drew it up, from the moment it is written: without it
                     the contractor receives a formal report nobody stands behind. */}
@@ -3129,7 +3147,7 @@ function ProjectOperations({
               <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required (Y/N)", "Escalation Required (Y/N)")}</label>
               <p className="form-helper">{text(`Entered by ${currentUserName} · the ID, current status and actual resolution date are kept by the app itself.`, `Entered By ${currentUserName} · het ID, de status en de Actual Resolution Date houdt de app zelf bij.`)}</p>
               <div className="form-grid-2">
-                <BuildingPicker id="finding-building" buildings={buildings} value={findingBuildingId} onChange={(next) => { setFindingBuildingId(next); setFindingLocationNodeId(""); }} allowAll />
+                <BuildingMultiPicker id="ncr-buildings" buildings={buildings} value={findingBuildingIds} onChange={chooseFindingBuildings} />
                 <label className="form-field"><span>{text("Contractor · receives this NCR", "Aannemer · ontvangt deze NCR")}</span><select value={findingForm.responsiblePartyId} onChange={(event) => setFindingForm({ ...findingForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Nog niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
               </div>
               <LocationPicker id="finding-location" nodes={data.locationNodes} buildingId={findingBuildingId} value={findingLocationNodeId} onChange={setFindingLocationNodeId} requiredDepth={requiredLocationDepth} />
@@ -3157,7 +3175,7 @@ function ProjectOperations({
                 })}
               />
                 <div className="operation-alert warning"><RotateCcw size={17} /><div><strong>{text("The contractor fills in the correction", "De aannemer vult de correctie in")}</strong><span>{text("After submitting you send this NCR to the contractor with one tap. The contractor fills in the proposed corrective action and sends it back; the quality-control close-out stays with CODECO.", "Na indienen stuur je deze NCR met één tik naar de aannemer. De aannemer vult de voorgestelde correctieve actie in en stuurt die terug; de eindcontrole blijft bij CODECO.")}</span></div></div>
-              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && findingBuildingId !== ALL_BUILDINGS && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit NCR", "NCR indienen")}</button>
+              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit NCR", "NCR indienen")}</button>
             </div>
           ) : null}
           {/* Submitting is not the end of an NCR: the contractor has to receive it and

@@ -929,6 +929,9 @@ export async function saveDailyCloseout(
     delay_hours: input.answers.delayHours,
     delay_reason: input.answers.delayReason || null,
     contractor_company: input.answers.contractorCompany || null,
+    signed_by: input.answers.signedBy || null,
+    signed_at: input.answers.signedAt || null,
+    signature_image: input.answers.signatureImage || null,
     contractor_signed_by: input.answers.contractorSignedBy || null,
     contractor_signed_at: input.answers.contractorSignedAt || null,
     contractor_signature_image: input.answers.contractorSignatureImage || null,
@@ -940,15 +943,28 @@ export async function saveDailyCloseout(
   };
   const existing = await client.from("day_closeouts").select("id").eq("day_report_id", reportId).eq("building_id", input.buildingId).maybeSingle();
   fail(existing.error);
+  // The signature columns arrive with a migration. On a database that has not run it the
+  // day itself must still be saveable, so the write steps back to the same closeout
+  // without them rather than refusing the whole day.
+  const signatureColumns = ["signed_by", "signed_at", "signature_image"];
+  const withoutSignature = (values: Record<string, unknown>) => Object.fromEntries(
+    Object.entries(values).filter(([column]) => !signatureColumns.includes(column)),
+  );
   if (existing.data) {
-    const update = await client.from("day_closeouts").update(payload).eq("id", existing.data.id);
+    let update = await client.from("day_closeouts").update(payload).eq("id", existing.data.id);
+    if (schemaColumnMissing(update.error, "signed_by") || schemaColumnMissing(update.error, "signature_image")) {
+      update = await client.from("day_closeouts").update(withoutSignature(payload)).eq("id", existing.data.id);
+    }
     fail(update.error);
   } else {
-    const insert = await client.from("day_closeouts").insert({
-      ...payload,
+    const identity = {
       idempotency_key: `closeout:${reportId}:${input.buildingId}`,
       created_by: user.id,
-    });
+    };
+    let insert = await client.from("day_closeouts").insert({ ...payload, ...identity });
+    if (schemaColumnMissing(insert.error, "signed_by") || schemaColumnMissing(insert.error, "signature_image")) {
+      insert = await client.from("day_closeouts").insert({ ...withoutSignature(payload), ...identity });
+    }
     fail(insert.error);
   }
   const reportUpdate = await client.from("day_reports").update({ completeness_percent: 90 }).eq("id", reportId);
@@ -1003,6 +1019,8 @@ export async function saveAttendance(
     projectId: string;
     buildingId: string;
     rows: AttendanceInput[];
+    /** The supervisor who counted the crew, signed on the workforce register itself. */
+    signature?: { name: string; signedAt: string; image: string } | null;
   },
 ) {
   const user = await currentUser(client);
@@ -1036,6 +1054,9 @@ export async function saveAttendance(
       entry_type: row.entryType ?? "workforce",
       crew: row.crew?.trim() || null,
       visitor_name: row.visitorName?.trim() || null,
+      signed_by: input.signature?.name || null,
+      signed_at: input.signature?.signedAt || null,
+      signature_image: input.signature?.image || null,
     };
     const existingId = existing.get(key);
     const write = async (body: Record<string, unknown>) => existingId
@@ -1046,8 +1067,13 @@ export async function saveAttendance(
           created_by: user.id,
         });
     const result = await write(payload);
-    const missing = ["entry_type", "crew", "visitor_name"].find((column) => schemaColumnMissing(result.error, column));
-    fail(missing ? (await write(core)).error : result.error);
+    // The signature arrives with a later migration than crew and visitors, so the write
+    // steps back one column set at a time rather than losing the headcount itself.
+    const signatureMissing = ["signed_by", "signed_at", "signature_image"].some((column) => schemaColumnMissing(result.error, column));
+    const withoutSignature = { ...core, entry_type: row.entryType ?? "workforce", crew: row.crew?.trim() || null, visitor_name: row.visitorName?.trim() || null };
+    const afterSignature = signatureMissing ? await write(withoutSignature) : result;
+    const missing = ["entry_type", "crew", "visitor_name"].find((column) => schemaColumnMissing(afterSignature.error, column));
+    fail(missing ? (await write(core)).error : afterSignature.error);
   }
 }
 

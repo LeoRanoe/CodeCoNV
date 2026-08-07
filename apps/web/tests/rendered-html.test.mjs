@@ -866,7 +866,8 @@ test("makes photo linkage, punch-list marker colours and report topics real", as
   assert.match(operations, /p_building_id: input\.buildingId/);
   assert.match(markerMigration, /visual_annotations_disposition_check/);
   assert.match(markerMigration, /Building does not belong to this project/);
-  assert.match(visual, /BuildingPicker id="marker-building"/);
+  // The marker names every building the image shows, not only one.
+  assert.match(visual, /BuildingMultiPicker\s+id="marker-buildings"/);
   // The classification must no longer be smuggled into the description text.
   assert.doesNotMatch(visual, /\[\$\{issue\.disposition\.replaceAll/);
 
@@ -1308,11 +1309,11 @@ test("keeps the action centre and makes its deadlines and choices true on site",
   // "all buildings" is stored instead of failing.
   assert.match(workspace, /RecordBuildingsField id="hse-buildings"/);
   assert.match(workspace, /const projectWideHse = selectedHseBuildingIds\.length === buildings\.length/);
-  // The punchlist screen keeps its own single building picker with "All buildings" on it,
-  // the way the client's punch list is organised. Project-wide still associates the one
-  // numbered record with every building instead of cloning it.
-  assert.match(workspace, /const projectWideFinding = findingBuildingId === ALL_BUILDINGS/);
-  assert.match(workspace, /const selectedFindingBuildingIds = projectWideFinding \? buildings\.map\(\(building\) => building\.id\) : \[findingBuildingId\]/);
+  // The punchlist names the buildings it covers, and "All buildings" is selecting every
+  // one of them in the same control. Project-wide still associates the one numbered
+  // record with every building instead of cloning it.
+  assert.match(workspace, /const selectedFindingBuildingIds = findingBuildingIds\.length \? findingBuildingIds : \[findingBuildingId\]/);
+  assert.match(workspace, /const projectWideFinding = buildings\.length > 0 && selectedFindingBuildingIds\.length === buildings\.length/);
   assert.match(workspace, /buildingIds: selectedHseBuildingIds/);
   assert.match(workspace, /buildingIds: selectedFindingBuildingIds/);
 
@@ -2591,12 +2592,12 @@ test("the punchlist screen is the client's punchlist again, and a photo can be m
   // contractor-to-supervisor review cycle above it.
   assert.match(workspace, /className="operation-form wide sectioned-record-form"/);
   assert.match(workspace, /<p className="form-intro">\{capturedAutomatically\}<\/p>/);
-  assert.match(workspace, /<BuildingPicker id="finding-building"[\s\S]*?allowAll \/>/);
+  assert.match(workspace, /<BuildingMultiPicker id="finding-buildings"/);
   assert.match(workspace, /punchlist-command/);
   assert.match(workspace, /punchlist-stages/);
   assert.match(workspace, /punchlist-cycle-card/);
   // A project-wide issue does not have to name an exact location to be submittable.
-  assert.match(workspace, /exactLocationRequired && findingBuildingId !== ALL_BUILDINGS && !findingLocationNodeId/);
+  assert.match(workspace, /exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId/);
   // The record list keeps the actions the client asked for in the round before this one.
   assert.match(workspace, /viewRecord=\{viewFinding\}/);
   assert.match(workspace, /editRecord=\{editFinding\}/);
@@ -2733,4 +2734,45 @@ test("every workspace button opens the record it names", async () => {
   assert.match(dailyLog, /const dayContextRequired = !delayOnly \|\| !initialCloseout/);
   assert.match(dailyLog, /daily-log-body\$\{delayOnly \? " focus-delay" : workOnly \? " focus-works" : ""\}/);
   assert.match(styles, /\.daily-log-body\.focus-delay > \.daily-log-delay/);
+});
+
+test("every record form is signed and can name more than one building", async () => {
+  const [workspace, tools, dailyLog, visual, drawing, workforce, dataLayer, operations, migration] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/field-tools.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/visual-evidence-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/drawing-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/workforce-register.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/data.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202608070001_daily_and_workforce_signature.sql", import.meta.url), "utf8"),
+  ]);
+
+  // A signature on every form that writes a record.
+  for (const [name, source] of [["workspace", workspace], ["field tools", tools], ["daily log", dailyLog], ["visual evidence", visual], ["drawing", drawing], ["workforce", workforce]]) {
+    assert.match(source, /SignatureField/, `${name} has no signature field`);
+  }
+  assert.match(dailyLog, /value=\{daySignature\}/);
+  assert.match(workforce, /value=\{signature\}/);
+  assert.match(drawing, /value=\{spotSignature\}/);
+
+  // More than one building on every form that belongs to buildings. The punchlist keeps
+  // "All buildings" — it is selecting every one of them in the same control.
+  for (const [name, source] of [["workspace", workspace], ["field tools", tools], ["daily log", dailyLog], ["visual evidence", visual], ["drawing", drawing]]) {
+    assert.match(source, /BuildingMultiPicker|RecordBuildingsField/, `${name} cannot name more than one building`);
+  }
+  assert.match(workspace, /<BuildingMultiPicker id="finding-buildings"/);
+  assert.match(workspace, /<BuildingMultiPicker id="ncr-buildings"/);
+  assert.match(workspace, /const findingCoversEveryBuilding = buildings\.length > 0 && findingBuildingIds\.length === buildings\.length/);
+  assert.match(visual, /<BuildingMultiPicker\s+id="marker-buildings"/);
+  assert.match(drawing, /id="drawing-spot-buildings"/);
+
+  // Storage, its stepped read-back and the schema reload the client's database needs.
+  assert.match(migration, /alter table public\.day_closeouts[\s\S]{0,200}add column if not exists signature_image text/);
+  assert.match(migration, /alter table public\.attendance_entries[\s\S]{0,200}add column if not exists signature_image text/);
+  assert.match(migration, /notify pgrst, 'reload schema'/);
+  assert.match(operations, /schemaFeatureMissing\(dailyWorkResult\.error, \["signed_by", "signed_at", "signature_image"\]\)/);
+  assert.match(dataLayer, /schemaColumnMissing\(update\.error, "signed_by"\)/);
+  assert.match(dataLayer, /const signatureMissing = \["signed_by", "signed_at", "signature_image"\]/);
 });
