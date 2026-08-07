@@ -415,6 +415,29 @@ button.drawing-pin {
 }
 
 .drawing-unplaced-list > button:first-of-type { border-top: 0; }
+
+/* A dot in a list, not the map marker: .drawing-pin is absolutely positioned and would
+   escape its row. It carries the same colour so the kind is still readable at a glance. */
+.drawing-unplaced-dot {
+  align-items: center;
+  background: #7749a4;
+  border-radius: 50%;
+  color: #fff;
+  display: inline-flex;
+  height: 22px;
+  justify-content: center;
+  position: static;
+  transform: none;
+  width: 22px;
+}
+
+.drawing-unplaced-dot.tone-red { background: #b82b34; }
+.drawing-unplaced-dot.tone-orange { background: #ce6e1d; }
+.drawing-unplaced-dot.tone-blue { background: #216a99; }
+.drawing-unplaced-dot.tone-purple { background: #7749a4; }
+.drawing-unplaced-dot.tone-green { background: #23805e; }
+.drawing-unplaced-dot.tone-cyan { background: #157f91; }
+.drawing-unplaced-dot.tone-amber { background: #c08016; }
 .drawing-unplaced-list > button:hover { background: #f4f8fb; }
 .drawing-unplaced-list > button strong { display: block; font-size: 12px; }
 .drawing-unplaced-list > button small { color: var(--muted); display: block; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -6237,15 +6260,20 @@ textarea:focus-visible {
 
 /* An unfinished record can be opened straight from the list, so a started checklist
    can actually be filled in. */
-.record-row:has(.record-row-open) { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+.record-row:has(> .record-row-open) { grid-template-columns: auto minmax(0, 1fr) auto auto; }
 .record-row-open { font-size: 11px; min-height: 36px; padding: 0 12px; white-space: nowrap; }
 
 @media (max-width: 620px) {
-  .record-row:has(.record-row-open) { grid-template-columns: auto minmax(0, 1fr) auto; }
-  .record-row .record-row-open { grid-column: 2 / -1; justify-self: start; }
+  .record-row:has(> .record-row-open) { grid-template-columns: auto minmax(0, 1fr) auto; }
+  /* Only when the open button is a direct child of the row. Inside the actions group it
+     is one of three equal cells, and this rule pushed the other two onto a second line. */
+  .record-row > .record-row-open { grid-column: 2 / -1; justify-self: start; }
 }
 
-.record-row > div {
+/* The text block of a row. The actions group is also a direct div child, and this rule
+   used to win on specificity and turn it into a one-column grid — which is what stacked
+   View / Edit / Withdraw into three full-width buttons on every record, at every width. */
+.record-row > div:not(.record-row-actions) {
   display: grid;
   gap: 4px;
 }
@@ -13925,13 +13953,23 @@ button {
   border-color: color-mix(in srgb, var(--signal) 42%, var(--border));
 }
 
-.record-row-actions,
 .record-readonly-actions {
   display: flex;
   align-items: center;
   gap: 0.45rem;
   flex-wrap: wrap;
 }
+
+/* The three row actions belong on one line. Wrapping inside the narrow grid column they
+   sit in turned every record into three stacked full-width buttons, at every width. */
+.record-row-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.45rem;
+}
+
+.record-row-actions button { white-space: nowrap; }
 
 .workspace-search-filters {
   display: grid;
@@ -14013,13 +14051,27 @@ button {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* Three actions per row, side by side and compact. Stacked full width they turned a
+     list of ten records into ten screens of buttons. */
   .record-row-actions {
+    display: grid;
+    gap: 6px;
     grid-column: 1 / -1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .workspace-search-filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .record-row-actions button {
+    font-size: 11px;
+    gap: 4px;
+    justify-content: center;
+    min-height: 40px;
+    padding: 0 6px;
+    white-space: nowrap;
   }
+
+  /* Only two of the three exist on some rows; they still share the width evenly. */
+  .record-row-actions:has(> :nth-child(2)):not(:has(> :nth-child(3))) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .record-row-actions:not(:has(> :nth-child(2))) { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (min-width: 761px) and (max-width: 1180px) {
@@ -14446,6 +14498,42 @@ button {
  * So: tiles and cards keep their columns, and the things below go back to one column, or
  * back to scrolling, on a phone. Tablet and desktop are untouched.
  */
+/* A real picture fills its slot; the placeholder tone stays for photos still loading. */
+.evidence-thumbnail { overflow: hidden; padding: 0; position: relative; }
+.evidence-thumbnail img { display: block; height: 100%; object-fit: cover; width: 100%; }
+
+/* The filters fold away where the screen is small; the summary is the control. */
+.workspace-search-filters-block { margin: 0.85rem 0; }
+.workspace-search-filters-block > summary {
+  align-items: center;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  cursor: pointer;
+  display: flex;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 8px;
+  list-style: none;
+  min-height: 44px;
+  padding: 0 14px;
+}
+.workspace-search-filters-block > summary::-webkit-details-marker { display: none; }
+.workspace-search-filters-block > summary > b {
+  background: var(--accent-soft, #eaf3ff);
+  border-radius: 999px;
+  color: var(--accent-strong, #14507d);
+  font-size: 11px;
+  padding: 2px 8px;
+}
+.workspace-search-filters-block[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.workspace-search-filters-block[open] > .workspace-search-filters { border-top-left-radius: 0; border-top-right-radius: 0; margin-top: -1px; }
+/* On a desktop the filters are simply there; the summary has nothing to add. */
+@media (min-width: 761px) {
+  .workspace-search-filters-block > summary { display: none; }
+  .workspace-search-filters-block > .workspace-search-filters { border-radius: 16px; margin-top: 0; }
+}
+
 @media (max-width: 620px) {
   /* Filter and form rows: one field per line, full width, nothing clipped. */
   .workspace-search-filters,
@@ -14484,6 +14572,15 @@ button {
 
   /* Three daily-work tabs in two columns leaves one stranded; let them size themselves. */
   .daily-work-tabs { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+
+  /* Four punchlist stages across a phone clipped their own labels. */
+  .punchlist-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .punchlist-stages > div { grid-template-columns: 22px auto minmax(0, 1fr); min-height: 52px; padding: 8px; }
+  .punchlist-stages > div small { font-size: 9px; }
+
+  /* The review-cycle card's two photo buttons sit under its text, not beside it. */
+  .punchlist-cycle-card > .button-row { grid-column: 1 / -1; }
+  .punchlist-cycle-card > .button-row > button { flex: 1 1 0; justify-content: center; min-height: 44px; }
 }
 
 /* At the narrowest phone the tile grids give up their second column rather than clip. */

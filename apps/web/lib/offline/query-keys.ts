@@ -10,5 +10,6 @@ export const offlineQueryKeys = {
   projectLocations: (projectId: string) => `project-locations:${projectId}`,
   projectDrawings: (projectId: string) => `project-drawings:${projectId}`,
   projectNotifications: (projectId: string) => `project-notifications:${projectId}`,
+  projectRecentPhotos: (projectId: string) => `project-recent-photos:${projectId}`,
   internalAccess: (organizationId: string) => `internal-access:${organizationId}`,
 };

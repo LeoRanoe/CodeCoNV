@@ -716,7 +716,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                   <header><FileQuestion size={15} /> <strong>{text("Not on a drawing yet", "Nog niet op een tekening")}</strong> <b>{unplacedRecords.length}</b></header>
                   {unplacedRecords.map((record) => (
                     <button type="button" onClick={() => { setTool("pin"); setSpotMode("link"); setSpotRecord(record.value); }} key={record.value}>
-                      <span className={`drawing-pin ${pinTypeClass[record.type]}`}><MapPin size={12} /></span>
+                      <span className={`drawing-unplaced-dot tone-${pinTypeClass[record.type]}`}><MapPin size={12} /></span>
                       <span><strong>{record.code}</strong><small>{record.title}</small></span>
                       <ArrowUpRight size={14} />
                     </button>

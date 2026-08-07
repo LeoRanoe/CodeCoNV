@@ -145,6 +145,9 @@ import {
 } from "@/lib/supabase/operations";
 
 type WorkspaceMode = "project" | "actions" | "verify" | "reports" | "admin";
+/** The modules that are a record form plus the list of what was recorded before it. */
+const recordModuleTabs = ["inspections", "findings", "ncr", "hse", "registers"];
+
 type ProjectTab = "home" | "inspections" | "findings" | "ncr" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files" | "assets";
 
 type ViewedWorkspaceRecord = {
@@ -1631,7 +1634,10 @@ function ProjectOperations({
   const openTask = (next: ProjectTab, createRecord = true) => {
     setTab(next);
     setSubmittedFinding(null);
-    setShowForm(createRecord);
+    // The client's own record screens open with their form ready and the "New" button
+    // folds it away — that is how their document describes them. Arriving from a tile
+    // still only navigates; nothing is submitted on the way in.
+    setShowForm(createRecord || recordModuleTabs.includes(next));
     setActiveInspection(null);
   };
 
@@ -1718,6 +1724,8 @@ function ProjectOperations({
     setInspectionLocationNodeId(inspection.location_node_id ?? "");
     setInspectionTitle(inspection.title);
     setInspectionSignature(signatureFromDetails(inspection.signed_by, inspection.signed_at, inspection.signature_image));
+    // Resuming replaces whatever was being read; the reader closes with it.
+    setViewedRecord(null);
     setShowForm(false);
     setInspectionAnswers(Object.fromEntries(template.items.map((item) => [item.id, { result: "", notes: "" }])));
     try {
@@ -2516,7 +2524,7 @@ function ProjectOperations({
   })[sectionId]);
   const activeSectionLabel = projectSections.find(([id]) => id === tab)?.[1];
   const activeSectionCount = projectSections.find(([id]) => id === tab)?.[2] ?? 0;
-  const canCreateRecord = ["inspections", "findings", "hse", "registers"].includes(tab);
+  const canCreateRecord = recordModuleTabs.includes(tab);
 
   return (
     <>
@@ -2582,8 +2590,11 @@ function ProjectOperations({
         </>
       )}
 
+      {/* The record opens over the list it was tapped in. As a panel at the top of the tab
+          it was simply off-screen on a phone: tapping "View" looked like nothing at all. */}
       {tab !== "home" && viewedRecord ? (
-        <aside className="record-readonly-panel" aria-label={text("Record details", "Registratiedetails")}>
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setViewedRecord(null)}>
+        <aside className="modal record-readonly-panel" role="dialog" aria-modal="true" aria-label={text("Record details", "Registratiedetails")}>
           <div>
             <span className="record-number">{viewedRecord.code}</span>
             <h2>{viewedRecord.title}</h2>
@@ -2611,6 +2622,7 @@ function ProjectOperations({
             <button className="ghost-button" type="button" onClick={() => setViewedRecord(null)}><X size={14} /> {text("Close", "Sluiten")}</button>
           </div>
         </aside>
+        </div>
       ) : null}
 
       {tab === "inspections" ? (

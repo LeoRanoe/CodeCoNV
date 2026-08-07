@@ -4,7 +4,12 @@ import { expect, test } from "@playwright/test";
  * The grid round made tiles and cards multi-column on phone and tablet, and caught a few
  * rows it should have left alone. This walks the real stylesheet at the widths the client
  * actually holds: a filter row must never squeeze two fields onto a phone line, a tab strip
- * must keep its reading order, and nothing may push the page sideways.
+ * must keep its reading order, a list row's actions belong on one line, and nothing may
+ * push the page sideways.
+ *
+ * The page these fixtures borrow the stylesheet from is a React app that rewrites the body
+ * while it hydrates, so each fixture is injected and measured inside a single evaluate:
+ * there is no await for hydration to slip through.
  */
 const widths = [
   { name: "small phone", width: 320, height: 844, phone: true },
@@ -32,68 +37,115 @@ const fixture = `<main style="padding:12px">
   <section class="workspace-launcher-grid client-workspace-grid">
     ${Array.from({ length: 10 }, (_, index) => `<button class="workspace-launcher-tile" data-workspace-destination="fixture-${index}"><strong>Long workspace destination ${index + 1}</strong><small>Field module</small></button>`).join("")}
   </section>
+  <div class="record-stack">
+    ${[1, 2].map((index) => `<article class="record-row record-row-clickable">
+      <span class="action-icon"></span>
+      <div><strong>Cast-in anchors · installation · Main building</strong><span>INS-2026-000${index} · Main building · 4 aug 2026</span></div>
+      <div class="record-row-actions">
+        <button class="secondary-button record-row-open" type="button">Bekijken</button>
+        <button class="secondary-button record-row-edit" type="button">Bewerken</button>
+        <button class="ghost-button record-row-withdraw" type="button">Intrekken</button>
+      </div>
+      <span class="task-status">in progress</span>
+    </article>`).join("")}
+  </div>
+  <div class="punchlist-command">
+    <div class="punchlist-stages">
+      ${[["Open", 1], ["In uitvoering", 0], ["Gereed voor verificatie", 0], ["Geverifieerd", 0]].map(([label, count], index) => `<div${index === 2 ? ' class="attention"' : ""}><span>${index + 1}</span><strong>${count}</strong><small>${label}</small></div>`).join("")}
+    </div>
+  </div>
+  <section class="drawing-unplaced-list">
+    <header><strong>Nog niet op een tekening</strong><b>12</b></header>
+    ${["INS-2026-0007", "PHOTO", "INS-2026-0006"].map((code, index) => `<button type="button"><span class="drawing-unplaced-dot tone-${index === 1 ? "cyan" : "green"}"></span><span><strong>${code}</strong><small>Cast-in anchors installation</small></span></button>`).join("")}
+  </section>
 </main>`;
 
-function columnCount(page: import("@playwright/test").Page, selector: string) {
-  return page.locator(selector).evaluate((element) => {
-    const columns = getComputedStyle(element).gridTemplateColumns;
-    return columns === "none" ? 0 : columns.split(" ").filter(Boolean).length;
-  });
-}
+type Measurements = {
+  searchFilterColumns: number;
+  documentFilterColumns: number;
+  documentTabsDisplay: string;
+  moduleGroupColumns: number;
+  tileColumns: number;
+  actionRowCount: number;
+  actionsHeight: number;
+  dotEscapesRow: boolean;
+  dotHeight: number;
+  clippedStageLabels: number;
+  shortTargets: number;
+  overflow: number;
+};
 
-/**
- * The page this fixture borrows its stylesheet from is a React app that hydrates after
- * load and rewrites the body while doing so. Mounting is therefore retried until the
- * fixture is still standing a moment later, instead of racing that first render.
- */
-async function mountFixture(page: import("@playwright/test").Page, html: string) {
-  await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.waitForLoadState("networkidle").catch(() => undefined);
-  await expect.poll(async () => {
-    await page.evaluate((markup) => {
-      document.getElementById("responsive-audit-fixture")?.remove();
-      const host = document.createElement("div");
-      host.id = "responsive-audit-fixture";
-      host.innerHTML = markup;
-      document.body.appendChild(host);
-    }, html);
-    await page.waitForTimeout(250);
-    return page.locator("#responsive-audit-fixture .workspace-search-filters").count();
-  }, { timeout: 30_000 }).toBe(1);
+/** Injects the fixture and reads every measurement from it without yielding in between. */
+async function measure(page: import("@playwright/test").Page, html: string): Promise<Measurements> {
+  return page.evaluate((markup): Measurements => {
+    document.body.innerHTML = markup;
+    const columns = (selector: string) => {
+      const element = document.querySelector(selector);
+      if (!element) return -1;
+      const value = getComputedStyle(element).gridTemplateColumns;
+      return value === "none" ? 0 : value.split(" ").filter(Boolean).length;
+    };
+    const actions = document.querySelector(".record-row-actions");
+    const actionButtons = [...(actions?.querySelectorAll("button") ?? [])];
+    const dot = document.querySelector(".drawing-unplaced-dot");
+    const dotRow = document.querySelector(".drawing-unplaced-list > button");
+    const dotBox = dot?.getBoundingClientRect();
+    const rowBox = dotRow?.getBoundingClientRect();
+    return {
+      searchFilterColumns: columns(".workspace-search-filters"),
+      documentFilterColumns: columns(".project-document-filters"),
+      documentTabsDisplay: getComputedStyle(document.querySelector(".project-document-tabs")!).display,
+      moduleGroupColumns: columns(".workspace-module-groups"),
+      tileColumns: columns(".client-workspace-grid"),
+      actionRowCount: new Set(actionButtons.map((button) => Math.round(button.getBoundingClientRect().y))).size,
+      actionsHeight: actions?.getBoundingClientRect().height ?? 0,
+      dotEscapesRow: !dotBox || !rowBox ? true : dotBox.top < rowBox.top - 1 || dotBox.bottom > rowBox.bottom + 1,
+      dotHeight: dotBox?.height ?? 0,
+      clippedStageLabels: [...document.querySelectorAll(".punchlist-stages > div small")]
+        .filter((label) => label.scrollWidth > label.clientWidth + 1).length,
+      shortTargets: [
+        ...document.querySelectorAll(".workspace-launcher-tile, .project-document-tabs > button, .daily-work-tabs button, .record-row-actions button"),
+      ].filter((element) => element.getBoundingClientRect().height < 36).length,
+      overflow: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - document.documentElement.clientWidth,
+    };
+  }, html);
 }
 
 for (const size of widths) {
   test(`layout holds at ${size.name} (${size.width}px)`, async ({ page }) => {
     await page.setViewportSize({ width: size.width, height: size.height });
-    await mountFixture(page, fixture);
+    // The workspace stylesheet lives on the app route, not the public landing page.
+    await page.goto("/supervisie", { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle").catch(() => undefined);
+    const seen = await measure(page, fixture);
 
-    // A form row never puts two fields on one phone line.
-    for (const selector of ["#responsive-audit-fixture .workspace-search-filters", "#responsive-audit-fixture .project-document-filters"]) {
-      const columns = await columnCount(page, selector);
-      if (size.phone) expect(columns, `${selector} at ${size.width}px`).toBe(1);
-      else expect(columns, `${selector} at ${size.width}px`).toBeGreaterThan(1);
+    // A form row never puts two fields on one phone line, and stays multi-column above it.
+    if (size.phone) {
+      expect(seen.searchFilterColumns, `search filters at ${size.width}px`).toBe(1);
+      expect(seen.documentFilterColumns, `document filters at ${size.width}px`).toBe(1);
+      expect(seen.moduleGroupColumns, `module groups at ${size.width}px`).toBe(1);
+    } else {
+      expect(seen.searchFilterColumns, `search filters at ${size.width}px`).toBeGreaterThan(1);
+      expect(seen.documentFilterColumns, `document filters at ${size.width}px`).toBeGreaterThan(1);
     }
 
     // The tab strip keeps its reading order: it scrolls on a phone instead of wrapping.
-    const documentTabs = page.locator("#responsive-audit-fixture .project-document-tabs");
-    const tabDisplay = await documentTabs.evaluate((element) => getComputedStyle(element).display);
-    expect(tabDisplay, `document tabs at ${size.width}px`).toBe(size.phone ? "flex" : "grid");
+    expect(seen.documentTabsDisplay, `document tabs at ${size.width}px`).toBe(size.phone ? "flex" : "grid");
 
-    // Module groups are lists, so one column on a phone.
-    if (size.phone) expect(await columnCount(page, "#responsive-audit-fixture .workspace-module-groups")).toBe(1);
+    // Tiles keep the grid the round was for.
+    expect(seen.tileColumns, `tiles at ${size.width}px`).toBeGreaterThanOrEqual(2);
 
-    // Tiles keep their grid everywhere; that is what the round was for.
-    const tileColumns = await columnCount(page, "#responsive-audit-fixture .client-workspace-grid");
-    expect(tileColumns, `tiles at ${size.width}px`).toBeGreaterThanOrEqual(2);
+    // The three row actions share one line rather than becoming three stacked buttons.
+    expect(seen.actionRowCount, `action rows at ${size.width}px`).toBe(1);
+    expect(seen.actionsHeight, `actions height at ${size.width}px`).toBeLessThan(120);
 
-    // Touch targets stay reachable and nothing clips or scrolls sideways.
-    for (const selector of ["#responsive-audit-fixture .workspace-launcher-tile", "#responsive-audit-fixture .project-document-tabs > button", "#responsive-audit-fixture .daily-work-tabs button"]) {
-      const box = await page.locator(selector).first().boundingBox();
-      expect(box, `${selector} at ${size.width}px`).not.toBeNull();
-      expect(box!.height, `${selector} height at ${size.width}px`).toBeGreaterThanOrEqual(36);
-    }
+    // A dot in the unplaced list stays inside its row instead of escaping as a map pin.
+    expect(seen.dotEscapesRow, `unplaced dot escapes its row at ${size.width}px`).toBe(false);
+    expect(seen.dotHeight, `unplaced dot height at ${size.width}px`).toBeLessThanOrEqual(30);
 
-    const overflow = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - document.documentElement.clientWidth);
-    expect(overflow, `horizontal overflow at ${size.width}px`).toBeLessThanOrEqual(1);
+    // Stage labels are readable, touch targets reachable, and the page never scrolls sideways.
+    expect(seen.clippedStageLabels, `clipped stage labels at ${size.width}px`).toBe(0);
+    expect(seen.shortTargets, `targets under 36px at ${size.width}px`).toBe(0);
+    expect(seen.overflow, `horizontal overflow at ${size.width}px`).toBeLessThanOrEqual(1);
   });
 }

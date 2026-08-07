@@ -16,6 +16,7 @@ import {
   Plus,
   Search,
   ShieldCheck,
+  SlidersHorizontal,
   Upload,
   X,
 } from "lucide-react";
@@ -67,6 +68,8 @@ export function ProjectDocumentsHome({
   const [typeFilter, setTypeFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [sort, setSort] = useState<"recent" | "oldest" | "name">("recent");
+  /* Open where there is room, folded away on a phone. Read once, at mount. */
+  const [docFiltersOpen, setDocFiltersOpen] = useState(() => typeof window === "undefined" || window.matchMedia("(min-width: 761px)").matches);
   const [newFolderName, setNewFolderName] = useState("");
   const [folderBuildingId, setFolderBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [uploadBuildingId, setUploadBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
@@ -265,6 +268,9 @@ export function ProjectDocumentsHome({
           <div><h3>{tabs.find((tab) => tab.id === view)?.label}</h3><span>{items.length} {text("visible records", "zichtbare records")}</span></div>
           <label><Search size={15} /><span className="sr-only">{text("Search project documents", "Doorzoek projectdocumenten")}</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={text("Search name, type or status", "Zoek naam, type of status")} /></label>
         </header>
+        {/* Folded away on a phone so the documents themselves are what fills the screen. */}
+        <details className="workspace-search-filters-block" open={docFiltersOpen} onToggle={(event) => setDocFiltersOpen(event.currentTarget.open)}>
+        <summary><SlidersHorizontal size={15} /> {text("Filters", "Filters")}</summary>
         <div className="project-document-filters">
           <label><span>{text("Folder", "Map")}</span><select value={folderFilter} onChange={(event) => setFolderFilter(event.target.value)}><option value="all">{text("All folders", "Alle mappen")}</option>{folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}</select></label>
           <label><span>{text("Building", "Gebouw")}</span><select value={buildingFilter} onChange={(event) => setBuildingFilter(event.target.value)}><option value="all">{text("All buildings", "Alle gebouwen")}</option>{buildings.map((building) => <option value={building.id} key={building.id}>{building.name}</option>)}</select></label>
@@ -272,6 +278,7 @@ export function ProjectDocumentsHome({
           <label><span>{text("From date", "Vanaf datum")}</span><input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
           <label><span>{text("Sort", "Sorteren")}</span><select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="recent">{text("Newest", "Nieuwste")}</option><option value="oldest">{text("Oldest", "Oudste")}</option><option value="name">{text("Name", "Naam")}</option></select></label>
         </div>
+        </details>
         <div className="project-document-list">
           {items.length ? items.slice(0, 12).map((item) => (
             <button type="button" disabled={openingFileId === item.id} onClick={() => void openItem(item)} key={`${item.source}:${item.id}`}>

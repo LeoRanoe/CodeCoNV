@@ -11,6 +11,7 @@ import {
   Clock3,
   FileCheck2,
   FileText,
+  Filter,
   FolderOpen,
   HardHat,
   Hash,
@@ -100,6 +101,8 @@ export function ProjectWorkspaceHome({
   const { locale, text } = useLanguage();
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState({ kind: "", buildingId: "", status: "", dateFrom: "", dateTo: "", author: "" });
+  /* Open where there is room for them, folded away on a phone. Read once, at mount. */
+  const [filtersOpen, setFiltersOpen] = useState(() => typeof window === "undefined" || window.matchMedia("(min-width: 761px)").matches);
   const moduleEnabled = (module?: string) => !module || modules[module] !== false;
 
   const tiles = useMemo<WorkspaceTile[]>(() => [
@@ -301,6 +304,13 @@ export function ProjectWorkspaceHome({
         </label>
       </div>
 
+      {/* Six filters stacked full width filled a phone screen before anything was found.
+          They fold away behind their own summary there, and stand open on a desktop. */}
+      <details className="workspace-search-filters-block" open={filtersOpen} onToggle={(event) => setFiltersOpen(event.currentTarget.open)}>
+        <summary>
+          <Filter size={15} /> {text("Filters", "Filters")}
+          {filtersActive ? <b>{Object.values(filters).filter(Boolean).length}</b> : null}
+        </summary>
       <div className="workspace-search-filters" aria-label={text("Search filters", "Zoekfilters")}>
         <label><span>{text("Kind", "Soort")}</span><select value={filters.kind} onChange={(event) => setFilters({ ...filters, kind: event.target.value })}><option value="">{text("All kinds", "Alle soorten")}</option>{Object.entries(kindLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
         <label><span>{text("Building", "Gebouw")}</span><select value={filters.buildingId} onChange={(event) => setFilters({ ...filters, buildingId: event.target.value })}><option value="">{text("All buildings", "Alle gebouwen")}</option>{buildings.map((building) => <option value={building.id} key={building.id}>{building.name}</option>)}</select></label>
@@ -310,6 +320,7 @@ export function ProjectWorkspaceHome({
         <label><span>{text("Author", "Auteur")}</span><select value={filters.author} onChange={(event) => setFilters({ ...filters, author: event.target.value })}><option value="">{text("All authors", "Alle auteurs")}</option>{authors.map((author) => <option value={author} key={author}>{author}</option>)}</select></label>
         {filtersActive ? <button className="ghost-button" type="button" onClick={() => setFilters({ kind: "", buildingId: "", status: "", dateFrom: "", dateTo: "", author: "" })}>{text("Clear filters", "Wis filters")}</button> : null}
       </div>
+      </details>
 
       {query.trim().length >= 2 || filtersActive ? (
         <div className="workspace-code-results" aria-label={text("Records found by code", "Gevonden registraties op code")}>

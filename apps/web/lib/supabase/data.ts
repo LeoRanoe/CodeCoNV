@@ -1281,6 +1281,39 @@ export async function loadProjectDrawings(client: SupabaseClient, projectId: str
     .map((file) => ({ id: file.id, name: file.original_name, buildingId: file.building_id }));
 }
 
+export type ProjectRecentPhoto = {
+  id: string;
+  fileId: string;
+  title: string;
+  buildingId: string | null;
+  capturedAt: string;
+};
+
+/**
+ * The newest pictures in the project, for the dashboard panel that used to show four
+ * empty "photo position available" tiles while the library held nineteen photos. It reads
+ * the files themselves, so photos that predate visual_captures are included.
+ */
+export async function loadProjectRecentPhotos(client: SupabaseClient, projectId: string, limit = 8): Promise<ProjectRecentPhoto[]> {
+  const result = await client
+    .from("files")
+    .select("id,building_id,original_name,created_at,mime_type")
+    .eq("project_id", projectId)
+    .eq("status", "available")
+    .like("mime_type", "image/%")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  fail(result.error);
+  return ((result.data ?? []) as Array<{ id: string; building_id: string | null; original_name: string; created_at: string }>)
+    .map((file) => ({
+      id: file.id,
+      fileId: file.id,
+      title: file.original_name,
+      buildingId: file.building_id,
+      capturedAt: file.created_at,
+    }));
+}
+
 export async function getSession(client: SupabaseClient): Promise<Session | null> {
   const { data, error } = await client.auth.getSession();
   fail(error);

@@ -9,9 +9,10 @@ async function expectNoHorizontalOverflow(page: import("@playwright/test").Page)
 test("workspace tiles keep their field grid at phone, tablet and desktop widths", async ({ page }, testInfo) => {
   // Load the actual production stylesheet without requiring a client account. The fixture
   // uses the same classes and destination attributes as ProjectWorkspaceHome.
-  // The public route loads the same globals.css without registering the field service
-  // worker, so a worker takeover cannot replace this small CSS fixture mid-assertion.
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  // The workspace stylesheet is bundled with the app route, not with the public landing
+  // page, so the fixture is mounted there; no account is needed to reach the sign-in shell.
+  await page.goto("/supervisie", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle").catch(() => undefined);
   await page.evaluate(() => {
     document.body.innerHTML = `<main style="padding:12px">
       <section class="workspace-launcher-grid client-workspace-grid">

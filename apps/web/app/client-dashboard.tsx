@@ -20,9 +20,34 @@ import {
   TimerReset,
   Wrench,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
+import { loadProjectFileObjectUrl } from "@/lib/storage/gateway";
+import type { ProjectRecentPhoto } from "@/lib/supabase/data";
 import { useLiveProjectWeather } from "@/lib/weather-client";
+
+/** One dashboard thumbnail, fetched through the private storage gateway like everywhere else. */
+function EvidenceThumbnail({ client, fileId, alt }: { client: SupabaseClient | null; fileId: string; alt: string }) {
+  const [source, setSource] = useState("");
+  useEffect(() => {
+    if (!client) return;
+    let active = true;
+    let objectUrl = "";
+    void loadProjectFileObjectUrl(client, fileId).then((url) => {
+      objectUrl = url;
+      if (active) setSource(url);
+      else URL.revokeObjectURL(url);
+    }).catch(() => undefined);
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [client, fileId]);
+  // A private object URL cannot pass through the Next image optimizer.
+  // eslint-disable-next-line @next/next/no-img-element
+  return source ? <img src={source} alt={alt} loading="lazy" /> : <Camera size={20} />;
+}
 
 type DashboardEntry = {
   id: string;
@@ -87,6 +112,8 @@ function EntryIcon({ kind, alert }: { kind: string; alert?: boolean }) {
 export function ClientDashboard({
   entries,
   actions,
+  recentPhotos,
+  client,
   projectName,
   projectLocation,
   buildingName,
@@ -99,6 +126,9 @@ export function ClientDashboard({
 }: {
   entries: DashboardEntry[];
   actions: DashboardAction[];
+  /** The project's newest pictures, so the panel shows photos instead of empty slots. */
+  recentPhotos: ProjectRecentPhoto[];
+  client: SupabaseClient | null;
   projectName: string;
   projectLocation: string;
   buildingName: string;
@@ -132,7 +162,7 @@ export function ClientDashboard({
   }, [entries, locale, search, workEntries]);
 
   const activityEntries = entries.slice(0, 6);
-  const evidenceEntries = photoEntries.slice(0, 4);
+  const evidencePhotos = recentPhotos.slice(0, 4);
   const buildingContextLabel = buildingCount > 1 ? text(`${buildingCount} buildings`, `${buildingCount} gebouwen`) : buildingName;
   const weatherLabel = weather
     ? ({
@@ -241,10 +271,12 @@ export function ClientDashboard({
             <button type="button" onClick={openQuickAdd}><Camera size={14} /> {text("Add", "Toevoegen")}</button>
           </header>
           <div className="overview-evidence-grid">
-            {evidenceEntries.length ? evidenceEntries.map((entry, index) => (
-              <button type="button" onClick={openQuickAdd} key={entry.id}>
-                <span className={`evidence-placeholder tone-${(index % 4) + 1}`}><Camera size={20} /><i>{String(index + 1).padStart(2, "0")}</i></span>
-                <span><strong>{entry.title}</strong><small>{entry.location || buildingName} · {entry.time}</small></span>
+            {evidencePhotos.length ? evidencePhotos.map((photo, index) => (
+              <button type="button" onClick={openWorkspace} key={photo.id}>
+                <span className={`evidence-placeholder evidence-thumbnail tone-${(index % 4) + 1}`}>
+                  <EvidenceThumbnail client={client} fileId={photo.fileId} alt={photo.title} />
+                </span>
+                <span><strong>{photo.title}</strong><small>{new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Paramaribo" }).format(new Date(photo.capturedAt))}</small></span>
               </button>
             )) : [0, 1, 2, 3].map((index) => (
               <button className="empty" type="button" onClick={openQuickAdd} key={index}>

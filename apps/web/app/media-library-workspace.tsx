@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, Download, ExternalLink, FileText, Folder, FolderPlus, Grid3X3, HardDrive, Image as ImageIcon, Link2, List, Loader2, Maximize2, Pencil, RefreshCw, ScanLine, Trash2, Upload } from "lucide-react";
+import { Camera, Download, ExternalLink, FileText, Folder, FolderPlus, Grid3X3, HardDrive, Image as ImageIcon, Link2, List, Loader2, Maximize2, Pencil, RefreshCw, ScanLine, SlidersHorizontal, Trash2, Upload } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -146,6 +146,8 @@ export function MediaLibraryWorkspace({
   const [assetDateTo, setAssetDateTo] = useState("");
   const [assetStatus, setAssetStatus] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  /* Open where there is room, folded away on a phone. Read once, at mount. */
+  const [assetFiltersOpen, setAssetFiltersOpen] = useState(() => typeof window === "undefined" || window.matchMedia("(min-width: 761px)").matches);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkFolderId, setBulkFolderId] = useState("");
   const [recordTarget, setRecordTarget] = useState("");
@@ -701,6 +703,9 @@ export function MediaLibraryWorkspace({
         </details> : null}
       </div>
       {assetsMode ? <div className="asset-library-controls">
+        {/* Five filters stacked full width pushed the assets themselves off a phone screen. */}
+        <details className="workspace-search-filters-block" open={assetFiltersOpen} onToggle={(event) => setAssetFiltersOpen(event.currentTarget.open)}>
+        <summary><SlidersHorizontal size={15} /> {text("Filters", "Filters")}</summary>
         <div className="asset-library-filters">
           <label><span>{text("Search code or name", "Zoek code of naam")}</span><input type="search" value={assetQuery} onChange={(event) => setAssetQuery(event.target.value)} placeholder="DOC-2026" /></label>
           <label><span>{text("Kind", "Soort")}</span><select value={assetKind} onChange={(event) => setAssetKind(event.target.value)}><option value="">{text("All kinds", "Alle soorten")}</option><option value="photo">{text("Photos", "Foto's")}</option><option value="document">{text("Documents", "Documenten")}</option><option value="drawing">{text("Drawings", "Tekeningen")}</option><option value="report">{text("Reports", "Rapporten")}</option><option value="form">{text("Forms and signed records", "Formulieren en ondertekende registraties")}</option></select></label>
@@ -709,6 +714,7 @@ export function MediaLibraryWorkspace({
           <label><span>{text("To", "Tot")}</span><input type="date" value={assetDateTo} onChange={(event) => setAssetDateTo(event.target.value)} /></label>
           <span className="asset-view-toggle"><button className={viewMode === "grid" ? "active" : ""} type="button" onClick={() => setViewMode("grid")} aria-label={text("Grid view", "Rasterweergave")}><Grid3X3 size={16} /></button><button className={viewMode === "list" ? "active" : ""} type="button" onClick={() => setViewMode("list")} aria-label={text("List view", "Lijstweergave")}><List size={16} /></button></span>
         </div>
+        </details>
         {selectedFiles.length ? <div className="asset-bulk-actions">
           <strong>{selectedFiles.length} {text("selected", "geselecteerd")}</strong>
           <label><span>{text("Move to folder", "Verplaats naar map")}</span><select value={bulkFolderId} onChange={(event) => setBulkFolderId(event.target.value)}><option value="">{text("Unfiled", "Zonder map")}</option>{folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}</select></label>

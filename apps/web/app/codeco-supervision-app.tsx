@@ -117,6 +117,8 @@ import {
   loadInternalAccess,
   loadProjectConfiguration,
   loadProjectDrawings,
+  loadProjectRecentPhotos,
+  type ProjectRecentPhoto,
   loadProjectLocations,
   loadProjectNotifications,
   loadProjectDay,
@@ -772,6 +774,19 @@ export function CodecoSupervisionApp() {
       () => loadProjectDrawings(supabase as SupabaseClient, selectedProject!.id),
     ),
     enabled: Boolean(supabase && session && selectedProject),
+  });
+
+  /* The dashboard's photo panel reads the project's own pictures, not the day's timeline:
+     a project full of photos showed four empty placeholders because no photo had been
+     filed as a field registration today. */
+  const recentPhotosQuery = useQuery({
+    queryKey: ["project-recent-photos", selectedProject?.id],
+    queryFn: () => loadWithOfflineCache(
+      offlineQueryKeys.projectRecentPhotos(selectedProject!.id),
+      () => loadProjectRecentPhotos(supabase as SupabaseClient, selectedProject!.id),
+    ),
+    enabled: Boolean(supabase && session && selectedProject),
+    staleTime: 60_000,
   });
 
   const notificationQuery = useQuery({
@@ -1761,6 +1776,8 @@ export function CodecoSupervisionApp() {
           {activeNav === "vandaag" ? (
             <TodayView
               entries={entries}
+              recentPhotos={recentPhotosQuery.data ?? []}
+              client={supabase as SupabaseClient | null}
               completeness={completeness}
               completedTodos={completedTodos}
               toggleTodo={toggleTodo}
@@ -3082,6 +3099,8 @@ function ProjectStartForm({
 
 function TodayView({
   entries,
+  recentPhotos,
+  client,
   completeness,
   completedTodos,
   toggleTodo,
@@ -3112,6 +3131,9 @@ function TodayView({
   onCloseoutBuilding,
 }: {
   entries: TimelineEntry[];
+  /** The newest pictures in the project, for the visual-evidence panel. */
+  recentPhotos: ProjectRecentPhoto[];
+  client: SupabaseClient | null;
   completeness: number;
   completedTodos: number[];
   toggleTodo: (id: number) => void;
@@ -3161,6 +3183,8 @@ function TodayView({
       <ClientDashboard
         entries={entries}
         actions={actions}
+        recentPhotos={recentPhotos}
+        client={client}
         projectName={projectName}
         projectLocation={projectLocation}
         buildingName={buildingName}
