@@ -3262,7 +3262,7 @@ function ProjectOperations({
             parties={parties}
             busy={busy}
             focusRecordId={focusRecordId}
-            transition={(finding, nextStatus, note, finalMeasure, correction) => run(() => transitionFinding(client, finding.id, nextStatus, note, finalMeasure, correction), `Bevinding ${finding.finding_number} staat nu op ${findingStatusLabels[nextStatus] ?? nextStatus}.`)}
+            transition={(finding, nextStatus, note, finalMeasure, correction, verificationSignedBy, verificationSignatureImage) => run(() => transitionFinding(client, finding.id, nextStatus, note, finalMeasure, correction, verificationSignedBy, verificationSignatureImage), `Bevinding ${finding.finding_number} staat nu op ${findingStatusLabels[nextStatus] ?? nextStatus}.`)}
             recordProgress={(finding, progressPercent, disposition, note) => run(
               () => recordFindingProgress(client, { findingId: finding.id, progressPercent, disposition, note }),
               text(`Progress for ${finding.finding_number} recorded; 100% still requires verification.`, `Voortgang voor ${finding.finding_number} vastgelegd; ook 100% vraagt nog verificatie.`),
@@ -4203,7 +4203,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   busy: boolean;
   /** The finding the action centre pointed at, so it is the one in front of the user. */
   focusRecordId?: string;
-  transition: (finding: Finding, nextStatus: string, note: string, finalMeasure: string, correction: string) => Promise<boolean>;
+  transition: (finding: Finding, nextStatus: string, note: string, finalMeasure: string, correction: string, verificationSignedBy: string, verificationSignatureImage: string) => Promise<boolean>;
   recordProgress: (finding: Finding, progressPercent: number, disposition: "validated" | "to_be_corrected" | "alternative_solution", note: string) => Promise<boolean>;
   share: (finding: Finding) => Promise<{ shareId: string; url: string; expiresAt: string } | null>;
   revoke: (shareId: string) => Promise<boolean>;
@@ -4223,6 +4223,9 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   const [measure, setMeasure] = useState("");
   /** What the contractor proposes to do, as on the client's own NCR form. */
   const [correction, setCorrection] = useState("");
+  /** The written signature under the Quality Control / Verification box, required to
+   * close an NCR — the client's own form marks that box "Signature *". */
+  const [verificationSignature, setVerificationSignature] = useState<HandwrittenSignature | null>(null);
   const [progressActive, setProgressActive] = useState<string | null>(null);
   const [progressPercent, setProgressPercent] = useState("0");
   const [progressDisposition, setProgressDisposition] = useState<"validated" | "to_be_corrected" | "alternative_solution">("to_be_corrected");
@@ -4320,7 +4323,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
               </button>
               <ReportDownloadButtons disabled={busy} onDownloadPdf={() => import("@/lib/reports/ncr-pdf").then(({ downloadNcrPdf }) => downloadNcrPdf(finding, latestProgress, ncrContext(finding, recordBuildingName)))} onDownloadWord={() => import("@/lib/reports/ncr-docx").then(({ downloadNcrDocx }) => downloadNcrDocx(finding, latestProgress, ncrContext(finding, recordBuildingName)))} />
               {!["closed", "cancelled", "rejected"].includes(finding.status) ? <button className="secondary-button" type="button" onClick={() => { setProgressActive(progressActive === finding.id ? null : finding.id); setProgressPercent(String(latestProgress?.progress_percent ?? 0)); setProgressDisposition(latestProgress?.disposition ?? issue.disposition ?? "to_be_corrected"); }}>{text("Record inspection progress", "Inspectievoortgang vastleggen")}</button> : null}
-              {nextStatus ? <button className="secondary-button" type="button" onClick={() => { setActive(active === finding.id ? null : finding.id); setCorrection(""); }}>{nextStatus === "closed" ? finding.finding_type === "ncr" ? text("Quality control · resolve", "Kwaliteitscontrole · afsluiten") : text("Verify", "Verifiëren") : nextStatus === "ready_for_verification" ? text("Mark repair ready", "Herstel gereedmelden") : finding.finding_type === "ncr" ? text("Record contractor answer", "Antwoord aannemer vastleggen") : text("Update status", "Status bijwerken")}</button> : null}
+              {nextStatus ? <button className="secondary-button" type="button" onClick={() => { setActive(active === finding.id ? null : finding.id); setCorrection(""); setVerificationSignature(null); }}>{nextStatus === "closed" ? finding.finding_type === "ncr" ? text("Quality control · resolve", "Kwaliteitscontrole · afsluiten") : text("Verify", "Verifiëren") : nextStatus === "ready_for_verification" ? text("Mark repair ready", "Herstel gereedmelden") : finding.finding_type === "ncr" ? text("Record contractor answer", "Antwoord aannemer vastleggen") : text("Update status", "Status bijwerken")}</button> : null}
             </div>
             {/* The three signed boxes of the client's NCR form, in the order of the form:
                 what the engineer recommends, what the contractor proposes, what quality
@@ -4359,6 +4362,15 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
                   <strong>{finding.status === "closed" ? text("Issue resolved", "Afwijking opgelost") : text("Issue not resolved", "Afwijking nog niet opgelost")}</strong>
                   <p>{finding.final_measure || text("No verified close-out yet.", "Nog geen geverifieerde afsluiting.")}</p>
                   {issue.remarks ? <small>{text("Remarks:", "Opmerkingen:")} {issue.remarks}</small> : null}
+                  {/* The written signature under the Quality Control / Verification box,
+                      next to the drawn signatures on the other two boxes of this form. */}
+                  {issue.verification_signature_image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img className="record-signature-proof" src={issue.verification_signature_image} alt={text(`Signature of ${issue.verification_signed_by ?? ""}`, `Handtekening van ${issue.verification_signed_by ?? ""}`)} />
+                  ) : null}
+                  {finding.status === "closed" ? <small>{issue.verification_signed_by
+                    ? text(`Signed by ${issue.verification_signed_by} · ${formatDate(issue.verification_signed_at ?? null, locale)}`, `Ondertekend door ${issue.verification_signed_by} · ${formatDate(issue.verification_signed_at ?? null, locale)}`)
+                    : text("Recorded without a signature", "Vastgelegd zonder handtekening")}</small> : null}
                 </div>
               </section>
             ) : null}
@@ -4421,7 +4433,24 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
                 ) : null}
                 <div className="quick-issue-presets" aria-label={text("Choose a status note", "Kies een statusnotitie")}>{(noteChoices[nextStatus] ?? []).map((choice) => <button className={note === choice ? "active" : ""} type="button" onClick={() => setNote(choice)} key={choice}>{choice}</button>)}</div>
                 <label className="form-field"><span>{nextStatus === "closed" ? finding.finding_type === "ncr" ? text("Quality control · issue resolved because", "Kwaliteitscontrole · afwijking opgelost omdat") : text("Verification finding", "Verificatiebevinding") : text("Comment", "Toelichting")}</span><textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} /><DictateButton onText={(transcript) => setNote((current) => appendDictation(current, transcript))} /></label>
-                <button className="primary-button" type="button" disabled={busy || note.trim().length < 2 || (nextStatus === "ready_for_verification" && measure.trim().length < 3)} onClick={() => void transition(finding, nextStatus, note, measure, correction).then((okay) => { if (okay) { setActive(null); setNote(""); setMeasure(""); setCorrection(""); } })}>{text("Confirm human status change", "Bevestig menselijke statuswijziging")}</button>
+                {/* The Quality Control / Verification box on the client's own NCR form
+                    marks its signature line required; closing an NCR now asks for it
+                    the same way the engineer's recommendation and the contractor's
+                    correction already are signed. */}
+                {finding.finding_type === "ncr" && nextStatus === "closed" ? (
+                  <SignatureField
+                    label={text("Sign as the person closing this NCR", "Onderteken als afsluiter van deze NCR")}
+                    declaration={text(
+                      "By signing you confirm the corrective action was verified and this non-conformance report is closed.",
+                      "Met je handtekening bevestig je dat de correctieve actie is geverifieerd en dat dit non-conformance report wordt afgesloten.",
+                    )}
+                    hint={text("The signature, the name and the moment of closing are stored with the report.", "De handtekening, de naam en het moment van afsluiten worden bij het rapport opgeslagen.")}
+                    nameSuggestion={currentUserName}
+                    value={verificationSignature}
+                    onChange={setVerificationSignature}
+                  />
+                ) : null}
+                <button className="primary-button" type="button" disabled={busy || note.trim().length < 2 || (nextStatus === "ready_for_verification" && measure.trim().length < 3) || (finding.finding_type === "ncr" && nextStatus === "closed" && !verificationSignature)} onClick={() => void transition(finding, nextStatus, note, measure, correction, verificationSignature?.name ?? "", verificationSignature?.image ?? "").then((okay) => { if (okay) { setActive(null); setNote(""); setMeasure(""); setCorrection(""); setVerificationSignature(null); } })}>{text("Confirm human status change", "Bevestig menselijke statuswijziging")}</button>
               </div>
             ) : null}
           </article>

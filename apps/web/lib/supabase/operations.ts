@@ -114,6 +114,11 @@ export type Finding = {
     completion_signed_by?: string;
     completion_signed_at?: string | null;
     completion_signature_image?: string | null;
+    /** The name and the signature written on the Quality Control / Verification box
+     * when an NCR is closed, as on the client's own NCR form. */
+    verification_signed_by?: string;
+    verification_signed_at?: string | null;
+    verification_signature_image?: string | null;
   };
   /** Set by the database when a finding is closed: who verified it, for the QC signature. */
   verified_by: string | null;
@@ -1101,17 +1106,32 @@ export async function linkFileToRecord(
 
 /**
  * `correction` is the contractor's proposed corrective action: the box the contractor
- * fills in on the client's own NCR form before the repair starts.
+ * fills in on the client's own NCR form before the repair starts. `verificationSignedBy`
+ * and `verificationSignatureImage` are the written signature under the Quality Control /
+ * Verification box, required by the database when an NCR closes.
  */
-export async function transitionFinding(client: SupabaseClient, findingId: string, nextStatus: string, note: string, finalMeasure = "", correction = "") {
-  const result = await client.rpc("transition_project_finding", {
+export async function transitionFinding(client: SupabaseClient, findingId: string, nextStatus: string, note: string, finalMeasure = "", correction = "", verificationSignedBy = "", verificationSignatureImage = "") {
+  const base = {
     p_finding_id: findingId,
     p_next_status: nextStatus,
     p_note: note,
     p_cause: null,
     p_correction: correction || null,
     p_final_measure: finalMeasure || null,
-  });
+  };
+  const withSignature = Boolean(verificationSignedBy || verificationSignatureImage);
+  const result = await client.rpc("transition_project_finding", withSignature ? {
+    ...base,
+    p_verification_signed_by: verificationSignedBy || null,
+    p_verification_signature_image: verificationSignatureImage || null,
+  } : base);
+  // A database that does not know the QC verification signature yet still has to close
+  // the NCR; it then stores the note without the written signature.
+  if (withSignature && schemaFeatureMissing(result.error, ["p_verification_signed_by", "p_verification_signature_image"])) {
+    const fallback = await client.rpc("transition_project_finding", base);
+    fail(fallback.error);
+    return fallback.data as Finding;
+  }
   fail(result.error);
   return result.data as Finding;
 }

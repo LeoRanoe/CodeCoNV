@@ -75,7 +75,7 @@ export function NcrDocument({ finding, progress, context, logoSource = "/codeco-
       <View style={styles.signatures}>{[
         { label: "Issued by", name: issue.signed_by || issue.issued_by || context.issuerName, ink: issue.signature_image || context.signatureImage || null },
         { label: "Received / contractor", name: issue.correction_signed_by || issue.completion_signed_by || "", ink: issue.correction_signature_image || issue.completion_signature_image || null },
-        { label: "QC verification", name: resolved ? context.verifierName ?? "" : "", ink: null },
+        { label: "QC verification", name: resolved ? issue.verification_signed_by || context.verifierName || "" : "", ink: resolved ? issue.verification_signature_image || null : null },
       ].map((line, index) => <View style={[styles.signature, index < 2 ? styles.right : {}]} key={line.label}><Text style={styles.label}>{line.label}</Text>{line.ink ? <Image src={line.ink} style={styles.signatureInk} /> : <View style={styles.signatureLine} />}<Text>{line.name || " "}</Text></View>)}</View>
       <Text style={styles.note}>The photo boxes refer to evidence linked in the central project record; images are not duplicated into this generated form unless selected as report attachments. Closing remains a separate authorized human verification.</Text>
       <Text style={styles.footer} fixed>CODECO N.V. · Non-conformance report</Text>

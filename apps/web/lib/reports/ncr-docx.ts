@@ -75,7 +75,7 @@ export function buildNcrDocxDocument(finding: Finding, progress: FindingProgress
           signatureBlock([
             ["Issued by", issue.signed_by || issue.issued_by || context.issuerName, issue.signature_image || context.signatureImage || null],
             ["Received / contractor", issue.correction_signed_by || issue.completion_signed_by || "", issue.correction_signature_image || issue.completion_signature_image || null],
-            ["QC verification", resolved ? context.verifierName ?? "" : ""],
+            ["QC verification", resolved ? issue.verification_signed_by || context.verifierName || "" : "", resolved ? issue.verification_signature_image || null : null],
           ]),
           new Paragraph({
             children: [new TextRun({ text: "Linked evidence photos remain in the central project record; images are not duplicated into this generated document unless selected as report attachments. Closing remains a separate authorized human verification.", italics: true, color: "666666", size: 14 })],

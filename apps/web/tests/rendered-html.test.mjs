@@ -1234,7 +1234,7 @@ test("processes the annotated screens of 1 August: NCR form, agreement and deadl
   assert.match(migration, /'ready_for_verification', 'issue', 'proposed_correction'/);
   assert.match(migration, /proposed_correction = btrim\(p_note\)/);
   assert.match(migration, /'record_kind', v_record_kind/);
-  assert.match(operations, /correction = ""\) \{/);
+  assert.match(operations, /correction = ""/);
   assert.match(ncrPdf, /PROPOSED CORRECTIVE ACTION BY CONTRACTOR/);
   assert.match(ncrPdf, /issue\.recommended_action === "rework" \? "\[X\]"/);
   assert.match(ncrDocx, /Proposed corrective action by contractor/);
@@ -1396,13 +1396,14 @@ test("only asks for a signature where the client's own forms have one", async ()
   assert.match(controlledPdf, /SUBMITTED AND SIGNED BY/);
   assert.match(controlledDocx, /Submitted and signed by/);
 
-  // The QC signature on a closed NCR is the recorded verifier, never the person who
-  // downloads the document.
+  // The recorded verifier (`verified_by`, set by the database itself) is the fallback
+  // name on a closed NCR; a written QC signature on the record itself, from 7 August,
+  // takes priority over it — never the person who happens to download the document.
   assert.match(operations, /verified_by: string \| null;/);
   assert.match(operations, /final_measure,issue_management,verified_by,verified_at/);
   assert.match(workspace, /verifierName: resolveUserName\(finding\.verified_by\)/);
-  assert.match(ncrPdf, /resolved \? context\.verifierName \?\? "" : ""/);
-  assert.match(ncrDocx, /resolved \? context\.verifierName \?\? "" : ""/);
+  assert.match(ncrPdf, /resolved \? issue\.verification_signed_by \|\| context\.verifierName \|\| "" : ""/);
+  assert.match(ncrDocx, /resolved \? issue\.verification_signed_by \|\| context\.verifierName \|\| "" : ""/);
   assert.doesNotMatch(ncrPdf, /"QC verification", resolved \? context\.issuerName/);
 
   // Who has to sign a report is a project setting; the database enforces it, so the form
@@ -2834,4 +2835,40 @@ test("the photo screen has no folders, and nothing sends the user to a screen th
 
   // A focused day log belongs to the button that opened it and never outlives it.
   assert.match(app, /close=\{\(\) => \{ setDailyLogFocus\(undefined\); setModal\(null\); \}\}/);
+});
+
+test("closing an NCR asks for the Quality Control / Verification signature the client's own form requires", async () => {
+  const [workspace, operations, ncrPdf, ncrDocx, migration] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/ncr-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/ncr-docx.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202608070002_ncr_quality_control_signature.sql", import.meta.url), "utf8"),
+  ]);
+
+  // #1 · Client feedback of 7 August: the Quality Control / Verification box marks its
+  // signature line required, exactly like the engineer's recommendation and the
+  // contractor's correction already are — an issue closes without one.
+  assert.match(workspace, /finding\.finding_type === "ncr" && nextStatus === "closed" \? \(\s*<SignatureField/);
+  assert.match(workspace, /Sign as the person closing this NCR|Onderteken als afsluiter van deze NCR/);
+  assert.match(workspace, /finding\.finding_type === "ncr" && nextStatus === "closed" && !verificationSignature/);
+  assert.match(workspace, /verificationSignature\?\.name \?\? "", verificationSignature\?\.image \?\? ""/);
+  assert.match(workspace, /issue\.verification_signature_image/);
+
+  // The transition RPC forwards the written signature, and degrades to the six-argument
+  // function when a deployment has not refreshed its schema cache yet.
+  assert.match(operations, /verification_signed_by\?: string;/);
+  assert.match(operations, /p_verification_signed_by: verificationSignedBy \|\| null/);
+  assert.match(operations, /schemaFeatureMissing\(result\.error, \["p_verification_signed_by", "p_verification_signature_image"\]\)/);
+
+  // The database requires the signature only to close an NCR, never a plain issue, and
+  // keeps the six-argument function working for a client that has not redeployed yet.
+  assert.match(migration, /p_next_status = 'closed' and v_finding\.finding_type = 'ncr' and \(v_signed_by is null or v_signature_image is null\)/);
+  assert.match(migration, /'issue_management'\]\)/);
+  assert.match(migration, /grant execute on function public\.transition_project_finding\(uuid,text,text,text,text,text,text,text\) to authenticated;/);
+
+  // The signature travels into the generated NCR documents, on the record itself —
+  // never only the person who happens to download the file.
+  assert.match(ncrPdf, /issue\.verification_signed_by \|\| context\.verifierName \|\| ""/);
+  assert.match(ncrDocx, /issue\.verification_signed_by \|\| context\.verifierName \|\| ""/);
 });
