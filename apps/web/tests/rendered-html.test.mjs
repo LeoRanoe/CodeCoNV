@@ -2659,3 +2659,36 @@ test("nothing is left open: folders nest, a marker is signed, and a note can be 
   // The number is assigned once, at creation; editing never mints a second one.
   assert.doesNotMatch(tools, /editingNoteId[\s\S]{0,200}entry_number:/);
 });
+
+test("the drawing overlay draws in the page's own pixels, with real arrowheads and clouds", async () => {
+  const [drawing, geometry] = await Promise.all([
+    readFile(new URL("../app/drawing-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/drawings/markup-geometry.mjs", import.meta.url), "utf8"),
+  ]);
+
+  // The square viewBox stretched over a page of any shape is what squashed every shape:
+  // an arrowhead became a black wedge and a revision cloud became a row of dots.
+  assert.doesNotMatch(drawing, /viewBox="0 0 1000 1000"/);
+  assert.doesNotMatch(drawing, /preserveAspectRatio="none"/);
+  assert.match(drawing, /viewBox=\{`0 0 \$\{pageSize\.width\} \$\{pageSize\.height\}`\}/);
+
+  // No SVG marker: it scales with the stroke and context-stroke is not honoured in
+  // Chrome, which is why the heads rendered black and enormous.
+  assert.doesNotMatch(drawing, /<marker/);
+  assert.doesNotMatch(drawing, /context-stroke/);
+  assert.doesNotMatch(drawing, /markerEnd/);
+  assert.match(drawing, /arrowHeadPoints\(start, end, width\)/);
+  assert.match(drawing, /<polygon points=\{arrowHeadPoints/);
+
+  // A cloud is a scalloped arc path, not a dashed straight line.
+  assert.doesNotMatch(drawing, /strokeDasharray=\{tool === "cloud"/);
+  assert.match(drawing, /d=\{cloudPath\(points\)\}/);
+  assert.match(geometry, /A \$\{round\(arc\)\} \$\{round\(arc\)\}/);
+
+  // Stroke widths are the widths the supervisor chose, not those times 2.5.
+  assert.doesNotMatch(drawing, /stroke_width\) \* 2\.5/);
+  assert.doesNotMatch(drawing, /strokeWidth \* 2\.5/);
+
+  // The overlay is measured from the page, so rotation and split-screen keep it true.
+  assert.match(drawing, /setPageSize\(\{ width, height \}\)/);
+});

@@ -14578,6 +14578,32 @@ button {
   /* Three daily-work tabs in two columns leaves one stranded; let them size themselves. */
   .daily-work-tabs { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 
+  /* The drawing's own chrome: five tools, a colour, a line width and a seven-colour
+     legend stacked into five rows before the drawing itself began. On a phone the tools
+     scroll in one row, and the legend is a single scrolling strip. */
+  .drawing-markup-toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 8px 10px;
+    scrollbar-width: none;
+  }
+
+  .drawing-markup-toolbar::-webkit-scrollbar { display: none; }
+  .drawing-markup-toolbar > button { flex: 0 0 auto; font-size: .74rem; padding: 0 9px; }
+  .drawing-color-control,
+  .drawing-stroke-control { flex: 0 0 auto; }
+
+  .drawing-pin-legend {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .drawing-pin-legend::-webkit-scrollbar { display: none; }
+  .drawing-pin-legend > span { flex: 0 0 auto; font-size: 10px; }
+
   /* Four punchlist stages across a phone clipped their own labels. */
   .punchlist-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .punchlist-stages > div { grid-template-columns: 22px auto minmax(0, 1fr); min-height: 52px; padding: 8px; }

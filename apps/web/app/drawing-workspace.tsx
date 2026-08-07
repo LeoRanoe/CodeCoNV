@@ -26,6 +26,14 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import {
+  arrowHeadPoints,
+  arrowLineEnd,
+  cloudPath,
+  polylinePoints,
+  textBoxSize,
+  toPagePoint,
+} from "@/lib/drawings/markup-geometry.mjs";
+import {
   drawingPointFromClient,
   panDrawingViewport,
   pinDragMoved,
@@ -765,6 +773,8 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
   const [error, setError] = useState("");
   const [aspectRatio, setAspectRatio] = useState("4 / 3");
   const [renderWidth, setRenderWidth] = useState(900);
+  /** The rendered page in its own pixels: the overlay draws in exactly this space. */
+  const [pageSize, setPageSize] = useState({ width: 900, height: 675 });
   const [draftPoints, setDraftPoints] = useState<NormalizedPoint[]>([]);
   const drawingRef = useRef(false);
   const draftPointsRef = useRef<NormalizedPoint[]>([]);
@@ -800,7 +810,11 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
     const surface = surfaceRef.current;
     if (!surface) return;
     const observer = new ResizeObserver(([entry]) => {
-      if (entry) setRenderWidth(Math.max(1, Math.round(entry.contentRect.width)));
+      if (!entry) return;
+      const width = Math.max(1, Math.round(entry.contentRect.width));
+      const height = Math.max(1, Math.round(entry.contentRect.height));
+      setRenderWidth(width);
+      setPageSize({ width, height });
     });
     observer.observe(surface);
     return () => observer.disconnect();
@@ -1027,10 +1041,10 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
             // eslint-disable-next-line @next/next/no-img-element
             <img src={previewUrl} alt={file.original_name} onLoad={(event) => { setAspectRatio(`${event.currentTarget.naturalWidth} / ${event.currentTarget.naturalHeight}`); setLoading(false); onPageCount(1); }} onError={() => { setLoading(false); setError(text("Drawing image could not be displayed.", "De tekeningafbeelding kon niet worden weergegeven.")); }} />
           ) : null}
-          <svg className="drawing-markup-layer" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">
-            <defs><marker id={`drawing-arrow-${file.id}`} markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="context-stroke" /></marker></defs>
-            {markups.map((markup) => <MarkupShape markup={markup} arrowMarkerId={`drawing-arrow-${file.id}`} key={markup.id} />)}
-            {draftPoints.length > 1 ? tool === "arrow" ? <line x1={draftPoints[0].x * 1000} y1={draftPoints[0].y * 1000} x2={draftPoints[draftPoints.length - 1].x * 1000} y2={draftPoints[draftPoints.length - 1].y * 1000} stroke={color} strokeWidth={strokeWidth * 2.5} vectorEffect="non-scaling-stroke" markerEnd={`url(#drawing-arrow-${file.id})`} /> : <polyline points={draftPoints.map((point) => `${point.x * 1000},${point.y * 1000}`).join(" ")} fill="none" stroke={color} strokeWidth={strokeWidth * 2.5} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={tool === "cloud" ? "1 10" : undefined} vectorEffect="non-scaling-stroke" /> : null}
+          {/* The overlay works in the page's own pixels, so nothing in it is stretched. */}
+          <svg className="drawing-markup-layer" viewBox={`0 0 ${pageSize.width} ${pageSize.height}`} aria-hidden="true">
+            {markups.map((markup) => <MarkupShape markup={markup} size={pageSize} key={markup.id} />)}
+            {draftPoints.length > 1 ? <DraftShape points={draftPoints} tool={tool} color={color} strokeWidth={strokeWidth} size={pageSize} /> : null}
           </svg>
           {/* The pin itself carries the colour of its record type; the chip under it
               carries the code, so a drawing can be read without opening anything. */}
@@ -1052,18 +1066,64 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
   );
 }
 
-function MarkupShape({ markup, arrowMarkerId }: { markup: DrawingMarkup; arrowMarkerId: string }) {
-  const width = Number(markup.stroke_width) * 2.5;
-  if ((markup.markup_type === "freehand" || markup.markup_type === "cloud") && markup.geometry.points?.length) {
-    return <polyline points={markup.geometry.points.map((point) => `${point.x * 1000},${point.y * 1000}`).join(" ")} fill="none" stroke={markup.color} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={markup.markup_type === "cloud" ? "1 10" : undefined} vectorEffect="non-scaling-stroke" />;
+function MarkupShape({ markup, size }: { markup: DrawingMarkup; size: { width: number; height: number } }) {
+  const width = Math.max(1, Number(markup.stroke_width) || 3);
+  const points = (markup.geometry.points ?? []).map((point) => toPagePoint(point, size));
+
+  if (markup.markup_type === "freehand" && points.length > 1) {
+    return <polyline points={polylinePoints(markup.geometry.points ?? [], size)} fill="none" stroke={markup.color} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />;
+  }
+  if (markup.markup_type === "cloud" && points.length > 1) {
+    return <path d={cloudPath(points)} fill="none" stroke={markup.color} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />;
   }
   if (markup.markup_type === "arrow" && markup.geometry.start && markup.geometry.end) {
-    return <line x1={markup.geometry.start.x * 1000} y1={markup.geometry.start.y * 1000} x2={markup.geometry.end.x * 1000} y2={markup.geometry.end.y * 1000} stroke={markup.color} strokeWidth={width} vectorEffect="non-scaling-stroke" markerEnd={`url(#${arrowMarkerId})`} />;
+    const start = toPagePoint(markup.geometry.start, size);
+    const end = toPagePoint(markup.geometry.end, size);
+    const stop = arrowLineEnd(start, end, width);
+    return (
+      <g>
+        <line x1={start.x} y1={start.y} x2={stop.x} y2={stop.y} stroke={markup.color} strokeWidth={width} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+        <polygon points={arrowHeadPoints(start, end, width)} fill={markup.color} />
+      </g>
+    );
   }
   if (markup.markup_type === "text" && markup.geometry.position && markup.text_content) {
-    return <g transform={`translate(${markup.geometry.position.x * 1000} ${markup.geometry.position.y * 1000})`}><rect x="-5" y="-24" width={Math.min(600, Math.max(110, markup.text_content.length * 14))} height="34" rx="5" fill="white" fillOpacity=".92" stroke={markup.color} strokeWidth="2" vectorEffect="non-scaling-stroke" /><text x="4" y="0" fill={markup.color} fontSize="24" fontWeight="700">{markup.text_content}</text></g>;
+    const at = toPagePoint(markup.geometry.position, size);
+    const box = textBoxSize(markup.text_content);
+    return (
+      <g transform={`translate(${at.x} ${at.y})`}>
+        <rect x="0" y={-box.height} width={box.width} height={box.height} rx="5" fill="#fff" fillOpacity=".93" stroke={markup.color} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+        <text x="8" y={-box.height / 3} fill={markup.color} fontSize="15" fontWeight="700">{markup.text_content}</text>
+      </g>
+    );
   }
   return null;
+}
+
+/** What is under the finger right now, drawn the same way the saved shape will be. */
+function DraftShape({ points, tool, color, strokeWidth, size }: {
+  points: NormalizedPoint[];
+  tool: DrawingTool;
+  color: string;
+  strokeWidth: number;
+  size: { width: number; height: number };
+}) {
+  const pagePoints = points.map((point) => toPagePoint(point, size));
+  if (tool === "arrow") {
+    const start = pagePoints[0];
+    const end = pagePoints[pagePoints.length - 1];
+    const stop = arrowLineEnd(start, end, strokeWidth);
+    return (
+      <g>
+        <line x1={start.x} y1={start.y} x2={stop.x} y2={stop.y} stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+        <polygon points={arrowHeadPoints(start, end, strokeWidth)} fill={color} />
+      </g>
+    );
+  }
+  if (tool === "cloud") {
+    return <path d={cloudPath(pagePoints)} fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />;
+  }
+  return <polyline points={polylinePoints(points, size)} fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />;
 }
 
 function DrawingPinDetails({ pin, onOpen, onDelete }: { pin: DrawingPin; onOpen: () => void; onDelete: () => void }) {
