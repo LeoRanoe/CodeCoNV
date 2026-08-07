@@ -219,11 +219,11 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
         },
         {
           title: text("Mark the problem on the photo", "Het probleem op de foto aanwijzen"),
-          copy: text("Tap a photo you attached — in a record, a daily log, an issue, an inspection, an HSE entry, a register item or Photos & folders — and the marking pad opens. Tap the spot, choose or type what is wrong there and pick the colour: orange to be corrected, red needs another solution, green approved. Draw with the pen for an arrow or a circle. The numbered markers and their words are saved into the photo, so a report, an e-mail or a printout still shows what was meant.", "Tik op een foto die je hebt toegevoegd — in een registratie, dagrapport, probleem, inspectie, HSE-melding, registeritem of Foto’s & mappen — en het markeerscherm opent. Tik op de plek, kies of typ wat daar mis is en kies de kleur: oranje te corrigeren, rood andere oplossing nodig, groen goedgekeurd. Teken met de pen voor een pijl of een cirkel. De genummerde markers en hun tekst worden in de foto opgeslagen, zodat een rapport, e-mail of afdruk nog steeds toont wat bedoeld werd."),
+          copy: text("Tap a photo you attached — in a record, a daily log, an issue, an inspection, an HSE entry, a register item or Photos — and the marking pad opens. Tap the spot, choose or type what is wrong there and pick the colour: orange to be corrected, red needs another solution, green approved. Draw with the pen for an arrow or a circle. The numbered markers and their words are saved into the photo, so a report, an e-mail or a printout still shows what was meant.", "Tik op een foto die je hebt toegevoegd — in een registratie, dagrapport, probleem, inspectie, HSE-melding, registeritem of Foto’s — en het markeerscherm opent. Tik op de plek, kies of typ wat daar mis is en kies de kleur: oranje te corrigeren, rood andere oplossing nodig, groen goedgekeurd. Teken met de pen voor een pijl of een cirkel. De genummerde markers en hun tekst worden in de foto opgeslagen, zodat een rapport, e-mail of afdruk nog steeds toont wat bedoeld werd."),
         },
         {
-          title: text("Photo folders", "Fotomappen"),
-          copy: text("Open Workspace → Photos & folders to see all evidence. Standard folders are offered automatically; create a custom folder only when the project needs a separate collection.", "Open Werkruimte → Foto’s & mappen om al het bewijs te zien. Standaardmappen worden automatisch aangeboden; maak alleen een eigen map wanneer het project een aparte verzameling nodig heeft."),
+          title: text("Folders", "Mappen"),
+          copy: text("Photos needs no folders: it shows every project photo under the day it was taken. Folders live in Workspace → Assets & folders, where documents, drawings and photos are filed together. Standard folders are offered automatically; create a custom folder only when the project needs a separate collection.", "Foto’s heeft geen mappen nodig: het toont elke projectfoto onder de dag waarop hij is gemaakt. Mappen staan in Werkruimte → Middelen & mappen, waar documenten, tekeningen en foto’s samen worden gearchiveerd. Standaardmappen worden automatisch aangeboden; maak alleen een eigen map wanneer het project een aparte verzameling nodig heeft."),
         },
         {
           title: text("Offline and synchronization", "Offline en synchronisatie"),
@@ -409,7 +409,7 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
       items: [
         {
           title: text("Storage status", "Opslagstatus"),
-          copy: text("The top status shows saved, saving or a connection problem. Saved means central confirmation; offline photo evidence may still be safely waiting in the local queue and is shown in Photos & folders.", "De status bovenaan toont opgeslagen, bezig met opslaan of een verbindingsprobleem. Opgeslagen betekent centrale bevestiging; offline fotobewijs kan daarnaast veilig in de lokale wachtrij staan en wordt getoond bij Foto’s & mappen."),
+          copy: text("The top status shows saved, saving or a connection problem. Saved means central confirmation; offline photo evidence may still be safely waiting in the local queue and is shown in Photos.", "De status bovenaan toont opgeslagen, bezig met opslaan of een verbindingsprobleem. Opgeslagen betekent centrale bevestiging; offline fotobewijs kan daarnaast veilig in de lokale wachtrij staan en wordt getoond bij Foto’s."),
         },
         {
           title: text("Automatic backup", "Automatische back-up"),
@@ -425,7 +425,7 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
         },
         {
           title: text("When something is red", "Wanneer iets rood is"),
-          copy: text("Read the message first. For an upload, open Photos & folders and tap Sync now. For a deadline, open Actions. For blocked push, allow notifications in browser settings. If a retry still fails, keep the local evidence and report the exact message to the administrator.", "Lees eerst de melding. Open voor een upload Foto’s & mappen en tik op Nu synchroniseren. Open voor een deadline Acties. Sta bij geblokkeerde push meldingen toe in de browserinstellingen. Mislukt een nieuwe poging nog steeds, bewaar dan het lokale bewijs en meld de exacte tekst aan de beheerder."),
+          copy: text("Read the message first. For an upload, open Photos and tap Sync now. For a deadline, open Actions. For blocked push, allow notifications in browser settings. If a retry still fails, keep the local evidence and report the exact message to the administrator.", "Lees eerst de melding. Open voor een upload Foto’s en tik op Nu synchroniseren. Open voor een deadline Acties. Sta bij geblokkeerde push meldingen toe in de browserinstellingen. Mislukt een nieuwe poging nog steeds, bewaar dan het lokale bewijs en meld de exacte tekst aan de beheerder."),
         },
         {
           title: text("Session or secure-link message", "Sessie- of beveiligde-linkmelding"),

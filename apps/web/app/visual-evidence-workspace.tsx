@@ -350,12 +350,12 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       if (navigator.onLine) {
         await forceSyncOfflineUploads(client, projectId, {
           paused: text(
-            "The connection changed before central image confirmation. The image remains safe on this device. Keep this form open, then open Photos & folders and tap Sync now.",
-            "De verbinding veranderde vóór de centrale beeldbevestiging. Het beeld blijft veilig op dit apparaat. Houd dit formulier open, open daarna Foto’s & mappen en tik op Nu synchroniseren.",
+            "The connection changed before central image confirmation. The image remains safe on this device. Keep this form open, then open Photos and tap Sync now.",
+            "De verbinding veranderde vóór de centrale beeldbevestiging. Het beeld blijft veilig op dit apparaat. Houd dit formulier open, open daarna Foto’s en tik op Nu synchroniseren.",
           ),
           failed: (pendingCount) => text(
-            `${pendingCount} image upload(s) could not be confirmed centrally. They remain safe on this device. Keep this form open, then open Photos & folders and tap Sync now.`,
-            `${pendingCount} beeld-upload(s) konden niet centraal worden bevestigd. Ze blijven veilig op dit apparaat. Houd dit formulier open, open daarna Foto’s & mappen en tik op Nu synchroniseren.`,
+            `${pendingCount} image upload(s) could not be confirmed centrally. They remain safe on this device. Keep this form open, then open Photos and tap Sync now.`,
+            `${pendingCount} beeld-upload(s) konden niet centraal worden bevestigd. Ze blijven veilig op dit apparaat. Houd dit formulier open, open daarna Foto’s en tik op Nu synchroniseren.`,
           ),
         });
       }

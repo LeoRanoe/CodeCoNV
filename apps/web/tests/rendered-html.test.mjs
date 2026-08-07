@@ -2797,3 +2797,41 @@ test("every record form is signed and can name more than one building", async ()
   assert.match(dataLayer, /schemaColumnMissing\(update\.error, "signed_by"\)/);
   assert.match(dataLayer, /const signatureMissing = \["signed_by", "signed_at", "signature_image"\]/);
 });
+
+test("the photo screen has no folders, and nothing sends the user to a screen that does not exist", async () => {
+  const [media, detail, guide, app, workspace, visual] = await Promise.all([
+    readFile(new URL("../app/media-library-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/stored-photo-detail.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/field-guide.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/visual-evidence-workspace.tsx", import.meta.url), "utf8"),
+  ]);
+
+  // Folders belong to the asset library. Every folder control on this screen is behind
+  // assetsMode, so the photo screen cannot grow one back by accident.
+  for (const control of ["media-folder-bar", "media-folder-create", "media-folder-presets"]) {
+    const at = media.indexOf(control);
+    assert.ok(at > 0, `${control} is gone entirely; the asset library still needs it`);
+    assert.match(media.slice(Math.max(0, at - 260), at), /assetsMode \?/, `${control} is not gated on the asset library`);
+  }
+  // The empty state used to say "this folder is empty" on a screen without folders.
+  assert.match(media, /No photos yet|Nog geen foto's/);
+  assert.match(media, /showFolder=\{assetsMode\}/);
+  // A photo's own screen only names its folder where a folder can be opened.
+  assert.match(detail, /showFolder\?: boolean;/);
+  assert.match(detail, /\{showFolder \? <div><dt>\{text\("Folder", "Map"\)\}/);
+
+  // The guide sent people to the photo screen to manage folders that are not there.
+  assert.doesNotMatch(guide, /Photo folders|Fotomappen/);
+  assert.match(guide, /Assets & folders|Middelen & mappen/);
+
+  // "Photos & folders" is not a screen in this app; the sync queue lives under Photos.
+  for (const [name, source] of [["app", app], ["workspace", workspace], ["visual evidence", visual], ["guide", guide], ["media", media]]) {
+    assert.doesNotMatch(source, /Photos & folders/, `${name} names a screen that does not exist`);
+    assert.doesNotMatch(source, /Foto(?:'|’)s & mappen/, `${name} names a screen that does not exist`);
+  }
+
+  // A focused day log belongs to the button that opened it and never outlives it.
+  assert.match(app, /close=\{\(\) => \{ setDailyLogFocus\(undefined\); setModal\(null\); \}\}/);
+});

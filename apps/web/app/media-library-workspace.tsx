@@ -605,7 +605,7 @@ export function MediaLibraryWorkspace({
           <h2>{assetsMode ? text("Project assets", "Projectmiddelen") : text("Project photos", "Projectfoto's")}</h2>
           <p>{assetsMode
             ? text("Photos, documents, drawings, reports and signed files in one managed folder library.", "Foto's, documenten, tekeningen, rapporten en ondertekende bestanden in één beheerde mappenbibliotheek.")
-            : text("Take, upload, describe, stack, view or delete project photos. Filing stays automatic.", "Maak, upload, omschrijf, stapel, bekijk of verwijder projectfoto's. Archivering blijft automatisch.")}</p>
+            : text("Take, upload, describe, stack, view or delete project photos, under the day they were taken.", "Maak, upload, omschrijf, stapel, bekijk of verwijder projectfoto's, onder de dag waarop ze zijn gemaakt.")}</p>
         </div>
         <label className="data-saver-toggle"><input type="checkbox" checked={savingData} onChange={(event) => { setSavingData(event.target.checked); setDataSaverEnabled(event.target.checked); }} /><span><strong>{text("Save mobile data", "Mobiele data besparen")}</strong><small>{text("Compress regular photos; never alter 360° images or drawings.", "Comprimeert gewone foto’s; wijzigt nooit 360°-beelden of tekeningen.")}</small></span></label>
       </div>
@@ -616,7 +616,7 @@ export function MediaLibraryWorkspace({
       <div className="media-choice-bar" role="group" aria-label={assetsMode ? text("Add a project asset", "Voeg een projectmiddel toe") : text("Add photos", "Voeg foto's toe")}>
         <button className="media-choice primary" type="button" onClick={() => { setKind("photo"); cameraInputRef.current?.click(); }}>
           <span><Camera size={20} /></span>
-          <span><strong>{text("Take photo", "Maak foto")}</strong><small>{text("Camera, with today's folder", "Camera, met de map van vandaag")}</small></span>
+          <span><strong>{text("Take photo", "Maak foto")}</strong><small>{assetsMode ? text("Camera, with today's folder", "Camera, met de map van vandaag") : text("Camera, filed under today", "Camera, bewaard onder vandaag")}</small></span>
         </button>
         <button className="media-choice" type="button" onClick={() => { setKind("photo"); photoImportRef.current?.click(); }}>
           <span><Upload size={19} /></span>
@@ -817,7 +817,13 @@ export function MediaLibraryWorkspace({
       </div>
         </section>
       ))}
-      {!files.length ? <div className="empty-list-state"><Folder size={24} /><strong>{originFilter === "all" ? text("This folder is empty", "Deze map is leeg") : text("No photo matches this filter", "Geen foto voldoet aan dit filter")}</strong><span>{originFilter === "all" ? text("Take a photo or select files; they can also be queued offline.", "Maak een foto of kies bestanden; dit kan ook volledig offline.") : text("Choose another link filter to see the rest of this folder.", "Kies een ander koppelfilter om de rest van deze map te zien.")}</span></div> : null}
+      {/* The photo screen has no folders, so its empty state cannot talk about one: "this
+          folder is empty" named a thing the supervisor could not go and look at. */}
+      {!files.length ? <div className="empty-list-state">{assetsMode ? <Folder size={24} /> : <ImageIcon size={24} />}<strong>{originFilter === "all"
+        ? assetsMode ? text("This folder is empty", "Deze map is leeg") : text("No photos yet", "Nog geen foto's")
+        : text("No photo matches this filter", "Geen foto voldoet aan dit filter")}</strong><span>{originFilter === "all"
+        ? text("Take a photo or select files; they can also be queued offline.", "Maak een foto of kies bestanden; dit kan ook volledig offline.")
+        : assetsMode ? text("Choose another link filter to see the rest of this folder.", "Kies een ander koppelfilter om de rest van deze map te zien.") : text("Choose another link filter to see the rest of the photos.", "Kies een ander koppelfilter om de overige foto's te zien.")}</span></div> : null}
       {openFile ? (
         <StoredPhotoDetail
           data={data}
@@ -829,6 +835,7 @@ export function MediaLibraryWorkspace({
           projectId={projectId}
           close={() => { setOpenFileId(""); setOpenStackIds([]); }}
           openMarking={markPhotoIssue}
+          showFolder={assetsMode}
           stackFiles={openStackFiles.length ? openStackFiles : [openFile]}
           onDelete={(targets) => { setOpenFileId(""); setOpenStackIds([]); void softDeleteFiles(targets); }}
           onDescribe={(targets) => void describeFiles(targets)}

@@ -58,7 +58,7 @@ function StoredImage({ client, file }: { client: SupabaseClient; file: FileRecor
   return <img className="media-detail-image" src={source} alt={file.original_name} />;
 }
 
-export function StoredPhotoDetail({ data, buildings, file, client, busy, run, close, openMarking, projectId, stackFiles = [file], onDelete, onDescribe }: {
+export function StoredPhotoDetail({ data, buildings, file, client, busy, run, close, openMarking, projectId, stackFiles = [file], showFolder = false, onDelete, onDescribe }: {
   data: OperationSnapshot;
   buildings: BuildingOption[];
   file: FileRecord;
@@ -70,6 +70,12 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
   openMarking?: (fileId: string) => void;
   projectId: string;
   stackFiles?: FileRecord[];
+  /**
+   * Where the file is filed. Only the asset library asks that question: the photo screen
+   * shows project photos under the day they were taken and has no folders of its own, so a
+   * folder there is a place the user cannot go.
+   */
+  showFolder?: boolean;
   onDelete?: (files: FileRecord[]) => void;
   onDescribe?: (files: FileRecord[]) => void;
 }) {
@@ -128,10 +134,13 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
               kindLabel: isImage ? text("Photo", "Foto") : text("File", "Bestand"),
               formatDate: (value) => value ? new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "America/Paramaribo" }).format(new Date(value)) : "",
             })}</h2>
-            <p>{capture?.description?.trim() || text(
+            <p>{capture?.description?.trim() || (showFolder ? text(
               "Everything this photo carries: where it was taken, in which folder it sits and which records point at it.",
               "Alles wat deze foto met zich meedraagt: waar hij is gemaakt, in welke map hij staat en welke registraties ernaar verwijzen.",
-            )}</p>
+            ) : text(
+              "Everything this photo carries: where it was taken, when, and which records point at it.",
+              "Alles wat deze foto met zich meedraagt: waar hij is gemaakt, wanneer, en welke registraties ernaar verwijzen.",
+            ))}</p>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
@@ -142,7 +151,7 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
             <div><dt>{text("Building", "Gebouw")}</dt><dd>{buildingName}</dd></div>
             <div><dt>{text("Location", "Locatie")}</dt><dd>{capture?.location_label || "—"}</dd></div>
             <div><dt>{text("Taken", "Gemaakt")}</dt><dd>{moment(capture?.captured_at ?? file.created_at)}</dd></div>
-            <div><dt>{text("Folder", "Map")}</dt><dd>{folderName}</dd></div>
+            {showFolder ? <div><dt>{text("Folder", "Map")}</dt><dd>{folderName}</dd></div> : null}
             <div><dt>{text("File", "Bestand")}</dt><dd title={file.original_name}>{file.original_name}</dd></div>
             <div><dt>{text("Size", "Grootte")}</dt><dd>{humanSize(file.size_bytes)}</dd></div>
             {file.document_code ? <div><dt>{text("Document code", "Documentcode")}</dt><dd>{file.document_code}</dd></div> : null}

@@ -674,8 +674,8 @@ export function CodecoSupervisionApp() {
         }
         if (result.failed > 0) {
           setToast(text(
-            `${result.failed} field upload(s) still need attention. Open Photos & folders and tap Sync now.`,
-            `${result.failed} veldupload(s) vragen nog aandacht. Open Foto’s & mappen en tik op Nu synchroniseren.`,
+            `${result.failed} field upload(s) still need attention. Open Photos and tap Sync now.`,
+            `${result.failed} veldupload(s) vragen nog aandacht. Open Foto’s en tik op Nu synchroniseren.`,
           ));
         }
       }).catch(() => {
@@ -1316,12 +1316,12 @@ export function CodecoSupervisionApp() {
     if (navigator.onLine) {
       await forceSyncOfflineUploads(supabase, input.projectId, {
         paused: text(
-          "The connection changed before central photo confirmation. The photos remain safe on this device. Open Photos & folders and tap Sync now.",
-          "De verbinding veranderde vóór de centrale fotobevestiging. De foto’s blijven veilig op dit apparaat. Open Foto’s & mappen en tik op Nu synchroniseren.",
+          "The connection changed before central photo confirmation. The photos remain safe on this device. Open Photos and tap Sync now.",
+          "De verbinding veranderde vóór de centrale fotobevestiging. De foto’s blijven veilig op dit apparaat. Open Foto’s en tik op Nu synchroniseren.",
         ),
         failed: (pendingCount) => text(
-          `${pendingCount} photo upload(s) could not be confirmed centrally. They remain safe on this device. Open Photos & folders and tap Sync now.`,
-          `${pendingCount} foto-upload(s) konden niet centraal worden bevestigd. Ze blijven veilig op dit apparaat. Open Foto’s & mappen en tik op Nu synchroniseren.`,
+          `${pendingCount} photo upload(s) could not be confirmed centrally. They remain safe on this device. Open Photos and tap Sync now.`,
+          `${pendingCount} foto-upload(s) konden niet centraal worden bevestigd. Ze blijven veilig op dit apparaat. Open Foto’s en tik op Nu synchroniseren.`,
         ),
       });
     }
@@ -2357,7 +2357,10 @@ export function CodecoSupervisionApp() {
           disciplines={configuredDisciplines}
           parties={dayQuery.data?.parties ?? []}
           busy={syncState === "saving"}
-          close={() => setModal(null)}
+          // The focus belongs to the button that was pressed, not to the screen. Leaving it
+          // behind meant the back button could reopen the day log still folded onto a delay
+          // or onto works, long after that was what the supervisor asked for.
+          close={() => { setDailyLogFocus(undefined); setModal(null); }}
           openProjectStart={() => {
             setModal(null);
             openProjectStartForAllBuildings();
@@ -2425,12 +2428,12 @@ export function CodecoSupervisionApp() {
                 if (navigator.onLine) {
                   await forceSyncOfflineUploads(supabase, selectedProject.id, {
                     paused: text(
-                      "The connection changed before central photo confirmation. The photos remain safe on this device. Open Photos & folders and tap Sync now.",
-                      "De verbinding veranderde vóór de centrale fotobevestiging. De foto’s blijven veilig op dit apparaat. Open Foto’s & mappen en tik op Nu synchroniseren.",
+                      "The connection changed before central photo confirmation. The photos remain safe on this device. Open Photos and tap Sync now.",
+                      "De verbinding veranderde vóór de centrale fotobevestiging. De foto’s blijven veilig op dit apparaat. Open Foto’s en tik op Nu synchroniseren.",
                     ),
                     failed: (pendingCount) => text(
-                      `${pendingCount} photo upload(s) could not be confirmed centrally. They remain safe on this device. Open Photos & folders and tap Sync now.`,
-                      `${pendingCount} foto-upload(s) konden niet centraal worden bevestigd. Ze blijven veilig op dit apparaat. Open Foto’s & mappen en tik op Nu synchroniseren.`,
+                      `${pendingCount} photo upload(s) could not be confirmed centrally. They remain safe on this device. Open Photos and tap Sync now.`,
+                      `${pendingCount} foto-upload(s) konden niet centraal worden bevestigd. Ze blijven veilig op dit apparaat. Open Foto’s en tik op Nu synchroniseren.`,
                     ),
                   });
                 }
@@ -2442,6 +2445,7 @@ export function CodecoSupervisionApp() {
               setDailyCloseoutAnswers(answers);
               setCompletedTodos((current) => Array.from(new Set([...current, 2, 3])));
             }
+            setDailyLogFocus(undefined);
             setModal(null);
             await queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] });
           }}
