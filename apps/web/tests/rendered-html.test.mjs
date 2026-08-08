@@ -2872,3 +2872,25 @@ test("closing an NCR asks for the Quality Control / Verification signature the c
   assert.match(ncrPdf, /issue\.verification_signed_by \|\| context\.verifierName \|\| ""/);
   assert.match(ncrDocx, /issue\.verification_signed_by \|\| context\.verifierName \|\| ""/);
 });
+
+test("adds a Lessons Learned tile and register form, next to Deadlines rather than instead of it", async () => {
+  const [home, workspace] = await Promise.all([
+    readFile(new URL("../app/project-workspace-home.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+  ]);
+
+  // #3 · Client feedback of 7 August: "zorg ervoor dat beide gewoon bestaat" — both
+  // Deadlines and Lessons Learned exist as their own dashboard tile.
+  assert.match(home, /id: "deadlines"/);
+  assert.match(home, /id: "lessons-learned"/);
+  assert.match(home, /action: \(\) => openTask\("registers", false, \{ registerType: "lessons_learned" \}\)/);
+
+  // The register form itself: the client's own fields, minus the target date the client
+  // struck off the original Lessons Learned mockup.
+  assert.match(workspace, /const lessonsLearnedRegister = registerForm\.type === "lessons_learned"/);
+  assert.match(workspace, /lessons_learned: "Geleerde lessen"/);
+  for (const label of [/Issue", "Probleem"/, /Cause", "Oorzaak"/, /Solution \/ improvement/, /Expected results/, /Follow-up action/]) {
+    assert.match(workspace, label);
+  }
+  assert.doesNotMatch(workspace, /lessonForm\.targetDate/);
+});

@@ -229,6 +229,7 @@ const registerLabels: Record<string, string> = {
   contract: "Contract",
   specification: "Technische specificatie",
   environmental_report: "Milieurapport (ER)",
+  lessons_learned: "Geleerde lessen",
 };
 
 /**
@@ -239,6 +240,32 @@ const externalSubmissionRegisterTypes = ["wcr", "rfi", "rfa", "inspection_reques
 
 /** Register items that are judged and counted: material arrives, is checked and measured. */
 const registerQuantityTypes = ["delivery", "equipment", "test"];
+
+/**
+ * A lesson learned, as on the client's own form: what went wrong, why, what fixed it,
+ * what that is expected to achieve, and what follow-up keeps it fixed. No target date —
+ * the client struck that field off the form.
+ */
+const emptyLessonLearned = {
+  projectPhase: "",
+  issue: "",
+  cause: "",
+  solution: "",
+  expectedResults: "",
+  followUpAction: "",
+  responsiblePerson: "",
+  status: "open" as "open" | "in_progress" | "closed",
+};
+
+const lessonProjectPhases = [
+  { id: "design", en: "Design", nl: "Ontwerp" },
+  { id: "procurement", en: "Procurement", nl: "Inkoop" },
+  { id: "mobilization", en: "Mobilization", nl: "Mobilisatie" },
+  { id: "construction", en: "Construction", nl: "Uitvoering" },
+  { id: "testing_commissioning", en: "Testing & commissioning", nl: "Testen & inbedrijfstelling" },
+  { id: "handover", en: "Handover", nl: "Oplevering" },
+  { id: "closeout", en: "Project closeout", nl: "Projectafsluiting" },
+] as const;
 
 /**
  * Section 1 of the client's own HSE observation / issue screen: one grid of tiles.
@@ -526,7 +553,7 @@ const registerLabelsEnglish: Record<string, string> = {
   rfa: "RFA - Request for Approval", inspection_request: "WIR - Work Inspection Request", boq: "BOQ / progress",
   punch_list: "Punch list", notepad: "Notepad", agreement: "Agreement", technical_instruction: "Technical instruction (TI)",
   change_order: "Change order (CO)", contract: "Contract", specification: "Technical specification",
-  environmental_report: "Environmental report (ER)",
+  environmental_report: "Environmental report (ER)", lessons_learned: "Lessons learned",
 };
 
 function formatDate(value: string | null, locale = "en-GB") {
@@ -1105,6 +1132,9 @@ function ProjectOperations({
   }, [tab]);
   /** An agreement is text plus the two parties who made it, and who signs for them. */
   const [agreementForm, setAgreementForm] = useState({ ...emptyAgreementSignature });
+  /** A lesson learned: the issue, its cause, the fix, the expected result and the
+   * follow-up — captured once, so the same mistake is not repeated on the next building. */
+  const [lessonForm, setLessonForm] = useState({ ...emptyLessonLearned });
   /**
    * Every numbered record in this project, so the workspace search can find a document
    * back from the unique code that stands on it — on paper, in an e-mail or on a photo.
@@ -1557,6 +1587,17 @@ function ProjectOperations({
       lostHours: String(details.lost_hours ?? "0"), lostHoursReason: String(details.lost_hours_reason ?? ""),
       responsiblePartyId: "",
     });
+    const lessonStatus = String(details.lesson_status ?? "open");
+    setLessonForm({
+      projectPhase: String(details.project_phase ?? ""),
+      issue: String(details.issue ?? details.description ?? ""),
+      cause: String(details.cause ?? ""),
+      solution: String(details.solution_improvement ?? ""),
+      expectedResults: String(details.expected_results ?? ""),
+      followUpAction: String(details.follow_up_action ?? ""),
+      responsiblePerson: String(details.responsible_person ?? ""),
+      status: lessonStatus === "in_progress" || lessonStatus === "closed" ? lessonStatus : "open",
+    });
     setRegisterBuildingId(entry.building_id ?? resolveDefaultBuildingId(buildings, buildingId));
     setRegisterBuildingIds(entry.building_ids?.length ? entry.building_ids : entry.building_id ? [entry.building_id] : []);
     setRegisterLocationNodeId(entry.location_node_id ?? "");
@@ -1636,6 +1677,14 @@ function ProjectOperations({
     && (registerForm.type !== "technical_instruction" || (registerForm.reason.trim().length >= 3 && Boolean(registerForm.dueDate)))
   );
   const agreementRegister = registerForm.type === "agreement";
+  const lessonsLearnedRegister = registerForm.type === "lessons_learned";
+  const lessonFormReady = !lessonsLearnedRegister || (
+    lessonForm.issue.trim().length >= 3
+    && lessonForm.cause.trim().length >= 3
+    && lessonForm.solution.trim().length >= 3
+    && lessonForm.expectedResults.trim().length >= 3
+    && lessonForm.followUpAction.trim().length >= 3
+  );
   // WCR, RFI, RFA and WIR are forms the contractor draws up and signs. CODECO only
   // records them and signs the response, so "sign as the author" is not CODECO's to tick.
   const submittedRegister = externalSubmissionRegisterTypes.includes(registerForm.type);
@@ -1646,9 +1695,12 @@ function ProjectOperations({
     currentUserName,
     ...parties.map((party) => party.name),
   ].filter(Boolean)));
-  // An agreement is written as a sentence, so its own text is also its register line.
+  // An agreement is written as a sentence, so its own text is also its register line; a
+  // lesson learned reads the same way off its own issue text.
   const registerTitle = agreementRegister
     ? registerForm.title.trim() || registerForm.details.trim().split(/\r?\n/)[0].slice(0, 90)
+    : lessonsLearnedRegister
+    ? registerForm.title.trim() || lessonForm.issue.trim().split(/\r?\n/)[0].slice(0, 90)
     : registerForm.title.trim();
 
   const switchTab = (next: ProjectTab) => {
@@ -2356,7 +2408,7 @@ function ProjectOperations({
           currentUserName,
         })
       : {
-        description: registerForm.details,
+        description: lessonsLearnedRegister ? lessonForm.issue.trim() : registerForm.details,
         outcome: registerOutcome || null,
         // Every line of the delivery, and the first one still as the plain quantity and
         // unit the register and the reports already read.
@@ -2365,6 +2417,19 @@ function ProjectOperations({
         unit: deliveryLines[0]?.unit.trim() || null,
         // An agreement carries the two parties that made it and their signatures.
         ...(agreementRegister ? agreementSignatureDetails(agreementForm) : {}),
+        // A lesson learned: the issue, its cause, the fix, the expected result and the
+        // follow-up, exactly as on the client's own form — minus the target date, which
+        // was struck off it.
+        ...(lessonsLearnedRegister ? {
+          project_phase: lessonForm.projectPhase || null,
+          issue: lessonForm.issue.trim(),
+          cause: lessonForm.cause.trim(),
+          solution_improvement: lessonForm.solution.trim(),
+          expected_results: lessonForm.expectedResults.trim(),
+          follow_up_action: lessonForm.followUpAction.trim(),
+          responsible_person: lessonForm.responsiblePerson.trim(),
+          lesson_status: lessonForm.status,
+        } : {}),
       };
     const registerOnline = typeof navigator === "undefined" || navigator.onLine;
     const okay = await run(
@@ -2524,6 +2589,7 @@ function ProjectOperations({
       setRegisterForm({ ...emptyControlledDocumentDraft, type: registerForm.type });
       setEditingRegisterId("");
       setAgreementForm({ ...emptyAgreementSignature });
+      setLessonForm({ ...emptyLessonLearned });
       setRegisterFiles([]);
       setRegisterSignature(null);
       setRegisterOutcome("");
@@ -3605,6 +3671,32 @@ function ProjectOperations({
                   <label className="form-field"><span>{text("What was agreed?", "Wat is afgesproken?")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
                   <AgreementSignatureFields options={agreementPartyOptions} value={agreementForm} onChange={setAgreementForm} />
                 </>
+              ) : lessonsLearnedRegister ? (
+                <>
+                  {/* Capture, learn and improve: the client's own form, as one project
+                      phase and four short questions instead of a free-text register line. */}
+                  <label className="form-field"><span>{text("Project phase", "Projectfase")}</span><select value={lessonForm.projectPhase} onChange={(event) => setLessonForm({ ...lessonForm, projectPhase: event.target.value })}><option value="">{text("Choose a phase", "Kies een fase")}</option>{lessonProjectPhases.map((phase) => <option value={phase.id} key={phase.id}>{text(phase.en, phase.nl)}</option>)}</select></label>
+                  <div className="form-grid">
+                    <label className="form-field"><span>{text("Issue", "Probleem")}</span><small>{text("Describe the issue or problem encountered.", "Beschrijf het probleem dat is opgetreden.")}</small><textarea rows={3} value={lessonForm.issue} onChange={(event) => setLessonForm({ ...lessonForm, issue: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, issue: appendDictation(current.issue, transcript) }))} /></label>
+                    <label className="form-field"><span>{text("Cause", "Oorzaak")}</span><small>{text("What was the root cause of this issue?", "Wat was de hoofdoorzaak van dit probleem?")}</small><textarea rows={3} value={lessonForm.cause} onChange={(event) => setLessonForm({ ...lessonForm, cause: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, cause: appendDictation(current.cause, transcript) }))} /></label>
+                    <label className="form-field"><span>{text("Solution / improvement", "Oplossing / verbetering")}</span><small>{text("Describe the solution or improvement implemented.", "Beschrijf de oplossing of verbetering die is toegepast.")}</small><textarea rows={3} value={lessonForm.solution} onChange={(event) => setLessonForm({ ...lessonForm, solution: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, solution: appendDictation(current.solution, transcript) }))} /></label>
+                    <label className="form-field"><span>{text("Expected results", "Verwacht resultaat")}</span><small>{text("What results or benefits are expected from this solution?", "Welk resultaat of voordeel wordt van deze oplossing verwacht?")}</small><textarea rows={3} value={lessonForm.expectedResults} onChange={(event) => setLessonForm({ ...lessonForm, expectedResults: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, expectedResults: appendDictation(current.expectedResults, transcript) }))} /></label>
+                  </div>
+                  {/* Follow-up: what still has to happen, who does it, and where it
+                      stands — no target date, the client struck that field off the form. */}
+                  <label className="form-field"><span>{text("Follow-up action", "Vervolgactie")}</span><small>{text("What follow-up actions are required?", "Welke vervolgactie is nodig?")}</small><textarea rows={2} value={lessonForm.followUpAction} onChange={(event) => setLessonForm({ ...lessonForm, followUpAction: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, followUpAction: appendDictation(current.followUpAction, transcript) }))} /></label>
+                  <div className="form-grid-2">
+                    <label className="form-field"><span>{text("Responsible person", "Verantwoordelijke")}</span><input value={lessonForm.responsiblePerson} onChange={(event) => setLessonForm({ ...lessonForm, responsiblePerson: event.target.value })} /></label>
+                    <div className="form-field">
+                      <span>{text("Status", "Status")}</span>
+                      <div className="quick-issue-presets">
+                        {([["open", text("Open", "Open")], ["in_progress", text("In progress", "In uitvoering")], ["closed", text("Closed", "Afgerond")]] as const).map(([value, label]) => (
+                          <button className={lessonForm.status === value ? "active" : ""} type="button" onClick={() => setLessonForm({ ...lessonForm, status: value })} key={value}>{label}</button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </>
               ) : (
                 <>
                 {/* A delivery, test or equipment line is judged and counted; that verdict
@@ -3736,7 +3828,7 @@ function ProjectOperations({
                 markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
               />
               {registerPhotoError ? <p className="field-error" role="alert">{registerPhotoError}</p> : null}
-              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerTitle.length < 3 || !controlledFormReady} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : text("Save register item", "Registeritem opslaan")}</button>
+              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerTitle.length < 3 || !controlledFormReady || !lessonFormReady} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : lessonsLearnedRegister ? text("Save lesson learned", "Geleerde les opslaan") : text("Save register item", "Registeritem opslaan")}</button>
             </RecordFormShell>
           ) : null}
           {/* The bill of quantities has nothing to do with a delivery or any other
@@ -3801,6 +3893,11 @@ function ProjectOperations({
                 outcomeLabel,
                 // An agreement without its parties and signature is unreadable in a list.
                 entry.register_type === "agreement" ? agreementSummaryLine(entry.details, text) : "",
+                // A lesson learned reads its own follow-up status and who owns it.
+                entry.register_type === "lessons_learned" ? [
+                  { open: text("open", "open"), in_progress: text("in progress", "in uitvoering"), closed: text("closed", "afgerond") }[String(entry.details?.lesson_status ?? "open")] ?? "",
+                  entry.details?.responsible_person ? String(entry.details.responsible_person) : "",
+                ].filter(Boolean).join(" · ") : "",
                 formatDate(entry.occurred_at, locale),
               ].filter(Boolean).join(" · "),
               status: entry.status,

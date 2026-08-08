@@ -15,6 +15,7 @@ import {
   FolderOpen,
   HardHat,
   Hash,
+  Lightbulb,
   MessageSquareText,
   PackageCheck,
   Search,
@@ -247,6 +248,14 @@ export function ProjectWorkspaceHome({
       tone: "blue",
       count: counts.agreements,
       action: () => openTask("registers", false, { registerType: "agreement" }),
+    },
+    {
+      id: "lessons-learned",
+      label: text("Lessons learned", "Geleerde lessen"),
+      copy: text("Capture, learn and improve", "Vastleggen, leren en verbeteren"),
+      icon: Lightbulb,
+      tone: "purple",
+      action: () => openTask("registers", false, { registerType: "lessons_learned" }),
     },
   ], [counts, openActionCenter, openDailyWork, openFinding, openPhotoLibrary, openTask, openWorkforce, text]);
 
