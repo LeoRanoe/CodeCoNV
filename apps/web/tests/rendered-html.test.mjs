@@ -188,7 +188,7 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(app, /bootstrapOrganization/);
   assert.match(app, /createProjectWorkspace/);
   assert.match(app, /Centraal opgeslagen/);
-  assert.match(app, /Supabase Realtime/);
+  assert.match(app, /Live werkruimte · gesynchroniseerd/);
   assert.match(app, /postgres_changes/);
   assert.doesNotMatch(app, /Demosessie|Kwattaweg Residence|Commewijne Port Facility/);
   assert.match(page, /Architecture &amp; engineering/);
@@ -2893,4 +2893,79 @@ test("adds a Lessons Learned tile and register form, next to Deadlines rather th
     assert.match(workspace, label);
   }
   assert.doesNotMatch(workspace, /lessonForm\.targetDate/);
+});
+
+test("lets a supervisor switch project from anywhere without carrying data across", async () => {
+  const [app, css] = await Promise.all([
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // The switcher itself, and the three places it can be reached from: the sidebar card on
+  // a desktop, the project name in the header on a phone, and the "more" drawer.
+  assert.match(app, /function ProjectSwitcherModal/);
+  assert.match(app, /modal === "switch_project" \? \(/);
+  assert.match(app, /className="project-context-card"[\s\S]{0,240}setModal\("switch_project"\)/);
+  assert.match(app, /className="breadcrumb-step breadcrumb-project"[\s\S]{0,320}setModal\("switch_project"\)/);
+  assert.match(app, /className="mobile-module-switch"[\s\S]{0,200}setModal\("switch_project"\)/);
+  assert.match(app, /Switch project", "Van project wisselen/);
+
+  // The header on a phone hides the sidebar, so the project step has to stay visible there
+  // while the building step is the one that folds away.
+  assert.match(css, /\.breadcrumb-building,\n\s+\.storage-state span/);
+  assert.doesNotMatch(css, /\.breadcrumb-project,\n\s+\.storage-state span/);
+
+  // Nothing of one project may survive into the next: the day mirrored on the screen, the
+  // record being written and the photos still on the device are all dropped, and every
+  // module below is remounted on the project it belongs to.
+  assert.match(app, /const resetProjectScopedState = useCallback\(/);
+  for (const cleared of [
+    /setEntries\(\[\]\)/,
+    /setAttendance\(\[\]\)/,
+    /setCompletedTodos\(\[\]\)/,
+    /setProjectStartAnswers\(null\)/,
+    /setDailyCloseoutAnswers\(null\)/,
+    /setSelectedAction\(null\)/,
+    /setPendingQuickPhotos\(\[\]\)/,
+    /setEntryPhotos\(\[\]\)/,
+    /setFocusRecordId\(""\)/,
+  ]) {
+    assert.match(app, cleared);
+  }
+  assert.match(app, /if \(project\.id !== selectedProject\?\.id\) resetProjectScopedState\(\);/);
+  assert.match(app, /hydratedProjectRef\.current = projectId;\n\s+resetProjectScopedState\(\);/);
+  assert.match(app, /<main className="main-content" key=\{selectedProject\?\.id \?\? "no-project"\}>/);
+});
+
+test("never names the database vendor in anything a user can see", async () => {
+  const uiSources = await Promise.all([
+    "../app/codeco-supervision-app.tsx",
+    "../app/operational-workspace.tsx",
+    "../app/project-workspace-home.tsx",
+    "../app/offline-manager.tsx",
+    "../app/client-dashboard.tsx",
+    "../lib/reports/daily-report-pdf.tsx",
+    "../lib/reports/daily-report-docx.ts",
+    "../lib/storage/server.ts",
+  ].map(async (path) => [path, await readFile(new URL(path, import.meta.url), "utf8")]));
+
+  // The vendor may only survive as code: a type, the package, the client helpers and the
+  // server-side environment variables. Every other occurrence would be readable text.
+  const codeOnly = [
+    /SupabaseClient/g,
+    /@supabase\/supabase-js/g,
+    /getSupabaseBrowserClient/g,
+    /isSupabaseConfigured/g,
+    /supabaseConfiguration/g,
+    /STORAGE_SUPABASE_CONFIGURATION_MISSING/g,
+    /NEXT_PUBLIC_SUPABASE_[A-Z_]+/g,
+    /SUPABASE_SECRET_KEY/g,
+    /@\/lib\/supabase\/[a-z-]+/g,
+    /supabase\.[a-zA-Z]/g,
+    /\bsupabase\b/g,
+  ];
+  for (const [path, source] of uiSources) {
+    const stripped = codeOnly.reduce((text, pattern) => text.replaceAll(pattern, ""), source);
+    assert.doesNotMatch(stripped, /supabase/i, `${path} still names the database vendor in readable text`);
+  }
 });

@@ -173,7 +173,7 @@ type DailyActivityKind = "" | "works_ongoing" | "works_completed" | "delay";
 type ProjectTabKey = "home" | "inspections" | "findings" | "ncr" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files" | "assets";
 const navKeys: NavKey[] = ["vandaag", "project", "acties", "projectdocs", "punchlist", "verify", "rapporten", "meer"];
 const projectTabKeys: ProjectTabKey[] = ["home", "inspections", "findings", "ncr", "hse", "daily", "documents", "registers", "visual", "drawings", "tools", "files", "assets"];
-type ModalKey = "quick" | "entry" | "action_create" | "action_detail" | "report" | "attendance" | "one_tap_log" | "daily_questions" | "project_start" | "user_admin" | "notifications" | "manage_buildings" | "offline" | null;
+type ModalKey = "quick" | "entry" | "action_create" | "action_detail" | "report" | "attendance" | "one_tap_log" | "daily_questions" | "project_start" | "user_admin" | "notifications" | "manage_buildings" | "switch_project" | "offline" | null;
 type WorkspaceStage = "projects" | "cockpit";
 type EntryKind =
   | "activity"
@@ -812,12 +812,12 @@ export function CodecoSupervisionApp() {
   const storageStatus = !isOnline
     ? text("No connection · not saved", "Geen verbinding · nog niet opgeslagen")
     : syncState === "saving"
-      ? text("Saving to Supabase…", "Opslaan in Supabase…")
+      ? text("Saving centrally…", "Centraal opslaan…")
       : syncState === "error"
         ? text("Save failed · try again", "Opslaan mislukt · probeer opnieuw")
         : syncState === "saved"
-          ? text("Saved centrally · Supabase", "Centraal opgeslagen · Supabase")
-          : text("Live database · Supabase Realtime", "Live database · Supabase Realtime");
+          ? text("Saved centrally", "Centraal opgeslagen")
+          : text("Live workspace · synchronized", "Live werkruimte · gesynchroniseerd");
   const localizedNavigation = navigation.map((item) => ({
     ...item,
     label: ({
@@ -1362,13 +1362,65 @@ export function CodecoSupervisionApp() {
     setInitialProjectTab(tab);
   };
 
+  /**
+   * Everything the screen is holding that belongs to one project: the day it mirrors, the
+   * record that is being written, the action that is open, the photos still waiting on the
+   * device. It is wiped the moment another project becomes the active one, so no line of
+   * one project can ever be read under the name of another while its own day is loading.
+   */
+  const resetProjectScopedState = useCallback(() => {
+    setEntries([]);
+    setAttendance([]);
+    setCompletedTodos([]);
+    setProjectStartAnswers(null);
+    setDailyCloseoutAnswers(null);
+    setSelectedAction(null);
+    setContextBuildingId(null);
+    setFocusRecordId("");
+    setProjectTabPreset(undefined);
+    setExternalSubmissionIntent(false);
+    setActionCenterView("work");
+    setDailyLogFocus(undefined);
+    setPendingQuickPhotos([]);
+    setSelectedType("activity");
+    setDescription("");
+    setDescriptionSuggested(false);
+    descriptionSuggestedRef.current = false;
+    setLocation("");
+    setPriority("normal");
+    setEntryBuildingIds([]);
+    setEntryLocationNodeId("");
+    setEntryDrawingId("");
+    setEntryPhotos([]);
+    setEntryActivityKind("");
+    setEntryDraftParked(false);
+    setEntryDrawingPoint(null);
+  }, []);
+
   const chooseProject = (project: ProjectContext) => {
+    if (project.id !== selectedProject?.id) resetProjectScopedState();
+    setModal(null);
+    setMobileMenuOpen(false);
     setSelectedProject(project);
     setSelectedBuilding(project.buildings[0] ?? null);
     setWorkspaceStage("cockpit");
     setActiveNav("vandaag");
     setInitialProjectTab("home");
+    window.scrollTo({ top: 0 });
   };
+
+  /**
+   * The safety net under every other way the active project can change: the back button,
+   * a restored address, a sign-out. Whichever route was taken, the screen never keeps the
+   * previous project's records around.
+   */
+  const hydratedProjectRef = useRef<string | null>(null);
+  useEffect(() => {
+    const projectId = selectedProject?.id ?? null;
+    if (hydratedProjectRef.current === projectId) return;
+    hydratedProjectRef.current = projectId;
+    resetProjectScopedState();
+  }, [resetProjectScopedState, selectedProject?.id]);
 
   /**
    * The screen the app is showing, in the few things a user would call a page: the
@@ -1502,7 +1554,7 @@ export function CodecoSupervisionApp() {
   };
 
   if (!isSupabaseConfigured || !supabase) {
-    return <AppStateScreen title={text("Supabase configuration is missing", "Supabase-configuratie ontbreekt")} copy={text("The application starts after the public project URL and publishable key are configured. A secret key never belongs in the browser app.", "De applicatie start pas wanneer de publieke project-URL en publishable key beschikbaar zijn. Een secret key hoort nooit in de browserapp.")} />;
+    return <AppStateScreen title={text("Workspace configuration is missing", "Werkruimteconfiguratie ontbreekt")} copy={text("The application starts once this environment has been configured. Ask your CODECO administrator to complete the setup.", "De applicatie start zodra deze omgeving is geconfigureerd. Vraag je CODECO-beheerder om de installatie af te ronden.")} />;
   }
 
   if (!authReady) {
@@ -1534,7 +1586,18 @@ export function CodecoSupervisionApp() {
   }
 
   if (workspaceQuery.isLoading) {
-    return <AppStateScreen title={text("Loading CODECO workspace", "CODECO-werkruimte laden")} copy={text("Projects, buildings and permissions are being loaded from Supabase.", "Projecten, gebouwen en rechten worden uit Supabase opgehaald.")} loading />;
+    return (
+      <AppStateScreen
+        title={text("Loading CODECO workspace", "CODECO-werkruimte laden")}
+        copy={text("Your projects, buildings and permissions are being prepared.", "Je projecten, gebouwen en rechten worden klaargezet.")}
+        loading
+        steps={[
+          text("Session verified", "Sessie geverifieerd"),
+          text("Loading projects and buildings", "Projecten en gebouwen laden"),
+          text("Applying your project permissions", "Je projectrechten toepassen"),
+        ]}
+      />
+    );
   }
 
   if (workspaceQuery.isError || !workspaceQuery.data) {
@@ -1631,6 +1694,8 @@ export function CodecoSupervisionApp() {
   }
 
   const projectName = selectedProject?.name ?? "Project";
+  const availableProjects = workspaceQuery.data.projects;
+  const projectCount = availableProjects.length;
   const buildingName = selectedBuilding?.name ?? text("Building", "Gebouw");
   const buildingCount = selectedProject?.buildings.length ?? 0;
   const buildingContextLabel = buildingCount > 1
@@ -1714,7 +1779,7 @@ export function CodecoSupervisionApp() {
           <CompanyLogo subtitle={text("Supervision", "Supervisie")} />
         </div>
 
-        <button className="project-context-card" type="button" aria-label={text("Change project and building", "Project en gebouw wijzigen")} onClick={() => setWorkspaceStage("projects")}>
+        <button className="project-context-card" type="button" aria-haspopup="dialog" aria-label={text("Switch project", "Van project wisselen")} onClick={() => setModal("switch_project")}>
           <span className="project-context-icon"><Building2 size={17} /></span>
           <span className="project-context-copy">
             <strong>{projectName}</strong>
@@ -1758,18 +1823,32 @@ export function CodecoSupervisionApp() {
 
       <div className="main-shell">
         <header className="topbar">
-          <button
-            className="breadcrumb"
-            type="button"
-            aria-label={text(`Manage buildings. ${buildingCount} buildings in this project.`, `Gebouwen beheren. ${buildingCount} gebouwen in dit project.`)}
-            onClick={() => setModal("manage_buildings")}
-          >
-            <span>{text("My projects", "Mijn projecten")}</span>
-            <ChevronRight size={13} />
-            <span>{projectName}</span>
-            <ChevronRight size={13} />
-            <strong>{buildingContextLabel}</strong>
-          </button>
+          {/* The header is the only project label a phone shows, so it is also the way
+              out of this project: the sidebar that used to carry the switcher is hidden
+              there, which left a supervisor with two projects stuck in the first one. */}
+          <nav className="breadcrumb" aria-label={text("Project context", "Projectcontext")}>
+            <button
+              className="breadcrumb-step breadcrumb-project"
+              type="button"
+              aria-haspopup="dialog"
+              aria-label={text(`Switch project. ${projectName} is open.`, `Van project wisselen. ${projectName} is geopend.`)}
+              onClick={() => setModal("switch_project")}
+            >
+              <span className="breadcrumb-root">{text("My projects", "Mijn projecten")}</span>
+              <ChevronRight className="breadcrumb-arrow" size={13} />
+              <span className="breadcrumb-name">{projectName}</span>
+              <ChevronDown className="breadcrumb-caret" size={13} />
+            </button>
+            <ChevronRight className="breadcrumb-divider" size={13} />
+            <button
+              className="breadcrumb-step breadcrumb-building"
+              type="button"
+              aria-label={text(`Manage buildings. ${buildingCount} buildings in this project.`, `Gebouwen beheren. ${buildingCount} gebouwen in dit project.`)}
+              onClick={() => setModal("manage_buildings")}
+            >
+              <strong>{buildingContextLabel}</strong>
+            </button>
+          </nav>
           <div className="top-actions">
             <LiveWeatherChip location={selectedProject?.location ?? ""} />
             <LanguageSwitcher compact />
@@ -1784,7 +1863,9 @@ export function CodecoSupervisionApp() {
           </div>
         </header>
 
-        <main className="main-content">
+        {/* Keyed on the project: a module that switches to another project starts over
+            instead of carrying the previous project's selection, filters and drafts. */}
+        <main className="main-content" key={selectedProject?.id ?? "no-project"}>
           {activeNav === "vandaag" ? (
             <TodayView
               entries={entries}
@@ -1974,6 +2055,26 @@ export function CodecoSupervisionApp() {
               <button type="button" onClick={() => setMobileMenuOpen(false)} aria-label={text("Close", "Sluiten")}><X size={19} /></button>
             </header>
             <div className="mobile-module-grid">
+              <button
+                className="mobile-module-switch"
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  setModal("switch_project");
+                }}
+              >
+                <span><LayoutDashboard size={19} /></span>
+                <span>
+                  <strong>{text("Switch project", "Van project wisselen")}</strong>
+                  <small>
+                    {text(
+                      `${projectCount} project(s) available to you`,
+                      `${projectCount} project(en) voor jou beschikbaar`,
+                    )}
+                  </small>
+                </span>
+                <ChevronRight size={17} />
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -2500,6 +2601,20 @@ export function CodecoSupervisionApp() {
         />
       ) : null}
 
+      {modal === "switch_project" ? (
+        <ProjectSwitcherModal
+          projects={availableProjects}
+          activeProjectId={selectedProject?.id ?? ""}
+          close={() => setModal(null)}
+          chooseProject={chooseProject}
+          openProjectOverview={() => {
+            setModal(null);
+            setMobileMenuOpen(false);
+            setWorkspaceStage("projects");
+          }}
+        />
+      ) : null}
+
       {modal === "notifications" ? (
         <NotificationsModal
           client={supabase}
@@ -2535,21 +2650,46 @@ function AppStateScreen({
   copy,
   loading = false,
   action,
+  steps,
 }: {
   title: string;
   copy: string;
   loading?: boolean;
   action?: () => void;
+  /** What the app is busy with, so the wait shows progress instead of an empty screen. */
+  steps?: string[];
 }) {
   const { text } = useLanguage();
   return (
-    <div className="access-shell">
-      <section className="access-card state-card">
+    <div className={`access-shell ${loading ? "loading-shell" : ""}`}>
+      <section className={`access-card state-card ${loading ? "loading-card" : ""}`}>
         <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={text("Construction supervision", "Constructiesupervisie")} /></div><LanguageSwitcher /></div>
-        <span className="state-icon">{loading ? <Loader2 className="spin" size={26} /> : <AlertTriangle size={26} />}</span>
-        <h1>{title}</h1>
-        <p>{copy}</p>
-        {action ? <button className="primary-button" type="button" onClick={action}>{text("Try again", "Opnieuw proberen")}</button> : null}
+        <div className="state-body">
+          <span className="state-icon">{loading ? <Loader2 className="spin" size={26} /> : <AlertTriangle size={26} />}</span>
+          <h1>{title}</h1>
+          <p>{copy}</p>
+          {loading ? <span className="state-progress" role="progressbar" aria-label={title} aria-busy="true"><span /></span> : null}
+          {loading && steps?.length ? (
+            <ul className="state-steps">
+              {steps.map((step, index) => (
+                <li className={index === 0 ? "done" : ""} key={step}>
+                  {index === 0 ? <Check size={13} /> : <Loader2 className="spin" size={13} />}
+                  {step}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {/* A silhouette of the workspace that is coming, so the wait reads as loading
+              rather than as an app that opened on a blank page. */}
+          {loading ? (
+            <div className="state-skeleton" aria-hidden="true">
+              <span className="skeleton-line wide" />
+              <span className="skeleton-line" />
+              <div className="skeleton-tiles"><span /><span /><span /></div>
+            </div>
+          ) : null}
+          {action ? <button className="primary-button" type="button" onClick={action}>{text("Try again", "Opnieuw proberen")}</button> : null}
+        </div>
       </section>
     </div>
   );
@@ -2876,7 +3016,7 @@ function ContextSelection({
       <main className="context-content">
         <div className={`data-mode-notice ${isOnline ? "connected" : "offline"}`} role="status">
           {isOnline ? <CheckCircle2 size={17} /> : <HardDrive size={17} />}
-          <span><strong>{isOnline ? text("Online workspace", "Online werkruimte") : text("Offline field mode", "Offline veldmodus")}</strong> {storageStatus}. {offlineCached ? text("The last synchronized projects and buildings are available; photos and drawings can be queued locally.", "De laatst gesynchroniseerde projecten en gebouwen zijn beschikbaar; foto’s en tekeningen kunnen lokaal worden klaargezet.") : text("Only changes confirmed by Supabase receive the saved status.", "Alleen door Supabase bevestigde wijzigingen krijgen de status opgeslagen.")}</span>
+          <span><strong>{isOnline ? text("Online workspace", "Online werkruimte") : text("Offline field mode", "Offline veldmodus")}</strong> {storageStatus}. {offlineCached ? text("The last synchronized projects and buildings are available; photos and drawings can be queued locally.", "De laatst gesynchroniseerde projecten en gebouwen zijn beschikbaar; foto’s en tekeningen kunnen lokaal worden klaargezet.") : text("Only centrally confirmed changes receive the saved status.", "Alleen centraal bevestigde wijzigingen krijgen de status opgeslagen.")}</span>
         </div>
 
         <section className="context-heading">
@@ -3096,7 +3236,7 @@ function ProjectStartForm({
           </section>
 
           <div className="project-start-submit">
-            <span><ShieldCheck size={15} /> {text("Saving completes only after confirmation by Supabase.", "Opslaan is pas voltooid na bevestiging door Supabase.")}</span>
+            <span><ShieldCheck size={15} /> {text("Saving completes only after central confirmation.", "Opslaan is pas voltooid na centrale bevestiging.")}</span>
             <button className="primary-button" type="submit">{text("Start daily report centrally", "Dagrapport centraal starten")} <ArrowRight size={15} /></button>
           </div>
         </form>
@@ -4294,6 +4434,100 @@ function ActionDetailModal({
               <button className="primary-button" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={14} /> : <ArrowRight size={14} />} {text("Move to", "Naar")} {statusLabels[nextStatus].toLowerCase()}</button>
             </form>
           ) : <p className="action-complete-note"><CheckCircle2 size={16} /> {action.status === "verified" ? text("This action has been formally verified and closed.", "Deze actie is formeel geverifieerd en gesloten.") : text("This action was cancelled and remains visible in the history.", "Deze actie is geannuleerd en blijft in de historie zichtbaar.")}</p>}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/**
+ * Switching project without leaving the workspace first. The sidebar card, the header on
+ * a phone and the "more" drawer all open this list, so the question "which project am I
+ * in, and how do I get to the other one?" has the same answer everywhere.
+ */
+function ProjectSwitcherModal({
+  projects,
+  activeProjectId,
+  close,
+  chooseProject,
+  openProjectOverview,
+}: {
+  projects: ProjectContext[];
+  activeProjectId: string;
+  close: () => void;
+  chooseProject: (project: ProjectContext) => void;
+  openProjectOverview: () => void;
+}) {
+  const { text } = useLanguage();
+  const [term, setTerm] = useState("");
+  // A search box only earns its place once the list stops fitting on a phone screen.
+  const searchable = projects.length > 5;
+  const needle = term.trim().toLowerCase();
+  const matches = needle
+    ? projects.filter((project) => [project.name, project.code, project.location, project.client]
+      .some((field) => String(field ?? "").toLowerCase().includes(needle)))
+    : projects;
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+      <section className="modal project-switcher-modal" role="dialog" aria-modal="true" aria-labelledby="switch-project-title">
+        <header className="modal-header">
+          <div>
+            <h2 id="switch-project-title">{text("Switch project", "Van project wisselen")}</h2>
+            <p>{text("Every project keeps its own records, photos and reports. Opening another project closes this one and loads its own data.", "Elk project houdt zijn eigen registraties, foto’s en rapporten. Een ander project openen sluit dit project en laadt uitsluitend de eigen gegevens.")}</p>
+          </div>
+          <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
+        </header>
+        <div className="modal-body">
+          {searchable ? (
+            <label className="project-switcher-search">
+              <Search size={15} />
+              <input
+                value={term}
+                onChange={(event) => setTerm(event.target.value)}
+                placeholder={text("Search by name, code or location", "Zoek op naam, code of locatie")}
+                aria-label={text("Search projects", "Projecten zoeken")}
+              />
+            </label>
+          ) : null}
+          <div className="project-switcher-list">
+            {matches.map((project) => {
+              const active = project.id === activeProjectId;
+              return (
+                <button
+                  className={`project-switcher-row ${active ? "active" : ""}`}
+                  type="button"
+                  key={project.id}
+                  aria-current={active ? "true" : undefined}
+                  onClick={() => {
+                    if (active) {
+                      close();
+                      return;
+                    }
+                    chooseProject(project);
+                  }}
+                >
+                  <span className="project-switcher-icon">{active ? <Check size={17} /> : <Building2 size={17} />}</span>
+                  <span className="project-switcher-copy">
+                    <strong>{project.name}</strong>
+                    <small><MapPin size={12} /> {project.location}</small>
+                    <small className="project-switcher-meta">
+                      {project.code} · {project.buildings.length} {text("buildings", "gebouwen")} · {project.openIssues} {text("open actions", "open acties")}
+                    </small>
+                  </span>
+                  <span className="project-switcher-state">
+                    {active ? text("Current", "Huidig") : <ArrowRight size={15} />}
+                  </span>
+                </button>
+              );
+            })}
+            {matches.length === 0 ? (
+              <p className="project-switcher-empty">{text("No project matches your search.", "Geen project komt overeen met je zoekopdracht.")}</p>
+            ) : null}
+          </div>
+          <button className="secondary-button project-switcher-overview" type="button" onClick={openProjectOverview}>
+            <LayoutDashboard size={15} /> {text("Open the project overview", "Projectoverzicht openen")}
+          </button>
         </div>
       </section>
     </div>

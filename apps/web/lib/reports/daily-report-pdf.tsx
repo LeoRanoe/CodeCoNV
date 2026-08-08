@@ -181,7 +181,7 @@ export function DailyReportDocument({ snapshot, logoSource = "/codeco-logo-pdf.p
           <Row label="Werk afgerond" value={closeout.workPerformed} />
           <Row label="Voortgang" value={`${closeout.progressPercent}%`} />
         </Section>
-        <Text style={styles.footer} fixed>CODECO Supervisie · gegenereerd uit centrale Supabase-data · Pagina 1 van {snapshot.buildings?.length ? 3 : 2}</Text>
+        <Text style={styles.footer} fixed>CODECO Supervisie · gegenereerd uit de centrale projectadministratie · Pagina 1 van {snapshot.buildings?.length ? 3 : 2}</Text>
       </Page>
 
       <Page size="A4" style={styles.page}>
@@ -222,7 +222,7 @@ export function DailyReportDocument({ snapshot, logoSource = "/codeco-logo-pdf.p
         </Section>
         <SignatureSection signatures={snapshot.signatures ?? []} />
 
-        <Text style={styles.footer} fixed>CODECO Supervisie · gegenereerd uit centrale Supabase-data · Pagina 2 van {snapshot.buildings?.length ? 3 : 2}</Text>
+        <Text style={styles.footer} fixed>CODECO Supervisie · gegenereerd uit de centrale projectadministratie · Pagina 2 van {snapshot.buildings?.length ? 3 : 2}</Text>
       </Page>
 
       {snapshot.buildings?.length ? (
@@ -246,7 +246,7 @@ export function DailyReportDocument({ snapshot, logoSource = "/codeco-logo-pdf.p
               <Row label="Planning morgen" value={building.closeout.tomorrowPlan} />
             </Section>
           ))}
-          <Text style={styles.footer} fixed>CODECO Supervisie · gegenereerd uit centrale Supabase-data · Pagina 3 van 3</Text>
+          <Text style={styles.footer} fixed>CODECO Supervisie · gegenereerd uit de centrale projectadministratie · Pagina 3 van 3</Text>
         </Page>
       ) : null}
     </Document>

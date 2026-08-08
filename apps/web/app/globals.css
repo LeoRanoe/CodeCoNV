@@ -1389,6 +1389,131 @@ textarea:focus-visible {
   font-weight: 680;
 }
 
+.project-switcher-modal .modal-body {
+  display: grid;
+  gap: 14px;
+}
+
+.project-switcher-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 13px;
+  border: 1px solid var(--ink-200);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink-500);
+}
+
+.project-switcher-search input {
+  width: 100%;
+  padding: 13px 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: var(--ink-950);
+  outline: none;
+}
+
+.project-switcher-list {
+  display: grid;
+  gap: 10px;
+}
+
+.project-switcher-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 72px;
+  padding: 14px 16px;
+  border: 1px solid var(--ink-200);
+  border-radius: 14px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+
+.project-switcher-row:hover,
+.project-switcher-row:focus-visible {
+  border-color: var(--green);
+}
+
+.project-switcher-row.active {
+  border-color: var(--green);
+  background: var(--green-soft);
+  cursor: default;
+}
+
+.project-switcher-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--ink-100);
+  color: var(--ink-700);
+}
+
+.project-switcher-row.active .project-switcher-icon {
+  background: #fff;
+  color: var(--green);
+}
+
+.project-switcher-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.project-switcher-copy strong {
+  overflow: hidden;
+  color: var(--ink-950);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-switcher-copy small {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink-500);
+  font-size: 11px;
+}
+
+.project-switcher-meta {
+  font-size: 10px;
+}
+
+.project-switcher-state {
+  display: flex;
+  align-items: center;
+  color: var(--ink-500);
+  font-size: 10px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.project-switcher-row.active .project-switcher-state {
+  color: var(--green);
+}
+
+.project-switcher-empty {
+  margin: 0;
+  padding: 18px 4px;
+  color: var(--ink-500);
+  font-size: 12px;
+}
+
+.project-switcher-overview {
+  justify-content: center;
+  width: 100%;
+}
+
 .building-selection-grid {
   display: grid;
   gap: 11px;
@@ -1975,6 +2100,15 @@ textarea:focus-visible {
 }
 
 .breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  color: var(--ink-600);
+  font-size: 12px;
+}
+
+.breadcrumb-step {
   appearance: none;
   background: transparent;
   border: 0;
@@ -1984,21 +2118,30 @@ textarea:focus-visible {
   align-items: center;
   gap: 7px;
   font: inherit;
+  color: inherit;
   min-width: 0;
   padding: 8px;
   text-align: left;
-  color: var(--ink-600);
-  font-size: 12px;
 }
 
-.breadcrumb:hover,
-.breadcrumb:focus-visible {
+.breadcrumb-step:hover,
+.breadcrumb-step:focus-visible {
   background: var(--ink-100);
 }
 
 .breadcrumb strong {
   color: var(--ink-950);
   font-weight: 650;
+}
+
+.breadcrumb-arrow,
+.breadcrumb-divider,
+.breadcrumb-caret {
+  flex-shrink: 0;
+}
+
+.breadcrumb-caret {
+  color: var(--ink-500);
 }
 
 .top-actions {
@@ -5087,9 +5230,10 @@ textarea:focus-visible {
   /* Mobile header carries the project name, live weather, sync state and alerts.
      Language and settings live in the bottom-nav "More" screen, so repeating them
      here only crowded the bar and truncated the project name to "F.. 2". */
-  .breadcrumb span:first-child,
-  .breadcrumb svg,
-  .breadcrumb strong,
+  .breadcrumb-root,
+  .breadcrumb-arrow,
+  .breadcrumb-divider,
+  .breadcrumb-building,
   .storage-state span,
   .topbar .language-switcher,
   .topbar .management-button {
@@ -5098,7 +5242,18 @@ textarea:focus-visible {
 
   .breadcrumb {
     min-width: 0;
+  }
+
+  .breadcrumb-project {
     padding-left: 0;
+  }
+
+  /* The project name is the only label left in the header, and it is the tap that opens
+     the switcher, so it carries the weight of a control rather than of a trail. */
+  .breadcrumb-name {
+    color: var(--ink-950);
+    font-size: 14px;
+    font-weight: 700;
   }
 
   .breadcrumb span {
@@ -5652,6 +5807,128 @@ textarea:focus-visible {
 
 .state-card .primary-button {
   margin: 20px auto 0;
+}
+
+/* The loading screen used to be the top of a full-height card, which on a phone left the
+   message floating above two thirds of empty white. It now centres itself and shows what
+   is being prepared, so the wait reads as work in progress. */
+.loading-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.loading-card .state-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  padding: 34px 0 8px;
+}
+
+.loading-card h1 {
+  font-size: clamp(21px, 3.4vw, 28px);
+}
+
+.state-progress {
+  display: block;
+  overflow: hidden;
+  width: min(280px, 100%);
+  height: 4px;
+  margin: 22px auto 0;
+  border-radius: 999px;
+  background: #e2eef0;
+}
+
+.state-progress > span {
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #11a6a0, #0d7f7b);
+  animation: state-progress-sweep 1.5s ease-in-out infinite;
+}
+
+@keyframes state-progress-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+
+.state-steps {
+  display: grid;
+  gap: 9px;
+  width: min(320px, 100%);
+  margin: 22px auto 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.state-steps li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #7d939c;
+  font-size: 12px;
+  font-weight: 560;
+}
+
+.state-steps li.done {
+  color: #11847f;
+}
+
+.state-steps svg {
+  flex-shrink: 0;
+}
+
+.state-skeleton {
+  display: grid;
+  gap: 10px;
+  width: min(320px, 100%);
+  margin: 28px auto 0;
+}
+
+.skeleton-line,
+.skeleton-tiles > span {
+  display: block;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #eef4f5 25%, #e2eef0 37%, #eef4f5 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton-line {
+  height: 11px;
+}
+
+.skeleton-line.wide {
+  width: 70%;
+}
+
+.skeleton-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.skeleton-tiles > span {
+  height: 54px;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .state-progress > span,
+  .skeleton-line,
+  .skeleton-tiles > span {
+    animation: none;
+  }
+
+  .state-progress > span {
+    width: 100%;
+  }
 }
 
 .setup-top {

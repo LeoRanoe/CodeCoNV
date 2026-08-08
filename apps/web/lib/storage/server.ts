@@ -66,7 +66,7 @@ export function storageErrorResponse(error: unknown) {
   if (message === "STORAGE_AUTH_REQUIRED") return storageJson({ error: "Aanmelden is vereist." }, 401);
   if (message === "STORAGE_AUTH_EXPIRED") return storageJson({ error: "Je sessie is verlopen." }, 401);
   if (message === "STORAGE_SUPABASE_CONFIGURATION_MISSING") {
-    return storageJson({ error: "De beveiligde Supabase-koppeling voor bestandsopslag ontbreekt." }, 503);
+    return storageJson({ error: "De beveiligde koppeling voor bestandsopslag ontbreekt." }, 503);
   }
   return storageJson({ error: message || "De private bestandsopslag kon de aanvraag niet verwerken." }, 500);
 }

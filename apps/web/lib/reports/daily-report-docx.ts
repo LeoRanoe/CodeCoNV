@@ -68,7 +68,7 @@ export function buildDailyReportDocxDocument(snapshot: DailyReportPdfSnapshot, l
     creator: "CODECO N.V.",
     sections: [
       {
-        footers: { default: documentFooter("CODECO Supervisie · gegenereerd uit centrale Supabase-data") },
+        footers: { default: documentFooter("CODECO Supervisie · gegenereerd uit de centrale projectadministratie") },
         children: [
           ...brandHeader(logoBytes, "Dagrapport", snapshot.formal ? `Formele immutable revisie ${snapshot.formal.revision}` : "Vaste, controleerbare samenvatting uit bevestigde projectregistraties"),
           metadataTable(metadata, 3),
