@@ -1553,6 +1553,16 @@ textarea:focus-visible {
   font-weight: 680;
 }
 
+/* The sentence under a field label that says what to write there. It reads as help,
+   not as a second label, wherever it stands: above the input on the forms that ask a
+   question, below it where it explains what was just filled in. */
+.form-field > small {
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.45;
+  margin-top: -3px;
+}
+
 .input-with-unit {
   position: relative;
   display: block;

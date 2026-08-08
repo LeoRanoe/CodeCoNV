@@ -9,16 +9,34 @@ begin;
 -- issue_management already carries the recommendation and correction signatures, but the
 -- transition trigger never let it change during a status transition — only the internal
 -- external-share flow touched it, as a security-definer function. transition_project_finding
--- runs as the calling user (security invoker), so this column has to be as changeable
--- during a transition as status/cause/proposed_correction/final_measure already are.
+-- runs as the calling user (security invoker), so the quality-control signature it writes
+-- has to be allowed through here.
+--
+-- Only that signature, though. issue_management also holds the engineer's own recommended
+-- action, remarks and written signature; those are the original observation and stay
+-- manager-only. Excluding the whole column would let anyone the findings_update policy
+-- lets through — an assigned user who is not a manager — overwrite the engineer's
+-- signature, so the column is excluded from the blanket check and then re-checked key by
+-- key against the three verification fields.
 create or replace function app_private.validate_finding_transition()
 returns trigger
 language plpgsql
 set search_path = pg_catalog, public
 as $$
+declare
+  v_verification_keys text[] := array['verification_signed_by','verification_signed_at','verification_signature_image'];
 begin
   if (to_jsonb(new) - array['status','status_reason','cause','proposed_correction','final_measure','verified_by','verified_at','closed_at','updated_at','version','issue_management'])
     <> (to_jsonb(old) - array['status','status_reason','cause','proposed_correction','final_measure','verified_by','verified_at','closed_at','updated_at','version','issue_management'])
+    and not app_private.has_project_permission(old.project_id, 'findings.manage') then
+    raise exception 'Only a finding manager may change the original observation' using errcode = '42501';
+  end if;
+
+  -- Everything in issue_management except the quality-control signature is the original
+  -- observation, and changing it stays a finding manager's right.
+  if coalesce(new.issue_management, '{}'::jsonb) is distinct from coalesce(old.issue_management, '{}'::jsonb)
+    and (coalesce(new.issue_management, '{}'::jsonb) - v_verification_keys)
+      is distinct from (coalesce(old.issue_management, '{}'::jsonb) - v_verification_keys)
     and not app_private.has_project_permission(old.project_id, 'findings.manage') then
     raise exception 'Only a finding manager may change the original observation' using errcode = '42501';
   end if;
@@ -47,11 +65,17 @@ begin
 end;
 $$;
 
--- A new overload of transition_project_finding: the six-argument function from
--- 202607180008 keeps working unchanged, so a deployment that has not refreshed its
--- schema cache yet keeps closing NCRs without a signature. This adds two arguments that
--- also store the written verification signature on the finding, required only when an
--- NCR (not a plain issue) closes.
+-- transition_project_finding gains two arguments for the written verification signature,
+-- required only when an NCR (not a plain issue) closes.
+--
+-- The two new arguments have defaults, so this REPLACES the six-argument function of
+-- 202607180008 rather than sitting beside it. Keeping both would make every existing
+-- six-argument call ambiguous ("function ... is not unique") — including the internal
+-- calls record_issue_progress makes in 202607240001, which would break recording
+-- inspection progress. Dropping the old signature first leaves exactly one function, and
+-- every existing six-argument caller resolves to it through the defaults.
+drop function if exists public.transition_project_finding(uuid,text,text,text,text,text);
+
 create or replace function public.transition_project_finding(
   p_finding_id uuid,
   p_next_status text,

@@ -71,20 +71,20 @@ database-kolom die de ingelogde gebruiker vastlegt.
 
 `supabase/migrations/202608070002_ncr_quality_control_signature.sql`:
 
-- voegt `issue_management` toe aan de kolommen die een statusovergang mag wijzigen
-  (`app_private.validate_finding_transition`) — die trigger stond het nog niet toe,
-  terwijl `transition_project_finding` als de ingelogde gebruiker draait (niet als de
-  service-role van de externe-link-flow) en dus wél tegen die controle aanloopt;
-- voegt een nieuwe overload van `transition_project_finding` toe met twee extra
-  argumenten voor de handtekening, verplicht zodra een NCR (niet een gewoon issue)
-  wordt gesloten;
-- **laat de bestaande zesargumentfunctie ongewijzigd staan**, zodat een omgeving die
-  deze migratie nog niet heeft gedraaid gewoon kan blijven afsluiten — de app valt dan
-  terug op de oude functie en slaat de handtekening niet op, precies zoals eerder bij
-  `202608040003_written_contractor_signature.sql` is gedaan.
+- laat een statusovergang de **kwaliteitscontrolehandtekening** in `issue_management`
+  schrijven (`app_private.validate_finding_transition`) — die trigger stond dat nog niet
+  toe, terwijl `transition_project_finding` als de ingelogde gebruiker draait (niet als
+  de service-role van de externe-link-flow) en dus wél tegen die controle aanloopt.
+  Alleen die drie velden gaan open: de rest van `issue_management` — de aanbevolen actie,
+  de opmerkingen en de **handtekening van de ingenieur zelf** — blijft voorbehouden aan
+  een bevindingbeheerder. Zie de naronde hieronder;
+- **vervangt** `transition_project_finding` door een versie met twee extra argumenten
+  voor de handtekening, verplicht zodra een NCR (niet een gewoon issue) wordt gesloten.
+  De oude zesargumentversie wordt daarbij gedropt; zie de naronde hieronder waarom dat
+  moet.
 
 **De app werkt ook zonder deze migratie**: `transitionFinding` herkent de
-schema-foutmelding en valt terug op de oude aanroep zonder handtekening. Draai
+schema-foutmelding en valt terug op de aanroep zonder handtekening. Draai
 `supabase db push` om de volledige ronde te krijgen — zonder migratie kan een NCR dan
 nog niet worden afgesloten, omdat de UI de handtekening verplicht stelt maar de
 database die niet opslaat.
@@ -96,7 +96,7 @@ database die niet opslaat.
 | **`supabase db push`** | Zonder de migratie blokkeert de UI het afsluiten van een NCR met een lege handtekening, terwijl de database die nog niet kan opslaan. |
 | **Project Delay Report / Lessons Learned** | Geen eigen module; alleen de bestaande NCR-velden zijn aangepast. Een apart traject nodig zodra de klant deze twee formulieren daadwerkelijk in de app wil. |
 | **Category / Type / Source als aparte optielijsten** | Niet gebouwd — het onderliggende veld bestaat niet en is niet expliciet gevraagd voor deze ronde. |
-| **pgTAP-suite** | Draait pas in de CI-job *Database migrations, lint and pgTAP*; deze omgeving heeft geen Docker. |
+| **pgTAP-suite** | Draait volledig in de CI-job *Database migrations, lint and pgTAP*. De nieuwe suite `013` is hier lokaal wel gedraaid — zie de naronde. |
 
 ## Aanbevolen acceptatievolgorde
 
@@ -108,3 +108,60 @@ database die niet opslaat.
 5. Ondertekenen en bevestigen; controleren dat de NCR-kaart de handtekening onder
    *Quality control* toont, en dat de gedownloade PDF en het Word-bestand die
    handtekening ook op de derde ondertekenlijn tonen.
+6. Op dezelfde NCR *Inspectievoortgang vastleggen* op 100% zetten — die knop roept de
+   transitiefunctie intern met zes argumenten aan en moet blijven werken (zie naronde).
+
+---
+
+# Naronde: de migratie tegen een echte database gedraaid
+
+De eerste versie van deze ronde is alleen op het oog beoordeeld. Bij de eindcontrole is
+de volledige migratieketen (62 migraties) alsnog tegen een lokaal PostgreSQL 16-cluster
+gedraaid. Dat bracht twee fouten aan het licht die in productie kapot waren gegaan.
+
+## 1. Twee functies met dezelfde naam maakten elke bestaande aanroep dubbelzinnig
+
+De nieuwe handtekeningargumenten hebben een standaardwaarde. Naast de bestaande
+zesargumentfunctie betekende dat: een aanroep met zes argumenten past op **allebei**, en
+PostgreSQL weigert dan te kiezen:
+
+```
+ERROR:  function public.transition_project_finding(uuid, unknown, ...) is not unique
+```
+
+Dat trof niet alleen de app maar ook `record_issue_progress` uit
+`202607240001_client_controlled_documents.sql`, dat de transitie intern met zes
+argumenten aanroept. **Inspectievoortgang vastleggen op 100% zou stuk zijn gegaan** —
+een bestaande functie, kapot door een nieuwe. De migratie dropt de oude versie nu
+expliciet, zodat er precies één functie overblijft waar elke bestaande aanroep via de
+standaardwaarden op uitkomt.
+
+## 2. De handtekening van de ingenieur was te openen gezet
+
+Om de kwaliteitscontrolehandtekening te kunnen schrijven, was `issue_management` in zijn
+geheel vrijgegeven tijdens een statusovergang. In diezelfde kolom staan echter ook de
+aanbevolen actie, de opmerkingen en de **geschreven handtekening van de ingenieur**. De
+RLS-policy `findings_update` laat naast een bevindingbeheerder ook de toegewezen
+gebruiker door — die had daarmee de handtekening van de ingenieur kunnen overschrijven.
+
+De trigger controleert nu per sleutel: alleen `verification_signed_by`,
+`verification_signed_at` en `verification_signature_image` mogen door een niet-beheerder
+worden geschreven; verandert er iets anders in `issue_management`, dan geldt onverkort
+"Only a finding manager may change the original observation".
+
+## Wat er nu wordt bewaakt
+
+`supabase/tests/013_ncr_quality_control_signature.pgtap.sql` legt dit vast in dertien
+assertions, alle groen tegen de volledige migratieketen:
+
+- de zesargumentfunctie bestaat niet meer naast de nieuwe, dus geen enkele aanroep is
+  dubbelzinnig;
+- een NCR bereikt verificatie via een zesargumentaanroep, die dus nog steeds resolvet;
+- een NCR sluit **niet** zonder geschreven handtekening, en **wel** mét;
+- de handtekening staat op de registratie zelf;
+- een gewoon issue sluit nog steeds zonder handtekening;
+- een toegewezen niet-beheerder kan de handtekening van de ingenieur niet overschrijven,
+  terwijl de kwaliteitscontrolevelden wel beschrijfbaar blijven.
+
+Dezelfde suite is ook gedraaid tegen de keten **zonder** deze migratie: daar faalt de
+laatste assertie, wat bevestigt dat de migratie nodig is en precies genoeg opent.
