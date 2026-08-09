@@ -15503,3 +15503,36 @@ button {
 @media (max-width: 860px) {
   .prompt-library-list { grid-template-columns: 1fr; }
 }
+
+/* The same attachments again, as the way to go and fetch them. Naming an export in prose
+   still left the reader hunting for the screen it lived on. */
+.prompt-card-sources { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.prompt-source {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--ink-700);
+  display: inline-flex;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  gap: 4px;
+  min-height: 30px;
+  padding: 4px 10px;
+}
+
+button.prompt-source { cursor: pointer; }
+button.prompt-source:hover { border-color: var(--green); color: var(--green); }
+button.prompt-source > svg { color: var(--ink-400); }
+button.prompt-source:hover > svg { color: var(--green); }
+
+/* A schedule and a meeting transcript are not this application's to hand over, so they
+   are named without a button rather than given one that goes nowhere. */
+.prompt-source.own {
+  background: transparent;
+  border-style: dashed;
+  color: var(--ink-500);
+  font-weight: 600;
+}

@@ -705,7 +705,7 @@ export function OperationalWorkspace({
   onPlaceRecordPin?: (point: { drawingId: string; pageNumber: number; xRatio: number; yRatio: number }) => void;
   openDailyRecord: (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => void;
   /** The optional record id opens that record itself, instead of the list it stands in. */
-  openProjectArea: (tab: "inspections" | "findings" | "ncr" | "hse" | "documents" | "registers" | "visual" | "drawings" | "files" | "assets" | "submissions", recordId?: string) => void;
+  openProjectArea: (tab: "inspections" | "findings" | "ncr" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "files" | "assets" | "submissions", recordId?: string) => void;
   openActionCenter: (view?: ActionCenterView) => void;
   openRapidVerify: () => void;
   openReports: () => void;
@@ -880,6 +880,8 @@ export function OperationalWorkspace({
           busy={busy}
           run={run}
           client={client}
+          openModule={openProjectArea}
+          openDeadlines={() => openActionCenter("deadlines")}
         />
       ) : null}
       {mode === "admin" ? (
@@ -4558,7 +4560,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   );
 }
 
-function ReportOperations({ data, reportId, reportNumber, reportStatus, currentUserName, projectId, projectName, busy, run, client }: { data: OperationSnapshot; reportId: string | null; reportNumber: string; reportStatus: string; currentUserName: string; projectId: string; projectName: string; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>; client: SupabaseClient }) {
+function ReportOperations({ data, reportId, reportNumber, reportStatus, currentUserName, projectId, projectName, busy, run, client, openModule, openDeadlines }: { data: OperationSnapshot; reportId: string | null; reportNumber: string; reportStatus: string; currentUserName: string; projectId: string; projectName: string; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>; client: SupabaseClient; openModule: (tab: "documents" | "drawings" | "findings" | "ncr" | "hse" | "inspections" | "registers" | "files" | "daily") => void; openDeadlines: () => void }) {
   const { language, locale, text } = useLanguage();
   const statusLabels = language === "en" ? reportStatusLabelsEnglish : reportStatusLabels;
   const [reviewComment, setReviewComment] = useState("");
@@ -4736,7 +4738,23 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
           return <button className={reportView === view.id ? "active" : ""} type="button" role="tab" aria-selected={reportView === view.id} onClick={() => setReportView(view.id)} key={view.id}><Icon size={18} /><span><strong>{view.title}</strong><small>{view.copy}</small></span></button>;
         })}
       </nav>
-      {reportView === "prompts" ? <PromptLibrary /> : null}
+      {reportView === "prompts" ? (
+        <PromptLibrary
+          shortcuts={{
+            // The month is the period most of these prompts are written for, so the
+            // shortcut sets it rather than dropping the reader on an empty date range.
+            openMonthlyReport: () => {
+              setReportView("create");
+              setPeriod({ start: `${today.slice(0, 8)}01`, end: today });
+              setPeriodLabel(text("Monthly supervision report", "Maandelijks supervisierapport"));
+              setPeriodPreset("month");
+            },
+            openReportBuilder: () => setReportView("create"),
+            openModule,
+            openDeadlines,
+          }}
+        />
+      ) : null}
       {reportView === "create" ? (
         <section className="period-report-card">
           <div className="workflow-icon"><CalendarRange size={20} /></div>

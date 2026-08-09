@@ -3162,11 +3162,26 @@ test("names the jobs the application will not do, with the prompt and what to at
     assert.match(entry, /category: "(report|analysis|compare|capture)"/, `${id} has no category`);
     assert.match(entry, /\n      why: /, `${id} does not say why the app leaves it alone`);
     assert.match(entry, /\n      attach: /, `${id} does not say what to attach`);
+    assert.match(entry, /\n      sources: \[/, `${id} names no source to fetch the attachment from`);
     assert.match(entry, /\n      prompt: /, `${id} has no prompt`);
   }
 
+  // Naming the export in prose left the reader hunting for the screen it lives on, so
+  // every source is routed. Two of them are deliberately not: a schedule and a meeting
+  // transcript do not come from this application, and a button there would go nowhere.
+  const declared = [...library.matchAll(/^  \| "([a-z-]+)"$/gm)].map((match) => match[1]);
+  assert.ok(declared.length >= 12, `expected the source list, found ${declared.length}`);
+  for (const source of declared) {
+    assert.match(library, new RegExp(`"?${source}"?: \\{ label:`), `${source} has no route`);
+  }
+  for (const own of ["own-schedule", "own-transcript"]) {
+    assert.match(library, new RegExp(`"${own}": \\{ label: text\\([^}]*\\) \\}`), `${own} must stay a label without a button`);
+  }
+  assert.match(workspace, /openModule=\{openProjectArea\}/);
+  assert.match(workspace, /openDeadlines=\{\(\) => openActionCenter\("deadlines"\)\}/);
+
   // It is a view of its own, not ten prompts behind a summary nobody opened.
-  assert.match(workspace, /reportView === "prompts" \? <PromptLibrary \/> : null/);
+  assert.match(workspace, /reportView === "prompts" \? \(\s*<PromptLibrary/s);
   assert.doesNotMatch(workspace, /report-prompt-library/);
   assert.match(workspace, /className="report-prompt-link"/);
   // And it never ships project data anywhere by itself.
