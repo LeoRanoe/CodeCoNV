@@ -9,6 +9,7 @@ import {
   CalendarClock,
   CalendarRange,
   CheckCircle2,
+  ChevronRight,
   Circle,
   ClipboardCheck,
   Clock3,
@@ -67,6 +68,8 @@ import { VisualEvidenceWorkspace } from "@/app/visual-evidence-workspace";
 import { DailyWorkRegister, type DailyWorkView } from "@/app/daily-work-register";
 import { DrawingWorkspace } from "@/app/drawing-workspace";
 import { FieldTools } from "@/app/field-tools";
+import { BackupCenter } from "@/app/backup-center";
+import { PromptLibrary } from "@/app/prompt-library";
 import { MediaLibraryWorkspace } from "@/app/media-library-workspace";
 import { ProjectWorkspaceHome } from "@/app/project-workspace-home";
 import { ProjectDocumentsHome } from "@/app/project-documents-home";
@@ -108,7 +111,6 @@ import {
   createProjectParty,
   createRegisterEntry,
   createExternalShareLink,
-  downloadManualBackup,
   ensureProjectDayReport,
   finishInspection,
   signInspection,
@@ -132,7 +134,6 @@ import {
   updateInspectionRecord,
   updateProductionReadiness,
   updateRegisterRecord,
-  validateBackupDryRun,
   withdrawWorkspaceRecord,
   type FileRecord,
   type Finding,
@@ -4597,7 +4598,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
     { id: "visual", title: text("Visual progress report", "Visueel voortgangsrapport"), sections: ["visual", "work"] },
   ];
   const [reportChoice, setReportChoice] = useState(data.settings?.report_sections?.length ? "project" : "complete");
-  const [reportView, setReportView] = useState<"create" | "workflow" | "history">("create");
+  const [reportView, setReportView] = useState<"create" | "workflow" | "history" | "prompts">("create");
   const [historyType, setHistoryType] = useState<"all" | "daily" | "weekly" | "monthly">("all");
   const [openHistoryId, setOpenHistoryId] = useState("");
   const [periodPreset, setPeriodPreset] = useState<"day" | "week" | "month" | "custom">("month");
@@ -4621,44 +4622,6 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
     { id: "agreements_made", label: text("Agreements made", "Gemaakte afspraken"), sections: ["communications"] },
   ];
   const [includedClientOptions, setIncludedClientOptions] = useState(() => clientReportOptions.map((option) => option.id));
-  const reportPromptLibrary = [
-    text(
-      "Create an executive project-management summary from the attached CODECO report. Separate facts, risks, decisions required, overdue actions and the next seven-day outlook. Do not invent missing information.",
-      "Maak uit het bijgevoegde CODECO-rapport een managementsamenvatting. Scheid feiten, risico's, vereiste besluiten, achterstallige acties en de vooruitblik voor zeven dagen. Verzin geen ontbrekende informatie.",
-    ),
-    text(
-      "Review this supervision report for schedule, quality, HSE and commercial risks. For every conclusion, cite the exact report section and clearly mark uncertainty.",
-      "Controleer dit supervisierapport op planning-, kwaliteit-, HSE- en commerciële risico's. Noem bij elke conclusie het exacte rapportonderdeel en markeer onzekerheid duidelijk.",
-    ),
-    text(
-      "Rewrite the attached report for a client steering meeting. Preserve all figures and statuses, group actions by responsible party and finish with a decision list.",
-      "Herschrijf het bijgevoegde rapport voor een stuurgroepoverleg met de klant. Behoud alle cijfers en statussen, groepeer acties per verantwoordelijke en eindig met een besluitenlijst.",
-    ),
-    text(
-      "Compare the attached approved drawings, technical specifications and latest RFI/RFA log. Produce a conflict matrix with source filename, page or drawing reference, conflict, affected building, risk and required human decision. Do not resolve engineering conflicts yourself.",
-      "Vergelijk de bijgevoegde goedgekeurde tekeningen, technische specificaties en het actuele RFI/RFA-log. Maak een conflictmatrix met bronbestand, pagina- of tekeningreferentie, conflict, betrokken gebouw, risico en vereist menselijk besluit. Los technische conflicten niet zelf op.",
-    ),
-    text(
-      "Analyze the attached schedule, Works ongoing, Works completed, Delays and Deadlines exports. Identify the likely critical-path risks and prepare questions for the planner. Cite every input row used and do not invent dependencies.",
-      "Analyseer de bijgevoegde planning en exports Werkzaamheden gaande, Werkzaamheden afgerond, Vertragingen en Deadlines. Benoem waarschijnlijke kritieke-pad-risico's en stel vragen voor de planner op. Citeer elke gebruikte invoerregel en verzin geen afhankelijkheden.",
-    ),
-    text(
-      "Review the attached photo register, Issues, NCRs and inspection results. Cluster repeated observations by building and location, but keep Issues and NCRs separate. Return possible trends, missing evidence and a human verification checklist; never declare an NCR closed.",
-      "Controleer het bijgevoegde fotoregister, Issues, NCR's en inspectieresultaten. Groepeer herhaalde observaties per gebouw en locatie, maar houd Issues en NCR's gescheiden. Geef mogelijke trends, ontbrekend bewijs en een menselijke verificatiechecklist; verklaar nooit zelf een NCR gesloten.",
-    ),
-    text(
-      "Convert the attached meeting transcript into draft Agreements made. For each item provide decision, responsible party, due date, source timestamp and confidence. Mark unclear owners or dates as REQUIRED INPUT and do not create commitments automatically.",
-      "Zet het bijgevoegde vergadertranscript om in concept Gemaakte afspraken. Geef per punt besluit, verantwoordelijke partij, deadline, brontijdstip en zekerheid. Markeer onduidelijke eigenaars of datums als INVOER VEREIST en maak nooit automatisch verplichtingen aan.",
-    ),
-    text(
-      "Using the attached BOQ, Change Orders, material deliveries and progress report, prepare a draft commercial variance review. Separate contracted quantity, approved change, unapproved exposure and missing source evidence. All amounts must retain their original currency and source reference.",
-      "Maak met de bijgevoegde BOQ, wijzigingsopdrachten, materiaalleveringen en voortgangsrapportage een concept commerciële afwijkingsanalyse. Scheid gecontracteerde hoeveelheid, goedgekeurde wijziging, niet-goedgekeurde blootstelling en ontbrekend bronbewijs. Behoud bij alle bedragen de oorspronkelijke valuta en bronreferentie.",
-    ),
-    text(
-      "Review the attached HSE observations, incidents, workforce and works ongoing records for recurring control weaknesses. Return a draft toolbox-talk agenda and questions for the HSE officer. Do not diagnose injuries or replace the formal incident investigation.",
-      "Controleer de bijgevoegde HSE-observaties, incidenten, workforce en lopende werkzaamheden op terugkerende tekortkomingen in beheersmaatregelen. Geef een concept toolbox-agenda en vragen voor de HSE-functionaris. Stel geen medische diagnose en vervang het formele incidentonderzoek niet.",
-    ),
-  ];
   const activeSections = [...new Set(clientReportOptions
     .filter((option) => includedClientOptions.includes(option.id))
     .flatMap((option) => option.sections))] as PeriodReportSection[];
@@ -4707,6 +4670,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
     { id: "create" as const, icon: CalendarRange, title: text("Create report", "Rapport maken"), copy: text("Choose content and period", "Kies inhoud en periode") },
     { id: "workflow" as const, icon: FileCheck2, title: text("Review & sign", "Review & onderteken"), copy: text("Controlled formal steps", "Beheerste formele stappen") },
     { id: "history" as const, icon: Archive, title: text("Versions & history", "Versies & historie"), copy: text("Fixed audit trail", "Vast controlespoor") },
+    { id: "prompts" as const, icon: MessageCircle, title: text("Beyond this app", "Buiten deze app"), copy: text("Prompts for what it will not do", "Prompts voor wat ze niet doet") },
   ];
   const workflowStep = canReview ? 1 : reportStatus === "approved" ? 2 : ["signed", "sent"].includes(reportStatus) ? 3 : 0;
   const workflowGuidance = !reportId
@@ -4772,6 +4736,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
           return <button className={reportView === view.id ? "active" : ""} type="button" role="tab" aria-selected={reportView === view.id} onClick={() => setReportView(view.id)} key={view.id}><Icon size={18} /><span><strong>{view.title}</strong><small>{view.copy}</small></span></button>;
         })}
       </nav>
+      {reportView === "prompts" ? <PromptLibrary /> : null}
       {reportView === "create" ? (
         <section className="period-report-card">
           <div className="workflow-icon"><CalendarRange size={20} /></div>
@@ -4781,11 +4746,16 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
             <legend>{text("Include in this report", "Opnemen in dit rapport")}</legend>
             {clientReportOptions.map((option) => <label key={option.id}><input type="checkbox" checked={includedClientOptions.includes(option.id)} onChange={() => toggleReportSection(option.id)} /><span>{option.label}</span></label>)}
           </fieldset>
-          <details className="report-prompt-library">
-            <summary><MessageCircle size={15} /> {text("Prompt library for external writing review", "Promptlijst voor externe schrijfreview")}</summary>
-            <p>{text("Copy a controlled prompt after downloading the report. No project data is sent automatically.", "Kopieer na het downloaden van het rapport een gecontroleerde prompt. Er worden niet automatisch projectgegevens verstuurd.")}</p>
-            <div>{reportPromptLibrary.map((prompt, index) => <button type="button" onClick={() => void navigator.clipboard.writeText(prompt)} key={prompt}><Copy size={14} /><span><strong>{text("Copy prompt", "Kopieer prompt")} {index + 1}</strong><small>{prompt}</small></span></button>)}</div>
-          </details>
+          {/* The full library is a view of its own now; this points at it instead of
+              hiding ten prompts behind a summary nobody opened. */}
+          <button className="report-prompt-link" type="button" onClick={() => setReportView("prompts")}>
+            <MessageCircle size={15} />
+            <span>
+              <strong>{text("Something this report cannot do?", "Iets wat dit rapport niet kan?")}</strong>
+              <small>{text("A compact monthly summary, a conflict matrix, a toolbox agenda — with the prompt and the exports to attach.", "Een compacte maandsamenvatting, een conflictmatrix, een toolbox-agenda — met de prompt en de bij te voegen exports.")}</small>
+            </span>
+            <ChevronRight size={15} />
+          </button>
           <div className="period-date-presets"><span>{text("Quick period", "Snelle periode")}</span><button className={periodPreset === "day" ? "active" : ""} type="button" aria-pressed={periodPreset === "day"} onClick={() => applyDatePreset(1, text("Daily supervision report", "Dagelijks supervisierapport"), "day")}>{text("Today", "Vandaag")}</button><button className={periodPreset === "week" ? "active" : ""} type="button" aria-pressed={periodPreset === "week"} onClick={() => applyDatePreset(7, text("Weekly supervision report", "Wekelijks supervisierapport"), "week")}>{text("Last 7 days", "Laatste 7 dagen")}</button><button className={periodPreset === "month" ? "active" : ""} type="button" aria-pressed={periodPreset === "month"} onClick={() => { setPeriod({ start: `${today.slice(0, 8)}01`, end: today }); setPeriodLabel(text("Monthly supervision report", "Maandelijks supervisierapport")); setPeriodPreset("month"); }}>{text("This month", "Deze maand")}</button>{periodPreset === "custom" ? <em>{text("Custom period", "Vrije periode")}</em> : null}</div>
           <label className="form-field"><span>{text("From", "Van")}</span><input type="date" value={period.start} max={period.end} onChange={(event) => { setPeriod({ ...period, start: event.target.value }); setPeriodLabel(text("Period supervision report", "Supervisierapport over periode")); setPeriodPreset("custom"); }} /></label>
           <label className="form-field"><span>{text("Through", "Tot en met")}</span><input type="date" value={period.end} min={period.start} max={today} onChange={(event) => { setPeriod({ ...period, end: event.target.value }); setPeriodLabel(text("Period supervision report", "Supervisierapport over periode")); setPeriodPreset("custom"); }} /></label>
@@ -4869,9 +4839,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
   const [party, setParty] = useState({ type: "contractor", code: "", name: "" });
   const [libraryCategory, setLibraryCategory] = useState("all");
   const [assignmentDrafts, setAssignmentDrafts] = useState<Record<string, string>>({});
-  const fileInput = useRef<HTMLInputElement>(null);
   const latestScheduledBackup = data.backupRuns.find((item) => item.run_type === "scheduled" && item.status === "verified");
-  const latestRestoreTest = data.backupRuns.find((item) => item.run_type === "restore_test" && item.status === "dry_run_passed");
   const openFindings = data.findings.filter((item) => !["closed", "cancelled"].includes(item.status));
   const criticalFindings = openFindings.filter((item) => item.severity === "critical" || item.severity === "high");
   const activeInspections = data.inspections.filter((item) => item.status === "planned" || item.status === "in_progress" || item.status === "failed");
@@ -5041,7 +5009,19 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
           <div className="template-grid">{data.templates.map((item) => <article className="template-card" key={item.id}><span>{item.module.toUpperCase()} · {item.code} · v{item.version_number}</span><h3>{item.name}</h3><p>{item.items.length} {text("checkpoints", "controlepunten")} · {item.status}</p></article>)}</div>
         </section>
       ) : null}
-      {section === "backup" ? <section className="operation-panel"><div className="storage-status-grid"><div className={`storage-status-card ${isStorageGatewayConfigured ? "" : "blocked"}`}><HardDrive size={21} /><div><strong>Vercel Blob</strong><span>{isStorageGatewayConfigured ? text("Private same-origin storage routes active", "Private opslagroutes binnen dezelfde app actief") : text("Connect a private Blob store in Vercel", "Koppel een private Blob-store in Vercel")}</span></div></div><div className={`storage-status-card ${latestScheduledBackup ? "" : "blocked"}`}><DatabaseBackup size={21} /><div><strong>{text("Latest automatic backup", "Laatste automatische back-up")}</strong><span>{latestScheduledBackup ? formatDate(latestScheduledBackup.verified_at) : text("Waiting for the first daily run", "Wacht op de eerste dagelijkse run")}</span></div></div><div className={`storage-status-card ${latestRestoreTest ? "" : "blocked"}`}><Archive size={21} /><div><strong>{text("Latest restore integrity test", "Laatste herstel-integriteitstest")}</strong><span>{formatDate(latestRestoreTest?.verified_at ?? null)}</span></div></div></div><div className="backup-actions"><button className="primary-button" type="button" disabled={busy || !canManageOrganization} onClick={() => void run(() => downloadManualBackup(client, organizationId, projectId), text("Backup downloaded and checksum verified centrally. Keep a separate recovery copy.", "Back-up gedownload en checksum centraal geverifieerd. Bewaar een afzonderlijke herstelkopie."))}><DatabaseBackup size={15} /> {text("Download verified project backup", "Download geverifieerde projectback-up")}</button><button className="secondary-button" type="button" disabled={busy || !canManageOrganization} onClick={() => fileInput.current?.click()}><RotateCcw size={15} /> Restore dry run</button><input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void run(() => validateBackupDryRun(client, file), text("Restore dry run passed; no data was overwritten.", "Restore dry run geslaagd; er zijn geen gegevens overschreven.")); event.target.value = ""; }} /></div>{latestScheduledBackup ? <div className="operation-alert success"><DatabaseBackup size={18} /><div><strong>{text("Daily Vercel Blob backup active", "Dagelijkse Vercel Blob-back-up actief")}</strong><span>{text("Every stored backup is read back, checksum-verified and retained as 7 daily, 4 weekly and 3 monthly copies. Keep an additional copy outside this Vercel account for account-level disaster recovery.", "Elke opgeslagen back-up wordt teruggelezen, met SHA-256 gecontroleerd en bewaard als 7 dagelijkse, 4 wekelijkse en 3 maandelijkse kopieën. Bewaar daarnaast een kopie buiten dit Vercel-account voor herstel bij accountverlies.")}</span></div></div> : <div className="operation-alert warning"><AlertTriangle size={18} /><div><strong>{text("First automatic backup pending", "Eerste automatische back-up nog niet uitgevoerd")}</strong><span>{text("The daily job is configured. This status becomes green after its first verified production run.", "De dagelijkse taak is geconfigureerd. Deze status wordt groen na de eerste geverifieerde productierun.")}</span></div></div>}<HistoryColumn title={text("Backup history", "Back-uphistorie")} empty={text("No backup run yet.", "Nog geen back-uprun.")} rows={data.backupRuns.map((item) => `${item.run_type} · ${item.status} · ${formatDate(item.created_at)}${item.sha256 ? ` · SHA ${item.sha256.slice(0, 12)}…` : ""}`)} /></section> : null}
+      {section === "backup" ? (
+        <BackupCenter
+          client={client}
+          data={data}
+          organizationId={organizationId}
+          projectId={projectId}
+          projectName={projectName}
+          canManageOrganization={canManageOrganization}
+          isStorageGatewayConfigured={isStorageGatewayConfigured}
+          busy={busy}
+          run={run}
+        />
+      ) : null}
     </>
   );
 }

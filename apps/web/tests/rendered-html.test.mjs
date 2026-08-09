@@ -3108,3 +3108,67 @@ test("the overview searches the whole project, not only the day on the screen", 
   // A file name is one unbreakable word, so both lines of a result must be free to shrink.
   assert.match(css, /\.overview-search-list > button > span \{ display: grid; gap: 2px; min-width: 0; \}/);
 });
+
+test("gives the backup screen enough to actually manage continuity with", async () => {
+  const [center, operations, workspace, css] = await Promise.all([
+    readFile(new URL("../app/backup-center.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // The three columns the old screen never read, on a table that already held them.
+  assert.match(operations, /select\("id,project_id,run_type,status,schema_version,size_bytes,sha256,verified_at,created_at,retention_tier,record_counts,error_summary"\)/);
+  // A database without the retention migration must still show its history.
+  assert.match(operations, /schemaFeatureMissing\(backupResult\.error, \["retention_tier", "record_counts", "error_summary"\]\)/);
+
+  // What the screen can now do, none of which it could before.
+  for (const capability of [
+    /ensureDailyBackup\(client, organizationId\)/,          // run the job by hand
+    /scope === "project" \? projectId : null/,               // one project or the whole organization
+    /function RecordCounts/,                                  // what is inside a backup
+    /setLastDryRun\(result\)/,                                // a restore test that reports back
+    /backupStaleAfterHours/,                                  // an old backup is called out
+    /restoreTestStaleAfterDays/,                              // so is an untested one
+    /heldCopies/,                                             // the retention promise is checkable
+    /historyFilter/,                                          // history is filterable
+    /openRunId/,                                              // and each run opens
+  ]) {
+    assert.match(center, capability);
+  }
+
+  assert.match(workspace, /<BackupCenter/);
+  assert.match(css, /\.backup-health-card/);
+  // The manual export may now be organization-wide, so its type has to allow no project.
+  assert.match(operations, /export async function downloadManualBackup\(client: SupabaseClient, organizationId: string, projectId: string \| null\)/);
+});
+
+test("names the jobs the application will not do, with the prompt and what to attach", async () => {
+  const [library, workspace] = await Promise.all([
+    readFile(new URL("../app/prompt-library.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+  ]);
+
+  // The client asked for this list by naming one of them: a compact monthly report.
+  assert.match(library, /id: "compact-monthly"/);
+  assert.match(library, /Een compact maandrapport uit de volle maand/);
+
+  // Every prompt has to say why the application leaves the job alone and which export to
+  // attach; a prompt without either is a sentence the reader cannot act on.
+  const entries = library.split(/\n    \{\n      id: "/).slice(1);
+  assert.ok(entries.length >= 10, `expected a real library, found ${entries.length} prompts`);
+  for (const entry of entries) {
+    const id = entry.slice(0, entry.indexOf('"'));
+    assert.match(entry, /category: "(report|analysis|compare|capture)"/, `${id} has no category`);
+    assert.match(entry, /\n      why: /, `${id} does not say why the app leaves it alone`);
+    assert.match(entry, /\n      attach: /, `${id} does not say what to attach`);
+    assert.match(entry, /\n      prompt: /, `${id} has no prompt`);
+  }
+
+  // It is a view of its own, not ten prompts behind a summary nobody opened.
+  assert.match(workspace, /reportView === "prompts" \? <PromptLibrary \/> : null/);
+  assert.doesNotMatch(workspace, /report-prompt-library/);
+  assert.match(workspace, /className="report-prompt-link"/);
+  // And it never ships project data anywhere by itself.
+  assert.doesNotMatch(library, /fetch\(|supabase|\.rpc\(/);
+});

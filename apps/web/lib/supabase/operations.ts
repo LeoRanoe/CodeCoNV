@@ -299,7 +299,23 @@ export type ReportReview = { id: string; decision: string; comment: string; crea
 export type ReportSignature = { id: string; report_version_id: string; signer_name: string; signer_role: string; declaration: string; legal_level: string; signed_at: string; signature_image?: string | null };
 export type ReportDistribution = { id: string; recipient_name: string; recipient_address: string; channel: string; status: string; sent_at: string | null };
 export type DayReportSummary = { id: string; report_date: string; report_number: string; status: string; completeness_percent: number; created_at: string; updated_at: string };
-export type BackupRun = { id: string; run_type: string; status: string; schema_version: string; size_bytes: number | null; sha256: string | null; verified_at: string | null; created_at: string };
+export type BackupRun = {
+  id: string;
+  /** Null for a whole-organization backup; set when one project was exported on its own. */
+  project_id: string | null;
+  run_type: string;
+  status: string;
+  schema_version: string;
+  size_bytes: number | null;
+  sha256: string | null;
+  verified_at: string | null;
+  created_at: string;
+  /** Which copy of the 7 daily / 4 weekly / 3 monthly set this run is currently held as. */
+  retention_tier?: "daily" | "weekly" | "monthly" | null;
+  /** How many rows the run captured, per table, so a backup can be read before restoring. */
+  record_counts?: Record<string, number> | null;
+  error_summary?: string | null;
+};
 
 export type ProjectSettings = {
   id: string;
@@ -576,7 +592,7 @@ export async function loadProjectOperations(
     client.from("boq_progress_updates").select("id,register_entry_id,building_id,progress_percent,quantity_completed,note,recorded_at,created_at").eq("project_id", projectId).order("recorded_at", { ascending: false }).limit(5000),
     client.from("files").select("id,building_id,folder_id,original_name,mime_type,size_bytes,category,status,document_code,created_at").eq("project_id", projectId).neq("status", "deleted").order("created_at", { ascending: false }).limit(500),
     client.from("project_settings").select("id,project_id,report_prefix,default_language,max_file_size_mb,notification_lead_hours,email_notifications_enabled,push_notifications_enabled,retention_days,branding,modules,signing_workflow,configuration_status,default_shift_start,default_shift_end,disciplines,finding_deadlines,report_sections,default_units,required_location_depth,report_header,report_footer").eq("project_id", projectId).maybeSingle(),
-    client.from("backup_runs").select("id,run_type,status,schema_version,size_bytes,sha256,verified_at,created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(25),
+    client.from("backup_runs").select("id,project_id,run_type,status,schema_version,size_bytes,sha256,verified_at,created_at,retention_tier,record_counts,error_summary").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(200),
     client.from("location_nodes").select("id,building_id,parent_id,node_type,code,name,description,status").eq("project_id", projectId).order("sort_order").limit(500),
     client.from("production_readiness_items").select("id,code,category,title,description,owner_hint,blocking,status,evidence,completed_at,sort_order").eq("organization_id", organizationId).order("sort_order"),
     client.from("visual_captures").select("id,building_id,file_id,location_node_id,day_report_id,capture_type,title,description,location_label,tour_name,tour_order,stack_id,captured_at,status,created_at").eq("project_id", projectId).order("captured_at", { ascending: false }).limit(250),
@@ -596,6 +612,12 @@ export async function loadProjectOperations(
   const compatibleRegisterResult = schemaFeatureMissing(registerWithoutSignatureResult.error, ["location_node_id"])
     ? await client.from("project_register_entries").select("id,building_id,register_type,entry_number,title,status,occurred_at,due_at,details").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(5000)
     : registerWithoutSignatureResult;
+  // Retention tier and record counts arrive with the automated-backup migration. A database
+  // that has not run it yet must still show its backup history, without those two columns.
+  const compatibleBackupResult = schemaFeatureMissing(backupResult.error, ["retention_tier", "record_counts", "error_summary"])
+    ? await client.from("backup_runs").select("id,project_id,run_type,status,schema_version,size_bytes,sha256,verified_at,created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(200)
+    : backupResult;
+
   // The signature on an inspection and the HSE heading are new columns; a database that
   // has not run that migration yet still has to load its records.
   const compatibleInspectionResult = schemaFeatureMissing(inspectionResult.error, ["signed_by", "signed_at", "signature_image"])
@@ -655,7 +677,7 @@ export async function loadProjectOperations(
   const compatibleSettingsResult = legacySettingsSchema
     ? await client.from("project_settings").select("id,project_id,report_prefix,default_language,max_file_size_mb,notification_lead_hours,email_notifications_enabled,push_notifications_enabled,retention_days,branding,modules,signing_workflow").eq("project_id", projectId).maybeSingle()
     : settingsResult;
-  [templateResult, libraryResult, compatibleInspectionResult, findingResult, findingProgressResult, compatibleHseResult, compatibleRegisterResult, compatibleBoqProgressResult, compatibleFileResult, compatibleSettingsResult, backupResult, locationResult, readinessResult, compatibleVisualCaptureResult, compatibleVisualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult, dayReportResult].forEach((result) => fail(result.error));
+  [templateResult, libraryResult, compatibleInspectionResult, findingResult, findingProgressResult, compatibleHseResult, compatibleRegisterResult, compatibleBoqProgressResult, compatibleFileResult, compatibleSettingsResult, compatibleBackupResult, locationResult, readinessResult, compatibleVisualCaptureResult, compatibleVisualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult, dayReportResult].forEach((result) => fail(result.error));
   const templateRows = (templateResult.data ?? []) as Omit<ChecklistTemplate, "items">[];
   const itemResult = templateRows.length
     ? await client.from("checklist_items").select("id,template_id,section,prompt,response_type,required,sort_order,unit,minimum_value,maximum_value,failure_severity,guidance").in("template_id", templateRows.map((template) => template.id)).order("sort_order")
@@ -745,7 +767,7 @@ export async function loadProjectOperations(
       ...compatibleSettingsResult.data,
       ...(legacySettingsSchema ? legacySettingsCompatibility(compatibleSettingsResult.data.branding) : {}),
     } as ProjectSettings : null,
-    backupRuns: (backupResult.data ?? []) as BackupRun[],
+    backupRuns: (compatibleBackupResult.data ?? []) as BackupRun[],
     reportVersions: (reportFilters[0]?.data ?? []) as ReportVersion[],
     reportReviews: (reportFilters[1]?.data ?? []) as ReportReview[],
     reportSignatures: (signatureResult?.data ?? []) as ReportSignature[],
@@ -2001,7 +2023,16 @@ async function sha256Hex(bytes: Uint8Array) {
   return Array.from(new Uint8Array(digest)).map((value) => value.toString(16).padStart(2, "0")).join("");
 }
 
-export async function downloadManualBackup(client: SupabaseClient, organizationId: string, projectId: string) {
+/**
+ * A backup the user asks for by hand, verified the same way the nightly one is: the export
+ * is checksummed in the browser and that checksum is written back, so a file that arrives
+ * damaged can be told apart from one that was never complete.
+ *
+ * The scope is the client's choice. One project is what a supervisor wants before a
+ * handover; the whole organization is what an administrator wants before a migration, and
+ * it is the only export that also carries the members, roles and settings around a project.
+ */
+export async function downloadManualBackup(client: SupabaseClient, organizationId: string, projectId: string | null) {
   const rateLimit = await client.rpc("consume_security_rate_limit", { p_action_code: "manual_backup", p_max_requests: 5, p_window_minutes: 60 });
   fail(rateLimit.error);
   if (rateLimit.data !== true) throw new Error("De exportlimiet is bereikt. Probeer het over een uur opnieuw.");
@@ -2016,10 +2047,16 @@ export async function downloadManualBackup(client: SupabaseClient, organizationI
   const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `codeco-project-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  anchor.download = `codeco-${projectId ? "project" : "organisation"}-backup-${new Date().toISOString().slice(0, 10)}.json`;
   anchor.click();
   URL.revokeObjectURL(url);
-  return { manifest, sha256, size: bytes.byteLength };
+  return {
+    manifest,
+    sha256,
+    size: bytes.byteLength,
+    scope: projectId ? "project" as const : "organization" as const,
+    recordCounts: (manifest.record_counts ?? {}) as Record<string, number>,
+  };
 }
 
 export async function validateBackupDryRun(client: SupabaseClient, file: File) {
