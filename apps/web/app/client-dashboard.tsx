@@ -12,7 +12,6 @@ import {
   HardHat,
   LayoutDashboard,
   MapPin,
-  Plus,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -119,7 +118,6 @@ export function ClientDashboard({
   buildingName,
   buildingCount,
   weather,
-  openQuickAdd,
   openActions,
   openWorkspace,
   openDailyQuestions,
@@ -134,7 +132,6 @@ export function ClientDashboard({
   buildingName: string;
   buildingCount: number;
   weather: DashboardWeather;
-  openQuickAdd: () => void;
   openActions: () => void;
   openWorkspace: () => void;
   openDailyQuestions: () => void;
@@ -190,7 +187,9 @@ export function ClientDashboard({
           </label>
           <button className="overview-icon-button" type="button" aria-label={text("Notifications", "Meldingen")} onClick={openActions}><Bell size={17} />{urgentItems.length ? <i /> : null}</button>
           <button className="overview-icon-button" type="button" aria-label={text("Daily questions", "Dagvragen")} onClick={openDailyQuestions}><CalendarDays size={17} /></button>
-          <button className="primary-button overview-create-button" type="button" onClick={openQuickAdd}><Plus size={16} /> {text("New field record", "Nieuwe veldregistratie")}</button>
+          {/* This screen reads the day; it does not write it. Recording a photo or a field
+              record has its own button in the bar at the bottom, on every screen. */}
+          <button className="secondary-button overview-create-button" type="button" onClick={openWorkspace}>{text("Open workspace", "Open werkruimte")} <ArrowRight size={15} /></button>
         </div>
       </header>
 
@@ -198,7 +197,7 @@ export function ClientDashboard({
         <MetricCard icon={<FileCheck2 size={21} />} label={text("Open follow-up", "Open opvolging")} value={openItems.length} detail={`${urgentItems.length} ${text("high priority", "hoge prioriteit")}`} tone="teal" onClick={openActions} />
         <MetricCard icon={<AlertTriangle size={21} />} label={text("Quality issues", "Kwaliteitspunten")} value={issues.length} detail={text("Findings and NCRs", "Bevindingen en NCR's")} tone="orange" onClick={openActions} />
         <MetricCard icon={<ClipboardCheck size={21} />} label={text("Inspections", "Inspecties")} value={inspections.length} detail={text("Recorded in this report", "In dit rapport vastgelegd")} tone="blue" onClick={openWorkspace} />
-        <MetricCard icon={<Camera size={21} />} label={text("Pictures", "Foto's")} value={photoEntries.length} detail={text("Photos linked to context", "Foto's met projectcontext")} tone="violet" onClick={openQuickAdd} />
+        <MetricCard icon={<Camera size={21} />} label={text("Pictures", "Foto's")} value={photoEntries.length} detail={text("Photos linked to context", "Foto's met projectcontext")} tone="violet" onClick={openWorkspace} />
       </div>
 
       <div className="overview-primary-grid">
@@ -218,8 +217,8 @@ export function ClientDashboard({
             )) : (
               <div className="overview-purposeful-empty">
                 <span><HardHat size={24} /></span>
-                <div><strong>{text("No work recorded for this view", "Geen werkzaamheden in deze weergave")}</strong><p>{text("Start with a field record; the overview will build itself from verified project data.", "Start met een veldregistratie; het overzicht vult zich daarna met gecontroleerde projectdata.")}</p></div>
-                <button className="secondary-button" type="button" onClick={openQuickAdd}><Plus size={15} /> {text("Record work", "Werk vastleggen")}</button>
+                <div><strong>{text("No work recorded for this view", "Geen werkzaamheden in deze weergave")}</strong><p>{text("The overview fills itself with verified project data once the first field record has been made.", "Het overzicht vult zich met gecontroleerde projectdata zodra de eerste veldregistratie is gemaakt.")}</p></div>
+                <button className="secondary-button" type="button" onClick={openWorkspace}>{text("Open workspace", "Open werkruimte")} <ArrowRight size={15} /></button>
               </div>
             )}
           </div>
@@ -254,9 +253,11 @@ export function ClientDashboard({
           <header className="overview-panel-heading">
             <div><span>{text("Traceability", "Traceerbaarheid")}</span><h2>{text("Recent activity", "Recente activiteit")}</h2></div>
           </header>
+          {/* A line in this list is something that already happened. Tapping it opens the
+              record, whatever it is; a photo line used to hand the user to the camera. */}
           <div className="overview-activity-list">
             {activityEntries.length ? activityEntries.map((entry) => (
-              <button type="button" onClick={entry.kind === "photo" ? openQuickAdd : openActions} key={entry.id}>
+              <button type="button" onClick={entry.kind === "photo" ? openWorkspace : openActions} key={entry.id}>
                 <i className={entry.badgeTone === "red" ? "alert" : entry.kind}><EntryIcon kind={entry.kind} alert={entry.badgeTone === "red"} /></i>
                 <span><strong>{entry.title}</strong><small>{entry.person} · {entry.location || buildingName}</small></span>
                 <time>{entry.time}</time>
@@ -268,7 +269,7 @@ export function ClientDashboard({
         <article className="overview-panel overview-evidence-panel">
           <header className="overview-panel-heading">
             <div><span>{text("Visual evidence", "Visueel bewijs")}</span><h2>{text("Latest photo records", "Laatste fotoregistraties")}</h2></div>
-            <button type="button" onClick={openQuickAdd}><Camera size={14} /> {text("Add", "Toevoegen")}</button>
+            <button type="button" onClick={openWorkspace}>{text("View all", "Alles bekijken")} <ArrowRight size={14} /></button>
           </header>
           <div className="overview-evidence-grid">
             {evidencePhotos.length ? evidencePhotos.map((photo, index) => (
@@ -279,9 +280,9 @@ export function ClientDashboard({
                 <span><strong>{photo.title}</strong><small>{new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Paramaribo" }).format(new Date(photo.capturedAt))}</small></span>
               </button>
             )) : [0, 1, 2, 3].map((index) => (
-              <button className="empty" type="button" onClick={openQuickAdd} key={index}>
-                <span className={`evidence-placeholder tone-${index + 1}`}><Camera size={20} /><i>+</i></span>
-                <span><strong>{text("Photo position available", "Fotopositie beschikbaar")}</strong><small>{text("Add verified site evidence", "Voeg gecontroleerd bouwplaatsbewijs toe")}</small></span>
+              <button className="empty" type="button" onClick={openWorkspace} key={index}>
+                <span className={`evidence-placeholder tone-${index + 1}`}><Camera size={20} /></span>
+                <span><strong>{text("No photo yet", "Nog geen foto")}</strong><small>{text("Site evidence appears here", "Bouwplaatsbewijs verschijnt hier")}</small></span>
               </button>
             ))}
           </div>

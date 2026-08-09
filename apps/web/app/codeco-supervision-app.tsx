@@ -3352,7 +3352,6 @@ function TodayView({
         buildingName={buildingName}
         buildingCount={buildings.length}
         weather={projectStartAnswers ? { temperatureC: projectStartAnswers.temperatureC, weatherCondition: projectStartAnswers.weatherCondition } : null}
-        openQuickAdd={openQuickAdd}
         openActions={openActions}
         openWorkspace={openWorkspace}
         openDailyQuestions={openDailyQuestions}

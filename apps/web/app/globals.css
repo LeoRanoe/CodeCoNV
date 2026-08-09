@@ -8634,24 +8634,10 @@ textarea:focus-visible {
 }
 
 /* Photo linkage: which record does this image belong to? */
-.media-origin-bar { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 12px; }
-.media-origin-bar button {
-  align-items: center;
-  background: var(--paper);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--muted);
-  cursor: pointer;
-  display: inline-flex;
-  font-size: 12px;
-  font-weight: 600;
-  gap: 6px;
-  padding: 7px 13px;
-}
-.media-origin-bar button b { color: var(--ink-500); font-size: 11px; font-weight: 700; }
-.media-origin-bar button:hover { border-color: var(--green); color: var(--green); }
-.media-origin-bar button.active { background: var(--green); border-color: var(--green); color: #fff; }
-.media-origin-bar button.active b { color: rgba(255, 255, 255, 0.82); }
+/* What the pictures are filtered on, beside the building they belong to. The two share the
+   row and each keeps at least half of it, so neither is squeezed to a stub. */
+.media-origin-field { flex: 1 1 200px; min-width: 0; }
+.media-actions-panel > .building-picker-field { flex: 1 1 200px; min-width: 0; }
 
 .media-origin-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
 .media-origin-chip {
@@ -15079,7 +15065,6 @@ button {
   :is(
     .building-choice-options,
     .building-multi-options,
-    .media-origin-bar,
     .quick-issue-presets,
     .work-option-grid,
     .workforce-buildings

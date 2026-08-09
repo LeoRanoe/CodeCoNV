@@ -122,7 +122,6 @@ test("a strip with an odd number of tiles ends on a straight edge", async ({ pag
 
 /** Sets of filters and choices, with the number of chips their component can hand them. */
 const wrappingChipSets: Array<{ selector: string; child: string; chips: string[] }> = [
-  { selector: "media-origin-bar", child: "button", chips: ["Alles", "Issue / NCR", "Inspecties", "HSE", "Registers", "Visueel bewijs", "Nog niet gekoppeld"] },
   { selector: "quick-issue-presets", child: "button", chips: ["Werkzaamheden gaande", "Werkzaamheden afgerond", "Vertraging"] },
   { selector: "work-option-grid", child: "button", chips: ["Fundering oost", "Wapening kolommen", "Storten dek 3", "Gevelbekleding"] },
   { selector: "workforce-buildings", child: "button", chips: ["Main building", "Annex noord", "Parkeerdek"] },

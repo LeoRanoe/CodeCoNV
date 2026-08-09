@@ -661,6 +661,23 @@ export function MediaLibraryWorkspace({
 
       <div className="media-actions-panel">
         <BuildingPicker id="media-library-building" buildings={buildings} value={libraryBuildingId} onChange={(next) => { setLibraryBuildingId(next); setFolderId("all"); }} />
+        {/* A list, not a row of chips. Seven of those wrapped over two ragged rows on a
+            phone and pushed the pictures themselves below the fold — the same reason the
+            building beside it is a dropdown. It stands next to the building because both
+            answer the same question: which pictures am I looking at. The count travels
+            with each choice, so what a filter holds is readable before it is picked. */}
+        <label className="form-field media-origin-field" htmlFor="media-origin-filter">
+          <span>{text("Filter by", "Filteren op")}</span>
+          <select
+            id="media-origin-filter"
+            value={originFilter}
+            onChange={(event) => setOriginFilter(event.target.value as "all" | FileOriginKind)}
+          >
+            {originFilters.map((filter) => (
+              <option value={filter.id} key={filter.id}>{filter.label} ({originCount(filter.id)})</option>
+            ))}
+          </select>
+        </label>
         {assetsMode ? <div className="media-kind-toggle">
           <button className={kind === "photo" ? "active" : ""} type="button" onClick={() => setKind("photo")}><ImageIcon size={16} /> {text("Photo", "Foto")}</button>
           <button className={kind === "drawing" ? "active" : ""} type="button" onClick={() => setKind("drawing")}><HardDrive size={16} /> {text("Drawing", "Tekening")}</button>
@@ -768,13 +785,6 @@ export function MediaLibraryWorkspace({
 
       {queue.length ? <div className="offline-queue"><div><strong>{queue.length} {text("upload(s) waiting", "upload(s) wachten")}</strong><span>{!online ? text("They synchronize automatically when the connection returns.", "Ze synchroniseren automatisch zodra de verbinding terug is.") : savingData && connectionIsMetered() ? text("Automatic sync is paused on this metered connection.", "Automatische synchronisatie is gepauzeerd op deze databundel.") : text("Automatic synchronization is active.", "Automatische synchronisatie is actief.")}</span></div><button className="secondary-button" type="button" disabled={!online || syncing} onClick={() => void run(() => synchronize(true, true), text("Offline uploads synchronized.", "Offline uploads gesynchroniseerd."))}>{syncing ? <Loader2 className="spin" size={15} /> : <RefreshCw size={15} />} {text("Sync now", "Nu synchroniseren")}</button><div className="offline-queue-list">{queue.map((upload) => <span className={upload.lastError ? "failed" : ""} key={upload.id}><ImageIcon size={14} /><b>{upload.fileName}</b><small title={upload.lastError ?? undefined}>{upload.lastError ? text("Sync failed · tap Sync now", "Sync mislukt · tik op Nu synchroniseren") : humanSize(upload.queuedSize)}{!upload.lastError && upload.compressed ? ` · ${Math.round((1 - upload.queuedSize / upload.originalSize) * 100)}% bespaard` : ""}</small><button type="button" aria-label={text("Remove queued upload", "Verwijder wachtende upload")} onClick={() => { if (window.confirm(text("Remove this unsynchronized field file from this device?", "Dit niet-gesynchroniseerde veldbestand van dit apparaat verwijderen?"))) void removeOfflineUpload(upload.id).then(reloadQueue); }}><Trash2 size={14} /></button></span>)}</div></div> : null}
 
-      <div className="media-origin-bar" role="group" aria-label={text("Filter photos by what they belong to", "Filter foto's op waar ze bij horen")}>
-        {originFilters.map((filter) => (
-          <button className={originFilter === filter.id ? "active" : ""} type="button" onClick={() => setOriginFilter(filter.id)} key={filter.id}>
-            {filter.label} <b>{originCount(filter.id)}</b>
-          </button>
-        ))}
-      </div>
 
       {assetsMode && assetRecords.length ? <section className="asset-record-library" aria-label={text("Project reports and forms", "Projectrapporten en formulieren")}>
         <header><div><strong>{text("Reports and registered forms", "Rapporten en geregistreerde formulieren")}</strong><small>{text("Open the source record to preview, edit or export it without copying its identity.", "Open de bronregistratie om deze zonder kopie te bekijken, bewerken of exporteren.")}</small></div><b>{assetRecords.length}</b></header>

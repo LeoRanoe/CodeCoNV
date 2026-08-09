@@ -3027,3 +3027,41 @@ test("closes the gaps that an odd tile count and a long file name tear in the mo
   // A flex row never draws an ellipsis, so the location line is a block that can.
   assert.match(css, /\.project-switcher-copy small \{[^}]*text-overflow: ellipsis;/s);
 });
+
+test("the overview reads the day instead of writing it", async () => {
+  const [dashboard, app, mediaLibrary, css] = await Promise.all([
+    readFile(new URL("../app/client-dashboard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/media-library-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // Nothing on the overview may hand the user to the camera or to a blank record. The
+  // photo button in the bottom bar is on every screen already, which is what made a
+  // second route to it from a dashboard tile read as a mistake.
+  assert.doesNotMatch(dashboard, /openQuickAdd/);
+  assert.doesNotMatch(dashboard, /openCamera|captureInputRef|capture="environment"/);
+  // The dashboard is mounted without that route at all, so it cannot grow one by accident.
+  const mountStart = app.indexOf("<ClientDashboard");
+  assert.ok(mountStart > 0, "the overview must still be mounted from the app shell");
+  const dashboardMount = app.slice(mountStart, app.indexOf("/>", mountStart));
+  assert.match(dashboardMount, /openActions=/, "the mount slice must cover the props");
+  assert.doesNotMatch(dashboardMount, /openQuickAdd/);
+  // Every remaining route out of it leads to something that already exists.
+  for (const viewRoute of [
+    /onClick=\{openWorkspace\}/,
+    /onClick=\{openActions\}/,
+    /Open workspace", "Open werkruimte/,
+    /View all", "Alles bekijken/,
+  ]) {
+    assert.match(dashboard, viewRoute);
+  }
+
+  // The photo filters are a list, not seven chips wrapping over two ragged rows.
+  assert.match(mediaLibrary, /<label className="form-field media-origin-field" htmlFor="media-origin-filter">/);
+  assert.match(mediaLibrary, /originFilters\.map\(\(filter\) => \(\s*<option/s);
+  assert.doesNotMatch(mediaLibrary, /media-origin-bar/);
+  assert.doesNotMatch(css, /\.media-origin-bar/);
+  // It stands beside the building, and neither of the two is squeezed to a stub.
+  assert.match(css, /\.media-origin-field \{ flex: 1 1 200px; min-width: 0; \}/);
+});
