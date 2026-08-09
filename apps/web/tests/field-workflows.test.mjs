@@ -322,8 +322,14 @@ test("offers marking on the photo everywhere a photo can be attached", async () 
   // The shared block is the only place the pad is opened for the forms.
   assert.match(evidencePad, /<PhotoMarkupPad/);
   // Every one of the operational photo blocks knows which buildings, rooms and parties a
-  // marker can be attached to.
-  assert.equal(operations.match(/markupContext=\{\{ \.\.\.markupOptions/g)?.length, 5);
+  // marker can be attached to — the shared lists and the named slots of the client's own
+  // forms alike. Counting them would only record how many forms exist today; what matters
+  // is that no block is passed a context that leaves the project out.
+  const markupContexts = operations.match(/markupContext=\{[^}]*/g) ?? [];
+  assert.ok(markupContexts.length >= 5, "the operational forms must reach the marking pad");
+  for (const context of markupContexts) {
+    assert.match(context, /markupContext=\{\{ \.\.\.markupOptions/, `every photo block must pass the project context: ${context}`);
+  }
 
   // A marker carries more than a pin: words, severity, and where it belongs.
   for (const field of [/Full description/, /Severity/, /Where does this belong\?/, /Responsible party/, /Work package/, /Floor \/ room \/ element/]) {

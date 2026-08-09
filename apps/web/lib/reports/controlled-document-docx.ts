@@ -59,11 +59,35 @@ function typeSpecificDetails(type: ControlledDocumentType, details: Details): Pa
     ];
   }
   if (type === "change_order") {
+    // The client's own CO form: what changes, why, and what it does to the finish date.
+    const scopeAreas = Array.isArray(details.scope_areas)
+      ? (details.scope_areas as unknown[]).map((area) => String(area).replaceAll("_", " ")).join(", ")
+      : "";
+    const affectsSchedule = details.affects_schedule === true;
     return [
-      labelValue("Schedule impact", text(details, "schedule_impact")),
-      labelValue("Cost impact", text(details, "cost_impact")),
-      sectionHeading("Impact explanation"),
-      bodyText(text(details, "impact_explanation")),
+      labelValue("Change order type", text(details, "change_order_type").replaceAll("_", " ")),
+      labelValue("Reason for change", text(details, "change_reason").replaceAll("_", " ")),
+      labelValue("Requested by", text(details, "requested_by")),
+      labelValue("Scope of change", scopeAreas || "—"),
+      sectionHeading("Details / what will change"),
+      bodyText(text(details, "scope_details", text(details, "description"))),
+      sectionHeading("Schedule impact"),
+      labelValue("Affects the schedule", affectsSchedule ? "Yes" : "No"),
+      ...(affectsSchedule ? [
+        labelValue("Original finish date (baseline)", text(details, "original_finish_date")),
+        labelValue("New expected finish date (revised)", text(details, "new_expected_finish_date")),
+        labelValue("Extension of time (days)", text(details, "extension_days", "0")),
+      ] : []),
+      ...(text(details, "impact_explanation") === "—" ? [] : [bodyText(text(details, "impact_explanation"))]),
+      // Section 5 and 6: the contractor acknowledges, supervision approves. The developer
+      // and contractor-acceptance columns are struck off the client's own form.
+      sectionHeading("Acknowledgement · contractor"),
+      labelValue("Contractor representative", [text(details, "contractor_representative"), text(details, "contractor_position")].filter((item) => item !== "—").join(" · ") || "—"),
+      labelValue("Signed", text(details, "contractor_signed_at") === "—" ? "Not acknowledged yet" : String(text(details, "contractor_signed_at")).slice(0, 10)),
+      ...(text(details, "contractor_remarks") === "—" ? [] : [bodyText(text(details, "contractor_remarks"))]),
+      sectionHeading("Approval · supervision"),
+      labelValue("Approved by", text(details, "supervision_signed_by", text(details, "supervision_name"))),
+      labelValue("Date approved", text(details, "supervision_signed_at") === "—" ? "Not approved yet" : String(text(details, "supervision_signed_at")).slice(0, 10)),
     ];
   }
   if (type === "environmental_report") {

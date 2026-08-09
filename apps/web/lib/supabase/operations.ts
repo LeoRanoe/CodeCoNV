@@ -97,6 +97,13 @@ export type Finding = {
     date_identified?: string | null;
     /** The boxes of the client's own non-conformance report. */
     reference_checklist?: string;
+    /**
+     * The two lists at the head of the client's own NCR form: what the non-conformance is
+     * (workmanship, material, method) and which work it hit (concrete, masonry, flooring).
+     * The third list on that sheet, "Source", was struck through by the client.
+     */
+    ncr_category?: string;
+    ncr_work_type?: string;
     recommended_action?: "rework" | "repair" | "alternative";
     recommended_action_detail?: string;
     remarks?: string;
@@ -105,11 +112,14 @@ export type Finding = {
     issued_at?: string | null;
     signed_by?: string;
     signed_at?: string | null;
+    /** The job the signer holds — every signature box on the client's form asks for it. */
+    signed_position?: string;
     /** The signature that was written on the form, at the moment it was issued. */
     signature_image?: string | null;
     /** The name and the signature the contractor wrote through the shared link. */
     correction_signed_by?: string;
     correction_signed_at?: string | null;
+    correction_signed_position?: string;
     correction_signature_image?: string | null;
     completion_signed_by?: string;
     completion_signed_at?: string | null;
@@ -118,7 +128,18 @@ export type Finding = {
      * when an NCR is closed, as on the client's own NCR form. */
     verification_signed_by?: string;
     verification_signed_at?: string | null;
+    verification_signed_position?: string;
     verification_signature_image?: string | null;
+    /**
+     * The rest of that box, which the client's own form asks for by name: the day the
+     * re-inspection was actually carried out, what was observed, and the outcome the
+     * verifier signed for. "Closed" as a status is not the same statement as "the
+     * corrective action was inspected on this date and found acceptable".
+     */
+    qc_inspection_date?: string | null;
+    qc_issue_resolved?: boolean;
+    qc_remarks?: string;
+    verification_comments?: string;
   };
   /** Set by the database when a finding is closed: who verified it, for the QC signature. */
   verified_by: string | null;
@@ -1037,6 +1058,9 @@ export async function createFinding(client: SupabaseClient, input: {
   dateIdentified?: string;
   /** The reference checklist or earlier NCR number the client writes at the top of the form. */
   referenceChecklist?: string;
+  /** The category and work-type lists at the head of the client's own NCR form. */
+  ncrCategory?: string;
+  ncrWorkType?: string;
   /** "Recommended Action by Engineer" on the client's non-conformance report. */
   recommendedAction?: "rework" | "repair" | "alternative";
   recommendedActionDetail?: string;
@@ -1046,6 +1070,8 @@ export async function createFinding(client: SupabaseClient, input: {
   /** The engineer signs the NCR before it goes to the contractor. */
   signedBy?: string;
   signedAt?: string;
+  /** The job the engineer holds, printed under the signature on the client's own form. */
+  signedPosition?: string;
   /** The written signature itself, drawn on the form at the moment of signing. */
   signatureImage?: string | null;
   locationNodeId?: string;
@@ -1083,6 +1109,8 @@ export async function createFinding(client: SupabaseClient, input: {
       source_catalog_subject: input.sourceCatalogSubject || null,
       date_identified: input.dateIdentified || null,
       reference_checklist: input.referenceChecklist?.trim() || "",
+      ncr_category: input.ncrCategory?.trim() || "",
+      ncr_work_type: input.ncrWorkType?.trim() || "",
       recommended_action: input.recommendedAction || null,
       recommended_action_detail: input.recommendedActionDetail?.trim() || "",
       remarks: input.remarks?.trim() || "",
@@ -1090,6 +1118,7 @@ export async function createFinding(client: SupabaseClient, input: {
       issued_at: new Date().toISOString(),
       signed_by: input.signedBy?.trim() || "",
       signed_at: input.signedAt || null,
+      signed_position: input.signedPosition?.trim() || "",
       signature_image: input.signatureImage || null,
       location_node_id: input.locationNodeId || null,
     },
@@ -1132,7 +1161,27 @@ export async function linkFileToRecord(
  * and `verificationSignatureImage` are the written signature under the Quality Control /
  * Verification box, required by the database when an NCR closes.
  */
-export async function transitionFinding(client: SupabaseClient, findingId: string, nextStatus: string, note: string, finalMeasure = "", correction = "", verificationSignedBy = "", verificationSignatureImage = "") {
+export type QualityControlVerification = {
+  /** The job the verifier holds, printed under the signature on the client's own form. */
+  verification_signed_position?: string;
+  verification_comments?: string;
+  /** The day the re-inspection was actually carried out, not the day it was typed in. */
+  qc_inspection_date?: string;
+  qc_issue_resolved?: boolean;
+  qc_remarks?: string;
+};
+
+export async function transitionFinding(
+  client: SupabaseClient,
+  findingId: string,
+  nextStatus: string,
+  note: string,
+  finalMeasure = "",
+  correction = "",
+  verificationSignedBy = "",
+  verificationSignatureImage = "",
+  verification: QualityControlVerification = {},
+) {
   const base = {
     p_finding_id: findingId,
     p_next_status: nextStatus,
@@ -1141,14 +1190,24 @@ export async function transitionFinding(client: SupabaseClient, findingId: strin
     p_correction: correction || null,
     p_final_measure: finalMeasure || null,
   };
+  const details = Object.fromEntries(Object.entries(verification).filter(([, value]) => value !== undefined && value !== ""));
   const withSignature = Boolean(verificationSignedBy || verificationSignatureImage);
-  const result = await client.rpc("transition_project_finding", withSignature ? {
+  const signed = withSignature ? {
     ...base,
     p_verification_signed_by: verificationSignedBy || null,
     p_verification_signature_image: verificationSignatureImage || null,
-  } : base);
-  // A database that does not know the QC verification signature yet still has to close
-  // the NCR; it then stores the note without the written signature.
+  } : base;
+  const withDetails = Object.keys(details).length > 0;
+  const result = await client.rpc("transition_project_finding", withDetails
+    ? { ...signed, p_verification_details: details }
+    : signed);
+  // A database that does not know the rest of the Quality Control box yet still has to
+  // close the NCR: it then records the same signature, one box shorter, instead of
+  // refusing the close-out.
+  if (withDetails && schemaFeatureMissing(result.error, ["p_verification_details"])) {
+    return transitionFinding(client, findingId, nextStatus, note, finalMeasure, correction, verificationSignedBy, verificationSignatureImage);
+  }
+  // Older still: a database without the written signature at all.
   if (withSignature && schemaFeatureMissing(result.error, ["p_verification_signed_by", "p_verification_signature_image"])) {
     const fallback = await client.rpc("transition_project_finding", base);
     fail(fallback.error);

@@ -8891,6 +8891,115 @@ textarea:focus-visible {
 .external-photo-input strong { white-space: normal; }
 .finding-photo-capture small, .external-photo-input small { color: var(--ink-500); font-size: 10px; }
 .finding-photo-capture input, .external-photo-input input { height: 1px; opacity: 0; position: absolute; width: 1px; }
+/* A photo the form asks for by name: its own labelled box, next to the field it proves.
+   The empty state is the dashed capture tile the client drew; the filled state is the
+   picture itself, which is also the way into everything written about it. */
+.named-photo-slot { display: grid; gap: 6px; min-width: 0; position: relative; }
+.named-photo-slot-label {
+  color: var(--ink-700);
+  font-size: 11px;
+  font-weight: 700;
+}
+.named-photo-slot-label em { color: var(--danger, #c0392b); font-style: normal; }
+.named-photo-slot-capture {
+  align-items: center;
+  background: #f2f7f7;
+  border: 1px dashed #91b4b9;
+  border-radius: 12px;
+  color: var(--ink-700);
+  cursor: pointer;
+  display: flex;
+  gap: 11px;
+  min-height: 96px;
+  padding: 14px;
+}
+.named-photo-slot-capture > span { display: grid; flex: 1; gap: 3px; min-width: 0; }
+.named-photo-slot-capture strong { font-size: 11px; }
+.named-photo-slot-capture small { color: var(--ink-500); font-size: 10px; }
+.named-photo-slot-capture input { height: 1px; opacity: 0; position: absolute; width: 1px; }
+.named-photo-slot-filled {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 8px;
+}
+.named-photo-slot-preview {
+  align-items: center;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+.named-photo-slot-text { display: grid; gap: 2px; min-width: 0; }
+.named-photo-slot-text strong { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.named-photo-slot-text em {
+  align-items: center;
+  color: var(--ink-500);
+  display: inline-flex;
+  font-size: 10px;
+  font-style: normal;
+  gap: 3px;
+}
+.named-photo-slot-remove {
+  background: #fff;
+  border: 1px solid var(--ink-200);
+  border-radius: 9px;
+  color: var(--ink-600, var(--ink-500));
+  cursor: pointer;
+  min-height: 32px;
+  min-width: 32px;
+}
+
+/* The numbered sections of the client's own paper forms, inside a record form that also
+   carries the shared document header above and below them. */
+.agreement-sections,
+.change-order-sections,
+.delay-report-sections { margin: 4px 0; }
+
+/* Category, type and impact stand next to each other on the client's own delay report,
+   because they are three answers about one delay, not three questions in a row. */
+.delay-choice-columns { align-items: start; }
+.delay-other-input {
+  border: 1px solid var(--ink-200);
+  border-radius: 9px;
+  margin-top: 6px;
+  min-height: 34px;
+  padding: 6px 9px;
+  width: 100%;
+}
+@media (max-width: 760px) {
+  .delay-choice-columns { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Two named photos side by side — the problem and the result, the baseline and the
+   completion. On a phone they stack, because a thumbnail half a screen wide is not a
+   photo you can judge. */
+.named-photo-pair { align-items: start; }
+@media (max-width: 760px) {
+  .named-photo-pair { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* The Quality Control / Verification box of the client's own NCR form, kept together as
+   one box while it is filled in — it is one statement, signed once. */
+.ncr-verification-box {
+  background: #f7fbfa;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: grid;
+  gap: 9px;
+  padding: 11px;
+}
+.ncr-signature-position { max-width: 320px; }
+
 .quick-issue-presets { display: flex; flex-wrap: wrap; gap: 7px; }
 .quick-issue-presets button {
   background: #f3f7f7;
@@ -13783,6 +13892,19 @@ button {
   padding: 7px 10px;
 }
 
+/* The deadline count rides along on its supporting-tools button, the way the tile it
+   replaced used to carry it. */
+.workspace-support-count {
+  background: var(--ink-100, #e6eeeb);
+  border-radius: 999px;
+  color: var(--ink-700);
+  font-size: 9px;
+  font-weight: 800;
+  min-width: 16px;
+  padding: 1px 5px;
+  text-align: center;
+}
+
 .workspace-section-controls {
   grid-template-columns: auto minmax(150px, 1fr) minmax(220px, 330px) auto;
   margin-top: 0;
@@ -14056,6 +14178,18 @@ button {
 .submitted-record-share-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .agreement-signatures { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* The Agreement Confirmation box: one column per signer, each with the name, the job and
+   the signature underneath it, the way the client's own form stacks them. */
+.agreement-signature-column { display: grid; gap: 8px; min-width: 0; }
+.agreement-signature-role {
+  color: var(--brand-700, var(--ink-700));
+  font-size: 11px;
+  font-weight: 800;
+}
+@media (max-width: 760px) {
+  .agreement-signatures { grid-template-columns: minmax(0, 1fr); }
+}
 
 .external-ncr-instruction {
   background: #fff7e5;

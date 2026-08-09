@@ -9,6 +9,8 @@ const responseSchema = z.object({
   responseType: z.enum(["ready_for_verification", "issue", "proposed_correction"]),
   note: z.string().trim().min(3).max(2000),
   contactName: z.string().trim().max(120).optional().default(""),
+  /** The job the signer holds; the client's own NCR form prints it under the name. */
+  contactPosition: z.string().trim().max(240).optional().default(""),
   /** The signature the contractor wrote, as a small inline PNG. */
   signatureImage: z.string().regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/).max(200000).nullable().optional(),
   evidenceFileId: z.uuid().nullable().optional(),
@@ -23,20 +25,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     const input = responseSchema.safeParse(await request.json().catch(() => null));
     if (!input.success) return storageJson({ error: "Controleer de gereedmelding en probeer opnieuw." }, 400);
     const admin = createStorageAdminClient();
-    const submit = (responseType: string, note: string, withSignature = true) => admin.rpc("submit_external_share_response", {
+    // Three shapes of the same call, newest first: with the signer's position, with the
+    // written signature only, and with neither. Each step down is a database that has not
+    // been given the newer migration yet, and each still receives the answer.
+    const submit = (responseType: string, note: string, level: "position" | "signature" | "plain" = "position") => admin.rpc("submit_external_share_response", {
       p_token: token,
       p_response_type: responseType,
       p_note: note,
       p_contact_name: input.data.contactName || null,
       p_evidence_file_id: input.data.evidenceFileId || null,
       p_idempotency_key: input.data.idempotencyKey,
-      ...(withSignature ? { p_signature_image: input.data.signatureImage || null } : {}),
+      ...(level === "plain" ? {} : { p_signature_image: input.data.signatureImage || null }),
+      ...(level === "position" ? { p_contact_position: input.data.contactPosition || null } : {}),
     });
+    const functionMissing = (error: { code?: string; message?: string } | null) => Boolean(error)
+      && (error?.code === "PGRST202" || Boolean(error?.message?.toLowerCase().includes("could not find the function")));
     let result = await submit(input.data.responseType, input.data.note);
+    if (functionMissing(result.error)) {
+      result = await submit(input.data.responseType, input.data.note, "signature");
+    }
     // A database that does not know the written signature yet still has to receive the
     // answer; the name and the moment are then all it stores.
-    if (result.error && (result.error.code === "PGRST202" || result.error.message.toLowerCase().includes("could not find the function"))) {
-      result = await submit(input.data.responseType, input.data.note, false);
+    if (functionMissing(result.error)) {
+      result = await submit(input.data.responseType, input.data.note, "plain");
     }
     // A database that does not know the contractor's own box yet still has to receive
     // the text; it then arrives as a reported answer with the same words.

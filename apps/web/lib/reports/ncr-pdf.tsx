@@ -57,6 +57,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export function NcrDocument({ finding, progress, context, logoSource = "/codeco-logo-pdf.png" }: { finding: Finding; progress?: FindingProgressUpdate; context: NcrContext; logoSource?: string }) {
   const issue = finding.issue_management ?? {};
   const resolved = finding.status === "closed";
+  // What the verifier signed for, which is not always what the status column says: an NCR
+  // can be closed on a solution that only partly worked.
+  const issueResolved = issue.qc_issue_resolved ?? resolved;
   return <Document title={`${finding.finding_number} ${finding.title}`} author="CODECO N.V.">
     <Page size="A4" style={styles.page}>
       <View style={styles.header}><View style={styles.brand}><View style={styles.logoPlate}><Image src={logoSource} style={styles.logo} /></View></View><View style={styles.heading}><Text style={styles.title}>NON-CONFORMANCE REPORT</Text><Text style={styles.number}>{finding.finding_number}</Text></View></View>
@@ -64,19 +67,33 @@ export function NcrDocument({ finding, progress, context, logoSource = "/codeco-
       <View style={styles.row}><Cell label="Contractor / responsible party" result={context.responsiblePartyName} right /><Cell label="Date / due date" result={`${finding.created_at.slice(0, 10)} / ${finding.due_at?.slice(0, 10) ?? "—"}`} /></View>
       <View style={styles.row}><Cell label="Drawn up by" result={issue.issued_by || context.issuerName} right /><Cell label="Report number" result={finding.finding_number} /></View>
       <View style={styles.row}><Cell label="Subject" result={finding.title} right /><Cell label="Reference checklist" result={value(issue.reference_checklist)} /></View>
+      {/* The two lists at the head of the client's own form. "Source" is not among them:
+          the client struck that column through. */}
+      <View style={styles.row}><Cell label="Category" result={value(issue.ncr_category)} right /><Cell label="Type of work" result={value(issue.ncr_work_type)} /></View>
       <View style={styles.row}><Cell label="Severity / issue type" result={`${finding.severity} / ${issue.issue_type ?? finding.finding_type}`} right /><Cell label="Remarks" result={value(issue.remarks)} /></View>
       <Section title="DESCRIPTION OF NON-CONFORMANCE"><Text style={styles.value}>{finding.description}</Text><View style={styles.photoGrid}>{[1, 2, 3].map((item) => <View style={styles.photo} key={item}><Text>Linked evidence photo {item}</Text></View>)}</View></Section>
       {/* The engineer's chosen box is ticked here, exactly as on the client's own form. */}
       <Section title="ENGINEER'S RECOMMENDED ACTION"><Text style={styles.value}>{value(issue.recommended_action_detail || issue.action_steps, "Rework / repair in accordance with the approved drawings and specifications.")}</Text><View style={styles.checks}><Text>{issue.recommended_action === "rework" ? "[X]" : "[ ]"} Rework</Text><Text>{issue.recommended_action === "repair" ? "[X]" : "[ ]"} Repair</Text><Text>{issue.recommended_action === "alternative" ? "[X]" : "[ ]"} Alternative solution for approval</Text></View></Section>
       <Section title="PROPOSED CORRECTIVE ACTION BY CONTRACTOR"><Text style={styles.value}>{value(finding.proposed_correction, "Pending contractor proposal and acknowledgement.")}</Text>{finding.final_measure ? <Text style={styles.value}>Completed: {finding.final_measure}</Text> : null}{issue.correction_signed_by ? <Text style={styles.value}>Signed: {issue.correction_signed_by} · {String(issue.correction_signed_at ?? "").slice(0, 10)}</Text> : null}</Section>
-      <Section title="QUALITY CONTROL VERIFICATION"><Text style={styles.value}>Latest inspection progress: {progress?.progress_percent ?? 0}% · disposition: {(progress?.disposition ?? issue.disposition ?? "to_be_corrected").replaceAll("_", " ")}</Text><View style={styles.checks}><Text>{resolved ? "[X]" : "[ ]"} Issue resolved</Text><Text>{resolved ? "[ ]" : "[X]"} Issue not resolved</Text><Text>Status: {finding.status.replaceAll("_", " ")}</Text></View></Section>
+      {/* The Quality Control / Verification box, as the client's own form prints it: the
+          date the re-inspection was carried out, what it observed, and the comments the
+          verifier signed for — not only the status column. */}
+      <Section title="QUALITY CONTROL / VERIFICATION">
+        <Text style={styles.value}>Latest inspection progress: {progress?.progress_percent ?? 0}% · disposition: {(progress?.disposition ?? issue.disposition ?? "to_be_corrected").replaceAll("_", " ")}</Text>
+        <View style={styles.checks}><Text>{issueResolved ? "[X]" : "[ ]"} Issue resolved</Text><Text>{issueResolved ? "[ ]" : "[X]"} Issue not resolved</Text><Text>Status: {finding.status.replaceAll("_", " ")}</Text></View>
+        <View style={styles.row}><Cell label="Date of QC inspection" result={value(issue.qc_inspection_date)} right /><Cell label="Date verified" result={value(finding.verified_at?.slice(0, 10))} /></View>
+        <Text style={styles.value}>Remarks / observations: {value(issue.qc_remarks)}</Text>
+        <Text style={styles.value}>Verification comments: {value(issue.verification_comments || finding.final_measure)}</Text>
+      </Section>
       {/* The engineer's own written signature is printed where it belongs: above the line
           that carries their name, exactly as on the client's paper form. */}
+      {/* Name and position under every signature line, as the client's own form prints
+          them: a signature nobody can place is a signature nobody can hold to account. */}
       <View style={styles.signatures}>{[
-        { label: "Issued by", name: issue.signed_by || issue.issued_by || context.issuerName, ink: issue.signature_image || context.signatureImage || null },
-        { label: "Received / contractor", name: issue.correction_signed_by || issue.completion_signed_by || "", ink: issue.correction_signature_image || issue.completion_signature_image || null },
-        { label: "QC verification", name: resolved ? issue.verification_signed_by || context.verifierName || "" : "", ink: resolved ? issue.verification_signature_image || null : null },
-      ].map((line, index) => <View style={[styles.signature, index < 2 ? styles.right : {}]} key={line.label}><Text style={styles.label}>{line.label}</Text>{line.ink ? <Image src={line.ink} style={styles.signatureInk} /> : <View style={styles.signatureLine} />}<Text>{line.name || " "}</Text></View>)}</View>
+        { label: "Issued by", name: issue.signed_by || issue.issued_by || context.issuerName, position: issue.signed_position || "", ink: issue.signature_image || context.signatureImage || null },
+        { label: "Received / contractor", name: issue.correction_signed_by || issue.completion_signed_by || "", position: issue.correction_signed_position || "", ink: issue.correction_signature_image || issue.completion_signature_image || null },
+        { label: "QC verification", name: resolved ? issue.verification_signed_by || context.verifierName || "" : "", position: resolved ? issue.verification_signed_position || "" : "", ink: resolved ? issue.verification_signature_image || null : null },
+      ].map((line, index) => <View style={[styles.signature, index < 2 ? styles.right : {}]} key={line.label}><Text style={styles.label}>{line.label}</Text>{line.ink ? <Image src={line.ink} style={styles.signatureInk} /> : <View style={styles.signatureLine} />}<Text>{line.name || " "}</Text><Text style={styles.label}>{line.position || " "}</Text></View>)}</View>
       <Text style={styles.note}>The photo boxes refer to evidence linked in the central project record; images are not duplicated into this generated form unless selected as report attachments. Closing remains a separate authorized human verification.</Text>
       <Text style={styles.footer} fixed>CODECO N.V. · Non-conformance report</Text>
     </Page>

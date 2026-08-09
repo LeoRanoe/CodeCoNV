@@ -1,16 +1,17 @@
 begin;
 set local search_path = extensions, pgtap, public;
 
-select plan(13);
+select plan(19);
 
--- The two arguments of 202608070002 exist, and the six-argument function they replace is
--- gone. Both signatures side by side would make every existing six-argument call
--- ambiguous, including the ones record_issue_progress makes internally.
+-- The quality-control arguments of 202608070002, plus the rest of that box added by
+-- 202608090001. Every earlier signature is replaced rather than shadowed: two of them
+-- side by side would make existing shorter calls ambiguous, including the ones
+-- record_issue_progress makes internally.
 select has_function(
   'public',
   'transition_project_finding',
-  array['uuid','text','text','text','text','text','text','text'],
-  'a finding transition can carry the written quality-control signature'
+  array['uuid','text','text','text','text','text','text','text','jsonb'],
+  'a finding transition can carry the whole quality-control box'
 );
 select hasnt_function(
   'public',
@@ -18,12 +19,18 @@ select hasnt_function(
   array['uuid','text','text','text','text','text'],
   'the six-argument transition is replaced, not shadowed, so no call is ambiguous'
 );
+select hasnt_function(
+  'public',
+  'transition_project_finding',
+  array['uuid','text','text','text','text','text','text','text'],
+  'the eight-argument transition is replaced too, for the same reason'
+);
 select ok(
-  has_function_privilege('authenticated', 'public.transition_project_finding(uuid,text,text,text,text,text,text,text)', 'execute'),
+  has_function_privilege('authenticated', 'public.transition_project_finding(uuid,text,text,text,text,text,text,text,jsonb)', 'execute'),
   'a signed-in supervisor may transition a finding'
 );
 select ok(
-  not has_function_privilege('anon', 'public.transition_project_finding(uuid,text,text,text,text,text,text,text)', 'execute'),
+  not has_function_privilege('anon', 'public.transition_project_finding(uuid,text,text,text,text,text,text,text,jsonb)', 'execute'),
   'an anonymous visitor may not transition a finding'
 );
 
@@ -102,6 +109,72 @@ select is(
    where id = (select finding_id from ncr_scenario where label = 'ncr')),
   'Ratan Jagesar',
   'the signature is stored on the record itself, not only on the person who closed it'
+);
+
+-- The rest of the Quality Control / Verification box travels as one object, and only the
+-- keys that box owns are copied across: a caller cannot smuggle the engineer's own
+-- signature in through it.
+insert into ncr_scenario (label, finding_id)
+select 'boxed', (public.create_project_finding(
+  project.id, building.id, null, null, null,
+  'ncr', 'Tweede afwijking', 'Een tweede afwijking om de volledige QC-box te sluiten.',
+  'high', null, null, 'ncr-signature-test-4'
+)).id
+from public.projects project
+join public.buildings building on building.project_id = project.id
+where project.code = 'NCR-SIG-001';
+
+select lives_ok(
+  $$select public.transition_project_finding(
+      (select finding_id from ncr_scenario where label = 'boxed'),
+      'ready_for_verification', 'Herstel uitgevoerd.', null, null,
+      'Oppervlak hersteld volgens de goedgekeurde methode.')$$,
+  'the second NCR reaches verification'
+);
+
+select lives_ok(
+  $$select public.transition_project_finding(
+      (select finding_id from ncr_scenario where label = 'boxed'),
+      'closed', 'Herinspectie uitgevoerd en akkoord.', null, null, null,
+      'Ratan Jagesar', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==',
+      jsonb_build_object(
+        'verification_signed_position', 'Quality Engineer',
+        'verification_comments', 'Correctieve actie geverifieerd; werk is acceptabel.',
+        'qc_inspection_date', '2026-08-09',
+        'qc_issue_resolved', true,
+        'qc_remarks', 'Herinspectie uitgevoerd op locatie.',
+        'signature_image', 'data:image/png;base64,FORGED'
+      ))$$,
+  'an NCR closes with the whole quality-control box filled in'
+);
+
+select is(
+  (select issue_management ->> 'qc_inspection_date'
+   from public.findings
+   where id = (select finding_id from ncr_scenario where label = 'boxed')),
+  '2026-08-09',
+  'the date the re-inspection was carried out is kept, not only the day it was typed in'
+);
+
+select is(
+  (select issue_management ->> 'signature_image'
+   from public.findings
+   where id = (select finding_id from ncr_scenario where label = 'boxed')),
+  null,
+  'a key the quality-control box does not own is dropped rather than written'
+);
+
+select throws_ok(
+  format(
+    $query$select public.transition_project_finding(
+      %L::uuid, 'reopened', 'Toch niet in orde.', null, null, null,
+      'Ratan Jagesar', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==',
+      jsonb_build_object('qc_inspection_date', '09-08-2026'))$query$,
+    (select finding_id from ncr_scenario where label = 'boxed')
+  ),
+  '22007',
+  'The date of QC inspection must be a calendar date',
+  'a QC inspection date that is not a calendar date is refused'
 );
 
 -- An ordinary issue is not the client's NCR form and keeps closing without a signature.

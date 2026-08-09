@@ -55,6 +55,9 @@ export function buildNcrDocxDocument(finding: Finding, progress: FindingProgress
             ["Drawn up by", issue.issued_by || context.issuerName],
             ["Subject", finding.title],
             ["Reference checklist", value(issue.reference_checklist)],
+            // The two lists at the head of the client's own form; "Source" is struck off.
+            ["Category", value(issue.ncr_category)],
+            ["Type of work", value(issue.ncr_work_type)],
             ["Severity / issue type", `${finding.severity} / ${issue.issue_type ?? finding.finding_type}`],
             ["Remarks", value(issue.remarks)],
           ], 2),
@@ -67,16 +70,28 @@ export function buildNcrDocxDocument(finding: Finding, progress: FindingProgress
           bodyText(value(finding.proposed_correction, "Pending contractor proposal and acknowledgement.")),
           ...(issue.correction_signed_by ? [labelValue("Signed by contractor", `${issue.correction_signed_by} · ${String(issue.correction_signed_at ?? "").slice(0, 10)}`)] : []),
           ...(finding.final_measure ? [labelValue("Completed corrective action", finding.final_measure)] : []),
-          sectionHeading("Quality control verification"),
+          sectionHeading("Quality control / verification"),
           labelValue("Latest inspection progress", `${progress?.progress_percent ?? 0}%`),
           labelValue("Disposition", (progress?.disposition ?? issue.disposition ?? "to_be_corrected").replaceAll("_", " ")),
           labelValue("Status", finding.status.replaceAll("_", " ")),
-          new Paragraph({ children: [new TextRun({ text: resolved ? "Issue resolved" : "Issue not resolved", bold: true, size: 18 })], spacing: { before: 120, after: 160 } }),
+          // The date the re-inspection was actually carried out, and what it saw: the
+          // sentence that settles a disputed NCR a year later.
+          labelValue("Date of QC inspection", value(issue.qc_inspection_date)),
+          labelValue("Date verified", value(finding.verified_at?.slice(0, 10))),
+          labelValue("Remarks / observations", value(issue.qc_remarks)),
+          labelValue("Verification comments", value(issue.verification_comments || finding.final_measure)),
+          new Paragraph({ children: [new TextRun({ text: (issue.qc_issue_resolved ?? resolved) ? "Issue resolved" : "Issue not resolved", bold: true, size: 18 })], spacing: { before: 120, after: 160 } }),
           signatureBlock([
             ["Issued by", issue.signed_by || issue.issued_by || context.issuerName, issue.signature_image || context.signatureImage || null],
             ["Received / contractor", issue.correction_signed_by || issue.completion_signed_by || "", issue.correction_signature_image || issue.completion_signature_image || null],
             ["QC verification", resolved ? issue.verification_signed_by || context.verifierName || "" : "", resolved ? issue.verification_signature_image || null : null],
           ]),
+          // Name and position under every signature line, as the printed form has them.
+          ...[
+            ["Issued by", issue.signed_position],
+            ["Received / contractor", issue.correction_signed_position],
+            ["QC verification", resolved ? issue.verification_signed_position : ""],
+          ].flatMap(([label, position]) => position ? [labelValue(`${label} · position`, String(position))] : []),
           new Paragraph({
             children: [new TextRun({ text: "Linked evidence photos remain in the central project record; images are not duplicated into this generated document unless selected as report attachments. Closing remains a separate authorized human verification.", italics: true, color: "666666", size: 14 })],
             spacing: { before: 200 },

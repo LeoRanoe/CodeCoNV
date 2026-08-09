@@ -90,9 +90,32 @@ function typeSpecificDetails(type: ControlledDocumentType, details: Details) {
     </>;
   }
   if (type === "change_order") {
+    // The client's own CO form: what changes, why, and what it does to the finish date.
+    const scopeAreas = Array.isArray(details.scope_areas)
+      ? (details.scope_areas as unknown[]).map((area) => humanizeToken(String(area))).join(", ")
+      : "";
+    const affectsSchedule = details.affects_schedule === true;
     return <>
-      <View style={styles.grid}><Cell label="Schedule impact" value={text(details, "schedule_impact")} right /><Cell label="Cost impact" value={text(details, "cost_impact")} /></View>
-      <Section title="IMPACT EXPLANATION"><Text style={styles.sectionText}>{text(details, "impact_explanation")}</Text></Section>
+      <View style={styles.grid}><Cell label="Change order type" value={humanizeToken(text(details, "change_order_type"))} right /><Cell label="Reason for change" value={humanizeToken(text(details, "change_reason"))} /></View>
+      <View style={styles.grid}><Cell label="Requested by" value={text(details, "requested_by")} right /><Cell label="Scope of change" value={scopeAreas || "—"} /></View>
+      <Section title="DETAILS / WHAT WILL CHANGE"><Text style={styles.sectionText}>{text(details, "scope_details", text(details, "description"))}</Text></Section>
+      <Section title="SCHEDULE IMPACT">
+        <Options values={affectsSchedule ? ["[X] Yes", "[ ] No"] : ["[ ] Yes", "[X] No"]} />
+        {affectsSchedule ? (
+          <View style={styles.grid}><Cell label="Original finish date (baseline)" value={text(details, "original_finish_date")} right /><Cell label="New expected finish date · extension" value={`${text(details, "new_expected_finish_date")} · ${text(details, "extension_days", "0")} days`} /></View>
+        ) : null}
+        {text(details, "impact_explanation") !== "—" ? <Text style={styles.sectionText}>{text(details, "impact_explanation")}</Text> : null}
+      </Section>
+      {/* Section 5 and 6 of the client's form: the contractor acknowledges, supervision
+          approves. The developer and contractor-acceptance columns are struck off. */}
+      <Section title="ACKNOWLEDGEMENT · CONTRACTOR">
+        <Text style={styles.sectionText}>{[text(details, "contractor_representative"), text(details, "contractor_position")].filter((item) => item !== "—").join(" · ") || "Not acknowledged yet."}</Text>
+        {text(details, "contractor_remarks") !== "—" ? <Text style={styles.sectionText}>{text(details, "contractor_remarks")}</Text> : null}
+        {text(details, "contractor_signed_at") !== "—" ? <Text style={styles.sectionText}>Signed {String(text(details, "contractor_signed_at")).slice(0, 10)}</Text> : null}
+      </Section>
+      <Section title="APPROVAL · SUPERVISION">
+        <Text style={styles.sectionText}>{text(details, "supervision_signed_by", text(details, "supervision_name")) === "—" ? "Not approved yet." : `${text(details, "supervision_signed_by", text(details, "supervision_name"))}${text(details, "supervision_signed_at") === "—" ? "" : ` · ${String(text(details, "supervision_signed_at")).slice(0, 10)}`}`}</Text>
+      </Section>
     </>;
   }
   if (type === "environmental_report") {

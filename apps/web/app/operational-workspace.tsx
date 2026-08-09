@@ -54,12 +54,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch, type SetStateAction } from "react";
-import { AgreementSignatureFields, agreementSignatureDetails, agreementSummaryLine, emptyAgreementSignature } from "@/app/agreement-signature";
+import { AgreementSignatureFields, agreementRecordDetails, agreementSignatureDetails, agreementSummaryLine, emptyAgreementRecord, emptyAgreementSignature } from "@/app/agreement-signature";
 import { ALL_BUILDINGS, BuildingMultiPicker, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { RecordBuildingsField, RecordFormSection, RecordFormShell, RecordSignatureField } from "@/app/forms/record-form-shell";
 import { RecordList } from "@/app/forms/record-list";
-import { photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
+import { NamedPhotoSlot, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
 import { RecordLocationMap } from "@/app/record-location-map";
 import { StoredPhotoDetail } from "@/app/stored-photo-detail";
 import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
@@ -90,6 +90,28 @@ import {
   issueCatalogPresets,
   type ControlledDocumentDraft,
 } from "@/lib/forms/controlled-project-documents";
+import {
+  changeOrderDetails,
+  changeOrderFinishDate,
+  changeOrderReady,
+  changeOrderReasons,
+  changeOrderScopeAreas,
+  changeOrderTypes,
+  emptyChangeOrder,
+} from "@/lib/forms/change-order";
+import {
+  delayActivities,
+  delayCategories,
+  delayCompletionStarted,
+  delayCompletionStatuses,
+  delayImpacts,
+  delayReportDetails,
+  delayReportReady,
+  delayRevisedFinishDate,
+  delayStatusOnFinishDate,
+  delayTypes,
+  emptyDelayReport,
+} from "@/lib/forms/delay-report";
 import { externalShareUrl } from "@/lib/external-share/token.mjs";
 import type { ProjectStartAnswers } from "@/lib/forms/daily-report";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
@@ -142,6 +164,7 @@ import {
   type Inspection,
   type OperationSnapshot,
   type ProductionReadinessItem,
+  type QualityControlVerification,
   type RegisterEntry,
 } from "@/lib/supabase/operations";
 
@@ -231,6 +254,7 @@ const registerLabels: Record<string, string> = {
   specification: "Technische specificatie",
   environmental_report: "Milieurapport (ER)",
   lessons_learned: "Geleerde lessen",
+  delay_report: "Vertragingsrapport (PDR)",
 };
 
 /**
@@ -257,6 +281,24 @@ const emptyLessonLearned = {
   responsiblePerson: "",
   status: "open" as "open" | "in_progress" | "closed",
 };
+
+/**
+ * The photos the client's own forms ask for by name, and the name each one carries into
+ * the media library, the record and the report. Without it a report shows two pictures of
+ * the same wall and cannot say which one is the problem and which one is the repair.
+ */
+const namedPhotoRoles: Record<string, { en: string; nl: string }> = {
+  lesson_issue: { en: "Picture of Issue", nl: "Foto van het probleem" },
+  lesson_result: { en: "Picture of Result", nl: "Foto van het resultaat" },
+  agreement_evidence: { en: "Photo / Evidence", nl: "Foto / bewijs" },
+  agreement_completion: { en: "Photo as evidence of completion", nl: "Foto als bewijs van afronding" },
+  change_scope: { en: "Photo of scope / reference", nl: "Foto van scope / referentie" },
+  delay_status: { en: "Actual Photo on Original Finish Date", nl: "Foto op de oorspronkelijke einddatum" },
+  delay_completion: { en: "Photo as evidence of completion", nl: "Foto als bewijs van afronding" },
+};
+
+const namedPhotoLabel = (role: string, language: "en" | "nl") =>
+  language === "en" ? namedPhotoRoles[role]?.en ?? role : namedPhotoRoles[role]?.nl ?? role;
 
 const lessonProjectPhases = [
   { id: "design", en: "Design", nl: "Ontwerp" },
@@ -318,11 +360,16 @@ const emptyFindingForm = {
   longitude: "",
   // The boxes of the client's own non-conformance report.
   referenceChecklist: "",
+  /** What the non-conformance is, and which work it hit. */
+  ncrCategory: "",
+  ncrWorkType: "",
   recommendedAction: "" as "" | "rework" | "repair" | "alternative",
   recommendedActionDetail: "",
   remarks: "",
   signedBy: "",
   signedAt: "",
+  /** The job the signer holds; every signature box on the client's form asks for it. */
+  signedPosition: "",
   /** The signature that was written on this form, not a tick in a box. */
   signatureImage: "",
 };
@@ -343,6 +390,45 @@ const issueTypeTiles = [
   { id: "operational", en: "Operational", nl: "Operationeel", icon: Settings },
   { id: "documentation", en: "Documentation", nl: "Documentatie", icon: FileText },
   { id: "other", en: "Other", nl: "Overig", icon: MoreHorizontal },
+] as const;
+
+/**
+ * The two lists at the head of the client's own NCR form, in the client's own order and
+ * wording. "Category" says what the non-conformance is; "Type" says which work it hit.
+ * The third list on that sheet — "Source", where it was identified — was struck through,
+ * so it is not here and must not come back: an NCR is answered by what is wrong and where
+ * in the works, not by which inspection happened to find it.
+ */
+const ncrCategories = [
+  { id: "workmanship", en: "Workmanship", nl: "Uitvoering" },
+  { id: "material_product", en: "Material / product", nl: "Materiaal / product" },
+  { id: "equipment_tools", en: "Equipment / tools", nl: "Materieel / gereedschap" },
+  { id: "method_procedure", en: "Method / procedure", nl: "Methode / procedure" },
+  { id: "measurement_testing", en: "Measurement / testing", nl: "Meting / beproeving" },
+  { id: "design_drawing", en: "Design / drawing", nl: "Ontwerp / tekening" },
+  { id: "documentation", en: "Documentation", nl: "Documentatie" },
+  { id: "inspection_test_failure", en: "Inspection / test failure", nl: "Inspectie / test niet gehaald" },
+  { id: "safety", en: "Safety", nl: "Veiligheid" },
+  { id: "environmental", en: "Environmental", nl: "Milieu" },
+  { id: "site_housekeeping", en: "Site / housekeeping", nl: "Terrein / orde en netheid" },
+  { id: "other", en: "Other", nl: "Overig" },
+] as const;
+
+const ncrWorkTypes = [
+  { id: "concrete_work", en: "Concrete work", nl: "Betonwerk" },
+  { id: "masonry_block_work", en: "Masonry / block work", nl: "Metsel- / blokwerk" },
+  { id: "structural_steel_work", en: "Structural steel work", nl: "Staalconstructie" },
+  { id: "formwork_shuttering", en: "Formwork / shuttering", nl: "Bekisting" },
+  { id: "reinforcement_work", en: "Reinforcement work", nl: "Wapening" },
+  { id: "flooring_tiling_lvt", en: "Flooring / tiling / LVT", nl: "Vloeren / tegelwerk / LVT" },
+  { id: "painting_coating", en: "Painting / coating", nl: "Schilderwerk / coating" },
+  { id: "mechanical_hvac", en: "Mechanical / HVAC", nl: "Mechanisch / HVAC" },
+  { id: "electrical", en: "Electrical", nl: "Elektra" },
+  { id: "plumbing_piping", en: "Plumbing / piping", nl: "Loodgieterswerk / leidingwerk" },
+  { id: "waterproofing", en: "Waterproofing", nl: "Waterdichting" },
+  { id: "finishes_architectural", en: "Finishes / architectural", nl: "Afwerking / bouwkundig" },
+  { id: "excavation_earthwork", en: "Excavation / earthwork", nl: "Ontgraving / grondwerk" },
+  { id: "other", en: "Other", nl: "Overig" },
 ] as const;
 
 /** Section 2 of the issue screen: what the issue is about, on site and on paper. */
@@ -555,6 +641,7 @@ const registerLabelsEnglish: Record<string, string> = {
   punch_list: "Punch list", notepad: "Notepad", agreement: "Agreement", technical_instruction: "Technical instruction (TI)",
   change_order: "Change order (CO)", contract: "Contract", specification: "Technical specification",
   environmental_report: "Environmental report (ER)", lessons_learned: "Lessons learned",
+  delay_report: "Project delay report (PDR)",
 };
 
 function formatDate(value: string | null, locale = "en-GB") {
@@ -1122,6 +1209,15 @@ function ProjectOperations({
   const [registerLines, setRegisterLines] = useState<Array<{ quantity: string; unit: string; description: string }>>([{ quantity: "", unit: "", description: "" }]);
   const [registerPhotos, setRegisterPhotos] = useState<PhotoEvidence[]>([]);
   const [registerPhotoError, setRegisterPhotoError] = useState("");
+  /**
+   * The photos the client's own forms ask for by name and by position — the picture of the
+   * issue and the picture of the result, the evidence a completed agreement is completed.
+   * They are kept apart from the general pile because a pile cannot say which picture is
+   * the before and which is the after; the slot they were taken in says it.
+   */
+  const [registerNamedPhotos, setRegisterNamedPhotos] = useState<Record<string, PhotoEvidence | null>>({});
+  const setNamedPhoto = (role: string, photo: PhotoEvidence | null) =>
+    setRegisterNamedPhotos((current) => ({ ...current, [role]: photo }));
   // A module reached from outside — the bottom bar, a deadline row, the back button —
   // opens the same way as one chosen in the switcher.
   useEffect(() => {
@@ -1135,6 +1231,12 @@ function ProjectOperations({
   }, [tab]);
   /** An agreement is text plus the two parties who made it, and who signs for them. */
   const [agreementForm, setAgreementForm] = useState({ ...emptyAgreementSignature });
+  /** And the rest of the client's own form: the owner, the urgency and the completion. */
+  const [agreementRecord, setAgreementRecord] = useState({ ...emptyAgreementRecord });
+  /** A change order is a contract change: scope, schedule, acknowledgement and approval. */
+  const [changeOrder, setChangeOrder] = useState({ ...emptyChangeOrder });
+  /** A project delay report: what slipped, by how many days, and the pictures that show it. */
+  const [delayForm, setDelayForm] = useState({ ...emptyDelayReport });
   /** A lesson learned: the issue, its cause, the fix, the expected result and the
    * follow-up — captured once, so the same mistake is not repeated on the next building. */
   const [lessonForm, setLessonForm] = useState({ ...emptyLessonLearned });
@@ -1401,6 +1503,8 @@ function ProjectOperations({
   const issueTileLabel = (tile: (typeof issueTypeTiles)[number]) => text(tile.en, tile.nl);
   const capturedAutomatically = text("All key info captured automatically", "Alle kerngegevens worden automatisch vastgelegd");
   const issueCategoryOption = issueCategories.find((option) => option.id === findingForm.issueCategory);
+  const ncrCategoryOption = ncrCategories.find((option) => option.id === findingForm.ncrCategory);
+  const ncrWorkTypeOption = ncrWorkTypes.find((option) => option.id === findingForm.ncrWorkType);
   const issuePriority = findingForm.severity === "critical" ? "critical" : findingForm.severity === "high" ? "high" : findingForm.severity === "medium" ? "normal" : "low";
   // A record with somebody's name on it opens as assigned; without one it opens as open.
   const issueStatusLabel = findingForm.responsibleUserId || findingForm.responsiblePartyId
@@ -1678,15 +1782,30 @@ function ProjectOperations({
     )
     && (registerForm.type !== "inspection_request" || Boolean(registerForm.readyDate))
     && (registerForm.type !== "technical_instruction" || (registerForm.reason.trim().length >= 3 && Boolean(registerForm.dueDate)))
+    // The change order carries its own required boxes, in its own module.
+    && (registerForm.type !== "change_order" || changeOrderReady(changeOrder))
   );
   const agreementRegister = registerForm.type === "agreement";
+  const changeOrderRegister = registerForm.type === "change_order";
   const lessonsLearnedRegister = registerForm.type === "lessons_learned";
+  const delayReportRegister = registerForm.type === "delay_report";
+  // Section 3 is marked "photo required" on the client's own form, and section 5 asks for
+  // one the moment the completion box is started.
+  const delayReportFormReady = !delayReportRegister || (
+    delayReportReady(delayForm)
+    && Boolean(registerNamedPhotos.delay_status)
+    && (!delayCompletionStarted(delayForm) || Boolean(registerNamedPhotos.delay_completion))
+  );
   const lessonFormReady = !lessonsLearnedRegister || (
     lessonForm.issue.trim().length >= 3
     && lessonForm.cause.trim().length >= 3
     && lessonForm.solution.trim().length >= 3
     && lessonForm.expectedResults.trim().length >= 3
     && lessonForm.followUpAction.trim().length >= 3
+    // Both pictures are marked required on the client's own form: the problem as it was
+    // found, and the result after the improvement.
+    && Boolean(registerNamedPhotos.lesson_issue)
+    && Boolean(registerNamedPhotos.lesson_result)
   );
   // WCR, RFI, RFA and WIR are forms the contractor draws up and signs. CODECO only
   // records them and signs the response, so "sign as the author" is not CODECO's to tick.
@@ -1704,6 +1823,12 @@ function ProjectOperations({
     ? registerForm.title.trim() || registerForm.details.trim().split(/\r?\n/)[0].slice(0, 90)
     : lessonsLearnedRegister
     ? registerForm.title.trim() || lessonForm.issue.trim().split(/\r?\n/)[0].slice(0, 90)
+    : delayReportRegister
+    // A delay report is read back by the work that slipped and the days it slipped by.
+    ? registerForm.title.trim() || [
+      delayActivities.find((option) => option.id === delayForm.activity)?.[language === "en" ? "en" : "nl"] ?? "",
+      delayForm.description.trim().split(/\r?\n/)[0],
+    ].filter(Boolean).join(" · ").slice(0, 90)
     : registerForm.title.trim();
 
   const switchTab = (next: ProjectTab) => {
@@ -2072,6 +2197,10 @@ function ProjectOperations({
       expectedResolutionDate: findingForm.expectedResolutionDate,
       sourceCatalogSubject: findingForm.sourceCatalogSubject,
       referenceChecklist: findingForm.referenceChecklist,
+      // The two lists at the head of the NCR form, stored as the words that stand on the
+      // printed form rather than as an internal id.
+      ncrCategory: ncrCategoryOption ? text(ncrCategoryOption.en, ncrCategoryOption.nl) : "",
+      ncrWorkType: ncrWorkTypeOption ? text(ncrWorkTypeOption.en, ncrWorkTypeOption.nl) : "",
       recommendedAction: findingForm.recommendedAction || undefined,
       recommendedActionDetail: findingForm.recommendedActionDetail,
       remarks: findingForm.remarks,
@@ -2080,6 +2209,7 @@ function ProjectOperations({
       issuedBy: currentUserName,
       signedBy: findingForm.signedBy,
       signedAt: findingForm.signedAt,
+      signedPosition: findingForm.signedPosition,
       signatureImage: findingForm.signatureImage || null,
       locationNodeId: findingLocationNodeId,
     };
@@ -2220,12 +2350,15 @@ function ProjectOperations({
                 sourceCatalogSubject: findingForm.sourceCatalogSubject,
                 dateIdentified: findingForm.dateIdentified,
                 referenceChecklist: findingForm.referenceChecklist,
+                ncrCategory: ncrCategoryOption ? text(ncrCategoryOption.en, ncrCategoryOption.nl) : "",
+                ncrWorkType: ncrWorkTypeOption ? text(ncrWorkTypeOption.en, ncrWorkTypeOption.nl) : "",
                 recommendedAction: findingForm.recommendedAction || undefined,
                 recommendedActionDetail: findingForm.recommendedActionDetail,
                 remarks: findingForm.remarks,
                 issuedBy: currentUserName,
                 signedBy: findingForm.signedBy,
                 signedAt: findingForm.signedAt,
+                signedPosition: findingForm.signedPosition,
                 signatureImage: findingForm.signatureImage || null,
                 locationNodeId: findingLocationNodeId || undefined,
                 buildingIds: selectedFindingBuildingIds,
@@ -2403,13 +2536,26 @@ function ProjectOperations({
     const editingRegister = data.registerEntries.find((entry) => entry.id === editingRegisterId);
     // Only the lines that were actually filled in; an empty extra line is not a delivery.
     const deliveryLines = registerLines.filter((line) => line.quantity.trim() !== "" && Number.isFinite(Number(line.quantity)));
+    // The photos the form asked for by name, in the order the form asks for them.
+    const namedRegisterPhotos = Object.entries(registerNamedPhotos)
+      .flatMap(([role, photo]) => photo ? [{ role, photo }] : []);
     const baseDetails = controlledRegister
-      ? createControlledDocumentDetails(registerForm, {
+      ? {
+        ...createControlledDocumentDetails(registerForm, {
           projectName,
           projectCode,
           buildingName: registerBuildingName,
           currentUserName,
-        })
+        }),
+        // A change order carries the client's own sections next to the shared document
+        // header, so the register, the printed form and the reports read the same thing.
+        ...(changeOrderRegister ? changeOrderDetails(changeOrder) : {}),
+        named_photos: namedRegisterPhotos.map(({ role, photo }) => ({
+          role,
+          label: namedPhotoLabel(role, "en"),
+          caption: photoTitle(photo),
+        })),
+      }
       : {
         description: lessonsLearnedRegister ? lessonForm.issue.trim() : registerForm.details,
         outcome: registerOutcome || null,
@@ -2419,7 +2565,17 @@ function ProjectOperations({
         quantity: deliveryLines.length ? Number(deliveryLines[0].quantity) : null,
         unit: deliveryLines[0]?.unit.trim() || null,
         // An agreement carries the two parties that made it and their signatures.
-        ...(agreementRegister ? agreementSignatureDetails(agreementForm) : {}),
+        ...(agreementRegister ? { ...agreementSignatureDetails(agreementForm), ...agreementRecordDetails(agreementRecord) } : {}),
+        // Which of the named boxes actually carry a picture. The pictures themselves live
+        // in the media library; the record says which box each one was taken in.
+        named_photos: namedRegisterPhotos.map(({ role, photo }) => ({
+          role,
+          label: namedPhotoLabel(role, "en"),
+          caption: photoTitle(photo),
+        })),
+        // A project delay report: what slipped, by how many calendar days, and where that
+        // puts the finish date — with the two pictures that evidence it.
+        ...(delayReportRegister ? delayReportDetails(delayForm) : {}),
         // A lesson learned: the issue, its cause, the fix, the expected result and the
         // follow-up, exactly as on the client's own form — minus the target date, which
         // was struck off it.
@@ -2520,13 +2676,22 @@ function ProjectOperations({
           // A queued item has no number yet; the database assigns it when the item is sent.
           entry = savedEntry.record ?? { id: savedEntry.id, entry_number: "" };
         }
-        // Site photos belong to a register item as much as documents do.
-        if (registerPhotos.length) {
+        // Site photos belong to a register item as much as documents do. The photos the
+        // form asked for by name are filed the same way and in the same folder, but keep
+        // the name of the box they were taken in, so the report can tell them apart.
+        if (registerPhotos.length || namedRegisterPhotos.length) {
           const folderName = text("Register evidence", "Registerbewijs");
           const folderId = existingMediaFolderId(folderName, registerPhotoBuildingId);
-          for (const photo of registerPhotos) {
+          const filedPhotos = [
+            ...namedRegisterPhotos.map(({ role, photo }) => ({ photo, role })),
+            ...registerPhotos.map((photo) => ({ photo, role: "" })),
+          ];
+          for (const { photo, role } of filedPhotos) {
             const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
-            const caption = photoTitle(photo);
+            const written = photoTitle(photo);
+            const caption = role
+              ? [namedPhotoLabel(role, language), written].filter(Boolean).join(" · ")
+              : written;
             await queueOfflineUpload({
               projectId,
               buildingId: registerPhotoBuildingId,
@@ -2592,12 +2757,16 @@ function ProjectOperations({
       setRegisterForm({ ...emptyControlledDocumentDraft, type: registerForm.type });
       setEditingRegisterId("");
       setAgreementForm({ ...emptyAgreementSignature });
+      setAgreementRecord({ ...emptyAgreementRecord });
+      setChangeOrder({ ...emptyChangeOrder });
+      setDelayForm({ ...emptyDelayReport });
       setLessonForm({ ...emptyLessonLearned });
       setRegisterFiles([]);
       setRegisterSignature(null);
       setRegisterOutcome("");
       setRegisterLines([{ quantity: "", unit: "", description: "" }]);
       setRegisterPhotos([]);
+      setRegisterNamedPhotos({});
       setRegisterPhotoError("");
       setRegisterDrawingId("");
       setRegisterLocationNodeId("");
@@ -3204,6 +3373,14 @@ function ProjectOperations({
                 issueType: "quality",
               });
               }}><option value="">{text("Choose only when applicable", "Kies alleen indien van toepassing")}</option>{issueCatalogPresets.map((preset) => <option value={preset.subject} key={preset.subject}>{preset.subject}</option>)}</select><small>{text("The historic spreadsheet is used as a quick-entry catalog; choosing an item does not mark it as an active project issue until you submit it.", "Het historische spreadsheet is een snelinvoercatalogus; een keuze wordt pas een actief projectpunt nadat je het indient.")}</small></label>
+              {/* The two lists at the head of the client's own NCR form: what the
+                  non-conformance is, and which work it hit. The third list on that sheet,
+                  "Source", is struck through — an NCR is answered by what is wrong and
+                  where in the works, not by which inspection happened to find it. */}
+              <div className="form-grid-2">
+                <label className="form-field"><span>{text("Category", "Categorie")}</span><small>{text("What is the nature of the non-conformance?", "Wat voor soort afwijking is het?")}</small><select value={findingForm.ncrCategory} onChange={(event) => setFindingForm({ ...findingForm, ncrCategory: event.target.value })}><option value="">{text("Choose a category", "Kies een categorie")}</option>{ncrCategories.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
+                <label className="form-field"><span>{text("Type", "Type")}</span><small>{text("What type of work or activity is affected?", "Welk soort werk of activiteit is geraakt?")}</small><select value={findingForm.ncrWorkType} onChange={(event) => setFindingForm({ ...findingForm, ncrWorkType: event.target.value })}><option value="">{text("Choose a type of work", "Kies een soort werk")}</option>{ncrWorkTypes.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
+              </div>
               <div className="form-grid-2">
                 {/* In the NCR module the type is the NCR itself; a dropdown that can only
                     say "NCR" is one box too many on the client's form. */}
@@ -3239,11 +3416,11 @@ function ProjectOperations({
                 <div className="quick-issue-presets">{findingImpactPresets.map((option) => <button className={findingForm.impactSummary === option ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, impactSummary: findingForm.impactSummary === option ? "" : option })} key={option}>{option}</button>)}</div>
                 <label className="form-field"><span>{text("Impact in your own words", "Impact in eigen woorden")}</span><textarea rows={2} value={findingForm.impactSummary} onChange={(event) => setFindingForm({ ...findingForm, impactSummary: event.target.value })} placeholder={text("Choose above, or write what this means for the work.", "Kies hierboven of schrijf wat dit voor het werk betekent.")} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, impactSummary: appendDictation(current.impactSummary, transcript) }))} /></label>
               </div>
-              <div className="click-answer-block">
-                <strong>{text("Required follow-up", "Vereiste opvolging")}</strong>
-                <div className="quick-issue-presets">{findingActionPresets.map((option) => <button className={findingForm.actionSteps === option ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, actionSteps: findingForm.actionSteps === option ? "" : option })} key={option}>{option}</button>)}</div>
-                <label className="form-field"><span>{text("Follow-up in your own words", "Opvolging in eigen woorden")}</span><textarea rows={2} value={findingForm.actionSteps} onChange={(event) => setFindingForm({ ...findingForm, actionSteps: event.target.value })} placeholder={text("Choose above, or write what has to happen.", "Kies hierboven of schrijf wat er moet gebeuren.")} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, actionSteps: appendDictation(current.actionSteps, transcript) }))} /></label>
-              </div>
+              {/* "Corrective Action Required" is struck through on the client's own NCR
+                  form, and rightly so: what has to happen is already the engineer's
+                  recommended action above, and what will happen is the contractor's own
+                  proposal below. A third box in between only invited three answers to one
+                  question. It stays on the issue screen, which has no such pair. */}
               <div className="form-grid-2">
                 <label className="form-field"><span>{text("Date identified", "Date Identified")}</span><input type="date" value={findingForm.dateIdentified} onChange={(event) => setFindingForm({ ...findingForm, dateIdentified: event.target.value })} /></label>
                 <label className="form-field"><span>{text("Expected resolution date", "Expected Resolution Date")}</span><input type="date" value={findingForm.expectedResolutionDate} onChange={(event) => setFindingForm({ ...findingForm, expectedResolutionDate: event.target.value })} /></label>
@@ -3267,7 +3444,7 @@ function ProjectOperations({
                   "By signing you issue this non-conformance report to the contractor named above.",
                   "Met je handtekening geef je dit non-conformance report uit aan de hierboven genoemde aannemer.",
                 )}
-                hint={text("The signature, the name and the moment of signing are stored with the report.", "De handtekening, de naam en het moment van ondertekenen worden bij het rapport opgeslagen.")}
+                hint={text("The signature, the name and the date of signing are stored with the report.", "De handtekening, de naam en de datum van ondertekenen worden bij het rapport opgeslagen.")}
                 nameSuggestion={currentUserName}
                 nameOptions={documentIssuerOptions}
                 value={signatureFromDetails(findingForm.signedBy, findingForm.signedAt, findingForm.signatureImage)}
@@ -3278,6 +3455,10 @@ function ProjectOperations({
                   signatureImage: signature?.image ?? "",
                 })}
               />
+              {/* Every signature box on the client's own form prints Name and Position
+                  under the line. The name and the date come from the act of signing; the
+                  job the signer holds is the one thing the app cannot know. */}
+              <label className="form-field ncr-signature-position"><span>{text("Position", "Functie")}</span><input value={findingForm.signedPosition} onChange={(event) => setFindingForm({ ...findingForm, signedPosition: event.target.value })} placeholder={text("Quality Engineer", "Quality Engineer")} /></label>
                 <div className="operation-alert warning"><RotateCcw size={17} /><div><strong>{text("The contractor fills in the correction", "De aannemer vult de correctie in")}</strong><span>{text("After submitting you send this NCR to the contractor with one tap. The contractor fills in the proposed corrective action and sends it back; the quality-control close-out stays with CODECO.", "Na indienen stuur je deze NCR met één tik naar de aannemer. De aannemer vult de voorgestelde correctieve actie in en stuurt die terug; de eindcontrole blijft bij CODECO.")}</span></div></div>
               <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit NCR", "NCR indienen")}</button>
             </div>
@@ -3331,7 +3512,7 @@ function ProjectOperations({
             parties={parties}
             busy={busy}
             focusRecordId={focusRecordId}
-            transition={(finding, nextStatus, note, finalMeasure, correction, verificationSignedBy, verificationSignatureImage) => run(() => transitionFinding(client, finding.id, nextStatus, note, finalMeasure, correction, verificationSignedBy, verificationSignatureImage), `Bevinding ${finding.finding_number} staat nu op ${findingStatusLabels[nextStatus] ?? nextStatus}.`)}
+            transition={(finding, nextStatus, note, finalMeasure, correction, verificationSignedBy, verificationSignatureImage, verification) => run(() => transitionFinding(client, finding.id, nextStatus, note, finalMeasure, correction, verificationSignedBy, verificationSignatureImage, verification), `Bevinding ${finding.finding_number} staat nu op ${findingStatusLabels[nextStatus] ?? nextStatus}.`)}
             recordProgress={(finding, progressPercent, disposition, note) => run(
               () => recordFindingProgress(client, { findingId: finding.id, progressPercent, disposition, note }),
               text(`Progress for ${finding.finding_number} recorded; 100% still requires verification.`, `Voortgang voor ${finding.finding_number} vastgelegd; ook 100% vraagt nog verificatie.`),
@@ -3624,6 +3805,21 @@ function ProjectOperations({
               {/* The form says what is being recorded — Materials delivery, Agreement,
                   RFI — instead of a general register heading with the answer hidden in a
                   dropdown below it. */}
+              {/* "Zelfde als HSE": the head of the client's own delay report is what the
+                  app already knows before a single box is filled in — the project, where
+                  it is, who is reporting it, and the day and time it is being written. */}
+              {delayReportRegister ? (
+                <>
+                  <section className="controlled-document-context sectioned-record-context" aria-label={text("Delay report header", "Kop van het vertragingsrapport")}>
+                    <div><small>{text("Form no · automatic", "Formuliernummer · automatisch")}</small><strong>{text("On submit", "Bij indienen")}</strong><span>{text("Unique project code", "Unieke projectcode")}</span></div>
+                    <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
+                    <div><small>{text("Location / area", "Locatie / gebied")}</small><strong>{registerContextLabel}</strong><span>{registerLocationNodeId ? locationBreadcrumb(data.locationNodes, registerLocationNodeId) : text("Building level", "Gebouwniveau")}</span></div>
+                    <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDate}</strong><span>{issueTime}</span></div>
+                    <div><small>{text("Reported by", "Gemeld door")}</small><strong>{currentUserName}</strong><span>{reporterDepartment}</span></div>
+                  </section>
+                  <p className="form-helper"><Clock3 size={13} /> {text(`Day, date and time are recorded automatically · ${issueDate} ${issueTime}`, `Dag, datum en tijd worden automatisch vastgelegd · ${issueDate} ${issueTime}`)}</p>
+                </>
+              ) : null}
               {/* A controlled document starts with the project information and the dates:
                   that is the head of the paper form the client hands out. */}
               {controlledRegister ? (
@@ -3649,7 +3845,17 @@ function ProjectOperations({
                 <LocationPicker id="register-location" nodes={data.locationNodes} buildingId={registerBuildingId} value={registerLocationNodeId} onChange={setRegisterLocationNodeId} requiredDepth={requiredLocationDepth} />
                 <details className="optional-text-entry register-type-switch">
                   <summary>{text("Record something else", "Iets anders vastleggen")}</summary>
-                  <label className="form-field"><span>{text("Register / document format", "Register / documentformaat")}</span><select value={registerForm.type} onChange={(event) => setRegisterForm({ ...emptyControlledDocumentDraft, type: event.target.value })}>{Object.entries(registerNames).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+                  {/* Switching format starts the other form empty. Carrying a delay's
+                      baseline date into a change order is how a wrong date gets signed. */}
+                  <label className="form-field"><span>{text("Register / document format", "Register / documentformaat")}</span><select value={registerForm.type} onChange={(event) => {
+                    setRegisterForm({ ...emptyControlledDocumentDraft, type: event.target.value });
+                    setAgreementForm({ ...emptyAgreementSignature });
+                    setAgreementRecord({ ...emptyAgreementRecord });
+                    setChangeOrder({ ...emptyChangeOrder });
+                    setDelayForm({ ...emptyDelayReport });
+                    setLessonForm({ ...emptyLessonLearned });
+                    setRegisterNamedPhotos({});
+                  }}>{Object.entries(registerNames).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
                 </details>
                 {registerDrawings.length ? (
                   <label className="form-field"><span>{text("Location on drawing", "Locatie op tekening")}</span>
@@ -3662,18 +3868,318 @@ function ProjectOperations({
                 ) : null}
               </div>
               {activeRegisterPresets.length ? <div className="quick-issue-presets" aria-label={text("Choose a standard register item", "Kies een standaard registeritem")}>{activeRegisterPresets.map((preset) => <button className={registerForm.title === preset.title ? "active" : ""} type="button" onClick={() => setRegisterForm({ ...registerForm, ...preset })} key={preset.title}>{preset.title}</button>)}</div> : null}
-              {controlledRegister ? (
+              {delayReportRegister ? (
+                /* The client's own Project Delay Report. The header above this — project,
+                   location, reporter, date and time — is filled by the app, "zelfde als
+                   HSE"; what follows is the delay itself, in the client's own sections. */
+                <div className="record-form-sections delay-report-sections">
+                  <RecordFormSection
+                    number={1}
+                    title={text("Delay details", "Details van de vertraging")}
+                    description={text("Which work slipped, why, and by how many calendar days.", "Welk werk is uitgelopen, waarom, en met hoeveel kalenderdagen.")}
+                  >
+                    <div className="form-grid-2">
+                      <label className="form-field"><span>{text("Activity / work affected", "Activiteit / getroffen werk")}</span><select value={delayForm.activity} onChange={(event) => setDelayForm({ ...delayForm, activity: event.target.value })}><option value="">{text("Select activity / work", "Kies activiteit / werk")}</option>{delayActivities.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
+                      {/* The duration is what moves the finish date, so it stands with the
+                          dates it drives, not on the far side of the form. */}
+                      <label className="form-field"><span>{text("Delay duration (calendar days)", "Duur van de vertraging (kalenderdagen)")}</span><input type="number" min="0" step="1" value={delayForm.durationDays} onChange={(event) => setDelayForm({ ...delayForm, durationDays: event.target.value, newExpectedFinishDate: delayRevisedFinishDate(delayForm.originalFinishDate, event.target.value) })} /></label>
+                    </div>
+                    <label className="form-field"><span>{text("Description of delay (brief)", "Omschrijving van de vertraging (kort)")}</span><textarea rows={3} maxLength={250} value={delayForm.description} onChange={(event) => setDelayForm({ ...delayForm, description: event.target.value })} placeholder={text("Describe the delay briefly.", "Beschrijf de vertraging kort.")} /><DictateButton onText={(transcript) => setDelayForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} /></label>
+                    <div className="form-grid-2 delay-choice-columns">
+                      <div className="form-field">
+                        <span>{text("Delay category", "Categorie van de vertraging")}</span>
+                        <div className="record-action-grid">
+                          {delayCategories.map((option) => (
+                            <label className={`record-action-check${delayForm.categories.includes(option.id) ? " active" : ""}`} key={option.id}>
+                              <input type="checkbox" checked={delayForm.categories.includes(option.id)} onChange={() => setDelayForm((current) => ({ ...current, categories: current.categories.includes(option.id) ? current.categories.filter((item) => item !== option.id) : [...current.categories, option.id] }))} />
+                              {text(option.en, option.nl)}
+                            </label>
+                          ))}
+                        </div>
+                        {delayForm.categories.includes("other") ? <input className="delay-other-input" value={delayForm.categoryOther} maxLength={240} onChange={(event) => setDelayForm({ ...delayForm, categoryOther: event.target.value })} placeholder={text("Specify", "Omschrijf")} /> : null}
+                      </div>
+                      <div className="form-field">
+                        <span>{text("Delay type", "Soort vertraging")}</span>
+                        <div className="record-action-grid">
+                          {delayTypes.map((option) => (
+                            <label className={`record-action-check${delayForm.types.includes(option.id) ? " active" : ""}`} key={option.id}>
+                              <input type="checkbox" checked={delayForm.types.includes(option.id)} onChange={() => setDelayForm((current) => ({ ...current, types: current.types.includes(option.id) ? current.types.filter((item) => item !== option.id) : [...current.types, option.id] }))} />
+                              {text(option.en, option.nl)}
+                            </label>
+                          ))}
+                        </div>
+                        {delayForm.types.includes("other") ? <input className="delay-other-input" value={delayForm.typeOther} maxLength={240} onChange={(event) => setDelayForm({ ...delayForm, typeOther: event.target.value })} placeholder={text("Specify", "Omschrijf")} /> : null}
+                      </div>
+                    </div>
+                    <div className="form-field">
+                      <span>{text("Delay impact", "Impact van de vertraging")}</span>
+                      <div className="record-action-grid">
+                        {delayImpacts.map((option) => (
+                          <label className={`record-action-check${delayForm.impacts.includes(option.id) ? " active" : ""}`} key={option.id}>
+                            <input type="checkbox" checked={delayForm.impacts.includes(option.id)} onChange={() => setDelayForm((current) => ({ ...current, impacts: current.impacts.includes(option.id) ? current.impacts.filter((item) => item !== option.id) : [...current.impacts, option.id] }))} />
+                            {text(option.en, option.nl)}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </RecordFormSection>
+
+                  <RecordFormSection
+                    number={2}
+                    title={text("Delay dates", "Datums van de vertraging")}
+                    description={text("The baseline finish date, and where the delay puts it. The delay start date is the date of this report, and the actual completion date belongs to section 5.", "De oorspronkelijke einddatum, en waar de vertraging die naartoe schuift. De startdatum is de datum van dit rapport; de werkelijke afrondingsdatum hoort bij sectie 5.")}
+                  >
+                    <div className="form-grid-2">
+                      <label className="form-field"><span>{text("Original finish date (baseline)", "Oorspronkelijke einddatum (baseline)")}</span><input type="date" value={delayForm.originalFinishDate} onChange={(event) => setDelayForm({ ...delayForm, originalFinishDate: event.target.value, newExpectedFinishDate: delayRevisedFinishDate(event.target.value, delayForm.durationDays) })} /></label>
+                      {/* Calculated, never typed: two fields that can disagree about the
+                          same fact are two chances to be wrong. */}
+                      <label className="form-field"><span>{text("New expected finish date (revised) · calculated", "Nieuwe verwachte einddatum (herzien) · berekend")}</span><input type="date" value={delayForm.newExpectedFinishDate || delayRevisedFinishDate(delayForm.originalFinishDate, delayForm.durationDays)} readOnly /></label>
+                    </div>
+                  </RecordFormSection>
+
+                  <RecordFormSection
+                    number={3}
+                    title={text("Status on original finish date", "Status op de oorspronkelijke einddatum")}
+                    description={text("What the works actually looked like on the day they should have been finished. The photo is what makes this a record instead of an opinion.", "Hoe het werk er werkelijk uitzag op de dag dat het klaar had moeten zijn. De foto maakt dit een registratie in plaats van een mening.")}
+                  >
+                    <div className="form-grid-2 named-photo-pair">
+                      <div className="form-field">
+                        <label className="form-field"><span>{text("Actual status on this date", "Werkelijke status op deze datum")}</span><select value={delayForm.statusOnFinishDate} onChange={(event) => setDelayForm({ ...delayForm, statusOnFinishDate: event.target.value })}><option value="">{text("Select status", "Kies status")}</option>{delayStatusOnFinishDate.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
+                        {/* "Eventueel korte omschrijving": the status in one word, and room
+                            for the sentence that explains it when one word is not enough. */}
+                        <label className="form-field"><span>{text("Short description (optional)", "Korte omschrijving (optioneel)")}</span><textarea rows={2} maxLength={250} value={delayForm.statusDescription} onChange={(event) => setDelayForm({ ...delayForm, statusDescription: event.target.value })} /><DictateButton onText={(transcript) => setDelayForm((current) => ({ ...current, statusDescription: appendDictation(current.statusDescription, transcript) }))} /></label>
+                      </div>
+                      <NamedPhotoSlot
+                        label={text("Actual photo on original finish date", "Foto op de oorspronkelijke einddatum")}
+                        required
+                        value={registerNamedPhotos.delay_status ?? null}
+                        onChange={(photo) => setNamedPhoto("delay_status", photo)}
+                        markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
+                        maxSizeMb={data.settings?.max_file_size_mb ?? 25}
+                        defaults={{ category: "progress" }}
+                      />
+                    </div>
+                  </RecordFormSection>
+
+                  <RecordFormSection
+                    number={4}
+                    title={text("Contractor acknowledgement", "Erkenning door de aannemer")}
+                    description={text("The contractor acknowledges the delay and how it will be recovered. The revised finish date is agreed once, in section 2.", "De aannemer erkent de vertraging en hoe die wordt ingelopen. De herziene einddatum wordt één keer afgesproken, in sectie 2.")}
+                  >
+                    <label className="form-field"><span>{text("Proposed recovery plan (brief)", "Voorgesteld inloopplan (kort)")}</span><textarea rows={3} maxLength={250} value={delayForm.recoveryPlan} onChange={(event) => setDelayForm({ ...delayForm, recoveryPlan: event.target.value })} placeholder={text("Describe the proposed recovery actions.", "Beschrijf de voorgestelde inloopmaatregelen.")} /><DictateButton onText={(transcript) => setDelayForm((current) => ({ ...current, recoveryPlan: appendDictation(current.recoveryPlan, transcript) }))} /></label>
+                    <label className="form-field"><span>{text("Contractor representative", "Vertegenwoordiger aannemer")}</span><input list="delay-contractors" value={delayForm.contractorRepresentative} onChange={(event) => setDelayForm({ ...delayForm, contractorRepresentative: event.target.value })} placeholder={text("Enter name", "Voer naam in")} /><datalist id="delay-contractors">{parties.map((party) => <option value={party.name} key={party.id} />)}</datalist></label>
+                    <SignatureField
+                      label={text("Signature · contractor representative", "Handtekening · vertegenwoordiger aannemer")}
+                      declaration={text(
+                        "By signing you acknowledge this delay and the recovery plan written above.",
+                        "Met je handtekening erken je deze vertraging en het hierboven beschreven inloopplan.",
+                      )}
+                      hint={text("The signature, the name and the date of signing are stored with the report.", "De handtekening, de naam en de datum van ondertekenen worden bij het rapport opgeslagen.")}
+                      nameSuggestion={delayForm.contractorRepresentative}
+                      value={signatureFromDetails(delayForm.contractorSignedBy, delayForm.contractorSignedAt, delayForm.contractorSignatureImage)}
+                      onChange={(signature) => setDelayForm({
+                        ...delayForm,
+                        contractorSignedBy: signature?.name ?? "",
+                        contractorSignedAt: signature?.signedAt ?? "",
+                        contractorSignatureImage: signature?.image ?? "",
+                        contractorRepresentative: signature?.name || delayForm.contractorRepresentative,
+                      })}
+                    />
+                  </RecordFormSection>
+
+                  <RecordFormSection
+                    number={5}
+                    title={text("Completion verification", "Verificatie van de afronding")}
+                    description={text("To be filled in once the delayed work is actually finished: the date, the status it finished in, and the photo that proves it.", "In te vullen zodra het vertraagde werk echt af is: de datum, de status waarin het is opgeleverd, en de foto die dat bewijst.")}
+                  >
+                    <div className="form-grid-2 named-photo-pair">
+                      <div className="form-field">
+                        <label className="form-field"><span>{text("Actual completed date", "Werkelijke afrondingsdatum")}</span><input type="date" value={delayForm.actualCompletedDate} onChange={(event) => setDelayForm({ ...delayForm, actualCompletedDate: event.target.value })} /></label>
+                        {/* "STATUS!": a completion date on its own does not say whether the
+                            recovery worked. */}
+                        <label className="form-field"><span>{text("Status", "Status")}</span><select value={delayForm.completionStatus} onChange={(event) => setDelayForm({ ...delayForm, completionStatus: event.target.value })}><option value="">{text("Not completed yet", "Nog niet afgerond")}</option>{delayCompletionStatuses.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
+                      </div>
+                      <NamedPhotoSlot
+                        label={text("Photo as evidence of completion", "Foto als bewijs van afronding")}
+                        required={delayCompletionStarted(delayForm)}
+                        hint={text("Required once this box is filled in.", "Verplicht zodra dit vak is ingevuld.")}
+                        value={registerNamedPhotos.delay_completion ?? null}
+                        onChange={(photo) => setNamedPhoto("delay_completion", photo)}
+                        markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
+                        maxSizeMb={data.settings?.max_file_size_mb ?? 25}
+                        defaults={{ category: "progress" }}
+                      />
+                    </div>
+                    <label className="form-field"><span>{text("Remarks (optional)", "Opmerkingen (optioneel)")}</span><textarea rows={2} maxLength={500} value={delayForm.completionRemarks} onChange={(event) => setDelayForm({ ...delayForm, completionRemarks: event.target.value })} /><DictateButton onText={(transcript) => setDelayForm((current) => ({ ...current, completionRemarks: appendDictation(current.completionRemarks, transcript) }))} /></label>
+                  </RecordFormSection>
+                </div>
+              ) : changeOrderRegister ? (
+                /* The client's own Change Order form. A change order is a contract change,
+                   so it is asked for as one: what changes, why, what exactly moves, and
+                   what that does to the finish date. */
+                <div className="record-form-sections change-order-sections">
+                  <RecordFormSection
+                    number={1}
+                    title={text("Change description", "Omschrijving van de wijziging")}
+                    description={text("What is being changed, and on whose request.", "Wat wordt er gewijzigd, en op wiens verzoek.")}
+                  >
+                    <div className="form-grid-2">
+                      <label className="form-field"><span>{text("Change order type", "Type wijzigingsopdracht")}</span><select value={changeOrder.changeOrderType} onChange={(event) => setChangeOrder({ ...changeOrder, changeOrderType: event.target.value })}><option value="">{text("Select type", "Kies type")}</option>{changeOrderTypes.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
+                      <label className="form-field"><span>{text("Title / subject", "Titel / onderwerp")}</span><input value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} placeholder={text("Enter title / subject", "Voer titel / onderwerp in")} /></label>
+                    </div>
+                    <label className="form-field"><span>{text("Description of change", "Omschrijving van de wijziging")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} placeholder={text("Describe the change in detail, including reason and background.", "Beschrijf de wijziging in detail, inclusief reden en achtergrond.")} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
+                    <div className="form-grid-2">
+                      <label className="form-field"><span>{text("Reason for change", "Reden van de wijziging")}</span><select value={changeOrder.reason} onChange={(event) => setChangeOrder({ ...changeOrder, reason: event.target.value })}><option value="">{text("Select reason", "Kies reden")}</option>{changeOrderReasons.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
+                      <label className="form-field"><span>{text("Requested by", "Aangevraagd door")}</span><input list="change-order-requesters" value={changeOrder.requestedBy} onChange={(event) => setChangeOrder({ ...changeOrder, requestedBy: event.target.value })} placeholder={text("Enter name", "Voer naam in")} /><datalist id="change-order-requesters">{documentIssuerOptions.map((name) => <option value={name} key={name} />)}{parties.map((party) => <option value={party.name} key={party.id} />)}</datalist></label>
+                    </div>
+                  </RecordFormSection>
+
+                  <RecordFormSection
+                    number={2}
+                    title={text("Scope of change", "Omvang van de wijziging")}
+                    description={text("Which parts of the contract move, and exactly what changes in them.", "Welke onderdelen van het contract verschuiven, en wat er precies verandert.")}
+                  >
+                    <div className="record-action-grid">
+                      {changeOrderScopeAreas.map((area) => (
+                        <label className={`record-action-check${changeOrder.scopeAreas.includes(area.id) ? " active" : ""}`} key={area.id}>
+                          <input
+                            type="checkbox"
+                            checked={changeOrder.scopeAreas.includes(area.id)}
+                            onChange={() => setChangeOrder((current) => ({
+                              ...current,
+                              scopeAreas: current.scopeAreas.includes(area.id)
+                                ? current.scopeAreas.filter((item) => item !== area.id)
+                                : [...current.scopeAreas, area.id],
+                            }))}
+                          />
+                          {text(area.en, area.nl)}
+                        </label>
+                      ))}
+                    </div>
+                    {changeOrder.scopeAreas.includes("other") ? (
+                      <label className="form-field"><span>{text("Other · specify", "Overig · omschrijf")}</span><input value={changeOrder.scopeAreaOther} maxLength={240} onChange={(event) => setChangeOrder({ ...changeOrder, scopeAreaOther: event.target.value })} /></label>
+                    ) : null}
+                    <div className="form-grid-2">
+                      <label className="form-field"><span>{text("Details / what will change?", "Details / wat verandert er?")}</span><textarea rows={4} maxLength={1000} value={changeOrder.scopeDetails} onChange={(event) => setChangeOrder({ ...changeOrder, scopeDetails: event.target.value })} placeholder={text("Specify the exact scope of work / documents / items that will change.", "Benoem precies welk werk, welke documenten of welke posten wijzigen.")} /><DictateButton onText={(transcript) => setChangeOrder((current) => ({ ...current, scopeDetails: appendDictation(current.scopeDetails, transcript) }))} /></label>
+                      <NamedPhotoSlot
+                        label={text("Photo (scope / reference)", "Foto (scope / referentie)")}
+                        value={registerNamedPhotos.change_scope ?? null}
+                        onChange={(photo) => setNamedPhoto("change_scope", photo)}
+                        markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
+                        maxSizeMb={data.settings?.max_file_size_mb ?? 25}
+                        defaults={{ category: "overview" }}
+                      />
+                    </div>
+                  </RecordFormSection>
+                </div>
+              ) : controlledRegister ? (
                 <div className="form-grid">
-                  <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction title / reference", "Titel / referentie instructie") : registerForm.type === "change_order" ? text("Change title / reference", "Titel / referentie wijziging") : text("Title / reference", "Titel / referentie")}</span><input value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} /></label>
-                  <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction description", "Omschrijving instructie") : registerForm.type === "change_order" ? text("Change description", "Omschrijving van de wijziging") : text("Formal request / instruction / observation", "Formeel verzoek / instructie / observatie")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
+                  <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction title / reference", "Titel / referentie instructie") : text("Title / reference", "Titel / referentie")}</span><input value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} /></label>
+                  <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction description", "Omschrijving instructie") : text("Formal request / instruction / observation", "Formeel verzoek / instructie / observatie")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
                 </div>
               ) : agreementRegister ? (
-                <>
-                  {/* An agreement is one text, the two parties who made it and their
-                      signatures. The field notepad uses the very same block. */}
-                  <label className="form-field"><span>{text("What was agreed?", "Wat is afgesproken?")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
-                  <AgreementSignatureFields options={agreementPartyOptions} value={agreementForm} onChange={setAgreementForm} />
-                </>
+                /* The client's own "Agreements Made" form, in its own four numbered
+                   boxes: what was agreed, who owns it, who signs for it and — once the
+                   work is done — the date and the picture that close it. */
+                <div className="record-form-sections agreement-sections">
+                  <RecordFormSection
+                    number={1}
+                    title={text("Agreement details", "Details van de afspraak")}
+                    description={text("What was agreed, by when it is to be carried out, and how urgent it is.", "Wat is afgesproken, wanneer het uitgevoerd moet zijn en hoe urgent het is.")}
+                  >
+                    <div className="form-grid-2">
+                      <label className="form-field"><span>{text("Subject / topic", "Onderwerp")}</span><input value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} placeholder={text("Enter subject / topic", "Voer onderwerp in")} /></label>
+                      <label className="form-field"><span>{text("Implement / execute by", "Uitvoeren uiterlijk")}</span><input type="date" value={registerForm.dueDate} onChange={(event) => setRegisterForm({ ...registerForm, dueDate: event.target.value })} /></label>
+                    </div>
+                    <label className="form-field"><span>{text("Description of agreement", "Omschrijving van de afspraak")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} placeholder={text("Describe the agreement in detail.", "Beschrijf de afspraak in detail.")} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
+                    <div className="form-grid-2">
+                      <div className="form-field">
+                        <span>{text("Priority", "Prioriteit")}</span>
+                        <div className="quick-issue-presets">
+                          {([["low", text("Low", "Laag")], ["normal", text("Normal", "Normaal")], ["high", text("High", "Hoog")], ["critical", text("Critical", "Kritiek")]] as const).map(([value, label]) => (
+                            <button className={agreementRecord.priority === value ? "active" : ""} type="button" onClick={() => setAgreementRecord({ ...agreementRecord, priority: value })} key={value}>{label}</button>
+                          ))}
+                        </div>
+                      </div>
+                      <NamedPhotoSlot
+                        label={text("Photo / evidence (optional)", "Foto / bewijs (optioneel)")}
+                        value={registerNamedPhotos.agreement_evidence ?? null}
+                        onChange={(photo) => setNamedPhoto("agreement_evidence", photo)}
+                        markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
+                        maxSizeMb={data.settings?.max_file_size_mb ?? 25}
+                        defaults={{ category: "overview" }}
+                      />
+                    </div>
+                  </RecordFormSection>
+
+                  <RecordFormSection
+                    number={2}
+                    title={text("Action owner", "Eigenaar van de actie")}
+                    description={text("An agreement without an owner is a sentence nobody carries out.", "Een afspraak zonder eigenaar is een zin die niemand uitvoert.")}
+                  >
+                    <div className="form-grid-2">
+                      <label className="form-field"><span>{text("Responsible party", "Verantwoordelijke partij")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value })}><option value="">{text("Select party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
+                      <div className="form-field">
+                        <span>{text("Status", "Status")}</span>
+                        <div className="quick-issue-presets">
+                          {([["open", text("Open", "Open")], ["in_progress", text("In progress", "In uitvoering")], ["completed", text("Completed", "Afgerond")]] as const).map(([value, label]) => (
+                            <button className={agreementRecord.status === value ? "active" : ""} type="button" onClick={() => setAgreementRecord({ ...agreementRecord, status: value })} key={value}>{label}</button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="form-grid-2">
+                      <label className="form-field"><span>{text("Responsible person", "Verantwoordelijke persoon")}</span><input value={agreementRecord.responsiblePerson} onChange={(event) => setAgreementRecord({ ...agreementRecord, responsiblePerson: event.target.value })} placeholder={text("Enter name", "Voer naam in")} /></label>
+                      <label className="form-field"><span>{text("Remarks (optional)", "Opmerkingen (optioneel)")}</span><textarea rows={3} maxLength={500} value={agreementRecord.remarks} onChange={(event) => setAgreementRecord({ ...agreementRecord, remarks: event.target.value })} placeholder={text("Enter any additional remarks.", "Voer eventuele aanvullende opmerkingen in.")} /><DictateButton onText={(transcript) => setAgreementRecord((current) => ({ ...current, remarks: appendDictation(current.remarks, transcript) }))} /></label>
+                    </div>
+                  </RecordFormSection>
+
+                  <RecordFormSection
+                    number={3}
+                    title={text("Agreement confirmation", "Bevestiging van de afspraak")}
+                    description={text("The contractor's representative and supervision sign for what was agreed; the client struck the developer's column off this box.", "De vertegenwoordiger van de aannemer en de supervisie tekenen voor de afspraak; de kolom van de ontwikkelaar is door de klant geschrapt.")}
+                  >
+                    <AgreementSignatureFields
+                      options={agreementPartyOptions}
+                      value={agreementForm}
+                      onChange={setAgreementForm}
+                      roleLabels={[text("Contractor representative", "Vertegenwoordiger aannemer"), text("Supervision (consultant)", "Supervisie (consultant)")]}
+                    />
+                  </RecordFormSection>
+
+                  <RecordFormSection
+                    number={4}
+                    title={text("Completion", "Afronding")}
+                    description={text("To be filled in when the agreement is completed: the date it was actually done, and the picture that shows it.", "In te vullen zodra de afspraak is afgerond: de datum waarop het echt klaar was, en de foto die dat laat zien.")}
+                  >
+                    <div className="form-grid-2">
+                      <label className="form-field"><span>{text("Actual completion date", "Werkelijke afrondingsdatum")}</span><input type="date" value={agreementRecord.actualCompletionDate} onChange={(event) => setAgreementRecord({ ...agreementRecord, actualCompletionDate: event.target.value })} /></label>
+                      <NamedPhotoSlot
+                        label={text("Photo as evidence", "Foto als bewijs")}
+                        value={registerNamedPhotos.agreement_completion ?? null}
+                        onChange={(photo) => setNamedPhoto("agreement_completion", photo)}
+                        markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
+                        maxSizeMb={data.settings?.max_file_size_mb ?? 25}
+                        defaults={{ category: "repair" }}
+                      />
+                    </div>
+                    <div className="form-field">
+                      <span>{text("Completion status", "Status van afronding")}</span>
+                      <div className="quick-issue-presets">
+                        {([["completed", text("Completed", "Afgerond")], ["partially_completed", text("Partially completed", "Deels afgerond")], ["not_completed", text("Not completed", "Niet afgerond")]] as const).map(([value, label]) => (
+                          <button className={agreementRecord.completionStatus === value ? "active" : ""} type="button" onClick={() => setAgreementRecord({ ...agreementRecord, completionStatus: agreementRecord.completionStatus === value ? "" : value })} key={value}>{label}</button>
+                        ))}
+                      </div>
+                      {/* "+ datum": a completion status without the date it was reached says
+                          nothing a month later. Choosing one fills today's date unless a
+                          date was already written. */}
+                      {agreementRecord.completionStatus && !agreementRecord.actualCompletionDate ? (
+                        <small>{text("Fill in the actual completion date above; it belongs to this status.", "Vul hierboven de werkelijke afrondingsdatum in; die hoort bij deze status.")}</small>
+                      ) : null}
+                    </div>
+                    <label className="form-field"><span>{text("Remarks (optional)", "Opmerkingen (optioneel)")}</span><textarea rows={2} maxLength={500} value={agreementRecord.completionRemarks} onChange={(event) => setAgreementRecord({ ...agreementRecord, completionRemarks: event.target.value })} placeholder={text("Enter remarks about completion.", "Voer opmerkingen over de afronding in.")} /><DictateButton onText={(transcript) => setAgreementRecord((current) => ({ ...current, completionRemarks: appendDictation(current.completionRemarks, transcript) }))} /></label>
+                  </RecordFormSection>
+                </div>
               ) : lessonsLearnedRegister ? (
                 <>
                   {/* Capture, learn and improve: the client's own form, as one project
@@ -3684,6 +4190,29 @@ function ProjectOperations({
                     <label className="form-field"><span>{text("Cause", "Oorzaak")}</span><small>{text("What was the root cause of this issue?", "Wat was de hoofdoorzaak van dit probleem?")}</small><textarea rows={3} value={lessonForm.cause} onChange={(event) => setLessonForm({ ...lessonForm, cause: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, cause: appendDictation(current.cause, transcript) }))} /></label>
                     <label className="form-field"><span>{text("Solution / improvement", "Oplossing / verbetering")}</span><small>{text("Describe the solution or improvement implemented.", "Beschrijf de oplossing of verbetering die is toegepast.")}</small><textarea rows={3} value={lessonForm.solution} onChange={(event) => setLessonForm({ ...lessonForm, solution: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, solution: appendDictation(current.solution, transcript) }))} /></label>
                     <label className="form-field"><span>{text("Expected results", "Verwacht resultaat")}</span><small>{text("What results or benefits are expected from this solution?", "Welk resultaat of voordeel wordt van deze oplossing verwacht?")}</small><textarea rows={3} value={lessonForm.expectedResults} onChange={(event) => setLessonForm({ ...lessonForm, expectedResults: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, expectedResults: appendDictation(current.expectedResults, transcript) }))} /></label>
+                  </div>
+                  {/* The two pictures the client's own form marks required: the problem as
+                      it was found, and the result after the improvement. A lesson nobody
+                      can see is a lesson the next crew reads past. */}
+                  <div className="form-grid-2 named-photo-pair">
+                    <NamedPhotoSlot
+                      label={text("Picture of issue", "Foto van het probleem")}
+                      required
+                      value={registerNamedPhotos.lesson_issue ?? null}
+                      onChange={(photo) => setNamedPhoto("lesson_issue", photo)}
+                      markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
+                      maxSizeMb={data.settings?.max_file_size_mb ?? 25}
+                      defaults={{ category: "deficiency" }}
+                    />
+                    <NamedPhotoSlot
+                      label={text("Picture of result", "Foto van het resultaat")}
+                      required
+                      value={registerNamedPhotos.lesson_result ?? null}
+                      onChange={(photo) => setNamedPhoto("lesson_result", photo)}
+                      markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
+                      maxSizeMb={data.settings?.max_file_size_mb ?? 25}
+                      defaults={{ category: "repair" }}
+                    />
                   </div>
                   {/* Follow-up: what still has to happen, who does it, and where it
                       stands — no target date, the client struck that field off the form. */}
@@ -3779,7 +4308,89 @@ function ProjectOperations({
                 {registerFiles.length ? <div className="boq-preview">{registerFiles.map((file) => <div key={`${file.name}:${file.lastModified}`}><FileText size={15} /><span>{file.name}</span><small>{Math.max(1, Math.round(file.size / 1024))} KB</small></div>)}</div> : null}
                 {registerForm.type === "inspection_request" ? <div className="form-grid-2"><label className="form-field"><span>{text("Inspection category", "Inspectiecategorie")}</span><select value={registerForm.inspectionCategory} onChange={(event) => setRegisterForm({ ...registerForm, inspectionCategory: event.target.value })}><option value="architectural">Architectural</option><option value="structural">Structural</option><option value="mep">MEP</option><option value="testing">Testing</option><option value="other">Other</option></select></label><div className="form-grid-2"><label className="form-field"><span>{text("Ready date", "Gereeddatum")}</span><input type="date" value={registerForm.readyDate} onChange={(event) => setRegisterForm({ ...registerForm, readyDate: event.target.value })} /></label><label className="form-field"><span>{text("Ready time", "Gereedtijd")}</span><input type="time" value={registerForm.readyTime} onChange={(event) => setRegisterForm({ ...registerForm, readyTime: event.target.value })} /></label></div></div> : null}
                 {registerForm.type === "technical_instruction" ? <label className="form-field"><span>{text("Discipline", "Discipline")}</span><select value={registerForm.discipline} onChange={(event) => setRegisterForm({ ...registerForm, discipline: event.target.value })}><option value="architectural">Architectural</option><option value="structural">Structural</option><option value="electrical">Electrical</option><option value="mechanical">Mechanical</option><option value="civil">Civil</option><option value="hse">HSE</option></select></label> : null}
-                {registerForm.type === "change_order" || registerForm.type === "technical_instruction" ? <><div className="form-grid-2"><label className="form-field"><span>{text("Schedule impact", "Planningimpact")}</span><select value={registerForm.scheduleImpact} onChange={(event) => setRegisterForm({ ...registerForm, scheduleImpact: event.target.value })}><option value="none">None</option><option value="possible">Possible</option><option value="confirmed">Confirmed</option><option value="unknown">To be assessed</option></select></label><label className="form-field"><span>{text("Cost impact", "Kostenimpact")}</span><select value={registerForm.costImpact} onChange={(event) => setRegisterForm({ ...registerForm, costImpact: event.target.value })}><option value="none">None</option><option value="possible">Possible</option><option value="confirmed">Confirmed</option><option value="unknown">To be assessed</option></select></label></div><label className="form-field"><span>{text("Impact explanation", "Toelichting impact")}</span><textarea rows={2} value={registerForm.impactExplanation} onChange={(event) => setRegisterForm({ ...registerForm, impactExplanation: event.target.value })} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, impactExplanation: appendDictation(current.impactExplanation, transcript) }))} /></label></> : null}
+                {registerForm.type === "technical_instruction" ? <><div className="form-grid-2"><label className="form-field"><span>{text("Schedule impact", "Planningimpact")}</span><select value={registerForm.scheduleImpact} onChange={(event) => setRegisterForm({ ...registerForm, scheduleImpact: event.target.value })}><option value="none">None</option><option value="possible">Possible</option><option value="confirmed">Confirmed</option><option value="unknown">To be assessed</option></select></label><label className="form-field"><span>{text("Cost impact", "Kostenimpact")}</span><select value={registerForm.costImpact} onChange={(event) => setRegisterForm({ ...registerForm, costImpact: event.target.value })}><option value="none">None</option><option value="possible">Possible</option><option value="confirmed">Confirmed</option><option value="unknown">To be assessed</option></select></label></div><label className="form-field"><span>{text("Impact explanation", "Toelichting impact")}</span><textarea rows={2} value={registerForm.impactExplanation} onChange={(event) => setRegisterForm({ ...registerForm, impactExplanation: event.target.value })} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, impactExplanation: appendDictation(current.impactExplanation, transcript) }))} /></label></> : null}
+                {changeOrderRegister ? (
+                  <div className="record-form-sections change-order-sections">
+                    <RecordFormSection
+                      number={3}
+                      title={text("Schedule impact", "Planningimpact")}
+                      description={text("Either this change moves the finish date or it does not; only when it does are the dates worth asking for.", "Deze wijziging verschuift de einddatum wel of niet; alleen als dat zo is, zijn de datums de moeite waard om te vragen.")}
+                    >
+                      <div className="form-field">
+                        <span>{text("Does this change affect the schedule?", "Heeft deze wijziging invloed op de planning?")}</span>
+                        <div className="quick-issue-presets">
+                          {([[true, text("Yes", "Ja")], [false, text("No", "Nee")]] as const).map(([value, label]) => (
+                            <button className={changeOrder.affectsSchedule === value ? "active" : ""} type="button" onClick={() => setChangeOrder({ ...changeOrder, affectsSchedule: value })} key={String(value)}>{label}</button>
+                          ))}
+                        </div>
+                      </div>
+                      {changeOrder.affectsSchedule ? (
+                        <div className="form-grid-2">
+                          <label className="form-field"><span>{text("Original finish date (baseline)", "Oorspronkelijke einddatum (baseline)")}</span><input type="date" value={changeOrder.originalFinishDate} onChange={(event) => setChangeOrder({ ...changeOrder, originalFinishDate: event.target.value, newExpectedFinishDate: changeOrderFinishDate(event.target.value, changeOrder.extensionDays) })} /></label>
+                          <label className="form-field"><span>{text("Extension of time (days)", "Termijnverlenging (dagen)")}</span><input type="number" min="0" step="1" value={changeOrder.extensionDays} onChange={(event) => setChangeOrder({ ...changeOrder, extensionDays: event.target.value, newExpectedFinishDate: changeOrderFinishDate(changeOrder.originalFinishDate, event.target.value) })} /></label>
+                          {/* The revised date follows from the baseline and the extension, so
+                              the form the contractor signs cannot contradict itself. */}
+                          <label className="form-field"><span>{text("New expected finish date (revised) · calculated", "Nieuwe verwachte einddatum (herzien) · berekend")}</span><input type="date" value={changeOrder.newExpectedFinishDate || changeOrderFinishDate(changeOrder.originalFinishDate, changeOrder.extensionDays)} readOnly /></label>
+                        </div>
+                      ) : null}
+                    </RecordFormSection>
+
+                    <RecordFormSection
+                      number={5}
+                      title={text("Acknowledgement & agreement", "Erkenning & akkoord")}
+                      description={text("The contractor acknowledges the change and its effect on the schedule. What the contractor thinks the new finish date should be is section 3, agreed once — not proposed again here.", "De aannemer erkent de wijziging en het effect op de planning. Wat de aannemer als nieuwe einddatum ziet, staat in sectie 3 en wordt één keer afgesproken — niet hier opnieuw voorgesteld.")}
+                    >
+                      <div className="form-grid-2">
+                        <label className="form-field"><span>{text("Contractor representative", "Vertegenwoordiger aannemer")}</span><input list="change-order-contractors" value={changeOrder.contractorRepresentative} onChange={(event) => setChangeOrder({ ...changeOrder, contractorRepresentative: event.target.value })} placeholder={text("Enter name", "Voer naam in")} /><datalist id="change-order-contractors">{parties.map((party) => <option value={party.name} key={party.id} />)}</datalist></label>
+                        <label className="form-field"><span>{text("Position", "Functie")}</span><input value={changeOrder.contractorPosition} onChange={(event) => setChangeOrder({ ...changeOrder, contractorPosition: event.target.value })} placeholder={text("Enter position", "Voer functie in")} /></label>
+                      </div>
+                      <SignatureField
+                        label={text("Signature · contractor representative", "Handtekening · vertegenwoordiger aannemer")}
+                        declaration={text(
+                          "By signing you acknowledge this change and agree to proceed according to its impact on time, if any.",
+                          "Met je handtekening erken je deze wijziging en ga je akkoord met de uitvoering volgens het effect op de tijd, indien van toepassing.",
+                        )}
+                        hint={text("The signature, the name and the date of signing are stored with the change order.", "De handtekening, de naam en de datum van ondertekenen worden bij de wijzigingsopdracht opgeslagen.")}
+                        nameSuggestion={changeOrder.contractorRepresentative}
+                        value={signatureFromDetails(changeOrder.contractorSignedBy, changeOrder.contractorSignedAt, changeOrder.contractorSignatureImage)}
+                        onChange={(signature) => setChangeOrder({
+                          ...changeOrder,
+                          contractorSignedBy: signature?.name ?? "",
+                          contractorSignedAt: signature?.signedAt ?? "",
+                          contractorSignatureImage: signature?.image ?? "",
+                          contractorRepresentative: signature?.name || changeOrder.contractorRepresentative,
+                        })}
+                      />
+                      <label className="form-field"><span>{text("Contractor remarks (optional)", "Opmerkingen aannemer (optioneel)")}</span><textarea rows={2} maxLength={500} value={changeOrder.contractorRemarks} onChange={(event) => setChangeOrder({ ...changeOrder, contractorRemarks: event.target.value })} placeholder={text("Enter remarks (if any).", "Voer eventuele opmerkingen in.")} /><DictateButton onText={(transcript) => setChangeOrder((current) => ({ ...current, contractorRemarks: appendDictation(current.contractorRemarks, transcript) }))} /></label>
+                    </RecordFormSection>
+
+                    <RecordFormSection
+                      number={6}
+                      title={text("Approval · supervision", "Goedkeuring · supervisie")}
+                      description={text("One approval column: the developer originates the change above and the contractor acknowledges it in section 5, so supervision is the one that approves it.", "Eén goedkeuringskolom: de ontwikkelaar geeft de wijziging hierboven uit en de aannemer erkent die in sectie 5, dus supervisie is degene die goedkeurt.")}
+                    >
+                      <label className="form-field"><span>{text("Name", "Naam")}</span><input list="change-order-supervision" value={changeOrder.supervisionName} onChange={(event) => setChangeOrder({ ...changeOrder, supervisionName: event.target.value })} placeholder={text("Enter name", "Voer naam in")} /><datalist id="change-order-supervision">{documentIssuerOptions.map((name) => <option value={name} key={name} />)}</datalist></label>
+                      <SignatureField
+                        label={text("Signature · supervision", "Handtekening · supervisie")}
+                        declaration={text(
+                          "By signing you approve this change order on behalf of supervision.",
+                          "Met je handtekening keur je deze wijzigingsopdracht namens de supervisie goed.",
+                        )}
+                        hint={text("The signature, the name and the date of signing are stored with the change order.", "De handtekening, de naam en de datum van ondertekenen worden bij de wijzigingsopdracht opgeslagen.")}
+                        nameSuggestion={changeOrder.supervisionName || currentUserName}
+                        nameOptions={documentIssuerOptions}
+                        value={signatureFromDetails(changeOrder.supervisionSignedBy, changeOrder.supervisionSignedAt, changeOrder.supervisionSignatureImage)}
+                        onChange={(signature) => setChangeOrder({
+                          ...changeOrder,
+                          supervisionSignedBy: signature?.name ?? "",
+                          supervisionSignedAt: signature?.signedAt ?? "",
+                          supervisionSignatureImage: signature?.image ?? "",
+                          supervisionName: signature?.name || changeOrder.supervisionName,
+                        })}
+                      />
+                    </RecordFormSection>
+                  </div>
+                ) : null}
                 {registerForm.type === "environmental_report" ? <><div className="form-grid-2"><label className="form-field"><span>{text("Period start", "Periode start")}</span><input type="date" value={registerForm.periodStart} onChange={(event) => setRegisterForm({ ...registerForm, periodStart: event.target.value })} /></label><label className="form-field"><span>{text("Period end", "Periode einde")}</span><input type="date" value={registerForm.periodEnd} onChange={(event) => setRegisterForm({ ...registerForm, periodEnd: event.target.value })} /></label></div><div className="form-grid-2"><label className="form-field"><span>{text("Lost hours", "Verloren uren")}</span><input type="number" min="0" value={registerForm.lostHours} onChange={(event) => setRegisterForm({ ...registerForm, lostHours: event.target.value })} /></label><label className="form-field"><span>{text("Reason for lost hours", "Reden verloren uren")}</span><input value={registerForm.lostHoursReason} onChange={(event) => setRegisterForm({ ...registerForm, lostHoursReason: event.target.value })} /></label></div></> : null}
                 {/* The document is signed here, with a written signature, at the moment it
                     is drawn up or the moment the received form is recorded. */}
@@ -3831,7 +4442,7 @@ function ProjectOperations({
                 markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
               />
               {registerPhotoError ? <p className="field-error" role="alert">{registerPhotoError}</p> : null}
-              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerTitle.length < 3 || !controlledFormReady || !lessonFormReady} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : lessonsLearnedRegister ? text("Save lesson learned", "Geleerde les opslaan") : text("Save register item", "Registeritem opslaan")}</button>
+              <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerTitle.length < 3 || !controlledFormReady || !lessonFormReady || !delayReportFormReady} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : lessonsLearnedRegister ? text("Save lesson learned", "Geleerde les opslaan") : delayReportRegister ? text("Save delay report", "Vertragingsrapport opslaan") : text("Save register item", "Registeritem opslaan")}</button>
             </RecordFormShell>
           ) : null}
           {/* The bill of quantities has nothing to do with a delivery or any other
@@ -3896,6 +4507,13 @@ function ProjectOperations({
                 outcomeLabel,
                 // An agreement without its parties and signature is unreadable in a list.
                 entry.register_type === "agreement" ? agreementSummaryLine(entry.details, text) : "",
+                // A delay report reads by how many days it slipped and where that puts the
+                // finish date; a delay whose new date you cannot see is just bad news.
+                entry.register_type === "delay_report" ? [
+                  entry.details?.delay_duration_days ? text(`${entry.details.delay_duration_days} days`, `${entry.details.delay_duration_days} dagen`) : "",
+                  entry.details?.new_expected_finish_date ? `${text("revised", "herzien")} ${formatDate(String(entry.details.new_expected_finish_date), locale)}` : "",
+                  entry.details?.completion_status ? text("completed", "afgerond") : "",
+                ].filter(Boolean).join(" · ") : "",
                 // A lesson learned reads its own follow-up status and who owns it.
                 entry.register_type === "lessons_learned" ? [
                   { open: text("open", "open"), in_progress: text("in progress", "in uitvoering"), closed: text("closed", "afgerond") }[String(entry.details?.lesson_status ?? "open")] ?? "",
@@ -4303,7 +4921,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   busy: boolean;
   /** The finding the action centre pointed at, so it is the one in front of the user. */
   focusRecordId?: string;
-  transition: (finding: Finding, nextStatus: string, note: string, finalMeasure: string, correction: string, verificationSignedBy: string, verificationSignatureImage: string) => Promise<boolean>;
+  transition: (finding: Finding, nextStatus: string, note: string, finalMeasure: string, correction: string, verificationSignedBy: string, verificationSignatureImage: string, verification?: QualityControlVerification) => Promise<boolean>;
   recordProgress: (finding: Finding, progressPercent: number, disposition: "validated" | "to_be_corrected" | "alternative_solution", note: string) => Promise<boolean>;
   share: (finding: Finding) => Promise<{ shareId: string; url: string; expiresAt: string } | null>;
   revoke: (shareId: string) => Promise<boolean>;
@@ -4326,6 +4944,19 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   /** The written signature under the Quality Control / Verification box, required to
    * close an NCR — the client's own form marks that box "Signature *". */
   const [verificationSignature, setVerificationSignature] = useState<HandwrittenSignature | null>(null);
+  /**
+   * The rest of that box, as the client's own form asks for it: whether the issue is
+   * resolved, the day the re-inspection was carried out, what was observed, the comments
+   * the verifier signs for and the job that verifier holds.
+   */
+  const [verification, setVerification] = useState({
+    issueResolved: true,
+    inspectionDate: "",
+    remarks: "",
+    comments: "",
+    position: "",
+  });
+  const emptyVerification = { issueResolved: true, inspectionDate: "", remarks: "", comments: "", position: "" };
   const [progressActive, setProgressActive] = useState<string | null>(null);
   const [progressPercent, setProgressPercent] = useState("0");
   const [progressDisposition, setProgressDisposition] = useState<"validated" | "to_be_corrected" | "alternative_solution">("to_be_corrected");
@@ -4443,6 +5074,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
                     <img className="record-signature-proof" src={issue.signature_image} alt={text(`Signature of ${issue.signed_by ?? ""}`, `Handtekening van ${issue.signed_by ?? ""}`)} />
                   ) : null}
                   <small>{issue.signed_by ? text(`Signed by ${issue.signed_by} · ${formatDate(issue.signed_at ?? null, locale)}`, `Ondertekend door ${issue.signed_by} · ${formatDate(issue.signed_at ?? null, locale)}`) : text("Not signed", "Niet ondertekend")}</small>
+                  {issue.signed_position ? <small>{text("Position", "Functie")}: {issue.signed_position}</small> : null}
                 </div>
                 <div className={finding.proposed_correction ? "answered" : ""}>
                   <span>{text("Proposed corrective action by contractor", "Voorgestelde correctieve actie door de aannemer")}</span>
@@ -4458,9 +5090,19 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
                     : text("Recorded without a name", "Vastgelegd zonder naam")}</small> : null}
                 </div>
                 <div className={finding.status === "closed" ? "answered" : ""}>
-                  <span>{text("Quality control", "Kwaliteitscontrole")}</span>
-                  <strong>{finding.status === "closed" ? text("Issue resolved", "Afwijking opgelost") : text("Issue not resolved", "Afwijking nog niet opgelost")}</strong>
+                  <span>{text("Quality control / verification", "Kwaliteitscontrole / verificatie")}</span>
+                  {/* "Issue resolved" is what the verifier signed for, not what the status
+                      column happens to say: an NCR can be closed on a solution that only
+                      partly worked, and the client's own form has a box for exactly that. */}
+                  <strong>{issue.qc_issue_resolved === false
+                    ? text("Issue not resolved", "Afwijking niet opgelost")
+                    : finding.status === "closed" || issue.qc_issue_resolved
+                    ? text("Issue resolved", "Afwijking opgelost")
+                    : text("Issue not resolved", "Afwijking nog niet opgelost")}</strong>
                   <p>{finding.final_measure || text("No verified close-out yet.", "Nog geen geverifieerde afsluiting.")}</p>
+                  {issue.qc_inspection_date ? <small>{text("Date of QC inspection", "Datum QC-inspectie")}: {formatDate(issue.qc_inspection_date, locale)}</small> : null}
+                  {issue.qc_remarks ? <small>{text("Remarks / observations:", "Opmerkingen / waarnemingen:")} {issue.qc_remarks}</small> : null}
+                  {issue.verification_comments ? <small>{text("Verification comments:", "Verificatiecommentaar:")} {issue.verification_comments}</small> : null}
                   {issue.remarks ? <small>{text("Remarks:", "Opmerkingen:")} {issue.remarks}</small> : null}
                   {/* The written signature under the Quality Control / Verification box,
                       next to the drawn signatures on the other two boxes of this form. */}
@@ -4471,6 +5113,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
                   {finding.status === "closed" ? <small>{issue.verification_signed_by
                     ? text(`Signed by ${issue.verification_signed_by} · ${formatDate(issue.verification_signed_at ?? null, locale)}`, `Ondertekend door ${issue.verification_signed_by} · ${formatDate(issue.verification_signed_at ?? null, locale)}`)
                     : text("Recorded without a signature", "Vastgelegd zonder handtekening")}</small> : null}
+                  {issue.verification_signed_position ? <small>{text("Position", "Functie")}: {issue.verification_signed_position}</small> : null}
                 </div>
               </section>
             ) : null}
@@ -4533,24 +5176,46 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
                 ) : null}
                 <div className="quick-issue-presets" aria-label={text("Choose a status note", "Kies een statusnotitie")}>{(noteChoices[nextStatus] ?? []).map((choice) => <button className={note === choice ? "active" : ""} type="button" onClick={() => setNote(choice)} key={choice}>{choice}</button>)}</div>
                 <label className="form-field"><span>{nextStatus === "closed" ? finding.finding_type === "ncr" ? text("Quality control · issue resolved because", "Kwaliteitscontrole · afwijking opgelost omdat") : text("Verification finding", "Verificatiebevinding") : text("Comment", "Toelichting")}</span><textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} /><DictateButton onText={(transcript) => setNote((current) => appendDictation(current, transcript))} /></label>
-                {/* The Quality Control / Verification box on the client's own NCR form
-                    marks its signature line required; closing an NCR now asks for it
-                    the same way the engineer's recommendation and the contractor's
-                    correction already are signed. */}
+                {/* The Quality Control / Verification box of the client's own NCR form, in
+                    full: whether the issue is resolved, the day the re-inspection was
+                    actually carried out, what was observed, the comments the verifier
+                    signs for, and the written signature the form marks required. */}
                 {finding.finding_type === "ncr" && nextStatus === "closed" ? (
-                  <SignatureField
-                    label={text("Sign as the person closing this NCR", "Onderteken als afsluiter van deze NCR")}
-                    declaration={text(
-                      "By signing you confirm the corrective action was verified and this non-conformance report is closed.",
-                      "Met je handtekening bevestig je dat de correctieve actie is geverifieerd en dat dit non-conformance report wordt afgesloten.",
-                    )}
-                    hint={text("The signature, the name and the moment of closing are stored with the report.", "De handtekening, de naam en het moment van afsluiten worden bij het rapport opgeslagen.")}
-                    nameSuggestion={currentUserName}
-                    value={verificationSignature}
-                    onChange={setVerificationSignature}
-                  />
+                  <div className="ncr-verification-box">
+                    <div className="form-grid-2">
+                      <div className="form-field">
+                        <span>{text("Quality control issue", "Bevinding kwaliteitscontrole")}</span>
+                        <div className="quick-issue-presets">
+                          {([[true, text("Issue resolved", "Afwijking opgelost")], [false, text("Issue not resolved", "Afwijking niet opgelost")]] as const).map(([value, label]) => (
+                            <button className={verification.issueResolved === value ? "active" : ""} type="button" onClick={() => setVerification({ ...verification, issueResolved: value })} key={String(value)}>{label}</button>
+                          ))}
+                        </div>
+                      </div>
+                      <label className="form-field"><span>{text("Date of QC inspection", "Datum QC-inspectie")}</span><input type="date" value={verification.inspectionDate} onChange={(event) => setVerification({ ...verification, inspectionDate: event.target.value })} /></label>
+                    </div>
+                    <label className="form-field"><span>{text("Remarks / observations", "Opmerkingen / waarnemingen")}</span><textarea rows={2} maxLength={1000} value={verification.remarks} onChange={(event) => setVerification({ ...verification, remarks: event.target.value })} placeholder={text("What the re-inspection actually saw.", "Wat er bij de herinspectie daadwerkelijk is gezien.")} /><DictateButton onText={(transcript) => setVerification((current) => ({ ...current, remarks: appendDictation(current.remarks, transcript) }))} /></label>
+                    <label className="form-field"><span>{text("Verification comments", "Verificatiecommentaar")}</span><textarea rows={2} maxLength={1000} value={verification.comments} onChange={(event) => setVerification({ ...verification, comments: event.target.value })} placeholder={text("Corrective action verified. Work is acceptable and the NCR can be closed.", "Correctieve actie geverifieerd. Werk is acceptabel en de NCR kan worden gesloten.")} /><DictateButton onText={(transcript) => setVerification((current) => ({ ...current, comments: appendDictation(current.comments, transcript) }))} /></label>
+                    <SignatureField
+                      label={text("Sign as the person closing this NCR", "Onderteken als afsluiter van deze NCR")}
+                      declaration={text(
+                        "By signing you confirm the corrective action was verified and this non-conformance report is closed.",
+                        "Met je handtekening bevestig je dat de correctieve actie is geverifieerd en dat dit non-conformance report wordt afgesloten.",
+                      )}
+                      hint={text("The signature, the name and the date of closing are stored with the report.", "De handtekening, de naam en de datum van afsluiten worden bij het rapport opgeslagen.")}
+                      nameSuggestion={currentUserName}
+                      value={verificationSignature}
+                      onChange={setVerificationSignature}
+                    />
+                    <label className="form-field"><span>{text("Position", "Functie")}</span><input value={verification.position} onChange={(event) => setVerification({ ...verification, position: event.target.value })} placeholder={text("Quality Engineer", "Quality Engineer")} /></label>
+                  </div>
                 ) : null}
-                <button className="primary-button" type="button" disabled={busy || note.trim().length < 2 || (nextStatus === "ready_for_verification" && measure.trim().length < 3) || (finding.finding_type === "ncr" && nextStatus === "closed" && !verificationSignature)} onClick={() => void transition(finding, nextStatus, note, measure, correction, verificationSignature?.name ?? "", verificationSignature?.image ?? "").then((okay) => { if (okay) { setActive(null); setNote(""); setMeasure(""); setCorrection(""); setVerificationSignature(null); } })}>{text("Confirm human status change", "Bevestig menselijke statuswijziging")}</button>
+                <button className="primary-button" type="button" disabled={busy || note.trim().length < 2 || (nextStatus === "ready_for_verification" && measure.trim().length < 3) || (finding.finding_type === "ncr" && nextStatus === "closed" && (!verificationSignature || !verification.inspectionDate || verification.comments.trim().length < 3))} onClick={() => void transition(finding, nextStatus, note, measure, correction, verificationSignature?.name ?? "", verificationSignature?.image ?? "", finding.finding_type === "ncr" && nextStatus === "closed" ? {
+                  verification_signed_position: verification.position.trim(),
+                  verification_comments: verification.comments.trim(),
+                  qc_inspection_date: verification.inspectionDate,
+                  qc_issue_resolved: verification.issueResolved,
+                  qc_remarks: verification.remarks.trim(),
+                } : {}).then((okay) => { if (okay) { setActive(null); setNote(""); setMeasure(""); setCorrection(""); setVerificationSignature(null); setVerification({ ...emptyVerification }); } })}>{text("Confirm human status change", "Bevestig menselijke statuswijziging")}</button>
               </div>
             ) : null}
           </article>

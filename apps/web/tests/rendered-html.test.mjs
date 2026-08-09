@@ -1248,7 +1248,9 @@ test("processes the annotated screens of 1 August: NCR form, agreement and deadl
   // The agreement register is text, the two parties who made it and a signature each.
   assert.match(workspace, /const agreementRegister = registerForm\.type === "agreement"/);
   assert.match(workspace, /<AgreementSignatureFields/);
-  assert.match(workspace, /What was agreed\?|Wat is afgesproken\?/);
+  // The single "what was agreed?" box grew into the client's own four sections on
+  // 9 August; the agreement still says what was agreed, in section 1.
+  assert.match(workspace, /Description of agreement|Omschrijving van de afspraak/);
   assert.match(workspace, /agreementSignatureDetails\(agreementForm\)/);
   assert.match(styles, /\.agreement-signatures/);
   assert.match(workspace, /agreement: \[\],/);
@@ -1372,7 +1374,7 @@ test("makes every recorded signature visible on the document it belongs to", asy
   // An agreement is signed the same way wherever it is written, and the register shows it.
   assert.match(agreement, /export function AgreementSignatureFields/);
   assert.match(agreement, /export function agreementSummaryLine/);
-  assert.match(workspace, /<AgreementSignatureFields options=\{agreementPartyOptions\}/);
+  assert.match(workspace, /<AgreementSignatureFields\s+options=\{agreementPartyOptions\}/);
   assert.match(fieldTools, /<AgreementSignatureFields options=\{agreementPartyOptions\}/);
   assert.match(fieldTools, /agreementSignatureDetails\(agreement\)/);
   assert.match(workspace, /agreementSummaryLine\(entry\.details, text\)/);
@@ -2036,7 +2038,11 @@ test("processes the annotated screens of 4 August: ordered photos, a named pin, 
   assert.match(operations, /<label className="form-field"><span>\{text\("Client B1 issue catalog/);
   assert.match(operations, /<option value="high">\{text\("High · 3 days"/);
   assert.match(operations, /Impact in your own words|Impact in eigen woorden/);
-  assert.match(operations, /Follow-up in your own words|Opvolging in eigen woorden/);
+  // "Required follow-up" was struck off the NCR form itself on 9 August — what has to
+  // happen is the engineer's recommended action, and what will happen is the
+  // contractor's proposal. The two lists at the head of that form replaced it.
+  assert.match(operations, /text\("Category", "Categorie"\)/);
+  assert.match(operations, /text\("Type", "Type"\)/);
   assert.doesNotMatch(operations, /Different impact or action|Andere impact of actie/);
   // The issue form is signed too: the client wrote "signature" beside it.
   assert.match(operations, /Sign as the supervisor who reports this issue|Ondertekenen als supervisor die dit issue meldt/);
@@ -2852,9 +2858,11 @@ test("closing an NCR asks for the Quality Control / Verification signature the c
   // #1 · Client feedback of 7 August: the Quality Control / Verification box marks its
   // signature line required, exactly like the engineer's recommendation and the
   // contractor's correction already are — an issue closes without one.
-  assert.match(workspace, /finding\.finding_type === "ncr" && nextStatus === "closed" \? \(\s*<SignatureField/);
+  // The signature grew a box around it on 9 August — the rest of the Quality Control /
+  // Verification field, which the client's own form also asks for.
+  assert.match(workspace, /finding\.finding_type === "ncr" && nextStatus === "closed" \? \(\s*<div className="ncr-verification-box">/);
   assert.match(workspace, /Sign as the person closing this NCR|Onderteken als afsluiter van deze NCR/);
-  assert.match(workspace, /finding\.finding_type === "ncr" && nextStatus === "closed" && !verificationSignature/);
+  assert.match(workspace, /finding\.finding_type === "ncr" && nextStatus === "closed" && \(!verificationSignature/);
   assert.match(workspace, /verificationSignature\?\.name \?\? "", verificationSignature\?\.image \?\? ""/);
   assert.match(workspace, /issue\.verification_signature_image/);
 
@@ -2876,17 +2884,19 @@ test("closing an NCR asks for the Quality Control / Verification signature the c
   assert.match(ncrDocx, /issue\.verification_signed_by \|\| context\.verifierName \|\| ""/);
 });
 
-test("adds a Lessons Learned tile and register form, next to Deadlines rather than instead of it", async () => {
+test("gives Lessons Learned the workspace tile the client struck Deadlines off", async () => {
   const [home, workspace] = await Promise.all([
     readFile(new URL("../app/project-workspace-home.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
   ]);
 
-  // #3 · Client feedback of 7 August: "zorg ervoor dat beide gewoon bestaat" — both
-  // Deadlines and Lessons Learned exist as their own dashboard tile.
-  assert.match(home, /id: "deadlines"/);
+  // The workspace mockup strikes "Deadlines" through and writes LESSONS LEARNED over it.
+  // The tile is gone; the deadline view of the action centre stays reachable from the
+  // supporting tools, because the client struck the tile, not the escalations behind it.
+  assert.doesNotMatch(home, /id: "deadlines"/);
   assert.match(home, /id: "lessons-learned"/);
   assert.match(home, /action: \(\) => openTask\("registers", false, \{ registerType: "lessons_learned" \}\)/);
+  assert.match(home, /workspace-support-strip[\s\S]*onClick=\{\(\) => openActionCenter\("deadlines"\)\}/);
 
   // The register form itself: the client's own fields, minus the target date the client
   // struck off the original Lessons Learned mockup.
@@ -2896,6 +2906,200 @@ test("adds a Lessons Learned tile and register form, next to Deadlines rather th
     assert.match(workspace, label);
   }
   assert.doesNotMatch(workspace, /lessonForm\.targetDate/);
+
+  // Picture of Issue and Picture of Result: two named slots, both required, because a
+  // pile of photos cannot say which one is the before and which one is the after.
+  assert.match(workspace, /label=\{text\("Picture of issue", "Foto van het probleem"\)\}/);
+  assert.match(workspace, /label=\{text\("Picture of result", "Foto van het resultaat"\)\}/);
+  assert.match(workspace, /Boolean\(registerNamedPhotos\.lesson_issue\)/);
+  assert.match(workspace, /Boolean\(registerNamedPhotos\.lesson_result\)/);
+});
+
+test("a named photo slot files its picture under the box it was taken in", async () => {
+  const [evidence, workspace, css] = await Promise.all([
+    readFile(new URL("../app/photo-evidence.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // One component for every photo the client's forms ask for by name, so all of them get
+  // the same detail screen, the same marking pad and the same words.
+  assert.match(evidence, /export function NamedPhotoSlot/);
+  assert.match(evidence, /<PhotoDetailSheet/);
+  assert.match(css, /\.named-photo-slot-capture/);
+
+  // The label travels with the picture into the media library and onto the record, which
+  // is the whole point of a named slot over one more photo in the pile.
+  assert.match(workspace, /const namedPhotoRoles: Record<string, \{ en: string; nl: string \}>/);
+  assert.match(workspace, /namedPhotoLabel\(role, language\)/);
+  assert.match(workspace, /named_photos: namedRegisterPhotos\.map/);
+});
+
+test("gives Agreements Made the four boxes of the client's own form", async () => {
+  const [workspace, agreement] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/agreement-signature.tsx", import.meta.url), "utf8"),
+  ]);
+
+  // 1 Agreement details, 2 Action owner, 3 Agreement confirmation, 4 Completion.
+  for (const heading of [
+    /title=\{text\("Agreement details", "Details van de afspraak"\)\}/,
+    /title=\{text\("Action owner", "Eigenaar van de actie"\)\}/,
+    /title=\{text\("Agreement confirmation", "Bevestiging van de afspraak"\)\}/,
+    /title=\{text\("Completion", "Afronding"\)\}/,
+  ]) {
+    assert.match(workspace, heading);
+  }
+  assert.match(workspace, /agreementRecordDetails\(agreementRecord\)/);
+
+  // Two named signers, not three: the client struck the developer's column off the
+  // Agreement Confirmation box. Each carries a name, a position and a signature.
+  assert.match(workspace, /roleLabels=\{\[text\("Contractor representative", "Vertegenwoordiger aannemer"\), text\("Supervision \(consultant\)", "Supervisie \(consultant\)"\)\]\}/);
+  assert.doesNotMatch(workspace, /Developer representative/i);
+  assert.match(agreement, /positionA: string;/);
+  assert.match(agreement, /position_first: state\.positionA\.trim\(\) \|\| null/);
+
+  // The completion box carries the date the status was reached, next to the status.
+  assert.match(workspace, /agreementRecord\.actualCompletionDate/);
+  assert.match(agreement, /completion_status: state\.completionStatus \|\| null/);
+});
+
+test("finishes the NCR form the way the client marked up its three sheets", async () => {
+  const [workspace, operations, ncrPdf, ncrDocx, share, migration] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/ncr-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/ncr-docx.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/share/[token]/external-share-actions.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202608090001_ncr_quality_control_verification_box.sql", import.meta.url), "utf8"),
+  ]);
+
+  // The two lists the client kept, with the twelve and fourteen entries they wrote out.
+  assert.match(workspace, /const ncrCategories = \[/);
+  assert.match(workspace, /const ncrWorkTypes = \[/);
+  assert.equal((workspace.match(/^\s+\{ id: "[a-z_]+", en: "[^"]+", nl: "[^"]+" \},$/gm) ?? []).length > 0, true);
+  for (const option of [/en: "Workmanship", nl: "Uitvoering"/, /en: "Concrete work", nl: "Betonwerk"/, /en: "Flooring \/ tiling \/ LVT"/]) {
+    assert.match(workspace, option);
+  }
+
+  // The third list on that sheet is struck through and must not come back.
+  assert.doesNotMatch(workspace, /const ncrSources = \[/);
+  assert.doesNotMatch(workspace, /Site Inspection \(Internal\)/);
+
+  // "Corrective Action Required" is struck off the NCR form, and only off that one: the
+  // issue screen has no engineer's recommendation to duplicate, so it keeps its box.
+  const ncrFormStart = workspace.indexOf('{showForm && findingScope === "ncr" ? (');
+  const ncrForm = workspace.slice(ncrFormStart, workspace.indexOf("{submittedFinding ? (", ncrFormStart));
+  assert.ok(ncrFormStart > 0 && ncrForm.length > 1000, "the NCR entry form should be findable in the workspace");
+  assert.doesNotMatch(ncrForm, /text\("Required follow-up", "Vereiste opvolging"\)/);
+  assert.match(workspace, /text\("Required follow-up", "Vereiste opvolging"\)/);
+  assert.match(ncrForm, /text\("Category", "Categorie"\)/);
+  assert.match(ncrForm, /text\("Type", "Type"\)/);
+
+  // Name and position under every signature line.
+  assert.match(workspace, /findingForm\.signedPosition/);
+  assert.match(operations, /signed_position\?: string;/);
+  assert.match(operations, /correction_signed_position\?: string;/);
+  assert.match(operations, /verification_signed_position\?: string;/);
+  assert.match(share, /Functie \/ titel/);
+  assert.match(ncrPdf, /line\.position/);
+  assert.match(ncrDocx, /position \? \[labelValue\(`\$\{label\} · position`/);
+
+  // The Quality Control / Verification box in full, and a database that only lets a
+  // transition write that box — never the engineer's own recommendation.
+  for (const field of [
+    /text\("Quality control issue", "Bevinding kwaliteitscontrole"\)/,
+    /text\("Date of QC inspection", "Datum QC-inspectie"\)/,
+    /text\("Remarks \/ observations", "Opmerkingen \/ waarnemingen"\)/,
+    /text\("Verification comments", "Verificatiecommentaar"\)/,
+  ]) {
+    assert.match(workspace, field);
+  }
+  assert.match(operations, /export type QualityControlVerification/);
+  assert.match(migration, /'verification_signed_position','verification_comments'/);
+  assert.match(migration, /'qc_inspection_date','qc_issue_resolved','qc_remarks'/);
+  assert.match(migration, /p_verification_details jsonb default null/);
+});
+
+test("makes the change order the client's own CO form, with one approval column", async () => {
+  const [workspace, changeOrder, coPdf, coDocx] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/forms/change-order.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/controlled-document-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/controlled-document-docx.ts", import.meta.url), "utf8"),
+  ]);
+
+  for (const heading of [
+    /title=\{text\("Change description", "Omschrijving van de wijziging"\)\}/,
+    /title=\{text\("Scope of change", "Omvang van de wijziging"\)\}/,
+    /title=\{text\("Schedule impact", "Planningimpact"\)\}/,
+    /title=\{text\("Acknowledgement & agreement", "Erkenning & akkoord"\)\}/,
+    /title=\{text\("Approval · supervision", "Goedkeuring · supervisie"\)\}/,
+  ]) {
+    assert.match(workspace, heading);
+  }
+
+  // Section 3 is a yes/no, and the revised date is calculated so the form the contractor
+  // signs cannot contradict itself.
+  assert.match(workspace, /changeOrder\.affectsSchedule === value/);
+  assert.match(changeOrder, /export function changeOrderFinishDate/);
+  assert.match(workspace, /changeOrderFinishDate\(changeOrder\.originalFinishDate, changeOrder\.extensionDays\)/);
+
+  // The client struck two of the three approval columns and the status photo off this
+  // form, so neither may come back.
+  assert.doesNotMatch(workspace, /Developer \(originator\) approval/i);
+  assert.doesNotMatch(workspace, /Contractor acceptance/i);
+  assert.doesNotMatch(workspace, /Actual status on original finish date/i);
+  assert.match(coPdf, /APPROVAL · SUPERVISION/);
+  assert.match(coDocx, /Approval · supervision/);
+});
+
+test("gives the project delay report its own form, numbered PDR and evidenced by photo", async () => {
+  const [workspace, delayReport, home, migration] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/forms/delay-report.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/project-workspace-home.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../../../supabase/migrations/202608090003_delay_report_and_lessons_learned_register.sql", import.meta.url), "utf8"),
+  ]);
+
+  // Its own way in, and its own register type — the daily closeout keeps the day's lost
+  // hours, which is a different record about a different thing.
+  assert.match(home, /registerType: "delay_report"/);
+  assert.match(workspace, /const delayReportRegister = registerForm\.type === "delay_report"/);
+  assert.match(workspace, /delay_report: "Vertragingsrapport \(PDR\)"/);
+
+  // The database has to accept both of the register types the app now writes. Lessons
+  // Learned was added to the app in August without ever being added here.
+  assert.match(migration, /'lessons_learned',\n\s+'delay_report'/);
+  assert.match(migration, /when 'delay_report' then 'PDR'/);
+  assert.match(migration, /when 'lessons_learned' then 'LL'/);
+
+  // The five sections of the client's own form, with the header the client asked to work
+  // "zelfde als HSE" — filled by the app before a box is touched.
+  assert.match(workspace, /aria-label=\{text\("Delay report header", "Kop van het vertragingsrapport"\)\}/);
+  for (const heading of [
+    /title=\{text\("Delay details", "Details van de vertraging"\)\}/,
+    /title=\{text\("Delay dates", "Datums van de vertraging"\)\}/,
+    /title=\{text\("Status on original finish date", "Status op de oorspronkelijke einddatum"\)\}/,
+    /title=\{text\("Contractor acknowledgement", "Erkenning door de aannemer"\)\}/,
+    /title=\{text\("Completion verification", "Verificatie van de afronding"\)\}/,
+  ]) {
+    assert.match(workspace, heading);
+  }
+
+  // The duration drives the revised date, exactly as the client's arrow on the mockup.
+  assert.match(delayReport, /export function delayRevisedFinishDate/);
+  assert.match(workspace, /delayRevisedFinishDate\(delayForm\.originalFinishDate, delayForm\.durationDays\)/);
+
+  // Both photo boxes: section 3 always, section 5 the moment the completion box is used.
+  assert.match(workspace, /registerNamedPhotos\.delay_status/);
+  assert.match(workspace, /required=\{delayCompletionStarted\(delayForm\)\}/);
+  assert.match(workspace, /Boolean\(registerNamedPhotos\.delay_status\)/);
+
+  // The fields the client struck off this form stay off it.
+  assert.doesNotMatch(delayReport, /delayStartDate/);
+  assert.doesNotMatch(workspace, /Proposed finish date \(by contractor\)/i);
+  assert.doesNotMatch(workspace, /Likely completion date/i);
 });
 
 test("lets a supervisor switch project from anywhere without carrying data across", async () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronRight, MapPin, RotateCcw, Trash2, X } from "lucide-react";
+import { Camera, Check, ChevronRight, MapPin, RotateCcw, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad, type MarkupOption, type PhotoMarkupContext } from "@/app/photo-markup";
@@ -253,6 +253,112 @@ export function PhotoEvidenceList({
           close={() => setOpenId("")}
           onChange={(next) => setPhotos(photos.map((photo) => photo.id === next.id ? next : photo))}
           onRemove={() => { remove(openPhoto.id); setOpenId(""); }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/** What a field form accepts as a photo. */
+export const photoMimeTypes = ["image/jpeg", "image/png", "image/webp"];
+
+/**
+ * A photo the form asks for by name and by position: "Picture of Issue", "Picture of
+ * Result", "Actual Photo on Original Finish Date", "Photo as Evidence". On the client's
+ * own forms these are their own box, marked required, standing next to the field they
+ * prove — not one more picture in the pile at the bottom of the form. A pile cannot say
+ * which photo is the before and which is the after; a named slot can.
+ *
+ * Everything else about a photo stays the same: tapping the picture opens the one detail
+ * screen, with the same words, category, place, direction and marking pad.
+ */
+export function NamedPhotoSlot({
+  label,
+  hint,
+  required = false,
+  value,
+  onChange,
+  markupContext,
+  maxSizeMb = 25,
+  defaults,
+}: {
+  label: string;
+  hint?: string;
+  required?: boolean;
+  value: PhotoEvidence | null;
+  onChange: (photo: PhotoEvidence | null) => void;
+  markupContext?: PhotoMarkupContext;
+  maxSizeMb?: number;
+  /** What this photo already knows before a word is written: its category, its building. */
+  defaults?: Partial<PhotoEvidenceDetails>;
+}) {
+  const { text } = useLanguage();
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState("");
+
+  const pick = (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    if (!photoMimeTypes.includes(file.type) || file.size > maxSizeMb * 1024 * 1024) {
+      setError(text(
+        `Use a JPEG, PNG or WebP file up to ${maxSizeMb} MB.`,
+        `Gebruik een JPEG-, PNG- of WebP-bestand tot ${maxSizeMb} MB.`,
+      ));
+      return;
+    }
+    setError("");
+    onChange(toPhotoEvidence(file, defaults));
+  };
+
+  return (
+    <div className={`named-photo-slot${value ? " filled" : ""}`}>
+      <span className="named-photo-slot-label">{label}{required ? <em aria-hidden="true"> *</em> : null}</span>
+      {value ? (
+        <div className="named-photo-slot-filled">
+          <button
+            className="named-photo-slot-preview"
+            type="button"
+            onClick={() => setOpen(true)}
+            aria-label={text(`Open the details of the photo for ${label}`, `Open de details van de foto voor ${label}`)}
+          >
+            <PhotoThumbnail file={value.file} />
+            <span className="named-photo-slot-text">
+              <strong>{photoTitle(value) || text("Tap to write what is on this photo", "Tik om te schrijven wat er op deze foto staat")}</strong>
+              {value.markerCount ? <em><MapPin size={11} /> {text(`${value.markerCount} marked`, `${value.markerCount} gemarkeerd`)}</em> : null}
+            </span>
+            <ChevronRight size={17} />
+          </button>
+          <button
+            className="named-photo-slot-remove"
+            type="button"
+            onClick={() => onChange(null)}
+            aria-label={text(`Remove the photo for ${label}`, `Verwijder de foto voor ${label}`)}
+          ><X size={13} /></button>
+        </div>
+      ) : (
+        <label className="named-photo-slot-capture">
+          <Camera size={21} />
+          <span>
+            <strong>{text("Tap to capture photo", "Tik om een foto te maken")}</strong>
+            <small>{hint ?? text("or choose from gallery", "of kies uit de galerij")}</small>
+          </span>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            capture="environment"
+            onChange={(event) => { pick(event.currentTarget.files); event.currentTarget.value = ""; }}
+          />
+        </label>
+      )}
+      {error ? <p className="field-error" role="alert">{error}</p> : null}
+      {open && value ? (
+        <PhotoDetailSheet
+          photo={value}
+          index={0}
+          markupContext={markupContext}
+          close={() => setOpen(false)}
+          onChange={onChange}
+          onRemove={() => { onChange(null); setOpen(false); }}
         />
       ) : null}
     </div>

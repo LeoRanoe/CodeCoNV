@@ -30,6 +30,8 @@ export type QueuedFindingDraft = {
   dateIdentified?: string;
   /** The extra boxes of the client's own NCR form travel with an offline NCR. */
   referenceChecklist?: string;
+  ncrCategory?: string;
+  ncrWorkType?: string;
   recommendedAction?: "rework" | "repair" | "alternative";
   recommendedActionDetail?: string;
   remarks?: string;
@@ -37,6 +39,7 @@ export type QueuedFindingDraft = {
   issuedBy?: string;
   signedBy?: string;
   signedAt?: string;
+  signedPosition?: string;
   signatureImage?: string | null;
   locationNodeId?: string;
   buildingIds?: string[];
@@ -321,12 +324,15 @@ async function syncOfflineUploadsUnlocked(
             sourceCatalogSubject: draft.sourceCatalogSubject,
             dateIdentified: draft.dateIdentified,
             referenceChecklist: draft.referenceChecklist,
+            ncrCategory: draft.ncrCategory,
+            ncrWorkType: draft.ncrWorkType,
             recommendedAction: draft.recommendedAction,
             recommendedActionDetail: draft.recommendedActionDetail,
             remarks: draft.remarks,
             issuedBy: draft.issuedBy,
             signedBy: draft.signedBy,
             signedAt: draft.signedAt,
+            signedPosition: draft.signedPosition,
             signatureImage: draft.signatureImage,
             locationNodeId: draft.locationNodeId || upload.locationNodeId || undefined,
             idempotencyKey: `offline-finding:${upload.findingGroup.id}`,

@@ -157,6 +157,17 @@ export function ProjectWorkspaceHome({
       action: () => openDailyWork("delays"),
     },
     {
+      /* The day's lost hours are recorded in the daily closeout, above. This is the other
+         kind of delay: the one that moves the finish date of the works, and that the
+         client's own PDR form has to evidence, have acknowledged and close out. */
+      id: "delay-report",
+      label: text("Delay report · PDR", "Vertragingsrapport · PDR"),
+      copy: text("Revised finish date, evidenced and acknowledged", "Herziene einddatum, onderbouwd en erkend"),
+      icon: CalendarClock,
+      tone: "orange",
+      action: () => openTask("registers", false, { registerType: "delay_report" }),
+    },
+    {
       id: "issues",
       label: text("Issues", "Issues"),
       copy: text("Coordination issues, risks and follow-up", "Coördinatiepunten, risico's en opvolging"),
@@ -222,14 +233,15 @@ export function ProjectWorkspaceHome({
       action: () => openFinding("ncr", false),
     },
     {
-      id: "deadlines",
-      label: text("Deadlines", "Deadlines"),
-      copy: text("Due actions, overdue items and escalations", "Open acties, achterstanden en escalaties"),
-      icon: CalendarClock,
-      tone: "slate",
-      count: counts.deadlines,
-      // The same action centre, opened on its deadline view.
-      action: () => openActionCenter("deadlines"),
+      /* The client struck Deadlines off this grid and wrote Lessons Learned over it:
+         a deadline is not a thing you record here, it is a state the action centre
+         already keeps. It moved to the supporting tools, below the grid. */
+      id: "lessons-learned",
+      label: text("Lessons learned", "Geleerde lessen"),
+      copy: text("Capture, learn and improve", "Vastleggen, leren en verbeteren"),
+      icon: Lightbulb,
+      tone: "purple",
+      action: () => openTask("registers", false, { registerType: "lessons_learned" }),
     },
     {
       id: "hse-incident",
@@ -249,15 +261,7 @@ export function ProjectWorkspaceHome({
       count: counts.agreements,
       action: () => openTask("registers", false, { registerType: "agreement" }),
     },
-    {
-      id: "lessons-learned",
-      label: text("Lessons learned", "Geleerde lessen"),
-      copy: text("Capture, learn and improve", "Vastleggen, leren en verbeteren"),
-      icon: Lightbulb,
-      tone: "purple",
-      action: () => openTask("registers", false, { registerType: "lessons_learned" }),
-    },
-  ], [counts, openActionCenter, openDailyWork, openFinding, openPhotoLibrary, openTask, openWorkforce, text]);
+  ], [counts, openDailyWork, openFinding, openPhotoLibrary, openTask, openWorkforce, text]);
 
   const visibleTiles = tiles.filter((tile) => {
     if (!moduleEnabled(tile.module)) return false;
@@ -375,6 +379,9 @@ export function ProjectWorkspaceHome({
         <button type="button" onClick={() => openTask("documents", false)}><FileText size={15} /> Project Docs</button>
         <button type="button" onClick={() => openTask("assets", false)}><FolderOpen size={15} /> {text("Assets & folders", "Middelen & mappen")}</button>
         <button type="button" onClick={() => openTask("drawings", false)}><AlertTriangle size={15} /> {text("Drawings & pins", "Tekeningen & pins")}</button>
+        {/* Deadlines lost their tile, not their way in: the action centre still opens
+            on the deadline view, next to the other supporting tools. */}
+        <button type="button" onClick={() => openActionCenter("deadlines")}><CalendarClock size={15} /> {text("Deadlines", "Deadlines")}{counts.deadlines ? <span className="workspace-support-count">{counts.deadlines}</span> : null}</button>
         <button type="button" onClick={openReports}><FileText size={15} /> {text("Reports", "Rapporten")}</button>
         <button type="button" onClick={openManagement}><Users size={15} /> {text("Submissions & management", "Indieningen & management")}</button>
       </div>

@@ -65,6 +65,8 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
   const [responseType, setResponseType] = useState<ResponseType>(correctionAllowed ? "proposed_correction" : "ready_for_verification");
   const [note, setNote] = useState("");
   const [contactName, setContactName] = useState("");
+  /** The job the signer holds; the client's own form prints it under the name. */
+  const [contactPosition, setContactPosition] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   /** The signature the contractor writes under the corrective action. */
   const [signature, setSignature] = useState<HandwrittenSignature | null>(null);
@@ -114,6 +116,7 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
           responseType,
           note: note.trim(),
           contactName: contactName.trim(),
+          contactPosition: contactPosition.trim(),
           signatureImage: signature?.image ?? null,
           evidenceFileId,
           idempotencyKey: `external:${crypto.randomUUID()}`,
@@ -157,6 +160,11 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
         <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => setPhoto(event.target.files?.[0] ?? null)} />
       </label>
       <label className="form-field"><span>{signatureRequired ? "Naam van de ondertekenaar" : "Naam (optioneel)"}</span><input value={contactName} onChange={(event) => setContactName(event.target.value)} autoComplete="name" required={signatureRequired} /></label>
+      {/* Name and position stand under every signature line on the client's own NCR form:
+          who signed says less than in what capacity they signed. */}
+      {signatureRequired ? (
+        <label className="form-field"><span>Functie / titel</span><input value={contactPosition} onChange={(event) => setContactPosition(event.target.value)} autoComplete="organization-title" placeholder="Site Manager - Contractor" /></label>
+      ) : null}
       {/* The client's NCR form has a signature line under the contractor's box, so the
           contractor writes the signature here instead of only typing a name. */}
       {signatureRequired ? (
