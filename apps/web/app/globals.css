@@ -1466,6 +1466,9 @@ textarea:focus-visible {
   display: grid;
   gap: 4px;
   min-width: 0;
+  /* min-width alone does not free a grid: the implicit column is still sized to the widest
+     line in it, and a long project name pushed the whole dialog wider than the phone. */
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .project-switcher-copy strong {
@@ -1476,12 +1479,23 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
+/* Not a flex row: a flex container never draws an ellipsis, and the location line has to
+   shorten the same way the project name above it does. */
 .project-switcher-copy small {
-  display: flex;
-  align-items: center;
-  gap: 5px;
+  display: block;
+  overflow: hidden;
   color: var(--ink-500);
   font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The pin travels with the words on one line: an icon that stays a block would sit on a
+   line of its own above the location, whatever the shortening does. */
+.project-switcher-copy small > svg {
+  display: inline-block;
+  margin-right: 4px;
+  vertical-align: -2px;
 }
 
 .project-switcher-meta {
@@ -11706,7 +11720,6 @@ textarea:focus-visible {
   .workspace-feedback-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .report-source-checklist { grid-template-columns: 1fr; }
   .action-record-shortcuts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .action-record-shortcuts > button:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .rapid-query-panel { padding: 14px; }
   .rapid-mode-tabs { grid-template-columns: 1fr; }
   .media-capture-review-actions { display: grid; grid-template-columns: 1fr; }
@@ -13298,11 +13311,6 @@ button {
   .project-document-intake-row { grid-template-columns: 1fr; }
   .project-document-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .daily-work-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  /* Three tiles in two columns leave the last one alone next to a hole. It takes the
-     whole row instead, so the strip ends on a straight edge. */
-  .daily-work-tabs > button:last-child:nth-child(odd),
-  .project-document-tabs > button:last-child:nth-child(odd),
-  .project-document-filters > *:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .project-document-browser > header { align-items: stretch; flex-direction: column; gap: 8px; }
   .project-document-browser header input { min-width: 0; width: 100%; }
   .document-preview-backdrop { padding: 8px; }
@@ -14109,10 +14117,6 @@ button {
      the words away. */
   .action-center-views { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .action-center-views button { min-height: 46px; }
-  /* An odd count leaves the last view sitting on half a row inside the segmented control,
-     with the grey track showing through beside it. It takes the full row instead. */
-  .action-center-views > button:last-child:nth-child(odd),
-  .action-center-summary > button:last-child:nth-child(odd) { grid-column: 1 / -1; }
 }
 
 @media (max-width: 520px) {
@@ -14974,4 +14978,83 @@ button {
   .overview-metrics,
   .action-center-summary,
   .workspace-support-strip { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ------------------------------------------------------------------------------------
+   Odd tile in an even grid
+
+   A strip of tiles, tabs, choices or summary cards folds to two columns on a narrow
+   screen. With an odd number of them the last one sits alone beside a hole, and inside a
+   segmented control the track even shows through next to it. The orphan takes the whole
+   row instead, so every strip ends on a straight edge.
+
+   `:last-child:nth-child(odd)` only matches when the total count is odd, so a strip that
+   fills evenly is never touched, and a strip whose length changes with the data is
+   covered whichever way it lands. Each group is scoped to the width at which that grid
+   is actually two columns wide — above it they are three, four, five or six.
+
+   Deliberately left out:
+   · form field grids (.form-grid, .form-grid-2, .setup-form, .calculator-inputs,
+     .project-document-intake-row, .sectioned-record-columns, .record-derived-block,
+     .agreement-signatures) — a short field that keeps half a row is the convention
+     there, and `.wide` is the escape hatch the forms already use on purpose;
+   · grids that already manage their own parity with a full-row child
+     (.overview-secondary-grid, .workspace-module-groups, .workspace-support-strip,
+     .workspace-more-grid, .document-link-panel, .period-report-types,
+     .record-row-actions).
+   ------------------------------------------------------------------------------------ */
+
+:is(
+  .admin-card-grid,
+  .controlled-document-history,
+  .external-choice-grid,
+  .metrics-grid,
+  .overview-evidence-grid,
+  .overview-weather-register,
+  .record-action-grid
+) > *:last-child:nth-child(odd) { grid-column: 1 / -1; }
+
+@media (max-width: 1180px) {
+  :is(.checklist-library-grid, .client-dashboard-bottom) > *:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+
+@media (max-width: 980px) {
+  :is(.management-kpis, .register-summary-grid) > *:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+
+@media (max-width: 860px) {
+  :is(
+    .action-center-summary,
+    .action-center-views,
+    .action-overview,
+    .client-kpi-grid,
+    .overview-metrics,
+    .secondary-grid
+  ) > *:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+
+@media (max-width: 760px) {
+  :is(.asset-bulk-actions, .visual-capture-list) > *:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+
+@media (max-width: 620px) {
+  :is(
+    .action-record-shortcuts,
+    .daily-work-tabs,
+    .management-context,
+    .project-document-filters,
+    .project-document-tabs,
+    .punchlist-stages,
+    .quick-grid,
+    .workspace-feedback-grid,
+    .workspace-launcher-grid
+  ) > *:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+
+@media (max-width: 560px) {
+  :is(.record-severity-choices, .record-tile-grid) > *:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+
+@media (max-width: 480px) {
+  .client-workspace-grid > *:last-child:nth-child(odd) { grid-column: 1 / -1; }
 }

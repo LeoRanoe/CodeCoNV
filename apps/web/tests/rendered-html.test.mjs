@@ -2973,21 +2973,43 @@ test("never names the database vendor in anything a user can see", async () => {
 test("closes the gaps that an odd tile count and a long file name tear in the mobile grids", async () => {
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-  // A three-item strip in two columns used to leave the last tile beside a hole. Each of
-  // these grids hands the orphan the whole row instead. The selector only bites on an odd
-  // count, so a grid that happens to fill evenly is untouched.
-  for (const orphan of [
-    /\.daily-work-tabs > button:last-child:nth-child\(odd\)/,
-    /\.action-center-views > button:last-child:nth-child\(odd\)/,
-    /\.action-center-summary > button:last-child:nth-child\(odd\)/,
-    /\.action-record-shortcuts > button:last-child:nth-child\(odd\)/,
+  // A three-item strip in two columns used to leave the last tile beside a hole. Every
+  // strip that folds hands the orphan the whole row instead, scoped to the width at which
+  // that grid is actually two columns wide. The behaviour itself is measured in the
+  // browser by tests/e2e/layout-hygiene.spec.ts; this only holds the roster in place.
+  const orphanSection = css.slice(css.indexOf("Odd tile in an even grid"));
+  assert.ok(orphanSection, "the odd-tile section must stay findable by its heading");
+  for (const strip of [
+    "action-center-summary",
+    "action-center-views",
+    "action-record-shortcuts",
+    "client-workspace-grid",
+    "daily-work-tabs",
+    "overview-evidence-grid",
+    "overview-metrics",
+    "project-document-filters",
+    "project-document-tabs",
+    "quick-grid",
+    "record-tile-grid",
+    "register-summary-grid",
+    "workspace-launcher-grid",
   ]) {
-    assert.match(css, orphan);
+    assert.match(orphanSection, new RegExp(`\\.${strip}\\b`), `${strip} is missing from the odd-tile roster`);
   }
+  assert.match(orphanSection, /> \*:last-child:nth-child\(odd\) \{ grid-column: 1 \/ -1; \}/);
 
-  // The strip that already spans its own heading across the row must not be swept up in
-  // that rule: its buttons are even underneath the heading and would be stretched wrongly.
-  assert.doesNotMatch(css, /\.workspace-support-strip[^{]*:nth-child\(odd\)/);
+  // Grids that already manage their own parity with a full-row child must stay out of it,
+  // or that rule would stretch a tile the layout deliberately keeps at half a row.
+  for (const excluded of [
+    "workspace-support-strip",
+    "workspace-module-groups",
+    "overview-secondary-grid",
+    "document-link-panel",
+    "period-report-types",
+    "form-grid",
+  ]) {
+    assert.doesNotMatch(orphanSection.split("*/")[1] ?? "", new RegExp(`\\.${excluded}\\b`), `${excluded} must not be swept into the odd-tile rule`);
+  }
 
   // Search, alerts and day questions share one row; the dead track at the right is gone.
   assert.match(css, /\.overview-hero-actions \{ display: grid; grid-template-columns: minmax\(0, 1fr\) 40px 40px; \}/);
@@ -2998,4 +3020,10 @@ test("closes the gaps that an odd tile count and a long file name tear in the mo
   assert.match(css, /\.overview-evidence-grid > button > span \{ min-width: 0; \}/);
   assert.match(css, /\.daily-work-tabs button span \{ display: grid; gap: 1px; min-width: 0; \}/);
   assert.match(css, /\.daily-work-tabs button > svg \{ flex-shrink: 0; margin-top: 1px; \}/);
+
+  // A grid needs more than min-width to let go: its implicit column is sized to the widest
+  // line in it, which is how one long project name widened the whole switcher dialog.
+  assert.match(css, /\.project-switcher-copy \{[^}]*grid-template-columns: minmax\(0, 1fr\);/s);
+  // A flex row never draws an ellipsis, so the location line is a block that can.
+  assert.match(css, /\.project-switcher-copy small \{[^}]*text-overflow: ellipsis;/s);
 });
