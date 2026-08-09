@@ -14833,17 +14833,35 @@ button {
   box-shadow: 0 0 0 3px rgb(35 128 94 / 10%);
 }
 
-/* Works ongoing and works completed are two answers on the same closeout, so the screen
-   marks the one that was asked for instead of showing the pair and letting the supervisor
-   guess which button they pressed. */
-.daily-log-body.focus-ongoing .daily-log-field-completed,
-.daily-log-body.focus-completed .daily-log-field-ongoing { opacity: .62; }
-.daily-log-body.focus-ongoing .daily-log-field-ongoing > span::after { content: " ·"; }
+/* Works ongoing and works completed are two answers on the same closeout. The screen used
+   to show the pair with the unasked-for one at 62% opacity, which on a phone in daylight
+   is no difference at all — both tiles looked like they opened the same form. The field
+   that was asked for now stands alone and the other folds away below it. */
 .daily-log-body.focus-ongoing .daily-log-field-ongoing textarea,
 .daily-log-body.focus-completed .daily-log-field-completed textarea {
   border-color: var(--green, #23805e);
   box-shadow: 0 0 0 3px rgb(35 128 94 / 10%);
 }
+
+.daily-log-secondary {
+  border: 1px dashed var(--border);
+  border-radius: 11px;
+  padding: 4px 12px;
+}
+
+.daily-log-secondary > summary {
+  color: var(--ink-600);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  list-style: none;
+  padding: 9px 0;
+}
+
+.daily-log-secondary > summary::-webkit-details-marker { display: none; }
+.daily-log-secondary > summary::before { content: "+ "; color: var(--green); font-weight: 800; }
+.daily-log-secondary[open] > summary::before { content: "− "; }
+.daily-log-secondary[open] { border-style: solid; padding-bottom: 12px; }
 
 /* A real picture fills its slot; the placeholder tone stays for photos still loading. */
 .evidence-thumbnail { overflow: hidden; padding: 0; position: relative; }

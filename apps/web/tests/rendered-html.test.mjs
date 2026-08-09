@@ -2739,13 +2739,16 @@ test("every workspace button opens the record it names", async () => {
   assert.doesNotMatch(app, /setEntryActivityKind\(type\)/);
   assert.match(dailyLog, /focus\?: "delay" \| "works_ongoing" \| "works_completed"/);
 
-  // Works ongoing and works completed are the same form, opened on their own question, so
-  // each button ends up with the field it was pressed for filled in.
+  // Works ongoing and works completed are two fields of one day closeout, opened on their
+  // own question, so each button ends up with the field it was pressed for filled in.
   assert.match(dailyLog, /const summaryRequired = dayContextRequired \|\| ongoingOnly/);
   assert.match(dailyLog, /const performedRequired = dayContextRequired \|\| completedOnly/);
   assert.match(dailyLog, /daily-log-field-ongoing/);
   assert.match(dailyLog, /daily-log-field-completed/);
-  assert.match(styles, /\.daily-log-body\.focus-ongoing \.daily-log-field-completed/);
+  // The one that was not asked for folds away instead of standing beside it dimmed; the
+  // full check on that lives in "works ongoing and works completed stop opening the same
+  // form" below.
+  assert.match(styles, /\.daily-log-body\.focus-ongoing \.daily-log-field-ongoing textarea/);
 
   // Opening on a block means that block reads as the subject, and a focused screen only
   // demands the day's own answers when there is no closeout to attach itself to.
@@ -3186,4 +3189,28 @@ test("names the jobs the application will not do, with the prompt and what to at
   assert.match(workspace, /className="report-prompt-link"/);
   // And it never ships project data anywhere by itself.
   assert.doesNotMatch(library, /fetch\(|supabase|\.rpc\(/);
+});
+
+test("works ongoing and works completed stop opening the same form", async () => {
+  const [modal, css] = await Promise.all([
+    readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // They are two fields of one day closeout, so one form is right; one *identical* form
+  // was not. Each focus now names its own heading instead of the shared one.
+  assert.match(modal, /ongoingOnly\s*\n?\s*\? text\("What is running right now", "Wat er op dit moment loopt"\)/);
+  assert.match(modal, /\? text\("What was finished today", "Wat vandaag is afgerond"\)/);
+
+  // The field that was not asked for folds away rather than being dimmed beside the one
+  // that was: 62% opacity on a phone in daylight is no difference at all.
+  assert.doesNotMatch(css, /focus-completed \.daily-log-field-ongoing \{ opacity/);
+  assert.match(modal, /className="daily-log-secondary"/);
+  assert.match(modal, /Also finished something today\?", "Vandaag ook iets afgerond\?/);
+  assert.match(modal, /Also work still running\?", "Ook werk dat nog loopt\?/);
+  assert.match(css, /\.daily-log-secondary \{/);
+
+  // The activity shortcuts write into the works-ongoing field, so they must not sit on
+  // the completed form where they would fill a field the user cannot see.
+  assert.match(modal, /\{completedOnly \? null : <div className="quick-issue-presets"/);
 });

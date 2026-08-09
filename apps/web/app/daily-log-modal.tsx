@@ -258,29 +258,80 @@ export function DailyLogModal({
             )}
           </section>
 
+          {/* Works ongoing and works completed are two fields of one record — the day
+              closeout keeps both for the same building and day, because a supervisor who
+              finished something usually also has something still running. Opening the same
+              form from two tiles is therefore right; showing the same form was not. The
+              field you came for is the one that is open, and the other folds away until
+              you ask for it. */}
           <section className="daily-log-block daily-log-works">
-            <h3><HardHat size={16} /> {text("Construction activity & location", "Bouwactiviteit & locatie")}</h3>
-            <div className="quick-issue-presets" aria-label={text("Common activities", "Veelvoorkomende activiteiten")}>
+            <h3><HardHat size={16} /> {ongoingOnly
+              ? text("What is running right now", "Wat er op dit moment loopt")
+              : completedOnly
+                ? text("What was finished today", "Wat vandaag is afgerond")
+                : text("Construction activity & location", "Bouwactiviteit & locatie")}</h3>
+            {/* These write into the works-ongoing field, so they only belong beside it. */}
+            {completedOnly ? null : <div className="quick-issue-presets" aria-label={text("Common activities", "Veelvoorkomende activiteiten")}>
               {activityChoices.map((choice) => (
                 <button type="button" onClick={() => setLog((current) => ({ ...current, constructionActivity: appendDictation(current.constructionActivity, `${choice} · ${buildings.find((building) => building.id === buildingId)?.name ?? buildingName}`) }))} key={choice}>{choice}</button>
               ))}
-            </div>
-            <label className="form-field daily-log-field-ongoing">
-              <span>{text("What is in progress, and where?", "Wat is er gaande, en waar?")}</span>
-              <textarea rows={3} value={log.constructionActivity} onChange={(event) => setLog({ ...log, constructionActivity: event.target.value })} />
-              <DictateButton onText={(transcript) => setLog((current) => ({ ...current, constructionActivity: appendDictation(current.constructionActivity, transcript) }))} />
-            </label>
-            <div className="form-grid-2">
-              <label className="form-field daily-log-field-completed">
-                <span>{text("Work completed today", "Werk vandaag afgerond")}</span>
-                <textarea rows={2} value={log.workPerformed} onChange={(event) => setLog({ ...log, workPerformed: event.target.value })} />
-                <DictateButton onText={(transcript) => setLog((current) => ({ ...current, workPerformed: appendDictation(current.workPerformed, transcript) }))} />
-              </label>
-              <label className="form-field">
-                <span>{text("Progress", "Voortgang")} · {log.progressPercent}%</span>
-                <input type="range" min={0} max={100} step={5} value={log.progressPercent} onChange={(event) => setLog({ ...log, progressPercent: Number(event.target.value) })} />
-              </label>
-            </div>
+            </div>}
+            {(() => {
+              const ongoingField = (
+                <label className="form-field daily-log-field-ongoing" key="ongoing">
+                  <span>{text("What is in progress, and where?", "Wat is er gaande, en waar?")}</span>
+                  <textarea rows={3} value={log.constructionActivity} onChange={(event) => setLog({ ...log, constructionActivity: event.target.value })} />
+                  <DictateButton onText={(transcript) => setLog((current) => ({ ...current, constructionActivity: appendDictation(current.constructionActivity, transcript) }))} />
+                </label>
+              );
+              const completedField = (
+                <label className="form-field daily-log-field-completed" key="completed">
+                  <span>{text("Work completed today", "Werk vandaag afgerond")}</span>
+                  <textarea rows={completedOnly ? 3 : 2} value={log.workPerformed} onChange={(event) => setLog({ ...log, workPerformed: event.target.value })} />
+                  <DictateButton onText={(transcript) => setLog((current) => ({ ...current, workPerformed: appendDictation(current.workPerformed, transcript) }))} />
+                </label>
+              );
+              const progressField = (
+                <label className="form-field" key="progress">
+                  <span>{text("Progress", "Voortgang")} · {log.progressPercent}%</span>
+                  <input type="range" min={0} max={100} step={5} value={log.progressPercent} onChange={(event) => setLog({ ...log, progressPercent: Number(event.target.value) })} />
+                </label>
+              );
+
+              /* The other field is still part of this record, so it stays reachable — but
+                 folded, not merely faded, because a dimmed field beside an identical one
+                 reads as the same form twice. */
+              if (ongoingOnly) {
+                return (
+                  <>
+                    {ongoingField}
+                    {progressField}
+                    <details className="daily-log-secondary">
+                      <summary>{text("Also finished something today?", "Vandaag ook iets afgerond?")}</summary>
+                      {completedField}
+                    </details>
+                  </>
+                );
+              }
+              if (completedOnly) {
+                return (
+                  <>
+                    {completedField}
+                    {progressField}
+                    <details className="daily-log-secondary">
+                      <summary>{text("Also work still running?", "Ook werk dat nog loopt?")}</summary>
+                      {ongoingField}
+                    </details>
+                  </>
+                );
+              }
+              return (
+                <>
+                  {ongoingField}
+                  <div className="form-grid-2">{completedField}{progressField}</div>
+                </>
+              );
+            })()}
           </section>
 
           <section className="daily-log-block">
