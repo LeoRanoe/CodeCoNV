@@ -119,3 +119,31 @@ test("a strip with an odd number of tiles ends on a straight edge", async ({ pag
     expect(result.gap, `${selector} leaves a hole beside its last tile at ${width}px`).toBeLessThanOrEqual(1);
   }
 });
+
+/** Sets of filters and choices, with the number of chips their component can hand them. */
+const wrappingChipSets: Array<{ selector: string; child: string; chips: string[] }> = [
+  { selector: "media-origin-bar", child: "button", chips: ["Alles", "Issue / NCR", "Inspecties", "HSE", "Registers", "Visueel bewijs", "Nog niet gekoppeld"] },
+  { selector: "quick-issue-presets", child: "button", chips: ["Werkzaamheden gaande", "Werkzaamheden afgerond", "Vertraging"] },
+  { selector: "work-option-grid", child: "button", chips: ["Fundering oost", "Wapening kolommen", "Storten dek 3", "Gevelbekleding"] },
+  { selector: "workforce-buildings", child: "button", chips: ["Main building", "Annex noord", "Parkeerdek"] },
+  { selector: "building-choice-options", child: "button", chips: ["Main building", "Annex noord", "Parkeerdek", "Trafo"] },
+];
+
+test("a wrapped set of filter chips ends flush on both sides", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-field", "one viewport is enough; the fixture sets its own widths");
+  await mountFixture(page);
+  await page.setViewportSize({ width: 390, height: 900 });
+  for (const { selector, child, chips } of wrappingChipSets) {
+    const shortfall = await page.evaluate(({ selector, child, chips }) => {
+      const markup = chips.map((label) => `<${child} type="button">${label} <b>3</b></${child}>`).join("");
+      document.body.innerHTML = `<main class="main-content"><div class="${selector}">${markup}</div></main>`;
+      const host = document.querySelector<HTMLElement>(`.${selector}`)!;
+      const style = getComputedStyle(host);
+      const edge = host.getBoundingClientRect().right
+        - parseFloat(style.paddingRight || "0")
+        - parseFloat(style.borderRightWidth || "0");
+      return Math.round(edge - host.lastElementChild!.getBoundingClientRect().right);
+    }, { selector, child, chips });
+    expect(shortfall, `${selector} leaves its last row short of the right edge`).toBeLessThanOrEqual(2);
+  }
+});

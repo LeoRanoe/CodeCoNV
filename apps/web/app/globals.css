@@ -15058,3 +15058,34 @@ button {
 @media (max-width: 480px) {
   .client-workspace-grid > *:last-child:nth-child(odd) { grid-column: 1 / -1; }
 }
+
+/* ------------------------------------------------------------------------------------
+   Chip sets that wrap
+
+   A set of filters or choices is read as one block, so a short last row leaves a hole at
+   the right and the block looks unfinished. Where the chips actually wrap — on a phone and
+   a small tablet — every chip is allowed to grow, which makes each row end flush on both
+   sides while a longer label still keeps more width than a shorter one. Above that width
+   the set fits on one row, where a natural left-aligned strip is what it should be.
+
+   This is for sets of choices only. A row of action buttons (save, cancel, export) is left
+   alone: those are separate decisions, not one block, and stretching them across the width
+   would read as a much bigger commitment than the button deserves. So is
+   .period-date-presets, which stops being a wrapping row on a phone and becomes a three
+   column grid with its own label spanning the top of it.
+   ------------------------------------------------------------------------------------ */
+
+@media (max-width: 760px) {
+  :is(
+    .building-choice-options,
+    .building-multi-options,
+    .media-origin-bar,
+    .quick-issue-presets,
+    .work-option-grid,
+    .workforce-buildings
+  ) > * {
+    flex: 1 1 auto;
+    justify-content: center;
+    min-width: 0;
+  }
+}
