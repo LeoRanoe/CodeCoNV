@@ -3214,3 +3214,25 @@ test("works ongoing and works completed stop opening the same form", async () =>
   // the completed form where they would fill a field the user cannot see.
   assert.match(modal, /\{completedOnly \? null : <div className="quick-issue-presets"/);
 });
+
+test("the overview's photo panel opens the photo library, not the workspace home", async () => {
+  const [dashboard, library] = await Promise.all([
+    readFile(new URL("../app/client-dashboard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/media-library-workspace.tsx", import.meta.url), "utf8"),
+  ]);
+
+  // Pressing a picture used to land on the workspace home screen, which the reader then
+  // had to navigate out of again to reach the photos they had just pointed at.
+  assert.match(dashboard, /onClick=\{\(\) => openRecord\("files", photo\.fileId\)\}/);
+  // The header, the empty slots, the picture tile and a photo line in recent activity all
+  // lead to the same library; only the thumbnail knows which picture to open on.
+  assert.equal((dashboard.match(/openRecord\("files", ""\)/g) ?? []).length, 4);
+
+  // The panel that holds the pictures must not route to the workspace at all any more.
+  const panel = dashboard.slice(dashboard.indexOf("overview-evidence-panel"), dashboard.indexOf("overview-site-panel"));
+  assert.doesNotMatch(panel, /openWorkspace/);
+
+  // And the library really does resolve a file id, otherwise the focus would be dropped.
+  assert.match(library, /const file = data\.files\.find\(\(item\) => item\.id === fileId\)/);
+  assert.match(library, /setOpenFileId\(file\.id\)/);
+});

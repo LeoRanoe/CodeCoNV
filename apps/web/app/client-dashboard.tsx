@@ -438,7 +438,7 @@ export function ClientDashboard({
           <MetricCard icon={<FileCheck2 size={21} />} label={text("Open follow-up", "Open opvolging")} value={openItems.length} detail={`${urgentItems.length} ${text("high priority", "hoge prioriteit")}`} tone="teal" onClick={openActions} />
           <MetricCard icon={<AlertTriangle size={21} />} label={text("Quality issues", "Kwaliteitspunten")} value={issues.length} detail={text("Findings and NCRs", "Bevindingen en NCR's")} tone="orange" onClick={openActions} />
           <MetricCard icon={<ClipboardCheck size={21} />} label={text("Inspections", "Inspecties")} value={inspections.length} detail={text("Recorded in this report", "In dit rapport vastgelegd")} tone="blue" onClick={openWorkspace} />
-          <MetricCard icon={<Camera size={21} />} label={text("Pictures", "Foto's")} value={photoEntries.length} detail={text("Photos linked to context", "Foto's met projectcontext")} tone="violet" onClick={openWorkspace} />
+          <MetricCard icon={<Camera size={21} />} label={text("Pictures", "Foto's")} value={photoEntries.length} detail={text("Photos linked to context", "Foto's met projectcontext")} tone="violet" onClick={() => openRecord("files", "")} />
         </div>
 
         <div className="overview-primary-grid">
@@ -498,7 +498,7 @@ export function ClientDashboard({
                 record, whatever it is; a photo line used to hand the user to the camera. */}
             <div className="overview-activity-list">
               {activityEntries.length ? activityEntries.map((entry) => (
-                <button type="button" onClick={entry.kind === "photo" ? openWorkspace : openActions} key={entry.id}>
+                <button type="button" onClick={entry.kind === "photo" ? () => openRecord("files", "") : openActions} key={entry.id}>
                   <i className={entry.badgeTone === "red" ? "alert" : entry.kind}><EntryIcon kind={entry.kind} alert={entry.badgeTone === "red"} /></i>
                   <span><strong>{entry.title}</strong><small>{entry.person} · {entry.location || buildingName}</small></span>
                   <time>{entry.time}</time>
@@ -510,18 +510,20 @@ export function ClientDashboard({
           <article className="overview-panel overview-evidence-panel">
             <header className="overview-panel-heading">
               <div><span>{text("Visual evidence", "Visueel bewijs")}</span><h2>{text("Latest photo records", "Laatste fotoregistraties")}</h2></div>
-              <button type="button" onClick={openWorkspace}>{text("View all", "Alles bekijken")} <ArrowRight size={14} /></button>
+              <button type="button" onClick={() => openRecord("files", "")}>{text("View all", "Alles bekijken")} <ArrowRight size={14} /></button>
             </header>
+            {/* Straight to the photo library, and to this exact picture in it, rather than
+                to the workspace home screen the reader would have to navigate out of. */}
             <div className="overview-evidence-grid">
               {evidencePhotos.length ? evidencePhotos.map((photo, index) => (
-                <button type="button" onClick={openWorkspace} key={photo.id}>
+                <button type="button" onClick={() => openRecord("files", photo.fileId)} key={photo.id}>
                   <span className={`evidence-placeholder evidence-thumbnail tone-${(index % 4) + 1}`}>
                     <EvidenceThumbnail client={client} fileId={photo.fileId} alt={photo.title} />
                   </span>
                   <span><strong>{photo.title}</strong><small>{new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Paramaribo" }).format(new Date(photo.capturedAt))}</small></span>
                 </button>
               )) : [0, 1, 2, 3].map((index) => (
-                <button className="empty" type="button" onClick={openWorkspace} key={index}>
+                <button className="empty" type="button" onClick={() => openRecord("files", "")} key={index}>
                   <span className={`evidence-placeholder tone-${index + 1}`}><Camera size={20} /></span>
                   <span><strong>{text("No photo yet", "Nog geen foto")}</strong><small>{text("Site evidence appears here", "Bouwplaatsbewijs verschijnt hier")}</small></span>
                 </button>
