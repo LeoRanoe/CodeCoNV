@@ -9762,8 +9762,11 @@ textarea:focus-visible {
 .daily-work-header-actions { align-items: end; display: flex; flex-wrap: wrap; gap: 10px; }
 
 .daily-work-tabs { display: grid; gap: 9px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+/* The label wraps in a narrow tile, and an icon centred against two lines of title plus a
+   count reads as misaligned. It stays level with the first line of the label instead. */
+.daily-work-tabs button > svg { flex-shrink: 0; margin-top: 1px; }
 .daily-work-tabs button {
-  align-items: center;
+  align-items: flex-start;
   background: var(--paper);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -9774,7 +9777,7 @@ textarea:focus-visible {
   padding: 12px 14px;
   text-align: left;
 }
-.daily-work-tabs button span { display: grid; gap: 1px; }
+.daily-work-tabs button span { display: grid; gap: 1px; min-width: 0; }
 .daily-work-tabs button small { color: var(--muted); font-size: 11px; }
 .daily-work-tabs button:hover { border-color: var(--green); }
 .daily-work-tabs button.active { background: var(--green-soft); border-color: var(--green); color: var(--green); }
@@ -11703,6 +11706,7 @@ textarea:focus-visible {
   .workspace-feedback-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .report-source-checklist { grid-template-columns: 1fr; }
   .action-record-shortcuts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .action-record-shortcuts > button:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .rapid-query-panel { padding: 14px; }
   .rapid-mode-tabs { grid-template-columns: 1fr; }
   .media-capture-review-actions { display: grid; grid-template-columns: 1fr; }
@@ -12300,6 +12304,11 @@ button {
 .evidence-placeholder i { bottom: 5px; font-size: 7px; font-style: normal; position: absolute; right: 7px; z-index: 1; }
 .overview-evidence-grid strong,
 .overview-evidence-grid small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* A camera file name is one long unbreakable word. Without this the caption keeps its
+   min-content width, the shortening above never gets a chance, and the name runs straight
+   through the photo next to it. */
+.overview-evidence-grid > button > span { min-width: 0; }
 .overview-evidence-grid strong { font-size: 8px; }
 .overview-evidence-grid small { color: #7c8983; font-size: 7px; margin-top: 2px; }
 
@@ -13254,8 +13263,10 @@ button {
   .workspace-command-intro,
   .project-documents-summary,
   .action-center-hero { border-radius: 14px; padding: 16px; }
-  .overview-hero-actions { display: grid; grid-template-columns: 1fr 40px 40px; }
-  .overview-search { grid-column: 1 / -1; }
+  /* Search, alerts and the day questions share one row; the record button takes the row
+     below it. The search used to span the full width, which pushed the two icon buttons
+     into the tracks meant for them and left a dead 40px column at the right. */
+  .overview-hero-actions { display: grid; grid-template-columns: minmax(0, 1fr) 40px 40px; }
   .overview-create-button { grid-column: 1 / -1; justify-content: center; width: 100%; }
   .overview-metrics,
   .action-center-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -13287,6 +13298,11 @@ button {
   .project-document-intake-row { grid-template-columns: 1fr; }
   .project-document-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .daily-work-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* Three tiles in two columns leave the last one alone next to a hole. It takes the
+     whole row instead, so the strip ends on a straight edge. */
+  .daily-work-tabs > button:last-child:nth-child(odd),
+  .project-document-tabs > button:last-child:nth-child(odd),
+  .project-document-filters > *:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .project-document-browser > header { align-items: stretch; flex-direction: column; gap: 8px; }
   .project-document-browser header input { min-width: 0; width: 100%; }
   .document-preview-backdrop { padding: 8px; }
@@ -14093,6 +14109,10 @@ button {
      the words away. */
   .action-center-views { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .action-center-views button { min-height: 46px; }
+  /* An odd count leaves the last view sitting on half a row inside the segmented control,
+     with the grey track showing through beside it. It takes the full row instead. */
+  .action-center-views > button:last-child:nth-child(odd),
+  .action-center-summary > button:last-child:nth-child(odd) { grid-column: 1 / -1; }
 }
 
 @media (max-width: 520px) {

@@ -2969,3 +2969,33 @@ test("never names the database vendor in anything a user can see", async () => {
     assert.doesNotMatch(stripped, /supabase/i, `${path} still names the database vendor in readable text`);
   }
 });
+
+test("closes the gaps that an odd tile count and a long file name tear in the mobile grids", async () => {
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  // A three-item strip in two columns used to leave the last tile beside a hole. Each of
+  // these grids hands the orphan the whole row instead. The selector only bites on an odd
+  // count, so a grid that happens to fill evenly is untouched.
+  for (const orphan of [
+    /\.daily-work-tabs > button:last-child:nth-child\(odd\)/,
+    /\.action-center-views > button:last-child:nth-child\(odd\)/,
+    /\.action-center-summary > button:last-child:nth-child\(odd\)/,
+    /\.action-record-shortcuts > button:last-child:nth-child\(odd\)/,
+  ]) {
+    assert.match(css, orphan);
+  }
+
+  // The strip that already spans its own heading across the row must not be swept up in
+  // that rule: its buttons are even underneath the heading and would be stretched wrongly.
+  assert.doesNotMatch(css, /\.workspace-support-strip[^{]*:nth-child\(odd\)/);
+
+  // Search, alerts and day questions share one row; the dead track at the right is gone.
+  assert.match(css, /\.overview-hero-actions \{ display: grid; grid-template-columns: minmax\(0, 1fr\) 40px 40px; \}/);
+  assert.doesNotMatch(css, /\.overview-search \{ grid-column: 1 \/ -1; \}/);
+
+  // A camera file name is one unbreakable word, so the caption needs to be allowed to
+  // shrink before the shortening rule above it can do anything.
+  assert.match(css, /\.overview-evidence-grid > button > span \{ min-width: 0; \}/);
+  assert.match(css, /\.daily-work-tabs button span \{ display: grid; gap: 1px; min-width: 0; \}/);
+  assert.match(css, /\.daily-work-tabs button > svg \{ flex-shrink: 0; margin-top: 1px; \}/);
+});
