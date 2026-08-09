@@ -3065,3 +3065,46 @@ test("the overview reads the day instead of writing it", async () => {
   // It stands beside the building, and neither of the two is squeezed to a stub.
   assert.match(css, /\.media-origin-field \{ flex: 1 1 200px; min-width: 0; \}/);
 });
+
+test("the overview searches the whole project, not only the day on the screen", async () => {
+  const [dashboard, app, workspace, css] = await Promise.all([
+    readFile(new URL("../app/client-dashboard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // The client asked to find "files, documents and photos and more" from here, so every
+  // register the project keeps is reachable from the one search box.
+  for (const searchable of [
+    /add\("photos", text\("Photos", "Foto's"\)/,
+    /add\("drawings", text\("Drawings", "Tekeningen"\)/,
+    /add\("documents", text\("Documents", "Documenten"\)/,
+    /add\("findings", text\("Issues and NCRs"/,
+    /add\("inspections", text\("Inspections", "Inspecties"\)/,
+    /add\("hse", "HSE"/,
+    /add\("registers", text\("Registers", "Registers"\)/,
+    /add\("actions", text\("Actions", "Acties"\)/,
+    /add\("work", text\("Recorded work"/,
+  ]) {
+    assert.match(dashboard, searchable);
+  }
+
+  // It reads the snapshot the workspace already loads, under that exact key, so a search
+  // costs nothing once the workspace has been open and opening a result is instant.
+  assert.match(dashboard, /queryKey: \["project-operations", projectId, reportId\]/);
+  assert.match(workspace, /queryKey: \["project-operations", projectId, reportId\]/);
+  // And it stays off until something has actually been typed, so the overview loads as
+  // lightly as it did before the search existed.
+  assert.match(dashboard, /enabled: searching && Boolean\(client\)/);
+  assert.match(dashboard, /const searching = term\.length >= minimumSearchLength/);
+
+  // A result opens the module it lives in, on that record — the route the action centre
+  // already uses — instead of dropping the user at the top of a list.
+  assert.match(app, /openRecord=\{\(tab, recordId\) => \{\s*openWorkspaceModule\(tab\);\s*setFocusRecordId\(recordId\);/s);
+  assert.match(dashboard, /openRecord\("files", file\.id\)/);
+  assert.match(dashboard, /openRecord\(finding\.finding_type === "ncr" \? "ncr" : "findings", finding\.id\)/);
+
+  // A file name is one unbreakable word, so both lines of a result must be free to shrink.
+  assert.match(css, /\.overview-search-list > button > span \{ display: grid; gap: 2px; min-width: 0; \}/);
+});

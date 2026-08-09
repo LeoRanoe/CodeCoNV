@@ -26,6 +26,7 @@ const nameCarryingRows: Record<string, string> = {
   "overview-evidence-grid": `<div class="overview-evidence-grid"><button type="button"><span class="evidence-placeholder"></span><span><strong>${LONG}</strong><small>3 aug</small></span></button><button type="button"><span class="evidence-placeholder"></span><span><strong>${LONG}</strong><small>3 aug</small></span></button></div>`,
   "overview-work-list": `<div class="overview-work-list"><button type="button"><i class="finding">${ICON}</i><span><strong>${LONG}</strong><small>Supervisor · ${LONG}</small></span><time>16:03</time></button></div>`,
   "project-switcher-list": `<div class="project-switcher-list"><button class="project-switcher-row" type="button"><span class="project-switcher-icon">${ICON}</span><span class="project-switcher-copy"><strong>${LONG}</strong><small>${ICON} ${LONG}</small><small class="project-switcher-meta">${LONG}</small></span><span class="project-switcher-state">${ICON}</span></button></div>`,
+  "overview-search-list": `<div class="overview-search-list"><button type="button"><span><strong>${LONG}</strong><small>${LONG}</small></span>${ICON}</button></div>`,
   "rapid-source-list": `<div class="rapid-source-list"><article><span>${ICON}</span><div><strong>${LONG}</strong><small>4 pagina's</small></div><button type="button">x</button></article></div>`,
   "unified-action-list": `<div class="unified-action-list"><button type="button"><span class="unified-action-copy"><strong>${LONG}</strong><small>${LONG}</small></span></button></div>`,
 };

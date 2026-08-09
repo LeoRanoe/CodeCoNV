@@ -9,21 +9,28 @@ import {
   CheckCircle2,
   ClipboardCheck,
   FileCheck2,
+  FileText,
   HardHat,
   LayoutDashboard,
+  Loader2,
   MapPin,
   RefreshCw,
+  Ruler,
   Search,
   ShieldCheck,
   Sparkles,
   TimerReset,
   Wrench,
+  X,
 } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
+import { getCachedProjectSnapshot, cacheProjectSnapshot } from "@/lib/offline/project-cache";
 import { loadProjectFileObjectUrl } from "@/lib/storage/gateway";
 import type { ProjectRecentPhoto } from "@/lib/supabase/data";
+import { loadProjectOperations } from "@/lib/supabase/operations";
 import { useLiveProjectWeather } from "@/lib/weather-client";
 
 /** One dashboard thumbnail, fetched through the private storage gateway like everywhere else. */
@@ -70,6 +77,104 @@ type DashboardWeather = {
   temperatureC: number;
   weatherCondition: string;
 } | null;
+
+/** The workspace modules a search result can send the user to. */
+export type SearchDestination = "files" | "assets" | "documents" | "drawings" | "findings" | "ncr" | "inspections" | "hse" | "registers";
+
+type SearchHit = {
+  key: string;
+  title: string;
+  detail: string;
+  open: () => void;
+};
+
+type SearchGroup = {
+  id: string;
+  label: string;
+  icon: React.ReactNode;
+  hits: SearchHit[];
+};
+
+/** Below this the term matches half the project and the answer is noise. */
+const minimumSearchLength = 2;
+/** Enough to find the record without turning the overview into a scrolling list. */
+const hitsPerGroup = 6;
+
+function matches(term: string, ...fields: Array<string | null | undefined>) {
+  return fields.some((field) => String(field ?? "").toLowerCase().includes(term));
+}
+
+/** The day a found record carries, in the reader's own language and the project's timezone. */
+function formatDay(value: string | null | undefined, locale: string) {
+  if (!value) return "";
+  const day = new Date(value);
+  if (Number.isNaN(day.getTime())) return "";
+  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "America/Paramaribo" }).format(day);
+}
+
+/** What the search found, grouped by the kind of thing it is. */
+function SearchResults({
+  groups,
+  hitCount,
+  term,
+  loading,
+  failed,
+  clear,
+}: {
+  groups: SearchGroup[];
+  hitCount: number;
+  term: string;
+  loading: boolean;
+  failed: boolean;
+  clear: () => void;
+}) {
+  const { text } = useLanguage();
+  return (
+    <article className="overview-panel overview-search-panel">
+      <header className="overview-panel-heading">
+        <div>
+          <span>{text("Search", "Zoeken")}</span>
+          <h2>
+            {loading && !hitCount
+              ? text("Searching the project…", "Het project wordt doorzocht…")
+              : text(`${hitCount} result(s) for “${term}”`, `${hitCount} resultaat(en) voor “${term}”`)}
+          </h2>
+        </div>
+        <button type="button" onClick={clear}><X size={14} /> {text("Clear", "Wissen")}</button>
+      </header>
+
+      {/* The day's own records answer at once; the rest of the project follows when the
+          snapshot lands, so the panel is never empty while it is still working. */}
+      {loading ? (
+        <p className="overview-inline-empty" role="status"><Loader2 className="spin" size={14} /> {text("Also searching files, documents and photos…", "Ook bestanden, documenten en foto’s doorzoeken…")}</p>
+      ) : null}
+
+      {failed && !hitCount ? (
+        <p className="overview-inline-empty">{text("The project could not be searched. Check the connection and try again.", "Het project kon niet worden doorzocht. Controleer de verbinding en probeer opnieuw.")}</p>
+      ) : null}
+
+      <div className="overview-search-groups">
+        {groups.map((group) => (
+          <section className="overview-search-group" key={group.id}>
+            <h3><span className="overview-search-group-icon">{group.icon}</span> {group.label} <b>{group.hits.length}</b></h3>
+            <div className="overview-search-list">
+              {group.hits.map((hit) => (
+                <button type="button" onClick={hit.open} key={hit.key}>
+                  <span><strong>{hit.title}</strong><small>{hit.detail}</small></span>
+                  <ArrowRight size={14} />
+                </button>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+
+      {!loading && !failed && !hitCount ? (
+        <p className="overview-inline-empty">{text("Nothing in this project matches that.", "Niets in dit project komt hiermee overeen.")}</p>
+      ) : null}
+    </article>
+  );
+}
 
 function MetricCard({
   icon,
@@ -118,9 +223,13 @@ export function ClientDashboard({
   buildingName,
   buildingCount,
   weather,
+  organizationId,
+  projectId,
+  reportId,
   openActions,
   openWorkspace,
   openDailyQuestions,
+  openRecord,
 }: {
   entries: DashboardEntry[];
   actions: DashboardAction[];
@@ -132,9 +241,15 @@ export function ClientDashboard({
   buildingName: string;
   buildingCount: number;
   weather: DashboardWeather;
+  organizationId: string;
+  projectId: string;
+  /** The day report this overview stands on, so the search shares the workspace's cache. */
+  reportId: string | null;
   openActions: () => void;
   openWorkspace: () => void;
   openDailyQuestions: () => void;
+  /** Opens one found record in the module it lives in, scrolled to that record. */
+  openRecord: (tab: SearchDestination, recordId: string) => void;
 }) {
   const { locale, text } = useLanguage();
   const [search, setSearch] = useState("");
@@ -157,6 +272,120 @@ export function ClientDashboard({
       `${entry.title} ${entry.detail} ${entry.location} ${entry.person}`.toLocaleLowerCase(locale).includes(term),
     ).slice(0, 5);
   }, [entries, locale, search, workEntries]);
+
+  /**
+   * Searching from the overview reaches the whole project, not only the day on the screen:
+   * the client asked to find "files, documents and photos and more" from here. The project
+   * snapshot that answers it is the one the workspace already loads, under the same query
+   * key, so opening a module after a search costs nothing — and the overview itself stays
+   * as light as it was, because this only starts once something has actually been typed.
+   */
+  const term = search.trim().toLocaleLowerCase(locale);
+  const searching = term.length >= minimumSearchLength;
+  const projectSearch = useQuery({
+    queryKey: ["project-operations", projectId, reportId],
+    queryFn: async () => {
+      if (!client) throw new Error("PROJECT_SEARCH_OFFLINE");
+      try {
+        const snapshot = await loadProjectOperations(client, projectId, organizationId, reportId);
+        await cacheProjectSnapshot(projectId, reportId, snapshot).catch(() => undefined);
+        return snapshot;
+      } catch (error) {
+        const cached = await getCachedProjectSnapshot(projectId, reportId).catch(() => null);
+        if (cached) return cached;
+        throw error;
+      }
+    },
+    enabled: searching && Boolean(client),
+  });
+
+  const searchGroups = useMemo<SearchGroup[]>(() => {
+    if (!searching) return [];
+    const snapshot = projectSearch.data;
+    const groups: SearchGroup[] = [];
+    const add = (id: string, label: string, icon: React.ReactNode, hits: SearchHit[]) => {
+      if (hits.length) groups.push({ id, label, icon, hits: hits.slice(0, hitsPerGroup) });
+    };
+
+    if (snapshot) {
+      const files = snapshot.files.filter((file) => file.status !== "deleted" && matches(term, file.original_name, file.document_code, file.category));
+      const isPhoto = (mime: string) => mime.startsWith("image/");
+      const isDrawing = (file: { mime_type: string; category: string }) => file.category === "drawing" || file.mime_type === "application/pdf";
+      add("photos", text("Photos", "Foto's"), <Camera size={15} />, files.filter((file) => isPhoto(file.mime_type)).map((file) => ({
+        key: `photo:${file.id}`,
+        title: file.original_name,
+        detail: [file.document_code, formatDay(file.created_at, locale)].filter(Boolean).join(" · "),
+        open: () => openRecord("files", file.id),
+      })));
+      add("drawings", text("Drawings", "Tekeningen"), <Ruler size={15} />, files.filter((file) => !isPhoto(file.mime_type) && isDrawing(file)).map((file) => ({
+        key: `drawing:${file.id}`,
+        title: file.original_name,
+        detail: [file.document_code, formatDay(file.created_at, locale)].filter(Boolean).join(" · "),
+        open: () => openRecord("assets", file.id),
+      })));
+      add("documents", text("Documents", "Documenten"), <FileText size={15} />, files.filter((file) => !isPhoto(file.mime_type) && !isDrawing(file)).map((file) => ({
+        key: `document:${file.id}`,
+        title: file.original_name,
+        detail: [file.document_code, formatDay(file.created_at, locale)].filter(Boolean).join(" · "),
+        open: () => openRecord("assets", file.id),
+      })));
+      add("findings", text("Issues and NCRs", "Issues en NCR's"), <AlertTriangle size={15} />, snapshot.findings
+        .filter((finding) => matches(term, finding.finding_number, finding.title, finding.description))
+        .map((finding) => ({
+          key: `finding:${finding.id}`,
+          title: finding.title,
+          detail: [finding.finding_number, finding.status.replaceAll("_", " ")].filter(Boolean).join(" · "),
+          open: () => openRecord(finding.finding_type === "ncr" ? "ncr" : "findings", finding.id),
+        })));
+      add("inspections", text("Inspections", "Inspecties"), <ClipboardCheck size={15} />, snapshot.inspections
+        .filter((inspection) => matches(term, inspection.inspection_number, inspection.title))
+        .map((inspection) => ({
+          key: `inspection:${inspection.id}`,
+          title: inspection.title,
+          detail: [inspection.inspection_number, inspection.status.replaceAll("_", " ")].filter(Boolean).join(" · "),
+          open: () => openRecord("inspections", inspection.id),
+        })));
+      add("hse", "HSE", <ShieldCheck size={15} />, snapshot.hseEvents
+        .filter((event) => matches(term, event.event_number, event.title, event.description))
+        .map((event) => ({
+          key: `hse:${event.id}`,
+          title: event.title,
+          detail: [event.event_number, formatDay(event.occurred_at, locale)].filter(Boolean).join(" · "),
+          open: () => openRecord("hse", event.id),
+        })));
+      add("registers", text("Registers", "Registers"), <FileCheck2 size={15} />, snapshot.registerEntries
+        .filter((entry) => matches(term, entry.entry_number, entry.title, entry.register_type))
+        .map((entry) => ({
+          key: `register:${entry.id}`,
+          title: entry.title,
+          detail: [entry.entry_number, entry.register_type.replaceAll("_", " ")].filter(Boolean).join(" · "),
+          open: () => openRecord("registers", entry.id),
+        })));
+    }
+
+    // These two are already on this screen, so they answer instantly while the project
+    // snapshot is still on its way.
+    add("actions", text("Actions", "Acties"), <FileCheck2 size={15} />, actions
+      .filter((action) => matches(term, action.title))
+      .map((action) => ({
+        key: `action:${action.id}`,
+        title: action.title,
+        detail: [action.status.replaceAll("_", " "), action.priority].filter(Boolean).join(" · "),
+        open: openActions,
+      })));
+    add("work", text("Recorded work", "Vastgelegd werk"), <Wrench size={15} />, entries
+      .filter((entry) => matches(term, entry.title, entry.detail, entry.location, entry.person))
+      .map((entry) => ({
+        key: `entry:${entry.id}`,
+        title: entry.title,
+        detail: [entry.time, entry.location || buildingName].filter(Boolean).join(" · "),
+        open: openWorkspace,
+      })));
+
+    return groups;
+  }, [actions, buildingName, entries, locale, openActions, openRecord, openWorkspace, projectSearch.data, searching, term, text]);
+
+  const searchHitCount = searchGroups.reduce((total, group) => total + group.hits.length, 0);
 
   const activityEntries = entries.slice(0, 6);
   const evidencePhotos = recentPhotos.slice(0, 4);
@@ -193,128 +422,143 @@ export function ClientDashboard({
         </div>
       </header>
 
-      <div className="overview-metrics">
-        <MetricCard icon={<FileCheck2 size={21} />} label={text("Open follow-up", "Open opvolging")} value={openItems.length} detail={`${urgentItems.length} ${text("high priority", "hoge prioriteit")}`} tone="teal" onClick={openActions} />
-        <MetricCard icon={<AlertTriangle size={21} />} label={text("Quality issues", "Kwaliteitspunten")} value={issues.length} detail={text("Findings and NCRs", "Bevindingen en NCR's")} tone="orange" onClick={openActions} />
-        <MetricCard icon={<ClipboardCheck size={21} />} label={text("Inspections", "Inspecties")} value={inspections.length} detail={text("Recorded in this report", "In dit rapport vastgelegd")} tone="blue" onClick={openWorkspace} />
-        <MetricCard icon={<Camera size={21} />} label={text("Pictures", "Foto's")} value={photoEntries.length} detail={text("Photos linked to context", "Foto's met projectcontext")} tone="violet" onClick={openWorkspace} />
-      </div>
+      {searching ? (
+        <SearchResults
+          groups={searchGroups}
+          hitCount={searchHitCount}
+          term={search.trim()}
+          loading={projectSearch.isLoading}
+          failed={projectSearch.isError}
+          clear={() => setSearch("")}
+        />
+      ) : (
+        <>
 
-      <div className="overview-primary-grid">
-        <article className="overview-panel overview-work-panel">
-          <header className="overview-panel-heading">
-            <div><span>{text("Today on site", "Vandaag op locatie")}</span><h2>{text("Latest recorded work", "Laatst vastgelegde werkzaamheden")}</h2></div>
-            <button type="button" onClick={openWorkspace}>{text("Open workspace", "Open werkruimte")} <ArrowRight size={14} /></button>
-          </header>
-          <div className="overview-work-list">
-            {visibleEntries.length ? visibleEntries.map((entry, index) => (
-              <button type="button" key={entry.id} onClick={openWorkspace}>
-                <span className="overview-work-index">{String(index + 1).padStart(2, "0")}</span>
-                <span><strong>{entry.title}</strong><small>{entry.detail || text("No additional note", "Geen aanvullende notitie")}</small></span>
-                <span className="overview-work-location"><MapPin size={13} /> {entry.location || buildingName}</span>
-                <time>{entry.time}</time>
-              </button>
-            )) : (
-              <div className="overview-purposeful-empty">
-                <span><HardHat size={24} /></span>
-                <div><strong>{text("No work recorded for this view", "Geen werkzaamheden in deze weergave")}</strong><p>{text("The overview fills itself with verified project data once the first field record has been made.", "Het overzicht vult zich met gecontroleerde projectdata zodra de eerste veldregistratie is gemaakt.")}</p></div>
-                <button className="secondary-button" type="button" onClick={openWorkspace}>{text("Open workspace", "Open werkruimte")} <ArrowRight size={15} /></button>
-              </div>
-            )}
-          </div>
-        </article>
+        <div className="overview-metrics">
+          <MetricCard icon={<FileCheck2 size={21} />} label={text("Open follow-up", "Open opvolging")} value={openItems.length} detail={`${urgentItems.length} ${text("high priority", "hoge prioriteit")}`} tone="teal" onClick={openActions} />
+          <MetricCard icon={<AlertTriangle size={21} />} label={text("Quality issues", "Kwaliteitspunten")} value={issues.length} detail={text("Findings and NCRs", "Bevindingen en NCR's")} tone="orange" onClick={openActions} />
+          <MetricCard icon={<ClipboardCheck size={21} />} label={text("Inspections", "Inspecties")} value={inspections.length} detail={text("Recorded in this report", "In dit rapport vastgelegd")} tone="blue" onClick={openWorkspace} />
+          <MetricCard icon={<Camera size={21} />} label={text("Pictures", "Foto's")} value={photoEntries.length} detail={text("Photos linked to context", "Foto's met projectcontext")} tone="violet" onClick={openWorkspace} />
+        </div>
 
-        <article className="overview-panel overview-priority-panel">
-          <header className="overview-panel-heading">
-            <div><span>{text("Attention", "Aandacht")}</span><h2>{text("Priority queue", "Prioriteitenlijst")}</h2></div>
-            <span className={`overview-health ${urgentItems.length ? "attention" : "stable"}`}>{urgentItems.length ? text("Action needed", "Actie nodig") : text("Under control", "Onder controle")}</span>
-          </header>
-          <div className="overview-progress">
-            <div><span>{text("Action completion", "Actievoortgang")}</span><strong>{completion}%</strong></div>
-            <span><i style={{ width: `${completion}%` }} /></span>
-            <small>{completedItems.length} {text("completed", "afgerond")} · {openItems.length} open</small>
-          </div>
-          <div className="overview-priority-list">
-            {(urgentItems.length ? urgentItems : openItems).slice(0, 4).map((action) => (
-              <button type="button" onClick={openActions} key={action.id}>
-                <span className={`priority-dot ${action.priority}`} />
-                <span><strong>{action.title}</strong><small>{action.priority} · {action.status.replaceAll("_", " ")}</small></span>
-                <ArrowRight size={14} />
-              </button>
-            ))}
-            {!openItems.length ? <div className="overview-clear-state"><CheckCircle2 size={22} /><span><strong>{text("No open actions", "Geen open acties")}</strong><small>{text("New assigned work will appear here.", "Nieuw toegewezen werk verschijnt hier.")}</small></span></div> : null}
-          </div>
-          <button className="overview-text-link" type="button" onClick={openActions}>{text("View the complete action center", "Bekijk het volledige actiecentrum")} <ArrowRight size={14} /></button>
-        </article>
-      </div>
+        <div className="overview-primary-grid">
+          <article className="overview-panel overview-work-panel">
+            <header className="overview-panel-heading">
+              <div><span>{text("Today on site", "Vandaag op locatie")}</span><h2>{text("Latest recorded work", "Laatst vastgelegde werkzaamheden")}</h2></div>
+              <button type="button" onClick={openWorkspace}>{text("Open workspace", "Open werkruimte")} <ArrowRight size={14} /></button>
+            </header>
+            <div className="overview-work-list">
+              {visibleEntries.length ? visibleEntries.map((entry, index) => (
+                <button type="button" key={entry.id} onClick={openWorkspace}>
+                  <span className="overview-work-index">{String(index + 1).padStart(2, "0")}</span>
+                  <span><strong>{entry.title}</strong><small>{entry.detail || text("No additional note", "Geen aanvullende notitie")}</small></span>
+                  <span className="overview-work-location"><MapPin size={13} /> {entry.location || buildingName}</span>
+                  <time>{entry.time}</time>
+                </button>
+              )) : (
+                <div className="overview-purposeful-empty">
+                  <span><HardHat size={24} /></span>
+                  <div><strong>{text("No work recorded for this view", "Geen werkzaamheden in deze weergave")}</strong><p>{text("The overview fills itself with verified project data once the first field record has been made.", "Het overzicht vult zich met gecontroleerde projectdata zodra de eerste veldregistratie is gemaakt.")}</p></div>
+                  <button className="secondary-button" type="button" onClick={openWorkspace}>{text("Open workspace", "Open werkruimte")} <ArrowRight size={15} /></button>
+                </div>
+              )}
+            </div>
+          </article>
 
-      <div className="overview-secondary-grid">
-        <article className="overview-panel overview-activity-panel">
-          <header className="overview-panel-heading">
-            <div><span>{text("Traceability", "Traceerbaarheid")}</span><h2>{text("Recent activity", "Recente activiteit")}</h2></div>
-          </header>
-          {/* A line in this list is something that already happened. Tapping it opens the
-              record, whatever it is; a photo line used to hand the user to the camera. */}
-          <div className="overview-activity-list">
-            {activityEntries.length ? activityEntries.map((entry) => (
-              <button type="button" onClick={entry.kind === "photo" ? openWorkspace : openActions} key={entry.id}>
-                <i className={entry.badgeTone === "red" ? "alert" : entry.kind}><EntryIcon kind={entry.kind} alert={entry.badgeTone === "red"} /></i>
-                <span><strong>{entry.title}</strong><small>{entry.person} · {entry.location || buildingName}</small></span>
-                <time>{entry.time}</time>
-              </button>
-            )) : <p className="overview-inline-empty">{text("Activity appears after the first project record.", "Activiteit verschijnt na de eerste projectregistratie.")}</p>}
-          </div>
-        </article>
+          <article className="overview-panel overview-priority-panel">
+            <header className="overview-panel-heading">
+              <div><span>{text("Attention", "Aandacht")}</span><h2>{text("Priority queue", "Prioriteitenlijst")}</h2></div>
+              <span className={`overview-health ${urgentItems.length ? "attention" : "stable"}`}>{urgentItems.length ? text("Action needed", "Actie nodig") : text("Under control", "Onder controle")}</span>
+            </header>
+            <div className="overview-progress">
+              <div><span>{text("Action completion", "Actievoortgang")}</span><strong>{completion}%</strong></div>
+              <span><i style={{ width: `${completion}%` }} /></span>
+              <small>{completedItems.length} {text("completed", "afgerond")} · {openItems.length} open</small>
+            </div>
+            <div className="overview-priority-list">
+              {(urgentItems.length ? urgentItems : openItems).slice(0, 4).map((action) => (
+                <button type="button" onClick={openActions} key={action.id}>
+                  <span className={`priority-dot ${action.priority}`} />
+                  <span><strong>{action.title}</strong><small>{action.priority} · {action.status.replaceAll("_", " ")}</small></span>
+                  <ArrowRight size={14} />
+                </button>
+              ))}
+              {!openItems.length ? <div className="overview-clear-state"><CheckCircle2 size={22} /><span><strong>{text("No open actions", "Geen open acties")}</strong><small>{text("New assigned work will appear here.", "Nieuw toegewezen werk verschijnt hier.")}</small></span></div> : null}
+            </div>
+            <button className="overview-text-link" type="button" onClick={openActions}>{text("View the complete action center", "Bekijk het volledige actiecentrum")} <ArrowRight size={14} /></button>
+          </article>
+        </div>
 
-        <article className="overview-panel overview-evidence-panel">
-          <header className="overview-panel-heading">
-            <div><span>{text("Visual evidence", "Visueel bewijs")}</span><h2>{text("Latest photo records", "Laatste fotoregistraties")}</h2></div>
-            <button type="button" onClick={openWorkspace}>{text("View all", "Alles bekijken")} <ArrowRight size={14} /></button>
-          </header>
-          <div className="overview-evidence-grid">
-            {evidencePhotos.length ? evidencePhotos.map((photo, index) => (
-              <button type="button" onClick={openWorkspace} key={photo.id}>
-                <span className={`evidence-placeholder evidence-thumbnail tone-${(index % 4) + 1}`}>
-                  <EvidenceThumbnail client={client} fileId={photo.fileId} alt={photo.title} />
-                </span>
-                <span><strong>{photo.title}</strong><small>{new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Paramaribo" }).format(new Date(photo.capturedAt))}</small></span>
-              </button>
-            )) : [0, 1, 2, 3].map((index) => (
-              <button className="empty" type="button" onClick={openWorkspace} key={index}>
-                <span className={`evidence-placeholder tone-${index + 1}`}><Camera size={20} /></span>
-                <span><strong>{text("No photo yet", "Nog geen foto")}</strong><small>{text("Site evidence appears here", "Bouwplaatsbewijs verschijnt hier")}</small></span>
-              </button>
-            ))}
-          </div>
-        </article>
+        <div className="overview-secondary-grid">
+          <article className="overview-panel overview-activity-panel">
+            <header className="overview-panel-heading">
+              <div><span>{text("Traceability", "Traceerbaarheid")}</span><h2>{text("Recent activity", "Recente activiteit")}</h2></div>
+            </header>
+            {/* A line in this list is something that already happened. Tapping it opens the
+                record, whatever it is; a photo line used to hand the user to the camera. */}
+            <div className="overview-activity-list">
+              {activityEntries.length ? activityEntries.map((entry) => (
+                <button type="button" onClick={entry.kind === "photo" ? openWorkspace : openActions} key={entry.id}>
+                  <i className={entry.badgeTone === "red" ? "alert" : entry.kind}><EntryIcon kind={entry.kind} alert={entry.badgeTone === "red"} /></i>
+                  <span><strong>{entry.title}</strong><small>{entry.person} · {entry.location || buildingName}</small></span>
+                  <time>{entry.time}</time>
+                </button>
+              )) : <p className="overview-inline-empty">{text("Activity appears after the first project record.", "Activiteit verschijnt na de eerste projectregistratie.")}</p>}
+            </div>
+          </article>
 
-        <article className="overview-panel overview-site-panel">
-          <header className="overview-panel-heading">
-            <div><span>{text("Live weather register", "Actueel weerregister")}</span><h2>{text("Conditions & location", "Condities & locatie")}</h2></div>
-            <button className="overview-weather-icon" type="button" onClick={loadLiveWeather} disabled={weatherLoading} aria-label={text("Refresh live weather", "Ververs actueel weer")}><RefreshCw className={weatherLoading ? "spin" : ""} size={18} /></button>
-          </header>
-          <div className="overview-weather">
-            <span><strong>{liveWeather ? `${liveWeather.temperatureC}°C` : weather ? `${weather.temperatureC}°C` : "—"}</strong><small>{liveWeather ? liveWeather.resolvedLocation : weatherLabel}</small></span>
-            <span className="overview-weather-status"><ShieldCheck size={14} /> {liveWeather ? text(`Live · ${liveWeather.source}`, `Actueel · ${liveWeather.source}`) : weather ? text("Recorded start check", "Vastgelegde startcontrole") : text("Confirm at project start", "Bevestig bij projectstart")}</span>
-          </div>
-          {liveWeather ? <div className="overview-weather-register">
-            <span><small>{text("Feels like", "Gevoelstemperatuur")}</small><strong>{liveWeather.apparentTemperatureC}°C</strong></span>
-            <span><small>{text("Humidity", "Luchtvochtigheid")}</small><strong>{liveWeather.relativeHumidityPercent}%</strong></span>
-            <span><small>{text("Wind", "Wind")}</small><strong>{liveWeather.windSpeedKph} km/h</strong></span>
-            <span><small>{text("Rain", "Regen")}</small><strong>{liveWeather.precipitationMm} mm</strong></span>
-          </div> : weatherError ? <p className="overview-weather-error">{weatherError}</p> : null}
-          <button className="overview-plan-placeholder" type="button" onClick={openWorkspace}>
-            <span className="plan-grid-lines" />
-            <span className="plan-mass mass-one" />
-            <span className="plan-mass mass-two" />
-            <span className="plan-mass mass-three" />
-            <i className="plan-pin pin-one"><MapPin size={14} /></i>
-            <i className="plan-pin pin-two"><MapPin size={14} /></i>
-            <span className="plan-caption"><Sparkles size={13} /> {text("Open linked project drawing", "Open gekoppelde projecttekening")}</span>
-          </button>
-          <div className="overview-site-meta"><span><TimerReset size={14} /> {text("Current report context", "Actuele rapportcontext")}</span><strong>{buildingContextLabel}</strong></div>
-        </article>
-      </div>
+          <article className="overview-panel overview-evidence-panel">
+            <header className="overview-panel-heading">
+              <div><span>{text("Visual evidence", "Visueel bewijs")}</span><h2>{text("Latest photo records", "Laatste fotoregistraties")}</h2></div>
+              <button type="button" onClick={openWorkspace}>{text("View all", "Alles bekijken")} <ArrowRight size={14} /></button>
+            </header>
+            <div className="overview-evidence-grid">
+              {evidencePhotos.length ? evidencePhotos.map((photo, index) => (
+                <button type="button" onClick={openWorkspace} key={photo.id}>
+                  <span className={`evidence-placeholder evidence-thumbnail tone-${(index % 4) + 1}`}>
+                    <EvidenceThumbnail client={client} fileId={photo.fileId} alt={photo.title} />
+                  </span>
+                  <span><strong>{photo.title}</strong><small>{new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Paramaribo" }).format(new Date(photo.capturedAt))}</small></span>
+                </button>
+              )) : [0, 1, 2, 3].map((index) => (
+                <button className="empty" type="button" onClick={openWorkspace} key={index}>
+                  <span className={`evidence-placeholder tone-${index + 1}`}><Camera size={20} /></span>
+                  <span><strong>{text("No photo yet", "Nog geen foto")}</strong><small>{text("Site evidence appears here", "Bouwplaatsbewijs verschijnt hier")}</small></span>
+                </button>
+              ))}
+            </div>
+          </article>
+
+          <article className="overview-panel overview-site-panel">
+            <header className="overview-panel-heading">
+              <div><span>{text("Live weather register", "Actueel weerregister")}</span><h2>{text("Conditions & location", "Condities & locatie")}</h2></div>
+              <button className="overview-weather-icon" type="button" onClick={loadLiveWeather} disabled={weatherLoading} aria-label={text("Refresh live weather", "Ververs actueel weer")}><RefreshCw className={weatherLoading ? "spin" : ""} size={18} /></button>
+            </header>
+            <div className="overview-weather">
+              <span><strong>{liveWeather ? `${liveWeather.temperatureC}°C` : weather ? `${weather.temperatureC}°C` : "—"}</strong><small>{liveWeather ? liveWeather.resolvedLocation : weatherLabel}</small></span>
+              <span className="overview-weather-status"><ShieldCheck size={14} /> {liveWeather ? text(`Live · ${liveWeather.source}`, `Actueel · ${liveWeather.source}`) : weather ? text("Recorded start check", "Vastgelegde startcontrole") : text("Confirm at project start", "Bevestig bij projectstart")}</span>
+            </div>
+            {liveWeather ? <div className="overview-weather-register">
+              <span><small>{text("Feels like", "Gevoelstemperatuur")}</small><strong>{liveWeather.apparentTemperatureC}°C</strong></span>
+              <span><small>{text("Humidity", "Luchtvochtigheid")}</small><strong>{liveWeather.relativeHumidityPercent}%</strong></span>
+              <span><small>{text("Wind", "Wind")}</small><strong>{liveWeather.windSpeedKph} km/h</strong></span>
+              <span><small>{text("Rain", "Regen")}</small><strong>{liveWeather.precipitationMm} mm</strong></span>
+            </div> : weatherError ? <p className="overview-weather-error">{weatherError}</p> : null}
+            <button className="overview-plan-placeholder" type="button" onClick={openWorkspace}>
+              <span className="plan-grid-lines" />
+              <span className="plan-mass mass-one" />
+              <span className="plan-mass mass-two" />
+              <span className="plan-mass mass-three" />
+              <i className="plan-pin pin-one"><MapPin size={14} /></i>
+              <i className="plan-pin pin-two"><MapPin size={14} /></i>
+              <span className="plan-caption"><Sparkles size={13} /> {text("Open linked project drawing", "Open gekoppelde projecttekening")}</span>
+            </button>
+            <div className="overview-site-meta"><span><TimerReset size={14} /> {text("Current report context", "Actuele rapportcontext")}</span><strong>{buildingContextLabel}</strong></div>
+          </article>
+        </div>
+        </>
+      )}
+
     </section>
   );
 }

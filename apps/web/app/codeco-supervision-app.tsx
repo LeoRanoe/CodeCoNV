@@ -54,7 +54,7 @@ import { screenFromSearch, useScreenHistory, type AppScreen } from "@/lib/naviga
 import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { photoEvidenceLine, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
 import { SketchPad } from "@/app/sketch-pad";
-import { ClientDashboard } from "@/app/client-dashboard";
+import { ClientDashboard, type SearchDestination } from "@/app/client-dashboard";
 import { DailyLogModal } from "@/app/daily-log-modal";
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
 import { LiveWeatherChip } from "@/app/live-weather-chip";
@@ -1902,6 +1902,15 @@ export function CodecoSupervisionApp() {
               closeouts={dayQuery.data?.closeouts ?? []}
               onStartBuilding={openBuildingStart}
               onCloseoutBuilding={openBuildingCloseout}
+              organizationId={activeOrganizationId!}
+              projectId={selectedProject!.id}
+              reportId={dayQuery.data?.report?.id ? String(dayQuery.data.report.id) : null}
+              // A record found from the overview opens in its own module, on that record —
+              // the same route the action centre already uses to point at one.
+              openRecord={(tab, recordId) => {
+                openWorkspaceModule(tab);
+                setFocusRecordId(recordId);
+              }}
             />
           ) : activeNav === "project" || activeNav === "acties" || activeNav === "projectdocs" || activeNav === "punchlist" || activeNav === "verify" || activeNav === "rapporten" || activeNav === "meer" ? (
             <OperationalWorkspace
@@ -3291,6 +3300,10 @@ function TodayView({
   closeouts,
   onStartBuilding,
   onCloseoutBuilding,
+  organizationId,
+  projectId,
+  reportId,
+  openRecord,
 }: {
   entries: TimelineEntry[];
   /** The newest pictures in the project, for the visual-evidence panel. */
@@ -3324,6 +3337,11 @@ function TodayView({
   closeouts: Array<Record<string, unknown>>;
   onStartBuilding: (building: BuildingContext) => void;
   onCloseoutBuilding: (building: BuildingContext) => void;
+  organizationId: string;
+  projectId: string;
+  reportId: string | null;
+  /** Opens one record found from the overview in the module it lives in. */
+  openRecord: (tab: SearchDestination, recordId: string) => void;
 }) {
   const { language, locale, text } = useLanguage();
   const todos = [
@@ -3352,9 +3370,13 @@ function TodayView({
         buildingName={buildingName}
         buildingCount={buildings.length}
         weather={projectStartAnswers ? { temperatureC: projectStartAnswers.temperatureC, weatherCondition: projectStartAnswers.weatherCondition } : null}
+        organizationId={organizationId}
+        projectId={projectId}
+        reportId={reportId}
         openActions={openActions}
         openWorkspace={openWorkspace}
         openDailyQuestions={openDailyQuestions}
+        openRecord={openRecord}
       />
     );
   }
