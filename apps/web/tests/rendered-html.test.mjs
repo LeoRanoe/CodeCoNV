@@ -3121,8 +3121,12 @@ test("gives every record form the width of the desktop it is opened on", async (
 
   // And the width is used rather than only granted: two columns of sections once the form
   // itself is wide enough, measured on the form and not on the window.
-  assert.match(styles, /@container \(min-width: 900px\) \{\n\s+\.record-form-sections \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); \}/);
-  assert.match(styles, /\.record-form-sections\n\) > \*:last-child:nth-child\(odd\) \{ grid-column: 1 \/ -1; \}/);
+  assert.match(styles, /@container \(min-width: 900px\) \{\n\s+\.agreement-sections,\n\s+\.change-order-sections,\n\s+\.delay-report-sections \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); \}/);
+  assert.match(styles, /\.delay-report-sections\n\) > \*:last-child:nth-child\(odd\) \{ grid-column: 1 \/ -1; \}/);
+  // Never the shell's own wrapper: that holds whatever a form passes it — a heading strip,
+  // a helper line, a checklist run — and two columns of that is every form torn up.
+  assert.doesNotMatch(styles, /@container \(min-width: 900px\) \{\n\s+\.record-form-sections \{/);
+  assert.doesNotMatch(styles, /\.record-form-sections\n\) > \*:last-child:nth-child\(odd\)/);
 });
 
 test("breaks a record card on its own width, not the window's", async () => {

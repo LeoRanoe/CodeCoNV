@@ -14371,9 +14371,16 @@ button {
    sections down the middle of that is a page of half-empty cards. Two columns when the
    form itself has the room — the form is the container, not the window, because the
    workspace keeps a module switcher beside it. The sections still read row by row, in the
-   client's own numbering. */
+   client's own numbering.
+
+   Named wrappers only, never .record-form-sections itself: that one is the shell's box for
+   whatever a form passes it — a heading strip, a helper line, a picker, a checklist run —
+   and putting those in two columns tore up every form in the workspace. These three hold
+   nothing but the client's own numbered sections. */
 @container (min-width: 900px) {
-  .record-form-sections { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .agreement-sections,
+  .change-order-sections,
+  .delay-report-sections { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .record-form-section {
@@ -15208,7 +15215,9 @@ button {
   .overview-weather-register,
   .prompt-library-list,
   .record-action-grid,
-  .record-form-sections
+  .agreement-sections,
+  .change-order-sections,
+  .delay-report-sections
 ) > *:last-child:nth-child(odd) { grid-column: 1 / -1; }
 
 @media (max-width: 1180px) {
