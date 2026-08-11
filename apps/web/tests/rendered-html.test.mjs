@@ -3125,6 +3125,29 @@ test("gives every record form the width of the desktop it is opened on", async (
   assert.match(styles, /\.record-form-sections\n\) > \*:last-child:nth-child\(odd\) \{ grid-column: 1 \/ -1; \}/);
 });
 
+test("breaks a record card on its own width, not the window's", async () => {
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  // A record list gets whatever column the screen leaves it, so a card on a 1280px desktop
+  // can be narrower than a phone. The status chip is a column of its own text — "ready for
+  // verification" is 157px — and it was taking that out of the title, the description and
+  // the record number, which then read a word at a time or not at all.
+  assert.match(styles, /\.record-stack \{ container-type: inline-size; \}/);
+  assert.match(styles, /@container \(max-width: 620px\) \{[\s\S]*?\.finding-card-main,\n\s+\.record-row \{ grid-template-columns: auto minmax\(0, 1fr\); \}/);
+  assert.match(styles, /@container \(max-width: 620px\) \{[\s\S]*?\.record-row > \.task-status \{ grid-column: 2; justify-self: start; \}/);
+  assert.match(styles, /@container \(max-width: 620px\) \{[\s\S]*?\.finding-actions \{ justify-content: flex-start; \}/);
+
+  // A container query carries no weight of its own, so it has to stand after the rules it
+  // overrides. Both of those are declared above it in the file; if one moves below, the
+  // card silently goes back to three columns.
+  const container = styles.indexOf("@container (max-width: 620px)");
+  assert.ok(container > styles.indexOf("\n.finding-card-main {"), ".finding-card-main is declared before the container query that overrides it");
+  assert.ok(container > styles.indexOf("\n.finding-actions {"), ".finding-actions is declared before the container query that overrides it");
+
+  // The window-width copy stays: a row outside a record stack has no container to ask.
+  assert.match(styles, /@media \(max-width: 620px\) \{[\s\S]*?\.finding-card-main,\n\s+\.record-row \{\n\s+grid-template-columns: auto minmax\(0, 1fr\);/);
+});
+
 test("calls each form what the client's own paper calls it, in one place", async () => {
   const [workspace, home, app] = await Promise.all([
     readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
