@@ -6484,6 +6484,12 @@ textarea:focus-visible {
   gap: 10px;
 }
 
+/* The rows and cards in a stack break on their own width, not the window's. A record list
+   sits in whatever column the screen gives it, so on a wide desktop a card can still be
+   narrower than a phone — and the status chip, which takes its whole text, was squeezing
+   the title and the description into a ribbon a few words wide. */
+.record-stack { container-type: inline-size; }
+
 .checklist-question {
   display: grid;
   gap: 10px;
@@ -6568,12 +6574,18 @@ textarea:focus-visible {
 .record-row:has(> .record-row-open) { grid-template-columns: auto minmax(0, 1fr) auto auto; }
 .record-row-open { font-size: 11px; min-height: 36px; padding: 0 12px; white-space: nowrap; }
 
+/* Both, deliberately: the container query covers a row in a narrow column on a wide
+   window, and the media query still covers a row that is not inside a record stack. */
 @media (max-width: 620px) {
   .record-row:has(> .record-row-open) { grid-template-columns: auto minmax(0, 1fr) auto; }
   /* Only when the open button is a direct child of the row. Inside the actions group it
      is one of three equal cells, and this rule pushed the other two onto a second line. */
   .record-row > .record-row-open { grid-column: 2 / -1; justify-self: start; }
 }
+
+/* The container half of it stands after the rules it has to beat — .finding-card-main and
+   .finding-actions are declared below — because a container query carries no extra weight
+   of its own; it wins on source order or not at all. */
 
 /* The text block of a row. The actions group is also a direct div child, and this rule
    used to win on specificity and turn it into a one-column grid — which is what stacked
@@ -6651,6 +6663,26 @@ textarea:focus-visible {
   justify-content: flex-end;
   gap: 8px;
   padding: 0 16px 12px;
+}
+
+/* A record list sits in whatever column the screen gives it, so a card on a wide desktop
+   can still be narrower than a phone. These break on the width of the stack the rows are
+   in, which is what the window-width copies of them further down cannot see. */
+@container (max-width: 620px) {
+  .record-row:has(> .record-row-open) { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .record-row > .record-row-open { grid-column: 2 / -1; justify-self: start; }
+
+  /* The status chip is a column of its own text — "ready for verification" is 157px of it,
+     and it was taking that out of the title and the description. It stands on a line under
+     them instead, which is what leaves the record number room to be read. */
+  .finding-card-main,
+  .record-row { grid-template-columns: auto minmax(0, 1fr); }
+  .finding-card-main > .task-status,
+  .record-row > .task-status { grid-column: 2; justify-self: start; }
+
+  /* Right-aligned actions read as one row on a wide card. Once they wrap onto three or
+     four rows every row ends somewhere else, so they line up on the left instead. */
+  .finding-actions { justify-content: flex-start; }
 }
 
 .download-group {
@@ -7587,6 +7619,7 @@ textarea:focus-visible {
     grid-template-columns: 1fr;
   }
 
+  /* Also under @container further down, for a card in a narrow column on a wide window. */
   .finding-card-main,
   .record-row {
     grid-template-columns: auto minmax(0, 1fr);
