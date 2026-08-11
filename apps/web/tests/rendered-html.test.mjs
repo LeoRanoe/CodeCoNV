@@ -3102,6 +3102,20 @@ test("gives the project delay report its own form, numbered PDR and evidenced by
   assert.doesNotMatch(workspace, /Likely completion date/i);
 });
 
+test("keeps a tick box a tick box inside a form field, so its label stays on the screen", async () => {
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  // Category, type and impact on the delay report are ticked inside a .form-field, and the
+  // field's own sizing rule reaches every input below it. Without the exclusion the box was
+  // stretched to the full width of the form and pushed its label off the side of the phone.
+  assert.match(styles, /\.form-field input:not\(\[type="checkbox"\]\):not\(\[type="radio"\]\),\n\.form-field select,\n\.form-field textarea \{\n\s+width: 100%;/);
+  assert.doesNotMatch(styles, /^\.form-field input,$/m);
+
+  // And the tick has a size of its own, so it is the same on every form that ticks.
+  assert.match(styles, /\.record-action-check input\[type="checkbox"\] \{[^}]*width: 17px;/);
+  assert.match(styles, /\.record-action-check \{[^}]*overflow-wrap: anywhere;/);
+});
+
 test("lets a supervisor switch project from anywhere without carrying data across", async () => {
   const [app, css] = await Promise.all([
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
