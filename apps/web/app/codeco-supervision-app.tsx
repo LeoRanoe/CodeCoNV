@@ -291,7 +291,10 @@ const navigation: { id: NavKey; label: string; icon: LucideIcon; badge?: string 
   { id: "project", label: "Werkruimte", icon: LayoutDashboard },
   { id: "acties", label: "Acties", icon: ClipboardCheck },
   { id: "projectdocs", label: "Project Docs", icon: FileText },
-  { id: "punchlist", label: "Punchlist", icon: CheckCircle2 },
+  /* One module, one name. This button and the workspace tile open the same screen, and
+     calling it Punchlist here and Issues there described two things that do not exist.
+     Punch list is a register of its own — that is the record this button never opened. */
+  { id: "punchlist", label: "Issues", icon: CheckCircle2 },
   { id: "verify", label: "Rapid Verify", icon: Search },
   { id: "rapporten", label: "Rapporten", icon: FileText },
   { id: "meer", label: "Instellingen", icon: Settings },
@@ -825,7 +828,7 @@ export function CodecoSupervisionApp() {
       project: text("Workspace", "Werkruimte"),
       acties: text("Actions", "Acties"),
       projectdocs: "Project Docs",
-      punchlist: "Punchlist",
+      punchlist: "Issues",
       verify: "Rapid Verify",
       rapporten: text("Reports", "Rapporten"),
       meer: canManageMembers ? text("Management", "Management") : text("Settings", "Instellingen"),
@@ -3669,7 +3672,7 @@ function SecondaryView({
           <button type="button" onClick={() => openProjectTab("registers", { registerType: "rfa" })}><PackageCheck size={16} /><span><strong>RFA</strong><small>{text("Approval requests", "Goedkeuringsverzoeken")}</small></span></button>
           <button type="button" onClick={() => openProjectTab("registers", { registerType: "inspection_request" })}><ClipboardCheck size={16} /><span><strong>WIR</strong><small>{text("Inspection requests", "Inspectieverzoeken")}</small></span></button>
           <button type="button" onClick={() => openProjectTab("ncr")}><AlertTriangle size={16} /><span><strong>NCR</strong><small>{text("Open findings", "Open bevindingen")}</small></span></button>
-          <button type="button" onClick={() => openProjectTab("findings")}><CheckCircle2 size={16} /><span><strong>Punchlist</strong><small>{text("Ready for review", "Gereed voor review")}</small></span></button>
+          <button type="button" onClick={() => openProjectTab("findings")}><CheckCircle2 size={16} /><span><strong>Issues</strong><small>{text("Ready for review", "Gereed voor review")}</small></span></button>
           <button type="button" onClick={() => openProjectTab("drawings")}><MapPin size={16} /><span><strong>{text("Floor plan", "Plattegrond")}</strong><small>{text("All linked pins", "Alle gekoppelde pins")}</small></span></button>
         </nav>
         <section className="action-overview" aria-label={text("Action summary", "Actieoverzicht")}><button className={actionFilter === "open" ? "active" : ""} type="button" onClick={() => setActionFilter("open")}><strong>{openActions.length}</strong><span>{text("Open", "Open")}</span></button><button className={actionFilter === "urgent" ? "active urgent" : "urgent"} type="button" onClick={() => setActionFilter("urgent")}><strong>{urgentActions.length}</strong><span>{text("Urgent", "Urgent")}</span></button><button className={actionFilter === "completed" ? "active" : ""} type="button" onClick={() => setActionFilter("completed")}><strong>{completedActions.length}</strong><span>{text("Completed", "Afgerond")}</span></button><button className={actionFilter === "all" ? "active" : ""} type="button" onClick={() => setActionFilter("all")}><strong>{actions.length}</strong><span>{text("All", "Alles")}</span></button></section>
