@@ -14334,6 +14334,15 @@ button {
   gap: 0.85rem;
 }
 
+/* On a desktop these forms are as wide as the window allows, and a single column of
+   sections down the middle of that is a page of half-empty cards. Two columns when the
+   form itself has the room — the form is the container, not the window, because the
+   workspace keeps a module switcher beside it. The sections still read row by row, in the
+   client's own numbering. */
+@container (min-width: 900px) {
+  .record-form-sections { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 .record-form-section {
   border: 1px solid var(--line, #d8dfda);
   border-radius: 16px;
@@ -15165,7 +15174,8 @@ button {
   .overview-evidence-grid,
   .overview-weather-register,
   .prompt-library-list,
-  .record-action-grid
+  .record-action-grid,
+  .record-form-sections
 ) > *:last-child:nth-child(odd) { grid-column: 1 / -1; }
 
 @media (max-width: 1180px) {

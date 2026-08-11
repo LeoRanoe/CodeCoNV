@@ -161,7 +161,7 @@ export function ProjectWorkspaceHome({
          kind of delay: the one that moves the finish date of the works, and that the
          client's own PDR form has to evidence, have acknowledged and close out. */
       id: "delay-report",
-      label: text("Delay report · PDR", "Vertragingsrapport · PDR"),
+      label: text("Project Delay Report (PDR)", "Vertragingsrapport (PDR)"),
       copy: text("Revised finish date, evidenced and acknowledged", "Herziene einddatum, onderbouwd en erkend"),
       icon: CalendarClock,
       tone: "orange",
@@ -216,7 +216,7 @@ export function ProjectWorkspaceHome({
     },
     {
       id: "change-order",
-      label: text("Change order · CO", "Wijzigingsopdracht · CO"),
+      label: text("Change order (CO)", "Change order (CO)"),
       copy: text("Controlled scope, cost and schedule change", "Beheerde scope-, kosten- en planningswijziging"),
       icon: FileCheck2,
       tone: "purple",
@@ -237,7 +237,7 @@ export function ProjectWorkspaceHome({
          a deadline is not a thing you record here, it is a state the action centre
          already keeps. It moved to the supporting tools, below the grid. */
       id: "lessons-learned",
-      label: text("Lessons learned", "Geleerde lessen"),
+      label: text("Lessons Learned (LL)", "Geleerde lessen (LL)"),
       copy: text("Capture, learn and improve", "Vastleggen, leren en verbeteren"),
       icon: Lightbulb,
       tone: "purple",
@@ -254,7 +254,7 @@ export function ProjectWorkspaceHome({
     },
     {
       id: "agreements-made",
-      label: text("Agreements made", "Gemaakte afspraken"),
+      label: text("Agreements Made", "Gemaakte afspraken"),
       copy: text("Decision, owner, deadline and audit trail", "Besluit, eigenaar, deadline en historie"),
       icon: MessageSquareText,
       tone: "blue",

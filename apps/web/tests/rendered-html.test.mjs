@@ -2901,7 +2901,8 @@ test("gives Lessons Learned the workspace tile the client struck Deadlines off",
   // The register form itself: the client's own fields, minus the target date the client
   // struck off the original Lessons Learned mockup.
   assert.match(workspace, /const lessonsLearnedRegister = registerForm\.type === "lessons_learned"/);
-  assert.match(workspace, /lessons_learned: "Geleerde lessen"/);
+  // The abbreviation belongs in the name: LL-0001 is the number the client writes under it.
+  assert.match(workspace, /lessons_learned: "Geleerde lessen \(LL\)"/);
   for (const label of [/Issue", "Probleem"/, /Cause", "Oorzaak"/, /Solution \/ improvement/, /Expected results/, /Follow-up action/]) {
     assert.match(workspace, label);
   }
@@ -3100,6 +3101,61 @@ test("gives the project delay report its own form, numbered PDR and evidenced by
   assert.doesNotMatch(delayReport, /delayStartDate/);
   assert.doesNotMatch(workspace, /Proposed finish date \(by contractor\)/i);
   assert.doesNotMatch(workspace, /Likely completion date/i);
+});
+
+test("gives every record form the width of the desktop it is opened on", async () => {
+  const [workspace, styles] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // .operation-form without .wide is a 720px column. Only a controlled document carried
+  // .wide, so PDR, Lessons Learned, Agreements Made and Materials delivery — and the NCR
+  // and the inspection beside them — sat in that column with the rest of the window empty.
+  assert.match(styles, /\.operation-form \{[^}]*width: min\(100%, 720px\);/);
+  assert.match(workspace, /const registerFormClassName = `wide sectioned-record-form\$\{controlledRegister \? " controlled-document-form" : ""\}`/);
+  assert.match(workspace, /className=\{registerFormClassName\}/);
+  assert.doesNotMatch(workspace, /className=\{controlledRegister \? "wide controlled-document-form" : ""\}/);
+  assert.match(workspace, /className="operation-form wide sectioned-record-form snap-assign-form"/);
+  assert.match(workspace, /title=\{text\("Start inspection", "Inspectie starten"\)\} status=\{text\("New", "Nieuw"\)\} busy=\{busy\} className="wide sectioned-record-form"/);
+
+  // And the width is used rather than only granted: two columns of sections once the form
+  // itself is wide enough, measured on the form and not on the window.
+  assert.match(styles, /@container \(min-width: 900px\) \{\n\s+\.record-form-sections \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); \}/);
+  assert.match(styles, /\.record-form-sections\n\) > \*:last-child:nth-child\(odd\) \{ grid-column: 1 \/ -1; \}/);
+});
+
+test("calls each form what the client's own paper calls it, in one place", async () => {
+  const [workspace, home, app] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/project-workspace-home.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
+  ]);
+
+  // The workspace tile and the heading of the form say the same thing, and where the client
+  // writes an abbreviation on the sheet it is part of the name — the number reads the same.
+  for (const [register, tile] of [
+    [/delay_report: "Project Delay Report \(PDR\)"/, /label: text\("Project Delay Report \(PDR\)", "Vertragingsrapport \(PDR\)"\)/],
+    [/lessons_learned: "Lessons Learned \(LL\)"/, /label: text\("Lessons Learned \(LL\)", "Geleerde lessen \(LL\)"\)/],
+    [/agreement: "Agreements Made"/, /label: text\("Agreements Made", "Gemaakte afspraken"\)/],
+    [/delivery: "Materials delivery"/, /label: text\("Materials delivery", "Materiaallevering"\)/],
+  ]) {
+    assert.match(workspace, register);
+    assert.match(home, tile);
+  }
+  // "Change order · CO" on the tile against "Change order (CO)" in the register was the
+  // same form written two ways.
+  assert.match(home, /label: text\("Change order \(CO\)", "Change order \(CO\)"\)/);
+  // The NCR form heading is the title on the client's own sheet.
+  assert.match(workspace, /<h2>\{text\("Non-conformance report", "Non-conformance report"\)\}<\/h2>/);
+
+  // One module, one name. The bottom bar called the findings module Punchlist while the
+  // workspace tile called it Issues, and punch_list is a register of its own.
+  assert.doesNotMatch(app, /label: "Punchlist"/);
+  assert.doesNotMatch(app, /<strong>Punchlist<\/strong>/);
+  assert.match(app, /\{ id: "punchlist", label: "Issues", icon: CheckCircle2 \}/);
+  assert.match(app, /punchlist: "Issues",/);
+  assert.match(workspace, /punch_list: "Punch list"/);
 });
 
 test("keeps a tick box a tick box inside a form field, so its label stays on the screen", async () => {

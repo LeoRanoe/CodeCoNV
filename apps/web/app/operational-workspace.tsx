@@ -224,9 +224,13 @@ const reportStatusLabelsEnglish: Record<string, string> = {
   revised: "Revision", returned: "Returned", cancelled: "Cancelled",
 };
 
+/* The name of a form is the name that stands on the client's own paper, carried through to
+   every place the app says it: the workspace tile, the heading of the form and the row in
+   the register. Where the client writes an abbreviation on the sheet — PDR, LL, CO, TI, ER
+   — it belongs in the name, because that is what the number under it reads. */
 const registerLabels: Record<string, string> = {
   equipment: "Materieel",
-  delivery: "Levering",
+  delivery: "Materiaallevering",
   test: "Test / meting",
   variation: "Meer-/minderwerk",
   delay: "Vertraging",
@@ -247,13 +251,13 @@ const registerLabels: Record<string, string> = {
   boq: "BOQ / voortgang",
   punch_list: "Punch list",
   notepad: "Notitieblok",
-  agreement: "Afspraak",
+  agreement: "Gemaakte afspraken",
   technical_instruction: "Technische instructie (TI)",
   change_order: "Change order (CO)",
   contract: "Contract",
   specification: "Technische specificatie",
   environmental_report: "Milieurapport (ER)",
-  lessons_learned: "Geleerde lessen",
+  lessons_learned: "Geleerde lessen (LL)",
   delay_report: "Vertragingsrapport (PDR)",
 };
 
@@ -633,15 +637,15 @@ function clearRecordDraft(kind: RecordDraftKind, projectId: string) {
 }
 
 const registerLabelsEnglish: Record<string, string> = {
-  equipment: "Equipment", delivery: "Delivery", test: "Test / measurement", variation: "Variation",
+  equipment: "Equipment", delivery: "Materials delivery", test: "Test / measurement", variation: "Variation",
   delay: "Delay", communication: "Communication / decision", risk: "Risk", document: "Document",
   drawing: "Drawing", wcr: "WCR - Work Completion Request", rfi: "RFI", submittal: "Submittal", site_instruction: "Site instruction",
   meeting: "Meeting", correspondence: "Correspondence", cost: "Cost control", declaration: "Contractor payment claim",
   rfa: "RFA - Request for Approval", inspection_request: "WIR - Work Inspection Request", boq: "BOQ / progress",
-  punch_list: "Punch list", notepad: "Notepad", agreement: "Agreement", technical_instruction: "Technical instruction (TI)",
+  punch_list: "Punch list", notepad: "Notepad", agreement: "Agreements Made", technical_instruction: "Technical instruction (TI)",
   change_order: "Change order (CO)", contract: "Contract", specification: "Technical specification",
-  environmental_report: "Environmental report (ER)", lessons_learned: "Lessons learned",
-  delay_report: "Project delay report (PDR)",
+  environmental_report: "Environmental report (ER)", lessons_learned: "Lessons Learned (LL)",
+  delay_report: "Project Delay Report (PDR)",
 };
 
 function formatDate(value: string | null, locale = "en-GB") {
@@ -1773,6 +1777,11 @@ function ProjectOperations({
   };
   const activeRegisterPresets = registerPresets[registerForm.type] ?? [];
   const controlledRegister = isControlledDocumentType(registerForm.type);
+  /* Every register form is wide. Only a controlled document used to be, so the rest — PDR,
+     Lessons Learned, Agreements Made, Materials delivery — fell back to the 720px column
+     that .operation-form gives an unmarked form, and on a desktop that left two thirds of
+     the window empty. */
+  const registerFormClassName = `wide sectioned-record-form${controlledRegister ? " controlled-document-form" : ""}`;
   const controlledFormReady = !controlledRegister || (
     registerForm.details.trim().length >= 3
     && (
@@ -2934,7 +2943,7 @@ function ProjectOperations({
       {tab === "inspections" ? (
         <section className="operation-panel">
           {activeInspection && activeTemplate ? (
-            <RecordFormShell code={activeInspection.inspection_number} title={activeInspection.title} status={text("In progress", "In uitvoering")} busy={busy} className="wide">
+            <RecordFormShell code={activeInspection.inspection_number} title={activeInspection.title} status={text("In progress", "In uitvoering")} busy={busy} className="wide sectioned-record-form">
               <p className="form-intro">{text("Answer every required checkpoint. A failed point automatically creates a traceable finding on completion; the app never closes it by itself.", "Beantwoord alle verplichte controlepunten. Een afkeur maakt bij afronding automatisch een traceerbare bevinding; de app sluit die nooit zelf.")}</p>
               <div className="checklist-progress" aria-label={text("Checklist progress", "Checklistvoortgang")}>
                 <span><b>{answeredChecklistItems}</b> / {activeTemplate.items.length} {text("answered", "beantwoord")}</span>
@@ -3020,7 +3029,7 @@ function ProjectOperations({
             </RecordFormShell>
           ) : null}
           {showForm && !activeInspection ? (
-            <RecordFormShell code={text("Inspection", "Inspectie")} title={text("Start inspection", "Inspectie starten")} status={text("New", "Nieuw")} busy={busy}>
+            <RecordFormShell code={text("Inspection report", "Inspectierapport")} title={text("Start inspection", "Inspectie starten")} status={text("New", "Nieuw")} busy={busy} className="wide sectioned-record-form">
               {!reportId ? <p className="form-helper">{text("Starting this checklist prepares today’s draft report automatically.", "Bij het starten van deze checklist wordt het conceptrapport van vandaag automatisch klaargezet.")}</p> : null}
               {anchorWorkPlanned && missingAnchorChecklistCodes.length ? (
                 <div className="operation-alert success recommended-checklist-install">
@@ -3326,7 +3335,7 @@ function ProjectOperations({
             </div>
           ) : null}
           {showForm && findingScope === "ncr" ? (
-            <div className="operation-form snap-assign-form">
+            <div className="operation-form wide sectioned-record-form snap-assign-form">
               <div className="operation-form-heading"><div><span className="record-number">{text("Formal non-conformance", "Formele afwijking")}</span><h2>{text("Non-conformance report", "Non-conformance report")}</h2></div>{!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}</div>
               {/* The head of the client's own NCR form: project, contractor, subject and
                   the reference, with the date and the report number filled by the app. */}
@@ -3799,7 +3808,7 @@ function ProjectOperations({
               title={registerNames[registerForm.type] ?? text("Project register item", "Projectregistratie")}
               status={editingRegisterId ? text("Editing", "Bewerken") : text("Draft", "Concept")}
               busy={busy}
-              className={controlledRegister ? "wide controlled-document-form" : ""}
+              className={registerFormClassName}
               headerAside={controlledRegister ? <span className="controlled-document-badge">{projectCode} · {registerContextLabel}</span> : null}
             >
               {/* The form says what is being recorded — Materials delivery, Agreement,
