@@ -3857,11 +3857,7 @@ textarea:focus-visible {
   font-weight: 680;
 }
 
-/* A tick box is not a text box. This rule reaches every input inside the field, so a
-   checkbox nested in one — the delay report ticks its category, type and impact inside
-   a .form-field — was stretched to the full width of the form and pushed its own label
-   off the side of the screen. */
-.form-field input:not([type="checkbox"]):not([type="radio"]),
+.form-field input,
 .form-field select,
 .form-field textarea {
   width: 100%;
@@ -3872,6 +3868,25 @@ textarea:focus-visible {
   color: var(--ink-950);
   padding: 10px 12px;
   font-size: 12px;
+}
+
+/* A tick box is not a text box. The rule above reaches every input below the field, so a
+   checkbox nested in one — the delay report ticks its category, type and impact inside a
+   .form-field — was stretched to the full width of the form and pushed its own label off
+   the side of the screen.
+
+   Written as a second rule and not as a :not() on the first, deliberately. A :not() also
+   raises that selector from (0,1,1) to (0,3,1), and half the stylesheet overrides
+   .form-field input with a single class: every search field, filter and inline box in the
+   workspace would lose its own size and take this box instead. */
+.form-field input[type="checkbox"],
+.form-field input[type="radio"] {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  min-height: 0;
+  padding: 0;
+  width: auto;
 }
 
 .form-field textarea {
