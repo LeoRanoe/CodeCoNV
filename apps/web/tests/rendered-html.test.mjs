@@ -3189,14 +3189,27 @@ test("keeps a tick box a tick box inside a form field, so its label stays on the
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
   // Category, type and impact on the delay report are ticked inside a .form-field, and the
-  // field's own sizing rule reaches every input below it. Without the exclusion the box was
-  // stretched to the full width of the form and pushed its label off the side of the phone.
-  assert.match(styles, /\.form-field input:not\(\[type="checkbox"\]\):not\(\[type="radio"\]\),\n\.form-field select,\n\.form-field textarea \{\n\s+width: 100%;/);
-  assert.doesNotMatch(styles, /^\.form-field input,$/m);
+  // field's own sizing rule reaches every input below it, so the box was stretched to the
+  // full width of the form and pushed its label off the side of the phone.
+  assert.match(styles, /^\.form-field input,\n\.form-field select,\n\.form-field textarea \{\n\s+width: 100%;/m);
+  assert.match(styles, /\.form-field input\[type="checkbox"\],\n\.form-field input\[type="radio"\] \{[\s\S]*?width: auto;/);
 
-  // And the tick has a size of its own, so it is the same on every form that ticks.
+  // The exclusion must not be written as a :not() on the rule itself. That raises it from
+  // (0,1,1) to (0,3,1), and more than fifty rules in this stylesheet override .form-field
+  // input with a single class — every search field, filter and inline box in the workspace
+  // lost its own size and took the field box instead. This is that mistake, held down.
+  assert.doesNotMatch(styles, /\.form-field input:not\(/);
+  assert.doesNotMatch(styles, /\.form-field input:where\(/);
+  assert.doesNotMatch(styles, /\.form-field input:is\(/);
+
+  // And the tick has a size of its own, so it is the same on every form that ticks. It is
+  // declared after the reset above, which is the only reason 17px survives `width: auto`.
   assert.match(styles, /\.record-action-check input\[type="checkbox"\] \{[^}]*width: 17px;/);
   assert.match(styles, /\.record-action-check \{[^}]*overflow-wrap: anywhere;/);
+  assert.ok(
+    styles.indexOf('.form-field input[type="checkbox"]') < styles.indexOf('.record-action-check input[type="checkbox"]'),
+    "the field reset is declared before the tick grid sizes its own box",
+  );
 });
 
 test("lets a supervisor switch project from anywhere without carrying data across", async () => {
