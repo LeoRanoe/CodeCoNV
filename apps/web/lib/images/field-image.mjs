@@ -3,20 +3,127 @@
 export const fieldPhotoMimeTypes = Object.freeze(["image/jpeg", "image/png", "image/webp"]);
 
 /**
+ * The file endings a 360° camera writes. Insta360 stores a still as `.insp`, which is an
+ * ordinary JPEG under another name; the browser hands such a file over without a type, so the
+ * app has to name the type itself instead of turning the picture away.
+ */
+export const panoramaFileExtensions = Object.freeze([".jpg", ".jpeg", ".png", ".webp", ".insp"]);
+
+/** @type {Record<string, string>} */
+const panoramaExtensionMimeTypes = Object.freeze({
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".insp": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+});
+
+/**
+ * The type and name a 360° file has to travel under. A camera that writes its own extension or
+ * no type at all still produces a normal JPEG, so it is renamed rather than refused; a file the
+ * viewer genuinely cannot read comes back with an empty type so the screen can say so.
+ *
+ * @param {string} fileName
+ * @param {string} [mimeType]
+ */
+export function panoramaUploadSource(fileName, mimeType = "") {
+  const name = (fileName ?? "").trim();
+  const extension = (name.match(/\.[^.]+$/)?.[0] ?? "").toLowerCase();
+  const declared = (mimeType ?? "").trim().toLowerCase();
+  const byExtension = panoramaExtensionMimeTypes[extension] ?? "";
+  if (fieldPhotoMimeTypes.includes(declared) && extension !== ".insp") {
+    return { mimeType: declared, fileName: name, renamed: false };
+  }
+  if (!byExtension) return { mimeType: "", fileName: name, renamed: false };
+  // `.insp` is a JPEG; keeping the camera name would leave the file unopenable everywhere else.
+  const renamed = extension === ".insp";
+  return {
+    mimeType: byExtension,
+    fileName: renamed ? `${name.slice(0, -extension.length)}.jpg` : name,
+    renamed,
+  };
+}
+
+/**
+ * What kind of 360° image this is, and what is worth saying about it — never whether it is
+ * allowed. Every readable image can be uploaded and viewed: a full equirectangular export
+ * shows a whole sphere, a wider or narrower export shows the part of the sphere it covers, and
+ * a small export simply shows less detail. The notice is the sentence the upload screen puts
+ * under the file, so a supervisor knows what he will get before he saves it.
+ *
  * @param {number} width
  * @param {number} height
  */
-export function validatePanoramaDimensions(width, height) {
+export function describePanoramaImage(width, height) {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-    return { valid: false, reason: "unreadable" };
+    return { valid: false, reason: "unreadable", projection: "unknown", notice: null };
   }
-  if (Math.abs((width / height) - 2) > 0.04) {
-    return { valid: false, reason: "ratio" };
+  const ratio = width / height;
+  const projection = Math.abs(ratio - 2) <= 0.04
+    ? "equirectangular"
+    : ratio > 2
+      ? "partial-vertical"
+      : "partial-horizontal";
+  const notice = projection !== "equirectangular"
+    ? projection
+    : width < 3840
+      ? "resolution"
+      : null;
+  return { valid: true, reason: null, projection, notice };
+}
+
+/**
+ * Whether a 2:1 image is in fact the raw output of a two-lens camera — the two round pictures
+ * side by side that an Insta360 writes into a `.insp` — instead of a stitched sphere. Such a
+ * file has to be projected differently, and the picture itself is the only thing that says so:
+ * both lenses leave the corners of their half black while their middles carry the scene.
+ *
+ * The judgement is deliberately strict. A stitched export that is merely dark stays stitched;
+ * only an image whose eight half-corners are all but black while both middles are clearly lit
+ * is treated as a two-lens original.
+ *
+ * @param {{ ratio: number, corners: number[], centers: number[] }} samples luminance 0–255
+ */
+export function looksLikeDualFisheye(samples) {
+  const { ratio, corners, centers } = samples;
+  if (!Number.isFinite(ratio) || Math.abs(ratio - 2) > 0.04) return false;
+  if (!Array.isArray(corners) || corners.length < 8 || !Array.isArray(centers) || centers.length < 2) return false;
+  if (corners.some((value) => !Number.isFinite(value)) || centers.some((value) => !Number.isFinite(value))) return false;
+  const brightestCorner = Math.max(...corners);
+  const dimmestCenter = Math.min(...centers);
+  return brightestCorner <= 26 && dimmestCenter - brightestCorner >= 45;
+}
+
+/**
+ * A 360° export that is larger than the project limit is made to fit instead of being refused:
+ * the whole picture is kept and only its scale changes, so the projection — and every marker
+ * placed in it — stays exactly where it was. An image that already fits is never touched.
+ *
+ * @param {number} width
+ * @param {number} height
+ * @param {number} sizeBytes
+ * @param {number} maxBytes
+ * @param {number} [maxEdge]
+ */
+export function panoramaFitSize(width, height, sizeBytes, maxBytes, maxEdge = 8192) {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return { width: 0, height: 0, scale: 1, resize: false };
   }
-  if (width < 3840 || height < 1920) {
-    return { valid: false, reason: "resolution" };
-  }
-  return { valid: true, reason: null };
+  const fits = !Number.isFinite(maxBytes) || maxBytes <= 0 || sizeBytes <= maxBytes;
+  // An export that already fits is left at its own size, however large that is: the detail a
+  // supervisor zooms into is the reason a 360° image is uploaded at all.
+  if (fits) return { width: Math.round(width), height: Math.round(height), scale: 1, resize: false };
+  // File size follows the pixel count, so the edge is scaled by the square root of the
+  // reduction that is needed, with a margin for the header and a rounder re-encode. The edge
+  // cap keeps the redraw within what a phone canvas can hold.
+  const scale = Math.min(1, width > maxEdge ? maxEdge / width : 1, Math.sqrt((maxBytes * 0.85) / sizeBytes));
+  if (scale >= 1) return { width: Math.round(width), height: Math.round(height), scale: 1, resize: false };
+  return {
+    width: Math.max(2, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+    scale,
+    resize: true,
+  };
 }
 
 /**

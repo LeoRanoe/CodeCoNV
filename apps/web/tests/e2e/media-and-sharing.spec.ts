@@ -110,16 +110,11 @@ async function uploadAndMarkPanorama(page: Page, title: string) {
   const uploadForm = page.locator(".visual-upload-form");
   const fileInput = uploadForm.locator("input[type='file']");
 
-  await fileInput.setInputFiles(photoOne!);
-  await uploadForm.locator(".check-field input[type='checkbox']").check();
-  await page.getByRole("button", { name: "Secure and sync 360° image" }).click();
-  await expect(uploadForm.getByRole("alert")).toContainText(/stitched 2:1 equirectangular/);
-
   await fileInput.setInputFiles(panorama!);
-  await uploadForm.locator(".check-field input[type='checkbox']").check();
-  const details = uploadForm.locator(".optional-text-entry");
-  if (!(await details.getAttribute("open"))) await details.locator("summary").click();
-  await uploadForm.getByLabel("Title", { exact: true }).fill(title);
+  // Every 360° export is accepted: the form describes the image it was given instead of
+  // refusing it over its proportions or its resolution.
+  await expect(uploadForm.locator(".operation-alert")).toContainText(/pixels ·/);
+  await uploadForm.locator("textarea").first().fill(title);
   await uploadForm.getByLabel(/Tour name/).fill("B1 Release Tour");
   await uploadForm.getByLabel("Position in tour").fill("1");
   await page.getByRole("button", { name: "Secure and sync 360° image" }).click();

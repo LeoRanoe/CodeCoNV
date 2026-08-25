@@ -624,7 +624,7 @@ export function MediaLibraryWorkspace({
         </button>
         <button className="media-choice" type="button" onClick={open360Upload}>
           <span><ScanLine size={19} /></span>
-          <span><strong>{text("Upload 360°", "360° uploaden")}</strong><small>{text("Stitched export of a 360° camera", "Gestitchte export van een 360°-camera")}</small></span>
+          <span><strong>{text("Upload 360°", "360° uploaden")}</strong><small>{text("Any 360° camera export or panorama", "Elke 360°-camera-export of panorama")}</small></span>
         </button>
         {assetsMode ? <button className="media-choice" type="button" onClick={() => { setKind("drawing"); drawingImportRef.current?.click(); }}>
           <span><HardDrive size={19} /></span>

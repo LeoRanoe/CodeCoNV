@@ -1,6 +1,7 @@
 "use client";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { panoramaFitSize } from "@/lib/images/field-image.mjs";
 import { idbDelete, idbGetAll, idbPut } from "@/lib/offline/idb";
 import { isPendingRecordId, resolvePendingRecordId } from "@/lib/offline/record-queue";
 import { uploadProjectFile } from "@/lib/storage/gateway";
@@ -162,6 +163,50 @@ export async function compressFieldPhoto(file: File, enabled = dataSaverEnabled(
   } catch {
     bitmap?.close();
     return { blob: file as Blob, fileName: file.name, mimeType: file.type || "image/jpeg", compressed: false };
+  }
+}
+
+/**
+ * A 360° image is handed to the storage gateway untouched, because scaling a sphere loses the
+ * detail a supervisor zooms into. Only when the export is larger than the project limit is it
+ * made to fit: the full picture is kept and its scale is reduced, so the projection stays
+ * intact and the image can be uploaded instead of refused. When the browser cannot re-encode,
+ * the original is returned and the upload screen reports the limit itself.
+ */
+export async function preparePanoramaUpload(file: File, maxBytes: number) {
+  const untouched = { blob: file as Blob, fileName: file.name, mimeType: file.type || "image/jpeg", resized: false, fits: file.size <= maxBytes };
+  if (untouched.fits || typeof createImageBitmap !== "function") return untouched;
+  let bitmap: ImageBitmap | null = null;
+  try {
+    bitmap = await createImageBitmap(file);
+    const target = panoramaFitSize(bitmap.width, bitmap.height, file.size, maxBytes);
+    if (!target.resize) {
+      bitmap.close();
+      return untouched;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = target.width;
+    canvas.height = target.height;
+    const context = canvas.getContext("2d", { alpha: false });
+    if (!context) {
+      bitmap.close();
+      return untouched;
+    }
+    context.drawImage(bitmap, 0, 0, target.width, target.height);
+    bitmap.close();
+    bitmap = null;
+    // Quality is stepped down only as far as the limit demands, so a 360° image never loses
+    // more than it has to.
+    for (const quality of [0.86, 0.76, 0.66]) {
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+      if (blob && blob.size <= maxBytes) {
+        return { blob, fileName: photoName(file.name), mimeType: "image/jpeg", resized: true, fits: true };
+      }
+    }
+    return untouched;
+  } catch {
+    bitmap?.close();
+    return untouched;
   }
 }
 

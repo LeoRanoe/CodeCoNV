@@ -58,6 +58,7 @@ import {
 import {
   compassPointFromDegrees,
   compassPoints,
+  describePanoramaImage,
   fieldPhotoMimeTypes,
   markedPhotoName,
   markupCanvasSize,
@@ -67,8 +68,10 @@ import {
   photoMarkupReport,
   photoMarkupSummary,
   photoMarkupToneColors,
+  looksLikeDualFisheye,
+  panoramaFitSize,
+  panoramaUploadSource,
   photoTitleFromDescription,
-  validatePanoramaDimensions,
 } from "../lib/images/field-image.mjs";
 
 test("recognizes every PostgREST shape for missing inspection signature columns", () => {
@@ -148,13 +151,49 @@ test("accepts only narrow normalized external share tokens", () => {
   );
 });
 
-test("validates field photos and dedicated 360 degree exports", () => {
+test("accepts every readable 360 degree export and says what it is", () => {
   assert.deepEqual(fieldPhotoMimeTypes, ["image/jpeg", "image/png", "image/webp"]);
-  assert.deepEqual(validatePanoramaDimensions(3840, 1920), { valid: true, reason: null });
-  assert.deepEqual(validatePanoramaDimensions(7680, 3840), { valid: true, reason: null });
-  assert.equal(validatePanoramaDimensions(4000, 1800).reason, "ratio");
-  assert.equal(validatePanoramaDimensions(1920, 960).reason, "resolution");
-  assert.equal(validatePanoramaDimensions(0, 0).reason, "unreadable");
+  // A full sphere at any size is a 360° image; a small one is only worth a remark.
+  assert.deepEqual(describePanoramaImage(7680, 3840), { valid: true, reason: null, projection: "equirectangular", notice: null });
+  assert.deepEqual(describePanoramaImage(3840, 1920), { valid: true, reason: null, projection: "equirectangular", notice: null });
+  assert.deepEqual(describePanoramaImage(1024, 512), { valid: true, reason: null, projection: "equirectangular", notice: "resolution" });
+  // Exports that cover less than a whole sphere are shown on the part they do cover.
+  assert.equal(describePanoramaImage(4096, 1024).projection, "partial-vertical");
+  assert.equal(describePanoramaImage(4000, 2400).projection, "partial-horizontal");
+  assert.equal(describePanoramaImage(0, 0).valid, false);
+  assert.equal(describePanoramaImage(0, 0).reason, "unreadable");
+});
+
+test("names the type of a 360 degree file the camera did not name itself", () => {
+  assert.deepEqual(panoramaUploadSource("tour.jpg", "image/jpeg"), { mimeType: "image/jpeg", fileName: "tour.jpg", renamed: false });
+  // Insta360 writes a JPEG under its own extension and hands it over without a type.
+  assert.deepEqual(panoramaUploadSource("IMG_0042.insp", ""), { mimeType: "image/jpeg", fileName: "IMG_0042.jpg", renamed: true });
+  assert.deepEqual(panoramaUploadSource("sphere.PNG", "application/octet-stream"), { mimeType: "image/png", fileName: "sphere.PNG", renamed: false });
+  assert.equal(panoramaUploadSource("walkthrough.360", "").mimeType, "");
+});
+
+test("tells a raw two-lens original apart from a stitched sphere", () => {
+  const twoLens = { ratio: 2, corners: [3, 5, 4, 6, 2, 7, 5, 4], centers: [120, 96] };
+  assert.equal(looksLikeDualFisheye(twoLens), true);
+  // A stitched night shot is dark, not black-cornered, and stays a stitched sphere.
+  assert.equal(looksLikeDualFisheye({ ratio: 2, corners: [30, 34, 28, 41, 33, 29, 36, 31], centers: [120, 96] }), false);
+  // A lit corner anywhere is enough to leave the image alone.
+  assert.equal(looksLikeDualFisheye({ ...twoLens, corners: [3, 5, 4, 6, 2, 7, 5, 88] }), false);
+  // Two lenses always produce a 2:1 file, so anything else is never read this way.
+  assert.equal(looksLikeDualFisheye({ ...twoLens, ratio: 4 }), false);
+  assert.equal(looksLikeDualFisheye({ ratio: 2, corners: [1, 2], centers: [120, 96] }), false);
+});
+
+test("scales an oversized 360 degree export to fit instead of refusing it", () => {
+  const limit = 25 * 1024 * 1024;
+  // An export within the limit is never touched: scaling a sphere costs detail.
+  assert.deepEqual(panoramaFitSize(11008, 5504, 20 * 1024 * 1024, limit), { width: 11008, height: 5504, scale: 1, resize: false });
+  const fitted = panoramaFitSize(11008, 5504, 60 * 1024 * 1024, limit);
+  assert.equal(fitted.resize, true);
+  assert.ok(fitted.width < 11008);
+  // The proportions decide the projection, so they survive the scaling exactly.
+  assert.ok(Math.abs((fitted.width / fitted.height) - (11008 / 5504)) < 0.01);
+  assert.equal(panoramaFitSize(0, 0, 1, limit).resize, false);
 });
 
 test("keeps image annotations within exact normalized bounds", () => {
@@ -396,7 +435,8 @@ test("refreshes expiring API bearer tokens and preserves every field image local
   assert.match(operations, /recordLink: \{ organizationId, recordType: "inspection"/);
   assert.match(operations, /recordLink: \{ organizationId, recordType: "hse"/);
   assert.match(queue, /else if \(upload\.recordLink\)/);
-  assert.match(visual, /validatePanoramaDimensions/);
+  assert.match(visual, /describePanoramaImage/);
+  assert.match(visual, /preparePanoramaUpload/);
   assert.match(visual, /queueOfflineUpload/);
   assert.match(visual, /forceSyncOfflineUploads/);
   assert.match(visual, /viewerState === "error"/);

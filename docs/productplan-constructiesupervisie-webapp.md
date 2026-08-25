@@ -1536,7 +1536,7 @@ Onderstaande besluiten zijn later rechtstreeks door de klant toegevoegd en hebbe
 
 - Een gewone foto is de standaardvorm van visueel bewijs en moet zonder 360°-bron bruikbaar blijven.
 - Op een gewone foto kan de gebruiker een exact genormaliseerd 2D-punt aanwijzen en daar een probleem registreren.
-- Een equirectangulair 360°-panorama is optioneel en blijft als experimentele functie herkenbaar. De upload controleert dat de bronafbeelding leesbaar is en circa 2:1 is; de gebruiker kan rondkijken en een exact sferisch punt aanwijzen.
+- Een 360°-beeld is optioneel. De upload accepteert elk leesbaar 360°-beeld — elke verhouding, elke resolutie, ook een Insta360 `.insp` — en meldt wat het beeld is in plaats van het te weigeren; de gebruiker kan rondkijken en een exact sferisch punt aanwijzen.
 - Meerdere 360°-panorama's kunnen met een tournaam en vaste volgorde als eenvoudige ruimtetour worden doorlopen.
 - Iedere probleemmarker maakt in één databasetransactie een formele bevinding/NCR en een traceerbare koppeling met het originele private beeld. Een marker mag nooit alleen visuele decoratie zijn.
 - De supervisor bepaalt type, ernst, omschrijving en verantwoordelijke partij. Er is geen autonome AI-detectie, -classificatie of -afsluiting.

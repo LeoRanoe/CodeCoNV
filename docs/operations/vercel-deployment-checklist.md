@@ -52,7 +52,7 @@ Het satellietbeeld op het HSE- en issuescherm komt van de Google **Maps Static A
 - [ ] Supabase-migraties en pgTAP-tests zijn groen voordat productie wordt gemigreerd.
 - [ ] Een private Blob-store is aan Production en alleen de noodzakelijke Preview-omgevingen gekoppeld.
 - [ ] Een gewone foto kan worden geüpload, exact geannoteerd en als formele bevinding teruggevonden.
-- [ ] Een echte Insta360- of gelijkwaardige camera-export kan worden geopend, geannoteerd en in een tour worden doorlopen; een telefoonpanorama wordt geweigerd.
+- [ ] Elk 360°-beeld — een Insta360- of gelijkwaardige export, een `.insp`, een telefoonpanorama, een kleine of afwijkend verhoudende export — kan worden geüpload, geopend, geannoteerd en in een tour worden doorlopen.
 - [ ] Een deadline- of kritieke melding wordt naar het zakelijke e-mailadres verstuurd en krijgt in de app status `E-mail verzonden`.
 - [ ] Een PDF-tekening kan vrij worden gemarkeerd en aan projectrecords worden gekoppeld zonder dat het bronbestand wijzigt.
 - [ ] Engels opent standaard; de taalkeuze Nederlands blijft na herladen behouden.

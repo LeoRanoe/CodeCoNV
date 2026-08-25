@@ -261,9 +261,12 @@ test("keeps standard photo and validated 360 camera annotation production paths"
 
   assert.match(workspace, /Standard photo/);
   assert.match(workspace, /360° camera image/);
-  assert.match(workspace, /Insta360 or equivalent/);
-  assert.match(workspace, /3840 × 1920/);
-  assert.match(workspace, /cameraSourceConfirmed/);
+  // Every 360° image is accepted: the screen describes what was chosen instead of refusing it.
+  assert.match(workspace, /Every 360° camera export is accepted/);
+  assert.match(workspace, /describePanoramaImage/);
+  assert.match(workspace, /DualFisheyeAdapter/);
+  assert.doesNotMatch(workspace, /cameraSourceConfirmed/);
+  assert.doesNotMatch(workspace, /A 360° camera image must be a stitched 2:1/);
   assert.doesNotMatch(workspace, /Experimental 360°/);
   assert.match(workspace, /new core\.Viewer/);
   assert.match(workspace, /ReadyEvent/);

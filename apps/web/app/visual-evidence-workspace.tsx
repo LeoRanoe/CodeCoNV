@@ -34,8 +34,8 @@ import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
 import { useLanguage } from "@/lib/i18n";
 import { currentCompassPoint, startCompassWatch } from "@/lib/images/compass";
 import { readPhotoDirection } from "@/lib/images/exif-direction.mjs";
-import { compassPointFromDegrees, fieldPhotoMimeTypes, normalizedImagePoint, photoMarkupToneColors, photoTitleFromDescription, validatePanoramaDimensions } from "@/lib/images/field-image.mjs";
-import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload } from "@/lib/offline/upload-queue";
+import { compassPointFromDegrees, describePanoramaImage, fieldPhotoMimeTypes, looksLikeDualFisheye, normalizedImagePoint, panoramaFileExtensions, panoramaUploadSource, photoMarkupToneColors, photoTitleFromDescription } from "@/lib/images/field-image.mjs";
+import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, preparePanoramaUpload, queueOfflineUpload } from "@/lib/offline/upload-queue";
 import { downloadProjectFile, isStorageGatewayConfigured, loadProjectFileObjectUrl, openProjectFile } from "@/lib/storage/gateway";
 import {
   createVisualCapture,
@@ -96,6 +96,12 @@ function captureFile(capture: VisualCapture, files: FileRecord[]) {
   return files.find((file) => file.id === capture.file_id) ?? null;
 }
 
+function humanFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function imageDimensions(file: File) {
   return new Promise<{ width: number; height: number }>((resolve, reject) => {
     const objectUrl = URL.createObjectURL(file);
@@ -145,7 +151,12 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   const [fileError, setFileError] = useState("");
   const [markingPhoto, setMarkingPhoto] = useState(false);
   const [photoMarkerCount, setPhotoMarkerCount] = useState(0);
-  const [cameraSourceConfirmed, setCameraSourceConfirmed] = useState(false);
+  /**
+   * What the chosen 360° file turned out to be. Every readable image is accepted — a full
+   * equirectangular export, a wider or narrower one, a small one — so this is what the screen
+   * tells the supervisor about the image, never a reason to refuse it.
+   */
+  const [panoramaImage, setPanoramaImage] = useState<{ width: number; height: number; projection: string; notice: string | null } | null>(null);
   /**
    * One picture, one text box. The client crossed out the title, the category and the room
    * field on the capture screen: "voor nr is 1 invoer voldoende". What is left is the
@@ -200,12 +211,39 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   const initialFileHandled = useRef(false);
   const [cameraHandoff, setCameraHandoff] = useState(false);
 
-  const stageImage = (selected: File | null, type: VisualCapture["capture_type"]) => {
-    setFile(selected);
+  const stageImage = (chosen: File | null, type: VisualCapture["capture_type"]) => {
     setFileError("");
     setPhotoMarkerCount(0);
-    setCameraSourceConfirmed(false);
+    setPanoramaImage(null);
+    // A 360° camera does not always hand over a usable type: Insta360 writes `.insp`, and some
+    // desktop exports arrive without a type at all. Both are ordinary images, so the file is
+    // given the type it really has instead of being turned away at the door.
+    const source = chosen && type === "panorama" ? panoramaUploadSource(chosen.name, chosen.type) : null;
+    const selected = source && source.mimeType && (source.mimeType !== chosen!.type || source.renamed)
+      ? new File([chosen!], source.fileName, { type: source.mimeType, lastModified: chosen!.lastModified })
+      : chosen;
+    setFile(selected);
     if (!selected) return;
+    if (source && !source.mimeType) {
+      setFileError(text(
+        "This file type cannot be shown as a 360° image. Export the image as JPEG, PNG or WebP.",
+        "Dit bestandstype kan niet als 360°-beeld worden getoond. Exporteer het beeld als JPEG, PNG of WebP.",
+      ));
+    }
+    if (type === "panorama") {
+      // The image itself says how much of the sphere it covers; nothing here decides whether it
+      // may be uploaded, only what the screen says about it.
+      void imageDimensions(selected)
+        .then((dimensions) => {
+          const description = describePanoramaImage(dimensions.width, dimensions.height);
+          if (!description.valid) {
+            setFileError(text("The selected file is not a readable image.", "Het gekozen bestand is geen leesbare afbeelding."));
+            return;
+          }
+          setPanoramaImage({ width: dimensions.width, height: dimensions.height, projection: description.projection, notice: description.notice });
+        })
+        .catch(() => setFileError(text("The selected file is not a readable image.", "Het gekozen bestand is geen leesbare afbeelding.")));
+    }
     setCaptureForm((current) => ({
       ...current,
       type,
@@ -235,7 +273,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     setFileError("");
     setPhotoMarkerCount(0);
     setMarkingPhoto(false);
-    setCameraSourceConfirmed(false);
+    setPanoramaImage(null);
     setCameraHandoff(false);
     setShowUpload(false);
     setDrawingLocation(null);
@@ -274,27 +312,58 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   })();
   const tourIndex = activeCapture ? tour.findIndex((capture) => capture.id === activeCapture.id) : -1;
 
+  /**
+   * What the chosen 360° image is, said plainly: how large it is, how much of the sphere it
+   * covers and what happens to it on the way in. It replaces the old refusal, which sent a
+   * supervisor back to his laptop for an export the viewer could have shown all along.
+   */
+  const panoramaSummary = (() => {
+    if (captureForm.type !== "panorama" || !panoramaImage) return null;
+    const pixels = `${panoramaImage.width} × ${panoramaImage.height}`;
+    const scaling = file && file.size > maxFileSizeBytes
+      ? text(
+        ` This export is ${humanFileSize(file.size)}, so it is scaled to fit the ${data.settings?.max_file_size_mb ?? 25} MB project limit before uploading.`,
+        ` Deze export is ${humanFileSize(file.size)} en wordt vóór het uploaden geschaald naar de projectlimiet van ${data.settings?.max_file_size_mb ?? 25} MB.`,
+      )
+      : "";
+    if (panoramaImage.projection === "partial-vertical") {
+      return text(
+        `${pixels} pixels · covers the full circle with a reduced height, and is shown on that part of the sphere.${scaling}`,
+        `${pixels} pixels · bedekt de volledige cirkel met een beperkte hoogte en wordt op dat deel van de bol getoond.${scaling}`,
+      );
+    }
+    if (panoramaImage.projection === "partial-horizontal") {
+      return text(
+        `${pixels} pixels · covers part of the circle, and is shown on that part of the sphere.${scaling}`,
+        `${pixels} pixels · bedekt een deel van de cirkel en wordt op dat deel van de bol getoond.${scaling}`,
+      );
+    }
+    if (panoramaImage.notice === "resolution") {
+      return text(
+        `${pixels} pixels · a full 360° image. Zooming in shows less detail than a 3840 × 1920 export or larger.${scaling}`,
+        `${pixels} pixels · een volledig 360°-beeld. Inzoomen toont minder detail dan een export van 3840 × 1920 of groter.${scaling}`,
+      );
+    }
+    return text(
+      `${pixels} pixels · a full equirectangular 360° image.${scaling}`,
+      `${pixels} pixels · een volledig equirectangulair 360°-beeld.${scaling}`,
+    );
+  })();
+
   const captureTitle = photoTitleFromDescription(
     captureForm.description,
     captureForm.type === "panorama" ? text("360° camera image", "360°-camerabeeld") : text("Field photo", "Veldfoto"),
   );
 
   const uploadCapture = async () => {
-    if (!file || captureForm.description.trim().length < 3 || (captureForm.type === "panorama" && !cameraSourceConfirmed)) return;
+    if (!file || captureForm.description.trim().length < 3) return;
     setFileError("");
     try {
+      // The only thing that can stop a 360° image here is an image the browser cannot read at
+      // all; how much of the sphere it covers is shown on the form, not enforced.
       const dimensions = await imageDimensions(file);
-      if (captureForm.type === "panorama") {
-        const validation = validatePanoramaDimensions(dimensions.width, dimensions.height);
-        if (validation.reason === "ratio") {
-          setFileError(text("A 360° camera image must be a stitched 2:1 equirectangular export.", "Een 360°-camerabeeld moet een gestitchte equirectangulaire export met verhouding 2:1 zijn."));
-          return;
-        }
-        if (validation.reason === "resolution") {
-          setFileError(text("The 360° camera export must be at least 3840 × 1920 pixels so site details remain inspectable.", "De 360°-camera-export moet minimaal 3840 × 1920 pixels zijn zodat terreindetails controleerbaar blijven."));
-          return;
-        }
-        if (!validation.valid) throw new Error("invalid-image");
+      if (captureForm.type === "panorama" && !describePanoramaImage(dimensions.width, dimensions.height).valid) {
+        throw new Error("invalid-image");
       }
     } catch {
       setFileError(text("The selected file is not a readable image.", "Het gekozen bestand is geen leesbare afbeelding."));
@@ -302,8 +371,15 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     }
     const folderName = captureForm.type === "panorama" ? text("360° tours", "360°-rondgangen") : text("Daily progress", "Dagvoortgang");
     const prepared = captureForm.type === "photo"
-      ? await compressFieldPhoto(file, dataSaverEnabled())
-      : { blob: file as Blob, fileName: file.name, mimeType: file.type, compressed: false };
+      ? { ...await compressFieldPhoto(file, dataSaverEnabled()), fits: true }
+      : await preparePanoramaUpload(file, maxFileSizeBytes);
+    if (!prepared.fits) {
+      setFileError(text(
+        `This 360° image is ${humanFileSize(file.size)} and could not be reduced to the project limit of ${data.settings?.max_file_size_mb ?? 25} MB on this device. Export it at a smaller resolution, or raise the limit in project settings.`,
+        `Dit 360°-beeld is ${humanFileSize(file.size)} en kon op dit apparaat niet worden teruggebracht tot de projectlimiet van ${data.settings?.max_file_size_mb ?? 25} MB. Exporteer het op een lagere resolutie of verhoog de limiet in de projectinstellingen.`,
+      ));
+      return;
+    }
     // The direction is the one thing the picture cannot show, so it stays in the words that
     // travel with it into the register.
     const description = [
@@ -343,7 +419,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           capturedAt: new Date(file.lastModified || Date.now()).toISOString(),
           originalSize: file.size,
           queuedSize: prepared.blob.size,
-          compressed: prepared.compressed,
+          compressed: "compressed" in prepared ? prepared.compressed : prepared.resized,
         });
         if (targetBuildingId === captureBuildingId) setPendingSelectionFileId(queued.id);
       }
@@ -369,7 +445,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       setFile(null);
       setFileError("");
       setPhotoMarkerCount(0);
-      setCameraSourceConfirmed(false);
+      setPanoramaImage(null);
       setShowUpload(false);
     }
   };
@@ -457,7 +533,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   return (
     <section className="visual-evidence-shell">
       <div className="visual-toolbar">
-        <div><span className="record-number">{text("Visual evidence", "Visueel bewijs")}</span><h2>{text("Photos, 360° camera tours and exact issue locations", "Foto’s, 360°-cameratours en exacte probleemlocaties")}</h2><p>{text("Standard photos are the default. The interactive 360° mode accepts a stitched export from a dedicated 360° camera such as Insta360, not a flat phone panorama.", "Gewone foto’s zijn standaard. De interactieve 360°-modus accepteert een gestitchte export van een speciale 360°-camera zoals Insta360, geen vlakke telefoonpanorama.")}</p></div>
+        <div><span className="record-number">{text("Visual evidence", "Visueel bewijs")}</span><h2>{text("Photos, 360° camera tours and exact issue locations", "Foto’s, 360°-cameratours en exacte probleemlocaties")}</h2><p>{text("Standard photos are the default. The interactive 360° mode accepts every 360° image: an Insta360, Ricoh Theta or GoPro Max export, a phone panorama, and any resolution.", "Gewone foto’s zijn standaard. De interactieve 360°-modus accepteert elk 360°-beeld: een export van Insta360, Ricoh Theta of GoPro Max, een telefoonpanorama, en elke resolutie.")}</p></div>
         <div className="visual-toolbar-actions">
           <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { stageImage(event.currentTarget.files?.[0] ?? null, "photo"); event.currentTarget.value = ""; }} />
           {/* The compass is started on the tap that opens the camera: it is the gesture a phone
@@ -511,7 +587,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
             />
           ) : null}
           {captureForm.type === "panorama"
-            ? <label className="form-field"><span>{text(`360° image · JPEG, PNG or WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`, `360°-beeld · JPEG, PNG of WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`)}</span><input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" onChange={(event) => stageImage(event.currentTarget.files?.[0] ?? null, "panorama")} /></label>
+            ? <label className="form-field"><span>{text("360° image · every 360° camera export · JPEG, PNG, WebP or Insta360 .insp", "360°-beeld · elke 360°-camera-export · JPEG, PNG, WebP of Insta360 .insp")}</span><input type="file" accept={`image/jpeg,image/png,image/webp,${panoramaFileExtensions.join(",")}`} onChange={(event) => stageImage(event.currentTarget.files?.[0] ?? null, "panorama")} /></label>
             : <div className="visual-review-actions"><button className="secondary-button visual-retake-button" type="button" onClick={() => { void startCompassWatch(); cameraInputRef.current?.click(); }}><Camera size={16} /> {text("Retake photo", "Foto opnieuw maken")}</button><button className="secondary-button visual-discard-button" type="button" onClick={discardCapture}>{text("Discard photo", "Foto verwijderen")}</button></div>}
 
           {/* One text box, in the supervisor's own words. Everything else on this form is
@@ -572,11 +648,11 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
             />
           ) : null}
           {captureForm.type === "panorama" ? <div className="form-grid-2"><label className="form-field"><span>{text("Tour name · optional", "Tournaam · optioneel")}</span><input value={captureForm.tourName} onChange={(event) => setCaptureForm({ ...captureForm, tourName: event.target.value })} placeholder={text("Ground floor walkthrough", "Rondgang begane grond")} /></label><label className="form-field"><span>{text("Position in tour", "Volgorde in tour")}</span><input type="number" min="1" max="10000" disabled={!captureForm.tourName} value={captureForm.tourOrder} onChange={(event) => setCaptureForm({ ...captureForm, tourOrder: event.target.value })} /></label></div> : null}
-          {captureForm.type === "panorama" ? <><div className="operation-alert"><ScanLine size={18} /><div><strong>{text("Dedicated 360° camera required", "Speciale 360°-camera vereist")}</strong><span>{text("Use a stitched 2:1 equirectangular export of at least 3840 × 1920 pixels from an Insta360 or equivalent 360° camera. A swept phone panorama is not accepted.", "Gebruik een gestitchte equirectangulaire 2:1-export van minimaal 3840 × 1920 pixels uit een Insta360 of gelijkwaardige 360°-camera. Een geveegde telefoonpanorama wordt niet geaccepteerd.")}</span></div></div><label className="check-field"><input type="checkbox" checked={cameraSourceConfirmed} onChange={(event) => setCameraSourceConfirmed(event.target.checked)} /> {text("I confirm this is an export from a dedicated 360° camera.", "Ik bevestig dat dit een export uit een speciale 360°-camera is.")}</label></> : null}
-          {file && file.size > maxFileSizeBytes ? <p className="field-error">{text("This image exceeds the project file limit.", "Deze afbeelding is groter dan de bestandslimiet van het project.")}</p> : null}
+          {captureForm.type === "panorama" ? <div className="operation-alert"><ScanLine size={18} /><div><strong>{text("Every 360° camera export is accepted", "Elke 360°-camera-export wordt geaccepteerd")}</strong><span>{panoramaSummary ?? text("Insta360, Ricoh Theta, GoPro Max, a phone panorama or any other stitched export. The viewer places the image on the sphere it actually covers; larger exports are scaled to the project limit before they are uploaded.", "Insta360, Ricoh Theta, GoPro Max, een telefoonpanorama of elke andere gestitchte export. De viewer plaatst het beeld op het deel van de bol dat het werkelijk bedekt; grotere exports worden vóór het uploaden naar de projectlimiet geschaald.")}</span></div></div> : null}
+          {file && captureForm.type === "photo" && file.size > maxFileSizeBytes ? <p className="field-error">{text("This image exceeds the project file limit.", "Deze afbeelding is groter dan de bestandslimiet van het project.")}</p> : null}
           {fileError ? <p className="field-error" role="alert">{fileError}</p> : null}
           {file && captureForm.description.trim().length < 3 ? <p className="form-intro">{text("Write one line about this photo to save it.", "Schrijf één regel over deze foto om hem op te slaan.")}</p> : null}
-          <button className="primary-button" type="button" disabled={busy || !file || file.size > maxFileSizeBytes || !fieldPhotoMimeTypes.includes(file.type) || captureForm.description.trim().length < 3 || (captureForm.type === "panorama" && (!cameraSourceConfirmed || Boolean(captureForm.tourName) !== Boolean(captureForm.tourOrder)))} onClick={() => void uploadCapture()}>{busy ? <Loader2 className="spin" size={15} /> : <Camera size={15} />} {captureForm.type === "panorama" ? text("Secure and sync 360° image", "Beveilig en synchroniseer 360°-beeld") : text("Save photo", "Foto opslaan")}</button>
+          <button className="primary-button" type="button" disabled={busy || !file || (captureForm.type === "photo" && file.size > maxFileSizeBytes) || !fieldPhotoMimeTypes.includes(file.type) || captureForm.description.trim().length < 3 || (captureForm.type === "panorama" && Boolean(captureForm.tourName) !== Boolean(captureForm.tourOrder))} onClick={() => void uploadCapture()}>{busy ? <Loader2 className="spin" size={15} /> : <Camera size={15} />} {captureForm.type === "panorama" ? text("Secure and sync 360° image", "Beveilig en synchroniseer 360°-beeld") : text("Save photo", "Foto opslaan")}</button>
         </div>
       ) : null}
 
@@ -686,6 +762,52 @@ function markerToneColor(annotation: VisualAnnotation) {
 }
 
 /**
+ * Whether this 360° file is the raw output of a two-lens camera instead of a stitched sphere.
+ * The file is looked at in miniature — a few hundred pixels wide — so a phone never decodes a
+ * full 8K export twice, and only the brightness of the corners and middles of both halves is
+ * read. Anything that cannot be sampled is treated as an ordinary stitched sphere.
+ */
+async function detectDualFisheye(imageUrl: string) {
+  if (typeof createImageBitmap !== "function") return false;
+  let bitmap: ImageBitmap | null = null;
+  try {
+    const blob = await (await fetch(imageUrl)).blob();
+    bitmap = await createImageBitmap(blob, { resizeWidth: 320, resizeQuality: "low" });
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
+    if (!context) return false;
+    context.drawImage(bitmap, 0, 0);
+    const patch = Math.max(4, Math.round(bitmap.width / 32));
+    const luminance = (x: number, y: number) => {
+      const { data } = context.getImageData(x, y, patch, patch);
+      let total = 0;
+      for (let index = 0; index < data.length; index += 4) {
+        total += (0.2126 * data[index]) + (0.7152 * data[index + 1]) + (0.0722 * data[index + 2]);
+      }
+      return total / (data.length / 4);
+    };
+    const half = Math.floor(bitmap.width / 2);
+    const right = bitmap.width - patch;
+    const bottom = bitmap.height - patch;
+    const corners = [
+      luminance(0, 0), luminance(half - patch, 0), luminance(0, bottom), luminance(half - patch, bottom),
+      luminance(half, 0), luminance(right, 0), luminance(half, bottom), luminance(right, bottom),
+    ];
+    const centers = [
+      luminance(Math.round(half / 2), Math.round(bitmap.height / 2) - patch),
+      luminance(half + Math.round(half / 2), Math.round(bitmap.height / 2) - patch),
+    ];
+    return looksLikeDualFisheye({ ratio: bitmap.width / bitmap.height, corners, centers });
+  } catch {
+    return false;
+  } finally {
+    bitmap?.close();
+  }
+}
+
+/**
  * The interactive 360° image. A supervisor has to be able to do the same things here as with
  * an ordinary photo: come closer, look in a chosen direction, see which markings are already
  * on the image and put a new one exactly on the defect. Everything is a labelled button as
@@ -725,11 +847,19 @@ function PanoramaViewer({ imageUrl, annotations, pendingPoint, focusAnnotationId
       import("@photo-sphere-viewer/autorotate-plugin"),
       import("@photo-sphere-viewer/compass-plugin"),
       import("@photo-sphere-viewer/gyroscope-plugin"),
-    ]).then(([core, markers, autorotate, compass, gyro]) => {
+      // A raw two-lens original has to be projected differently from a stitched sphere, and
+      // the picture itself is what says which of the two this is.
+      detectDualFisheye(imageUrl),
+    ]).then(([core, markers, autorotate, compass, gyro, dualFisheye]) => {
       if (!active || !containerRef.current) return;
       const viewer = new core.Viewer({
         container: containerRef.current,
         panorama: imageUrl,
+        // A stitched export is placed on the sphere by the viewer itself: it believes the
+        // camera's own sphere metadata when the file carries it, and otherwise reads the
+        // proportions, so a wider strip or a narrower one lands on the part of the sphere it
+        // covers. A raw two-lens original carries no such geometry and needs its own adapter.
+        adapter: dualFisheye ? core.DualFisheyeAdapter : undefined,
         plugins: [
           [markers.MarkersPlugin, { clickEventOnMarker: true }],
           // A slow turn on its own, so a 360° image can be shown to somebody without

@@ -235,7 +235,7 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
         },
         {
           title: text("360° images", "360°-beelden"),
-          copy: text("Upload only a stitched equirectangular export from a dedicated 360° camera. Confirm the camera source, optionally group images into a named tour and use the viewer to place exact markers.", "Upload alleen een gestitchte equirectangulaire export van een speciale 360°-camera. Bevestig de camerabron, groepeer beelden eventueel in een benoemde rondgang en plaats exacte markeringen in de viewer."),
+          copy: text("Upload any 360° image: an Insta360 (including .insp), Ricoh Theta or GoPro Max export, a phone panorama, at any resolution. The upload screen says how much of the sphere the image covers, an export above the project limit is scaled to fit, and images can be grouped into a named tour and marked exactly in the viewer.", "Upload elk 360°-beeld: een export van Insta360 (ook .insp), Ricoh Theta of GoPro Max, een telefoonpanorama, in elke resolutie. Het uploadscherm vertelt welk deel van de bol het beeld bedekt, een export boven de projectlimiet wordt passend geschaald, en beelden kunnen worden gegroepeerd in een benoemde rondgang en exact worden gemarkeerd in de viewer."),
         },
       ],
     },
