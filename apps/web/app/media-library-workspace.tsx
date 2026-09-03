@@ -622,7 +622,7 @@ export function MediaLibraryWorkspace({
           <span><Upload size={19} /></span>
           <span><strong>{text("Upload photos", "Foto's uploaden")}</strong><small>{text("From this device's gallery", "Uit de galerij van dit toestel")}</small></span>
         </button>
-        <button className="media-choice" type="button" onClick={open360Upload}>
+        <button className="media-choice media-choice-360" type="button" onClick={open360Upload}>
           <span><ScanLine size={19} /></span>
           <span><strong>{text("Upload 360°", "360° uploaden")}</strong><small>{text("Any 360° camera export or panorama", "Elke 360°-camera-export of panorama")}</small></span>
         </button>
@@ -817,6 +817,10 @@ export function MediaLibraryWorkspace({
             <label className="asset-select"><input type="checkbox" checked={stack.files.every((frame) => selectedIds.includes(frame.id))} onChange={(event) => setSelectedIds((current) => event.target.checked ? [...new Set([...current, ...stack.files.map((frame) => frame.id)])] : current.filter((id) => !stack.files.some((frame) => frame.id === id)))} /><span className="sr-only">{text(`Select ${file.original_name}`, `Selecteer ${file.original_name}`)}</span></label>
             <button className="media-card-open" type="button" onClick={() => { setOpenFileId(file.id); setOpenStackIds(stack.files.map((frame) => frame.id)); }} aria-label={text(`Open the details of ${file.original_name}`, `Open de details van ${file.original_name}`)}>
               {file.mime_type.startsWith("image/") ? <span className="media-stack-thumbnails">{stack.files.slice(0, 4).map((frame) => <SecureImage client={client} file={frame} key={frame.id} />)}{stack.files.length > 1 ? <em>{stack.files.length} {text("photos", "foto's")}</em> : null}</span> : <span className="media-file-icon"><HardDrive size={28} /></span>}
+              {/* The crop below squashes a 2:1 sphere into a thin band; without this badge that
+                  reads as a broken image instead of the interactive 360° photo it is. Shown
+                  regardless of stack size or whether the capture has a title. */}
+              {capture?.capture_type === "panorama" ? <span className="media-360-badge"><ScanLine size={12} /> 360°</span> : null}
               <span className="media-card-open-hint"><Maximize2 size={14} /> {text("Open", "Openen")}</span>
             </button><div>{file.document_code ? <span className="media-code-chip">{file.document_code}</span> : null}<strong title={file.original_name}>{readableFileLabel(file, {
               title: capture?.title ?? "",

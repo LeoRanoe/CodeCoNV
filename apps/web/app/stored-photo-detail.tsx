@@ -1,13 +1,14 @@
 "use client";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Download, ExternalLink, HardDrive, Loader2, RefreshCw, ScanLine, Image as ImageIcon, X } from "lucide-react";
+import { AlertTriangle, CircleDot, Download, ExternalLink, HardDrive, Loader2, RefreshCw, ScanLine, Image as ImageIcon, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 import { readableFileLabel } from "@/lib/media/photo-library.mjs";
 import { downloadProjectFile, loadProjectFileObjectUrl, openProjectFile } from "@/lib/storage/gateway";
 import { createFileOriginResolver } from "@/lib/supabase/file-origins";
-import { createVisualCapture, type FileRecord, type OperationSnapshot } from "@/lib/supabase/operations";
+import { createVisualCapture, type FileRecord, type OperationSnapshot, type VisualAnnotation } from "@/lib/supabase/operations";
+import { PanoramaViewer } from "@/app/visual-evidence-workspace";
 import type { BuildingOption } from "@/app/building-picker";
 
 /**
@@ -56,6 +57,45 @@ function StoredImage({ client, file }: { client: SupabaseClient; file: FileRecor
   // A private object URL cannot pass through the Next image optimizer.
   // eslint-disable-next-line @next/next/no-img-element
   return <img className="media-detail-image" src={source} alt={file.original_name} />;
+}
+
+/**
+ * A 360° photo opened from the library gets the same interactive sphere it gets everywhere
+ * else — not a flat, cropped strip. The markers already placed on it are shown for context;
+ * placing a new one still happens through "Mark a problem on this photo" below, which hands
+ * off into Visual Evidence.
+ */
+function StoredPanorama({ client, file, markers }: { client: SupabaseClient; file: FileRecord; markers: VisualAnnotation[] }) {
+  const { text } = useLanguage();
+  const [source, setSource] = useState("");
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let active = true;
+    let objectUrl = "";
+    void loadProjectFileObjectUrl(client, file.id).then((url) => {
+      objectUrl = url;
+      if (active) setSource(url);
+      else URL.revokeObjectURL(url);
+    }).catch(() => {
+      if (active) setFailed(true);
+    });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [attempt, client, file.id]);
+
+  if (failed) {
+    return <div className="visual-load-state error"><AlertTriangle size={21} /> {text("The secured 360° image could not be loaded.", "Het beveiligde 360°-beeld kon niet worden geladen.")} <button type="button" onClick={() => { setFailed(false); setSource(""); setAttempt((value) => value + 1); }}><RefreshCw size={14} /> {text("Retry", "Opnieuw")}</button></div>;
+  }
+  if (!source) return <div className="visual-load-state"><Loader2 className="spin" size={21} /> {text("Loading secured 360° image…", "Beveiligd 360°-beeld laden…")}</div>;
+  return (
+    <>
+      <PanoramaViewer imageUrl={source} annotations={markers} pendingPoint={null} focusAnnotationId={null} onPoint={() => undefined} onSelectAnnotation={() => undefined} />
+      <div className="visual-stage-help"><CircleDot size={15} /><span>{text("Drag to look around, pinch or use the zoom buttons to come closer. The compass shows which way you are looking.", "Sleep om rond te kijken, knijp of gebruik de zoomknoppen om dichterbij te komen. Het kompas laat zien welke kant je op kijkt.")}</span></div>
+    </>
+  );
 }
 
 export function StoredPhotoDetail({ data, buildings, file, client, busy, run, close, openMarking, projectId, stackFiles = [file], showFolder = false, onDelete, onDescribe }: {
@@ -124,9 +164,11 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
     openMarking(file.id);
   };
 
+  const isPanorama = capture?.capture_type === "panorama" && stackFiles.length <= 1;
+
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
-      <section className="modal media-detail-modal" role="dialog" aria-modal="true" aria-labelledby="stored-photo-title">
+      <section className={`modal media-detail-modal${isPanorama ? " media-detail-modal-panorama" : ""}`} role="dialog" aria-modal="true" aria-labelledby="stored-photo-title">
         <header className="modal-header">
           <div>
             <p className="eyebrow">{stackFiles.length > 1 ? text(`${stackFiles.length} photo stack`, `Fotostapel met ${stackFiles.length} foto's`) : capture?.capture_type === "panorama" ? "360°" : isImage ? text("Photo", "Foto") : text("File", "Bestand")}</p>
@@ -146,7 +188,7 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
         </header>
 
         <div className="modal-body media-detail-body">
-          {stackFiles.length > 1 ? <div className="media-stack-detail-strip">{stackFiles.map((frame) => <figure key={frame.id}><StoredImage client={client} file={frame} /><figcaption>{frame.original_name}</figcaption></figure>)}</div> : isImage ? <StoredImage client={client} file={file} /> : <span className="media-file-icon"><HardDrive size={28} /></span>}
+          {stackFiles.length > 1 ? <div className="media-stack-detail-strip">{stackFiles.map((frame) => <figure key={frame.id}><StoredImage client={client} file={frame} /><figcaption>{frame.original_name}</figcaption></figure>)}</div> : isPanorama ? <StoredPanorama client={client} file={file} markers={markers} /> : isImage ? <StoredImage client={client} file={file} /> : <span className="media-file-icon"><HardDrive size={28} /></span>}
           <dl className="media-detail-facts">
             <div><dt>{text("Building", "Gebouw")}</dt><dd>{buildingName}</dd></div>
             <div><dt>{text("Location", "Locatie")}</dt><dd>{capture?.location_label || "—"}</dd></div>

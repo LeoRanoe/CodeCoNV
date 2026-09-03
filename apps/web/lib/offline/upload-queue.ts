@@ -126,9 +126,9 @@ export function connectionIsMetered() {
     || connection.type === "cellular";
 }
 
-function photoName(name: string) {
+function photoName(name: string, extension = "jpg") {
   const base = name.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 140) || "site-photo";
-  return `${base}.jpg`;
+  return `${base}.${extension}`;
 }
 
 export async function compressFieldPhoto(file: File, enabled = dataSaverEnabled()) {
@@ -195,6 +195,16 @@ export async function preparePanoramaUpload(file: File, maxBytes: number) {
     context.drawImage(bitmap, 0, 0, target.width, target.height);
     bitmap.close();
     bitmap = null;
+    // A downscaled sphere is re-encoded as WebP first: it holds more visible detail per byte
+    // than JPEG at the same size, which matters on an image a supervisor zooms into. A browser
+    // that cannot actually encode WebP hands `canvas.toBlob` something else instead — checking
+    // the blob's own type catches that silent fallback before it is trusted.
+    for (const quality of [0.92, 0.85, 0.78]) {
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", quality));
+      if (blob && blob.type === "image/webp" && blob.size <= maxBytes) {
+        return { blob, fileName: photoName(file.name, "webp"), mimeType: "image/webp", resized: true, fits: true };
+      }
+    }
     // Quality is stepped down only as far as the limit demands, so a 360° image never loses
     // more than it has to.
     for (const quality of [0.86, 0.76, 0.66]) {

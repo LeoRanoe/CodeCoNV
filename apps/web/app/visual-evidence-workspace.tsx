@@ -813,7 +813,7 @@ async function detectDualFisheye(imageUrl: string) {
  * on the image and put a new one exactly on the defect. Everything is a labelled button as
  * well as a gesture, because on site the gesture alone was not discovered.
  */
-function PanoramaViewer({ imageUrl, annotations, pendingPoint, focusAnnotationId, onPoint, onSelectAnnotation }: { imageUrl: string; annotations: VisualAnnotation[]; pendingPoint: Extract<VisualPoint, { mode: "spherical" }> | null; focusAnnotationId: string | null; onPoint: (point: VisualPoint) => void; onSelectAnnotation: (annotationId: string) => void }) {
+export function PanoramaViewer({ imageUrl, annotations, pendingPoint, focusAnnotationId, onPoint, onSelectAnnotation }: { imageUrl: string; annotations: VisualAnnotation[]; pendingPoint: Extract<VisualPoint, { mode: "spherical" }> | null; focusAnnotationId: string | null; onPoint: (point: VisualPoint) => void; onSelectAnnotation: (annotationId: string) => void }) {
   const { text } = useLanguage();
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<import("@photo-sphere-viewer/core").Viewer | null>(null);
