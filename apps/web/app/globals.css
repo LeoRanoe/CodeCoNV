@@ -4278,7 +4278,7 @@ textarea:focus-visible {
   justify-content: space-between;
   gap: var(--space-3);
   margin-top: var(--space-5);
-  padding-top: var(--space-4);
+  padding: var(--space-4) 0;
   border-top: 1px solid var(--ink-100);
 }
 
@@ -8704,6 +8704,13 @@ textarea:focus-visible {
 .marker-dot.tone-critical { background: var(--red); }
 .media-detail-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
 .media-detail-actions .primary-button { margin-left: auto; }
+/* Matches the same side padding already given to .photo-detail-modal, .photo-markup-modal
+   and .drawing-location-modal's footer - without it, the last button (often pushed to the
+   far right by margin-left: auto above) sits flush against the modal's rounded corner. */
+.media-detail-modal > .modal-actions { padding-left: 26px; padding-right: 26px; }
+@media (max-width: 640px) {
+  .media-detail-modal > .modal-actions { padding-left: 18px; padding-right: 18px; }
+}
 @media (max-width: 560px) {
   .media-detail-actions .primary-button { margin-left: 0; width: 100%; }
 }
