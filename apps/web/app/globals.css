@@ -558,7 +558,7 @@ button.drawing-pin {
 }
 
 .boq-import-actions {
-  display: flex;
+  display: flex; align-items: center;
   flex-wrap: wrap;
   gap: 9px;
 }
@@ -1577,7 +1577,7 @@ textarea:focus-visible {
 }
 
 .building-stats {
-  display: flex;
+  display: flex; align-items: center;
   gap: 25px;
   color: var(--ink-500);
   font-size: 9px;
@@ -2755,7 +2755,7 @@ textarea:focus-visible {
 }
 
 .action-detail-summary {
-  display: flex;
+  display: flex; align-items: center;
   flex-wrap: wrap;
   gap: var(--space-2);
 }
@@ -2820,7 +2820,7 @@ textarea:focus-visible {
 }
 
 .action-history article {
-  display: flex;
+  display: flex; align-items: center;
   gap: 10px;
   padding: 9px 0;
   border-top: 1px solid var(--ink-100);
@@ -3049,7 +3049,7 @@ textarea:focus-visible {
 }
 
 .timeline-meta {
-  display: flex;
+  display: flex; align-items: center;
   flex-wrap: wrap;
   gap: var(--space-2);
   margin-top: var(--space-2);
@@ -3354,7 +3354,7 @@ textarea:focus-visible {
 }
 
 .user-admin-tabs {
-  display: flex;
+  display: flex; align-items: center;
   gap: 6px;
   padding: 5px;
   border-radius: 12px;
@@ -3997,7 +3997,7 @@ textarea:focus-visible {
 }
 
 .building-choice-options {
-  display: flex;
+  display: flex; align-items: center;
   flex-wrap: wrap;
   gap: 7px;
 }
@@ -4119,7 +4119,7 @@ textarea:focus-visible {
 }
 
 .drawing-location-tabs {
-  display: flex;
+  display: flex; align-items: center;
   flex-wrap: wrap;
   gap: 7px;
 }
@@ -4189,7 +4189,7 @@ textarea:focus-visible {
 }
 
 .building-multi-options {
-  display: flex;
+  display: flex; align-items: center;
   flex-wrap: wrap;
   gap: 7px;
 }
@@ -4232,7 +4232,7 @@ textarea:focus-visible {
 
 /* Photos taken inside a record stay visible before saving, and can be removed. */
 .entry-photo-strip {
-  display: flex;
+  display: flex; align-items: center;
   flex-wrap: wrap;
   gap: var(--space-2);
   margin-top: 9px;
@@ -4569,7 +4569,7 @@ textarea:focus-visible {
   flex-wrap: wrap;
   gap: 9px;
 }
-.sketch-colors { display: flex; gap: 6px; }
+.sketch-colors { display: flex; align-items: center; gap: 6px; }
 .sketch-colors button {
   border: 2px solid #fff;
   border-radius: var(--radius-pill);
@@ -4695,7 +4695,7 @@ textarea:focus-visible {
   gap: 9px;
   justify-content: space-between;
 }
-.photo-markup-modes, .photo-markup-tones, .photo-markup-history { display: flex; flex-wrap: wrap; gap: 6px; }
+.photo-markup-modes, .photo-markup-tones, .photo-markup-history { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .photo-markup-modes button, .photo-markup-tones button {
   align-items: center;
   background: #fff;
@@ -5016,7 +5016,7 @@ textarea:focus-visible {
 }
 
 .questionnaire-automation {
-  display: flex;
+  display: flex; align-items: center;
   flex-wrap: wrap;
   gap: 5px;
 }
@@ -5132,7 +5132,7 @@ textarea:focus-visible {
 }
 
 .question-group > header {
-  display: flex;
+  display: flex; align-items: center;
   gap: 11px;
   margin-bottom: 18px;
 }
@@ -5173,7 +5173,7 @@ textarea:focus-visible {
 }
 
 .daily-question-actions > div {
-  display: flex;
+  display: flex; align-items: center;
   gap: var(--space-2);
 }
 
@@ -5796,7 +5796,7 @@ textarea:focus-visible {
 }
 
 .system-actions {
-  display: flex;
+  display: flex; align-items: center;
   flex-wrap: wrap;
   justify-content: center;
   gap: 10px;
@@ -6069,7 +6069,7 @@ textarea:focus-visible {
 }
 
 .operation-tabs {
-  display: flex;
+  display: flex; align-items: center;
   gap: 3px;
   margin: -4px 0 18px;
   padding: var(--space-1);
@@ -6695,6 +6695,7 @@ textarea:focus-visible {
 .finding-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
   gap: var(--space-2);
   padding: 0 var(--space-4) var(--space-3);
@@ -7591,7 +7592,7 @@ textarea:focus-visible {
 }
 
 .compact-register {
-  display: flex;
+  display: flex; align-items: center;
   max-height: 140px;
   flex-wrap: wrap;
   gap: 6px;
@@ -7914,7 +7915,7 @@ textarea:focus-visible {
 }
 
 .visual-toolbar-actions {
-  display: flex;
+  display: flex; align-items: center;
   flex: 0 0 auto;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -7974,7 +7975,7 @@ textarea:focus-visible {
 }
 
 .visual-review-actions {
-  display: flex;
+  display: flex; align-items: center;
   gap: var(--space-2);
 }
 
@@ -8312,7 +8313,7 @@ textarea:focus-visible {
    pinch gestures alone were not discovered. */
 .panorama-controls {
   bottom: 12px;
-  display: flex;
+  display: flex; align-items: center;
   flex-wrap: wrap;
   gap: 5px;
   left: 12px;
@@ -8369,7 +8370,7 @@ textarea:focus-visible {
 .capture-details-copy p { color: #56635d; font-size: 11px; line-height: 1.6; margin: 0 0 6px; white-space: pre-line; }
 .capture-details-copy p.capture-details-empty { color: #8b968f; font-style: italic; }
 .capture-details-copy small { align-items: center; color: #7a8781; display: flex; font-size: 10px; gap: var(--space-1); }
-.capture-details-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.capture-details-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 
 /* Every marking on the image, numbered as it is numbered on the picture. */
 .visual-marker-list { display: grid; gap: 5px; list-style: none; margin: 0; padding: 0; }
@@ -8475,7 +8476,7 @@ textarea:focus-visible {
 }
 
 .visual-annotation-details dl > div {
-  display: flex;
+  display: flex; align-items: center;
   justify-content: space-between;
   gap: 10px;
   padding-bottom: 7px;
@@ -8624,12 +8625,12 @@ textarea:focus-visible {
 .data-saver-toggle input { accent-color: var(--green); height: 18px; width: 18px; }
 .data-saver-toggle span { display: grid; gap: 2px; }
 .data-saver-toggle small { color: var(--muted); line-height: 1.35; }
-.media-folder-bar { display: flex; gap: var(--space-2); overflow-x: auto; padding: 2px 0 5px; }
+.media-folder-bar { display: flex; align-items: center; gap: var(--space-2); overflow-x: auto; padding: 2px 0 5px; }
 .media-folder-bar button { align-items: center; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--muted); display: inline-flex; flex: 0 0 auto; gap: 7px; padding: 9px var(--space-3); }
 .media-folder-bar button.active { background: var(--green-soft); border-color: #9bcdbf; color: var(--green); }
 .media-folder-bar b { background: rgba(0,0,0,.06); border-radius: var(--radius-pill); font-size: 10px; padding: 2px 6px; }
 .media-actions-panel { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; }
-.media-kind-toggle { background: #eef3f4; border-radius: var(--radius-sm); display: flex; padding: 3px; }
+.media-kind-toggle { background: #eef3f4; border-radius: var(--radius-sm); display: flex; align-items: center; padding: 3px; }
 .media-kind-toggle button { align-items: center; background: transparent; border: 0; border-radius: var(--radius-xs); color: var(--muted); display: flex; gap: 6px; padding: var(--space-2) 11px; }
 .media-kind-toggle button.active { background: #fff; box-shadow: 0 1px 4px rgba(25,46,56,.14); color: var(--text); }
 .media-folder-presets { flex: 1 1 100%; order: 3; }
@@ -8701,7 +8702,7 @@ textarea:focus-visible {
 .marker-dot.tone-medium { background: var(--yellow); }
 .marker-dot.tone-high { background: var(--signal); }
 .marker-dot.tone-critical { background: var(--red); }
-.media-detail-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+.media-detail-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
 .media-detail-actions .primary-button { margin-left: auto; }
 @media (max-width: 560px) {
   .media-detail-actions .primary-button { margin-left: 0; width: 100%; }
@@ -8713,7 +8714,7 @@ textarea:focus-visible {
 .media-origin-field { flex: 1 1 200px; min-width: 0; }
 .media-actions-panel > .building-picker-field { flex: 1 1 200px; min-width: 0; }
 
-.media-origin-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.media-origin-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
 .media-origin-chip {
   border: 1px solid transparent;
   border-radius: 6px;
@@ -8746,7 +8747,7 @@ textarea:focus-visible {
   padding: 0;
 }
 .record-photo-toggle:hover { color: var(--green); }
-.record-photo-strip > div { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.record-photo-strip > div { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
 .record-photo-strip button {
   background: var(--ink-50);
   border: 1px solid var(--border);
@@ -8761,7 +8762,7 @@ textarea:focus-visible {
 .record-photo-strip img { height: 100%; object-fit: cover; width: 100%; }
 .record-photo-fallback { align-items: center; color: var(--ink-400); display: flex; height: 100%; justify-content: center; width: 100%; }
 
-.media-file-actions { align-self: center; display: flex; padding-right: 6px; }
+.media-file-actions { align-self: center; display: flex; align-items: center; padding-right: 6px; }
 @media (max-width: 620px) {
   /* Two icons squeezed against the side of the text became a row of their own, with the
      words underneath saying what they do. */
@@ -8784,9 +8785,9 @@ textarea:focus-visible {
 .period-report-types button { background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm); display: grid; gap: 3px; padding: 11px; text-align: left; }
 .period-report-types button.active { background: var(--green-soft); border-color: #86c1b0; color: var(--green); }
 .period-report-types span { color: var(--muted); font-size: 11px; }
-.period-date-presets { display: flex; flex-wrap: wrap; gap: 6px; grid-column: 1 / -1; }
+.period-date-presets { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; grid-column: 1 / -1; }
 .period-date-presets button { background: #f2f6f7; border: 1px solid var(--border); border-radius: var(--radius-pill); color: var(--text); padding: 7px 10px; }
-.work-option-grid { display: flex; flex-wrap: wrap; gap: 7px; }
+.work-option-grid { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
 .work-option-grid button { align-items: center; background: #f3f7f7; border: 1px solid var(--border); border-radius: var(--radius-pill); color: var(--text); display: inline-flex; gap: 6px; padding: var(--space-2) 11px; }
 .work-option-grid button.active { background: var(--green-soft); border-color: #86c1b0; color: var(--green); font-weight: 700; }
 .primary-button.portfolio-cta {
@@ -8871,7 +8872,7 @@ textarea:focus-visible {
 .external-share-preflight > label { display: grid; gap: 5px; }
 .external-share-preflight > label span { color: #587267; font-size: 9px; font-weight: 750; }
 .external-share-preflight > label input { background: #fff; border: 1px solid #bdd7cc; border-radius: var(--radius-xs); color: #245447; font-family: var(--font-geist-mono), monospace; font-size: 9px; min-height: 42px; padding: 9px 10px; width: 100%; }
-.external-share-preflight-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.external-share-preflight-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
 .external-share-feedback { color: #087a38; font-size: 9px; font-weight: 750; margin: 0; }
 .active-external-shares {
   background: #f6faf8;
@@ -9074,7 +9075,7 @@ textarea:focus-visible {
 }
 .ncr-signature-position { max-width: 320px; }
 
-.quick-issue-presets { display: flex; flex-wrap: wrap; gap: 7px; }
+.quick-issue-presets { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
 .quick-issue-presets button {
   background: #f3f7f7;
   border: 1px solid var(--ink-200);
@@ -9304,7 +9305,7 @@ textarea:focus-visible {
 .record-location-readout > div { display: grid; gap: 2px; min-width: 0; }
 .record-location-readout strong { color: var(--ink-900); font-size: 12.5px; }
 .record-location-readout span { color: var(--ink-600); font-size: 10.5px; }
-.record-location-buttons { display: flex; flex-wrap: wrap; gap: 7px; }
+.record-location-buttons { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
 
 /* Section 7: the measures that were already taken, ticked instead of typed. */
 .record-action-grid { display: grid; gap: var(--space-2); grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -9393,7 +9394,7 @@ textarea:focus-visible {
 /* Section 6: the pictures themselves, with the tile that adds one beside them. */
 /* Not .record-photo-strip: that name already belongs to the strip of photos under a
    saved record, whose own button and image rules would resize these tiles. */
-.record-evidence-strip { display: flex; flex-wrap: wrap; gap: 9px; }
+.record-evidence-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
 .photo-evidence-gallery { display: contents; }
 .photo-evidence-tile { position: relative; }
 .photo-evidence-tile-open {
@@ -9611,7 +9612,7 @@ textarea:focus-visible {
 .workforce-headline > strong { color: var(--green); font-size: 22px; }
 
 /* One tab per building, each carrying its own crew and its own count. */
-.workforce-buildings { display: flex; flex-wrap: wrap; gap: 7px; }
+.workforce-buildings { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
 .workforce-buildings button {
   align-items: center;
   background: #f4f7f7;
@@ -9711,7 +9712,7 @@ textarea:focus-visible {
 .workforce-totals > div { background: #f5f8f8; border-radius: 11px; padding: 11px 13px; }
 .workforce-totals h4 { color: var(--ink-500); font-size: 9px; font-weight: 800; letter-spacing: .05em; margin: 0 0 7px; text-transform: uppercase; }
 .workforce-totals dl { display: grid; gap: 5px; margin: 0; }
-.workforce-totals dl > div { display: flex; gap: 10px; justify-content: space-between; }
+.workforce-totals dl > div { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
 .workforce-totals dt { color: var(--ink-700); font-size: 11px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workforce-totals dd { color: var(--ink-900); font-size: 12px; font-weight: 750; margin: 0; }
 
@@ -9821,7 +9822,7 @@ textarea:focus-visible {
 }
 .boq-import-section > summary {
   cursor: pointer;
-  display: flex;
+  display: flex; align-items: center;
   font-size: 12.5px;
   font-weight: 650;
   gap: 10px;
@@ -10029,7 +10030,7 @@ textarea:focus-visible {
 .daily-log-missing span { color: var(--ink-700); font-size: 12px; max-width: 46ch; }
 
 .daily-log-extra { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 13px var(--space-4); }
-.daily-log-extra summary { cursor: pointer; display: flex; font-size: 12.5px; font-weight: 650; gap: 10px; justify-content: space-between; }
+.daily-log-extra summary { cursor: pointer; display: flex; align-items: center; font-size: 12.5px; font-weight: 650; gap: 10px; justify-content: space-between; }
 .daily-log-extra summary span { color: var(--muted); font-weight: 500; }
 
 @media (max-width: 620px) {
@@ -10620,7 +10621,7 @@ textarea:focus-visible {
 }
 
 .media-capture-actions {
-  display: flex;
+  display: flex; align-items: center;
   flex-wrap: wrap;
   gap: 9px;
   width: 100%;
@@ -10637,7 +10638,7 @@ textarea:focus-visible {
 }
 
 .media-folder-create > span {
-  display: flex;
+  display: flex; align-items: center;
   gap: var(--space-2);
 }
 
@@ -11288,7 +11289,7 @@ textarea:focus-visible {
 .client-weather strong { color: #15213a; font-size: 24px; }
 .client-weather small { color: #687984; font-size: 9px; }
 .client-weather dl { display: grid; gap: 5px; margin: 0; }
-.client-weather dl > div { display: flex; font-size: 8px; justify-content: space-between; }
+.client-weather dl > div { display: flex; align-items: center; font-size: 8px; justify-content: space-between; }
 .client-weather dt { color: #5f6c78; }
 .client-weather dd { color: #17233a; margin: 0; }
 
@@ -11846,9 +11847,9 @@ textarea:focus-visible {
 .media-capture-review-heading strong { font-size: 11px; }
 .media-capture-review-heading small { color: var(--ink-500); font-size: 9px; margin-top: 2px; }
 .media-capture-review label { color: var(--ink-700); display: grid; font-size: 10px; font-weight: 800; gap: 6px; }
-.media-capture-review-actions { display: flex; gap: var(--space-2); justify-content: flex-end; }
+.media-capture-review-actions { display: flex; align-items: center; gap: var(--space-2); justify-content: flex-end; }
 /* Marking happens on the photo before it is filed, so the picture itself carries the point. */
-.media-capture-thumbs { display: flex; flex-wrap: wrap; gap: 10px; }
+.media-capture-thumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .media-capture-thumbs > span { display: grid; gap: 5px; justify-items: stretch; }
 .media-capture-thumbs img { border: 1px solid var(--ink-200); border-radius: var(--radius-control); display: block; height: 86px; object-fit: cover; width: 100%; }
 .media-capture-thumbs > span > button:first-child { width: 118px; }
@@ -12583,7 +12584,7 @@ button {
 }
 
 .workspace-command-trust {
-  display: flex;
+  display: flex; align-items: center;
   flex-wrap: wrap;
   gap: 6px;
   justify-content: flex-end;
@@ -13010,7 +13011,7 @@ button {
 
 .project-documents-summary h2 { color: #18241f; font-size: 18px; margin: var(--space-1) 0 5px; }
 .project-documents-summary p { color: #6d7b75; font-size: 9px; line-height: 1.45; margin: 0; }
-.project-documents-actions { display: flex; gap: var(--space-2); }
+.project-documents-actions { display: flex; align-items: center; gap: var(--space-2); }
 
 .project-document-tabs {
   display: grid;
@@ -13247,7 +13248,7 @@ button {
 }
 
 .action-type-tabs {
-  display: flex;
+  display: flex; align-items: center;
   gap: var(--space-1);
   overflow-x: auto;
 }
@@ -13670,7 +13671,7 @@ button {
 }
 
 .media-capture-actions {
-  display: flex;
+  display: flex; align-items: center;
   flex: 1 1 auto;
   flex-wrap: wrap;
   gap: var(--space-2);
@@ -13994,7 +13995,7 @@ button {
   background: #f6faf9;
   border: 1px solid #e1ebe8;
   border-radius: var(--radius-xs);
-  display: flex;
+  display: flex; align-items: center;
   justify-content: space-between;
   padding: 7px var(--space-2);
 }
@@ -14111,7 +14112,7 @@ button {
 }
 
 .employee-workload-strip {
-  display: flex;
+  display: flex; align-items: center;
   gap: 6px;
   margin-bottom: var(--space-2);
   overflow-x: auto;
@@ -14235,7 +14236,7 @@ button {
 .submitted-record-share > label { display: grid; gap: 5px; }
 .submitted-record-share > label span { color: #587267; font-size: 9px; font-weight: 750; }
 .submitted-record-share > label input { background: #fff; border: 1px solid #bdd7cc; border-radius: var(--radius-xs); color: #245447; font-family: var(--font-geist-mono), monospace; font-size: 9px; min-height: 42px; padding: 9px 10px; width: 100%; }
-.submitted-record-share-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.submitted-record-share-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
 
 .agreement-signatures { display: grid; gap: var(--space-2); grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
@@ -14345,7 +14346,7 @@ button {
   right: 26px;
 }
 
-.signature-tools { display: flex; gap: var(--space-2); }
+.signature-tools { display: flex; align-items: center; gap: var(--space-2); }
 
 .signature-field {
   background: #f6faf9;
@@ -14459,7 +14460,7 @@ button {
   position: sticky;
   z-index: 4;
   bottom: 0;
-  display: flex;
+  display: flex; align-items: center;
   justify-content: flex-end;
   gap: var(--space-3);
   margin: var(--space-4) calc(var(--space-4) * -1) 0;
@@ -14530,7 +14531,7 @@ button {
 }
 
 .workspace-code-group h3 {
-  display: flex;
+  display: flex; align-items: center;
   justify-content: space-between;
   grid-column: 1 / -1;
   margin: 0;
@@ -14634,7 +14635,7 @@ button {
   width: auto;
 }
 
-.signature-field-actions { display: flex; gap: 6px; }
+.signature-field-actions { display: flex; align-items: center; gap: 6px; }
 
 /* The signature as it stands on a record card, under the box it belongs to. */
 .record-signature-proof {
@@ -14914,7 +14915,7 @@ button {
 .drawing-pin.amber { background: #c08016; }
 
 .drawing-pin-legend {
-  display: flex;
+  display: flex; align-items: center;
   flex-wrap: wrap;
   gap: 7px;
   margin-bottom: var(--space-2);
@@ -15003,7 +15004,7 @@ button {
 .asset-select { position: absolute; z-index: 3; top: 10px; left: 10px; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: color-mix(in srgb, var(--paper) 88%, transparent); box-shadow: 0 3px 12px rgba(15, 23, 42, 0.16); }
 .asset-select input { width: 20px; height: 20px; }
 .asset-record-library { display: grid; gap: 10px; margin: var(--space-4) 0; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--paper); }
-.asset-record-library > header { display: flex; justify-content: space-between; gap: var(--space-3); }
+.asset-record-library > header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .asset-record-library > header div { display: grid; gap: 3px; }
 .asset-record-library > header small { color: var(--muted); }
 .asset-record-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: var(--space-2); }
@@ -15759,7 +15760,7 @@ button {
 
 /* The same attachments again, as the way to go and fetch them. Naming an export in prose
    still left the reader hunting for the screen it lived on. */
-.prompt-card-sources { display: flex; flex-wrap: wrap; gap: 6px; }
+.prompt-card-sources { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 
 .prompt-source {
   align-items: center;

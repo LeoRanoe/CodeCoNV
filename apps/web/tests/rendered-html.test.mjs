@@ -2274,7 +2274,7 @@ test("builds the HSE observation / issue screen the client sent, section by sect
   // square with a cross on it.
   assert.match(operations, /className="record-evidence-strip"/);
   assert.doesNotMatch(operations, /className="record-photo-strip">\s*\n\s*<PhotoEvidenceList/);
-  assert.match(styles, /\.record-evidence-strip \{ display: flex; flex-wrap: wrap; gap: 9px; \}/);
+  assert.match(styles, /\.record-evidence-strip \{ display: flex; align-items: center; flex-wrap: wrap; gap: 9px; \}/);
   assert.match(styles, /\.photo-evidence-tile-open \{[^}]*width: 108px;/);
 
   // Section 9 says what the deadline means, and a chosen person can be cleared again.
