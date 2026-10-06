@@ -1,7 +1,7 @@
 begin;
 set local search_path = extensions, pgtap, public;
 
-select plan(80);
+select plan(82);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at)
 values (
@@ -275,7 +275,7 @@ select throws_ok(
 
 select lives_ok(
   format(
-    $query$select public.create_visual_annotation_finding(%L::uuid,'photo',0.42,0.31,null,null,'deficiency','Beschadigd pleisterwerk','Scheur en afbrokkeling zichtbaar op de noordwand.','medium',%L::uuid,'visual-photo-issue-1')$query$,
+    $query$select public.create_visual_annotation_finding(%L::uuid,'photo',0.42,0.31,null,null,'deficiency','Beschadigd pleisterwerk','Scheur en afbrokkeling zichtbaar op de noordwand.','medium',%L::uuid,'visual-photo-issue-1',null,'to_be_corrected')$query$,
     (select id from public.visual_captures where capture_type = 'photo'),
     (select id from public.parties where project_id = (select id from public.projects where code = 'OPS-001') and party_type = 'contractor')
   ),
@@ -285,7 +285,7 @@ select is((select count(*) from public.visual_annotations), 1::bigint, 'the firs
 select is((select count(*) from public.file_links where relationship = 'annotation'), 1::bigint, 'the original image is linked to the formal finding');
 select throws_ok(
   format(
-    $query$select public.create_visual_annotation_finding(%L::uuid,'photo',0.5,0.5,null,null,'observation','Verkeerde coördinaten','Mag niet op panorama worden geplaatst.','low',null,'visual-wrong-mode-1')$query$,
+    $query$select public.create_visual_annotation_finding(%L::uuid,'photo',0.5,0.5,null,null,'observation','Verkeerde coördinaten','Mag niet op panorama worden geplaatst.','low',null,'visual-wrong-mode-1',null,'to_be_corrected')$query$,
     (select id from public.visual_captures where capture_type = 'panorama')
   ),
   '22023',
@@ -294,12 +294,31 @@ select throws_ok(
 );
 select lives_ok(
   format(
-    $query$select public.create_visual_annotation_finding(%L::uuid,'spherical',null,null,0.55,0.12,'deviation','Beschadiging in 360 beeld','Beschadiging exact op de westwand gemarkeerd.','high',null,'visual-panorama-issue-1')$query$,
+    $query$select public.create_visual_annotation_finding(%L::uuid,'spherical',null,null,0.55,0.12,'deviation','Beschadiging in 360 beeld','Beschadiging exact op de westwand gemarkeerd.','high',null,'visual-panorama-issue-1',null,'to_be_corrected')$query$,
     (select id from public.visual_captures where capture_type = 'panorama')
   ),
   'a panorama click stores spherical coordinates with a formal finding'
 );
 select is((select count(*) from public.visual_annotations), 2::bigint, 'photo and panorama issue markers are both retained');
+select throws_ok(
+  format(
+    $query$select public.create_visual_annotation_finding(%L::uuid,'spherical',null,null,0.1,0.1,'deviation','Onbekende classificatie','Classificatie bestaat niet.','low',null,'visual-bad-disposition-1',null,'whatever')$query$,
+    (select id from public.visual_captures where capture_type = 'panorama')
+  ),
+  '22023',
+  'Invalid marker classification',
+  'a marker requires one of the defined dispositions'
+);
+select throws_ok(
+  format(
+    $query$select public.create_visual_annotation_finding(%L::uuid,'spherical',null,null,0.1,0.1,'deviation','Verkeerd gebouw','Gebouw hoort niet bij dit project.','low',null,'visual-foreign-building-1',%L::uuid,'to_be_corrected')$query$,
+    (select id from public.visual_captures where capture_type = 'panorama'),
+    gen_random_uuid()
+  ),
+  '22023',
+  'Building does not belong to this project',
+  'a marker cannot be filed under a building outside the project'
+);
 select lives_ok(
   format($query$select public.void_visual_annotation(%L::uuid,'Marker was placed on the wrong surface.')$query$, (select id from public.visual_annotations where idempotency_key = 'visual-photo-issue-1')),
   'an authorized manager can void an incorrectly placed marker with a reason'
