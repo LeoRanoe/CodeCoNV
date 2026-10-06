@@ -96,7 +96,7 @@ self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
   // Project data and files travel with a bearer token to /api/; they are private and are
-  // kept in the app's own encrypted-at-rest device storage instead of in a shared cache.
+  // kept in the app's private origin-scoped device storage instead of in a shared cache.
   if (request.method !== "GET" || url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
 
   // Documents and the data Next.js fetches for them always come from the network. The
@@ -152,9 +152,19 @@ self.addEventListener("push", (event) => {
   }));
 });
 
+function safeNotificationDestination(value) {
+  const fallback = new URL("/supervisie", self.location.origin).href;
+  try {
+    const destination = new URL(typeof value === "string" ? value : fallback, self.location.origin);
+    return destination.origin === self.location.origin ? destination.href : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const destination = new URL(event.notification.data?.url || "/supervisie", self.location.origin).href;
+  const destination = safeNotificationDestination(event.notification.data?.url);
   event.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (clients) => {
     for (const client of clients) {
       if ("focus" in client) {

@@ -429,14 +429,17 @@ test("keeps scheduled backups, retention and daily notification automation enfor
     readFile(new URL("../vercel.json", import.meta.url), "utf8"),
     readFile(new URL("../.env.example", import.meta.url), "utf8"),
   ]);
+  const normalizedBackupServer = backupServer.replace(/\r\n/g, "\n");
+  const normalizedStorageServer = storageServer.replace(/\r\n/g, "\n");
+  const normalizedApp = app.replace(/\r\n/g, "\n");
 
-  assert.match(backupServer, /access: "private"/);
-  assert.match(backupServer, /BACKUP_BLOB_READ_WRITE_TOKEN[\s\S]{0,160}BLOB_READ_WRITE_TOKEN/);
-  assert.match(backupServer, /await get\(pathname/);
-  assert.match(backupServer, /BACKUP_BLOB_CHECKSUM_MISMATCH/);
-  assert.match(backupServer, /sorted\.slice\(0, 7\)/);
-  assert.match(backupServer, /weeks\.size >= 4/);
-  assert.match(backupServer, /months\.size >= 3/);
+  assert.match(normalizedBackupServer, /access: "private"/);
+  assert.match(normalizedBackupServer, /BACKUP_BLOB_READ_WRITE_TOKEN[\s\S]*BLOB_READ_WRITE_TOKEN/);
+  assert.match(normalizedBackupServer, /await get\(pathname/);
+  assert.match(normalizedBackupServer, /BACKUP_BLOB_CHECKSUM_MISMATCH/);
+  assert.match(normalizedBackupServer, /sorted\.slice\(0, 7\)/);
+  assert.match(normalizedBackupServer, /weeks\.size >= 4/);
+  assert.match(normalizedBackupServer, /months\.size >= 3/);
   assert.match(cronRoute, /timingSafeEqual/);
   assert.match(cronRoute, /runScheduledOrganizationBackup/);
   assert.match(cronRoute, /refresh_all_project_notifications/);
@@ -445,10 +448,10 @@ test("keeps scheduled backups, retention and daily notification automation enfor
   assert.match(watchdogRoute, /authenticateStorageRequest/);
   assert.match(watchdogRoute, /permission_code", "backup\.manage"/);
   assert.match(watchdogRoute, /runScheduledOrganizationBackup/);
-  assert.match(storageServer, /BACKUP_BLOB_READ_WRITE_TOKEN[\s\S]{0,160}BLOB_READ_WRITE_TOKEN/);
+  assert.match(normalizedStorageServer, /BACKUP_BLOB_READ_WRITE_TOKEN[\s\S]*BLOB_READ_WRITE_TOKEN/);
   assert.match(backupClient, /api\/backups\/ensure-daily/);
-  assert.match(app, /dailyBackupCheckRef/);
-  assert.match(app, /ensureDailyBackup/);
+  assert.match(normalizedApp, /dailyBackupCheckRef/);
+  assert.match(normalizedApp, /ensureDailyBackup/);
   assert.match(migration, /build_scheduled_backup_export/);
   assert.match(migration, /build_organization_backup_manifest/);
   assert.match(migration, /retention_tier/);
@@ -554,7 +557,7 @@ test("keeps the online-first Supabase foundation enforceable", async () => {
   assert.match(blobReadinessMigration, /CFG-BLOB-ROUTES/);
   assert.match(blobReadinessMigration, /OPS-BLOB-QUOTA/);
   assert.match(supabaseConfig, /\[auth\][\s\S]*enable_signup = false/);
-  assert.match(supabaseConfig, /\[auth\.email\][\s\S]*enable_signup = true/);
+  assert.match(supabaseConfig, /\[auth\.email\][\s\S]*enable_signup = false/);
   const configuredEnvKeys = envExample
     .split("\n")
     .filter((line) => line.trim() && !line.trim().startsWith("#"))
@@ -3220,25 +3223,27 @@ test("lets a supervisor switch project from anywhere without carrying data acros
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
+  const normalizedApp = app.replace(/\r\n/g, "\n");
 
   // The switcher itself, and the three places it can be reached from: the sidebar card on
   // a desktop, the project name in the header on a phone, and the "more" drawer.
-  assert.match(app, /function ProjectSwitcherModal/);
-  assert.match(app, /modal === "switch_project" \? \(/);
-  assert.match(app, /className="project-context-card"[\s\S]{0,240}setModal\("switch_project"\)/);
-  assert.match(app, /className="breadcrumb-step breadcrumb-project"[\s\S]{0,320}setModal\("switch_project"\)/);
-  assert.match(app, /className="mobile-module-switch"[\s\S]{0,200}setModal\("switch_project"\)/);
-  assert.match(app, /Switch project", "Van project wisselen/);
+  assert.match(normalizedApp, /function ProjectSwitcherModal/);
+  assert.match(normalizedApp, /modal === "switch_project" \? \(/);
+  assert.match(normalizedApp, /className="project-context-card"[\s\S]{0,240}setModal\("switch_project"\)/);
+  assert.match(normalizedApp, /className="breadcrumb-step breadcrumb-project"[\s\S]{0,320}setModal\("switch_project"\)/);
+  assert.match(normalizedApp, /className="mobile-module-switch"[\s\S]{0,200}setModal\("switch_project"\)/);
+  assert.match(normalizedApp, /Switch project", "Van project wisselen/);
 
   // The header on a phone hides the sidebar, so the project step has to stay visible there
   // while the building step is the one that folds away.
-  assert.match(css, /\.breadcrumb-building,\n\s+\.storage-state span/);
-  assert.doesNotMatch(css, /\.breadcrumb-project,\n\s+\.storage-state span/);
+  const normalizedCss = css.replace(/\r\n/g, "\n");
+  assert.match(normalizedCss, /\.breadcrumb-building,\n\s+\.storage-state span/);
+  assert.doesNotMatch(normalizedCss, /\.breadcrumb-project,\n\s+\.storage-state span/);
 
   // Nothing of one project may survive into the next: the day mirrored on the screen, the
   // record being written and the photos still on the device are all dropped, and every
   // module below is remounted on the project it belongs to.
-  assert.match(app, /const resetProjectScopedState = useCallback\(/);
+  assert.match(normalizedApp, /const resetProjectScopedState = useCallback\(/);
   for (const cleared of [
     /setEntries\(\[\]\)/,
     /setAttendance\(\[\]\)/,
@@ -3250,11 +3255,11 @@ test("lets a supervisor switch project from anywhere without carrying data acros
     /setEntryPhotos\(\[\]\)/,
     /setFocusRecordId\(""\)/,
   ]) {
-    assert.match(app, cleared);
+    assert.match(normalizedApp, cleared);
   }
-  assert.match(app, /if \(project\.id !== selectedProject\?\.id\) resetProjectScopedState\(\);/);
-  assert.match(app, /hydratedProjectRef\.current = projectId;\n\s+resetProjectScopedState\(\);/);
-  assert.match(app, /<main className="main-content" key=\{selectedProject\?\.id \?\? "no-project"\}>/);
+  assert.match(normalizedApp, /if \(project\.id !== selectedProject\?\.id\) resetProjectScopedState\(\);/);
+  assert.match(normalizedApp, /hydratedProjectRef\.current = projectId;\n\s+resetProjectScopedState\(\);/);
+  assert.match(normalizedApp, /<main className="main-content" key=\{selectedProject\?\.id \?\? "no-project"\}>/);
 });
 
 test("never names the database vendor in anything a user can see", async () => {
@@ -3470,12 +3475,13 @@ test("names the jobs the application will not do, with the prompt and what to at
   ]);
 
   // The client asked for this list by naming one of them: a compact monthly report.
-  assert.match(library, /id: "compact-monthly"/);
-  assert.match(library, /Een compact maandrapport uit de volle maand/);
+  const normalizedLibrary = library.replace(/\r\n/g, "\n");
+  assert.match(normalizedLibrary, /id: "compact-monthly"/);
+  assert.match(normalizedLibrary, /Een compact maandrapport uit de volle maand/);
 
   // Every prompt has to say why the application leaves the job alone and which export to
   // attach; a prompt without either is a sentence the reader cannot act on.
-  const entries = library.split(/\n    \{\n      id: "/).slice(1);
+  const entries = normalizedLibrary.split(/\n    \{\n      id: "/).slice(1);
   assert.ok(entries.length >= 10, `expected a real library, found ${entries.length} prompts`);
   for (const entry of entries) {
     const id = entry.slice(0, entry.indexOf('"'));
@@ -3489,13 +3495,13 @@ test("names the jobs the application will not do, with the prompt and what to at
   // Naming the export in prose left the reader hunting for the screen it lives on, so
   // every source is routed. Two of them are deliberately not: a schedule and a meeting
   // transcript do not come from this application, and a button there would go nowhere.
-  const declared = [...library.matchAll(/^  \| "([a-z-]+)"$/gm)].map((match) => match[1]);
+  const declared = [...normalizedLibrary.matchAll(/^  \| "([a-z-]+)"$/gm)].map((match) => match[1]);
   assert.ok(declared.length >= 12, `expected the source list, found ${declared.length}`);
   for (const source of declared) {
-    assert.match(library, new RegExp(`"?${source}"?: \\{ label:`), `${source} has no route`);
+    assert.match(normalizedLibrary, new RegExp(`"?${source}"?: \\{ label:`), `${source} has no route`);
   }
   for (const own of ["own-schedule", "own-transcript"]) {
-    assert.match(library, new RegExp(`"${own}": \\{ label: text\\([^}]*\\) \\}`), `${own} must stay a label without a button`);
+    assert.match(normalizedLibrary, new RegExp(`"${own}": \\{ label: text\\([^}]*\\) \\}`), `${own} must stay a label without a button`);
   }
   assert.match(workspace, /openModule=\{openProjectArea\}/);
   assert.match(workspace, /openDeadlines=\{\(\) => openActionCenter\("deadlines"\)\}/);

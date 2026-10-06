@@ -42,6 +42,11 @@ const contentSecurityPolicy = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  images: {
+    // These are the intentional quality values used by the public portfolio images.
+    // Declaring them avoids Next.js falling back to an unconfigured quality warning.
+    qualities: [75, 78, 82],
+  },
   // Playwright and field devices may reach the local dev server through its numeric host.
   // Production CSP stays strict; this only lets Next's development HMR origin through.
   allowedDevOrigins: ["127.0.0.1"],

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { CurrentProjectWeather } from "@/lib/weather";
+import { validAccessToken } from "@/lib/supabase/access-token";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const refreshIntervalMs = 10 * 60 * 1000;
 
@@ -31,8 +33,11 @@ async function refresh(location: string, force: boolean) {
 
   entry.inflight = (async () => {
     try {
+      const client = getSupabaseBrowserClient();
+      if (!client) throw new Error("Weather unavailable");
+      const accessToken = await validAccessToken(client);
       const response = await fetch(`/api/weather/current?location=${encodeURIComponent(location)}`, {
-        headers: { accept: "application/json" },
+        headers: { accept: "application/json", authorization: `Bearer ${accessToken}` },
       });
       const payload = await response.json() as CurrentProjectWeather | { error?: string };
       if (!response.ok || !("condition" in payload)) {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import {
   weatherConditionFromWmoCode,
@@ -33,6 +34,24 @@ type ForecastResponse = {
 };
 
 const requestTimeoutMs = 8_000;
+
+async function signedInUser(request: NextRequest) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim();
+  const authorization = request.headers.get("authorization") ?? "";
+  const accessToken = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+  if (!supabaseUrl || !publishableKey || !accessToken) return null;
+  const validationClient = createClient(supabaseUrl, publishableKey, {
+    auth: { autoRefreshToken: false, detectSessionInUrl: false, persistSession: false },
+  });
+  const userResult = await validationClient.auth.getUser(accessToken);
+  if (userResult.error || !userResult.data.user) return null;
+  const userClient = createClient(supabaseUrl, publishableKey, {
+    accessToken: async () => accessToken,
+    auth: { autoRefreshToken: false, detectSessionInUrl: false, persistSession: false },
+  });
+  return { userClient };
+}
 
 async function fetchJson<T>(url: URL) {
   const response = await fetch(url, {
@@ -70,9 +89,29 @@ async function resolveLocation(location: string) {
 }
 
 export async function GET(request: NextRequest) {
+  const auth = await signedInUser(request);
+  if (!auth) {
+    return NextResponse.json({ error: "Aanmelden is vereist." }, { status: 401, headers: { "Cache-Control": "no-store" } });
+  }
+
   const input = querySchema.safeParse({ location: request.nextUrl.searchParams.get("location") ?? "" });
   if (!input.success) {
     return NextResponse.json({ error: "Kies een geldige projectlocatie." }, { status: 400 });
+  }
+
+  const rateLimit = await auth.userClient.rpc("consume_security_rate_limit", {
+    p_action_code: "weather_lookup",
+    p_max_requests: 30,
+    p_window_minutes: 10,
+  });
+  if (rateLimit.error) {
+    return NextResponse.json({ error: "De weerbeveiligingslimiet kon niet worden gecontroleerd." }, { status: 503 });
+  }
+  if (rateLimit.data !== true) {
+    return NextResponse.json(
+      { error: "Te veel weerverzoeken. Probeer het later opnieuw." },
+      { status: 429, headers: { "Retry-After": "600", "Cache-Control": "no-store" } },
+    );
   }
 
   try {

@@ -11,11 +11,43 @@ const subscriptionSchema = z.object({
   auth: z.string().min(8).max(250),
 });
 
+const pushEndpointHosts = [
+  "fcm.googleapis.com",
+  "push.services.mozilla.com",
+  "push.apple.com",
+  "notify.windows.com",
+  "push.microsoft.com",
+];
+
+function isAllowedPushEndpoint(value: string) {
+  try {
+    const endpoint = new URL(value);
+    const hostname = endpoint.hostname.toLowerCase();
+    return endpoint.protocol === "https:"
+      && !endpoint.username
+      && !endpoint.password
+      && (!endpoint.port || endpoint.port === "443")
+      && pushEndpointHosts.some((host) => hostname === host || hostname.endsWith(`.${host}`));
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const { user, userClient } = await authenticateStorageRequest(request);
     const input = subscriptionSchema.safeParse(await request.json().catch(() => null));
     if (!input.success) return storageJson({ error: "Ongeldige pushregistratie." }, 400);
+    if (!isAllowedPushEndpoint(input.data.endpoint)) {
+      return storageJson({ error: "Ongeldige pushprovider." }, 400);
+    }
+    const rateLimit = await userClient.rpc("consume_security_rate_limit", {
+      p_action_code: "push_subscription",
+      p_max_requests: 10,
+      p_window_minutes: 60,
+    });
+    if (rateLimit.error) return storageJson({ error: "De pushbeveiligingslimiet kon niet worden gecontroleerd." }, 503);
+    if (rateLimit.data !== true) return storageJson({ error: "Te veel pushregistraties. Probeer het later opnieuw." }, 429);
     const saved = await userClient.from("push_subscriptions").upsert({
       user_id: user.id,
       endpoint: input.data.endpoint,

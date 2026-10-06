@@ -8,12 +8,16 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
+// Vercel documents 16 characters as the minimum for CRON_SECRET; a shorter value is
+// treated as unconfigured rather than as a guessable bearer secret.
+const minimumCronSecretLength = 16;
+
 function json(body: unknown, status = 200) {
   return Response.json(body, { status, headers: { "cache-control": "no-store" } });
 }
 
 function authorized(request: Request) {
-  const secret = process.env.CRON_SECRET?.trim() ?? "";
+  const secret = configuredCronSecret();
   const header = request.headers.get("authorization") ?? "";
   const supplied = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
   if (!secret || !supplied) return false;
@@ -22,8 +26,13 @@ function authorized(request: Request) {
   return expectedBytes.length === suppliedBytes.length && timingSafeEqual(expectedBytes, suppliedBytes);
 }
 
+function configuredCronSecret() {
+  const secret = process.env.CRON_SECRET?.trim() ?? "";
+  return secret.length >= minimumCronSecretLength ? secret : "";
+}
+
 export async function GET(request: Request) {
-  if (!process.env.CRON_SECRET?.trim()) return json({ error: "De geplande taak is niet geconfigureerd." }, 503);
+  if (!configuredCronSecret()) return json({ error: "De geplande taak is niet geconfigureerd." }, 503);
   if (!authorized(request)) return json({ error: "Ongeldige geplande taak." }, 401);
   const admin = createStorageAdminClient();
   const backupConfigured = isBackupStoreConfigured();

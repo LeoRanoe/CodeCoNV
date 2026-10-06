@@ -79,6 +79,7 @@ import { offlineQueryKeys } from "@/lib/offline/query-keys";
 import { getSessionWithOfflineFallback, storedSessionOnThisDevice } from "@/lib/supabase/offline-session";
 import { OfflineManagerModal } from "@/app/offline-manager";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
+import { validAccessToken } from "@/lib/supabase/access-token";
 import {
   clientReportSections,
   createDailyCloseoutSchema,
@@ -3131,8 +3132,12 @@ function ProjectStartForm({
   const loadAutomaticWeather = useCallback(async () => {
     setWeatherLoadState("loading");
     try {
+      const client = getSupabaseBrowserClient();
+      if (!client) throw new Error("weather-unavailable");
+      const accessToken = await validAccessToken(client);
       const response = await fetch(`/api/weather/current?location=${encodeURIComponent(project.location)}`, {
         cache: "no-store",
+        headers: { authorization: `Bearer ${accessToken}` },
       });
       const payload = await response.json() as CurrentProjectWeather | { error?: string };
       if (!response.ok || !("condition" in payload)) {
