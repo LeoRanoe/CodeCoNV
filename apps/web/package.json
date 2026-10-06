@@ -27,7 +27,7 @@
     "@vercel/blob": "^2.6.1",
     "docx": "^9.7.1",
     "lucide-react": "^1.25.0",
-    "next": "16.2.11",
+    "next": "16.3.8",
     "pdfjs-dist": "^6.1.200",
     "react": "19.2.6",
     "react-dom": "19.2.6",
@@ -43,7 +43,7 @@
     "@types/react-dom": "19.2.3",
     "@types/web-push": "^3.6.4",
     "eslint": "9.39.4",
-    "eslint-config-next": "16.2.11",
+    "eslint-config-next": "16.3.8",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3"
   },
@@ -51,7 +51,7 @@
     "brace-expansion": "5.0.9",
     "minimatch": "10.2.5",
     "postcss": "8.5.23",
-    "sharp": "0.35.3"
+    "sharp": "0.35.5"
   },
   "type": "module"
 }
