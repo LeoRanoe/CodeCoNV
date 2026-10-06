@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readFile as readRawFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import test, { after, before } from "node:test";
+
+// Source assertions are written against LF. A Windows checkout with core.autocrlf yields
+// CRLF, which would make every multi-line pattern fail locally while CI passes.
+async function readFile(path, encoding) {
+  const text = await readRawFile(path, encoding);
+  return typeof text === "string" ? text.replace(/\r\n/g, "\n") : text;
+}
 
 const port = 3187;
 const baseUrl = `http://127.0.0.1:${port}`;
