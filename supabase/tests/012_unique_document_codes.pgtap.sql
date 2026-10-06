@@ -20,24 +20,30 @@ values (
   now()
 );
 
-set local role authenticated;
+-- Fixture rows are seeded by the privileged test role (organizations are created only
+-- through bootstrap_organization in production); behaviour is then exercised as the user.
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000e1","role":"authenticated"}';
 
 insert into public.organizations (id, name, slug, created_by)
 values ('00000000-0000-0000-0000-0000000000e2', 'Document Code Org', 'document-code-org', auth.uid());
+insert into public.organization_memberships (organization_id, user_id, status)
+values ('00000000-0000-0000-0000-0000000000e2', auth.uid(), 'active');
 insert into public.roles (id, organization_id, scope, code, name, is_system, created_by)
 values ('00000000-0000-0000-0000-0000000000e3', '00000000-0000-0000-0000-0000000000e2', 'project', 'supervisor', 'Supervisor', true, auth.uid());
 insert into public.role_permissions (organization_id, role_id, permission_code)
 select '00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000e3', code
-from public.permissions;
+from public.permissions
+on conflict do nothing;
 insert into public.projects (id, organization_id, code, name, location, created_by)
 values ('00000000-0000-0000-0000-0000000000e4', '00000000-0000-0000-0000-0000000000e2', 'COD-DOC-01', 'Document code project', 'Paramaribo', auth.uid());
-insert into public.project_memberships (id, organization_id, project_id, user_id, created_by)
-values ('00000000-0000-0000-0000-0000000000e5', '00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000e4', auth.uid(), auth.uid());
+insert into public.project_memberships (id, organization_id, project_id, user_id)
+values ('00000000-0000-0000-0000-0000000000e5', '00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000e4', auth.uid());
 insert into public.project_member_roles (organization_id, project_id, membership_id, role_id)
 values ('00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000e4', '00000000-0000-0000-0000-0000000000e5', '00000000-0000-0000-0000-0000000000e3');
 insert into public.buildings (id, organization_id, project_id, code, name, created_by)
 values ('00000000-0000-0000-0000-0000000000e6', '00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000e4', 'BLOK-A', 'Blok A', auth.uid());
+
+set local role authenticated;
 
 -- Only the storage service may write a completed file; the browser role may reserve
 -- pending metadata. The numbering has to happen on the row the storage service writes,

@@ -72,8 +72,19 @@ select lives_ok(
 select is((select status::text from public.day_reports), 'approved', 'approved status is persisted');
 select is((select count(*) from public.report_versions), 1::bigint, 'one immutable report version is created');
 select matches((select sha256 from public.report_versions), '^[a-f0-9]{64}$', 'report version contains a valid SHA-256');
-select is((select snapshot ->> 'schema_version' from public.report_versions), '202607180016', 'snapshot records its schema version');
-select is((select snapshot -> 'building' ->> 'name' from public.report_versions), 'Hoofdgebouw', 'immutable snapshot contains the report building for formal PDF output');
+-- Snapshot contract: a 12-digit migration version, never older than the first multi-building
+-- shape (202607260005) that the PDF/DOCX renderers require for new reports.
+select ok(
+  (select snapshot ->> 'schema_version' ~ '^\d{12}$' and snapshot ->> 'schema_version' >= '202607260005' from public.report_versions),
+  'snapshot records a multi-building schema version'
+);
+select ok(
+  (select snapshot -> 'buildings' @> '[{"name":"Hoofdgebouw"}]'::jsonb
+      and jsonb_typeof(snapshot -> 'start_checks') = 'array'
+      and jsonb_typeof(snapshot -> 'closeouts') = 'array'
+   from public.report_versions),
+  'immutable snapshot contains every project building with per-building start and closeout data'
+);
 select is((select snapshot -> 'created_by_profile' ->> 'display_name' from public.report_versions), 'Formal Admin', 'immutable snapshot contains the authenticated report author');
 select is((select count(*) from public.report_reviews where decision = 'approved'), 1::bigint, 'approval is retained in append-only review history');
 
