@@ -19,10 +19,12 @@ export function isBlobServerConfigured() {
 }
 
 export function isBackupStoreConfigured() {
-  return Boolean(
-    process.env.BACKUP_BLOB_READ_WRITE_TOKEN?.trim()
-    || process.env.BLOB_READ_WRITE_TOKEN?.trim(),
-  );
+  const dedicatedToken = process.env.BACKUP_BLOB_READ_WRITE_TOKEN?.trim();
+  if (dedicatedToken) return true;
+  // Local development may share the primary store so the backup workflow can be
+  // exercised. Production must use a separate store so one storage incident cannot
+  // destroy both live uploads and disaster-recovery copies.
+  return process.env.NODE_ENV !== "production" && Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim());
 }
 
 export function storageJson(body: unknown, status = 200) {

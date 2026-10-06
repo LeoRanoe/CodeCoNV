@@ -45,6 +45,7 @@ Het satellietbeeld op het HSE- en issuescherm komt van de Google **Maps Static A
 - [ ] Voeg alleen noodzakelijke Vercel-productie- en previewredirects toe aan Supabase Auth.
 - [ ] Test uitnodiging, eerste wachtwoord, aanmelden, afmelden en verlopen sessie op het productiedomein.
 - [ ] Test upload en download met een bevoegd account; een account zonder projectrecht moet worden geweigerd.
+- [ ] Beheer veldapparaten als vertrouwde apparaten: offline IndexedDB bevat projectgegevens en de browser bewaart de laatste sessie voor offline gebruik. Zorg voor schermvergrendeling, browserbeheer en een procedure om een verloren apparaat uit te loggen en lokaal te wissen.
 
 ## Release gate
 
