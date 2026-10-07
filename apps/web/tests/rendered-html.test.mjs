@@ -564,7 +564,7 @@ test("keeps the online-first Supabase foundation enforceable", async () => {
   assert.match(blobReadinessMigration, /CFG-BLOB-ROUTES/);
   assert.match(blobReadinessMigration, /OPS-BLOB-QUOTA/);
   assert.match(supabaseConfig, /\[auth\][\s\S]*enable_signup = false/);
-  assert.match(supabaseConfig, /\[auth\.email\][\s\S]*enable_signup = false/);
+  assert.match(supabaseConfig, /\[auth\.email\][\s\S]*enable_signup = true/);
   const configuredEnvKeys = envExample
     .split("\n")
     .filter((line) => line.trim() && !line.trim().startsWith("#"))
