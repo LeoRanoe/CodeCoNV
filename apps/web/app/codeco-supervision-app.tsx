@@ -2802,8 +2802,21 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
       const result = await client.auth.signInWithPassword({ email: answers.email, password: answers.password });
       if (result.error) throw result.error;
     } catch (caught) {
-      const raw = caught instanceof Error ? caught.message : text("Sign-in failed.", "Aanmelden is niet gelukt.");
-      setError(raw.includes("Invalid login credentials") ? text("The email address or password is incorrect.", "E-mailadres of wachtwoord is onjuist.") : raw);
+      // Only sentences a person can act on: raw provider or browser messages ("Failed to
+      // fetch", rate-limit internals) are translated, never shown as they are.
+      const raw = caught instanceof Error ? caught.message : "";
+      const status = (caught as { status?: number } | null)?.status;
+      setError(
+        raw.includes("Invalid login credentials")
+          ? text("The email address or password is incorrect.", "E-mailadres of wachtwoord is onjuist.")
+          : status === 429 || /rate limit|too many/i.test(raw)
+            ? text("Too many sign-in attempts. Wait a few minutes and try again.", "Te veel aanmeldpogingen. Wacht een paar minuten en probeer het opnieuw.")
+            : /fetch|network|load failed|timeout/i.test(raw) || (typeof navigator !== "undefined" && !navigator.onLine)
+              ? text("The server cannot be reached. Check the connection and try again.", "De server is niet bereikbaar. Controleer de verbinding en probeer het opnieuw.")
+              : /email not confirmed/i.test(raw)
+                ? text("This account has not been activated yet. Use the link in your invitation email.", "Dit account is nog niet geactiveerd. Gebruik de link in je uitnodigingsmail.")
+                : text("Signing in did not work. Try again, or ask your CODECO administrator.", "Aanmelden is niet gelukt. Probeer het opnieuw of vraag je CODECO-beheerder."),
+      );
     } finally {
       setBusy(false);
     }

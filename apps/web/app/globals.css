@@ -3869,8 +3869,7 @@ textarea:focus-visible {
 .form-field select,
 .form-field textarea {
   width: 100%;
-  min-height: 102px;
-  resize: vertical;
+  min-height: 43px;
   border: 1px solid var(--ink-200);
   border-radius: var(--radius-sm);
   background: #fff;
@@ -3896,6 +3895,12 @@ textarea:focus-visible {
   min-height: 0;
   padding: 0;
   width: auto;
+}
+
+/* Only a textarea is a writing area; inputs and selects keep the control height. */
+.form-field textarea {
+  min-height: 102px;
+  resize: vertical;
 }
 
 .form-field input::placeholder,
@@ -4266,6 +4271,14 @@ textarea:focus-visible {
   margin-top: var(--space-5);
   padding: var(--space-4) 0;
   border-top: 1px solid var(--ink-100);
+}
+
+/* A footer placed directly in the dialog (not inside .modal-body) gets the same side
+   gutter as the header and body, so its buttons never touch the dialog's edges. This
+   replaces the per-dialog patches that existed for photo, markup, media and drawing. */
+.modal > .modal-actions {
+  margin-top: 0;
+  padding: var(--space-4) 26px;
 }
 
 .back-button {
@@ -5594,6 +5607,10 @@ textarea:focus-visible {
 
   .modal-body {
     padding: 18px 18px 26px;
+  }
+
+  .modal > .modal-actions {
+    padding: var(--space-3) 18px calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
   }
 
   .form-grid {
