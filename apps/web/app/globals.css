@@ -1103,16 +1103,16 @@ textarea:focus-visible {
   gap: 10px;
 }
 
-.context-user > span:last-child strong,
-.context-user > span:last-child small {
+.context-user > .context-user-name strong,
+.context-user > .context-user-name small {
   display: block;
 }
 
-.context-user > span:last-child strong {
+.context-user > .context-user-name strong {
   font-size: 12px;
 }
 
-.context-user > span:last-child small {
+.context-user > .context-user-name small {
   margin-top: 2px;
   color: #93a4ae;
   font-size: 9px;
@@ -5400,7 +5400,7 @@ textarea:focus-visible {
     width: 140px;
   }
 
-  .context-user > span:last-child,
+  .context-user > .context-user-name,
   .context-steps svg,
   .context-steps span:not(.active) {
     display: none;
@@ -15604,4 +15604,9 @@ button.prompt-source:hover > svg { color: var(--green); }
   border-style: dashed;
   color: var(--ink-500);
   font-weight: 600;
+}
+
+/* Sign-out on the project selection screen: the label folds away on a phone, the icon stays. */
+@media (max-width: 700px) {
+  .context-sign-out-label { display: none; }
 }

@@ -31,6 +31,17 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
+    // The worker serves /_next/static/ from its cache because production chunk names carry a
+    // content hash. Development chunk names do not, so a worker would keep serving the code
+    // from before the last edit. Development runs without it and removes a leftover one.
+    if (process.env.NODE_ENV !== "production") {
+      void navigator.serviceWorker.getRegistrations()
+        .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+        .then(() => (typeof caches === "undefined" ? undefined : caches.keys()))
+        .then((names) => Promise.all((names ?? []).filter((name) => name.startsWith("codeco-")).map((name) => caches.delete(name))))
+        .catch(() => undefined);
+      return;
+    }
     let reloading = false;
     // Only a client that was already controlled by an older worker needs the reload; a
     // first visit is served by the network anyway and must never reload itself.

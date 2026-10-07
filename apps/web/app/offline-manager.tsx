@@ -55,12 +55,13 @@ export function OfflineManagerModal({
   const { locale, text } = useLanguage();
   useBackToClose(true, close);
   const [summary, setSummary] = useState<OfflineSyncSummary | null>(null);
-  const [usage, setUsage] = useState({ files: 0, bytes: 0, quotaBytes: 0, usedBytes: 0 });
+  const [usage, setUsage] = useState({ files: 0, snapshots: 0, bytes: 0, quotaBytes: 0, usedBytes: 0 });
   const [progress, setProgress] = useState<OfflineSyncProgress | null>(null);
   const [includeFiles, setIncludeFiles] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [confirmingClear, setConfirmingClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const [waitingRecords, setWaitingRecords] = useState<OfflineRecord[]>([]);
@@ -99,6 +100,32 @@ export function OfflineManagerModal({
       ));
     } finally {
       setSendingQueue(false);
+      await refresh();
+    }
+  };
+
+  /** Says "removed" only after the device storage really is empty. */
+  const removeOfflineCopy = async () => {
+    setClearing(true);
+    setError("");
+    setNotice("");
+    try {
+      await clearOfflineCopy();
+      setConfirmingClear(false);
+      const waiting = waitingRecords.length + waitingUploads.length;
+      setNotice(waiting
+        ? text(
+          `The offline copy has been removed. ${waiting} unsent item(s) stay on this device until they are sent.`,
+          `De offline kopie is verwijderd. ${waiting} niet-verstuurd(e) item(s) blijven op dit apparaat tot ze zijn verstuurd.`,
+        )
+        : text("The offline copy has been removed.", "De offline kopie is verwijderd."));
+    } catch {
+      setError(text(
+        "The offline copy could not be removed completely. Try again, or clear this site's data in the browser settings.",
+        "De offline kopie kon niet volledig worden verwijderd. Probeer het opnieuw, of wis de sitegegevens in de browserinstellingen.",
+      ));
+    } finally {
+      setClearing(false);
       await refresh();
     }
   };
@@ -274,13 +301,13 @@ export function OfflineManagerModal({
         <footer className="modal-actions offline-manager-actions">
           {confirmingClear ? (
             <>
-              <span className="offline-clear-warning">{text("Remove the downloaded copy from this device? Queued photos are kept.", "De opgehaalde kopie van dit apparaat verwijderen? Wachtende foto’s blijven staan.")}</span>
+              <span className="offline-clear-warning">{text("Remove every downloaded project, file and unsent form draft from this device? Records, photos and drawing pins that are still waiting to be sent are kept and still sent.", "Alle opgehaalde projecten, bestanden en niet-verstuurde conceptformulieren van dit apparaat verwijderen? Registraties, foto’s en tekeningpinnen die nog wachten blijven staan en worden nog verstuurd.")}</span>
               <button className="secondary-button" type="button" onClick={() => setConfirmingClear(false)}>{text("Cancel", "Annuleren")}</button>
-              <button className="danger-button" type="button" onClick={() => void clearOfflineCopy().then(() => { setConfirmingClear(false); setNotice(text("The offline copy has been removed.", "De offline kopie is verwijderd.")); return refresh(); })}><Trash2 size={15} /> {text("Remove", "Verwijderen")}</button>
+              <button className="danger-button" type="button" disabled={clearing} onClick={() => void removeOfflineCopy()}>{clearing ? <Loader2 className="spin" size={15} /> : <Trash2 size={15} />} {text("Remove", "Verwijderen")}</button>
             </>
           ) : (
             <>
-              <button className="secondary-button" type="button" disabled={busy || !usage.files} onClick={() => setConfirmingClear(true)}><Trash2 size={15} /> {text("Remove offline copy", "Offline kopie verwijderen")}</button>
+              <button className="secondary-button" type="button" disabled={busy || (!usage.files && !usage.snapshots && !summary)} onClick={() => setConfirmingClear(true)}><Trash2 size={15} /> {text("Remove offline copy", "Offline kopie verwijderen")}</button>
               {busy
                 ? <button className="secondary-button" type="button" onClick={() => abortRef.current?.abort()}>{text("Stop", "Stoppen")}</button>
                 : <button className="primary-button" type="button" disabled={!isOnline} onClick={() => void start()}><CloudDownload size={15} /> {summary ? text("Update offline copy", "Offline kopie bijwerken") : text("Make everything available offline", "Alles offline beschikbaar maken")}</button>}

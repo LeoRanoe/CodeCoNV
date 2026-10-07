@@ -9,6 +9,33 @@ const databaseVersion = 4;
 
 export type OfflineStore = "uploads" | "snapshots" | "settings" | "files" | "records" | "drawingPins";
 
+/**
+ * Work written on this device that exists nowhere else yet. Each item belongs to the person
+ * who wrote it: on a shared device another account must neither see it nor send it under its
+ * own identity. The readable project copy (snapshots, files) is not scoped this way — it is
+ * removed whenever the device changes hands (see account-isolation.ts).
+ */
+export const userOwnedStores: readonly OfflineStore[] = ["uploads", "records", "drawingPins"];
+const ownedStores = new Set<OfflineStore>(userOwnedStores);
+
+let activeUserId: string | null = null;
+
+/** Set once the signed-in account is known; null after sign-out. */
+export function setActiveOfflineUser(userId: string | null) {
+  activeUserId = userId;
+}
+
+export function activeOfflineUser() {
+  return activeUserId;
+}
+
+type Owned = { ownerUserId?: string | null };
+
+function visibleToActiveUser(store: OfflineStore, value: unknown) {
+  if (!ownedStores.has(store)) return true;
+  return Boolean(activeUserId) && (value as Owned | undefined)?.ownerUserId === activeUserId;
+}
+
 function openDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
     if (typeof indexedDB === "undefined") {
@@ -43,10 +70,17 @@ export async function ensureOfflineDatabase() {
 }
 
 export async function idbPut<T>(store: OfflineStore, value: T) {
+  let stored: unknown = value;
+  if (ownedStores.has(store)) {
+    const owner = (value as Owned).ownerUserId ?? activeUserId;
+    // Unsent work without an author could later be sent by whoever signs in next.
+    if (!owner) throw new Error("Offline werk kan alleen worden opgeslagen terwijl u bent aangemeld.");
+    stored = { ...(value as object), ownerUserId: owner };
+  }
   const database = await openDatabase();
   await new Promise<void>((resolve, reject) => {
     const transaction = database.transaction(store, "readwrite");
-    transaction.objectStore(store).put(value);
+    transaction.objectStore(store).put(stored);
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error ?? new Error("Offline gegevens konden niet worden opgeslagen."));
   });
@@ -61,10 +95,11 @@ export async function idbGet<T>(store: OfflineStore, id: string) {
     request.onerror = () => reject(request.error ?? new Error("Offline gegevens konden niet worden gelezen."));
   });
   database.close();
-  return value;
+  return visibleToActiveUser(store, value) ? value : undefined;
 }
 
-export async function idbGetAll<T>(store: OfflineStore) {
+/** Every item in a store, regardless of who wrote it. Only account-isolation may use this. */
+export async function idbGetAllUnscoped<T>(store: OfflineStore) {
   const database = await openDatabase();
   const values = await new Promise<T[]>((resolve, reject) => {
     const request = database.transaction(store, "readonly").objectStore(store).getAll();
@@ -75,8 +110,16 @@ export async function idbGetAll<T>(store: OfflineStore) {
   return values;
 }
 
+export async function idbGetAll<T>(store: OfflineStore) {
+  const values = await idbGetAllUnscoped<T>(store);
+  return values.filter((value) => visibleToActiveUser(store, value));
+}
+
 /** The keys in a store, without reading the values: a blob store must stay cheap to inspect. */
 export async function idbKeys(store: OfflineStore) {
+  if (ownedStores.has(store)) {
+    return (await idbGetAll<{ id: string }>(store)).map((value) => String(value.id));
+  }
   const database = await openDatabase();
   const keys = await new Promise<string[]>((resolve, reject) => {
     const request = database.transaction(store, "readonly").objectStore(store).getAllKeys();

@@ -38,6 +38,7 @@ import {
   Share,
   ShieldCheck,
   TimerOff,
+  Trash2,
   Users,
   UserPlus,
   Wrench,
@@ -78,6 +79,13 @@ import { withPendingActions } from "@/lib/offline/pending-records";
 import { offlineQueryKeys } from "@/lib/offline/query-keys";
 import { getSessionWithOfflineFallback, storedSessionOnThisDevice } from "@/lib/supabase/offline-session";
 import { OfflineManagerModal } from "@/app/offline-manager";
+import {
+  discardUnsentWork,
+  prepareOfflineStorageForUser,
+  releaseOfflineStorageOnSignOut,
+  unsentWorkCount,
+} from "@/lib/offline/account-isolation";
+import { setActiveOfflineUser } from "@/lib/offline/idb";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import { validAccessToken } from "@/lib/supabase/access-token";
 import {
@@ -611,6 +619,9 @@ export function CodecoSupervisionApp() {
   const [dailyCloseoutAnswers, setDailyCloseoutAnswers] = useState<DailyCloseoutAnswers | null>(null);
   const [selectedAction, setSelectedAction] = useState<ProjectAction | null>(null);
   const [toast, setToast] = useState("");
+  /** Set while the user is deciding what happens to work that has not been sent yet. */
+  const [signOutPrompt, setSignOutPrompt] = useState<{ unsent: number } | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
   const [clock, setClock] = useState(() => new Date());
   const reportDate = reportDateInSuriname();
 
@@ -851,7 +862,17 @@ export function CodecoSupervisionApp() {
     // session". The session written to this device is used instead: without it an
     // installed app opened in the field showed the login screen with all its data sitting
     // unreachable on the phone.
-    void getSessionWithOfflineFallback(supabase).then((nextSession) => {
+    // Device storage is scoped to the account before anything cached can be shown: on a
+    // shared device the previous account's readable copy is removed first.
+    const scopeOfflineStorage = async (nextSession: Session | null) => {
+      if (!nextSession) {
+        setActiveOfflineUser(null);
+        return;
+      }
+      await prepareOfflineStorageForUser(nextSession.user.id).catch(() => setActiveOfflineUser(nextSession.user.id));
+    };
+    void getSessionWithOfflineFallback(supabase).then(async (nextSession) => {
+      await scopeOfflineStorage(nextSession);
       if (active) {
         setSession(nextSession);
         setAuthReady(true);
@@ -867,14 +888,17 @@ export function CodecoSupervisionApp() {
       // that could not reach the server. Signing out on purpose clears the stored session,
       // so a real sign-out still ends here.
       if (!nextSession && !navigator.onLine && storedSessionOnThisDevice()) return;
-      setSession(nextSession);
-      setAuthReady(true);
-      if (!nextSession) {
-        setPasswordRecovery(false);
-        setSelectedProject(null);
-        setSelectedBuilding(null);
-        setWorkspaceStage("projects");
-      }
+      void scopeOfflineStorage(nextSession).then(() => {
+        if (!active) return;
+        setSession(nextSession);
+        setAuthReady(true);
+        if (!nextSession) {
+          setPasswordRecovery(false);
+          setSelectedProject(null);
+          setSelectedBuilding(null);
+          setWorkspaceStage("projects");
+        }
+      });
     });
     return () => {
       active = false;
@@ -882,6 +906,37 @@ export function CodecoSupervisionApp() {
       data.subscription.unsubscribe();
     };
   }, [supabase]);
+
+  /**
+   * Signing out hands the device to whoever signs in next. The readable project copy is
+   * removed first; unsent work stays on the device for this account unless the user chose to
+   * discard it. The page is reloaded afterwards so nothing of this account survives in memory.
+   */
+  const performSignOut = useCallback(async (options: { discardUnsent: boolean }) => {
+    if (!supabase) return;
+    setSigningOut(true);
+    const userId = session?.user.id;
+    try {
+      if (options.discardUnsent && userId) await discardUnsentWork(userId);
+      await releaseOfflineStorageOnSignOut();
+    } catch {
+      // A storage failure must not keep someone signed in on a device they are handing over.
+    }
+    queryClient.clear();
+    const result = await supabase.auth.signOut().catch((error: unknown) => ({ error }));
+    // Without a connection the server cannot revoke the session; the local copy still goes.
+    if (result.error) await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+    window.location.replace(window.location.pathname);
+  }, [queryClient, session, supabase]);
+
+  const requestSignOut = useCallback(async () => {
+    const unsent = session ? await unsentWorkCount(session.user.id).catch(() => 0) : 0;
+    if (unsent > 0) {
+      setSignOutPrompt({ unsent });
+      return;
+    }
+    await performSignOut({ discardUnsent: false });
+  }, [performSignOut, session]);
 
   useEffect(() => {
     const online = () => setIsOnline(true);
@@ -1584,7 +1639,7 @@ export function CodecoSupervisionApp() {
           window.history.replaceState(null, "", window.location.pathname);
           setSession((current) => current ? { ...current, user: result.data.user } : current);
         }}
-        signOut={() => void supabase.auth.signOut()}
+        signOut={() => void performSignOut({ discardUnsent: false })}
       />
     );
   }
@@ -1613,7 +1668,7 @@ export function CodecoSupervisionApp() {
       return (
         <AccessPendingScreen
           email={session.user.email ?? ""}
-          signOut={() => void supabase.auth.signOut()}
+          signOut={() => void performSignOut({ discardUnsent: false })}
         />
       );
     }
@@ -1633,7 +1688,7 @@ export function CodecoSupervisionApp() {
           if (saved) await queryClient.invalidateQueries({ queryKey: ["workspace", session.user.id] });
           return Boolean(saved);
         }}
-        signOut={() => void supabase.auth.signOut()}
+        signOut={() => void performSignOut({ discardUnsent: false })}
       />
     );
   }
@@ -1653,7 +1708,7 @@ export function CodecoSupervisionApp() {
           if (saved) await queryClient.invalidateQueries({ queryKey: ["workspace", session.user.id] });
           return Boolean(saved);
         }}
-        signOut={() => void supabase.auth.signOut()}
+        signOut={() => void performSignOut({ discardUnsent: false })}
       />
     );
   }
@@ -1679,6 +1734,15 @@ export function CodecoSupervisionApp() {
         storageStatus={storageStatus}
         isOnline={isOnline}
         offlineCached={Boolean(workspaceQuery.data._offlineCached)}
+        signOut={() => void requestSignOut()}
+        signOutDialog={signOutPrompt ? (
+          <SignOutDialog
+            unsent={signOutPrompt.unsent}
+            busy={signingOut}
+            close={() => setSignOutPrompt(null)}
+            signOut={(discardUnsent) => void performSignOut({ discardUnsent })}
+          />
+        ) : null}
       />
     );
   }
@@ -1815,7 +1879,7 @@ export function CodecoSupervisionApp() {
           <Camera size={18} strokeWidth={2.4} />
           {text("Take photo", "Foto maken")}
         </button>
-        <button className="user-card" type="button" onClick={() => void supabase.auth.signOut()} title={text("Sign out", "Afmelden")}>
+        <button className="user-card" type="button" onClick={() => void requestSignOut()} title={text("Sign out", "Afmelden")} aria-label={text(`Sign out ${currentUserName}`, `${currentUserName} afmelden`)}>
           <span className="avatar">{initials(currentUserName)}</span>
           <span className="user-copy">
             <strong>{currentUserName}</strong>
@@ -2227,6 +2291,14 @@ export function CodecoSupervisionApp() {
             await queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] });
             return true;
           }}
+        />
+      ) : null}
+      {signOutPrompt ? (
+        <SignOutDialog
+          unsent={signOutPrompt.unsent}
+          busy={signingOut}
+          close={() => setSignOutPrompt(null)}
+          signOut={(discardUnsent) => void performSignOut({ discardUnsent })}
         />
       ) : null}
       {modal === "offline" && supabase && session ? (
@@ -3005,6 +3077,8 @@ function ContextSelection({
   storageStatus,
   isOnline,
   offlineCached,
+  signOut,
+  signOutDialog,
 }: {
   projects: ProjectContext[];
   chooseProject: (project: ProjectContext) => void;
@@ -3014,16 +3088,24 @@ function ContextSelection({
   storageStatus: string;
   isOnline: boolean;
   offlineCached: boolean;
+  signOut: () => void;
+  signOutDialog: React.ReactNode;
 }) {
   const { text } = useLanguage();
   const [showProjectSetup, setShowProjectSetup] = useState(false);
   return (
     <div className="context-shell">
+      {signOutDialog}
       <header className="context-topbar">
         <div className="context-brand">
           <CompanyLogo subtitle={text("Supervision", "Supervisie")} />
         </div>
-        <div className="context-user"><LanguageSwitcher compact /><span className="avatar">{initials(currentUserName)}</span><span><strong>{currentUserName}</strong><small>{text("CODECO user", "CODECO-gebruiker")}</small></span></div>
+        <div className="context-user">
+          <LanguageSwitcher compact />
+          <span className="avatar">{initials(currentUserName)}</span>
+          <span className="context-user-name"><strong>{currentUserName}</strong><small>{text("CODECO user", "CODECO-gebruiker")}</small></span>
+          <button className="ghost-button" type="button" onClick={signOut} aria-label={text(`Sign out ${currentUserName}`, `${currentUserName} afmelden`)}><LogOut size={14} /> <span className="context-sign-out-label">{text("Sign out", "Afmelden")}</span></button>
+        </div>
       </header>
 
       <main className="context-content">
@@ -4464,6 +4546,64 @@ function ActionDetailModal({
             </form>
           ) : <p className="action-complete-note"><CheckCircle2 size={16} /> {action.status === "verified" ? text("This action has been formally verified and closed.", "Deze actie is formeel geverifieerd en gesloten.") : text("This action was cancelled and remains visible in the history.", "Deze actie is geannuleerd en blijft in de historie zichtbaar.")}</p>}
         </div>
+      </section>
+    </div>
+  );
+}
+
+/**
+ * Signing out while work is still waiting on this device. Keeping it is the default and the
+ * safe choice: it stays tied to this account, is invisible to anyone else who signs in here,
+ * and is sent the next time this account signs in. Discarding is possible but is spelled out.
+ */
+function SignOutDialog({
+  unsent,
+  busy,
+  close,
+  signOut,
+}: {
+  unsent: number;
+  busy: boolean;
+  close: () => void;
+  signOut: (discardUnsent: boolean) => void;
+}) {
+  const { text } = useLanguage();
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !busy && close()}>
+      <section className="modal sign-out-modal" role="alertdialog" aria-modal="true" aria-labelledby="sign-out-title" aria-describedby="sign-out-copy">
+        <header className="modal-header">
+          <div>
+            <h2 id="sign-out-title">{text("Sign out with unsent work?", "Afmelden met niet-verstuurd werk?")}</h2>
+            <p id="sign-out-copy">{text(
+              `${unsent} item(s) on this device have not reached CODECO yet. Downloaded project data is removed from this device when you sign out. Your unsent work stays here, hidden from anyone else who signs in, and is sent the next time you sign in on this device.`,
+              `${unsent} item(s) op dit apparaat zijn nog niet bij CODECO aangekomen. Opgehaalde projectgegevens worden bij het afmelden van dit apparaat verwijderd. Uw niet-verstuurde werk blijft hier, onzichtbaar voor iedereen die zich hier aanmeldt, en wordt verstuurd zodra u zich op dit apparaat opnieuw aanmeldt.`,
+            )}</p>
+          </div>
+          <button className="modal-close" type="button" onClick={close} disabled={busy} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
+        </header>
+        {confirmDiscard ? (
+          <div className="modal-body">
+            <p className="field-error" role="alert">{text(
+              `The ${unsent} unsent item(s) will be deleted permanently. They exist nowhere else and cannot be recovered.`,
+              `De ${unsent} niet-verstuurde item(s) worden definitief verwijderd. Ze bestaan nergens anders en kunnen niet worden hersteld.`,
+            )}</p>
+          </div>
+        ) : null}
+        <footer className="modal-actions">
+          {confirmDiscard ? (
+            <>
+              <button className="secondary-button" type="button" disabled={busy} onClick={() => setConfirmDiscard(false)}>{text("Back", "Terug")}</button>
+              <button className="danger-button" type="button" disabled={busy} onClick={() => signOut(true)}>{busy ? <Loader2 className="spin" size={15} /> : <Trash2 size={15} />} {text("Delete and sign out", "Verwijderen en afmelden")}</button>
+            </>
+          ) : (
+            <>
+              <button className="ghost-button" type="button" disabled={busy} onClick={() => setConfirmDiscard(true)}>{text("Discard unsent work…", "Niet-verstuurd werk weggooien…")}</button>
+              <button className="secondary-button" type="button" disabled={busy} onClick={close}>{text("Stay signed in", "Aangemeld blijven")}</button>
+              <button className="primary-button" type="button" disabled={busy} onClick={() => signOut(false)}>{busy ? <Loader2 className="spin" size={15} /> : <LogOut size={15} />} {text("Keep work and sign out", "Werk bewaren en afmelden")}</button>
+            </>
+          )}
+        </footer>
       </section>
     </div>
   );
