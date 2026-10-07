@@ -2046,6 +2046,7 @@ export function CodecoSupervisionApp() {
               openRapidVerify={() => navigate("verify")}
               openReports={() => navigate("rapporten")}
               openManagement={() => navigate("meer")}
+              openReportCheck={() => setModal("report")}
             />
           ) : (
             <SecondaryView
@@ -3491,6 +3492,9 @@ function TodayView({
         openActions={openActions}
         openWorkspace={openWorkspace}
         openDailyQuestions={openDailyQuestions}
+        openProjectStart={openProjectStart}
+        openReportCheck={openReport}
+        dayStarted={Boolean(projectStartAnswers)}
         openRecord={openRecord}
       />
     );

@@ -77,6 +77,7 @@ import { ProjectActionCenter, type ActionCenterView } from "@/app/project-action
 import { RapidVerifyWorkspace } from "@/app/rapid-verify-workspace";
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
 import { findingStatusLabels as canonicalFindingStatusLabels, labelMap } from "@/lib/status-labels";
+import { userFacingError } from "@/lib/user-facing-error";
 import { anchorChecklistCodes } from "@/lib/checklists/anchor-library";
 import { recordAnchorId, useRecordFocus } from "@/lib/navigation/record-focus";
 import { buildRecordDirectory } from "@/lib/records/record-directory.mjs";
@@ -643,10 +644,6 @@ function formatDate(value: string | null, locale = "en-GB") {
   }).format(new Date(value));
 }
 
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "The operation was not completed.";
-}
-
 /**
  * Not every contractor uses WhatsApp; on site an SMS is what always arrives. Both open
  * the phone's own app with the message ready, so no number is stored in the project.
@@ -738,6 +735,7 @@ export function OperationalWorkspace({
   openRapidVerify,
   openReports,
   openManagement,
+  openReportCheck,
   projectActions = [],
   openProjectAction,
   createProjectAction,
@@ -787,6 +785,8 @@ export function OperationalWorkspace({
   openRapidVerify: () => void;
   openReports: () => void;
   openManagement: () => void;
+  /** Opens the day report check, where the supervisor marks it ready for review. */
+  openReportCheck?: () => void;
   projectActions?: Array<{ id: string; title: string; action_number: string; status: string; priority: string; due_at: string | null; owner_user_id?: string | null }>;
   openProjectAction?: (actionId: string) => void;
   createProjectAction?: () => void;
@@ -868,7 +868,7 @@ export function OperationalWorkspace({
           "No connection. This record cannot be saved centrally yet; your input stays in the open form. Photos you take are kept on this device and upload by themselves.",
           "Geen verbinding. Deze registratie kan nog niet centraal worden opgeslagen; je invoer blijft in het geopende formulier staan. Foto's die je maakt blijven op dit apparaat en gaan er vanzelf naartoe.",
         )
-        : messageFrom(caught));
+        : userFacingError(caught, text));
       return false;
     } finally {
       setBusy(false);
@@ -879,7 +879,7 @@ export function OperationalWorkspace({
     return <div className="operation-loading"><Loader2 className="spin" size={22} /> {text("Loading project records…", "Projectregisters laden…")}</div>;
   }
   if (query.error || !query.data) {
-    return <div className="operation-alert error"><AlertTriangle size={18} /> {messageFrom(query.error)}</div>;
+    return <div className="operation-alert error"><AlertTriangle size={18} /> {userFacingError(query.error, text)}</div>;
   }
 
   // Everything below reads one snapshot, so the registrations waiting on the device are
@@ -959,6 +959,7 @@ export function OperationalWorkspace({
           client={client}
           openModule={openProjectArea}
           openDeadlines={() => openActionCenter("deadlines")}
+          openReportCheck={openReportCheck}
         />
       ) : null}
       {mode === "admin" ? (
@@ -2779,7 +2780,7 @@ function ProjectOperations({
     try {
       setBoqItems(parseBoqCsv(await file.text()));
     } catch (caught) {
-      setBoqError(messageFrom(caught));
+      setBoqError(userFacingError(caught, text));
     }
   };
 
@@ -4884,7 +4885,7 @@ function SubmittedRecordShare({ finding, scope, projectName, projectCode, buildi
           <label><span>{text("Secure link · expires", "Beveiligde link · vervalt")} {formatDate(link.expiresAt, locale)}</span><input readOnly value={link.url} onFocus={(event) => event.currentTarget.select()} /></label>
           {feedback ? <p className="external-share-feedback" role="status">{feedback}</p> : null}
           <div className="submitted-record-share-actions">
-            <button className="secondary-button" type="button" onClick={() => void copyToClipboard(link.url).then(() => setFeedback(text("Link copied.", "Link gekopieerd."))).catch((error) => setFeedback(messageFrom(error)))}><Copy size={16} /> {text("Copy link", "Kopieer link")}</button>
+            <button className="secondary-button" type="button" onClick={() => void copyToClipboard(link.url).then(() => setFeedback(text("Link copied.", "Link gekopieerd."))).catch((error) => setFeedback(userFacingError(error, text)))}><Copy size={16} /> {text("Copy link", "Kopieer link")}</button>
             <button className="whatsapp-button" type="button" onClick={() => openWhatsApp(message(link))}><MessageCircle size={17} /> {text("Open WhatsApp and send", "Open WhatsApp en stuur")}</button>
             <button className="secondary-button" type="button" onClick={() => openSms(message(link))}><Smartphone size={16} /> {text("Send as SMS", "Als SMS sturen")}</button>
           </div>
@@ -5150,7 +5151,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
                 <label><span>{text("Secure link · expires", "Beveiligde link · vervalt")} {formatDate(externalShare.expiresAt, locale)}</span><input readOnly value={externalShare.url} onFocus={(event) => event.currentTarget.select()} /></label>
                 {shareFeedback ? <p className="external-share-feedback" role="status">{shareFeedback}</p> : null}
                 <div className="external-share-preflight-actions">
-                  <button className="secondary-button" type="button" onClick={() => void copyToClipboard(externalShare.url).then(() => setShareFeedback(text("Link copied.", "Link gekopieerd."))).catch((error) => setShareFeedback(messageFrom(error)))}><Copy size={16} /> {text("Copy link", "Kopieer link")}</button>
+                  <button className="secondary-button" type="button" onClick={() => void copyToClipboard(externalShare.url).then(() => setShareFeedback(text("Link copied.", "Link gekopieerd."))).catch((error) => setShareFeedback(userFacingError(error, text)))}><Copy size={16} /> {text("Copy link", "Kopieer link")}</button>
                   <button className="whatsapp-button" type="button" onClick={() => openWhatsApp(externalMessage(finding, externalShare))}><MessageCircle size={17} /> {text("Open WhatsApp and send", "Open WhatsApp en stuur")}</button>
                   <button className="secondary-button" type="button" onClick={() => openSms(externalMessage(finding, externalShare))}><Smartphone size={16} /> {text("Send as SMS", "Als SMS sturen")}</button>
                   <button className="revoke-share-button" type="button" onClick={() => setRevokeConfirmId(externalShare.shareId)}><X size={16} /> {text("Revoke link", "Link intrekken")}</button>
@@ -5223,7 +5224,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   );
 }
 
-function ReportOperations({ data, reportId, reportNumber, reportStatus, currentUserName, projectId, projectName, busy, run, client, openModule, openDeadlines }: { data: OperationSnapshot; reportId: string | null; reportNumber: string; reportStatus: string; currentUserName: string; projectId: string; projectName: string; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>; client: SupabaseClient; openModule: (tab: "documents" | "drawings" | "findings" | "ncr" | "hse" | "inspections" | "registers" | "files" | "daily") => void; openDeadlines: () => void }) {
+function ReportOperations({ data, reportId, reportNumber, reportStatus, currentUserName, projectId, projectName, busy, run, client, openModule, openDeadlines, openReportCheck }: { data: OperationSnapshot; reportId: string | null; reportNumber: string; reportStatus: string; currentUserName: string; projectId: string; projectName: string; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>; client: SupabaseClient; openModule: (tab: "documents" | "drawings" | "findings" | "ncr" | "hse" | "inspections" | "registers" | "files" | "daily") => void; openDeadlines: () => void; openReportCheck?: () => void }) {
   const { language, locale, text } = useLanguage();
   const statusLabels = language === "en" ? reportStatusLabelsEnglish : reportStatusLabels;
   const [reviewComment, setReviewComment] = useState("");
@@ -5341,7 +5342,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
   const workflowGuidance = !reportId
     ? text("Start the daily report through Project start first.", "Start eerst het dagrapport via Projectstart.")
     : ["draft", "in_progress", "returned"].includes(reportStatus)
-      ? text("Next: open Overview, complete the daily questions and choose Check report → Ready for review.", "Volgende stap: open Overzicht, rond de dagvragen af en kies Rapport controleren → Gereed voor review.")
+      ? text("Next: complete the project start and daily questions for every building, then choose Check report → Ready for review.", "Volgende stap: rond per gebouw projectstart en dagvragen af en kies daarna Rapport controleren → Gereed voor review.")
       : canReview
         ? text("Next: an authorized reviewer records a comment and approves or returns this version.", "Volgende stap: een bevoegde reviewer legt een commentaar vast en keurt deze versie goed of stuurt haar terug.")
         : reportStatus === "approved"
@@ -5454,6 +5455,10 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
           <div className={`operation-alert report-next-step ${workflowStep ? "success" : "warning"}`} role="status">
             {workflowStep ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
             <div><strong>{text("Current next step", "Huidige volgende stap")}</strong><span>{workflowGuidance}</span></div>
+            {/* The step the guidance names has to be one tap away from it. */}
+            {reportId && openReportCheck && ["draft", "in_progress", "returned"].includes(reportStatus) ? (
+              <button className="primary-button" type="button" onClick={openReportCheck}><ClipboardCheck size={15} /> {text("Check report", "Rapport controleren")}</button>
+            ) : null}
           </div>
           <section className="workflow-grid">
             <div className={`workflow-card ${workflowStep === 1 ? "current" : workflowStep > 1 ? "complete" : "locked"}`}><div className="workflow-icon"><ClipboardCheck size={19} /></div><h2>1. Review</h2><p>{text("An authorized reviewer approves or returns the report with a reason. Approval automatically freezes the complete snapshot with SHA-256.", "Een bevoegde reviewer keurt goed of stuurt gemotiveerd terug. Bij goedkeuring bevriest de database automatisch de volledige momentopname met SHA-256.")}</p><label className="form-field"><span>{text("Review comment", "Reviewcommentaar")}</span><textarea rows={3} value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} /><DictateButton onText={(transcript) => setReviewComment((current) => appendDictation(current, transcript))} /></label><div className="button-row"><button className="secondary-button" type="button" disabled={busy || !reportId || !canReview || reviewComment.trim().length < 2} onClick={() => void run(() => reviewReport(client, reportId!, "returned", reviewComment), text("Report returned for correction with a reason.", "Rapport gemotiveerd teruggestuurd voor correctie."))}>{text("Return", "Terugsturen")}</button><button className="primary-button" type="button" disabled={busy || !reportId || !canReview || reviewComment.trim().length < 2} onClick={() => void run(() => reviewReport(client, reportId!, "approved", reviewComment), text("Report approved and frozen as an immutable version.", "Rapport goedgekeurd en als immutable versie vastgezet."))}><FileCheck2 size={15} /> {text("Approve and freeze", "Goedkeuren & vastzetten")}</button></div></div>

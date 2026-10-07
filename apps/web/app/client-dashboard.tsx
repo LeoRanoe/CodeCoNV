@@ -7,6 +7,7 @@ import {
   CalendarDays,
   Camera,
   CheckCircle2,
+  CloudSun,
   ClipboardCheck,
   FileCheck2,
   FileText,
@@ -229,6 +230,9 @@ export function ClientDashboard({
   openActions,
   openWorkspace,
   openDailyQuestions,
+  openProjectStart,
+  openReportCheck,
+  dayStarted = true,
   openRecord,
 }: {
   entries: DashboardEntry[];
@@ -248,6 +252,12 @@ export function ClientDashboard({
   openActions: () => void;
   openWorkspace: () => void;
   openDailyQuestions: () => void;
+  /** The day start (weather, hours, plan per building), required before the report. */
+  openProjectStart?: () => void;
+  /** The report check, where the day report is marked ready for review. */
+  openReportCheck?: () => void;
+  /** Whether today's project start is recorded; until then the start is offered first. */
+  dayStarted?: boolean;
   /** Opens one found record in the module it lives in, scrolled to that record. */
   openRecord: (tab: SearchDestination, recordId: string) => void;
 }) {
@@ -415,7 +425,11 @@ export function ClientDashboard({
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text("Search today", "Zoek in vandaag")} />
           </label>
           <button className="overview-icon-button" type="button" aria-label={text("Notifications", "Meldingen")} onClick={openActions}><Bell size={17} />{urgentItems.length ? <i /> : null}</button>
-          <button className="overview-icon-button" type="button" aria-label={text("Daily questions", "Dagvragen")} onClick={openDailyQuestions}><CalendarDays size={17} /></button>
+          {/* The day in its order: start it, answer the day's questions, check the report.
+              The built-in guide and the report screen both point here. */}
+          {!dayStarted && openProjectStart ? <button className="overview-icon-button" type="button" aria-label={text("Start today", "Werkdag starten")} title={text("Start today", "Werkdag starten")} onClick={openProjectStart}><CloudSun size={17} /></button> : null}
+          <button className="overview-icon-button" type="button" aria-label={text("Daily questions", "Dagvragen")} title={text("Daily questions", "Dagvragen")} onClick={openDailyQuestions}><CalendarDays size={17} /></button>
+          {openReportCheck ? <button className="overview-icon-button" type="button" aria-label={text("Check report", "Rapport controleren")} title={text("Check report", "Rapport controleren")} onClick={openReportCheck}><FileCheck2 size={17} /></button> : null}
           {/* This screen reads the day; it does not write it. Recording a photo or a field
               record has its own button in the bar at the bottom, on every screen. */}
           <button className="secondary-button overview-create-button" type="button" onClick={openWorkspace}>{text("Open workspace", "Open werkruimte")} <ArrowRight size={15} /></button>
