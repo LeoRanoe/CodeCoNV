@@ -1,7 +1,7 @@
 begin;
 set local search_path = extensions, pgtap, public;
 
-select plan(8);
+select plan(10);
 
 select has_column('public', 'files', 'document_code', 'every file carries the unique code it is looked up by');
 select has_function(
@@ -98,6 +98,21 @@ select throws_ok(
   '23505',
   null,
   'a duplicate document code inside one project is rejected'
+);
+
+-- Only trusted server code that hashed the stored object may mark a file content-verified.
+select throws_ok(
+  $$update public.files set content_verified_at = now() where storage_object_key = 'projects/doc/photo-1'$$,
+  '42501',
+  'Only the storage service may change file storage state',
+  'a browser session cannot claim server-side content verification'
+);
+select throws_ok(
+  $$insert into public.files (organization_id, project_id, building_id, original_name, mime_type, size_bytes, status, category, created_by, content_verified_at)
+    values ('00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000e4', '00000000-0000-0000-0000-0000000000e6', 'vals.jpg', 'image/jpeg', 0, 'pending', 'photo', auth.uid(), now())$$,
+  '42501',
+  'Browser may only reserve pending file metadata',
+  'a browser reservation cannot arrive pre-verified'
 );
 
 reset role;

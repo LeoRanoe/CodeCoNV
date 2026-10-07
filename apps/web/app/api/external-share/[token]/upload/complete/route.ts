@@ -1,4 +1,5 @@
 import { head } from "@vercel/blob";
+import { sha256OfStoredBlob } from "@/lib/storage/content-hash";
 import { z } from "zod";
 import { loadActiveExternalShare } from "@/lib/external-share/server";
 import {
@@ -9,6 +10,8 @@ import {
 } from "@/lib/storage/server";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const completionSchema = z.object({
   fileId: z.uuid(),
@@ -42,7 +45,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     if (blob.pathname !== input.data.pathname || blob.size !== file.size_bytes || contentType !== file.mime_type.toLowerCase()) {
       return storageJson({ error: "De opgeslagen foto komt niet overeen met de reservering." }, 409);
     }
-    const update = await admin.from("files").update({ status: "available", size_bytes: blob.size }).eq("id", file.id).eq("status", "pending").select("id").single();
+    // The contractor's device declared this checksum; only the stored bytes count as proof.
+    const storedSha256 = await sha256OfStoredBlob(blob.pathname);
+    if (storedSha256 !== file.sha256) {
+      await admin.from("files").update({ status: "failed" }).eq("id", file.id).eq("status", "pending");
+      return storageJson({ error: "De opgeslagen foto komt niet overeen met de checksum. Upload de foto opnieuw." }, 409);
+    }
+    const update = await admin.from("files").update({ status: "available", size_bytes: blob.size, content_verified_at: new Date().toISOString() }).eq("id", file.id).eq("status", "pending").select("id").single();
     if (update.error || !update.data) throw new Error("De bewijsfoto is geüpload maar kon niet worden bevestigd.");
     return storageJson({ fileId: file.id, sha256: input.data.sha256 });
   } catch (error) {
