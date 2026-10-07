@@ -105,17 +105,38 @@ export function useBackToClose(open: boolean, close: () => void) {
 
   useEffect(() => {
     if (typeof window === "undefined" || !open) return;
-    const id = Date.now() + Math.random();
+    const state = window.history.state as { codecoOverlay?: number } | null;
+    let id: number;
+    if (pendingOverlayRemoval && state?.codecoOverlay === pendingOverlayRemoval.id) {
+      // The same overlay mounted again straight after unmounting (React StrictMode in
+      // development, or a parent re-keying it). Keep its history entry instead of removing
+      // it: the asynchronous back() would otherwise arrive now and close the new instance.
+      window.clearTimeout(pendingOverlayRemoval.timer);
+      id = pendingOverlayRemoval.id;
+      pendingOverlayRemoval = null;
+    } else {
+      id = Date.now() + Math.random();
+      window.history.pushState({ codecoOverlay: id }, "");
+    }
     marker.current = id;
-    window.history.pushState({ codecoOverlay: id }, "");
     window.addEventListener("popstate", handlePop);
     return () => {
       window.removeEventListener("popstate", handlePop);
       // Closed with the button instead of the back gesture: take the entry back out,
       // otherwise the next back press would only undo an overlay that is already gone.
-      const state = window.history.state as { codecoOverlay?: number } | null;
-      if (marker.current === id && state?.codecoOverlay === id) window.history.back();
+      // Deferred by one task so an immediate remount can claim the entry first.
+      const current = window.history.state as { codecoOverlay?: number } | null;
+      if (marker.current === id && current?.codecoOverlay === id) {
+        const timer = window.setTimeout(() => {
+          pendingOverlayRemoval = null;
+          const now = window.history.state as { codecoOverlay?: number } | null;
+          if (now?.codecoOverlay === id) window.history.back();
+        }, 0);
+        pendingOverlayRemoval = { id, timer };
+      }
       marker.current = 0;
     };
   }, [handlePop, open]);
 }
+
+let pendingOverlayRemoval: { id: number; timer: number } | null = null;

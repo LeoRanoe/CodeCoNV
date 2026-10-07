@@ -168,7 +168,7 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
       {/* The client's NCR form has a signature line under the contractor's box, so the
           contractor writes the signature here instead of only typing a name. */}
       {signatureRequired ? (
-        <LanguageProvider>
+        <LanguageProvider fixed="nl">
           <SignatureField
             label="Onderteken de correctieve actie"
             declaration="Met je handtekening bevestig je de correctieve actie die je hierboven hebt ingevuld."

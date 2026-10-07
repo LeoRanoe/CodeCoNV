@@ -36,8 +36,13 @@ function languageSnapshot(): AppLanguage {
   return chosen === "en" || chosen === "nl" ? chosen : "nl";
 }
 
-export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const language = useSyncExternalStore<AppLanguage>(subscribeLanguage, languageSnapshot, () => "nl");
+/**
+ * `fixed` pins a surface to one language regardless of the switcher: the contractor's shared
+ * link is Dutch throughout, even on a device where Supervisie was switched to English.
+ */
+export function LanguageProvider({ children, fixed }: { children: React.ReactNode; fixed?: AppLanguage }) {
+  const chosen = useSyncExternalStore<AppLanguage>(subscribeLanguage, languageSnapshot, () => "nl");
+  const language = fixed ?? chosen;
 
   useEffect(() => {
     document.documentElement.lang = language;

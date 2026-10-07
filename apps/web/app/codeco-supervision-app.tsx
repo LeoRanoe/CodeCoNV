@@ -1513,6 +1513,10 @@ export function CodecoSupervisionApp() {
   // A reload, a shared link or a phone that reopens the installed app lands on the
   // screen the address bar describes instead of at the beginning.
   const restoredFromUrlRef = useRef(false);
+  // Read once, before the history hook's first replaceState rewrites the address bar to
+  // the project-less start screen; reading it later found an empty query and every reload
+  // dropped the user back on project selection.
+  const [initialSearch] = useState(() => (typeof window === "undefined" ? "" : window.location.search));
   // The projects arrive from the server, so the screen in the address bar can only be
   // restored once they are there. That is exactly what an effect is for.
   useEffect(() => {
@@ -1520,13 +1524,13 @@ export function CodecoSupervisionApp() {
     const projects = workspaceQuery.data?.projects;
     if (!projects?.length) return;
     restoredFromUrlRef.current = true;
-    const fromUrl = screenFromSearch(window.location.search);
+    const fromUrl = screenFromSearch(initialSearch);
     if (!fromUrl.project) return;
     const project = projects.find((candidate) => candidate.id === fromUrl.project);
     if (!project) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- restoring a screen from the address bar can only happen once the projects have loaded
     applyScreen(fromUrl);
-  }, [applyScreen, workspaceQuery.data?.projects]);
+  }, [applyScreen, initialSearch, workspaceQuery.data?.projects]);
 
   const openBuildingStart = (building: BuildingContext) => {
     setContextBuildingId(building.id);
