@@ -54,6 +54,25 @@ const nextConfig: NextConfig = {
   // Playwright and field devices may reach the local dev server through its numeric host.
   // Production CSP stays strict; this only lets Next's development HMR origin through.
   allowedDevOrigins: ["127.0.0.1"],
+  // The previous WordPress site's pages, mapped to the section of the one-page site that
+  // now carries the same content, so links and search results keep working after the
+  // cutover. Theme demo pages (/icons, /pricing-and-plans, /landing-page, /faq) had no
+  // CODECO content and are deliberately left to 404 instead of being sent to "/".
+  async redirects() {
+    const toSection = (paths: string[], section: string) => paths.map((path) => ({
+      source: path,
+      destination: `/#${section}`,
+      permanent: true,
+    }));
+    return [
+      ...toSection(["/about-us", "/our-history", "/team", "/company-career"], "about"),
+      ...toSection(["/core-values"], "values"),
+      ...toSection(["/our-clients"], "clients"),
+      ...toSection(["/engineering", "/consulting", "/project-management", "/contracting", "/our-solutions-image-overlay"], "services"),
+      ...toSection(["/projects", "/projects-2", "/portfolio/:slug*", "/category-portfolio/:slug*"], "work"),
+      ...toSection(["/contact"], "contact"),
+    ];
+  },
   async headers() {
     return [{
       source: "/:path*",
