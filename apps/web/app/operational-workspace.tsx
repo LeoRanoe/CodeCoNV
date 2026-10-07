@@ -76,6 +76,7 @@ import { ProjectDocumentsHome } from "@/app/project-documents-home";
 import { ProjectActionCenter, type ActionCenterView } from "@/app/project-action-center";
 import { RapidVerifyWorkspace } from "@/app/rapid-verify-workspace";
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
+import { findingStatusLabels as canonicalFindingStatusLabels, labelMap } from "@/lib/status-labels";
 import { anchorChecklistCodes } from "@/lib/checklists/anchor-library";
 import { recordAnchorId, useRecordFocus } from "@/lib/navigation/record-focus";
 import { buildRecordDirectory } from "@/lib/records/record-directory.mjs";
@@ -187,23 +188,8 @@ type ViewedWorkspaceRecord = {
   description?: string;
 };
 
-const findingStatusLabels: Record<string, string> = {
-  draft: "Concept",
-  open: "Open",
-  assigned: "Toegewezen",
-  in_progress: "In uitvoering",
-  ready_for_verification: "Gereed voor verificatie",
-  closed: "Gesloten",
-  rejected: "Afgewezen",
-  reopened: "Heropend",
-  cancelled: "Geannuleerd",
-};
-
-const findingStatusLabelsEnglish: Record<string, string> = {
-  draft: "Draft", open: "Open", assigned: "Assigned", in_progress: "In progress",
-  ready_for_verification: "Ready for verification", closed: "Closed", rejected: "Rejected",
-  reopened: "Reopened", cancelled: "Cancelled",
-};
+const findingStatusLabels = labelMap(canonicalFindingStatusLabels, "nl");
+const findingStatusLabelsEnglish = labelMap(canonicalFindingStatusLabels, "en");
 
 const reportStatusLabels: Record<string, string> = {
   draft: "Concept",
@@ -1093,6 +1079,8 @@ function ProjectOperations({
       Object.entries(allRegisterNames).filter(([type]) => !externalSubmissionRegisterTypes.includes(type)),
     );
   const issueDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(new Date());
+  // Shown to people in the app's one date convention; issueDate stays ISO for numbering.
+  const issueDateLabel = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "America/Paramaribo" }).format(new Date());
   const issueTime = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Paramaribo" }).format(new Date());
   // The open module is owned by the app shell: it is a screen of its own, so it belongs
   // in the browser history instead of in a state nobody can navigate back to.
@@ -2894,7 +2882,8 @@ function ProjectOperations({
             <button className="workspace-back-button" type="button" onClick={() => switchTab("home")}><ArrowLeft size={17} /> {text("Workspace", "Werkruimte")}</button>
             <div className="workspace-current-module" aria-live="polite">
               <span>{projectName}</span>
-              <strong>{activeSectionLabel}</strong>
+              {/* The module's own title: a heading, so it is announced and navigable. */}
+              <h2>{activeSectionLabel}</h2>
               <b>{activeSectionCount}</b>
             </div>
             {/* The "Switch module" dropdown used to sit here. The client wrote next to it: "ik
@@ -3107,7 +3096,7 @@ function ProjectOperations({
               </div>
               <section className="controlled-document-context sectioned-record-context" aria-label={text("Issue header", "Kop van het issue")}>
                 <div><small>{text("Issue ID", "Issue ID")}</small><strong>{nextIssueNumber}</strong><span>{text("Provisional · fixed on submit", "Voorlopig · vast bij indienen")}</span></div>
-                <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDate}</strong><span>{issueTime}</span></div>
+                <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDateLabel}</strong><span>{issueTime}</span></div>
                 <div><small>{text("Reporter", "Melder")}</small><strong>{currentUserName}</strong><span>{reporterDepartment}</span></div>
                 <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
                 <div><small>{text("Site / location", "Locatie")}</small><strong>{findingBuildingsLabel}</strong><span>{findingForm.latitude && findingForm.longitude ? `${findingForm.latitude}, ${findingForm.longitude}` : projectLocation || text("No coordinates yet", "Nog geen coördinaten")}</span></div>
@@ -3115,7 +3104,7 @@ function ProjectOperations({
                 <div><small>{text("Department", "Afdeling")}</small><strong>{reporterDepartment}</strong><span>{text("Of the reporter", "Van de melder")}</span></div>
                 <div><small>{text("Status", "Status")}</small><strong className="record-status-preview">{issueStatusLabel}</strong><span>{text("On submit", "Bij indienen")}</span></div>
               </section>
-              <p className="form-helper"><Clock3 size={13} /> {text(`Day, date and time are recorded automatically · ${issueDate} ${issueTime}`, `Dag, datum en tijd worden automatisch vastgelegd · ${issueDate} ${issueTime}`)}</p>
+              <p className="form-helper"><Clock3 size={13} /> {text(`Day, date and time are recorded automatically · ${issueDateLabel} ${issueTime}`, `Dag, datum en tijd worden automatisch vastgelegd · ${issueDateLabel} ${issueTime}`)}</p>
               {issueParkedDraft ? (
                 <p className="form-helper record-draft-notice">
                   <Save size={13} /> {text("A saved draft of this screen is waiting on this device.", "Op dit apparaat staat een opgeslagen concept van dit scherm.")}
@@ -3342,7 +3331,7 @@ function ProjectOperations({
               <section className="controlled-document-context ncr-form-context" aria-label={text("Non-conformance report header", "Kop van het non-conformance report")}>
                 <div><small>{text("Project name and number", "Projectnaam en -nummer")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
                 <div><small>{text("Contractor", "Aannemer")}</small><strong>{parties.find((party) => party.id === findingForm.responsiblePartyId)?.name || text("Not assigned yet", "Nog niet toegewezen")}</strong><span>{findingBuildingsLabel}</span></div>
-                <div><small>{text("Date", "Datum")}</small><strong>{issueDate}</strong><span>{issueTime}</span></div>
+                <div><small>{text("Date", "Datum")}</small><strong>{issueDateLabel}</strong><span>{issueTime}</span></div>
                 {/* An NCR says who drew it up, from the moment it is written: without it
                     the contractor receives a formal report nobody stands behind. */}
                 <div><small>{text("Drawn up by", "Opgesteld door")}</small><strong>{currentUserName}</strong><span>{findingForm.signedBy ? text(`Signed by ${findingForm.signedBy}`, `Ondertekend door ${findingForm.signedBy}`) : text("Not signed yet", "Nog niet ondertekend")}</span></div>
@@ -3565,7 +3554,7 @@ function ProjectOperations({
                   they do, and so do the reporter, the project, the site and the weather. */}
               <section className="controlled-document-context sectioned-record-context" aria-label={text("Issue header", "Kop van de melding")}>
                 <div><small>{text("Issue ID", "Issue ID")}</small><strong>{nextHseNumber}</strong><span>{text("Provisional · fixed on submit", "Voorlopig · vast bij indienen")}</span></div>
-                <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDate}</strong><span>{issueTime}</span></div>
+                <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDateLabel}</strong><span>{issueTime}</span></div>
                 <div><small>{text("Reporter", "Melder")}</small><strong>{currentUserName}</strong><span>{reporterDepartment}</span></div>
                 <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
                 <div><small>{text("Site / location", "Locatie")}</small><strong>{hseBuildingIds.map((selectedId) => buildings.find((building) => building.id === selectedId)?.name).filter(Boolean).join(" · ") || buildingName}</strong><span>{hseForm.latitude && hseForm.longitude ? `${hseForm.latitude}, ${hseForm.longitude}` : projectLocation || text("No coordinates yet", "Nog geen coördinaten")}</span></div>
@@ -3574,7 +3563,7 @@ function ProjectOperations({
                 <div><small>{text("Status", "Status")}</small><strong className="record-status-preview">{hseStatusLabel}</strong><span>{text("On submit", "Bij indienen")}</span></div>
               </section>
               {/* "Ik vermoed dat dag, datum & tijd zelf komen" — the form says so out loud. */}
-              <p className="form-helper"><Clock3 size={13} /> {text(`Day, date and time are recorded automatically · ${issueDate} ${issueTime}`, `Dag, datum en tijd worden automatisch vastgelegd · ${issueDate} ${issueTime}`)}</p>
+              <p className="form-helper"><Clock3 size={13} /> {text(`Day, date and time are recorded automatically · ${issueDateLabel} ${issueTime}`, `Dag, datum en tijd worden automatisch vastgelegd · ${issueDateLabel} ${issueTime}`)}</p>
               {hseParkedDraft ? (
                 <p className="form-helper record-draft-notice">
                   <Save size={13} /> {text("A saved draft of this screen is waiting on this device.", "Op dit apparaat staat een opgeslagen concept van dit scherm.")}
@@ -3823,10 +3812,10 @@ function ProjectOperations({
                     <div><small>{text("Form no · automatic", "Formuliernummer · automatisch")}</small><strong>{text("On submit", "Bij indienen")}</strong><span>{text("Unique project code", "Unieke projectcode")}</span></div>
                     <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
                     <div><small>{text("Location / area", "Locatie / gebied")}</small><strong>{registerContextLabel}</strong><span>{registerLocationNodeId ? locationBreadcrumb(data.locationNodes, registerLocationNodeId) : text("Building level", "Gebouwniveau")}</span></div>
-                    <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDate}</strong><span>{issueTime}</span></div>
+                    <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDateLabel}</strong><span>{issueTime}</span></div>
                     <div><small>{text("Reported by", "Gemeld door")}</small><strong>{currentUserName}</strong><span>{reporterDepartment}</span></div>
                   </section>
-                  <p className="form-helper"><Clock3 size={13} /> {text(`Day, date and time are recorded automatically · ${issueDate} ${issueTime}`, `Dag, datum en tijd worden automatisch vastgelegd · ${issueDate} ${issueTime}`)}</p>
+                  <p className="form-helper"><Clock3 size={13} /> {text(`Day, date and time are recorded automatically · ${issueDateLabel} ${issueTime}`, `Dag, datum en tijd worden automatisch vastgelegd · ${issueDateLabel} ${issueTime}`)}</p>
                 </>
               ) : null}
               {/* A controlled document starts with the project information and the dates:
@@ -3836,7 +3825,7 @@ function ProjectOperations({
                 <section className="controlled-document-context" aria-label={text("Project information", "Projectinformatie")}>
                   <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
                   <div><small>{text("Applies to", "Geldt voor")}</small><strong>{registerContextLabel}</strong><span>{registerLocationNodeId ? locationBreadcrumb(data.locationNodes, registerLocationNodeId) : text("Building level", "Gebouwniveau")}</span></div>
-                  <div><small>{text("Issue date and time", "Uitgiftedatum en -tijd")}</small><strong>{issueDate}</strong><span>{issueTime}</span></div>
+                  <div><small>{text("Issue date and time", "Uitgiftedatum en -tijd")}</small><strong>{issueDateLabel}</strong><span>{issueTime}</span></div>
                   <div><small>{text("Drawn up by", "Opgemaakt door")}</small><strong>{registerForm.issuerName.trim() || currentUserName}</strong><span>{registerForm.signedBy ? text("Signed", "Ondertekend") : text("Not signed yet", "Nog niet ondertekend")}</span></div>
                 </section>
                   <section className="controlled-document-dates" aria-label={text("Document dates", "Documentdatums")}>

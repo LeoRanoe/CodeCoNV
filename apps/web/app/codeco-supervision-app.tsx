@@ -51,6 +51,7 @@ import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { ALL_BUILDINGS, BuildingMultiPicker, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { actionStatusLabels as canonicalActionStatusLabels, labelMap } from "@/lib/status-labels";
 import { screenFromSearch, useScreenHistory, type AppScreen } from "@/lib/navigation/app-history";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { photoEvidenceLine, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
@@ -372,23 +373,8 @@ const entryTitlesEnglish: Record<string, string> = {
   delay: "Delay",
 };
 
-const actionStatusLabels: Record<ProjectAction["status"], string> = {
-  open: "Open",
-  accepted: "Geaccepteerd",
-  in_progress: "In uitvoering",
-  ready_for_verification: "Gereed voor verificatie",
-  verified: "Geverifieerd",
-  cancelled: "Geannuleerd",
-};
-
-const actionStatusLabelsEnglish: Record<ProjectAction["status"], string> = {
-  open: "Open",
-  accepted: "Accepted",
-  in_progress: "In progress",
-  ready_for_verification: "Ready for verification",
-  verified: "Verified",
-  cancelled: "Cancelled",
-};
+const actionStatusLabels = labelMap(canonicalActionStatusLabels, "nl") as Record<ProjectAction["status"], string>;
+const actionStatusLabelsEnglish = labelMap(canonicalActionStatusLabels, "en") as Record<ProjectAction["status"], string>;
 
 const nextActionStatus: Partial<Record<ProjectAction["status"], ProjectAction["status"]>> = {
   open: "accepted",
@@ -2188,6 +2174,20 @@ export function CodecoSupervisionApp() {
                   </button>
                 );
               })}
+              {/* On a phone the sidebar with the account card is hidden; signing out has
+                  to stay reachable on a shared field device. */}
+              <button
+                className="mobile-module-sign-out"
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  void requestSignOut();
+                }}
+              >
+                <span><LogOut size={19} /></span>
+                <span><strong>{text("Sign out", "Afmelden")}</strong><small>{currentUserName}</small></span>
+                <ChevronRight size={17} />
+              </button>
             </div>
           </section>
         </div>
@@ -4331,7 +4331,9 @@ function EntryModal({
               <div className="form-field">
                 <label htmlFor="priority">{text("Priority", "Prioriteit")}</label>
                 <select id="priority" value={priority} onChange={(event) => setPriority(event.target.value)}>
-                  <option>{text("Low", "Laag")}</option><option>{text("Normal", "Normaal")}</option><option>{text("High", "Hoog")}</option><option>{text("Critical", "Kritiek")}</option>
+                  {/* The value is the stored code; without it the translated label was submitted
+                      and every priority was silently saved as "normal". */}
+                  <option value="low">{text("Low", "Laag")}</option><option value="normal">{text("Normal", "Normaal")}</option><option value="high">{text("High", "Hoog")}</option><option value="critical">{text("Critical", "Kritiek")}</option>
                 </select>
               </div>
             ) : (

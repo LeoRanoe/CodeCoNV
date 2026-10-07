@@ -13,7 +13,11 @@ function allowedConnectSources() {
   for (const candidate of [process.env.NEXT_PUBLIC_SUPABASE_URL]) {
     if (!candidate) continue;
     try {
-      sources.push(new URL(candidate).origin);
+      const origin = new URL(candidate);
+      sources.push(origin.origin);
+      // Realtime runs over a websocket on the same host; *.supabase.co is covered above, a
+      // custom domain or a local stack is not.
+      sources.push(`${origin.protocol === "http:" ? "ws:" : "wss:"}//${origin.host}`);
     } catch {
       // Invalid values fail the application configuration check; never add them to CSP.
     }

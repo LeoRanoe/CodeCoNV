@@ -6373,7 +6373,10 @@ textarea:focus-visible {
   text-transform: uppercase;
 }
 
-.workspace-current-module > strong {
+.workspace-current-module > h2 {
+  margin: 0;
+  font: inherit;
+  font-weight: 700;
   color: var(--ink-900);
   font-size: 12px;
   grid-column: 1;
