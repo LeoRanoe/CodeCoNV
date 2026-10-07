@@ -87,6 +87,7 @@ import {
   unsentWorkCount,
 } from "@/lib/offline/account-isolation";
 import { setActiveOfflineUser } from "@/lib/offline/idb";
+import { userFacingError } from "@/lib/user-facing-error";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import { validAccessToken } from "@/lib/supabase/access-token";
 import {
@@ -1106,10 +1107,13 @@ export function CodecoSupervisionApp() {
           "Op dit apparaat opgeslagen en wordt vanzelf verstuurd zodra er verbinding is.",
         )
         : successMessage);
-      return result;
+      // Callers test the result for truth to know the save succeeded; an operation that
+      // returns nothing (Promise<void>) must not read as a failure, or the dialog stays open
+      // after a successful save — which is exactly what the daily questions did.
+      return (result === undefined ? true : result) as T;
     } catch (error) {
       setSyncState("error");
-      setToast(error instanceof Error ? `${text("Save failed", "Opslaan mislukt")}: ${error.message}` : text("Save failed. Try again.", "Opslaan mislukt. Probeer opnieuw."));
+      setToast(userFacingError(error, text));
       return null;
     }
   };
@@ -2388,7 +2392,11 @@ export function CodecoSupervisionApp() {
           onChangeBuilding={setContextBuildingId}
           close={() => { setModal(null); setContextBuildingId(null); }}
           initialAnswers={contextDailyCloseoutAnswers}
-          projectStartAnswers={contextProjectStartAnswers}
+          // Weather is site-wide: closing all buildings at once takes it from the day's
+          // recorded start instead of leaving the "automatic" weather empty and blocking.
+          projectStartAnswers={contextProjectStartAnswers ?? (contextIsAllBuildings
+            ? projectStartAnswers ?? projectStartFromRow(dayQuery.data?.startChecks[0] ?? null)
+            : null)}
           save={async (answers) => {
             const targetBuildings = contextIsAllBuildings ? selectedProject.buildings : [contextBuilding!];
             const saved = await runSynced(

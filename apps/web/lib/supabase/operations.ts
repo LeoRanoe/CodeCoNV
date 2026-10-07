@@ -541,8 +541,10 @@ export type RecordBuilding = {
   building_id: string;
 };
 
-function fail(error: { message: string } | null) {
-  if (error) throw new Error(error.message);
+function fail(error: { message: string; code?: string } | null) {
+  // The SQLSTATE travels with the error so the screen can explain it in plain words
+  // (lib/user-facing-error.ts) instead of showing the database's own sentence.
+  if (error) throw Object.assign(new Error(error.message), { code: error.code });
 }
 
 function rpcSignatureMissing(error: { message: string } | null, functionName: string) {

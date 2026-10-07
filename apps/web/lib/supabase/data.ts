@@ -171,8 +171,9 @@ export type AttendanceInput = {
   notes?: string;
 };
 
-function fail(error: { message: string } | null) {
-  if (error) throw new Error(error.message);
+function fail(error: { message: string; code?: string } | null) {
+  // Keep the SQLSTATE so the screen can explain the failure (lib/user-facing-error.ts).
+  if (error) throw Object.assign(new Error(error.message), { code: error.code });
 }
 
 function schemaColumnMissing(error: { message: string } | null, column: string) {
