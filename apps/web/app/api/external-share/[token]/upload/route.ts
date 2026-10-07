@@ -92,6 +92,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       throw new Error("De beveiligde upload kon niet worden gestart.");
     }
   } catch (error) {
-    return storageErrorResponse(error);
+    return storageErrorResponse(error, request, "external_share");
   }
 }

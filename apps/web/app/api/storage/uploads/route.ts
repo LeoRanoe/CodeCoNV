@@ -221,6 +221,6 @@ export async function POST(request: Request) {
       throw new Error("Vercel Blob kon geen beveiligde upload-URL aanmaken.");
     }
   } catch (error) {
-    return storageErrorResponse(error);
+    return storageErrorResponse(error, request, "storage");
   }
 }

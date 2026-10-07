@@ -60,6 +60,6 @@ export async function POST(request: Request) {
       verified: backup.status === "verified" || backup.status === "skipped",
     });
   } catch (error) {
-    return storageErrorResponse(error);
+    return storageErrorResponse(error, request, "backup");
   }
 }

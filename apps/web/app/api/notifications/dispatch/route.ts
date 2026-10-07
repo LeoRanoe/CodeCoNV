@@ -35,6 +35,6 @@ export async function POST(request: Request) {
     const failed = push.failed > 0 || Boolean(email?.failed);
     return storageJson({ ok: !failed, created: Number(refresh.data ?? 0), push, email }, failed ? 502 : 200);
   } catch (error) {
-    return storageErrorResponse(error);
+    return storageErrorResponse(error, request, "notification");
   }
 }

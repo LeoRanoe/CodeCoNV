@@ -1,3 +1,4 @@
+import { logEvent, requestIdFrom, type LogCategory } from "@/lib/observability/log";
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 
 type StorageAuthContext = {
@@ -63,12 +64,34 @@ export function createStorageAdminClient() {
   });
 }
 
-export function storageErrorResponse(error: unknown) {
-  const message = error instanceof Error ? error.message : "";
+/**
+ * Errors that this code throws on purpose carry a Dutch sentence meant for the user. Anything
+ * else — a PostgREST/Postgres error, a provider failure, a network error — is a technical
+ * detail: it goes to the log under a reference, and the user gets a plain sentence with that
+ * reference instead of database internals.
+ */
+function isTechnicalError(error: unknown, message: string) {
+  if (!message) return true;
+  const code = (error as { code?: unknown } | null)?.code;
+  if (typeof code === "string" && code.length > 0) return true;
+  return /permission denied|violates|relation |column |syntax|does not exist|duplicate key|JWT|PGRST|fetch failed|ECONN|ETIMEDOUT|socket|undefined|null value|BLOB_|STORED_BLOB/i.test(message);
+}
+
+export function storageErrorResponse(error: unknown, request?: Request, category: LogCategory = "api") {
+  const message = error instanceof Error ? error.message : String((error as { message?: unknown } | null)?.message ?? "");
   if (message === "STORAGE_AUTH_REQUIRED") return storageJson({ error: "Aanmelden is vereist." }, 401);
   if (message === "STORAGE_AUTH_EXPIRED") return storageJson({ error: "Je sessie is verlopen." }, 401);
+  const requestId = requestIdFrom(request);
+  logEvent("error", category, "request_failed", {
+    requestId,
+    path: request ? new URL(request.url).pathname : undefined,
+    error,
+  });
   if (message === "STORAGE_SUPABASE_CONFIGURATION_MISSING") {
-    return storageJson({ error: "De beveiligde koppeling voor bestandsopslag ontbreekt." }, 503);
+    return storageJson({ error: "De beveiligde koppeling voor bestandsopslag ontbreekt.", reference: requestId }, 503);
   }
-  return storageJson({ error: message || "De private bestandsopslag kon de aanvraag niet verwerken." }, 500);
+  const userMessage = isTechnicalError(error, message)
+    ? "De aanvraag kon niet worden verwerkt. Er is niets als opgeslagen gemarkeerd; probeer het opnieuw."
+    : message;
+  return storageJson({ error: `${userMessage} (referentie ${requestId.slice(0, 12)})`, reference: requestId }, 500);
 }

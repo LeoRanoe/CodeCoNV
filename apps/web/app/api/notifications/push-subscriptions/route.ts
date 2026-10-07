@@ -64,6 +64,6 @@ export async function POST(request: Request) {
     await sendPushVerification(input.data);
     return storageJson({ ok: true, verified: true });
   } catch (error) {
-    return storageErrorResponse(error);
+    return storageErrorResponse(error, request, "notification");
   }
 }

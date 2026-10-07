@@ -63,6 +63,6 @@ export async function GET(
       },
     });
   } catch (error) {
-    return storageErrorResponse(error);
+    return storageErrorResponse(error, request, "storage");
   }
 }

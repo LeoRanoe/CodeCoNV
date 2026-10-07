@@ -55,6 +55,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     if (update.error || !update.data) throw new Error("De bewijsfoto is geüpload maar kon niet worden bevestigd.");
     return storageJson({ fileId: file.id, sha256: input.data.sha256 });
   } catch (error) {
-    return storageErrorResponse(error);
+    return storageErrorResponse(error, request, "external_share");
   }
 }

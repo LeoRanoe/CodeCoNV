@@ -89,6 +89,6 @@ export async function POST(request: Request) {
     }
     return storageJson({ fileId: file.id, sha256: input.data.sha256 });
   } catch (error) {
-    return storageErrorResponse(error);
+    return storageErrorResponse(error, request, "storage");
   }
 }
