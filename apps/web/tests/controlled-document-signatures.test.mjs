@@ -58,3 +58,11 @@ test("change order signatures come from the record", () => {
   assert.equal(result.contractor.signedAt, "10 Oct 2026, 09:00 SRT");
   assert.equal(result.supervision.name, "Ivo");
 });
+
+test("the release identifier names the newest migration the build expects", async () => {
+  const { readdir, readFile } = await import("node:fs/promises");
+  const names = (await readdir(new URL("../../../supabase/migrations/", import.meta.url))).filter((name) => name.endsWith(".sql")).sort();
+  const newest = names.at(-1).split("_")[0];
+  const source = await readFile(new URL("../lib/release.ts", import.meta.url), "utf8");
+  assert.match(source, new RegExp(`expectedSchemaVersion = "${newest}"`));
+});

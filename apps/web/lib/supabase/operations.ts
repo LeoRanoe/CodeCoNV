@@ -212,6 +212,8 @@ export type RegisterEntry = {
   signed_by?: string | null;
   signed_at?: string | null;
   signature_image?: string | null;
+  /** Row version; an edit is refused when somebody else changed the record in the meantime. */
+  version?: number;
 };
 
 export type FileRecord = {
@@ -613,7 +615,7 @@ export async function loadProjectOperations(
     client.from("findings").select("id,building_id,location_node_id,finding_number,finding_type,title,description,severity,priority,status,responsible_party_id,assigned_user_id,due_at,cause,proposed_correction,final_measure,issue_management,verified_by,verified_at,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
     client.from("finding_progress_updates").select("id,finding_id,progress_percent,disposition,note,inspected_at,created_at").eq("project_id", projectId).order("inspected_at", { ascending: false }).limit(1000),
     client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,hse_category,title,description,severity,status,confidential,immediate_measure,occurred_at,issue_type,issue_category,immediate_actions,immediate_action_other,responsible_person,responsible_user_id,due_at,priority,root_cause,corrective_action,notes,latitude,longitude,location_label,signed_by,signed_at,signature_image").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100),
-    client.from("project_register_entries").select("id,building_id,location_node_id,register_type,entry_number,title,status,occurred_at,due_at,details,signed_by,signed_at,signature_image").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(5000),
+    client.from("project_register_entries").select("id,building_id,location_node_id,register_type,entry_number,title,status,occurred_at,due_at,details,signed_by,signed_at,signature_image,version").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(5000),
     client.from("boq_progress_updates").select("id,register_entry_id,building_id,progress_percent,quantity_completed,note,recorded_at,created_at").eq("project_id", projectId).order("recorded_at", { ascending: false }).limit(5000),
     client.from("files").select("id,building_id,folder_id,original_name,mime_type,size_bytes,category,status,document_code,created_at").eq("project_id", projectId).neq("status", "deleted").order("created_at", { ascending: false }).limit(500),
     client.from("project_settings").select("id,project_id,report_prefix,default_language,max_file_size_mb,notification_lead_hours,email_notifications_enabled,push_notifications_enabled,retention_days,branding,modules,signing_workflow,configuration_status,default_shift_start,default_shift_end,disciplines,finding_deadlines,report_sections,default_units,required_location_depth,report_header,report_footer").eq("project_id", projectId).maybeSingle(),
@@ -1509,6 +1511,8 @@ export async function updateRegisterRecord(client: SupabaseClient, input: {
   dueAt?: string | null;
   details: Record<string, unknown>;
   signature?: { name: string; signedAt: string; image: string } | null;
+  /** The version the edit started from; a record changed since then is not overwritten. */
+  expectedVersion?: number;
 }) {
   const modernUpdate = {
     building_id: input.buildingId,
@@ -1520,12 +1524,15 @@ export async function updateRegisterRecord(client: SupabaseClient, input: {
     signed_at: input.signature?.signedAt || null,
     signature_image: input.signature?.image || null,
   };
-  let result = await client.from("project_register_entries").update(modernUpdate).eq("id", input.id).select("id,building_id,location_node_id,register_type,entry_number,title,status,occurred_at,due_at,details,signed_by,signed_at,signature_image").single();
+  const sameVersion = <T extends { eq: (column: string, value: number) => T }>(query: T) => (input.expectedVersion === undefined ? query : query.eq("version", input.expectedVersion));
+  let result = await sameVersion(client.from("project_register_entries").update(modernUpdate).eq("id", input.id)).select("id,building_id,location_node_id,register_type,entry_number,title,status,occurred_at,due_at,details,signed_by,signed_at,signature_image,version").single();
   if (schemaFeatureMissing(result.error, ["signed_by", "signed_at", "signature_image"])) {
     const { signed_by: _signedBy, signed_at: _signedAt, signature_image: _signatureImage, ...withoutSignature } = modernUpdate;
     void _signedBy; void _signedAt; void _signatureImage;
-    result = await client.from("project_register_entries").update(withoutSignature).eq("id", input.id).select("id,building_id,location_node_id,register_type,entry_number,title,status,occurred_at,due_at,details").single();
+    result = await sameVersion(client.from("project_register_entries").update(withoutSignature).eq("id", input.id)).select("id,building_id,location_node_id,register_type,entry_number,title,status,occurred_at,due_at,details").single();
   }
+  // Nothing matched the version we started from: somebody else saved or answered the record first.
+  if (input.expectedVersion !== undefined && (result.error as { code?: string } | null)?.code === "PGRST116") throw new Error("This record was changed by someone else");
   fail(result.error);
   await setRecordBuildings(client, { projectId: input.projectId, recordType: "register_entry", recordId: input.id, buildingIds: input.buildingIds });
   return { ...(result.data as RegisterEntry), building_ids: input.buildingIds };

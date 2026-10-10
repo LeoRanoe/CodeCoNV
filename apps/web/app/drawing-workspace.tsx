@@ -924,7 +924,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
       renderTask?.cancel();
       void loadingTask?.destroy().catch(() => undefined);
     };
-  }, [mimeType, onDocumentDetails, onPageCount, pageNumber, previewUrl, renderWidth, text]);
+  }, [file.id, mimeType, onDocumentDetails, onPageCount, pageNumber, previewUrl, renderWidth, text]);
 
   const normalizedPoint = (clientX: number, clientY: number): NormalizedPoint => {
     const surface = surfaceRef.current;

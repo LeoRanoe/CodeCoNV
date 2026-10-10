@@ -2681,6 +2681,7 @@ function ProjectOperations({
             dueAt: registerForm.dueDate || null,
             details: registerInput.details,
             signature: signatureFromDetails(registerInput.signedBy, registerInput.signedAt, registerInput.signatureImage),
+            expectedVersion: editingRegister?.version,
           });
           entry = updated;
         } else {
