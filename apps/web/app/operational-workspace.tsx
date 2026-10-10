@@ -76,7 +76,7 @@ import { ProjectDocumentsHome } from "@/app/project-documents-home";
 import { ProjectActionCenter, type ActionCenterView } from "@/app/project-action-center";
 import { RapidVerifyWorkspace } from "@/app/rapid-verify-workspace";
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
-import { findingStatusLabels as canonicalFindingStatusLabels, labelMap, statusText, typeText, codeText, optionText, severityText } from "@/lib/status-labels";
+import { findingStatusLabels as canonicalFindingStatusLabels, labelMap, statusText, typeText, codeText, optionText, severityText, partyTypeText } from "@/lib/status-labels";
 import { reportWeather, reportWind } from "@/lib/reports/report-vocabulary";
 import { userFacingError } from "@/lib/user-facing-error";
 import { anchorChecklistCodes } from "@/lib/checklists/anchor-library";
@@ -1173,7 +1173,14 @@ function ProjectOperations({
     useCallback(() => storedRecordDraft("issue", projectId), [projectId]),
     () => null,
   ), emptyFindingForm);
-  const [registerForm, setRegisterForm] = useState<ControlledDocumentDraft>({ ...emptyControlledDocumentDraft });
+  // Management's "Record external submission" opens the form it names. It used to open the
+  // default register (materials delivery) with the document type hidden behind "Record
+  // something else". The component is remounted when the intent changes, so the initial
+  // state is enough.
+  const [registerForm, setRegisterForm] = useState<ControlledDocumentDraft>({
+    ...emptyControlledDocumentDraft,
+    ...(externalSubmissionIntent ? { type: "rfi" } : {}),
+  });
   const [registerSignature, setRegisterSignature] = useState<HandwrittenSignature | null>(null);
   const [registerFiles, setRegisterFiles] = useState<File[]>([]);
   const [boqFile, setBoqFile] = useState<File | null>(null);
@@ -4303,7 +4310,7 @@ function ProjectOperations({
                 )}
                 {/* The party you address it to is the recipient; a second free-text name
                     next to it, plus reference fields nobody filled, are gone. */}
-                <label className="form-field"><span>{text("To:", "Aan:")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => { const party = parties.find((item) => item.id === event.target.value); setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value, requestedTo: party?.name ?? "" }); }}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name} · {party.type}</option>)}</select></label>
+                <label className="form-field"><span>{text("To:", "Aan:")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => { const party = parties.find((item) => item.id === event.target.value); setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value, requestedTo: party?.name ?? "" }); }}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name} · {partyTypeText(party.type, text)}</option>)}</select></label>
                 <label className="form-field"><span>{text("Attachments and page count", "Bijlagen en aantal pagina's")}</span><input value={registerForm.attachments} onChange={(event) => setRegisterForm({ ...registerForm, attachments: event.target.value })} /></label>
                 <label className="secondary-button file-button controlled-document-upload">
                   <Upload size={15} /> {registerFiles.length

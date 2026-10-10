@@ -1403,7 +1403,7 @@ Kernflows die nooit zonder geautomatiseerde end-to-endtest mogen worden gewijzig
 ### 20.14 Technische keuzes die bewust niet worden gemaakt
 
 - geen AI-, ML-, OCR- of spraakdiensten;
-- geen offline database, service-worker synchronisatielaag of conflictengine;
+- geen conflictengine: offline worden alleen *nieuwe* registraties (bevinding, HSE-melding, registeritem, actie, foto, tekeningpin) op het toestel bewaard en bij verbinding vanzelf verstuurd; wijzigingen aan bestaande centrale records worden offline niet in de wachtrij gezet. (Bijgewerkt 10-10-2026: sinds 02-08-2026 bestaat er wél een offline opslag- en synchronisatielaag; zie `docs/operations/offline-security-model.md`.)
 - geen microservices voordat schaalmetingen dat echt noodzakelijk maken;
 - geen algemene Node API-server voor CRUD dat veilig via Supabase RLS kan;
 - geen Redux als standaard globale opslag; server-state hoort in TanStack Query en formulierstate lokaal in het formulier;

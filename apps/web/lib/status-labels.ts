@@ -173,6 +173,17 @@ export const recordTypeLabels: Labels = {
   manual: { en: "Manual", nl: "Handmatig" },
 };
 
+/** The role a company plays on the project. */
+export const partyTypeLabels: Labels = {
+  client: { en: "Client", nl: "Opdrachtgever" },
+  supervisor: { en: "Supervision", nl: "Supervisie" },
+  contractor: { en: "Contractor", nl: "Aannemer" },
+  subcontractor: { en: "Subcontractor", nl: "Onderaannemer" },
+  supplier: { en: "Supplier", nl: "Leverancier" },
+  consultant: { en: "Consultant", nl: "Adviseur" },
+  other: { en: "Other", nl: "Overig" },
+};
+
 export const priorityLabels: Labels = {
   low: { en: "Low", nl: "Laag" },
   normal: { en: "Normal", nl: "Normaal" },
@@ -194,9 +205,15 @@ export const statusText = (code: string | null | undefined, text: Translate) => 
 /** A stored record, register or location type in the words of the interface language. */
 export const typeText = (code: string | null | undefined, text: Translate) => translated(recordTypeLabels, code, text);
 export const priorityText = (code: string | null | undefined, text: Translate) => translated(priorityLabels, code, text);
+export const partyTypeText = (code: string | null | undefined, text: Translate) => translated(partyTypeLabels, code, text);
 export const severityText = (code: string | null | undefined, text: Translate) => translated(severityLabels, code, text);
 
 const decisionLabels: Labels = {
+  // Formal responses to a controlled document (wording of the response form).
+  conditionally_approved: { en: "Conditionally approved", nl: "Voorwaardelijk goedgekeurd" },
+  approved_with_comments: { en: "Approved with comments", nl: "Goedgekeurd met opmerkingen" },
+  clarification_needed: { en: "Clarification needed", nl: "Verduidelijking nodig" },
+  correct_and_resubmit: { en: "Correct and resubmit", nl: "Corrigeren en opnieuw indienen" },
   approved_as_noted: { en: "Approved as noted", nl: "Goedgekeurd met opmerkingen" },
   revise_resubmit: { en: "Revise and resubmit", nl: "Herzien en opnieuw indienen" },
   for_information: { en: "For information", nl: "Ter informatie" },

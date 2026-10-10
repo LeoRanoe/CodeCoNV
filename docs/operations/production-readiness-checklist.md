@@ -3,6 +3,8 @@
 Laatst bijgewerkt: 18-07-2026  
 Eigenaar checklist: CODECO N.V.
 
+> Technische stand, blokkades en releaseprocedure staan in [`production-readiness.md`](production-readiness.md) (bijgewerkt 10-10-2026). Deze lijst is CODECO's eigen go-livechecklist.
+
 Gebruik deze lijst vóór formele ingebruikname. Dezelfde items staan centraal in **Meer → Beheer → Productiegereedheid**. Sla hier en in de app nooit wachtwoorden, herstelcodes, client secrets, refresh tokens of service keys op. Noteer alleen wie iets heeft gecontroleerd, wanneer en waar het bewijs intern wordt bewaard.
 
 ## 1. Accounts die CODECO nog moet aanmaken of overnemen

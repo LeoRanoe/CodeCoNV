@@ -23,12 +23,12 @@ go-live checklist, Dutch), `production-fresh-start.md`.
 | 6 | High | `BACKUP_BLOB_READ_WRITE_TOKEN` is set, but it is not confirmed that it belongs to a different store than `BLOB_READ_WRITE_TOKEN` | The app refuses to run backups in production when both are the same; the cron would then report failure every day | Confirm in Vercel → Storage; create a second private store if needed | CODECO (Vercel owner) |
 | 7 | Medium | Leaked-password protection is disabled in Supabase Auth | Known-breached passwords are accepted | Enable under Auth → Providers → Email (needs a paid Supabase plan) | CODECO owner of Supabase |
 | 8 | Medium | `RESEND_API_KEY` / `NOTIFICATION_FROM_EMAIL` are not set in production | E-mail notifications are skipped (recorded as `skipped`, not lost); push and in-app still work | Create the sender, verify SPF/DKIM/DMARC, set both variables | CODECO IT |
-| 9 | Medium | Branch protection on `main` has not been verified | The release gate only protects production if it is required | Require the three `Quality gates` jobs and one review on `main` | Repository owner |
+| 9 | Medium | `main` has no branch protection, and cannot have it: the repository is private on a GitHub Free plan (the API answers "Upgrade to GitHub Pro") | The release gate runs on every push but nothing forces a merge to wait for it | Upgrade the plan (or move the repository to a CODECO organization) and require the three `Quality gates` jobs plus one review on `main`; until then, merge only when the checks are green | Repository owner |
 | 10 | Medium | Evidence upload, photo markup, 360° and drawing pins were not exercised end to end in this round | They need a private Blob store; the local stack has none (§4) | Run `media-and-sharing.spec.ts` against a preview with its own store (blocker 4) | Developer |
 
 ## 2. What changed on the branch
 
-26 commits, 88 files. Per area:
+Per area:
 
 - **Database** — contractor NCR completion through the share link repaired and bounded;
   report signing repaired; role defaults restored (submission rights) and pinned by a test;
@@ -52,7 +52,9 @@ go-live checklist, Dutch), `production-fresh-start.md`.
   contractor page; formal PDF/Word in Dutch, Suriname time, real page numbers.
 - **Marketing site** — permanent redirects from the previous site's URLs; `/share/` kept out
   of search engines.
-- **CI** — a browser-flow job that cannot silently skip (`CODECO_E2E_REQUIRED=1`).
+- **CI** — a browser-flow job that cannot silently skip (`CODECO_E2E_REQUIRED=1`): day report
+  lifecycle, controlled document, online/offline create and sync, account isolation on a
+  shared device, offline boot, and the layout walk over every module and width.
 
 ## 3. How to verify (local)
 
@@ -87,7 +89,7 @@ local stack; the seed script stops when the URL is not local.
 | B — NCR with engineer signature → share link → contractor proposes correction with name, position, signature → ready for verification → QC closes with signature | By hand against the local stack; database state checked afterwards. Boundaries in pgTAP 015 | Pass |
 | C — visual marker / 360° | **Not run** — needs a Blob store. Database side covered by pgTAP 006 | Open (blocker 10) |
 | D — two-building day: start, workforce per building, daily questions, check, submit, approve and freeze, sign | `day-report-lifecycle.spec.ts` | Pass |
-| E — controlled document (RFI/RFA/WCR) with respondent | **Not run in the browser this round.** Database contract covered by pgTAP | Open |
+| E — controlled document: RFI recorded against a party, numbered, answered by a named respondent, response kept after reload | `controlled-document.spec.ts` (found and fixed: "Record external submission" opened a materials-delivery form). RFA, WCR and WIR use the same form and response path but were not each driven separately | Pass (RFI) |
 | F — create offline, reconnect, automatic sync, queue empty | `offline-create-and-sync.spec.ts` | Pass |
 | G — second account on the same device cannot read the first account's offline data | `offline-account-isolation.spec.ts` | Pass |
 | H — formal PDF and Word from the frozen version | `day-report-lifecycle.spec.ts` downloads both; inspected by hand: 4 pages, numbered, Dutch, Suriname time, signature image | Pass |
