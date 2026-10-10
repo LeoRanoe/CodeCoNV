@@ -77,6 +77,7 @@ import { ProjectDocumentsHome } from "@/app/project-documents-home";
 import { ProjectActionCenter, type ActionCenterView } from "@/app/project-action-center";
 import { RapidVerifyWorkspace } from "@/app/rapid-verify-workspace";
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
+import { controlledDocumentSignatures, documentSignatureState } from "@/lib/reports/controlled-document-signatures.mjs";
 import { findingStatusLabels as canonicalFindingStatusLabels, labelMap, statusText, typeText, codeText, optionText, severityText, partyTypeText } from "@/lib/status-labels";
 import { reportWeather, reportWind } from "@/lib/reports/report-vocabulary";
 import { userFacingError } from "@/lib/user-facing-error";
@@ -1805,7 +1806,8 @@ function ProjectOperations({
         : registerForm.requestedTo.trim().length >= 2
     )
     && (registerForm.type !== "inspection_request" || Boolean(registerForm.readyDate))
-    && (registerForm.type !== "technical_instruction" || (registerForm.reason.trim().length >= 3 && Boolean(registerForm.dueDate)))
+    // The reason is derived from the description when the document is saved; only the deadline is asked.
+    && (registerForm.type !== "technical_instruction" || Boolean(registerForm.dueDate))
     // The change order carries its own required boxes, in its own module.
     && (registerForm.type !== "change_order" || changeOrderReady(changeOrder))
   );
@@ -4404,8 +4406,10 @@ function ProjectOperations({
                     ? text("Record the signature on the received form. CODECO signs in the formal response.", "Leg de handtekening op het ontvangen formulier vast. CODECO tekent bij de formele reactie.")
                     : text("By signing you issue this document under your own name.", "Met je handtekening geef je dit document onder je eigen naam uit.")}
                   hint={text("Signature, name and time are stored with the document.", "Handtekening, naam en tijdstip worden bij het document bewaard.")}
-                  nameSuggestion={registerForm.issuerName.trim() || (submittedRegister ? "" : currentUserName)}
-                  nameOptions={submittedRegister ? [] : documentIssuerOptions}
+                  nameSuggestion={submittedRegister ? registerForm.issuerName.trim() : currentUserName}
+                  nameOptions={[]}
+                  lockName={!submittedRegister}
+                  locked={Boolean(editingDocument?.signature_image || editingDocument?.details?.signature_image)}
                   disabled={submittedRegister && !registerForm.issuerName.trim()}
                   disabledHint={text("Fill in who submitted the form first.", "Vul eerst in wie het formulier heeft ingediend.")}
                   value={signatureFromDetails(registerForm.signedBy, registerForm.signedAt, registerForm.signatureImage)}
@@ -4651,6 +4655,8 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
     respondentPosition: "",
     respondentCompany: "CODECO N.V.",
   });
+  /** The recipient's handwritten signature on the formal response; the server stamps who captured it. */
+  const [responseSignature, setResponseSignature] = useState<HandwrittenSignature | null>(null);
   const decisions = [
     ["approved", text("Approved", "Goedgekeurd")],
     ["conditionally_approved", text("Conditionally approved", "Voorwaardelijk goedgekeurd")],
@@ -4706,10 +4712,21 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
                 file stays the attachment; this is the message that announces it. */}
             <button className="whatsapp-button" type="button" onClick={() => openWhatsApp(contractorMessage(entry))}><MessageCircle size={16} /> {text("Send to contractor", "Naar aannemer sturen")}</button>
             <button className="secondary-button" type="button" onClick={() => openSms(contractorMessage(entry))}><Smartphone size={15} /> {text("Send as SMS", "Als SMS sturen")}</button>
-            <ReportDownloadButtons disabled={busy} onDownloadPdf={() => import("@/lib/reports/controlled-document-pdf").then(({ downloadControlledDocumentPdf }) => downloadControlledDocumentPdf(entry))} onDownloadWord={() => import("@/lib/reports/controlled-document-docx").then(({ downloadControlledDocumentDocx }) => downloadControlledDocumentDocx(entry))} />{!["closed", "cancelled"].includes(entry.status) ? <button className="primary-button" type="button" disabled={busy} onClick={() => { setActive(active === entry.id ? null : entry.id); setResponse({ decision: entry.register_type === "technical_instruction" || entry.register_type === "change_order" ? "acknowledged" : "approved", comments: "", respondentName: currentUserName, respondentPosition: "", respondentCompany: "CODECO N.V." }); }}><FileCheck2 size={15} /> {text("Record formal response", "Leg formeel antwoord vast")}</button> : null}</div>
+            <ReportDownloadButtons disabled={busy} onDownloadPdf={() => import("@/lib/reports/controlled-document-pdf").then(({ downloadControlledDocumentPdf }) => downloadControlledDocumentPdf(entry))} onDownloadWord={() => import("@/lib/reports/controlled-document-docx").then(({ downloadControlledDocumentDocx }) => downloadControlledDocumentDocx(entry))} />{!["closed", "cancelled"].includes(entry.status) ? <button className="primary-button" type="button" disabled={busy} onClick={() => { setActive(active === entry.id ? null : entry.id); const recipientAnswers = entry.register_type === "technical_instruction" || entry.register_type === "change_order"; setResponse({ decision: recipientAnswers ? "acknowledged" : "approved", comments: "", respondentName: recipientAnswers ? "" : currentUserName, respondentPosition: "", respondentCompany: recipientAnswers ? String(details.requested_to ?? "") : "CODECO N.V." }); setResponseSignature(null); }}><FileCheck2 size={15} /> {text("Record formal response", "Leg formeel antwoord vast")}</button> : null}</div>
             {historyActive === entry.id ? <section className="controlled-document-history">
               <div><span>{text("Created / issued", "Aangemaakt / uitgegeven")}</span><strong>{formatDate(entry.occurred_at, locale)}</strong><small>{String(details.issuer_name ?? details.issued_by ?? currentUserName)} · {String(details.issuer_company ?? "CODECO N.V.")}</small></div>
               <div><span>{text("Current status", "Huidige status")}</span><strong>{statusText(entry.status, text)}</strong><small>{responseData.decision ? `${text("Decision", "Besluit")}: ${codeText(String(responseData.decision), text)}` : text("No formal decision recorded yet", "Nog geen formeel besluit vastgelegd")}</small></div>
+              {(() => {
+                const signatures = controlledDocumentSignatures(entry);
+                const state = documentSignatureState(entry);
+                const stateLabel = state === "acknowledged" ? text("Acknowledged", "Bevestigd") : state === "issued" ? text("Issued · awaiting acknowledgement", "Uitgegeven · wacht op bevestiging") : text("Not signed yet", "Nog niet ondertekend");
+                return <div className="controlled-history-signatures">
+                  <span>{text("Signatures", "Handtekeningen")}</span>
+                  <strong>{stateLabel}</strong>
+                  <small>{text("Issuer", "Uitgever")}: {signatures.issuer.signed ? `${signatures.issuer.name} · ${signatures.issuer.signedAt}` : text("not signed", "niet ondertekend")}</small>
+                  <small>{text("Recipient", "Ontvanger")}: {signatures.recipient.signed ? `${signatures.recipient.name} · ${signatures.recipient.signedAt}${signatures.recipient.onDevice && signatures.recipient.capturedBy ? ` · ${text("signed on the device of", "getekend op het toestel van")} ${signatures.recipient.capturedBy}` : ""}` : text("not signed", "niet ondertekend")}</small>
+                </div>;
+              })()}
               <div className="controlled-history-description"><span>{text("Complete content", "Volledige inhoud")}</span><p>{String(details.description ?? details.request ?? details.instruction ?? text("No description supplied.", "Geen omschrijving ingevoerd."))}</p></div>
               {attachmentFiles.length ? <div className="controlled-history-attachments"><span>{text("Uploaded attachments", "Geüploade bijlagen")}</span>{attachmentFiles.map((file, index) => {
                 const fileId = String(file.file_id ?? "");
@@ -4736,7 +4753,27 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
               <div className="form-grid-2"><label className="form-field"><span>{text("Decision / response code", "Besluit / antwoordcode")}</span><select value={response.decision} onChange={(event) => setResponse({ ...response, decision: event.target.value })}>{decisions.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label className="form-field"><span>{text("Respondent name", "Naam respondent")}</span><input value={response.respondentName} onChange={(event) => setResponse({ ...response, respondentName: event.target.value })} /></label></div>
               <div className="form-grid-2"><label className="form-field"><span>{text("Position", "Functie")}</span><input value={response.respondentPosition} onChange={(event) => setResponse({ ...response, respondentPosition: event.target.value })} /></label><label className="form-field"><span>{text("Company", "Bedrijf")}</span><input value={response.respondentCompany} onChange={(event) => setResponse({ ...response, respondentCompany: event.target.value })} /></label></div>
               <label className="form-field"><span>{text("Formal comments / remarks", "Formele opmerkingen")}</span><textarea rows={3} value={response.comments} onChange={(event) => setResponse({ ...response, comments: event.target.value })} /><DictateButton onText={(transcript) => setResponse((current) => ({ ...current, comments: appendDictation(current.comments, transcript) }))} /></label>
-              <button className="primary-button" type="button" disabled={busy || response.respondentName.trim().length < 2 || response.comments.trim().length < 2} onClick={() => void run(() => respondToControlledDocument(client, entry.id, response), text(`${entry.entry_number} response stored in the audit trail.`, `Antwoord op ${entry.entry_number} in de auditgeschiedenis opgeslagen.`)).then((okay) => { if (okay) setActive(null); })}>{text("Confirm human response", "Bevestig menselijk antwoord")}</button>
+              {(() => {
+                // A document the issuer has signed is acknowledged by the recipient in writing.
+                const issued = Boolean(entry.signature_image || details.signature_image);
+                const needsSignature = issued && entry.register_type === "technical_instruction" && response.decision === "acknowledged";
+                const issuerName = String(entry.signed_by ?? details.signed_by ?? "").trim().toLowerCase();
+                const sameAsIssuer = Boolean(issuerName) && response.respondentName.trim().toLowerCase() === issuerName;
+                const signatureReady = !responseSignature || (response.respondentPosition.trim().length >= 2 && !sameAsIssuer);
+                return <>
+                  {issued ? <SignatureField
+                    label={text("Signature · recipient", "Handtekening · ontvanger")}
+                    declaration={text("By signing you acknowledge receipt of this document.", "Met je handtekening bevestig je de ontvangst van dit document.")}
+                    hint={needsSignature ? text("Required to acknowledge a technical instruction.", "Vereist om een technische instructie te bevestigen.") : text("Optional.", "Optioneel.")}
+                    nameSuggestion={response.respondentName}
+                    value={responseSignature}
+                    onChange={(signature) => { setResponseSignature(signature); if (signature?.name) setResponse((current) => ({ ...current, respondentName: signature.name })); }}
+                  /> : null}
+                  {responseSignature && sameAsIssuer ? <p className="field-error" role="alert">{text("The recipient cannot be the issuer of the document.", "De ontvanger kan niet de uitgever van het document zijn.")}</p> : null}
+                  {responseSignature && response.respondentPosition.trim().length < 2 ? <p className="field-error" role="alert">{text("Fill in the position of the person signing.", "Vul de functie in van wie tekent.")}</p> : null}
+                  <button className="primary-button" type="button" disabled={busy || response.respondentName.trim().length < 2 || response.comments.trim().length < 2 || (needsSignature && !responseSignature) || !signatureReady} onClick={() => void run(() => respondToControlledDocument(client, entry.id, { ...response, signatureImage: responseSignature?.image ?? null }), text(`${entry.entry_number} response stored in the audit trail.`, `Antwoord op ${entry.entry_number} in de auditgeschiedenis opgeslagen.`)).then((okay) => { if (okay) { setActive(null); setResponseSignature(null); } })}>{text("Confirm human response", "Bevestig menselijk antwoord")}</button>
+                </>;
+              })()}
             </div> : null}
           </article>;
         })}

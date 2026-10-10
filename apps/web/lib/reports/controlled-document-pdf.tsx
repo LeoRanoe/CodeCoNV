@@ -2,6 +2,7 @@
 import { Document, Image, Page, StyleSheet, Text, View, pdf } from "@react-pdf/renderer";
 import type { ControlledDocumentType } from "@/lib/forms/controlled-project-documents";
 import type { RegisterEntry } from "@/lib/supabase/operations";
+import { controlledDocumentSignatures, recipientCaptureNote } from "@/lib/reports/controlled-document-signatures.mjs";
 
 type Details = Record<string, unknown>;
 
@@ -65,8 +66,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return <><Text style={styles.sectionTitle}>{title}</Text><View style={styles.section}>{children}</View></>;
 }
 
-function Options({ values }: { values: string[] }) {
-  return <View style={styles.checks}>{values.map((item) => <Text style={styles.check} key={item}>[ ] {item}</Text>)}</View>;
+const optionKey = (value: string) => value.toLowerCase().replace(/[^a-z]/g, "");
+
+function Options({ values, selected = "" }: { values: string[]; selected?: string }) {
+  const chosen = optionKey(selected);
+  return <View style={styles.checks}>{values.map((item) => <Text style={styles.check} key={item}>[{chosen && optionKey(item) === chosen ? "X" : " "}] {item}</Text>)}</View>;
 }
 
 function humanizeToken(result: string) {
@@ -75,7 +79,7 @@ function humanizeToken(result: string) {
     .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
-function typeSpecificDetails(type: ControlledDocumentType, details: Details) {
+function typeSpecificDetails(type: ControlledDocumentType, details: Details, entry: RegisterEntry) {
   if (type === "inspection_request") {
     return <>
       <View style={styles.grid}><Cell label="Inspection category" value={text(details, "inspection_category")} right /><Cell label="Work ready" value={`${text(details, "ready_date")} ${text(details, "ready_time", "")}`} /></View>
@@ -85,8 +89,9 @@ function typeSpecificDetails(type: ControlledDocumentType, details: Details) {
   if (type === "technical_instruction") {
     return <>
       <View style={styles.grid}><Cell label="Discipline / priority" value={`${text(details, "discipline")} / ${text(details, "priority")}`} right /><Cell label="Related RFI / NCR / drawing" value={text(details, "related_reference")} /></View>
-      <Section title="REASON FOR INSTRUCTION"><Text style={styles.sectionText}>{text(details, "reason")}</Text></Section>
-      <Section title="REQUIRED ACTION"><Text style={styles.sectionText}>{text(details, "required_action")}</Text><Options values={["Proceed", "Stop work", "Revise", "Submit revised document", "Carry out inspection", "Other"]} /></Section>
+      {/* The reason is derived from the instruction when nobody wrote a separate one; do not print it twice. */}
+      {text(details, "reason").trim() !== text(details, "description").trim() ? <Section title="REASON FOR INSTRUCTION"><Text style={styles.sectionText}>{text(details, "reason")}</Text></Section> : null}
+      <Section title="REQUIRED ACTION"><Options values={["Proceed", "Stop work", "Revise", "Submit revised document", "Carry out inspection", "Other"]} selected={text(details, "required_action", "")} /></Section>
     </>;
   }
   if (type === "change_order") {
@@ -109,12 +114,24 @@ function typeSpecificDetails(type: ControlledDocumentType, details: Details) {
       {/* Section 5 and 6 of the client's form: the contractor acknowledges, supervision
           approves. The developer and contractor-acceptance columns are struck off. */}
       <Section title="ACKNOWLEDGEMENT · CONTRACTOR">
-        <Text style={styles.sectionText}>{[text(details, "contractor_representative"), text(details, "contractor_position")].filter((item) => item !== "—").join(" · ") || "Not acknowledged yet."}</Text>
-        {text(details, "contractor_remarks") !== "—" ? <Text style={styles.sectionText}>{text(details, "contractor_remarks")}</Text> : null}
-        {text(details, "contractor_signed_at") !== "—" ? <Text style={styles.sectionText}>Signed {String(text(details, "contractor_signed_at")).slice(0, 10)}</Text> : null}
+        {(() => {
+          const { contractor } = controlledDocumentSignatures(entry);
+          return <>
+            <Text style={styles.sectionText}>{[contractor.name, contractor.position].filter(Boolean).join(" · ") || "Not acknowledged yet."}</Text>
+            {contractor.remarks ? <Text style={styles.sectionText}>{contractor.remarks}</Text> : null}
+            {contractor.ink ? <Image src={contractor.ink} style={styles.signatureInk} /> : null}
+            {contractor.signedAt ? <Text style={styles.sectionText}>Signed {contractor.signedAt}</Text> : null}
+          </>;
+        })()}
       </Section>
       <Section title="APPROVAL · SUPERVISION">
-        <Text style={styles.sectionText}>{text(details, "supervision_signed_by", text(details, "supervision_name")) === "—" ? "Not approved yet." : `${text(details, "supervision_signed_by", text(details, "supervision_name"))}${text(details, "supervision_signed_at") === "—" ? "" : ` · ${String(text(details, "supervision_signed_at")).slice(0, 10)}`}`}</Text>
+        {(() => {
+          const { supervision } = controlledDocumentSignatures(entry);
+          return <>
+            <Text style={styles.sectionText}>{supervision.name ? `${supervision.name}${supervision.signedAt ? ` · ${supervision.signedAt}` : ""}` : "Not approved yet."}</Text>
+            {supervision.ink ? <Image src={supervision.ink} style={styles.signatureInk} /> : null}
+          </>;
+        })()}
       </Section>
     </>;
   }
@@ -133,9 +150,7 @@ function typeSpecificDetails(type: ControlledDocumentType, details: Details) {
 export function ControlledDocument({ entry, logoSource = "/codeco-logo-pdf.png" }: { entry: RegisterEntry; logoSource?: string }) {
   const type = entry.register_type as ControlledDocumentType;
   const details = entry.details ?? {};
-  const response = details.response && typeof details.response === "object" && !Array.isArray(details.response)
-    ? details.response as Details
-    : {};
+  const signatures = controlledDocumentSignatures(entry);
   return (
     <Document title={`${entry.entry_number} ${entry.title}`} author="CODECO N.V.">
       <Page size="A4" style={styles.page}>
@@ -148,38 +163,44 @@ export function ControlledDocument({ entry, logoSource = "/codeco-logo-pdf.png" 
         <View style={styles.grid}><Cell label="Issued by" value={`${text(details, "issued_by")} · ${text(details, "issuer_position")}`} right /><Cell label="Requested to / involved party" value={text(details, "requested_to")} /></View>
         <Section title="SUBJECT"><Text style={styles.sectionText}>{entry.title}</Text></Section>
         {type !== "environmental_report" ? <Section title={type === "technical_instruction" ? "INSTRUCTION" : type === "change_order" ? "CHANGE DESCRIPTION" : "REQUEST / DESCRIPTION"}><Text style={styles.sectionText}>{text(details, "description")}</Text></Section> : null}
-        {typeSpecificDetails(type, details)}
+        {typeSpecificDetails(type, details, entry)}
         <View style={styles.grid}><Cell label="Reference documents" value={text(details, "reference_documents")} right /><Cell label="Attachments / pages" value={text(details, "attachments")} /></View>
 
-        {/* The author signs this document in the app; the paper has to say so, otherwise
-            signing changes nothing for the party that receives it. */}
-        <Text style={styles.sectionTitle}>{["wcr", "rfi", "rfa", "inspection_request"].includes(type) ? "SUBMITTED AND SIGNED BY" : "ISSUED AND SIGNED BY"}</Text>
-        <View style={styles.signatureGrid}>
-          {[
-            // The name line carries the signature that was actually written in the app.
-            { label: "Name", result: text(details, "signed_by", text(details, "issued_by")), ink: typeof details.signature_image === "string" ? details.signature_image : null },
-            { label: "Position / company", result: [text(details, "signed_by_position", text(details, "issuer_position")), text(details, "issuer_company")].filter((item) => item !== "—" && item !== "").join(" · "), ink: null },
-            { label: "Date signed", result: text(details, "signed_at") === "—" ? "Not signed yet" : String(text(details, "signed_at")).slice(0, 10), ink: null },
-          ].map((line, index) => <View style={[styles.signature, index < 2 ? styles.borderRight : {}]} key={line.label}><Text style={styles.label}>{line.label}</Text>{line.ink ? <Image src={line.ink} style={styles.signatureInk} /> : <View style={styles.signatureLine} />}<Text>{line.result || " "}</Text></View>)}
-        </View>
+        {/* Issuer and recipient sign separately. The issuer's signature comes from the record, the
+            recipient's from the formal response, with the moment the server recorded in Suriname time. */}
+        {(() => {
+          const { issuer, recipient } = signatures;
+          const external = ["wcr", "rfi", "rfa", "inspection_request"].includes(type);
+          const recipientRows = [
+            { label: "Name", result: recipient.name || " ", ink: recipient.ink },
+            { label: "Position / company", result: [recipient.position, recipient.company].filter(Boolean).join(" · ") || " ", ink: null },
+            { label: recipient.signed ? "Signed" : "Responded", result: [recipient.signedAt, recipientCaptureNote(recipient)].filter(Boolean).join(" · ") || " ", ink: null },
+          ];
+          return <>
+            <Text style={styles.sectionTitle}>{external ? "SUBMITTED AND SIGNED BY" : "ISSUED AND SIGNED BY"}</Text>
+            <View style={styles.signatureGrid}>
+              {[
+                { label: "Name", result: issuer.name || " ", ink: issuer.ink },
+                { label: "Position / company", result: [issuer.position, issuer.company].filter(Boolean).join(" · ") || " ", ink: null },
+                { label: "Date signed", result: issuer.signed ? issuer.signedAt || " " : "Not signed yet", ink: null },
+              ].map((line, index) => <View style={[styles.signature, index < 2 ? styles.borderRight : {}]} key={line.label}><Text style={styles.label}>{line.label}</Text>{line.ink ? <Image src={line.ink} style={styles.signatureInk} /> : <View style={styles.signatureLine} />}<Text>{line.result}</Text></View>)}
+            </View>
 
-        <View style={styles.response} wrap={false}>
-          <Text style={styles.responseHeader}>{type === "technical_instruction" || type === "change_order" ? "CONTRACTOR ACKNOWLEDGEMENT / CLOSEOUT" : "ENGINEER / CLIENT RESPONSE"}</Text>
-          <View style={styles.section}>
-            <Text style={styles.label}>Decision / status</Text>
-            <Text style={styles.sectionText}>{humanizeToken(text(response, "decision", "Pending formal response"))}</Text>
-            <Text style={[styles.label, { marginTop: 6 }]}>Comments / remarks</Text>
-            <Text style={styles.sectionText}>{text(response, "comments", "No response recorded yet.")}</Text>
-          </View>
-          <View style={styles.signatureGrid}>
-            {[
-              ["Name", text(response, "respondent_name", "")],
-              ["Position / company", [text(response, "respondent_position", ""), text(response, "respondent_company", "")].filter((item) => item !== "—").join(" · ")],
-              ["Date / signature", text(response, "response_date", "")],
-            ].map(([label, result], index) => <View style={[styles.signature, index < 2 ? styles.borderRight : {}]} key={label}><Text style={styles.label}>{label}</Text><View style={styles.signatureLine} /><Text>{result || " "}</Text></View>)}
-          </View>
-        </View>
-        <Text style={styles.notice}>This PDF is generated from the controlled project register. Number, revision, project metadata, the author signature and the recorded response come from the central audit trail. A signature line stays blank until that human signatory confirms the document.</Text>
+            <View style={styles.response} wrap={false}>
+              <Text style={styles.responseHeader}>{type === "technical_instruction" || type === "change_order" ? "RECIPIENT ACKNOWLEDGEMENT / CLOSEOUT" : "ENGINEER / CLIENT RESPONSE"}</Text>
+              <View style={styles.section}>
+                <Text style={styles.label}>Decision / status</Text>
+                <Text style={styles.sectionText}>{humanizeToken(recipient.decision || "Pending formal response")}</Text>
+                <Text style={[styles.label, { marginTop: 6 }]}>Comments / remarks</Text>
+                <Text style={styles.sectionText}>{recipient.comments || "No response recorded yet."}</Text>
+              </View>
+              <View style={styles.signatureGrid}>
+                {recipientRows.map((line, index) => <View style={[styles.signature, index < 2 ? styles.borderRight : {}]} key={line.label}><Text style={styles.label}>{line.label}</Text>{line.ink ? <Image src={line.ink} style={styles.signatureInk} /> : <View style={styles.signatureLine} />}<Text>{line.result}</Text></View>)}
+              </View>
+            </View>
+          </>;
+        })()}
+        <Text style={styles.notice}>Generated from the controlled project register. Number, revision, signatures and the recorded response come from the audit trail; times are Suriname time.</Text>
         <Text style={styles.footer} fixed>CODECO N.V. · Controlled project document</Text>
       </Page>
     </Document>

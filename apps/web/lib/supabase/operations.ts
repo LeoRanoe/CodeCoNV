@@ -1547,6 +1547,8 @@ export async function respondToControlledDocument(client: SupabaseClient, entryI
   respondentName: string;
   respondentPosition: string;
   respondentCompany: string;
+  /** The recipient's handwritten signature (PNG data URL); the database records who captured it and when. */
+  signatureImage?: string | null;
 }) {
   const result = await client.rpc("respond_to_controlled_project_document", {
     p_entry_id: entryId,
@@ -1556,6 +1558,7 @@ export async function respondToControlledDocument(client: SupabaseClient, entryI
       respondent_name: response.respondentName.trim(),
       respondent_position: response.respondentPosition.trim(),
       respondent_company: response.respondentCompany.trim(),
+      ...(response.signatureImage ? { signature_image: response.signatureImage } : {}),
       response_date: new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(new Date()),
     },
     p_idempotency_key: `controlled-response:${crypto.randomUUID()}`,

@@ -27,6 +27,7 @@ export function SignaturePad({
   declaration,
   nameSuggestion = "",
   nameOptions = [],
+  lockName = false,
   close,
   save,
 }: {
@@ -36,6 +37,8 @@ export function SignaturePad({
   nameSuggestion?: string;
   /** Names this project knows, so signing for somebody else is a choice, not typing. */
   nameOptions?: string[];
+  /** The signatory is the signed-in account itself: the name is shown, not typed. */
+  lockName?: boolean;
   close: () => void;
   save: (signature: HandwrittenSignature) => void;
 }) {
@@ -202,7 +205,7 @@ export function SignaturePad({
         <div className="modal-body signature-body">
           <label className="form-field">
             <span>{text("Name of the signatory", "Naam van de ondertekenaar")}</span>
-            <input value={name} onChange={(event) => { setName(event.target.value); setError(""); }} list="signature-name-options" autoComplete="name" />
+            <input value={name} onChange={(event) => { setName(event.target.value); setError(""); }} list={lockName ? undefined : "signature-name-options"} autoComplete="name" readOnly={lockName} />
             {nameOptions.length ? <datalist id="signature-name-options">{nameOptions.map((option) => <option value={option} key={option} />)}</datalist> : null}
           </label>
 
@@ -247,6 +250,8 @@ export function SignatureField({
   hint,
   nameSuggestion = "",
   nameOptions = [],
+  lockName = false,
+  locked = false,
   value,
   onChange,
   disabled = false,
@@ -257,6 +262,9 @@ export function SignatureField({
   hint?: string;
   nameSuggestion?: string;
   nameOptions?: string[];
+  lockName?: boolean;
+  /** A stored signature that cannot be replaced or removed any more. */
+  locked?: boolean;
   value: HandwrittenSignature | null;
   onChange: (signature: HandwrittenSignature | null) => void;
   disabled?: boolean;
@@ -279,10 +287,10 @@ export function SignatureField({
           {/* A drawn signature is a data URL, which the image optimizer cannot handle. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={value!.image} alt={text(`Signature of ${value!.name}`, `Handtekening van ${value!.name}`)} />
-          <div className="signature-field-actions">
+          {locked ? null : <div className="signature-field-actions">
             <button className="ghost-button" type="button" disabled={disabled} onClick={() => setSigning(true)}><PenLine size={14} /> {text("Sign again", "Opnieuw tekenen")}</button>
             <button className="ghost-button" type="button" disabled={disabled} onClick={() => onChange(null)}><Eraser size={14} /> {text("Remove", "Verwijderen")}</button>
-          </div>
+          </div>}
         </div>
       ) : (
         <button className="secondary-button signature-open-button" type="button" disabled={disabled} onClick={() => setSigning(true)}>
@@ -295,6 +303,7 @@ export function SignatureField({
           declaration={declaration}
           nameSuggestion={value?.name || nameSuggestion}
           nameOptions={nameOptions}
+          lockName={lockName}
           close={() => setSigning(false)}
           save={(signature) => { onChange(signature); setSigning(false); }}
         />
