@@ -21,7 +21,6 @@ import {
   Search,
   ShieldAlert,
   ShieldCheck,
-  TimerOff,
   Users,
   Wrench,
   type LucideIcon,
@@ -147,16 +146,8 @@ export function ProjectWorkspaceHome({
       action: openWorkforce,
     },
     {
-      id: "delays",
-      label: text("Delays", "Vertragingen"),
-      icon: TimerOff,
-      tone: "orange",
-      action: () => openDailyWork("delays"),
-    },
-    {
-      /* The day's lost hours are recorded in the daily closeout, above. This is the other
-         kind of delay: the one that moves the finish date of the works, and that the
-         client's own PDR form has to evidence, have acknowledged and close out. */
+      /* Daily delays remain available in the daily work register. The PDR is the
+         separate formal report for schedule changes that need evidence and sign-off. */
       id: "delay-report",
       label: text("Project Delay Report (PDR)", "Vertragingsrapport (PDR)"),
       icon: CalendarClock,

@@ -3803,6 +3803,12 @@ function ProjectOperations({
               className={registerFormClassName}
               headerAside={controlledRegister ? <span className="controlled-document-badge">{projectCode} · {registerContextLabel}</span> : null}
             >
+              {controlledRegister ? (
+                <div className="form-grid controlled-document-primary">
+                  <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction title / reference", "Titel / referentie instructie") : text("Title / reference", "Titel / referentie")}</span><input value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} /></label>
+                  <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction description", "Omschrijving instructie") : text("Formal request / instruction / observation", "Formeel verzoek / instructie / observatie")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
+                </div>
+              ) : null}
               {/* The form says what is being recorded — Materials delivery, Agreement,
                   RFI — instead of a general register heading with the answer hidden in a
                   dropdown below it. */}
@@ -3828,22 +3834,29 @@ function ProjectOperations({
                   <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
                   <div><small>{text("Applies to", "Geldt voor")}</small><strong>{registerContextLabel}</strong><span>{registerLocationNodeId ? locationBreadcrumb(data.locationNodes, registerLocationNodeId) : text("Building level", "Gebouwniveau")}</span></div>
                   <div><small>{text("Issue date and time", "Uitgiftedatum en -tijd")}</small><strong>{issueDateLabel}</strong><span>{issueTime}</span></div>
-                  <div><small>{text("Drawn up by", "Opgemaakt door")}</small><strong>{registerForm.issuerName.trim() || currentUserName}</strong><span>{registerForm.signedBy ? text("Signed", "Ondertekend") : text("Not signed yet", "Nog niet ondertekend")}</span></div>
+                  <div>
+                    <small>{text("Drawn up by", "Opgemaakt door")}</small>
+                    <strong>{registerForm.issuerName.trim() || currentUserName}</strong>
+                    <span>{registerForm.signedBy ? text("Signed", "Ondertekend") : text("Not signed yet", "Nog niet ondertekend")}</span>
+                    {!submittedRegister && !registerForm.signedBy ? (
+                      <details className="controlled-document-author-edit">
+                        <summary>{text("Change author", "Opsteller wijzigen")}</summary>
+                        <label className="form-field">
+                          <span>{text("Document author", "Opsteller document")}</span>
+                          <input list="controlled-document-author-options" value={registerForm.issuerName || currentUserName} onChange={(event) => setRegisterForm({ ...registerForm, issuerName: event.target.value })} />
+                          <datalist id="controlled-document-author-options">{documentIssuerOptions.map((name) => <option value={name} key={name} />)}</datalist>
+                        </label>
+                      </details>
+                    ) : null}
+                  </div>
                 </section>
-                  <section className="controlled-document-dates" aria-label={text("Document dates", "Documentdatums")}>
-                    <header><FileCheck2 size={17} /><div><strong>{registerForm.type === "technical_instruction" ? text("Technical instruction dates", "Datums technische instructie") : text("Document dates", "Documentdatums")}</strong></div></header>
-                    <div className="form-grid">
-                      <label className="form-field"><span>{text("Issue date · automatic", "Uitgiftedatum · automatisch")}</span><input type="date" value={issueDate} readOnly /></label>
-                      <label className="form-field"><span>{text("Issue time · automatic", "Uitgiftetijd · automatisch")}</span><input type="time" value={issueTime} readOnly /></label>
-                      <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction deadline / required by", "Deadline instructie / uitvoeren uiterlijk") : text("Response / information required by", "Antwoord / informatie nodig uiterlijk")}</span><input type="date" min={issueDate} value={registerForm.dueDate} onChange={(event) => setRegisterForm({ ...registerForm, dueDate: event.target.value })} /></label>
-                    </div>
-                  </section>
+
                 </>
               ) : null}
               <div className="form-grid-2">
                 <RecordBuildingsField id="register-buildings" buildings={buildings} value={registerBuildingIds} onChange={(next) => { setRegisterBuildingIds(next); setRegisterBuildingId(next[0] ?? registerBuildingId); setRegisterLocationNodeId(""); }} />
                 <LocationPicker id="register-location" nodes={data.locationNodes} buildingId={registerBuildingId} value={registerLocationNodeId} onChange={setRegisterLocationNodeId} requiredDepth={requiredLocationDepth} />
-                <details className="optional-text-entry register-type-switch">
+                {(!controlledRegister || submittedRegister) ? <details className="optional-text-entry register-type-switch">
                   <summary>{text("Record something else", "Iets anders vastleggen")}</summary>
                   {/* Switching format starts the other form empty. Carrying a delay's
                       baseline date into a change order is how a wrong date gets signed. */}
@@ -3856,7 +3869,7 @@ function ProjectOperations({
                     setLessonForm({ ...emptyLessonLearned });
                     setRegisterNamedPhotos({});
                   }}>{Object.entries(registerNames).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
-                </details>
+                </details> : null}
                 {registerDrawings.length ? (
                   <label className="form-field"><span>{text("Location on drawing", "Locatie op tekening")}</span>
                     <select value={registerDrawingId} onChange={(event) => setRegisterDrawingId(event.target.value)}>
@@ -3867,6 +3880,12 @@ function ProjectOperations({
                   </label>
                 ) : null}
               </div>
+              {controlledRegister ? (
+                <label className="form-field controlled-document-deadline">
+                  <span>{registerForm.type === "technical_instruction" ? text("Instruction deadline / required by", "Deadline instructie / uitvoeren uiterlijk") : text("Response / information required by", "Antwoord / informatie nodig uiterlijk")}</span>
+                  <input type="date" min={editingRegisterId ? undefined : issueDate} value={registerForm.dueDate} onChange={(event) => setRegisterForm({ ...registerForm, dueDate: event.target.value })} />
+                </label>
+              ) : null}
               {activeRegisterPresets.length ? <div className="quick-issue-presets" aria-label={text("Choose a standard register item", "Kies een standaard registeritem")}>{activeRegisterPresets.map((preset) => <button className={registerForm.title === preset.title ? "active" : ""} type="button" onClick={() => setRegisterForm({ ...registerForm, ...preset })} key={preset.title}>{preset.title}</button>)}</div> : null}
               {delayReportRegister ? (
                 /* The client's own Project Delay Report. The header above this — project,
@@ -4065,12 +4084,7 @@ function ProjectOperations({
                     </div>
                   </RecordFormSection>
                 </div>
-              ) : controlledRegister ? (
-                <div className="form-grid">
-                  <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction title / reference", "Titel / referentie instructie") : text("Title / reference", "Titel / referentie")}</span><input value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} /></label>
-                  <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction description", "Omschrijving instructie") : text("Formal request / instruction / observation", "Formeel verzoek / instructie / observatie")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
-                </div>
-              ) : agreementRegister ? (
+              ) : controlledRegister ? null : agreementRegister ? (
                 /* The client's own "Agreements Made" form, in its own four numbered
                    boxes: what was agreed, who owns it, who signs for it and — once the
                    work is done — the date and the picture that close it. */
@@ -4254,26 +4268,14 @@ function ProjectOperations({
                 </>
               )}
               {controlledRegister ? <>
-                <label className="form-field"><span>{text("Revision", "Revisie")}</span><input value={registerForm.revision} onChange={(event) => setRegisterForm({ ...registerForm, revision: event.target.value })} /></label>
+                {editingRegisterId ? <label className="form-field"><span>{text("Revision", "Revisie")}</span><input value={registerForm.revision} onChange={(event) => setRegisterForm({ ...registerForm, revision: event.target.value })} /></label> : null}
                 {/* Who draws the document up is a choice, not always the person logged in. */}
                 {submittedRegister ? (
                   <div className="form-grid-2">
                     <label className="form-field"><span>{text("Submitted by · name on the form", "Ingediend door · naam op het formulier")}</span><input value={registerForm.issuerName} onChange={(event) => setRegisterForm({ ...registerForm, issuerName: event.target.value })} placeholder={text("Name of the contractor's signatory", "Naam van de ondertekenaar bij de aannemer")} /></label>
                     <label className="form-field"><span>{text("Position", "Functie")}</span><input value={registerForm.issuerPosition} onChange={(event) => setRegisterForm({ ...registerForm, issuerPosition: event.target.value })} placeholder="Quality Control" /></label>
                   </div>
-                ) : (
-                  <div className="form-grid-2">
-                    <label className="form-field"><span>{text("Drawn up by", "Opgemaakt door")}</span>
-                      <select value={documentIssuerOptions.includes(registerForm.issuerName.trim() || currentUserName) ? registerForm.issuerName.trim() || currentUserName : "__other__"} onChange={(event) => setRegisterForm({ ...registerForm, issuerName: event.target.value === "__other__" ? "" : event.target.value })}>
-                        {documentIssuerOptions.map((name) => <option value={name} key={name}>{name}</option>)}
-                        <option value="__other__">{text("Someone else · type the name", "Iemand anders · naam typen")}</option>
-                      </select>
-                    </label>
-                    {documentIssuerOptions.includes(registerForm.issuerName.trim() || currentUserName)
-                      ? null
-                      : <label className="form-field"><span>{text("Name of the author", "Naam van de opsteller")}</span><input value={registerForm.issuerName} onChange={(event) => setRegisterForm({ ...registerForm, issuerName: event.target.value })} /></label>}
-                  </div>
-                )}
+                ) : null}
                 {/* The party you address it to is the recipient; a second free-text name
                     next to it, plus reference fields nobody filled, are gone. */}
                 <label className="form-field"><span>{text("To:", "Aan:")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => { const party = parties.find((item) => item.id === event.target.value); setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value, requestedTo: party?.name ?? "" }); }}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name} · {partyTypeText(party.type, text)}</option>)}</select></label>
@@ -4297,7 +4299,7 @@ function ProjectOperations({
                 {registerFiles.length ? <div className="boq-preview">{registerFiles.map((file) => <div key={`${file.name}:${file.lastModified}`}><FileText size={15} /><span>{file.name}</span><small>{Math.max(1, Math.round(file.size / 1024))} KB</small></div>)}</div> : null}
                 {registerForm.type === "inspection_request" ? <div className="form-grid-2"><label className="form-field"><span>{text("Inspection category", "Inspectiecategorie")}</span><select value={registerForm.inspectionCategory} onChange={(event) => setRegisterForm({ ...registerForm, inspectionCategory: event.target.value })}><option value="architectural">Architectural</option><option value="structural">Structural</option><option value="mep">MEP</option><option value="testing">Testing</option><option value="other">Other</option></select></label><div className="form-grid-2"><label className="form-field"><span>{text("Ready date", "Gereeddatum")}</span><input type="date" value={registerForm.readyDate} onChange={(event) => setRegisterForm({ ...registerForm, readyDate: event.target.value })} /></label><label className="form-field"><span>{text("Ready time", "Gereedtijd")}</span><input type="time" value={registerForm.readyTime} onChange={(event) => setRegisterForm({ ...registerForm, readyTime: event.target.value })} /></label></div></div> : null}
                 {registerForm.type === "technical_instruction" ? <label className="form-field"><span>{text("Discipline", "Discipline")}</span><select value={registerForm.discipline} onChange={(event) => setRegisterForm({ ...registerForm, discipline: event.target.value })}><option value="architectural">Architectural</option><option value="structural">Structural</option><option value="electrical">Electrical</option><option value="mechanical">Mechanical</option><option value="civil">Civil</option><option value="hse">HSE</option></select></label> : null}
-                {registerForm.type === "technical_instruction" ? <><div className="form-grid-2"><label className="form-field"><span>{text("Schedule impact", "Planningimpact")}</span><select value={registerForm.scheduleImpact} onChange={(event) => setRegisterForm({ ...registerForm, scheduleImpact: event.target.value })}><option value="none">None</option><option value="possible">Possible</option><option value="confirmed">Confirmed</option><option value="unknown">To be assessed</option></select></label><label className="form-field"><span>{text("Cost impact", "Kostenimpact")}</span><select value={registerForm.costImpact} onChange={(event) => setRegisterForm({ ...registerForm, costImpact: event.target.value })}><option value="none">None</option><option value="possible">Possible</option><option value="confirmed">Confirmed</option><option value="unknown">To be assessed</option></select></label></div><label className="form-field"><span>{text("Impact explanation", "Toelichting impact")}</span><textarea rows={2} value={registerForm.impactExplanation} onChange={(event) => setRegisterForm({ ...registerForm, impactExplanation: event.target.value })} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, impactExplanation: appendDictation(current.impactExplanation, transcript) }))} /></label></> : null}
+                {registerForm.type === "technical_instruction" ? <details className="controlled-document-optional-impact"><summary>{text("Schedule and cost impact", "Planning- en kostenimpact")}</summary><div className="form-grid-2"><label className="form-field"><span>{text("Schedule impact", "Planningimpact")}</span><select value={registerForm.scheduleImpact} onChange={(event) => setRegisterForm({ ...registerForm, scheduleImpact: event.target.value })}><option value="none">None</option><option value="possible">Possible</option><option value="confirmed">Confirmed</option><option value="unknown">To be assessed</option></select></label><label className="form-field"><span>{text("Cost impact", "Kostenimpact")}</span><select value={registerForm.costImpact} onChange={(event) => setRegisterForm({ ...registerForm, costImpact: event.target.value })}><option value="none">None</option><option value="possible">Possible</option><option value="confirmed">Confirmed</option><option value="unknown">To be assessed</option></select></label></div><label className="form-field"><span>{text("Impact explanation", "Toelichting impact")}</span><textarea rows={2} value={registerForm.impactExplanation} onChange={(event) => setRegisterForm({ ...registerForm, impactExplanation: event.target.value })} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, impactExplanation: appendDictation(current.impactExplanation, transcript) }))} /></label></details> : null}
                 {changeOrderRegister ? (
                   <div className="record-form-sections change-order-sections">
                     <RecordFormSection

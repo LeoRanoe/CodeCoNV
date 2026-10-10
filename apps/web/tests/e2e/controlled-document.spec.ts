@@ -49,6 +49,16 @@ test("an RFI is recorded, answered by a named respondent and keeps its response"
   await expect(page.getByRole("heading", { name: "Formal documents & registers" })).toBeVisible();
   // The button opens the submission form it names, not the default register.
   await expect(page.getByRole("heading", { name: "RFI", exact: true })).toBeVisible();
+  const controlledForm = page.locator(".controlled-document-form");
+  // The primary fields come before context and optional metadata, not underneath them.
+  await expect(controlledForm.locator(".controlled-document-primary input")).toBeVisible();
+  const titleAboveContext = await page.evaluate(() => {
+    const title = document.querySelector(".controlled-document-primary");
+    const context = document.querySelector(".controlled-document-context");
+    return Boolean(title && context && (title.compareDocumentPosition(context) & Node.DOCUMENT_POSITION_FOLLOWING));
+  });
+  expect(titleAboveContext).toBe(true);
+  await expect(controlledForm.locator(".controlled-document-dates")).toHaveCount(0);
   await field(page, "Title / reference").fill(title);
   await field(page, "Formal request / instruction / observation").fill("Please confirm the size and position of the slab penetrations on level 2 before the pour.");
   await field(page, "Submitted by").fill("J. Contractor");

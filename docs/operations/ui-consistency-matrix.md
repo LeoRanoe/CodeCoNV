@@ -123,3 +123,44 @@ Run on the final commit of this pass, local stack from an empty database:
 This pass added `tests/e2e/dialogs.spec.ts` (every dialog × 3 widths, nested dialogs, phone menu),
 `tests/e2e/role-views.spec.ts` (client, contractor, supervisor) and
 `supabase/tests/017_my_project_permissions.pgtap.sql`. Commands: `production-readiness.md` § 3.
+
+## Historical client feedback — 10 October 2026 reconciliation
+
+The eight red-annotated screenshots refer to an **older deployed build**, not the current
+feature branch. Statuses below distinguish repository edits from runtime proof. The previous
+browser-matrix results above describe the earlier UI-consistency pass, **not a new manual
+browser check of this historical-feedback patch**.
+
+| Screenshot | Client feedback (interpreted) | Current branch treatment | Verification still required |
+| --- | --- | --- | --- |
+| 1 — Workspace | Remove the redundant *Delays* shortcut | Removed only the workspace tile; daily delay records and the separate formal PDR remain accessible | Manual entry/navigation at desktop and phone, no loss of delay records |
+| 2 — Controlled document lower section | Remove excessive impact fields and automatic-metadata helper text; clarify signing | TI schedule/cost impact is now collapsed as optional, and existing copy cleanup is retained. CO's contractual impact fields are still required by its workflow | Manual TI/CO comparison; formal report and signature UAT |
+| 3 — Change Order upper section | Place title at top; do not repeat timestamps, revision, author or in-form type switching | Primary title/description moved before context; read-only timestamp inputs removed; initial revision hidden; author edit is inside its existing header; internal type switch hidden | CO create/edit, signing and PDF rendering |
+| 4 — Active inspection | Signature absent, NCR choice and checklist controls unclear | Existing current-branch signature, draw-pin and NCR-from-inspection actions were verified **in source only** during this reconciliation; none duplicated | Full signed checklist → pinned drawing → linked NCR browser walkthrough |
+| 5 — Technical Instruction | Title at top, remove duplicated author/revision and reduce unnecessary impact input | Title/description first, duplicate author moved into an optional header edit, initial revision hidden, TI impact collapsed; existing field values retained | TI draft/edit/export |
+| 6 — Technical Instruction upper section | Automatic date/time, uniform building/location, no generic switch inside form | Header date retained once, deadline remains editable; existing RecordBuildingsField/LocationPicker reused; type switch hidden for internal controlled docs | Mobile layout and correct date on existing edited documents |
+| 7 — Inspection start and filters | Uniform controls, exact location and automatically derived inspection dates | Existing BuildingPicker/LocationPicker and date-derived filter logic retained; earlier visual fixes unchanged | Interactive UI test with multiple buildings and inspection dates |
+| 8 — Controlled document lower section | Distinguish issuer and recipient signatures; remove automatic-numbering helper | The existing CO has contractor and supervision signature fields; other document types have different authorized signing models. No speculative schema change made | Explicit document-type signature matrix and two-party recipient acknowledgement UAT |
+
+### Changes in this follow-up
+
+- Removed the redundant workspace delay tile; **did not remove** any delay-writing, PDR or reporting functionality.
+- Reordered main controlled-document title and description ahead of context fields while preserving all state bindings.
+- Replaced duplicated read-only date/time controls with a deadline control; system timestamp remains in the compact header.
+- Kept revision at its canonical initial value on new documents; existing documents may still be edited.
+- Moved optional internal author selection into the already displayed author header; received external submissions keep their genuine separate author field.
+- Kept the type selector for general registers and third-party submissions, where it provides access to other formats; removed it from internal controlled-document editing.
+- Preserved TI schedule/cost data behind an optional disclosure rather than discarding it.
+- Added Playwright/source assertions for the field order, compact date layout and retained route access.
+
+### Outstanding acceptance before declaring the feedback fully incorporated
+
+1. Browser-test TI and CO creation and editing using realistic project data, including keyboard and phone-width behavior.
+2. Verify the document's original timestamp remains unchanged when editing an older record. The stored report metadata path must be checked; do not assume the visible header alone proves this.
+3. Confirm author attribution when editing an already signed document and prohibit changes that could invalidate existing signatures.
+4. Reconcile which controlled document types require recipient acknowledgement, preserving contractor/supervision roles and avoiding impersonation.
+5. Drive the active-inspection signature, drawing pin and NCR-link end to end with a private test Blob store.
+6. Visually inspect PDF/Word exports for required fields and signatures.
+7. Run CI on the final patch commit and update this section with concrete results.
+
+**Status: code updates applied to the draft PR, historical feedback NOT YET fully browser-verified.**

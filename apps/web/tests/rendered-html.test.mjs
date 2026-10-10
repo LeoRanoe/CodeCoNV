@@ -3562,3 +3562,32 @@ test("the overview's photo panel opens the photo library, not the workspace home
   assert.match(library, /const file = data\.files\.find\(\(item\) => item\.id === fileId\)/);
   assert.match(library, /setOpenFileId\(file\.id\)/);
 });
+
+test("retains historical client form-feedback fixes without losing underlying workflows", async () => {
+  const [workspace, home, css] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/project-workspace-home.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // Client struck the duplicate Delays shortcut; the actual daily-delay and PDR flows remain.
+  assert.doesNotMatch(home, /id: "delays",/);
+  assert.match(home, /id: "delay-report",/);
+  assert.match(home, /openDailyWork\("works_ongoing"\)/);
+  assert.match(home, /"works_ongoing" \| "works_completed" \| "delays"/);
+
+  // The controlled document starts with title and description, not duplicate read-only dates.
+  assert.match(workspace, /className="form-grid controlled-document-primary"/);
+  assert.match(workspace, /className="form-field controlled-document-deadline"/);
+  assert.doesNotMatch(workspace, /className="controlled-document-dates"/);
+  assert.match(css, /\.controlled-document-primary\s*\{\s*grid-template-columns: minmax\(0, 1fr\)/);
+
+  // Record type switching is still available for external submissions and general registers.
+  assert.match(workspace, /!controlledRegister \|\| submittedRegister/);
+  // Existing records retain revision editing; new records start with the canonical default.
+  assert.match(workspace, /editingRegisterId \? <label className="form-field"><span>\{text\("Revision"/);
+  // The original author remains changeable in the existing header, not duplicated below.
+  assert.match(workspace, /className="controlled-document-author-edit"/);
+  // Impact metadata remains available, but is not forced into every technical instruction.
+  assert.match(workspace, /className="controlled-document-optional-impact"/);
+});

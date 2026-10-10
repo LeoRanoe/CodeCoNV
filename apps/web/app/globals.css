@@ -9852,6 +9852,31 @@ textarea:focus-visible {
   border-top: 5px solid #e0b800;
   max-width: 100%;
 }
+
+/* Primary document content precedes the compact metadata; one readable column on all sizes. */
+.controlled-document-primary {
+  grid-template-columns: minmax(0, 1fr);
+}
+.controlled-document-author-edit {
+  min-width: 0;
+}
+.controlled-document-author-edit summary,
+.controlled-document-optional-impact summary {
+  cursor: pointer;
+  color: var(--ink-600);
+  font-size: var(--text-sm);
+}
+.controlled-document-author-edit .form-field {
+  margin-top: var(--space-2);
+}
+.controlled-document-optional-impact {
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+.controlled-document-optional-impact .form-grid-2 {
+  margin-top: var(--space-3);
+}
 .controlled-document-badge {
   background: #fff4bd;
   border: 1px solid #dfbf35;
