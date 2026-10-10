@@ -35,8 +35,14 @@ type Entry = { dialog: HTMLElement; opener: HTMLElement | null };
 
 function isShown(element: HTMLElement) {
   if (element.closest("[inert]") && !element.closest(dialogSelector)) return false;
+  // The content of a closed <details> keeps its boxes but is not focusable, so a box is not proof.
+  if (typeof element.checkVisibility === "function") {
+    return element.checkVisibility({ checkVisibilityCSS: true, contentVisibilityAuto: true });
+  }
   const style = getComputedStyle(element);
   if (style.visibility === "hidden" || style.display === "none") return false;
+  const details = element.closest("details:not([open])");
+  if (details && !(element.tagName === "SUMMARY" && element.parentElement === details)) return false;
   return element.getClientRects().length > 0;
 }
 
@@ -76,6 +82,8 @@ export function DialogManager() {
     const rememberTrigger = (event: Event) => {
       const target = event.target instanceof Element ? event.target : null;
       if (!target) return;
+      // Only what is behind the dialog can be the thing that opened it.
+      if (target.closest(dialogSelector)) return;
       const candidate = target.closest<HTMLElement>(triggerSelector);
       if (candidate) lastTrigger = candidate;
     };
@@ -127,13 +135,15 @@ export function DialogManager() {
     const sync = () => {
       const present = Array.from(document.querySelectorAll<HTMLElement>(dialogSelector));
       let changed = false;
+      let replacedOpener: HTMLElement | null = null;
       // Dialogs that went away.
       for (let index = stack.length - 1; index >= 0; index -= 1) {
         const entry = stack[index];
         if (document.contains(entry.dialog)) continue;
         stack.splice(index, 1);
         changed = true;
-        if (stack.length === 0) {
+        if (stack.length === 0) replacedOpener = entry.opener;
+        if (stack.length === 0 && !present.length) {
           unlockScroll();
           const opener = entry.opener;
           // After React has removed the dialog, put the user back where they were.
@@ -147,9 +157,10 @@ export function DialogManager() {
       for (const dialog of present) {
         if (stack.some((entry) => entry.dialog === dialog)) continue;
         const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        // A dialog that re-renders into a new element in the same moment keeps its opener.
         const opener = stack.length > 0
           ? stack[stack.length - 1].dialog.contains(active) ? active : lastTrigger
-          : lastTrigger && document.contains(lastTrigger) ? lastTrigger : active && active !== document.body ? active : null;
+          : replacedOpener ?? (lastTrigger && document.contains(lastTrigger) ? lastTrigger : active && active !== document.body ? active : null);
         stack.push({ dialog, opener });
         changed = true;
         lockScroll();
