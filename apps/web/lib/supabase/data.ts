@@ -1209,27 +1209,8 @@ export async function markNotificationRead(client: SupabaseClient, notificationI
 }
 
 /** The trades a project can record attendance for, when the project itself names none. */
-export const constructionDisciplines = [
-  "Bouwvakkers / algemeen",
-  "Timmerlieden",
-  "Metselaars",
-  "Beton en wapening",
-  "Betonwerkers",
-  "Wapeningwerkers",
-  "Elektriciens",
-  "HVAC",
-  "Loodgieters / sanitair",
-  "Schilders",
-  "Gevelwerk",
-  "Tegelzetters",
-  "Grondwerk",
-  "Staalbouw",
-  "Steigerbouwers",
-  "Dakwerk",
-  "Machine-operators",
-  "HSE / veiligheidsmedewerkers",
-  "Voormannen / supervisors",
-] as const;
+export { constructionDisciplines } from "@/lib/forms/disciplines";
+import { constructionDisciplines } from "@/lib/forms/disciplines";
 
 export type ProjectConfiguration = {
   disciplines: string[];

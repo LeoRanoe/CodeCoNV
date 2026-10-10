@@ -1023,6 +1023,18 @@ textarea:focus-visible {
   outline: 3px solid rgba(22, 103, 168, 0.34);
 }
 
+/* A search box that draws its own frame hides the outline of the input inside it, so the frame
+   carries the focus ring instead. */
+.action-center-search:focus-within,
+.project-document-browser header label:focus-within,
+.record-action-other:focus-within,
+.project-switcher-search:focus-within,
+.prompt-library-search:focus-within,
+.drawing-choice-search:focus-within {
+  outline: 3px solid rgba(22, 103, 168, 0.34);
+  outline-offset: 2px;
+}
+
 ::selection {
   background: #ffd2b1;
 }
@@ -5343,6 +5355,10 @@ textarea:focus-visible {
     border-top: 1px solid var(--ink-200);
     background: rgba(255, 255, 255, 0.96);
     backdrop-filter: blur(16px);
+  }
+
+  .mobile-bottom-nav.four {
+    grid-template-columns: repeat(4, 1fr);
   }
 
   .mobile-nav-button {
@@ -13261,7 +13277,7 @@ button {
 .unified-action-icon.rfa,
 .unified-action-icon.wir { background: #f0edfa; color: #6a58a4; }
 .unified-action-copy > span { align-items: center; display: flex; gap: 5px; }
-.unified-action-copy b { color: var(--teal); font-size: var(--text-xs); letter-spacing: .04em; }
+.unified-action-copy b { color: var(--teal); font-size: var(--text-xs); letter-spacing: .04em; text-transform: uppercase; }
 .unified-action-copy em { color: #89958f; font-size: var(--text-xs); font-style: normal; }
 .unified-action-copy strong,
 .unified-action-copy small { display: block; }
@@ -15654,4 +15670,13 @@ button.prompt-source:hover > svg { color: var(--green); }
 /* Sign-out on the project selection screen: the label folds away on a phone, the icon stays. */
 @media (max-width: 700px) {
   .context-sign-out-label { display: none; }
+}
+
+/* A fieldset that disables a whole block of a dialog: no browser border or inset, and it may shrink. */
+.workforce-fieldset {
+  border: 0;
+  display: contents;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
 }

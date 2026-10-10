@@ -26,6 +26,7 @@ import {
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
 import { getCachedProjectSnapshot, cacheProjectSnapshot } from "@/lib/offline/project-cache";
 import { loadProjectFileObjectUrl } from "@/lib/storage/gateway";
@@ -262,6 +263,8 @@ export function ClientDashboard({
   openRecord: (tab: SearchDestination, recordId: string) => void;
 }) {
   const { locale, text } = useLanguage();
+  // Starting the day, answering its questions and checking the report are the supervisor's; a reader does not get the buttons.
+  const canWriteDay = useProjectPermissions().canAny("reports.create", "reports.edit");
   const [search, setSearch] = useState("");
   // Shared with the top bar so both show the same reading from one request.
   const { weather: liveWeather, error: weatherError, loading: weatherLoading, reload: loadLiveWeather } = useLiveProjectWeather(projectLocation);
@@ -269,7 +272,22 @@ export function ClientDashboard({
   const completedItems = actions.filter((action) => ["verified", "cancelled"].includes(action.status));
   const urgentItems = openItems.filter((action) => ["high", "critical"].includes(action.priority));
   const inspections = entries.filter((entry) => entry.kind === "inspection");
+  // The quality count is the project's findings and NCRs, not only the ones typed in as a daily
+  // record today: an issue written on the Issues form never was a daily record.
+  const qualityCounts = useQuery({
+    queryKey: ["project-operations", projectId, "quality-counts"],
+    enabled: Boolean(client),
+    staleTime: 30_000,
+    queryFn: async () => {
+      const result = await client!.from("findings").select("status,finding_type").eq("project_id", projectId).limit(1000);
+      if (result.error) throw result.error;
+      const open = (result.data ?? []).filter((row) => !["verified", "closed", "cancelled", "rejected"].includes(row.status));
+      return { open: open.length, ncr: open.filter((row) => row.finding_type === "ncr").length };
+    },
+  });
   const issues = entries.filter((entry) => entry.kind === "finding" || entry.badgeTone === "red");
+  const qualityOpen = qualityCounts.data?.open ?? issues.length;
+  const qualityNcr = qualityCounts.data?.ncr ?? 0;
   const photoEntries = entries.filter((entry) => entry.kind === "photo");
   const workEntries = entries.filter((entry) => entry.kind === "activity");
   const completion = actions.length ? Math.round((completedItems.length / actions.length) * 100) : 0;
@@ -427,9 +445,9 @@ export function ClientDashboard({
           <button className="overview-icon-button" type="button" aria-label={text("Notifications", "Meldingen")} onClick={openActions}><Bell size={17} />{urgentItems.length ? <i /> : null}</button>
           {/* The day in its order: start it, answer the day's questions, check the report.
               The built-in guide and the report screen both point here. */}
-          {!dayStarted && openProjectStart ? <button className="overview-icon-button" type="button" aria-label={text("Start today", "Werkdag starten")} title={text("Start today", "Werkdag starten")} onClick={openProjectStart}><CloudSun size={17} /></button> : null}
-          <button className="overview-icon-button" type="button" aria-label={text("Daily questions", "Dagvragen")} title={text("Daily questions", "Dagvragen")} onClick={openDailyQuestions}><CalendarDays size={17} /></button>
-          {openReportCheck ? <button className="overview-icon-button" type="button" aria-label={text("Check report", "Rapport controleren")} title={text("Check report", "Rapport controleren")} onClick={openReportCheck}><FileCheck2 size={17} /></button> : null}
+          {canWriteDay && !dayStarted && openProjectStart ? <button className="overview-icon-button" type="button" aria-label={text("Start today", "Werkdag starten")} title={text("Start today", "Werkdag starten")} onClick={openProjectStart}><CloudSun size={17} /></button> : null}
+          {canWriteDay ? <button className="overview-icon-button" type="button" aria-label={text("Daily questions", "Dagvragen")} title={text("Daily questions", "Dagvragen")} onClick={openDailyQuestions}><CalendarDays size={17} /></button> : null}
+          {canWriteDay && openReportCheck ? <button className="overview-icon-button" type="button" aria-label={text("Check report", "Rapport controleren")} title={text("Check report", "Rapport controleren")} onClick={openReportCheck}><FileCheck2 size={17} /></button> : null}
           {/* This screen reads the day; it does not write it. Recording a photo or a field
               record has its own button in the bar at the bottom, on every screen. */}
           <button className="secondary-button overview-create-button" type="button" onClick={openWorkspace}>{text("Open workspace", "Open werkruimte")} <ArrowRight size={15} /></button>
@@ -450,7 +468,7 @@ export function ClientDashboard({
 
         <div className="overview-metrics">
           <MetricCard icon={<FileCheck2 size={21} />} label={text("Open follow-up", "Open opvolging")} value={openItems.length} detail={`${urgentItems.length} ${text("high priority", "hoge prioriteit")}`} tone="teal" onClick={openActions} />
-          <MetricCard icon={<AlertTriangle size={21} />} label={text("Quality issues", "Kwaliteitspunten")} value={issues.length} detail={text("Open items", "Open punten")} tone="orange" onClick={openActions} />
+          <MetricCard icon={<AlertTriangle size={21} />} label={text("Quality issues", "Kwaliteitspunten")} value={qualityOpen} detail={qualityNcr ? `${qualityNcr} NCR` : text("Open", "Open")} tone="orange" onClick={openActions} />
           <MetricCard icon={<ClipboardCheck size={21} />} label={text("Inspections", "Inspecties")} value={inspections.length} detail={text("Recorded", "Vastgelegd")} tone="blue" onClick={openWorkspace} />
           <MetricCard icon={<Camera size={21} />} label={text("Pictures", "Foto's")} value={photoEntries.length} detail={text("With location", "Met locatie")} tone="violet" onClick={() => openRecord("files", "")} />
         </div>

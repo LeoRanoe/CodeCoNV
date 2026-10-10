@@ -227,7 +227,7 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
         },
         {
           title: text("Offline and synchronization", "Offline en synchronisatie"),
-          copy: text("Without signal, photos remain in the device queue. When the connection returns, synchronization starts automatically. A red queue row needs Sync now; deleting an unsynchronized file always asks for confirmation.", "Zonder bereik blijven foto’s in de apparaatwachtrij. Zodra de verbinding terug is start synchronisatie automatisch. Een rode wachtrijregel vraagt Nu synchroniseren; verwijderen van een niet-gesynchroniseerd bestand vraagt altijd bevestiging."),
+          copy: text("Without signal, photos remain in the device queue. When the connection returns, synchronization starts automatically. A red queue row needs Send now; deleting an unsynchronized file always asks for confirmation.", "Zonder bereik blijven foto’s in de apparaatwachtrij. Zodra de verbinding terug is start synchronisatie automatisch. Een rode wachtrijregel vraagt Nu verzenden; verwijderen van een niet-gesynchroniseerd bestand vraagt altijd bevestiging."),
         },
         {
           title: text("Data saver and storage", "Databesparing en opslag"),
@@ -425,7 +425,7 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
         },
         {
           title: text("When something is red", "Wanneer iets rood is"),
-          copy: text("Read the message first. For an upload, open Photos and tap Sync now. For a deadline, open Actions. For blocked push, allow notifications in browser settings. If a retry still fails, keep the local evidence and report the exact message to the administrator.", "Lees eerst de melding. Open voor een upload Foto’s en tik op Nu synchroniseren. Open voor een deadline Acties. Sta bij geblokkeerde push meldingen toe in de browserinstellingen. Mislukt een nieuwe poging nog steeds, bewaar dan het lokale bewijs en meld de exacte tekst aan de beheerder."),
+          copy: text("Read the message first. For an upload, open Photos and tap Send now. For a deadline, open Actions. For blocked push, allow notifications in browser settings. If a retry still fails, keep the local evidence and report the exact message to the administrator.", "Lees eerst de melding. Open voor een upload Foto’s en tik op Nu verzenden. Open voor een deadline Acties. Sta bij geblokkeerde push meldingen toe in de browserinstellingen. Mislukt een nieuwe poging nog steeds, bewaar dan het lokale bewijs en meld de exacte tekst aan de beheerder."),
         },
         {
           title: text("Session or secure-link message", "Sessie- of beveiligde-linkmelding"),

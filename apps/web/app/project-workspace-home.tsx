@@ -27,6 +27,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
 import { filterRecordDirectory } from "@/lib/records/record-directory.mjs";
 import type { BuildingOption } from "@/app/building-picker";
@@ -103,6 +104,7 @@ export function ProjectWorkspaceHome({
   openManagement,
 }: ProjectWorkspaceHomeProps) {
   const { locale, text } = useLanguage();
+  const permissions = useProjectPermissions();
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState({ kind: "", buildingId: "", status: "", dateFrom: "", dateTo: "", author: "" });
   /* Open where there is room for them, folded away on a phone. Read once, at mount. */
@@ -247,8 +249,19 @@ export function ProjectWorkspaceHome({
     },
   ], [counts, openDailyWork, openFinding, openPhotoLibrary, openTask, openWorkforce, text]);
 
+  // A tile opens a module the user must be able to read; otherwise it is an empty page.
+  const readPermission: Record<string, string> = {
+    photos: "files.read",
+    workforce: "attendance.read",
+    issues: "findings.read",
+    ncr: "findings.read",
+    hse: "hse.read",
+    "hse-incident": "hse.read",
+    inspections: "inspections.read",
+  };
   const visibleTiles = tiles.filter((tile) => {
     if (!moduleEnabled(tile.module)) return false;
+    if (!permissions.can(readPermission[tile.id] ?? "records.read")) return false;
     const term = query.trim().toLocaleLowerCase(locale);
     return !term || tile.label.toLocaleLowerCase(locale).includes(term);
   });

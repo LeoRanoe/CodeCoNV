@@ -426,11 +426,11 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       }
       if (navigator.onLine) {
         await forceSyncOfflineUploads(client, projectId, {
-          paused: text("Connection lost before the images were confirmed. They are still on this device. Keep this form open, then open Photos and tap Sync now.", "Verbinding verbroken vóór bevestiging van de beelden. Ze staan nog op dit apparaat. Houd dit formulier open, open Foto's en tik op Nu synchroniseren."),
-          failed: (pendingCount) => text(`${pendingCount} image upload(s) not confirmed. They are still on this device. Keep this form open, then open Photos and tap Sync now.`, `${pendingCount} beeld-upload(s) niet bevestigd. Ze staan nog op dit apparaat. Houd dit formulier open, open Foto's en tik op Nu synchroniseren.`),
+          paused: text("Connection lost before the images were confirmed. They are still on this device. Keep this form open, then open Photos and tap Send now.", "Verbinding verbroken vóór bevestiging van de beelden. Ze staan nog op dit apparaat. Houd dit formulier open, open Foto's en tik op Nu verzenden."),
+          failed: (pendingCount) => text(`${pendingCount} image upload(s) not confirmed. They are still on this device. Keep this form open, then open Photos and tap Send now.`, `${pendingCount} beeld-upload(s) niet bevestigd. Ze staan nog op dit apparaat. Houd dit formulier open, open Foto's en tik op Nu verzenden.`),
         });
       }
-    }, text("Saved on this device. Syncs when you're online.", "Opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent."));
+    }, text("Saved on this device. Sent when you're online.", "Opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent."));
     if (okay) {
       setCaptureForm(emptyCaptureForm);
       setDrawingLocation(null);

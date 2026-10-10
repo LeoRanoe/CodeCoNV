@@ -247,7 +247,7 @@ export function OfflineManagerModal({
                 {waitingRecords.map((record) => (
                   <li key={record.id}>
                     <b>{record.preview.title || text("Field record", "Veldregistratie")}</b>
-                    <small>{record.lastError ?? text("waiting", "wacht")}</small>
+                    <small>{record.lastError ?? text("waiting to be sent", "wacht op verzending")}</small>
                   </li>
                 ))}
               </ul>

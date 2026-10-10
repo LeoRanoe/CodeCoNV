@@ -17,6 +17,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
 import {
   compareActionItems,
@@ -114,6 +115,7 @@ export function ProjectActionCenter({
   openProjectArea: (tab: ActionCenterTarget, recordId?: string) => void;
 }) {
   const { locale, text } = useLanguage();
+  const canCreateAction = useProjectPermissions().can("actions.create");
   const [typeFilter, setTypeFilter] = useState<ActionType>("all");
   const [workFilter, setWorkFilter] = useState<WorkFilter>("open");
   const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>("overdue");
@@ -274,7 +276,7 @@ export function ProjectActionCenter({
     <section className="action-center">
       <header className="action-center-hero">
         <div><span>{projectName}</span><h1>{text("Action center", "Actiecentrum")}</h1></div>
-        <button className="primary-button" type="button" onClick={createAction}><Plus size={15} /> {text("New action", "Nieuwe actie")}</button>
+        {canCreateAction ? <button className="primary-button" type="button" onClick={createAction}><Plus size={15} /> {text("New action", "Nieuwe actie")}</button> : null}
       </header>
 
       {/* One page, three ways of looking at the same worklist. */}
@@ -319,7 +321,7 @@ export function ProjectActionCenter({
               <button className={overdue(item) ? "overdue" : ""} type="button" onClick={() => openItem(item)} key={`${item.source}:${item.id}`}>
                 <span className={`unified-action-icon ${item.type}`}>{typeIcon(item.type)}</span>
                 <span className="unified-action-copy">
-                  <span><b>{item.type.toUpperCase()}</b><em>{item.reference}</em>{isEscalated(item) ? <i className="unified-action-flag"><ShieldAlert size={10} /> {text("escalation", "escalatie")}</i> : null}</span>
+                  <span><b>{typeTabs.find((tab) => tab.id === item.type)?.label ?? item.type}</b><em>{item.reference}</em>{isEscalated(item) ? <i className="unified-action-flag"><ShieldAlert size={10} /> {text("escalation", "escalatie")}</i> : null}</span>
                   <strong>{item.title}</strong>
                   {/* What has to happen next, in words, so the row can be acted on without
                       opening it first. */}

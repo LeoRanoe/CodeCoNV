@@ -116,6 +116,7 @@ import {
 } from "@/lib/forms/delay-report";
 import { externalShareUrl } from "@/lib/external-share/token.mjs";
 import type { ProjectStartAnswers } from "@/lib/forms/daily-report";
+import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 import { cacheProjectSnapshot, getCachedProjectSnapshot } from "@/lib/offline/project-cache";
 import { useLiveProjectWeather } from "@/lib/weather-client";
@@ -869,7 +870,7 @@ export function OperationalWorkspace({
       // A registration that had to wait says so, instead of claiming it is central.
       const waiting = await listOfflineRecords(projectId).catch(() => []);
       setNotice(waiting.length > queuedBefore
-        ? text("Saved on this device. Syncs when you're online.", "Opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent.")
+        ? text("Saved on this device. Sent when you're online.", "Opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent.")
         : success);
       await refresh();
       return true;
@@ -1112,7 +1113,16 @@ function ProjectOperations({
   /** The checklist that was sent to the drawings screen to have its location pinned. */
   const [drawingInspectionId, setDrawingInspectionId] = useState("");
   const [dailyWorkView, setDailyWorkView] = useState<DailyWorkView>("works_ongoing");
-  const [showForm, setShowForm] = useState(initialTab !== "home");
+  const permissions = useProjectPermissions();
+  const [wantsForm, setShowForm] = useState(initialTab !== "home");
+  // What a user may write depends on the module. A reader (the client) gets the list and the
+  // records, not a form that could only be refused when it is sent.
+  const mayCreateHere = tab === "inspections" ? permissions.can("inspections.manage")
+    : tab === "findings" || tab === "ncr" ? permissions.can("findings.create")
+      : tab === "hse" ? permissions.can("hse.manage")
+        : tab === "registers" ? permissions.can("records.create")
+          : true;
+  const showForm = wantsForm && mayCreateHere;
   const [viewedRecord, setViewedRecord] = useState<ViewedWorkspaceRecord | null>(null);
   const [editingFindingId, setEditingFindingId] = useState("");
   const [editingHseId, setEditingHseId] = useState("");
@@ -2010,8 +2020,8 @@ function ProjectOperations({
   };
 
   const syncQueuedEvidenceNow = () => forceSyncOfflineUploads(client, projectId, {
-    paused: text("Connection lost before the photos were confirmed. They are still on this device. Keep this form open, then tap Sync now in Photos.", "Verbinding verbroken vóór bevestiging van de foto's. Ze staan nog op dit apparaat. Houd dit formulier open en tik in Foto's op Nu synchroniseren."),
-    failed: (pendingCount) => text(`${pendingCount} photo upload(s) not confirmed. They are still on this device. Keep this form open, then tap Sync now in Photos.`, `${pendingCount} foto-upload(s) niet bevestigd. Ze staan nog op dit apparaat. Houd dit formulier open en tik in Foto's op Nu synchroniseren.`),
+    paused: text("Connection lost before the photos were confirmed. They are still on this device. Keep this form open, then tap Send now in Photos.", "Verbinding verbroken vóór bevestiging van de foto's. Ze staan nog op dit apparaat. Houd dit formulier open en tik in Foto's op Nu verzenden."),
+    failed: (pendingCount) => text(`${pendingCount} photo upload(s) not confirmed. They are still on this device. Keep this form open, then tap Send now in Photos.`, `${pendingCount} foto-upload(s) niet bevestigd. Ze staan nog op dit apparaat. Houd dit formulier open en tik in Foto's op Nu verzenden.`),
   });
 
   /**
@@ -2088,7 +2098,7 @@ function ProjectOperations({
           if (navigator.onLine) await syncQueuedEvidenceNow();
         }
       },
-      text("Saved on this device. Photos sync when you're online.", "Opgeslagen op dit apparaat. Foto's synchroniseren zodra je online bent."),
+      text("Saved on this device. Photos are sent when you're online.", "Opgeslagen op dit apparaat. Foto's worden verzonden zodra je online bent."),
     );
     if (okay) {
       setActiveInspection(null);
@@ -2219,7 +2229,7 @@ function ProjectOperations({
     let created: Finding | null = null;
     let queuedOffline = false;
     const success = findingPhotos.length
-      ? text("Issue saved on this device. Syncs when you're online.", "Issue opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent.")
+      ? text("Issue saved on this device. Sent when you're online.", "Issue opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent.")
       : text("Finding saved with number and deadline.", "Bevinding opgeslagen met nummer en deadline.");
     const okay = await run(async () => {
       // Creating the day report needs the network. Without one the record keeps the report
@@ -2512,7 +2522,7 @@ function ProjectOperations({
           if (navigator.onLine) await syncQueuedEvidenceNow();
         }
       },
-      text("Saved on this device. Photos sync when you're online.", "Opgeslagen op dit apparaat. Foto's synchroniseren zodra je online bent."),
+      text("Saved on this device. Photos are sent when you're online.", "Opgeslagen op dit apparaat. Foto's worden verzonden zodra je online bent."),
     );
     if (okay) {
       // The issue is filed, so the parked draft of it has nothing left to protect.
@@ -2826,7 +2836,7 @@ function ProjectOperations({
   })[sectionId]);
   const activeSectionLabel = projectSections.find(([id]) => id === tab)?.[1];
   const activeSectionCount = projectSections.find(([id]) => id === tab)?.[2] ?? 0;
-  const canCreateRecord = recordModuleTabs.includes(tab);
+  const canCreateRecord = recordModuleTabs.includes(tab) && mayCreateHere;
 
   return (
     <>
@@ -2906,7 +2916,7 @@ function ProjectOperations({
           </div>
           <span className="task-status">{viewedRecord.status}</span>
           <div className="record-readonly-actions">
-            {viewedRecord.status !== "cancelled" ? <button className="secondary-button" type="button" onClick={() => {
+            {viewedRecord.status !== "cancelled" && permissions.can("records.edit") ? <button className="secondary-button" type="button" onClick={() => {
               if (viewedRecord.kind === "inspection") {
                 const record = data.inspections.find((item) => item.id === viewedRecord.id);
                 if (record) void resumeInspection(record);
@@ -2921,7 +2931,7 @@ function ProjectOperations({
                 if (record) editRegister(record);
               }
             }}><Wrench size={14} /> {text("Edit in form", "Bewerken in formulier")}</button> : null}
-            {viewedRecord.status !== "cancelled" ? <button className="ghost-button" type="button" onClick={() => withdrawRecord(viewedRecord)}>{text("Withdraw", "Intrekken")}</button> : null}
+            {viewedRecord.status !== "cancelled" && permissions.can("records.edit") ? <button className="ghost-button" type="button" onClick={() => withdrawRecord(viewedRecord)}>{text("Withdraw", "Intrekken")}</button> : null}
             <button className="ghost-button" type="button" onClick={() => setViewedRecord(null)}><X size={14} /> {text("Close", "Sluiten")}</button>
           </div>
         </aside>
@@ -3482,9 +3492,7 @@ function ProjectOperations({
               ].map(([label, count], index) => <div className={index === 2 ? "attention" : index === 3 ? "complete" : ""} key={String(label)}><span>{index + 1}</span><strong>{count}</strong><small>{label}</small></div>)}
             </div>
             <div className="punchlist-cycle-card">
-              <span><RotateCcw size={19} /></span>
-              <div><strong>{text("Contractor-to-supervisor review cycle", "Reviewcyclus aannemer naar supervisor")}</strong></div>
-              <div className="button-row"><button className="secondary-button" type="button" onClick={() => setTab("visual")}><Camera size={14} /> {text("Open normal photo", "Open normale foto")}</button><button className="secondary-button" type="button" onClick={() => setTab("visual")}><RotateCcw size={14} /> {text("Open 360° image", "Open 360°-beeld")}</button></div>
+              <div className="button-row">{!permissions.can("files.manage") ? null : <><button className="secondary-button" type="button" onClick={() => setTab("visual")}><Camera size={14} /> {text("Open normal photo", "Open normale foto")}</button><button className="secondary-button" type="button" onClick={() => setTab("visual")}><RotateCcw size={14} /> {text("Open 360° image", "Open 360°-beeld")}</button></>}</div>
             </div>
           </div>
           <FindingList
@@ -4675,7 +4683,7 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
             : [];
           const entryWaiting = isPendingRecordId(entry.id);
           return <article className={`controlled-document-card ${entryWaiting ? "record-waiting" : ""} ${focusRecordId === entry.id ? "record-focused" : ""}`} id={recordAnchorId(entry.id)} key={entry.id}>
-            {entryWaiting ? <p className="record-waiting-note"><WifiOff size={14} /> {text("Saved on this device. Number follows after sync.", "Opgeslagen op dit apparaat. Nummer volgt na synchronisatie.")}</p> : null}
+            {entryWaiting ? <p className="record-waiting-note"><WifiOff size={14} /> {text("Saved on this device. Number follows after sending.", "Opgeslagen op dit apparaat. Nummer volgt na verzending.")}</p> : null}
             <div className="controlled-document-card-main"><div><span className="record-number">{entry.entry_number} · {typeText(entry.register_type, text).toUpperCase()}</span><h3>{entry.title}</h3><p>{String(details.description ?? "")}</p><small>{entryBuildingName}{entryLocation ? ` → ${entryLocation}` : ""} · {formatDate(entry.occurred_at, locale)}{entry.due_at ? ` · ${text("due", "uiterlijk")} ${formatDate(entry.due_at, locale)}` : ""}{responseData.decision ? ` · ${codeText(String(responseData.decision), text)}` : ""}</small></div><span className={`task-status ${entry.status === "approved" || entry.status === "closed" ? "green" : entry.status === "rejected" ? "red" : ""}`}>{statusText(entry.status, text)}</span></div>
             <div className="finding-actions" hidden={entryWaiting}><button className="secondary-button" type="button" onClick={() => setHistoryActive((current) => current === entry.id ? null : entry.id)}><Archive size={15} /> {historyActive === entry.id ? text("Close record", "Sluit dossier") : text("Open record & history", "Open dossier & historie")}</button>
             {/* Send the document to the contractor over WhatsApp. The formal PDF or Word
@@ -4902,6 +4910,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   withdrawRecord: (finding: Finding) => void;
 }) {
   const { language, locale, text } = useLanguage();
+  const permissions = useProjectPermissions();
   const statusLabels = language === "en" ? findingStatusLabelsEnglish : findingStatusLabels;
   const fileOriginResolver = useMemo(() => createFileOriginResolver(data), [data]);
   const [active, setActive] = useState<string | null>(null);
@@ -5003,22 +5012,22 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
             {waitingToBeSent ? (
               <p className="record-waiting-note">
                 <WifiOff size={14} />
-                {text("Saved on this device. Number, deadline and contractor link follow after sync.", "Opgeslagen op dit apparaat. Nummer, deadline en aannemerslink volgen na synchronisatie.")}
+                {text("Saved on this device. Number, deadline and contractor link follow after sending.", "Opgeslagen op dit apparaat. Nummer, deadline en aannemerslink volgen na verzending.")}
               </p>
             ) : null}
             <div className="finding-card-main"><span className={`record-severity ${finding.severity}`}>{severityText(finding.severity, text)}</span><div><span className="record-number">{finding.finding_number} · {finding.finding_type.toUpperCase()}</span><h3>{finding.title}</h3><p>{finding.description}</p>{issue.action_steps ? <p className="finding-required-action"><strong>{text("Required action:", "Vereiste actie:")}</strong> {issue.action_steps}</p> : null}{issue.immediate_actions?.length || issue.immediate_action_other ? <p className="finding-immediate-action"><strong>{text("Already done:", "Al gedaan:")}</strong> {[...(issue.immediate_actions ?? []).map((action) => optionText(immediateActionsTaken, action, text)), issue.immediate_action_other ?? ""].filter(Boolean).join(" · ")}</p> : null}<small>{[issue.issue_category, issue.root_cause ? `${text("cause", "oorzaak")}: ${optionText(recordRootCauses, issue.root_cause, text)}` : "", issue.responsible_person].filter(Boolean).join(" · ")}{[issue.issue_category, issue.root_cause, issue.responsible_person].some(Boolean) ? " · " : ""}{recordBuildingName}{recordLocation ? ` → ${recordLocation}` : ""} · Deadline {formatDate(finding.due_at, locale)}{latestProgress ? ` · ${text("progress", "voortgang")} ${latestProgress.progress_percent}% · ${codeText(latestProgress.disposition, text)}` : ""}{finding.verified_at ? ` · ${text("verified", "geverifieerd")} ${formatDate(finding.verified_at, locale)}` : ""}</small></div><span className={`task-status ${finding.status === "closed" ? "green" : finding.severity === "critical" ? "red" : ""}`}>{statusLabels[finding.status] ?? finding.status}</span></div>
             <div className="finding-actions" hidden={waitingToBeSent}>
               <button className="secondary-button" type="button" onClick={() => viewRecord(finding)}><FileText size={16} /> {text("View record", "Registratie bekijken")}</button>
-              {finding.status !== "cancelled" ? <button className="secondary-button" type="button" onClick={() => editRecord(finding)}><Wrench size={16} /> {text("Edit", "Bewerken")}</button> : null}
-              {finding.status !== "cancelled" ? <button className="ghost-button" type="button" onClick={() => withdrawRecord(finding)}>{text("Withdraw", "Intrekken")}</button> : null}
-              <button className="secondary-button" type="button" onClick={() => linkVisual(finding)}><Camera size={16} /> {visualAnnotation ? text("View photo marker", "Bekijk fotomarker") : text("Mark on photo / 360°", "Markeer op foto / 360°")}</button>
-              <button className="secondary-button" type="button" onClick={() => linkDrawing(finding)}><MapPin size={16} /> {drawingPin ? text("View on drawing", "Bekijk op tekening") : text("Place on drawing", "Plaats op tekening")}</button>
-              <button className="external-party-button" type="button" disabled={busy || creatingShareFor === finding.id} onClick={() => void createShare(finding)}>
+              {finding.status !== "cancelled" && permissions.can("records.edit") ? <button className="secondary-button" type="button" onClick={() => editRecord(finding)}><Wrench size={16} /> {text("Edit", "Bewerken")}</button> : null}
+              {finding.status !== "cancelled" && permissions.can("records.edit") ? <button className="ghost-button" type="button" onClick={() => withdrawRecord(finding)}>{text("Withdraw", "Intrekken")}</button> : null}
+              {visualAnnotation || permissions.can("files.manage") ? <button className="secondary-button" type="button" onClick={() => linkVisual(finding)}><Camera size={16} /> {visualAnnotation ? text("View photo marker", "Bekijk fotomarker") : text("Mark on photo / 360°", "Markeer op foto / 360°")}</button> : null}
+              {drawingPin || permissions.can("files.manage") ? <button className="secondary-button" type="button" onClick={() => linkDrawing(finding)}><MapPin size={16} /> {drawingPin ? text("View on drawing", "Bekijk op tekening") : text("Place on drawing", "Plaats op tekening")}</button> : null}
+              {permissions.can("findings.create") ? <button className="external-party-button" type="button" disabled={busy || creatingShareFor === finding.id} onClick={() => void createShare(finding)}>
                 {creatingShareFor === finding.id ? <Loader2 className="spin" size={17} /> : <MessageCircle size={17} />}
                 <span><strong>{text("Send to external party", "Stuur naar externe partij")}</strong><small>{text("WhatsApp link · no account needed", "WhatsApp-link · geen account nodig")}</small></span>
-              </button>
+              </button> : null}
               <ReportDownloadButtons disabled={busy} onDownloadPdf={() => import("@/lib/reports/ncr-pdf").then(({ downloadNcrPdf }) => downloadNcrPdf(finding, latestProgress, ncrContext(finding, recordBuildingName)))} onDownloadWord={() => import("@/lib/reports/ncr-docx").then(({ downloadNcrDocx }) => downloadNcrDocx(finding, latestProgress, ncrContext(finding, recordBuildingName)))} />
-              {!["closed", "cancelled", "rejected"].includes(finding.status) ? <button className="secondary-button" type="button" onClick={() => { setProgressActive(progressActive === finding.id ? null : finding.id); setProgressPercent(String(latestProgress?.progress_percent ?? 0)); setProgressDisposition(latestProgress?.disposition ?? issue.disposition ?? "to_be_corrected"); }}>{text("Record inspection progress", "Inspectievoortgang vastleggen")}</button> : null}
+              {!["closed", "cancelled", "rejected"].includes(finding.status) && permissions.can("findings.manage") ? <button className="secondary-button" type="button" onClick={() => { setProgressActive(progressActive === finding.id ? null : finding.id); setProgressPercent(String(latestProgress?.progress_percent ?? 0)); setProgressDisposition(latestProgress?.disposition ?? issue.disposition ?? "to_be_corrected"); }}>{text("Record inspection progress", "Inspectievoortgang vastleggen")}</button> : null}
               {nextStatus ? <button className="secondary-button" type="button" onClick={() => { setActive(active === finding.id ? null : finding.id); setCorrection(""); setVerificationSignature(null); }}>{nextStatus === "closed" ? finding.finding_type === "ncr" ? text("Quality control · resolve", "Kwaliteitscontrole · afsluiten") : text("Verify", "Verifiëren") : nextStatus === "ready_for_verification" ? text("Mark repair ready", "Herstel gereedmelden") : finding.finding_type === "ncr" ? text("Record contractor answer", "Antwoord aannemer vastleggen") : text("Update status", "Status bijwerken")}</button> : null}
             </div>
             {/* The three signed boxes of the client's NCR form, in the order of the form:

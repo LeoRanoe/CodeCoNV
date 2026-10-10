@@ -226,7 +226,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
         if (!queued.length || !navigator.onLine) return;
         void run(
           () => syncDrawingPinMutations(client, projectId),
-          text("Queued drawing-pin changes synchronized.", "Wachtende tekeningspinwijzigingen gesynchroniseerd."),
+          text("Waiting pin changes sent.", "Wachtende pinwijzigingen verzonden."),
         );
       });
     };
@@ -480,7 +480,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
         kind: "move",
         input: { pinId: pin.id, xRatio: nextPoint.xRatio, yRatio: nextPoint.yRatio },
       }),
-      text("Pin position saved or queued safely.", "Pinpositie opgeslagen of veilig in de wachtrij gezet."),
+      text("Pin moved.", "Pin verplaatst."),
     );
     if (!okay) setPinOverrides((current) => ({ ...current, [pin.id]: previous }));
     return okay;
@@ -497,7 +497,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
         kind: "void",
         input: { pinId: pin.id, reason: text("Removed from drawing by supervisor", "Door toezichthouder van tekening verwijderd") },
       }),
-      text("Drawing pin removed or queued safely.", "Tekeningspin verwijderd of veilig in de wachtrij gezet."),
+      text("Pin removed.", "Pin verwijderd."),
     );
     if (!okay) {
       setHiddenPinIds((current) => current.filter((id) => id !== pin.id));

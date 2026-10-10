@@ -23,6 +23,7 @@ import {
 import { useEffect, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
 import { queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
 import { normalizeRecordCode } from "@/lib/records/record-directory.mjs";
@@ -62,6 +63,9 @@ export function ProjectDocumentsHome({
   createDocument: () => void;
 }) {
   const { locale, text } = useLanguage();
+  const permissions = useProjectPermissions();
+  const canManageFiles = permissions.can("files.manage");
+  const canCreateRecords = permissions.can("records.create");
   const [view, setView] = useState<DocumentView>("all");
   const [query, setQuery] = useState("");
   const [folderFilter, setFolderFilter] = useState("all");
@@ -223,12 +227,12 @@ export function ProjectDocumentsHome({
       <div className="project-documents-summary">
         <div><span>{text("Controlled project information", "Beheerde projectinformatie")}</span><h1>{text("Project document center", "Projectdocumentencentrum")}</h1></div>
         <div className="project-documents-actions">
-          <button className="secondary-button" type="button" onClick={() => document.getElementById("project-document-upload")?.scrollIntoView({ behavior: "smooth", block: "center" })}><Upload size={15} /> {text("Upload file", "Upload bestand")}</button>
-          <button className="primary-button" type="button" onClick={createDocument}><Plus size={15} /> {text("New controlled record", "Nieuw beheerd record")}</button>
+          {canManageFiles ? <button className="secondary-button" type="button" onClick={() => document.getElementById("project-document-upload")?.scrollIntoView({ behavior: "smooth", block: "center" })}><Upload size={15} /> {text("Upload file", "Upload bestand")}</button> : null}
+          {canCreateRecords ? <button className="primary-button" type="button" onClick={createDocument}><Plus size={15} /> {text("New controlled record", "Nieuw beheerd record")}</button> : null}
         </div>
       </div>
 
-      <section className="project-document-intake" id="project-document-upload" aria-label={text("Create a folder and upload", "Map maken en uploaden")}>
+      {canManageFiles ? <section className="project-document-intake" id="project-document-upload" aria-label={text("Create a folder and upload", "Map maken en uploaden")}>
         <div className="project-document-folder-create">
           <span className="record-number">{text("1. Folder and project link", "1. Map en projectkoppeling")}</span>
           <h2>{text("Create the destination here", "Maak de bestemming hier")}</h2>
@@ -257,7 +261,7 @@ export function ProjectDocumentsHome({
             <input type="file" multiple disabled={busy || !uploadFolderId} accept={uploadKind === "drawing" ? ".pdf,.dwg,image/png,image/jpeg,image/webp" : ".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"} onChange={(event) => { if (event.target.files) void uploadFiles(event.target.files); event.target.value = ""; }} />
           </label>
         </div>
-      </section>
+      </section> : null}
 
       <div className="project-document-tabs" role="tablist" aria-label={text("Document category", "Documentcategorie")}>
         {tabs.map((tab) => <button className={view === tab.id ? "active" : ""} type="button" role="tab" aria-selected={view === tab.id} onClick={() => setView(tab.id)} key={tab.id}>{tab.icon}<span><strong>{tab.label}</strong><small>{tab.count} {text("items", "items")}</small></span></button>)}

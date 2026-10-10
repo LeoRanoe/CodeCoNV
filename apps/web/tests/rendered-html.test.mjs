@@ -330,7 +330,7 @@ test("implements the handwritten client PDF as required workflows without AI or 
   assert.match(migration, /'rfa','inspection_request','boq'/);
   assert.match(app, /project\.technicalInstructionCount/);
   assert.match(app, /project\.changeOrderCount/);
-  assert.match(app, /Timmerlieden/);
+  assert.match(await readFile(new URL("../lib/forms/disciplines.ts", import.meta.url), "utf8"), /Timmerlieden/);
   assert.match(app, /Beton en wapening/);
   assert.match(app, /Werk lopend aan het einde van de dag/);
   assert.match(app, /Werk vandaag afgerond/);

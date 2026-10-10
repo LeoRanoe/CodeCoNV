@@ -17,6 +17,7 @@ import {
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useMemo, useRef, useState } from "react";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
+import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
 import { loadProjectFileBlob } from "@/lib/storage/gateway";
 import type { FileRecord } from "@/lib/supabase/operations";
@@ -107,6 +108,7 @@ export function RapidVerifyWorkspace({
   client?: SupabaseClient;
 }) {
   const { text } = useLanguage();
+  const canAddSources = useProjectPermissions().can("files.manage");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<"question" | "compare">("question");
   const [documents, setDocuments] = useState<IndexedDocument[]>([]);
@@ -237,10 +239,10 @@ export function RapidVerifyWorkspace({
           <p className="eyebrow">{projectName}</p>
           <h1>Rapid Verify</h1>
         </div>
-        <button className="primary-button" type="button" onClick={() => fileInputRef.current?.click()} disabled={busy}>
+        {canAddSources ? <button className="primary-button" type="button" onClick={() => fileInputRef.current?.click()} disabled={busy}>
           {busy ? <Loader2 className="spin" size={16} /> : <Upload size={16} />}
           {text("Add sources", "Bronnen toevoegen")}
-        </button>
+        </button> : null}
         <input ref={fileInputRef} className="visually-hidden" aria-hidden="true" tabIndex={-1} type="file" accept=".pdf,.txt,.md,text/plain,application/pdf" multiple onChange={(event) => void receiveFiles(event.currentTarget.files)} />
       </header>
 
@@ -252,11 +254,11 @@ export function RapidVerifyWorkspace({
             <span><BookOpenCheck size={19} /></span>
             <div><strong>{text("Project sources", "Projectbronnen")}</strong><small>{indexedPages.length} {text("indexed pages", "geindexeerde pagina's")}</small></div>
           </div>
-          <button className="rapid-upload-zone" type="button" onClick={() => fileInputRef.current?.click()}>
+          {canAddSources ? <button className="rapid-upload-zone" type="button" onClick={() => fileInputRef.current?.click()}>
             <Upload size={20} />
             <strong>{text("Upload PDF or text", "Upload PDF of tekst")}</strong>
             <small>{text("Drawings · tech specs · contract", "Tekeningen · tech specs · contract")}</small>
-          </button>
+          </button> : null}
           {availableProjectFiles.length ? (
             <div className="rapid-project-library">
               <span>{text("Available in Project Docs", "Beschikbaar in Project Docs")}</span>

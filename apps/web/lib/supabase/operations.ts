@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { constructionDisciplines } from "@/lib/forms/disciplines";
 import { anchorChecklistLibrary, legacyAnchorPrompts } from "@/lib/checklists/anchor-library";
 import { normalizeExternalShareToken } from "@/lib/external-share/token.mjs";
 import { schemaFeatureMissing } from "@/lib/supabase/schema-compatibility.mjs";
@@ -780,7 +781,7 @@ export async function loadProjectOperations(
       configuration_status: "setup",
       default_shift_start: "07:00",
       default_shift_end: "16:00",
-      disciplines: ["Carpenters", "Electricians", "HVAC", "Painters", "Facade", "Rebar / concrete workers", "Tiler", "Sanitary", "General"],
+      disciplines: [...constructionDisciplines],
       finding_deadlines: { low: 14, medium: 7, high: 3, critical: 1 },
       report_sections: ["management", "workforce", "work", "logistics", "quality", "hse", "documents", "visual", "boq"],
       default_units: { length: "m", area: "m2", volume: "m3", weight: "kg", temperature: "C" },

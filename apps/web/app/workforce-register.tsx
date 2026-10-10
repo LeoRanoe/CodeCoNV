@@ -6,6 +6,7 @@ import { resolveDefaultBuildingId, type BuildingOption } from "@/app/building-pi
 import { type HandwrittenSignature } from "@/app/signature-pad";
 import { RecordFormSection, RecordSignatureField } from "@/app/forms/record-form-shell";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
+import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
 import {
   workforceByDiscipline,
@@ -274,6 +275,8 @@ export function WorkforceModal({
   ) => void | Promise<void>;
 }) {
   const { text } = useLanguage();
+  // Counting the crew is attendance.manage; everyone else may look but not change.
+  const readOnly = !useProjectPermissions().can("attendance.manage");
   const firstBuildingId = resolveDefaultBuildingId(buildings, defaultBuildingId);
   const [buildingId, setBuildingId] = useState(firstBuildingId);
   /** The supervisor who counted the crew, signed on the register itself. */
@@ -402,6 +405,7 @@ export function WorkforceModal({
         </header>
 
         <div className="modal-body workforce-body">
+          <fieldset className="workforce-fieldset" disabled={readOnly}>
           {/* The location and weather tiles that used to stand here were struck through on
               the client's own screenshot. What is left is the number they left standing. */}
           <div className="workforce-headline">
@@ -587,7 +591,8 @@ export function WorkforceModal({
             )}
           />
           </div>
-          <div className="modal-actions">
+          </fieldset>
+          {readOnly ? null : <div className="modal-actions">
             {noteMissing ? <span className="form-note">{text("Explain the deviation to confirm.", "Licht de afwijking toe om te bevestigen.")}</span> : null}
             <button
               className="primary-button"
@@ -603,7 +608,7 @@ export function WorkforceModal({
                 ? text(`Confirm attendance · ${filledBuildings.length} buildings`, `Aanwezigheid bevestigen · ${filledBuildings.length} gebouwen`)
                 : text("Confirm attendance", "Aanwezigheid bevestigen")}
             </button>
-          </div>
+          </div>}
         </div>
       </section>
     </div>

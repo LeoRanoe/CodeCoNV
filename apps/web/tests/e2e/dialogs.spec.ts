@@ -153,7 +153,8 @@ test.describe("every dialog", () => {
     await expect(workforce).toBeVisible();
     // The signature pad is the dialog that opens on top of a form dialog.
     const signature = workforce.getByRole("button", { name: /sign/i }).first();
-    if (await signature.count()) {
+    expect(await signature.count(), "the workforce form offers a signature").toBeGreaterThan(0);
+    {
       await signature.click();
       await expect(page.locator(dialogSelector)).toHaveCount(2);
       await page.keyboard.press("Escape");

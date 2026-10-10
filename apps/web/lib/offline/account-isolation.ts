@@ -41,7 +41,7 @@ function removeRecordDrafts() {
     const keys: string[] = [];
     for (let index = 0; index < window.localStorage.length; index += 1) {
       const key = window.localStorage.key(index);
-      if (key?.startsWith(recordDraftPrefix) && key.includes(recordDraftMarker)) keys.push(key);
+      if ((key?.startsWith(recordDraftPrefix) && key.includes(recordDraftMarker)) || key?.startsWith("codeco-permissions:")) keys.push(key as string);
     }
     for (const key of keys) window.localStorage.removeItem(key);
   } catch {

@@ -66,7 +66,9 @@ import { OperationalWorkspace } from "@/app/operational-workspace";
 import type { ActionCenterView } from "@/app/project-action-center";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { ensureDailyBackup } from "@/lib/backups/client";
+import { constructionDisciplines } from "@/lib/forms/disciplines";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
+import { ProjectPermissionsProvider, useProjectPermissionsQuery } from "@/lib/permissions/project-permissions";
 import { signatureFromDetails } from "@/lib/signatures/handwritten-signature.mjs";
 import { startCompassWatch } from "@/lib/images/compass";
 import { WorkforceModal } from "@/app/workforce-register";
@@ -274,28 +276,6 @@ type AttendanceRow = {
   shiftEnd: string;
   crew?: string;
 };
-
-const constructionDisciplines = [
-  "Bouwvakkers / algemeen",
-  "Timmerlieden",
-  "Metselaars",
-  "Beton en wapening",
-  "Betonwerkers",
-  "Wapeningwerkers",
-  "Elektriciens",
-  "HVAC",
-  "Loodgieters / sanitair",
-  "Schilders",
-  "Gevelwerk",
-  "Tegelzetters",
-  "Grondwerk",
-  "Staalbouw",
-  "Steigerbouwers",
-  "Dakwerk",
-  "Machine-operators",
-  "HSE / veiligheidsmedewerkers",
-  "Voormannen / supervisors",
-] as const;
 
 const navigation: { id: NavKey; label: string; icon: LucideIcon; badge?: string }[] = [
   { id: "vandaag", label: "Overzicht", icon: Home },
@@ -673,8 +653,8 @@ export function CodecoSupervisionApp() {
         }
         if (result.failed > 0) {
           setToast(text(
-            `${result.failed} field upload(s) still need attention. Open Photos and tap Sync now.`,
-            `${result.failed} veldupload(s) vragen nog aandacht. Open Foto’s en tik op Nu synchroniseren.`,
+            `${result.failed} field upload(s) still need attention. Open Photos and tap Send now.`,
+            `${result.failed} veldupload(s) vragen nog aandacht. Open Foto’s en tik op Nu verzenden.`,
           ));
         }
       }).catch(() => {
@@ -716,6 +696,8 @@ export function CodecoSupervisionApp() {
       )
     ));
   }, [internalAccessQuery.data?.members, selectedProject?.id]);
+
+  const permissions = useProjectPermissionsQuery(supabase as SupabaseClient | null, session?.user.id, selectedProject?.id);
 
   const dayQuery = useQuery({
     queryKey: ["project-day", selectedProject?.id, reportDate],
@@ -815,7 +797,13 @@ export function CodecoSupervisionApp() {
       : syncState === "saved"
         ? text("Saved centrally", "Centraal opgeslagen")
         : text("Live workspace · synchronized", "Live werkruimte · gesynchroniseerd");
-  const localizedNavigation = navigation.map((item) => ({
+  // A module whose records the user may not read would only ever be an empty page.
+  const navAllowed = (id: NavKey) => id === "acties" ? permissions.canAny("actions.read", "actions.create")
+    : id === "projectdocs" || id === "verify" ? permissions.can("files.read")
+      : id === "punchlist" ? permissions.can("findings.read")
+        : id === "rapporten" ? permissions.canAny("reports.read", "reports.readapproved")
+          : true;
+  const localizedNavigation = navigation.filter((item) => navAllowed(item.id)).map((item) => ({
     ...item,
     label: ({
       vandaag: text("Overview", "Overzicht"),
@@ -919,6 +907,19 @@ export function CodecoSupervisionApp() {
     }
     await performSignOut({ discardUnsent: false });
   }, [performSignOut, session]);
+
+  // A screen reader hears the connection change; the sync chip alone is only text on a button.
+  const [connectivityNote, setConnectivityNote] = useState("");
+  const connectivitySeen = useRef(false);
+  useEffect(() => {
+    if (!connectivitySeen.current) {
+      connectivitySeen.current = true;
+      return;
+    }
+    setConnectivityNote(isOnline
+      ? (language === "en" ? "Back online." : "Weer online.")
+      : (language === "en" ? "No connection. Work is saved on this device." : "Geen verbinding. Werk wordt op dit apparaat bewaard."));
+  }, [isOnline, language]);
 
   useEffect(() => {
     const online = () => setIsOnline(true);
@@ -1068,7 +1069,7 @@ export function CodecoSupervisionApp() {
       }
       setSyncState(queuedAfter > queuedBefore ? "idle" : "saved");
       setToast(queuedAfter > queuedBefore
-        ? text("Saved on this device. Syncs when you're online.", "Opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent.")
+        ? text("Saved on this device. Sent when you're online.", "Opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent.")
         : successMessage);
       // Callers test the result for truth to know the save succeeded; an operation that
       // returns nothing (Promise<void>) must not read as a failure, or the dialog stays open
@@ -1321,8 +1322,8 @@ export function CodecoSupervisionApp() {
     }
     if (navigator.onLine) {
       await forceSyncOfflineUploads(supabase, input.projectId, {
-        paused: text("Connection lost before the photos were confirmed. They are still on this device. Open Photos and tap Sync now.", "Verbinding verbroken vóór bevestiging van de foto's. Ze staan nog op dit apparaat. Open Foto's en tik op Nu synchroniseren."),
-        failed: (pendingCount) => text(`${pendingCount} photo upload(s) not confirmed. They are still on this device. Open Photos and tap Sync now.`, `${pendingCount} foto-upload(s) niet bevestigd. Ze staan nog op dit apparaat. Open Foto's en tik op Nu synchroniseren.`),
+        paused: text("Connection lost before the photos were confirmed. They are still on this device. Open Photos and tap Send now.", "Verbinding verbroken vóór bevestiging van de foto's. Ze staan nog op dit apparaat. Open Foto's en tik op Nu verzenden."),
+        failed: (pendingCount) => text(`${pendingCount} photo upload(s) not confirmed. They are still on this device. Open Photos and tap Send now.`, `${pendingCount} foto-upload(s) niet bevestigd. Ze staan nog op dit apparaat. Open Foto's en tik op Nu verzenden.`),
       });
     }
   };
@@ -1706,6 +1707,8 @@ export function CodecoSupervisionApp() {
     );
   }
 
+  // Taking a photo files a record and a file; a reader (the client) does neither.
+  const canRecord = permissions.canAny("records.create", "files.manage");
   const projectName = selectedProject?.name ?? "Project";
   const availableProjects = workspaceQuery.data.projects;
   const projectCount = availableProjects.length;
@@ -1757,6 +1760,7 @@ export function CodecoSupervisionApp() {
   };
 
   return (
+    <ProjectPermissionsProvider value={permissions}>
     <div className="app-shell">
       <FieldGuide
         canManage={canManageMembers}
@@ -1823,10 +1827,12 @@ export function CodecoSupervisionApp() {
         </nav>
 
         <div className="sidebar-spacer" />
-        <button className="quick-add-side" type="button" onClick={openQuickAdd}>
-          <Camera size={18} strokeWidth={2.4} />
-          {text("Take photo", "Foto maken")}
-        </button>
+        {canRecord ? (
+          <button className="quick-add-side" type="button" onClick={openQuickAdd}>
+            <Camera size={18} strokeWidth={2.4} />
+            {text("Take photo", "Foto maken")}
+          </button>
+        ) : null}
         <button className="user-card" type="button" onClick={() => void requestSignOut()} title={text("Sign out", "Afmelden")}>
           <span className="avatar" aria-hidden="true">{initials(currentUserName)}</span>
           <span className="user-copy">
@@ -1977,7 +1983,7 @@ export function CodecoSupervisionApp() {
                 // An action that is still waiting on the device has no central record to
                 // update yet; opening its detail would offer buttons that cannot work.
                 if (isPendingRecordId(action.id)) {
-                  setToast(text("Not sent yet. It opens after sync.", "Nog niet verzonden. Opent na synchronisatie."));
+                  setToast(text("Not sent yet. It opens after sending.", "Nog niet verzonden. Opent na verzending."));
                   return;
                 }
                 setSelectedAction(action);
@@ -2033,7 +2039,7 @@ export function CodecoSupervisionApp() {
         </main>
       </div>
 
-      <nav className="mobile-bottom-nav" aria-label={text("Mobile main navigation", "Mobiele hoofdnavigatie")}>
+      <nav className={`mobile-bottom-nav${canRecord ? "" : " four"}`} aria-label={text("Mobile main navigation", "Mobiele hoofdnavigatie")}>
         {localizedNavigation.filter((item) => item.id === "vandaag" || item.id === "project").map((item) => {
           const Icon = item.icon;
           return (
@@ -2043,10 +2049,12 @@ export function CodecoSupervisionApp() {
             </button>
           );
         })}
-        <button className="mobile-nav-button quick" type="button" onClick={openQuickAdd} aria-label={text("Photo (quick add)", "Foto (snel toevoegen)")}>
-          <span className="mobile-plus"><Camera size={23} /></span>
-          {text("Photo", "Foto")}
-        </button>
+        {canRecord ? (
+          <button className="mobile-nav-button quick" type="button" onClick={openQuickAdd} aria-label={text("Photo (quick add)", "Foto (snel toevoegen)")}>
+            <span className="mobile-plus"><Camera size={23} /></span>
+            {text("Photo", "Foto")}
+          </button>
+        ) : null}
         {localizedNavigation.filter((item) => item.id === "acties").map((item) => {
           const Icon = item.icon;
           return (
@@ -2559,8 +2567,8 @@ export function CodecoSupervisionApp() {
                 }
                 if (navigator.onLine) {
                   await forceSyncOfflineUploads(supabase, selectedProject.id, {
-                    paused: text("Connection lost before the photos were confirmed. They are still on this device. Open Photos and tap Sync now.", "Verbinding verbroken vóór bevestiging van de foto's. Ze staan nog op dit apparaat. Open Foto's en tik op Nu synchroniseren."),
-                    failed: (pendingCount) => text(`${pendingCount} photo upload(s) not confirmed. They are still on this device. Open Photos and tap Sync now.`, `${pendingCount} foto-upload(s) niet bevestigd. Ze staan nog op dit apparaat. Open Foto's en tik op Nu synchroniseren.`),
+                    paused: text("Connection lost before the photos were confirmed. They are still on this device. Open Photos and tap Send now.", "Verbinding verbroken vóór bevestiging van de foto's. Ze staan nog op dit apparaat. Open Foto's en tik op Nu verzenden."),
+                    failed: (pendingCount) => text(`${pendingCount} photo upload(s) not confirmed. They are still on this device. Open Photos and tap Send now.`, `${pendingCount} foto-upload(s) niet bevestigd. Ze staan nog op dit apparaat. Open Foto's en tik op Nu verzenden.`),
                   });
                 }
               }
@@ -2665,8 +2673,10 @@ export function CodecoSupervisionApp() {
           <button className="entry-resume-dismiss" type="button" onClick={() => setEntryDraftParked(false)} aria-label={text("Discard this record", "Deze registratie laten vallen")}><X size={14} /></button>
         </div>
       ) : null}
+      <div className="sr-only" role="status" aria-live="polite">{connectivityNote}</div>
       {toast ? <div className={`toast ${syncState === "error" ? "error" : ""}`} role={syncState === "error" ? "alert" : "status"} aria-live={syncState === "error" ? "assertive" : "polite"}>{syncState === "error" ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />} {toast}</div> : null}
     </div>
+    </ProjectPermissionsProvider>
   );
 }
 
@@ -3829,7 +3839,7 @@ function NotificationsModal({ client, notifications, loading, close, markRead }:
           {notifications.map((notification) => (
             <button className={`notification-row ${notification.read_at ? "read" : ""}`} type="button" key={notification.id} onClick={() => void markRead(notification.id)}>
               <span className="notification-row-icon">{notification.notification_type.includes("overdue") || notification.notification_type.includes("critical") ? <AlertTriangle size={17} /> : <Bell size={17} />}</span>
-              <span><strong>{notification.title}</strong><span>{notification.body}</span><small>{notification.due_at ? `${text("Deadline", "Deadline")} ${new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(notification.due_at))}` : text("Immediate follow-up", "Directe opvolging")} · {notification.push_status === "sent" ? text("Push sent", "Push verzonden") : notification.push_status === "failed" ? text("Push retry pending", "Nieuwe pushpoging gepland") : notification.push_status === "skipped" ? text("Activate push on a device", "Activeer push op een apparaat") : text("Push queued", "Push in wachtrij")}</small></span>
+              <span><strong>{notificationTitle(notification.title, text)}</strong><span>{notification.body}</span><small>{notification.due_at ? `${text("Deadline", "Deadline")} ${new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(notification.due_at))}` : text("Immediate follow-up", "Directe opvolging")} · {notification.push_status === "sent" ? text("Push sent", "Push verzonden") : notification.push_status === "failed" ? text("Push retry pending", "Nieuwe pushpoging gepland") : notification.push_status === "skipped" ? text("Activate push on a device", "Activeer push op een apparaat") : text("Push queued", "Push in wachtrij")}</small></span>
               {!notification.read_at ? <i aria-label={text("Unread", "Ongelezen")} /> : null}
             </button>
           ))}
@@ -4046,6 +4056,26 @@ function UserAdminModal({
       </section>
     </div>
   );
+}
+
+/**
+ * The database writes a notification's title in Dutch when it creates it ("Actie nadert
+ * deadline: ACT-2026-0003"). The interface says it in the language it is set to; a title it
+ * does not know stays as stored.
+ */
+function notificationTitle(stored: string, text: (english: string, dutch: string) => string) {
+  const exact: Record<string, string> = {
+    "Dagrapport wacht op review": text("Daily report waiting for review", "Dagrapport wacht op review"),
+    "Automatische back-up mislukt": text("Automatic backup failed", "Automatische back-up mislukt"),
+  };
+  if (exact[stored]) return exact[stored];
+  const prefixes: Array<[string, string]> = [
+    ["Actie verlopen: ", text("Action overdue: ", "Actie verlopen: ")],
+    ["Actie nadert deadline: ", text("Action due soon: ", "Actie nadert deadline: ")],
+    ["Bevinding nadert deadline: ", text("Finding due soon: ", "Bevinding nadert deadline: ")],
+  ];
+  for (const [dutch, shown] of prefixes) if (stored.startsWith(dutch)) return shown + stored.slice(dutch.length);
+  return stored;
 }
 
 function QuickAddModal({ close, chooseType }: { close: () => void; chooseType: (type: string) => void }) {
