@@ -22,7 +22,7 @@ Status values: **fixed** (committed, automated test, browser retest), **fixed �
 | LQA-004 | P2 | Status step offered to a role that cannot take it; misleading refusal | fixed |
 | LQA-005 | P2 | Disabled save buttons without a reason | fixed |
 | LQA-006 | P2 | Two taps create two documents | fixed |
-| LQA-007 | P3 | Materials-delivery line row wider than its card | fixed – retest pending |
+| LQA-007 | P3 | Materials-delivery line row wider than its card | fixed |
 | LQA-008 | P3 | NCR card says "sent link" when none was sent | fixed |
 | LQA-009 | P3 | Contractor page shows English enum names, calls an NCR "FINDING" | fixed |
 | LQA-010 | P3 | "In progress" stage counts rejected findings | fixed |
@@ -30,6 +30,7 @@ Status values: **fixed** (committed, automated test, browser retest), **fixed �
 | LQA-012 | P3 | Deep link `nav=punchlist` without `tab` shows the Workspace grid | open |
 | LQA-013 | P3 | Contractor page status badge stays stale after a submit | open |
 | LQA-014 | P1 | A refused session keeps showing the cached workspace as live | fixed |
+| LQA-015 | P3 | Several phone/tablet controls are 24–35 px high | accepted (design) |
 
 ## LQA-001 · P2 · Overview shows zero for things the project has
 
@@ -138,13 +139,22 @@ Status values: **fixed** (committed, automated test, browser retest), **fixed �
 
 | ID | What | Notes |
 | --- | --- | --- |
-| LQA-007 | At 1024 px the materials-delivery line row (370 px) sits in a 349 px column; the remove button leaves the card by 21 px | CSS minimums lowered, `min-width: 0` on the row; the dev server served stale CSS during the audit, retest pending |
+| LQA-007 | At 1024 px the materials-delivery line row (370 px) sits in a 349 px column; the remove button leaves the card by 21 px | CSS minimums lowered, `min-width: 0` on the row; retested on a production build at 1024 px: overhang 0 px (was 21 px) |
 | LQA-008 | NCR card read "Waiting for the contractor's answer through the sent link." before any link existed | now conditional on an active link; otherwise "No contractor answer yet." |
 | LQA-009 | Dutch contractor page printed `FINDING · Q-2026-0003` for an NCR (raw enum) | "NCR", "Bevinding", "Actie", "Inspectie", "Foto" |
 | LQA-010 | Workspace "In progress" stage counted `rejected` findings (terminal) | removed |
 | LQA-011 | Project Docs renders two visible `h1` | open |
 | LQA-012 | `?nav=punchlist` without `tab` renders the Workspace grid while "Issues" is highlighted | open; the app itself never produces that URL |
 | LQA-013 | After a submit the contractor page keeps the old status badge until reload | open |
+
+## LQA-015 · P3 · Small touch targets (accepted)
+
+Measured on a production build at 390 and 820 px: weather chip 65×35, storage icon 32×32, the
+filter chips and supporting-tool buttons on the Workspace 34 high, the type tabs on the Action
+Center 34 high, and three text links ("Open workspace", "All actions", "View all") 24 high at
+820 px. All meet WCAG 2.5.8 (24 px) and are below the 44 px that is usual on a phone.
+Preserving the approved design was part of the brief, so nothing was changed; raising the chips to
+40 px is a one-line CSS decision for the product owner.
 
 ## LQA-014 · P1 · A refused session keeps showing the cached workspace as live
 

@@ -177,7 +177,14 @@ test("sweep every module and workspace tile at five widths", async ({ page }, te
     writeFileSync(`${outDir}/report.json`, JSON.stringify({ reached: reached.length, findings: Array.from(unique.values()) }, null, 1));
   };
   const mobile = (width: number) => width <= 820;
-  const goModule = async (name: string, width: number) => {
+  const projectUrl = page.url();
+  /** Reloads the project so a screen left in an odd state by the previous step cannot hide the navigation. */
+  const reload = async () => {
+    await page.goto(projectUrl, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => !document.querySelector(".access-form") && (document.querySelector("main")?.textContent?.length ?? 0) > 200, null, { timeout: 25_000 }).catch(() => undefined);
+    await page.waitForTimeout(500);
+  };
+  const goModuleOnce = async (name: string, width: number) => {
     if (mobile(width)) {
       // On a phone the destinations live in the bottom bar and the "more" drawer.
       const direct = page.locator("nav, .mobile-nav, .bottom-bar").getByRole("button", { name: new RegExp(`^${name}`) }).first();
@@ -195,10 +202,17 @@ test("sweep every module and workspace tile at five widths", async ({ page }, te
     return true;
   };
 
+  const goModule = async (name: string, width: number) => {
+    const first = await goModuleOnce(name, width).catch(() => false);
+    if (first) return true;
+    await reload();
+    return goModuleOnce(name, width).catch(() => false);
+  };
+
   for (const viewport of viewports) {
     viewportName = viewport.name;
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
-    await page.waitForTimeout(500);
+    await reload();
 
     for (const name of modules) {
       screen = `module:${name}`;
