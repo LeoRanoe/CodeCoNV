@@ -12,6 +12,8 @@
 --    and whether the signatory used their own account or signed on the capturing user's device;
 --    the recipient can never be the issuer, and an unissued document cannot be countersigned.
 --
+-- 4. An inspection or an HSE report carries the signed-in account's own name and keeps its signature.
+--
 -- Nothing existing is rewritten: records and responses already stored are untouched, and an app
 -- version that sends no signature keeps working.
 
@@ -102,6 +104,47 @@ drop trigger if exists project_register_entries_signature_guard on public.projec
 create trigger project_register_entries_signature_guard
   before insert or update on public.project_register_entries
   for each row execute function app_private.controlled_document_signature_guard();
+
+-- An inspection or an HSE report is signed by the person who stood there: the signature carries the
+-- signed-in account's own name, a stored signature cannot be replaced or removed, and a moment in
+-- the future is never accepted.
+create or replace function app_private.own_name_signature_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_actor uuid := (select auth.uid());
+  v_name text;
+begin
+  if tg_op = 'UPDATE' and old.signature_image is not null and (
+    new.signature_image is distinct from old.signature_image
+    or new.signed_by is distinct from old.signed_by
+    or new.signed_at is distinct from old.signed_at
+  ) then
+    raise exception 'A signed record keeps its signature' using errcode = '23514';
+  end if;
+  if new.signature_image is not null and (tg_op = 'INSERT' or old.signature_image is null) then
+    if v_actor is not null then
+      select profile.display_name into v_name from public.profiles profile where profile.id = v_actor;
+      if v_name is not null then new.signed_by := v_name; end if;
+    end if;
+    new.signed_at := least(coalesce(new.signed_at, now()), now());
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists inspections_signature_guard on public.inspections;
+create trigger inspections_signature_guard
+  before insert or update on public.inspections
+  for each row execute function app_private.own_name_signature_guard();
+
+drop trigger if exists hse_events_signature_guard on public.hse_events;
+create trigger hse_events_signature_guard
+  before insert or update on public.hse_events
+  for each row execute function app_private.own_name_signature_guard();
 
 create or replace function public.respond_to_controlled_project_document(
   p_entry_id uuid,

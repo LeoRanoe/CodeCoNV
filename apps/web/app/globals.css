@@ -8831,7 +8831,12 @@ textarea:focus-visible {
 .period-report-types { display: grid; gap: var(--space-2); grid-column: 1 / -1; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
 .configuration-modules { border: 1px solid var(--border); border-radius: 12px; display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); padding: 14px; }
 .configuration-modules legend { color: var(--text); font-size: 13px; font-weight: 750; padding: 0 6px; }
-.inspection-search { margin-bottom: var(--space-4); }
+/* The lookup is as wide as the start-inspection form above it, and its four controls share one row. */
+.inspection-search { margin-bottom: var(--space-4); width: 100%; }
+.inspection-search .form-grid-2 { align-items: end; }
+@media (min-width: 1100px) {
+  .inspection-search .form-grid-2 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
 .period-report-types button { background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm); display: grid; gap: 3px; padding: var(--space-3) 13px; text-align: left; cursor: pointer; min-height: 64px; }
 .period-report-types button.active { background: var(--green-soft); border-color: #86c1b0; color: var(--green); }
 .period-report-types span { color: var(--muted); font-size: 11px; }

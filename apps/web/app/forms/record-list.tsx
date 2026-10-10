@@ -16,6 +16,8 @@ export type RecordListRow = {
   tone: string;
   onOpen?: () => void;
   onEdit?: () => void;
+  /** Names what editing does when "Edit" is too vague, e.g. continuing a checklist. */
+  editLabel?: string;
   onWithdraw?: () => void;
   /** Kept for older call sites while all record tabs move to the common actions. */
   open?: { label: string; onOpen: () => void };
@@ -53,7 +55,7 @@ export function RecordList({
         {!waiting && (open || row.onEdit || row.onWithdraw) ? (
           <div className="record-row-actions">
             {open ? <button className="secondary-button record-row-open" type="button" onClick={(event) => { event.stopPropagation(); open(); }}><Eye size={14} /> {row.open?.label ?? text("View", "Bekijken")}</button> : null}
-            {row.onEdit ? <button className="secondary-button record-row-edit" type="button" onClick={(event) => { event.stopPropagation(); row.onEdit?.(); }}><Edit3 size={14} /> {text("Edit", "Bewerken")}</button> : null}
+            {row.onEdit ? <button className="secondary-button record-row-edit" type="button" onClick={(event) => { event.stopPropagation(); row.onEdit?.(); }}><Edit3 size={14} /> {row.editLabel ?? text("Edit", "Bewerken")}</button> : null}
             {row.onWithdraw ? <button className="ghost-button record-row-withdraw" type="button" onClick={(event) => { event.stopPropagation(); row.onWithdraw?.(); }}><Undo2 size={14} /> {text("Withdraw", "Intrekken")}</button> : null}
           </div>
         ) : null}

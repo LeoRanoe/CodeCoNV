@@ -141,6 +141,7 @@ import {
   createExternalShareLink,
   ensureProjectDayReport,
   finishInspection,
+  saveInspectionAnswers,
   signInspection,
   importProjectBoq,
   installChecklistLibraryTemplate,
@@ -708,9 +709,12 @@ function checklistItemAnswered(item: ChecklistItem, answer?: InspectionAnswer) {
   return true;
 }
 
+/** The seeded checklists carry one generic instruction on every point; it says nothing the buttons do not. */
+const genericChecklistGuidance = /^Choose (Yes, No or N\/A|Pass, Fail or N\/A)\./i;
+
 function checklistGuidance(item: ChecklistItem) {
   if (item.guidance?.startsWith("AUTO_WEATHER|")) return item.guidance.split("|").slice(1).join("|");
-  return item.guidance;
+  return item.guidance && genericChecklistGuidance.test(item.guidance.trim()) ? "" : item.guidance;
 }
 
 function isAutomaticWeatherItem(item: ChecklistItem) {
@@ -2036,7 +2040,9 @@ function ProjectOperations({
    * pick an NCR from the inspection screen; the NCR then opens with this checklist as its
    * reference, so the two records point at each other from the start.
    */
-  const raiseNcrFromInspection = (inspection: Inspection) => {
+  const raiseNcrFromInspection = async (inspection: Inspection) => {
+    // The answers given so far are stored first: leaving for the NCR form must not lose the checklist.
+    if (!await run(() => saveInspectionAnswers(client, inspection, inspectionAnswers), text("Checklist progress saved.", "Voortgang van de checklist opgeslagen."))) return;
     const failed = activeTemplate?.items.filter((item) => inspectionAnswers[item.id]?.result === "fail" || inspectionAnswers[item.id]?.result === "no") ?? [];
     setFindingForm((current) => ({
       ...current,
@@ -2069,10 +2075,12 @@ function ProjectOperations({
           locationNodeId: inspectionLocationNodeId || activeInspection.location_node_id || undefined,
           title: inspectionTitle.trim() || activeInspection.title,
         });
+        // The signature is stored first: an inspection that is completed always carries the signature
+        // of the person who walked it, even when the connection drops between the two steps.
+        if (inspectionSignature && !activeInspection.signature_image) await signInspection(client, activeInspection.id, inspectionSignature);
         if (!["passed", "cancelled"].includes(activeInspection.status)) {
           await finishInspection(client, inspectionToFinish, inspectionAnswers);
         }
-        if (inspectionSignature) await signInspection(client, activeInspection.id, inspectionSignature);
         if (inspectionPhotos.length) {
           const folderName = text("Inspections", "Inspecties");
           const photoBuildingId = activeInspection.building_id;
@@ -2105,7 +2113,9 @@ function ProjectOperations({
           if (navigator.onLine) await syncQueuedEvidenceNow();
         }
       },
-      text("Saved on this device. Photos are sent when you're online.", "Opgeslagen op dit apparaat. Foto's worden verzonden zodra je online bent."),
+      inspectionPhotos.length
+        ? text("Inspection completed. Photos are sent when you're online.", "Inspectie afgerond. Foto's worden verzonden zodra je online bent.")
+        : text("Inspection completed and signed.", "Inspectie afgerond en ondertekend."),
     );
     if (okay) {
       setActiveInspection(null);
@@ -2116,11 +2126,13 @@ function ProjectOperations({
     }
   };
 
+  /** Marks the points still open in a section as passed. A point already answered (a "No", a "Fail",
+      an "N/A") is an exception somebody recorded and is never overwritten. */
   const approveChecklistSection = (items: ChecklistItem[]) => {
     setInspectionAnswers((answers) => ({
       ...answers,
       ...Object.fromEntries(items
-        .filter((item) => item.response_type === "yes_no_na" || item.response_type === "pass_fail_na")
+        .filter((item) => (item.response_type === "yes_no_na" || item.response_type === "pass_fail_na") && !checklistItemAnswered(item, answers[item.id]))
         .map((item) => [
           item.id,
           {
@@ -2965,7 +2977,7 @@ function ProjectOperations({
                   <section className="checklist-section" key={section}>
                     <header>
                       <span><strong>{section}</strong><small>{items.filter((item) => checklistItemAnswered(item, inspectionAnswers[item.id])).length} / {items.length}</small></span>
-                      {items.every((item) => item.response_type === "yes_no_na" || item.response_type === "pass_fail_na") ? <button type="button" onClick={() => approveChecklistSection(items)}><CheckCircle2 size={14} /> {text("Approve section", "Sectie akkoord")}</button> : null}
+                      {items.every((item) => item.response_type === "yes_no_na" || item.response_type === "pass_fail_na") && items.some((item) => !checklistItemAnswered(item, inspectionAnswers[item.id])) ? <button type="button" onClick={() => approveChecklistSection(items)}><CheckCircle2 size={14} /> {text("Approve section", "Sectie akkoord")}</button> : null}
                     </header>
                     {items.map((item) => {
                       const current = inspectionAnswers[item.id] ?? { result: "", notes: "" };
@@ -3019,9 +3031,9 @@ function ProjectOperations({
                   "By signing you confirm that you checked every point of this checklist yourself.",
                   "Met je handtekening bevestig je dat je elk punt van deze checklist zelf hebt gecontroleerd.",
                 )}
-                hint={text("Signature, name and time are stored with the inspection.", "Handtekening, naam en tijdstip worden bij de inspectie bewaard.")}
                 nameSuggestion={currentUserName}
-                nameOptions={documentIssuerOptions}
+                lockName
+                locked={Boolean(activeInspection.signature_image)}
                 value={inspectionSignature}
                 onChange={setInspectionSignature}
                 required
@@ -3035,7 +3047,7 @@ function ProjectOperations({
               <button className="secondary-button inspection-ncr-button" type="button" onClick={() => raiseNcrFromInspection(activeInspection)}>
                 <ShieldAlert size={15} /> {text("Raise an NCR from this checklist", "NCR opstellen vanuit deze checklist")}
               </button>
-              <div className="form-actions checklist-sticky-actions"><button className="secondary-button" type="button" onClick={() => setActiveInspection(null)}>{text("Complete later", "Later afronden")}</button><button className="primary-button" type="button" disabled={busy || !inspectionSignature || activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))} onClick={() => void submitInspection()}>{busy ? <Loader2 className="spin" size={15} /> : <FileCheck2 size={15} />} {text("Complete inspection", "Inspectie afronden")}</button></div>
+              <div className="form-actions checklist-sticky-actions"><button className="secondary-button" type="button" disabled={busy} onClick={() => void run(() => saveInspectionAnswers(client, activeInspection, inspectionAnswers), text("Checklist progress saved.", "Voortgang van de checklist opgeslagen.")).then((saved) => { if (saved) setActiveInspection(null); })}>{text("Complete later", "Later afronden")}</button><button className="primary-button" type="button" disabled={busy || !inspectionSignature || activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))} onClick={() => void submitInspection()}>{busy ? <Loader2 className="spin" size={15} /> : <FileCheck2 size={15} />} {text("Complete inspection", "Inspectie afronden")}</button></div>
               {!inspectionSignature ? <p className="form-intro">{text("Sign the checklist to complete it.", "Onderteken de checklist om hem af te ronden.")}</p> : null}
             </RecordFormShell>
           ) : null}
@@ -3092,6 +3104,7 @@ function ProjectOperations({
             tone: inspection.status === "passed" ? "green" : inspection.status === "failed" ? "red" : "",
             onOpen: () => viewInspection(inspection),
             onEdit: inspection.status !== "cancelled" ? () => { void resumeInspection(inspection); window.scrollTo({ top: 0, behavior: "smooth" }); } : undefined,
+            editLabel: inspection.status === "in_progress" || inspection.status === "planned" ? text("Fill in checklist", "Checklist invullen") : undefined,
             onWithdraw: inspection.status !== "cancelled" ? () => withdrawRecord({ kind: "inspection", id: inspection.id, code: inspection.inspection_number, title: inspection.title, status: inspection.status, meta: recordContextLabel(inspection.building_id, inspection.location_node_id, inspection.building_ids) }) : undefined,
           }))} />
         </section>
@@ -3763,6 +3776,7 @@ function ProjectOperations({
                 value={hseSignature}
                 onChange={setHseSignature}
                 nameSuggestion={currentUserName}
+                lockName
                 declaration={text("I confirm this HSE record is complete and accurate.", "Ik bevestig dat deze HSE-registratie volledig en juist is.")}
               />
               {/* The bar of the client's screen: leave it, park it, count the evidence,

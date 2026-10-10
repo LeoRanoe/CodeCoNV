@@ -989,10 +989,29 @@ export async function loadInspectionResponses(client: SupabaseClient, inspection
   }]));
 }
 
+type InspectionAnswers = Record<string, { result: string; notes: string; numericValue?: number; textValue?: string }>;
+
+/** Stores the answers given so far without completing the inspection, so a checklist can be left and resumed. */
+export async function saveInspectionAnswers(client: SupabaseClient, inspection: Pick<Inspection, "id">, answers: InspectionAnswers) {
+  for (const [itemId, answer] of Object.entries(answers)) {
+    if (!answer.result) continue;
+    const saved = await client.rpc("save_inspection_response", {
+      p_inspection_id: inspection.id,
+      p_checklist_item_id: itemId,
+      p_result: answer.result,
+      p_numeric_value: answer.result === "value" ? answer.numericValue ?? null : null,
+      p_text_value: answer.result === "text" ? answer.textValue?.trim() || null : null,
+      p_notes: answer.notes,
+      p_idempotency_key: `inspection-response:${inspection.id}:${itemId}`,
+    });
+    fail(saved.error);
+  }
+}
+
 export async function finishInspection(
   client: SupabaseClient,
   inspection: Inspection,
-  answers: Record<string, { result: string; notes: string; numericValue?: number; textValue?: string }>,
+  answers: InspectionAnswers,
 ) {
   for (const [itemId, answer] of Object.entries(answers)) {
     const saved = await client.rpc("save_inspection_response", {

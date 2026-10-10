@@ -3,7 +3,7 @@ set local search_path = extensions, pgtap, public;
 
 -- Controlled documents keep their signatures, a CODECO-issued document is signed under the
 -- account's own name, and the recipient signs the formal response as a different person.
-select plan(17);
+select plan(20);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at)
 values
@@ -162,7 +162,34 @@ select lives_ok(
   'a response without a signature still works for older app versions'
 );
 
--- 4. the client's own account
+-- 4. an inspection is signed by the person who stood there
+select public.create_project_checklist((select id from public.projects where code = 'SIG-1'), 'inspection', 'SIG-CHK', 'Signature checklist', array['Check one']);
+select public.start_project_inspection(
+  (select id from public.projects where code = 'SIG-1'),
+  (select id from public.buildings where project_id = (select id from public.projects where code = 'SIG-1')),
+  (select id from public.day_reports where project_id = (select id from public.projects where code = 'SIG-1')),
+  (select id from public.checklist_templates where project_id = (select id from public.projects where code = 'SIG-1') and code = 'SIG-CHK'),
+  'Signature inspection', 'sig-inspection-key'
+);
+update public.inspections
+set signed_by = 'Imposter', signed_at = now() + interval '1 day',
+    signature_image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg=='
+where title = 'Signature inspection';
+select is(
+  (select signed_by from public.inspections where title = 'Signature inspection'),
+  'Issuer Ivo',
+  'an inspection is signed under the account''s own name'
+);
+select ok(
+  (select signed_at <= now() from public.inspections where title = 'Signature inspection'),
+  'an inspection signature is never dated in the future'
+);
+select throws_ok(
+  $q$update public.inspections set signature_image = null where title = 'Signature inspection'$q$,
+  '23514', null, 'a signed inspection keeps its signature'
+);
+
+-- 5. the client's own account
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000019a2","role":"authenticated"}';
 select lives_ok(
   format($q$select public.respond_to_controlled_project_document(%L::uuid, jsonb_build_object(

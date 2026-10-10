@@ -158,6 +158,8 @@ export function RecordSignatureField({
   required = false,
   disabled = false,
   disabledHint,
+  lockName = false,
+  locked = false,
 }: {
   value: HandwrittenSignature | null;
   onChange: (value: HandwrittenSignature | null) => void;
@@ -168,18 +170,21 @@ export function RecordSignatureField({
   required?: boolean;
   disabled?: boolean;
   disabledHint?: string;
+  /** The signatory is the signed-in account: the name is shown, not typed. */
+  lockName?: boolean;
+  /** A stored signature that can no longer be replaced. */
+  locked?: boolean;
 }) {
   const { text } = useLanguage();
   return (
     <RecordFieldBlock
       kind="signature"
       label={required ? text("Signature *", "Handtekening *") : text("Signature", "Handtekening")}
-      hint={required
-        ? text("This record cannot be submitted without the responsible person's signature.", "Deze registratie kan niet worden ingediend zonder de handtekening van de verantwoordelijke.")
-        : text("Optional for drafts and existing records.", "Optioneel voor concepten en bestaande registraties.")}
     >
       <SignatureField
-        label={text("Write signature", "Plaats handtekening")}
+        label={text("Sign", "Onderteken")}
+        lockName={lockName}
+        locked={locked}
         declaration={declaration}
         hint={hint}
         nameSuggestion={nameSuggestion}
