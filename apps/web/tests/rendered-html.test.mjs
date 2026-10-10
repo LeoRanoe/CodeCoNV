@@ -403,7 +403,7 @@ test("implements the late client document set as controlled forms and shared rep
   assert.match(documentPdf, /REQUEST FOR INFORMATION/);
   assert.match(documentPdf, /WORK INSPECTION REQUEST/);
   assert.match(documentPdf, /TECHNICAL INSTRUCTION/);
-  assert.match(documentPdf, /CONTRACTOR ACKNOWLEDGEMENT/);
+  assert.match(documentPdf, /RECIPIENT ACKNOWLEDGEMENT/);
   assert.match(ncrPdf, /NON-CONFORMANCE REPORT/);
   assert.match(ncrPdf, /Issue not resolved/);
   assert.match(periodPdf, /Document control matrix/);
@@ -1360,7 +1360,7 @@ test("makes every recorded signature visible on the document it belongs to", asy
 
   // A controlled document says who signed it, instead of only offering a blank line.
   assert.match(controlledPdf, /ISSUED AND SIGNED BY/);
-  assert.match(controlledPdf, /text\(details, "signed_by", text\(details, "issued_by"\)\)/);
+  assert.match(controlledPdf, /controlledDocumentSignatures\(entry\)/);
   assert.match(controlledDocx, /Issued and signed by/);
   assert.doesNotMatch(controlledPdf, /A blank signature line is intentional/);
   assert.doesNotMatch(controlledDocx, /A blank signature line is intentional/);
@@ -1836,7 +1836,7 @@ test("processes the feedback of 4 August: photos first, written signatures, an N
   assert.match(ncrPdf, /styles\.signatureInk/);
   assert.match(controlledPdf, /styles\.signatureInk/);
   assert.match(docxShared, /export function signatureImageBytes/);
-  assert.match(controlledDocx, /details\.signature_image/);
+  assert.match(controlledDocx, /controlledDocumentSignatures\(entry\)/);
   assert.match(styles, /\.signature-field/);
   assert.match(styles, /\.signature-canvas/);
   // The formal report declaration and the contractor's box on the NCR are signed the
@@ -2139,7 +2139,7 @@ test("processes the annotated screens of 5 August: one building field, a signed 
   assert.match(drawings, /linkedRecordType: incomingFinding \? "observation" : "inspection"/);
   assert.match(operations, /<RecordSignatureField[\s\S]{0,500}By signing you confirm that you checked every point/);
   assert.match(operations, /disabled=\{busy \|\| !inspectionSignature/);
-  assert.match(operations, /const raiseNcrFromInspection = \(inspection: Inspection\)/);
+  assert.match(operations, /const raiseNcrFromInspection = async \(inspection: Inspection\)/);
   assert.match(operations, /Raise an NCR from this checklist|NCR opstellen vanuit deze checklist/);
   assert.match(hseMigration, /add column if not exists signature_image text/);
 
@@ -3060,8 +3060,8 @@ test("makes the change order the client's own CO form, with one approval column"
   assert.doesNotMatch(workspace, /Developer \(originator\) approval/i);
   assert.doesNotMatch(workspace, /Contractor acceptance/i);
   assert.doesNotMatch(workspace, /Actual status on original finish date/i);
-  assert.match(coPdf, /APPROVAL · SUPERVISION/);
-  assert.match(coDocx, /Approval · supervision/);
+  assert.match(coPdf, /ISSUED AND APPROVED BY · SUPERVISION/);
+  assert.match(coDocx, /Issued and approved by · supervision/);
 });
 
 test("gives the project delay report its own form, numbered PDR and evidenced by photo", async () => {
