@@ -51,7 +51,7 @@ import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { ALL_BUILDINGS, BuildingMultiPicker, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
-import { actionStatusLabels as canonicalActionStatusLabels, labelMap } from "@/lib/status-labels";
+import { actionStatusLabels as canonicalActionStatusLabels, labelMap, statusText, priorityText } from "@/lib/status-labels";
 import { screenFromSearch, useScreenHistory, type AppScreen } from "@/lib/navigation/app-history";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { photoEvidenceLine, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
@@ -3817,7 +3817,7 @@ function SecondaryView({
           <button className="action-row" type="button" style={{ textAlign: "left", cursor: "pointer" }} onClick={openReport}>
               <span className="action-icon" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}><FileText size={18} /></span>
               <span className="action-copy"><strong>{reportNumber} · {text("Today", "Vandaag")}</strong><span>{projectName} · {text("all buildings", "alle gebouwen")}</span></span>
-              <span className={`task-status ${reportStatus === "approved" ? "green" : ""}`}>{reportStatus.replaceAll("_", " ")}</span>
+              <span className={`task-status ${reportStatus === "approved" ? "green" : ""}`}>{statusText(reportStatus, text)}</span>
           </button>
         </section>
       </>
@@ -4548,7 +4548,7 @@ function ActionDetailModal({
         </header>
         <div className="modal-body action-detail-body">
           <div className="action-detail-summary">
-            <span className={`task-status ${action.priority === "critical" ? "red" : ""}`}>{action.priority}</span>
+            <span className={`task-status ${action.priority === "critical" ? "red" : ""}`}>{priorityText(action.priority, text)}</span>
             <span className={`task-status ${action.status === "verified" ? "green" : ""}`}>{statusLabels[action.status]}</span>
             <p>{action.description}</p>
           </div>

@@ -29,6 +29,7 @@ import {
 } from "@/lib/actions/action-center.mjs";
 import type { OperationSnapshot } from "@/lib/supabase/operations";
 import type { ProjectParty } from "@/lib/supabase/data";
+import { statusText, typeText, priorityText } from "@/lib/status-labels";
 
 type ProjectActionItem = {
   id: string;
@@ -147,7 +148,7 @@ export function ProjectActionCenter({
       // Only the deadline itself. The creation date used to stand here, which made
       // every record look like it had a deadline it never had.
       dueAt: finding.due_at,
-      meta: finding.finding_type.replaceAll("_", " "),
+      meta: typeText(finding.finding_type, text),
       ownerUserId: finding.assigned_user_id ?? null,
       ownerLabel: resolveUserName(finding.assigned_user_id) || partyName(finding.responsible_party_id),
       escalationRequired: Boolean(finding.issue_management?.escalation_required),
@@ -172,7 +173,7 @@ export function ProjectActionCenter({
         status: entry.status,
         priority: String(entry.details.priority ?? "normal"),
         dueAt: entry.due_at,
-        meta: entry.register_type.replaceAll("_", " "),
+        meta: typeText(entry.register_type, text),
         // A controlled document is addressed to a party, never to a single colleague.
         ownerUserId: null,
         ownerLabel: String(entry.details.requested_to ?? entry.details.contractor ?? ""),
@@ -331,8 +332,8 @@ export function ProjectActionCenter({
                   <span className={`unified-action-next step-${nextStepFor(item)}`}><ArrowRight size={11} /> {nextStepLabel(item)}</span>
                   <small className={overdue(item) ? "overdue" : ""}>{ownerLabel(item)} · {deadlineLabel(item)}</small>
                 </span>
-                <span className={`unified-action-priority ${item.priority}`}>{item.priority}</span>
-                <span className={`document-status ${isSettledStatus(item.status) ? "approved" : ""}`}>{item.status.replaceAll("_", " ")}</span>
+                <span className={`unified-action-priority ${item.priority}`}>{priorityText(item.priority, text)}</span>
+                <span className={`document-status ${isSettledStatus(item.status) ? "approved" : ""}`}>{statusText(item.status, text)}</span>
                 <ArrowRight size={15} />
               </button>
             )) : <div className="action-center-empty"><Filter size={24} /><div><strong>{view === "mine" ? text("Nothing is waiting for you", "Er wacht niets op jou") : view === "deadlines" && deadlineFilter === "overdue" ? text("Nothing is overdue", "Niets is te laat") : text("No records match this view", "Geen registraties in deze weergave")}</strong><p>{view === "mine" ? text("Work assigned to you appears here. Open All project work to see everything on this project.", "Werk dat aan jou is toegewezen verschijnt hier. Open Al het projectwerk om alles op dit project te zien.") : text("Choose another group or create the first assigned action.", "Kies een andere groep of maak de eerste toegewezen actie.")}</p></div><button className="secondary-button" type="button" onClick={() => { setTypeFilter("all"); setWorkFilter("all"); setDeadlineFilter("all"); setSearch(""); }}>{text("Clear filters", "Wis filters")}</button></div>}

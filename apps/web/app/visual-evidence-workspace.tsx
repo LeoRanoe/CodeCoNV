@@ -48,6 +48,7 @@ import {
   type VisualCapture,
 } from "@/lib/supabase/operations";
 import type { ProjectParty } from "@/lib/supabase/data";
+import { statusText } from "@/lib/status-labels";
 
 type VisualPoint =
   | { mode: "photo"; xRatio: number; yRatio: number }
@@ -1131,5 +1132,5 @@ function IssueForm({ point, capture, issue, setIssue, findings, annotations, exi
 
 function AnnotationDetails({ annotation, finding }: { annotation: VisualAnnotation; finding: Finding }) {
   const { locale, text } = useLanguage();
-  return <div className="visual-annotation-details"><span className={`visual-severity-line ${annotation.severity}`} /><span className="record-number">{finding.finding_number} · {annotation.severity}</span><h2>{annotation.title}</h2><p>{annotation.description}</p><dl><div><dt>{text("Finding status", "Status bevinding")}</dt><dd>{finding.status.replaceAll("_", " ")}</dd></div><div><dt>{text("Exact position", "Exacte positie")}</dt><dd>{annotation.coordinate_mode === "photo" ? `X ${Math.round(Number(annotation.x_ratio) * 100)}% · Y ${Math.round(Number(annotation.y_ratio) * 100)}%` : `${degrees(Number(annotation.yaw))} · ${degrees(Number(annotation.pitch))}`}</dd></div><div><dt>{text("Due", "Deadline")}</dt><dd>{finding.due_at ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "America/Paramaribo" }).format(new Date(finding.due_at)) : "—"}</dd></div></dl><div className="operation-alert"><ShieldCheck size={18} /><div><strong>{text("Traceable link", "Traceerbare koppeling")}</strong><span>{text("This marker, original image and finding remain linked in the audit trail.", "Deze marker, het originele beeld en de bevinding blijven gekoppeld in het auditspoor.")}</span></div></div></div>;
+  return <div className="visual-annotation-details"><span className={`visual-severity-line ${annotation.severity}`} /><span className="record-number">{finding.finding_number} · {annotation.severity}</span><h2>{annotation.title}</h2><p>{annotation.description}</p><dl><div><dt>{text("Finding status", "Status bevinding")}</dt><dd>{statusText(finding.status, text)}</dd></div><div><dt>{text("Exact position", "Exacte positie")}</dt><dd>{annotation.coordinate_mode === "photo" ? `X ${Math.round(Number(annotation.x_ratio) * 100)}% · Y ${Math.round(Number(annotation.y_ratio) * 100)}%` : `${degrees(Number(annotation.yaw))} · ${degrees(Number(annotation.pitch))}`}</dd></div><div><dt>{text("Due", "Deadline")}</dt><dd>{finding.due_at ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "America/Paramaribo" }).format(new Date(finding.due_at)) : "—"}</dd></div></dl><div className="operation-alert"><ShieldCheck size={18} /><div><strong>{text("Traceable link", "Traceerbare koppeling")}</strong><span>{text("This marker, original image and finding remain linked in the audit trail.", "Deze marker, het originele beeld en de bevinding blijven gekoppeld in het auditspoor.")}</span></div></div></div>;
 }

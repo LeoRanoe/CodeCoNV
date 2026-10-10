@@ -76,7 +76,8 @@ import { ProjectDocumentsHome } from "@/app/project-documents-home";
 import { ProjectActionCenter, type ActionCenterView } from "@/app/project-action-center";
 import { RapidVerifyWorkspace } from "@/app/rapid-verify-workspace";
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
-import { findingStatusLabels as canonicalFindingStatusLabels, labelMap } from "@/lib/status-labels";
+import { findingStatusLabels as canonicalFindingStatusLabels, labelMap, statusText, typeText, codeText, optionText, severityText } from "@/lib/status-labels";
+import { reportWeather, reportWind } from "@/lib/reports/report-vocabulary";
 import { userFacingError } from "@/lib/user-facing-error";
 import { anchorChecklistCodes } from "@/lib/checklists/anchor-library";
 import { recordAnchorId, useRecordFocus } from "@/lib/navigation/record-focus";
@@ -634,6 +635,22 @@ const registerLabelsEnglish: Record<string, string> = {
   environmental_report: "Environmental report (ER)", lessons_learned: "Lessons Learned (LL)",
   delay_report: "Project Delay Report (PDR)",
 };
+
+/** A calendar day (YYYY-MM-DD) as a date on site; noon in Suriname so it never shifts a day. */
+function formatDay(day: string | null | undefined, locale = "en-GB") {
+  if (!day) return "";
+  const moment = new Date(`${day.slice(0, 10)}T12:00:00-03:00`);
+  if (Number.isNaN(moment.getTime())) return day;
+  return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "America/Paramaribo" }).format(moment);
+}
+
+/** A month key (YYYY-MM) written out, e.g. "oktober 2026". */
+function formatMonth(month: string, locale = "en-GB") {
+  const moment = new Date(`${month.slice(0, 7)}-15T12:00:00-03:00`);
+  if (Number.isNaN(moment.getTime())) return month;
+  const label = new Intl.DateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "America/Paramaribo" }).format(moment);
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
 
 function formatDate(value: string | null, locale = "en-GB") {
   if (!value) return "No date";
@@ -1569,7 +1586,7 @@ function ProjectOperations({
   };
   const viewInspection = (inspection: Inspection) => setViewedRecord({
     kind: "inspection", id: inspection.id, code: inspection.inspection_number, title: inspection.title,
-    status: inspection.status.replaceAll("_", " "),
+    status: statusText(inspection.status, text),
     meta: `${recordContextLabel(inspection.building_id, inspection.location_node_id, inspection.building_ids)} · ${formatDate(inspection.completed_at ?? inspection.started_at, locale)}`,
   });
   const editFinding = (finding: Finding) => {
@@ -1616,7 +1633,7 @@ function ProjectOperations({
   };
   const viewFinding = (finding: Finding) => setViewedRecord({
     kind: "finding", id: finding.id, code: finding.finding_number, title: finding.title,
-    status: finding.status.replaceAll("_", " "), description: finding.description,
+    status: statusText(finding.status, text), description: finding.description,
     meta: `${recordContextLabel(finding.building_id, finding.location_node_id, finding.building_ids)} · ${formatDate(finding.created_at, locale)}`,
   });
   const editHse = (event: HseEvent) => {
@@ -1652,7 +1669,7 @@ function ProjectOperations({
   };
   const viewHse = (event: HseEvent) => setViewedRecord({
     kind: "hse", id: event.id, code: event.event_number, title: event.title,
-    status: event.status.replaceAll("_", " "), description: event.description,
+    status: statusText(event.status, text), description: event.description,
     meta: `${recordContextLabel(event.building_id, event.location_node_id, event.building_ids)} · ${formatDate(event.occurred_at, locale)}`,
   });
   const editRegister = (entry: RegisterEntry) => {
@@ -1709,7 +1726,7 @@ function ProjectOperations({
   };
   const viewRegister = (entry: RegisterEntry) => setViewedRecord({
     kind: "register_entry", id: entry.id, code: entry.entry_number, title: entry.title,
-    status: entry.status.replaceAll("_", " "), description: String(entry.details?.description ?? ""),
+    status: statusText(entry.status, text), description: String(entry.details?.description ?? ""),
     meta: `${recordContextLabel(entry.building_id, entry.location_node_id, entry.building_ids)} · ${formatDate(entry.occurred_at, locale)}`,
   });
   const withdrawRecord = (record: ViewedWorkspaceRecord) => {
@@ -1930,7 +1947,7 @@ function ProjectOperations({
       const weatherNote = projectStartAnswers
         ? text(
             `Automatically suggested from today's recorded weather: ${projectStartAnswers.temperatureC}°C, ${projectStartAnswers.weatherCondition.replaceAll("_", " ")}, wind ${projectStartAnswers.windCondition}.`,
-            `Automatisch voorgesteld vanuit het vastgelegde weer van vandaag: ${projectStartAnswers.temperatureC}°C, ${projectStartAnswers.weatherCondition.replaceAll("_", " ")}, wind ${projectStartAnswers.windCondition}.`,
+            `Automatisch voorgesteld vanuit het vastgelegde weer van vandaag: ${projectStartAnswers.temperatureC}°C, ${reportWeather(projectStartAnswers.weatherCondition).toLowerCase()}, wind ${reportWind(projectStartAnswers.windCondition)}.`,
           )
         : "";
       setInspectionAnswers(Object.fromEntries((template?.items ?? []).map((item) => {
@@ -3068,7 +3085,7 @@ function ProjectOperations({
             icon: ClipboardCheck,
             title: inspection.title,
             meta: `${inspection.inspection_number} · ${recordContextLabel(inspection.building_id, inspection.location_node_id, inspection.building_ids)} · ${formatDate(inspection.completed_at ?? inspection.started_at, locale)}${inspection.signed_by ? ` · ${text("signed by", "ondertekend door")} ${inspection.signed_by}` : ""}`,
-            status: inspection.status.replaceAll("_", " "),
+            status: statusText(inspection.status, text),
             tone: inspection.status === "passed" ? "green" : inspection.status === "failed" ? "red" : "",
             onOpen: () => viewInspection(inspection),
             onEdit: inspection.status !== "cancelled" ? () => { void resumeInspection(inspection); window.scrollTo({ top: 0, behavior: "smooth" }); } : undefined,
@@ -3775,13 +3792,13 @@ function ProjectOperations({
               event.hse_category ? hseCategoryLabels[event.hse_category] ?? event.hse_category : "",
               event.issue_category || "",
               recordContextLabel(event.building_id, event.location_node_id, event.building_ids),
-              event.event_type.replaceAll("_", " "),
+              typeText(event.event_type, text),
               formatDate(event.occurred_at, locale),
               event.responsible_person ? text(`for ${event.responsible_person}`, `voor ${event.responsible_person}`) : "",
               event.due_at ? `${text("deadline", "deadline")} ${formatDate(event.due_at, locale)}` : "",
-              event.root_cause ? `${text("cause", "oorzaak")}: ${event.root_cause.replaceAll("_", " ")}` : "",
+              event.root_cause ? `${text("cause", "oorzaak")}: ${optionText(recordRootCauses, event.root_cause, text)}` : "",
             ].filter(Boolean).join(" · "),
-            status: event.status.replaceAll("_", " "),
+            status: statusText(event.status, text),
             tone: event.severity === "critical" ? "red" : event.status === "closed" ? "green" : "",
             onOpen: () => viewHse(event),
             onEdit: event.status !== "cancelled" ? () => editHse(event) : undefined,
@@ -4673,7 +4690,7 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
   const contractorMessage = (entry: OperationSnapshot["registerEntries"][number]) => {
     const details = entry.details ?? {};
     return [
-      `${entry.entry_number} · ${entry.register_type.replaceAll("_", " ").toUpperCase()}`,
+      `${entry.entry_number} · ${typeText(entry.register_type, text).toUpperCase()}`,
       `${String(details.project_number ?? "")} · ${String(details.project_name ?? "")}`.trim(),
       entry.title,
       String(details.description ?? ""),
@@ -4707,7 +4724,7 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
           const entryWaiting = isPendingRecordId(entry.id);
           return <article className={`controlled-document-card ${entryWaiting ? "record-waiting" : ""} ${focusRecordId === entry.id ? "record-focused" : ""}`} id={recordAnchorId(entry.id)} key={entry.id}>
             {entryWaiting ? <p className="record-waiting-note"><WifiOff size={14} /> {text("Saved on this device. The number and the formal response follow once it has been sent.", "Op dit apparaat opgeslagen. Het nummer en het formele antwoord volgen zodra het is verstuurd.")}</p> : null}
-            <div className="controlled-document-card-main"><div><span className="record-number">{entry.entry_number} · {entry.register_type.replaceAll("_", " ").toUpperCase()}</span><h3>{entry.title}</h3><p>{String(details.description ?? "")}</p><small>{entryBuildingName}{entryLocation ? ` → ${entryLocation}` : ""} · {formatDate(entry.occurred_at, locale)}{entry.due_at ? ` · ${text("due", "uiterlijk")} ${formatDate(entry.due_at, locale)}` : ""}{responseData.decision ? ` · ${String(responseData.decision).replaceAll("_", " ")}` : ""}</small></div><span className={`task-status ${entry.status === "approved" || entry.status === "closed" ? "green" : entry.status === "rejected" ? "red" : ""}`}>{entry.status.replaceAll("_", " ")}</span></div>
+            <div className="controlled-document-card-main"><div><span className="record-number">{entry.entry_number} · {typeText(entry.register_type, text).toUpperCase()}</span><h3>{entry.title}</h3><p>{String(details.description ?? "")}</p><small>{entryBuildingName}{entryLocation ? ` → ${entryLocation}` : ""} · {formatDate(entry.occurred_at, locale)}{entry.due_at ? ` · ${text("due", "uiterlijk")} ${formatDate(entry.due_at, locale)}` : ""}{responseData.decision ? ` · ${codeText(String(responseData.decision), text)}` : ""}</small></div><span className={`task-status ${entry.status === "approved" || entry.status === "closed" ? "green" : entry.status === "rejected" ? "red" : ""}`}>{statusText(entry.status, text)}</span></div>
             <div className="finding-actions" hidden={entryWaiting}><button className="secondary-button" type="button" onClick={() => setHistoryActive((current) => current === entry.id ? null : entry.id)}><Archive size={15} /> {historyActive === entry.id ? text("Close record", "Sluit dossier") : text("Open record & history", "Open dossier & historie")}</button>
             {/* Send the document to the contractor over WhatsApp. The formal PDF or Word
                 file stays the attachment; this is the message that announces it. */}
@@ -4716,7 +4733,7 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
             <ReportDownloadButtons disabled={busy} onDownloadPdf={() => import("@/lib/reports/controlled-document-pdf").then(({ downloadControlledDocumentPdf }) => downloadControlledDocumentPdf(entry))} onDownloadWord={() => import("@/lib/reports/controlled-document-docx").then(({ downloadControlledDocumentDocx }) => downloadControlledDocumentDocx(entry))} />{!["closed", "cancelled"].includes(entry.status) ? <button className="primary-button" type="button" disabled={busy} onClick={() => { setActive(active === entry.id ? null : entry.id); setResponse({ decision: entry.register_type === "technical_instruction" || entry.register_type === "change_order" ? "acknowledged" : "approved", comments: "", respondentName: currentUserName, respondentPosition: "", respondentCompany: "CODECO N.V." }); }}><FileCheck2 size={15} /> {text("Record formal response", "Leg formeel antwoord vast")}</button> : null}</div>
             {historyActive === entry.id ? <section className="controlled-document-history">
               <div><span>{text("Created / issued", "Aangemaakt / uitgegeven")}</span><strong>{formatDate(entry.occurred_at, locale)}</strong><small>{String(details.issuer_name ?? details.issued_by ?? currentUserName)} · {String(details.issuer_company ?? "CODECO N.V.")}</small></div>
-              <div><span>{text("Current status", "Huidige status")}</span><strong>{entry.status.replaceAll("_", " ")}</strong><small>{responseData.decision ? `${text("Decision", "Besluit")}: ${String(responseData.decision).replaceAll("_", " ")}` : text("No formal decision recorded yet", "Nog geen formeel besluit vastgelegd")}</small></div>
+              <div><span>{text("Current status", "Huidige status")}</span><strong>{statusText(entry.status, text)}</strong><small>{responseData.decision ? `${text("Decision", "Besluit")}: ${codeText(String(responseData.decision), text)}` : text("No formal decision recorded yet", "Nog geen formeel besluit vastgelegd")}</small></div>
               <div className="controlled-history-description"><span>{text("Complete content", "Volledige inhoud")}</span><p>{String(details.description ?? details.request ?? details.instruction ?? text("No description supplied.", "Geen omschrijving ingevoerd."))}</p></div>
               {attachmentFiles.length ? <div className="controlled-history-attachments"><span>{text("Uploaded attachments", "Geüploade bijlagen")}</span>{attachmentFiles.map((file, index) => {
                 const fileId = String(file.file_id ?? "");
@@ -5040,7 +5057,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
                 )}
               </p>
             ) : null}
-            <div className="finding-card-main"><span className={`record-severity ${finding.severity}`}>{finding.severity}</span><div><span className="record-number">{finding.finding_number} · {finding.finding_type.toUpperCase()}</span><h3>{finding.title}</h3><p>{finding.description}</p>{issue.action_steps ? <p className="finding-required-action"><strong>{text("Required action:", "Vereiste actie:")}</strong> {issue.action_steps}</p> : null}{issue.immediate_actions?.length || issue.immediate_action_other ? <p className="finding-immediate-action"><strong>{text("Already done:", "Al gedaan:")}</strong> {[...(issue.immediate_actions ?? []).map((action) => action.replaceAll("_", " ")), issue.immediate_action_other ?? ""].filter(Boolean).join(" · ")}</p> : null}<small>{[issue.issue_category, issue.root_cause ? `${text("cause", "oorzaak")}: ${issue.root_cause.replaceAll("_", " ")}` : "", issue.responsible_person].filter(Boolean).join(" · ")}{[issue.issue_category, issue.root_cause, issue.responsible_person].some(Boolean) ? " · " : ""}{recordBuildingName}{recordLocation ? ` → ${recordLocation}` : ""} · Deadline {formatDate(finding.due_at, locale)}{latestProgress ? ` · ${text("progress", "voortgang")} ${latestProgress.progress_percent}% · ${latestProgress.disposition.replaceAll("_", " ")}` : ""}{finding.verified_at ? ` · ${text("verified", "geverifieerd")} ${formatDate(finding.verified_at, locale)}` : ""}</small></div><span className={`task-status ${finding.status === "closed" ? "green" : finding.severity === "critical" ? "red" : ""}`}>{statusLabels[finding.status] ?? finding.status}</span></div>
+            <div className="finding-card-main"><span className={`record-severity ${finding.severity}`}>{severityText(finding.severity, text)}</span><div><span className="record-number">{finding.finding_number} · {finding.finding_type.toUpperCase()}</span><h3>{finding.title}</h3><p>{finding.description}</p>{issue.action_steps ? <p className="finding-required-action"><strong>{text("Required action:", "Vereiste actie:")}</strong> {issue.action_steps}</p> : null}{issue.immediate_actions?.length || issue.immediate_action_other ? <p className="finding-immediate-action"><strong>{text("Already done:", "Al gedaan:")}</strong> {[...(issue.immediate_actions ?? []).map((action) => optionText(immediateActionsTaken, action, text)), issue.immediate_action_other ?? ""].filter(Boolean).join(" · ")}</p> : null}<small>{[issue.issue_category, issue.root_cause ? `${text("cause", "oorzaak")}: ${optionText(recordRootCauses, issue.root_cause, text)}` : "", issue.responsible_person].filter(Boolean).join(" · ")}{[issue.issue_category, issue.root_cause, issue.responsible_person].some(Boolean) ? " · " : ""}{recordBuildingName}{recordLocation ? ` → ${recordLocation}` : ""} · Deadline {formatDate(finding.due_at, locale)}{latestProgress ? ` · ${text("progress", "voortgang")} ${latestProgress.progress_percent}% · ${codeText(latestProgress.disposition, text)}` : ""}{finding.verified_at ? ` · ${text("verified", "geverifieerd")} ${formatDate(finding.verified_at, locale)}` : ""}</small></div><span className={`task-status ${finding.status === "closed" ? "green" : finding.severity === "critical" ? "red" : ""}`}>{statusLabels[finding.status] ?? finding.status}</span></div>
             <div className="finding-actions" hidden={waitingToBeSent}>
               <button className="secondary-button" type="button" onClick={() => viewRecord(finding)}><FileText size={16} /> {text("View record", "Registratie bekijken")}</button>
               {finding.status !== "cancelled" ? <button className="secondary-button" type="button" onClick={() => editRecord(finding)}><Wrench size={16} /> {text("Edit", "Bewerken")}</button> : null}
@@ -5377,7 +5394,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
     return [...groups.entries()].map(([key, reports]) => ({
       id: `${type}:${key}`,
       type,
-      title: type === "weekly" ? text(`Week of ${key}`, `Week van ${key}`) : text(`Month ${key}`, `Maand ${key}`),
+      title: type === "weekly" ? text(`Week of ${formatDay(key, locale)}`, `Week van ${formatDay(key, locale)}`) : formatMonth(key, locale),
       start: [...reports].sort((a, b) => a.start.localeCompare(b.start))[0]?.start ?? key,
       end: [...reports].sort((a, b) => b.end.localeCompare(a.end))[0]?.end ?? key,
       status: reports.every((report) => ["approved", "signed", "sent"].includes(report.status)) ? "complete" : "in_progress",
@@ -5392,9 +5409,9 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
     <>
       <header className="secondary-header report-page-header"><div><p className="eyebrow">{text("Reports", "Rapporten")}</p><h1>{text("Client reports", "Klantrapporten")}</h1><p>{text("Create the right PDF first. Formal approval and history stay available in their own clear steps.", "Maak eerst de juiste PDF. Formele goedkeuring en historie blijven beschikbaar in eigen duidelijke stappen.")}</p></div><div className="report-header-state"><span className="record-number">{reportNumber}</span><span className={`report-state-pill ${reportStatus}`}>{statusLabels[reportStatus] ?? reportStatus}</span></div></header>
       <nav className="report-frequency-tabs" aria-label={text("Report frequency", "Rapportfrequentie")}>
-        <button className={periodPreset === "day" ? "active" : ""} type="button" onClick={() => { setReportView("create"); applyDatePreset(1, text("Daily supervision report", "Dagelijks supervisierapport"), "day"); }}><CalendarRange size={19} /><span><strong>Daily report</strong><small>{text("Today and daily records", "Vandaag en dagregistraties")}</small></span></button>
-        <button className={periodPreset === "week" ? "active" : ""} type="button" onClick={() => { setReportView("create"); applyDatePreset(7, text("Weekly supervision report", "Wekelijks supervisierapport"), "week"); }}><FileText size={19} /><span><strong>Weekly report</strong><small>{text("Last seven days", "Laatste zeven dagen")}</small></span></button>
-        <button className={periodPreset === "month" ? "active" : ""} type="button" onClick={() => { setReportView("create"); setPeriod({ start: `${today.slice(0, 8)}01`, end: today }); setPeriodLabel(text("Monthly supervision report", "Maandelijks supervisierapport")); setPeriodPreset("month"); }}><Archive size={19} /><span><strong>Monthly report</strong><small>{text("Management summary and trends", "Managementsamenvatting en trends")}</small></span></button>
+        <button className={periodPreset === "day" ? "active" : ""} type="button" onClick={() => { setReportView("create"); applyDatePreset(1, text("Daily supervision report", "Dagelijks supervisierapport"), "day"); }}><CalendarRange size={19} /><span><strong>{text("Daily report", "Dagrapport")}</strong><small>{text("Today and daily records", "Vandaag en dagregistraties")}</small></span></button>
+        <button className={periodPreset === "week" ? "active" : ""} type="button" onClick={() => { setReportView("create"); applyDatePreset(7, text("Weekly supervision report", "Wekelijks supervisierapport"), "week"); }}><FileText size={19} /><span><strong>{text("Weekly report", "Weekrapport")}</strong><small>{text("Last seven days", "Laatste zeven dagen")}</small></span></button>
+        <button className={periodPreset === "month" ? "active" : ""} type="button" onClick={() => { setReportView("create"); setPeriod({ start: `${today.slice(0, 8)}01`, end: today }); setPeriodLabel(text("Monthly supervision report", "Maandelijks supervisierapport")); setPeriodPreset("month"); }}><Archive size={19} /><span><strong>{text("Monthly report", "Maandrapport")}</strong><small>{text("Management summary and trends", "Managementsamenvatting en trends")}</small></span></button>
       </nav>
       <nav className="report-section-tabs" role="tablist" aria-label={text("Report workspace", "Rapportwerkruimte")}>
         {reportViews.map((view) => {
@@ -5473,8 +5490,8 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
             <header><div><span className="record-number">{text("Report history", "Rapporthistorie")}</span><h2>{text("All available reports", "Alle beschikbare rapporten")}</h2><p>{text("Daily records are the source of truth. Weekly and monthly entries group those same records and remain clickable.", "Dagregistraties zijn de bron. Week- en maanditems groeperen dezelfde registraties en blijven aanklikbaar.")}</p></div><label className="form-field"><span>{text("Report type", "Rapporttype")}</span><select value={historyType} onChange={(event) => setHistoryType(event.target.value as typeof historyType)}><option value="all">{text("All reports", "Alle rapporten")}</option><option value="daily">{text("Daily", "Dagrapport")}</option><option value="weekly">{text("Weekly", "Weekrapport")}</option><option value="monthly">{text("Monthly", "Maandrapport")}</option></select></label></header>
             <div className="report-archive-list">
               {reportArchive.map((report) => <article className={openHistoryId === report.id ? "open" : ""} key={report.id}>
-                <button type="button" onClick={() => setOpenHistoryId((current) => current === report.id ? "" : report.id)}><span className={`report-type-badge ${report.type}`}>{report.type}</span><span><strong>{report.title}</strong><small>{report.start}{report.end !== report.start ? ` → ${report.end}` : ""} · {report.count} {text("day record(s)", "dagregistratie(s)")}</small></span><span className="report-archive-progress"><b>{report.completeness}%</b><i><em style={{ width: `${report.completeness}%` }} /></i></span><ArrowRight size={15} /></button>
-                {openHistoryId === report.id ? <div className="report-archive-detail"><span>{text("Status", "Status")}: <strong>{report.status.replaceAll("_", " ")}</strong></span><span>{text("Content", "Inhoud")}: {text("complete record for this period", "volledige registratie over deze periode")}</span><ReportDownloadButtons disabled={busy} onDownloadPdf={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, report.start, report.end); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { reportTitle: report.title, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text("Archived report view downloaded.", "Rapportweergave uit de historie gedownload."))} onDownloadWord={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, report.start, report.end); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { reportTitle: report.title, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text("Archived report view downloaded as Word.", "Rapportweergave uit de historie als Word gedownload."))} /></div> : null}
+                <button type="button" onClick={() => setOpenHistoryId((current) => current === report.id ? "" : report.id)}><span className={`report-type-badge ${report.type}`}>{report.type === "weekly" ? text("Weekly", "Week") : report.type === "monthly" ? text("Monthly", "Maand") : text("Daily", "Dag")}</span><span><strong>{report.title}</strong><small>{formatDay(report.start, locale)}{report.end !== report.start ? ` → ${formatDay(report.end, locale)}` : ""} · {report.count} {text("day record(s)", "dagregistratie(s)")}</small></span><span className="report-archive-progress"><b>{report.completeness}%</b><i><em style={{ width: `${report.completeness}%` }} /></i></span><ArrowRight size={15} /></button>
+                {openHistoryId === report.id ? <div className="report-archive-detail"><span>{text("Status", "Status")}: <strong>{statusText(report.status, text)}</strong></span><span>{text("Content", "Inhoud")}: {text("complete record for this period", "volledige registratie over deze periode")}</span><ReportDownloadButtons disabled={busy} onDownloadPdf={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, report.start, report.end); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { reportTitle: report.title, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text("Archived report view downloaded.", "Rapportweergave uit de historie gedownload."))} onDownloadWord={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, report.start, report.end); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { reportTitle: report.title, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text("Archived report view downloaded as Word.", "Rapportweergave uit de historie als Word gedownload."))} /></div> : null}
               </article>)}
               {!reportArchive.length ? <div className="empty-list-state"><Archive size={22} /><strong>{text("No reports for this filter", "Geen rapporten voor dit filter")}</strong><span>{text("Create a daily report from Overview first.", "Maak eerst een dagrapport vanuit Overzicht.")}</span></div> : null}
             </div>
@@ -5482,7 +5499,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
           <section className="report-history-grid">
             <HistoryColumn title={text("Fixed versions", "Vastgezette versies")} empty={text("No immutable version yet.", "Nog geen vastgezette versie.")} rows={data.reportVersions.map((version) => <div className="history-version" key={version.id}><span>{text("Revision", "Revisie")} {version.revision} · {formatDate(version.created_at, locale)} · SHA {version.sha256.slice(0, 12)}…</span><ReportDownloadButtons disabled={busy} onDownloadPdf={() => run(async () => { const { downloadFormalReportPdf } = await import("@/lib/reports/daily-report-pdf"); await downloadFormalReportPdf(version.snapshot as FormalReportSnapshot, version.revision, version.sha256, signatureLines(version.id)); }, text(`Formal revision ${version.revision} downloaded directly from the immutable snapshot.`, `Formele revisie ${version.revision} rechtstreeks uit de vastgezette momentopname gedownload.`))} onDownloadWord={() => run(async () => { const { downloadFormalReportDocx } = await import("@/lib/reports/daily-report-docx"); await downloadFormalReportDocx(version.snapshot as FormalReportSnapshot, version.revision, version.sha256, signatureLines(version.id)); }, text(`Formal revision ${version.revision} downloaded as Word directly from the immutable snapshot.`, `Formele revisie ${version.revision} als Word rechtstreeks uit de vastgezette momentopname gedownload.`))} /></div>)} />
             <HistoryColumn title="Reviews" empty={text("No review decision yet.", "Nog geen reviewbesluit.")} rows={data.reportReviews.map((review) => `${statusLabels[review.decision] ?? review.decision} · ${review.comment} · ${formatDate(review.created_at, locale)}`)} />
-            <HistoryColumn title={text("Declarations", "Verklaringen")} empty={text("No signing declaration yet.", "Nog geen ondertekenverklaring.")} rows={data.reportSignatures.map((signature) => `${signature.signer_name} · ${signature.signer_role} · ${formatDate(signature.signed_at, locale)}`)} />
+            <HistoryColumn title={text("Declarations", "Verklaringen")} empty={text("No signing declaration yet.", "Nog geen ondertekenverklaring.")} rows={data.reportSignatures.map((signature) => `${signature.signer_name} · ${roleLabels[signature.signer_role] ?? codeText(signature.signer_role, text)} · ${formatDate(signature.signed_at, locale)}`)} />
             <HistoryColumn title={text("Distribution", "Distributie")} empty={text("No delivery recorded yet.", "Nog geen verzending geregistreerd.")} rows={data.reportDistributions.map((item) => `${item.recipient_name} · ${item.channel} · ${item.status}`)} />
           </section>
           {reportStatus === "approved" || reportStatus === "signed" || reportStatus === "sent" ? <div className="revision-bar"><div><strong>{text("Correction after freezing?", "Correctie na vastzetten?")}</strong><span>{text("The original version remains; corrections start a new revision.", "De oorspronkelijke versie blijft bestaan; correcties starten een nieuwe revisie.")}</span></div><input value={revisionReason} onChange={(event) => setRevisionReason(event.target.value)} placeholder={text("Required revision reason", "Verplichte revisiereden")} /><button className="secondary-button" type="button" disabled={busy || !reportId || revisionReason.trim().length < 5} onClick={() => void run(() => startRevision(client, reportId!, revisionReason), text("New report revision started; the original version remains immutable.", "Nieuwe rapportrevisie gestart; de oorspronkelijke versie blijft onveranderd."))}><RotateCcw size={15} /> {text("Start revision", "Start revisie")}</button></div> : null}
@@ -5553,7 +5570,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
           <button className={latestScheduledBackup ? "healthy" : "attention"} type="button" onClick={() => setSection("backup")}><span>{text("Continuity", "Continuïteit")}</span><strong>{latestScheduledBackup ? text("Verified", "Geverifieerd") : text("Pending", "Openstaand")}</strong><small>{latestScheduledBackup ? formatDate(latestScheduledBackup.verified_at) : text("Verified backup required", "Geverifieerde back-up vereist")}</small></button>
         </div>
         <div className="management-columns">
-          <article className="management-card"><header><div><span className="module-card-icon"><AlertTriangle size={18} /></span><div><h2>{text("Management attention", "Managementaandacht")}</h2><p>{text("Items that may block delivery or control.", "Punten die oplevering of beheersing kunnen blokkeren.")}</p></div></div></header><div className="management-attention-list">{criticalFindings.length ? criticalFindings.slice(0, 4).map((item) => <div key={item.id}><span className="risk-dot" /><span><strong>{item.title}</strong><small>{item.finding_number} · {item.status.replaceAll("_", " ")}</small></span></div>) : <div className="management-clear"><CheckCircle2 size={18} /><span><strong>{text("No high-risk findings", "Geen hoog-risico bevindingen")}</strong><small>{text("Continue monitoring open work.", "Blijf openstaand werk volgen.")}</small></span></div>}</div></article>
+          <article className="management-card"><header><div><span className="module-card-icon"><AlertTriangle size={18} /></span><div><h2>{text("Management attention", "Managementaandacht")}</h2><p>{text("Items that may block delivery or control.", "Punten die oplevering of beheersing kunnen blokkeren.")}</p></div></div></header><div className="management-attention-list">{criticalFindings.length ? criticalFindings.slice(0, 4).map((item) => <div key={item.id}><span className="risk-dot" /><span><strong>{item.title}</strong><small>{item.finding_number} · {statusText(item.status, text)}</small></span></div>) : <div className="management-clear"><CheckCircle2 size={18} /><span><strong>{text("No high-risk findings", "Geen hoog-risico bevindingen")}</strong><small>{text("Continue monitoring open work.", "Blijf openstaand werk volgen.")}</small></span></div>}</div></article>
           <article className="management-card"><header><div><span className="module-card-icon"><Settings size={18} /></span><div><h2>{text("Management controls", "Managementbediening")}</h2><p>{text("Go directly to the area you need to manage.", "Ga direct naar het onderdeel dat je wilt beheren.")}</p></div></div></header><div className="management-control-list"><button type="button" onClick={openUserAdmin}><Users size={16} /><span><strong>{text("Team and access", "Team en toegang")}</strong><small>{text("Invite, suspend and review roles", "Uitnodigen, opschorten en rollen controleren")}</small></span></button><button type="button" onClick={() => setSection("settings")}><Settings size={16} /><span><strong>{text("Project rules", "Projectregels")}</strong><small>{text("Reporting, deadlines and retention", "Rapportage, deadlines en bewaartermijn")}</small></span></button><button type="button" onClick={() => setSection("structure")}><Wrench size={16} /><span><strong>{text("Structure and parties", "Structuur en partijen")}</strong><small>{text("Locations, contractors and consultants", "Locaties, aannemers en adviseurs")}</small></span></button><button type="button" onClick={() => setSection("backup")}><DatabaseBackup size={16} /><span><strong>{text("Continuity controls", "Continuïteitscontrole")}</strong><small>{text("Backups and restore verification", "Back-ups en herstelverificatie")}</small></span></button></div></article>
         </div>
         <section className="external-submission-center">
@@ -5582,7 +5599,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
                     const selectedUserId = assignmentDrafts[action.id] ?? action.owner_user_id ?? "";
                     const changed = Boolean(selectedUserId) && selectedUserId !== action.owner_user_id;
                     return <article key={action.id}>
-                      <div><span className={`priority-dot ${action.priority}`} /><span><strong>{action.title}</strong><small>{action.action_number} · {action.status.replaceAll("_", " ")} · {text("Current", "Huidig")}: {employeeName(action.owner_user_id)}</small></span></div>
+                      <div><span className={`priority-dot ${action.priority}`} /><span><strong>{action.title}</strong><small>{action.action_number} · {statusText(action.status, text)} · {text("Current", "Huidig")}: {employeeName(action.owner_user_id)}</small></span></div>
                       <label className="form-field"><span>{text("Responsible employee", "Verantwoordelijke medewerker")}</span><select value={selectedUserId} onChange={(event) => setAssignmentDrafts((current) => ({ ...current, [action.id]: event.target.value }))}><option value="">{text("Choose an employee", "Kies een medewerker")}</option>{companyEmployees.map((employee) => <option value={employee.userId} key={employee.userId}>{employee.displayName?.trim() || employee.email}</option>)}</select></label>
                       <button className="primary-button" type="button" disabled={busy || !changed} onClick={() => void run(() => assignProjectAction(client, { actionId: action.id, ownerUserId: selectedUserId, note: "Assigned or reassigned by Management." }), text("Task assigned to the selected company employee; the history was updated.", "Taak aan de gekozen eigen medewerker toegewezen; de historie is bijgewerkt.")).then((okay) => { if (okay) setAssignmentDrafts((current) => { const next = { ...current }; delete next[action.id]; return next; }); })}>{text("Assign", "Toewijzen")}</button>
                     </article>;
@@ -5594,7 +5611,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
           </section>
           <ControlledDocumentList entries={externalSubmissions} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={text("Company / owner reviewer", "Reviewer bedrijf / eigenaar")} client={client} run={run} />
         </section>
-        <div className="management-context"><div><span>{text("Current report", "Huidig rapport")}</span><strong>{reportStatus.replaceAll("_", " ")}</strong></div><div><span>{text("Project locations", "Projectlocaties")}</span><strong>{data.locationNodes.length}</strong></div><div><span>{text("Published checklists", "Gepubliceerde checklists")}</span><strong>{data.templates.filter((item) => item.status === "published").length}</strong></div><div><span>{text("Controlled files", "Beheerde bestanden")}</span><strong>{data.files.length}</strong></div></div>
+        <div className="management-context"><div><span>{text("Current report", "Huidig rapport")}</span><strong>{statusText(reportStatus, text)}</strong></div><div><span>{text("Project locations", "Projectlocaties")}</span><strong>{data.locationNodes.length}</strong></div><div><span>{text("Published checklists", "Gepubliceerde checklists")}</span><strong>{data.templates.filter((item) => item.status === "published").length}</strong></div><div><span>{text("Controlled files", "Beheerde bestanden")}</span><strong>{data.files.length}</strong></div></div>
       </section> : null}
       {section === "settings" ? (
         <section className="operation-panel">
@@ -5692,7 +5709,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
             })}
           </div>
           <details className="custom-checklist-details"><summary>{text("Create a custom project checklist", "Maak een eigen projectchecklist")}</summary><div className="operation-form"><h2>{text("Publish new project checklist", "Nieuwe projectchecklist publiceren")}</h2><div className="form-grid-2"><label className="form-field"><span>{text("Module", "Module")}</span><select value={template.module} onChange={(event) => setTemplate({ ...template, module: event.target.value })}><option value="inspection">{text("Inspection", "Inspectie")}</option><option value="hse">HSE</option><option value="delivery">{text("Delivery", "Levering")}</option><option value="test">{text("Test / measurement", "Test / meting")}</option></select></label><label className="form-field"><span>Code</span><input value={template.code} onChange={(event) => setTemplate({ ...template, code: event.target.value })} placeholder={text("For example CONC-01", "Bijv. BETON-01")} /></label></div><label className="form-field"><span>{text("Name", "Naam")}</span><input value={template.name} onChange={(event) => setTemplate({ ...template, name: event.target.value })} /></label><label className="form-field"><span>{text("Checkpoints · one per line", "Controlepunten · één per regel")}</span><textarea rows={6} value={template.prompts} onChange={(event) => setTemplate({ ...template, prompts: event.target.value })} /><DictateButton onText={(transcript) => setTemplate((current) => ({ ...current, prompts: appendDictation(current.prompts, transcript) }))} /></label><button className="primary-button" type="button" disabled={busy} onClick={addTemplate}><Plus size={15} /> {text("Publish checklist", "Checklist publiceren")}</button></div></details>
-          <div className="template-grid">{data.templates.map((item) => <article className="template-card" key={item.id}><span>{item.module.toUpperCase()} · {item.code} · v{item.version_number}</span><h3>{item.name}</h3><p>{item.items.length} {text("checkpoints", "controlepunten")} · {item.status}</p></article>)}</div>
+          <div className="template-grid">{data.templates.map((item) => <article className="template-card" key={item.id}><span>{item.module.toUpperCase()} · {item.code} · v{item.version_number}</span><h3>{item.name}</h3><p>{item.items.length} {text("checkpoints", "controlepunten")} · {statusText(item.status, text)}</p></article>)}</div>
         </section>
       ) : null}
       {section === "backup" ? (

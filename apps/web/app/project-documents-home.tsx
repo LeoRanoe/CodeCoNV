@@ -28,6 +28,7 @@ import { queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-que
 import { normalizeRecordCode } from "@/lib/records/record-directory.mjs";
 import { downloadProjectFile, loadProjectFileBlob } from "@/lib/storage/gateway";
 import { createMediaFolder, linkFileToRecord, updateProjectFile, type OperationSnapshot } from "@/lib/supabase/operations";
+import { statusText, typeText } from "@/lib/status-labels";
 
 type DocumentView = "all" | "drawings" | "renders" | "boq" | "specifications" | "contracts";
 
@@ -274,7 +275,7 @@ export function ProjectDocumentsHome({
         <div className="project-document-filters">
           <label><span>{text("Folder", "Map")}</span><select value={folderFilter} onChange={(event) => setFolderFilter(event.target.value)}><option value="all">{text("All folders", "Alle mappen")}</option>{folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}</select></label>
           <label><span>{text("Building", "Gebouw")}</span><select value={buildingFilter} onChange={(event) => setBuildingFilter(event.target.value)}><option value="all">{text("All buildings", "Alle gebouwen")}</option>{buildings.map((building) => <option value={building.id} key={building.id}>{building.name}</option>)}</select></label>
-          <label><span>{text("Type", "Type")}</span><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="all">{text("All types", "Alle typen")}</option>{documentTypes.map((type) => <option value={type} key={type}>{type.replaceAll("_", " ")}</option>)}</select></label>
+          <label><span>{text("Type", "Type")}</span><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="all">{text("All types", "Alle typen")}</option>{documentTypes.map((type) => <option value={type} key={type}>{typeText(type, text)}</option>)}</select></label>
           <label><span>{text("From date", "Vanaf datum")}</span><input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
           <label><span>{text("Sort", "Sorteren")}</span><select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="recent">{text("Newest", "Nieuwste")}</option><option value="oldest">{text("Oldest", "Oudste")}</option><option value="name">{text("Name", "Naam")}</option></select></label>
         </div>
@@ -283,8 +284,8 @@ export function ProjectDocumentsHome({
           {items.length ? items.slice(0, 12).map((item) => (
             <button type="button" disabled={openingFileId === item.id} onClick={() => void openItem(item)} key={`${item.source}:${item.id}`}>
               <span className={`document-type-icon ${item.type}`}>{item.source === "file" ? <FolderOpen size={18} /> : item.type === "boq" ? <DatabaseBackup size={18} /> : <FileText size={18} />}</span>
-              <span><strong>{item.code ? `${item.code} · ` : ""}{item.title}</strong><small>{item.type.replaceAll("_", " ")} · {item.folderId ? folders.find((folder) => folder.id === item.folderId)?.name : text("No folder", "Geen map")} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "America/Paramaribo" }).format(new Date(item.date))}</small></span>
-              <span className={`document-status ${["approved", "closed", "available"].includes(item.status) ? "approved" : ""}`}>{item.status.replaceAll("_", " ")}</span>
+              <span><strong>{item.code ? `${item.code} · ` : ""}{item.title}</strong><small>{typeText(item.type, text)} · {item.folderId ? folders.find((folder) => folder.id === item.folderId)?.name : text("No folder", "Geen map")} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "America/Paramaribo" }).format(new Date(item.date))}</small></span>
+              <span className={`document-status ${["approved", "closed", "available"].includes(item.status) ? "approved" : ""}`}>{statusText(item.status, text)}</span>
               <ArrowRight size={15} />
             </button>
           )) : (

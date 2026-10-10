@@ -38,6 +38,7 @@ import { downloadProjectFile, loadProjectFileObjectUrl, openProjectFile } from "
 import { createFileOriginResolver, type FileOriginKind } from "@/lib/supabase/file-origins";
 import { StoredPhotoDetail } from "@/app/stored-photo-detail";
 import { createMediaFolder, createVisualCapture, linkFileToRecord, updateMediaFolder, updateProjectFile, updateVisualCaptureDetails, updateVisualCaptureStack, type FileRecord, type MediaFolder, type OperationSnapshot } from "@/lib/supabase/operations";
+import { statusText } from "@/lib/status-labels";
 
 function automaticTitle(filename: string) {
   const title = filename.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
@@ -788,7 +789,7 @@ export function MediaLibraryWorkspace({
 
       {assetsMode && assetRecords.length ? <section className="asset-record-library" aria-label={text("Project reports and forms", "Projectrapporten en formulieren")}>
         <header><div><strong>{text("Reports and registered forms", "Rapporten en geregistreerde formulieren")}</strong><small>{text("Open the source record to preview, edit or export it without copying its identity.", "Open de bronregistratie om deze zonder kopie te bekijken, bewerken of exporteren.")}</small></div><b>{assetRecords.length}</b></header>
-        <div className="asset-record-grid">{assetRecords.map((record) => <button type="button" onClick={() => openRecord?.(record.tab, record.id, record.kind)} key={`${record.tab}:${record.id}`}><span className="media-code-chip">{record.code}</span><strong>{record.title}</strong><small>{record.status.replaceAll("_", " ")} · {record.date.slice(0, 10)}</small>{record.signed ? <em>{text("Signed", "Ondertekend")}</em> : null}</button>)}</div>
+        <div className="asset-record-grid">{assetRecords.map((record) => <button type="button" onClick={() => openRecord?.(record.tab, record.id, record.kind)} key={`${record.tab}:${record.id}`}><span className="media-code-chip">{record.code}</span><strong>{record.title}</strong><small>{statusText(record.status, text)} · {record.date.slice(0, 10)}</small>{record.signed ? <em>{text("Signed", "Ondertekend")}</em> : null}</button>)}</div>
       </section> : null}
 
       {/* The pictures stand under the day they were taken, newest day first: that is the

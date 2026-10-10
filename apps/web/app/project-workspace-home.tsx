@@ -30,6 +30,7 @@ import { useMemo, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 import { filterRecordDirectory } from "@/lib/records/record-directory.mjs";
 import type { BuildingOption } from "@/app/building-picker";
+import { codeText } from "@/lib/status-labels";
 
 type WorkspaceDestination = "inspections" | "findings" | "ncr" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files" | "assets";
 
@@ -349,7 +350,7 @@ export function ProjectWorkspaceHome({
           {group.map((record) => (
             <button type="button" onClick={() => openRecord(record.tab, record.id, record.kind)} key={`${record.kind}:${record.id}`}>
               <span className="workspace-code-chip">{record.code || text("no code yet", "nog geen code")}</span>
-              <span><strong>{record.title}</strong><small>{kindLabels[record.kind] ?? record.kind}{record.subtitle ? ` · ${record.subtitle.replaceAll("_", " ")}` : ""}</small></span>
+              <span><strong>{record.title}</strong><small>{kindLabels[record.kind] ?? record.kind}{record.subtitle ? ` · ${codeText(record.subtitle, text)}` : ""}</small></span>
               <ArrowRight size={15} />
             </button>
           ))}</section>)}

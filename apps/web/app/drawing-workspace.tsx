@@ -60,6 +60,7 @@ import {
   type NormalizedPoint,
   type OperationSnapshot,
 } from "@/lib/supabase/operations";
+import { typeText } from "@/lib/status-labels";
 
 function humanFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -1157,7 +1158,7 @@ function DrawingPinDetails({ pin, onOpen, onDelete }: { pin: DrawingPin; onOpen:
   return (
     <div className="visual-annotation-details">
       <span className={`visual-severity-line ${pinTypeClass[pin.linked_record_type]}`} />
-      <span className="record-number">{pin.linked_record_number} · {pin.linked_record_type.replaceAll("_", " ")}</span>
+      <span className="record-number">{pin.linked_record_number} · {typeText(pin.linked_record_type, text)}</span>
       <h2>{pin.linked_record_title}</h2>
       {pin.note ? <p>{pin.note}</p> : null}
       <dl>

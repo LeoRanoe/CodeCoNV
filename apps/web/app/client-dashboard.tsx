@@ -33,6 +33,7 @@ import { loadProjectFileObjectUrl } from "@/lib/storage/gateway";
 import type { ProjectRecentPhoto } from "@/lib/supabase/data";
 import { loadProjectOperations } from "@/lib/supabase/operations";
 import { useLiveProjectWeather } from "@/lib/weather-client";
+import { statusText, typeText, priorityText } from "@/lib/status-labels";
 
 /** One dashboard thumbnail, fetched through the private storage gateway like everywhere else. */
 function EvidenceThumbnail({ client, fileId, alt }: { client: SupabaseClient | null; fileId: string; alt: string }) {
@@ -344,7 +345,7 @@ export function ClientDashboard({
         .map((finding) => ({
           key: `finding:${finding.id}`,
           title: finding.title,
-          detail: [finding.finding_number, finding.status.replaceAll("_", " ")].filter(Boolean).join(" · "),
+          detail: [finding.finding_number, statusText(finding.status, text)].filter(Boolean).join(" · "),
           open: () => openRecord(finding.finding_type === "ncr" ? "ncr" : "findings", finding.id),
         })));
       add("inspections", text("Inspections", "Inspecties"), <ClipboardCheck size={15} />, snapshot.inspections
@@ -352,7 +353,7 @@ export function ClientDashboard({
         .map((inspection) => ({
           key: `inspection:${inspection.id}`,
           title: inspection.title,
-          detail: [inspection.inspection_number, inspection.status.replaceAll("_", " ")].filter(Boolean).join(" · "),
+          detail: [inspection.inspection_number, statusText(inspection.status, text)].filter(Boolean).join(" · "),
           open: () => openRecord("inspections", inspection.id),
         })));
       add("hse", "HSE", <ShieldCheck size={15} />, snapshot.hseEvents
@@ -368,7 +369,7 @@ export function ClientDashboard({
         .map((entry) => ({
           key: `register:${entry.id}`,
           title: entry.title,
-          detail: [entry.entry_number, entry.register_type.replaceAll("_", " ")].filter(Boolean).join(" · "),
+          detail: [entry.entry_number, typeText(entry.register_type, text)].filter(Boolean).join(" · "),
           open: () => openRecord("registers", entry.id),
         })));
     }
@@ -380,7 +381,7 @@ export function ClientDashboard({
       .map((action) => ({
         key: `action:${action.id}`,
         title: action.title,
-        detail: [action.status.replaceAll("_", " "), action.priority].filter(Boolean).join(" · "),
+        detail: [statusText(action.status, text), priorityText(action.priority, text)].filter(Boolean).join(" · "),
         open: openActions,
       })));
     add("work", text("Recorded work", "Vastgelegd werk"), <Wrench size={15} />, entries
@@ -493,7 +494,7 @@ export function ClientDashboard({
               {(urgentItems.length ? urgentItems : openItems).slice(0, 4).map((action) => (
                 <button type="button" onClick={openActions} key={action.id}>
                   <span className={`priority-dot ${action.priority}`} />
-                  <span><strong>{action.title}</strong><small>{action.priority} · {action.status.replaceAll("_", " ")}</small></span>
+                  <span><strong>{action.title}</strong><small>{priorityText(action.priority, text)} · {statusText(action.status, text)}</small></span>
                   <ArrowRight size={14} />
                 </button>
               ))}

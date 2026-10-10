@@ -13,6 +13,7 @@ import { signatureFromDetails } from "@/lib/signatures/handwritten-signature.mjs
 import { useLanguage } from "@/lib/i18n";
 import type { ProjectParty } from "@/lib/supabase/data";
 import { createRegisterEntry, updateRegisterRecord, type OperationSnapshot } from "@/lib/supabase/operations";
+import { typeText } from "@/lib/status-labels";
 
 function numeric(value: string) {
   const result = Number(value.replace(",", "."));
@@ -213,7 +214,7 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
 
       <div className="field-tool-card saved-notes-card">
         <span className="record-number">{text("Saved notes and agreements", "Opgeslagen notities en afspraken")}</span>
-        {notes.length ? notes.map((entry) => <article className={editingNoteId === entry.id ? "record-focused" : ""} key={entry.id}><div><strong>{entry.title}</strong><span>{entry.entry_number} · {buildings.find((building) => building.id === entry.building_id)?.name ?? text("Project-wide", "Projectbreed")}{entry.location_node_id ? ` → ${locationBreadcrumb(data.locationNodes, entry.location_node_id)}` : ""} · {entry.register_type.replaceAll("_", " ")}</span></div><small>{entry.register_type === "agreement" && entry.details.agreement_date ? `${text("Agreement", "Afspraak")} ${String(entry.details.agreement_date)} ${String(entry.details.agreement_time ?? "")} · ${text("Deadline", "Deadline")} ${String(entry.details.due_date ?? "—")}` : new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(entry.occurred_at))}</small><p>{String(entry.details.text ?? entry.details.description ?? "")}</p><div className="record-row-actions"><button className="secondary-button" type="button" onClick={() => openNote(entry)}><Pencil size={14} /> {text("Open and edit", "Openen en bewerken")}</button></div></article>) : <div className="empty-list-state"><NotebookPen size={20} /><strong>{text("No field notes yet", "Nog geen veldnotities")}</strong></div>}
+        {notes.length ? notes.map((entry) => <article className={editingNoteId === entry.id ? "record-focused" : ""} key={entry.id}><div><strong>{entry.title}</strong><span>{entry.entry_number} · {buildings.find((building) => building.id === entry.building_id)?.name ?? text("Project-wide", "Projectbreed")}{entry.location_node_id ? ` → ${locationBreadcrumb(data.locationNodes, entry.location_node_id)}` : ""} · {typeText(entry.register_type, text)}</span></div><small>{entry.register_type === "agreement" && entry.details.agreement_date ? `${text("Agreement", "Afspraak")} ${String(entry.details.agreement_date)} ${String(entry.details.agreement_time ?? "")} · ${text("Deadline", "Deadline")} ${String(entry.details.due_date ?? "—")}` : new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(entry.occurred_at))}</small><p>{String(entry.details.text ?? entry.details.description ?? "")}</p><div className="record-row-actions"><button className="secondary-button" type="button" onClick={() => openNote(entry)}><Pencil size={14} /> {text("Open and edit", "Openen en bewerken")}</button></div></article>) : <div className="empty-list-state"><NotebookPen size={20} /><strong>{text("No field notes yet", "Nog geen veldnotities")}</strong></div>}
       </div>
     </section>
   );

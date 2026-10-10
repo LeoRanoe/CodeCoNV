@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { useLanguage } from "@/lib/i18n";
+import { typeText } from "@/lib/status-labels";
 
 export type ProjectLocationOption = {
   id: string;
@@ -75,7 +76,7 @@ export function LocationPicker({
         </option>
         {available.map((node) => (
           <option value={node.id} key={node.id}>
-            {node.breadcrumb} · {node.node_type.replaceAll("_", " ")}
+            {node.breadcrumb} · {typeText(node.node_type, text)}
           </option>
         ))}
       </select>
