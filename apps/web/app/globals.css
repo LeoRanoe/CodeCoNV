@@ -9382,9 +9382,14 @@ textarea:focus-visible {
 .record-action-check input[type="checkbox"] {
   accent-color: var(--green);
   flex: 0 0 auto;
-  height: 17px;
   margin: 0;
-  width: 17px;
+}
+/* On touch and on phone widths the tick box takes the size of the thumb guard at the end of this file. */
+@media (min-width: 861px) and (pointer: fine) {
+  .record-action-check input[type="checkbox"] {
+    height: 17px;
+    width: 17px;
+  }
 }
 .record-action-other { grid-column: 1 / -1; }
 .record-action-other svg { color: var(--ink-500); flex: 0 0 auto; }
