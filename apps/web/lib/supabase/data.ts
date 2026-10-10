@@ -174,9 +174,10 @@ export type AttendanceInput = {
   notes?: string;
 };
 
-function fail(error: { message: string; code?: string } | null) {
-  // Keep the SQLSTATE so the screen can explain the failure (lib/user-facing-error.ts).
-  if (error) throw Object.assign(new Error(error.message), { code: error.code });
+function fail(error: { message: string; code?: string; status?: number; name?: string } | null) {
+  // Keep the SQLSTATE so the screen can explain the failure (lib/user-facing-error.ts), and the
+  // HTTP status and name so a refused session can be told from an unreachable server.
+  if (error) throw Object.assign(new Error(error.message), { code: error.code, status: error.status, name: error.name === "AuthApiError" ? "AuthApiError" : "Error" });
 }
 
 function schemaColumnMissing(error: { message: string } | null, column: string) {

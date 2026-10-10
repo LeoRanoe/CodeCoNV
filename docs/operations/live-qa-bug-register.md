@@ -29,6 +29,7 @@ Status values: **fixed** (committed, automated test, browser retest), **fixed 鈥
 | LQA-011 | P3 | Project Docs has two visible `h1` | open |
 | LQA-012 | P3 | Deep link `nav=punchlist` without `tab` shows the Workspace grid | open |
 | LQA-013 | P3 | Contractor page status badge stays stale after a submit | open |
+| LQA-014 | P1 | A refused session keeps showing the cached workspace as live | fixed |
 
 ## LQA-001 路 P2 路 Overview shows zero for things the project has
 
@@ -144,3 +145,24 @@ Status values: **fixed** (committed, automated test, browser retest), **fixed 鈥
 | LQA-011 | Project Docs renders two visible `h1` | open |
 | LQA-012 | `?nav=punchlist` without `tab` renders the Workspace grid while "Issues" is highlighted | open; the app itself never produces that URL |
 | LQA-013 | After a submit the contractor page keeps the old status badge until reload | open |
+
+## LQA-014 路 P1 路 A refused session keeps showing the cached workspace as live
+
+- **Reproduction (local):** sign in on a device, then remove the account behind the session
+  (here: a database reset). Reload. `GET /auth/v1/user` answers **403 Forbidden**, yet the app
+  opens on "My projects" with the account's cached projects (124 issues, 134 open actions) and the
+  banner "Online 路 Live workspace 路 synchronized".
+- **Expected:** a server that answers and refuses the session ends it; the offline copy is for a
+  server that cannot be reached. A suspended or removed person must not keep reading project data
+  on a device because it is cached.
+- **Root cause:** `workspaceQuery` fell back to the cached workspace on *any* error.
+- **Fix:** `lib/supabase/session-rejection.mjs` tells a refusal (`user_not_found`,
+  `session_not_found`, `bad_jwt`, `PGRST301`, 401/403 with a token/session message) from silence
+  (fetch failures, 5xx, row-level-security refusals). A refusal signs the device out locally and
+  shows the sign-in screen. `fail()` now keeps the HTTP status so the distinction survives.
+- **Automated test:** `tests/session-rejection.test.mjs`; `tests/e2e/session-revoked.spec.ts`
+  (a 403 on `/auth/v1/user` returns to sign-in; an unreachable server still opens the cached
+  workspace).
+- **Browser retest:** local pane at 390 px: the same stale session now lands on the sign-in screen.
+- **Residual risk:** the cached copy of that account stays on the device until it is removed
+  ("remove offline copy") or the account signs in again; it is not readable without a session.
