@@ -3574,11 +3574,11 @@ test("retains historical client form-feedback fixes without losing underlying wo
   assert.doesNotMatch(home, /id: "delays",/);
   assert.match(home, /id: "delay-report",/);
   assert.match(home, /openDailyWork\("works_ongoing"\)/);
-  assert.match(workspace, /"works_ongoing" \| "works_completed" \| "delays"/);
+  assert.match(home, /"works_ongoing" \| "works_completed" \| "delays"/);
 
   // The controlled document starts with title and description, not duplicate read-only dates.
   assert.match(workspace, /className="form-grid controlled-document-primary"/);
-  assert.match(workspace, /className="controlled-document-deadline"/);
+  assert.match(workspace, /className="form-field controlled-document-deadline"/);
   assert.doesNotMatch(workspace, /className="controlled-document-dates"/);
   assert.match(css, /\.controlled-document-primary\s*\{\s*grid-template-columns: minmax\(0, 1fr\)/);
 
