@@ -85,11 +85,38 @@ pre-filled NCR form; saving the NCR from that form was not driven.
 
 ## 5. Browser gate (production build, local Supabase)
 
-Pending. The result of the run is recorded in §9 once it has finished.
+Command: the release-gate list in `.github/workflows/quality.yml` (now including
+`two-party-signature` and `inspection-workflow`), `CODECO_E2E_REQUIRED=1`, production build, empty
+local database seeded with `seed-local-fixtures.mjs` and `seed-ui-demo-data.mjs` (accounts only).
+
+| Run | Result |
+| --- | --- |
+| First run, before review fixes | 102 passed, 3 failed, 48 skipped by project (each spec targets one viewport) |
+| Failures | `field-readiness` ×2 expected 16 workspace tiles, but the client-requested removal of the Delays tile makes it 15 (stale tests, now assert 15 and no standalone Delays tile); `controlled-document` TI structure test clicked a Workspace tile from the Overview page (test fixed to open Workspace first) |
+| Final run, commit `31928b0` | **105 passed, 0 failed**, 48 skipped by project |
+
+GitHub Actions on the pushed branch: `Database migrations, lint and pgTAP` pass,
+`Web lint, test, build and audit` pass; `Critical browser flows (Playwright)` was still running when
+this was written (see the PR for its result). `Vercel` fails with "Deployment was blocked" (§7).
 
 ## 6. Staging
 
-Pending. See §9.
+Project `codeco-staging` (`rtuaumbiviwgikthyfmr`, us-east-1, created 10 October 2026 at $0/month
+after confirmation), isolated from production (`dljbeheogaeviokpcvca`); it holds no customer data.
+
+| Check | Result |
+| --- | --- |
+| Migrations applied | **Verified**: 76 files in filename order, none skipped; `supabase_migrations.schema_migrations` count 76, latest `202610100004` (queried directly after the run) |
+| Final migration text | **Verified**: the guard function contains the final rules (legacy signer kept, change-order signatures, name normalization) |
+| Row level security | **Verified**: enabled on all public tables (0 without) |
+| Behavior on the hosted database | **Verified** in a rolled-back transaction through real roles: own-name signing, signature kept, client refused a share link (42501), supervisor allowed, recipient cannot be issuer (even with different spacing/case), recipient signature recorded `on_device`. Afterwards 0 organizations, 0 users, 0 entries |
+| Security advisors | 44 WARN "signed-in users can execute SECURITY DEFINER function" (the app's RPC surface; each function checks membership and permission itself, see `production-readiness.md` §5); no ERROR, no anon-executable function |
+| Performance advisors | 3 notices: one unindexed foreign key, one unused index, one multiple-permissive-policies warning; not actioned |
+| Browser E2E against staging | **Blocked**: seeding needs the staging service key, which the available tooling does not expose, and no Preview deployment can run (§7) |
+| Preview deployment, Blob store | **Blocked** (§7, §8) |
+
+Verdict: the database half of staging is ready; the application half (Preview deployment, E2E against
+staging, Blob) is not.
 
 ## 7. Production — NO-GO
 
@@ -115,6 +142,28 @@ Nothing in production was changed: no migration, no deployment, no DNS, no data.
 - Concurrency (two supervisors on one record) is covered by the database guards and the row-version
   check, not by a two-browser test.
 
-## 9. Run log
+## 9. Independent review
 
-Filled in below as runs complete.
+A reviewer agent that had not written the code read the diff and reported eight findings; each was
+checked against the code before acting.
+
+| Finding | Verified | Action |
+| --- | --- | --- |
+| Editing a document that has a response saved `response: {}` (silent data loss before the guard, a hard error after) and never reloaded change-order state | yes | `detailsForEdit` keeps the recorded response and history; `changeOrderFromDetails` reloads a stored change order; unit test |
+| "Complete later" / "Raise an NCR" failed on completed inspections | yes | answers are saved only while the inspection is planned or in progress |
+| Recipient signature disappeared from reports after a later unsigned answer | yes | reports read the newest signed response from the history |
+| Existing change orders lost their supervision approval in PDF/Word | yes | legacy approval printed as the issuer signature |
+| Permission cache discarded on a network error | yes | cache kept on network errors, dropped only when the database answers with an error |
+| Legacy signature re-attributed to whoever saved next; name-only recipient check | yes | the signer of a legacy signature is kept; names compared ignoring case and spacing. A user id for the issuer is not stored (open) |
+| HSE signature offered "Sign again"; inspection lock stale after a failed completion | yes | both locked as soon as the signature is stored |
+| Required action always printed as "[X] Proceed" | yes | not marked: no field sets it |
+
+Known and accepted: the database does not refuse completing an inspection without a signature
+(only the screen does), to stay compatible with the previous app version.
+
+## 10. Run log
+
+- 10 Oct 2026: local pgTAP 543 assertions, 19 files; db lint clean; ESLint 0 warnings; `tsc` clean;
+  node tests 177; `npm audit --omit=dev` 0 vulnerabilities.
+- PR: https://github.com/LeoRanoe/CodeCoNV/pull/3 (draft).
+- Not run: anything against production; Vercel deployments (all blocked).
