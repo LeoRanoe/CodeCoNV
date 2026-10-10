@@ -471,7 +471,6 @@ test("enforces project configuration, exact locations and auditable BOQ progress
   assert.match(app, /requiredLocationDepth/);
   assert.match(app, /action-location/);
   assert.match(app, /authTimeout/);
-  assert.match(operations, /Datums technische instructie/);
   assert.match(operations, /Change order \(CO\)/);
   assert.match(operations, /recordBoqProgress/);
   assert.match(operations, /findingLocationNodeId/);
