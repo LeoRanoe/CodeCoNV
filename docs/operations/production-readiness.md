@@ -2,7 +2,8 @@
 
 Single source of truth for whether the application may go to production, what was verified,
 and what still has to be done by whom. Last updated: 10 October 2026, branch
-`fix/supervisie-production-readiness` (starting point `54e5d14`).
+`integrate/codeco-final-release` (PR #3: PR #1 + PR #2 + signature integrity; starting point `54e5d14`).
+Evidence for this candidate: `final-release-verification.md`.
 
 **Status: NO-GO.** The code on the branch is ready for review (UI pass: see
 `ui-consistency-matrix.md`); production itself is not
@@ -16,10 +17,10 @@ go-live checklist, Dutch), `production-fresh-start.md`.
 
 | # | Severity | What | Why it blocks | Action | Who |
 | --- | --- | --- | --- | --- | --- |
-| 1 | Critical | Migrations `202610060001`–`202610060007` and `202610100001`–`202610100002` are not applied to the hosted Supabase project (`dljbeheogaeviokpcvca`) | Without them, in production: a contractor cannot complete an NCR through the share link (42501), report signing is refused, new organizations get roles without submission rights, visual-marker findings lose their source photo, uploads are not hash-verified; the screens cannot tell a client from a supervisor (they show every button, as before) and new projects keep English workforce disciplines | Apply the nine migrations in order after merge (`supabase db push`), then run the advisors again | CODECO owner of Supabase, with the developer |
+| 1 | Critical | Migrations `202610060001`–`202610060007` and `202610100001`–`202610100004` are not applied to the hosted Supabase project (`dljbeheogaeviokpcvca`, 65 migrations, last `202608090003`) | Without them, in production: a contractor cannot complete an NCR through the share link (42501), report signing is refused, new organizations get roles without submission rights, visual-marker findings lose their source photo, uploads are not hash-verified; the screens cannot tell a client from a supervisor (they show every button, as before) and new projects keep English workforce disciplines | Apply the eleven migrations in order after staging passed and a restore rehearsal was done (`supabase db push`), then run the advisors again. `202610100003` and `…0004` add triggers and a stricter share-link check; an older app keeps working with them, a rollback of the app does not need a schema rollback | CODECO owner of Supabase, with the developer |
 | 2 | Critical | Every Git deployment on Vercel since 3 September 2026 is `BLOCKED`; production still serves commit `d793c6a` (25 August) | Nothing that was fixed can reach users. Cause: Hobby plan, the commit author is not the Vercel account owner | Move the project to a CODECO-owned Pro team, or connect the Git author to the owning account, then redeploy | CODECO (Vercel owner) |
 | 3 | Critical | `www.codeconv.com` points at the old host (107.180.3.102) with a certificate that expired in March 2024; no custom domain is attached to the Vercel project | The canonical address does not serve this application and shows a certificate error | Attach the domain in Vercel, switch DNS, verify the redirects in `next.config.ts` | CODECO (DNS owner) |
-| 4 | High | Preview deployments use the production Supabase project and Blob store | A preview build can write to production data | Create a separate Supabase project and Blob store for preview, set the Preview environment variables | CODECO + developer |
+| 4 | High | Preview deployments use the production Supabase project and Blob store | A preview build can write to production data | A separate empty Supabase project exists since 10 October 2026 (`codeco-staging`, `rtuaumbiviwgikthyfmr`, us-east-1). Still to do by the Vercel owner: set the Preview variables (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`) to that project and attach a separate Blob store. The service key is not available to the tooling used for this release | CODECO + developer |
 | 5 | High | No restore rehearsal has been performed | A backup that has never been restored is not a backup (see §7) | Run the rehearsal into a scratch project and record the evidence | CODECO + developer |
 | 6 | High | `BACKUP_BLOB_READ_WRITE_TOKEN` is set, but it is not confirmed that it belongs to a different store than `BLOB_READ_WRITE_TOKEN` | The app refuses to run backups in production when both are the same; the cron would then report failure every day | Confirm in Vercel → Storage; create a second private store if needed | CODECO (Vercel owner) |
 | 7 | Medium | Leaked-password protection is disabled in Supabase Auth | Known-breached passwords are accepted | Enable under Auth → Providers → Email (needs a paid Supabase plan) | CODECO owner of Supabase |
@@ -191,7 +192,7 @@ routes have been exercised on a preview, not as part of this release.
 ## 9. Release procedure
 
 1. Review and merge the pull request; all three `Quality gates` jobs must be green.
-2. Apply migrations `202610060001`–`202610060007` and `202610100001`–`202610100002` to production; re-run both advisors.
+2. Apply migrations `202610060001`–`202610060007` and `202610100001`–`202610100004` to production; re-run both advisors.
 3. Resolve the Vercel deployment block; deploy `main`; check the security headers and
    `/supervisie` on the deployment URL.
 4. Sign in with a real account: start a day, record a finding, share it with a contractor,
@@ -199,3 +200,15 @@ routes have been exercised on a preview, not as part of this release.
 5. Attach the domain and switch DNS; verify the old URLs redirect.
 6. Perform the restore rehearsal.
 7. Only then tick the go-live decision in `production-readiness-checklist.md`.
+
+## 10. Identifying the running release
+
+`GET /api/release` returns the short commit, branch, Vercel environment and deployment id, and the
+schema version the build expects (`expectedSchemaVersion` in `apps/web/lib/release.ts`, kept equal
+to the newest migration by a unit test). After a deployment, compare it with the commit in GitHub,
+the deployment id in Vercel, and `select max(version) from supabase_migrations.schema_migrations`.
+
+Rolling back the application (Vercel → Deployments → promote the previous deployment) does not roll
+back the database. The migrations of this release only add rules and triggers and are compatible with
+the previous application version; restore from a backup only for data damage, never over the live
+database.
