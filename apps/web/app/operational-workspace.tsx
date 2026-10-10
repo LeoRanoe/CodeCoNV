@@ -3834,7 +3834,29 @@ function ProjectOperations({
                   <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
                   <div><small>{text("Applies to", "Geldt voor")}</small><strong>{registerContextLabel}</strong><span>{registerLocationNodeId ? locationBreadcrumb(data.locationNodes, registerLocationNodeId) : text("Building level", "Gebouwniveau")}</span></div>
                   <div><small>{text("Issue date and time", "Uitgiftedatum en -tijd")}</small><strong>{issueDateLabel}</strong><span>{issueTime}</span></div>
-                  <div><small>{text("Drawn up by", "Opgemaakt door")}</small><strong>{registerForm.issuerName.trim() || currentUserName}</strong><span>{registerForm.signedBy ? text("Signed", "Ondertekend") : text("Not signed yet", "Nog niet ondertekend")}</span></div>
+                  <div>
+                    <small>{text("Drawn up by", "Opgemaakt door")}</small>
+                    <strong>{registerForm.issuerName.trim() || currentUserName}</strong>
+                    <span>{registerForm.signedBy ? text("Signed", "Ondertekend") : text("Not signed yet", "Nog niet ondertekend")}</span>
+                    {!submittedRegister && !registerForm.signedBy ? (
+                      <details className="controlled-document-author-edit">
+                        <summary>{text("Change author", "Opsteller wijzigen")}</summary>
+                        <label className="form-field">
+                          <span>{text("Document author", "Opsteller document")}</span>
+                          <select value={documentIssuerOptions.includes(registerForm.issuerName.trim() || currentUserName) ? registerForm.issuerName.trim() || currentUserName : "__other__"} onChange={(event) => setRegisterForm({ ...registerForm, issuerName: event.target.value === "__other__" ? "" : event.target.value })}>
+                            {documentIssuerOptions.map((name) => <option value={name} key={name}>{name}</option>)}
+                            <option value="__other__">{text("Someone else", "Iemand anders")}</option>
+                          </select>
+                        </label>
+                        {!documentIssuerOptions.includes(registerForm.issuerName.trim() || currentUserName) ? (
+                          <label className="form-field">
+                            <span>{text("Author name", "Naam opsteller")}</span>
+                            <input value={registerForm.issuerName} onChange={(event) => setRegisterForm({ ...registerForm, issuerName: event.target.value })} />
+                          </label>
+                        ) : null}
+                      </details>
+                    ) : null}
+                  </div>
                 </section>
 
                 </>
@@ -4261,19 +4283,7 @@ function ProjectOperations({
                     <label className="form-field"><span>{text("Submitted by · name on the form", "Ingediend door · naam op het formulier")}</span><input value={registerForm.issuerName} onChange={(event) => setRegisterForm({ ...registerForm, issuerName: event.target.value })} placeholder={text("Name of the contractor's signatory", "Naam van de ondertekenaar bij de aannemer")} /></label>
                     <label className="form-field"><span>{text("Position", "Functie")}</span><input value={registerForm.issuerPosition} onChange={(event) => setRegisterForm({ ...registerForm, issuerPosition: event.target.value })} placeholder="Quality Control" /></label>
                   </div>
-                ) : (
-                  <div className="form-grid-2">
-                    <label className="form-field"><span>{text("Drawn up by", "Opgemaakt door")}</span>
-                      <select value={documentIssuerOptions.includes(registerForm.issuerName.trim() || currentUserName) ? registerForm.issuerName.trim() || currentUserName : "__other__"} onChange={(event) => setRegisterForm({ ...registerForm, issuerName: event.target.value === "__other__" ? "" : event.target.value })}>
-                        {documentIssuerOptions.map((name) => <option value={name} key={name}>{name}</option>)}
-                        <option value="__other__">{text("Someone else · type the name", "Iemand anders · naam typen")}</option>
-                      </select>
-                    </label>
-                    {documentIssuerOptions.includes(registerForm.issuerName.trim() || currentUserName)
-                      ? null
-                      : <label className="form-field"><span>{text("Name of the author", "Naam van de opsteller")}</span><input value={registerForm.issuerName} onChange={(event) => setRegisterForm({ ...registerForm, issuerName: event.target.value })} /></label>}
-                  </div>
-                )}
+                ) : null}
                 {/* The party you address it to is the recipient; a second free-text name
                     next to it, plus reference fields nobody filled, are gone. */}
                 <label className="form-field"><span>{text("To:", "Aan:")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => { const party = parties.find((item) => item.id === event.target.value); setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value, requestedTo: party?.name ?? "" }); }}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name} · {partyTypeText(party.type, text)}</option>)}</select></label>
