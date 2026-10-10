@@ -66,7 +66,7 @@ async function createAction(page: Page, title: string) {
   // The form offers ready-made actions first; a free one is behind "Different action".
   await dialog.getByText("Different action", { exact: true }).click();
   await dialog.getByPlaceholder("What must demonstrably be completed?").fill(title);
-  await dialog.getByPlaceholder("Describe the location, required measure and completion criterion.").fill("Written by the browser release gate; safe to ignore.");
+  await dialog.getByLabel(/Context and acceptance criterion/).fill("Written by the browser release gate; safe to ignore.");
   const employee = dialog.locator("select[name='ownerUserId']");
   if (!(await employee.inputValue())) await employee.selectOption({ index: 1 });
   await dialog.getByRole("button", { name: "Save and assign" }).click();

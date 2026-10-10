@@ -745,7 +745,7 @@ export function MediaLibraryWorkspace({
         ) : null}
         {assetsMode ? <details className="optional-text-entry media-folder-create">
           <summary>{text("Custom folder", "Eigen map")}</summary>
-          <span><input value={newFolder} onChange={(event) => setNewFolder(event.target.value)} placeholder={text("Folder name", "Mapnaam")} /><select value={parentFolderId} onChange={(event) => setParentFolderId(event.target.value)} aria-label={text("Parent folder", "Bovenliggende map")}><option value="">{text("At the top level", "Op hoofdniveau")}</option>{folderTree.map((folder) => <option value={folder.id} key={folder.id}>{folder.path}</option>)}</select><button className="secondary-button" type="button" disabled={busy || newFolder.trim().length < 2} onClick={() => void addFolder(newFolder)}><FolderPlus size={15} /> {text("Create", "Maken")}</button></span>
+          <span><input value={newFolder} onChange={(event) => setNewFolder(event.target.value)} aria-label={text("Folder name", "Mapnaam")} placeholder={text("Folder name", "Mapnaam")} /><select value={parentFolderId} onChange={(event) => setParentFolderId(event.target.value)} aria-label={text("Parent folder", "Bovenliggende map")}><option value="">{text("At the top level", "Op hoofdniveau")}</option>{folderTree.map((folder) => <option value={folder.id} key={folder.id}>{folder.path}</option>)}</select><button className="secondary-button" type="button" disabled={busy || newFolder.trim().length < 2} onClick={() => void addFolder(newFolder)}><FolderPlus size={15} /> {text("Create", "Maken")}</button></span>
         </details> : null}
       </div>
       {assetsMode ? <div className="asset-library-controls">

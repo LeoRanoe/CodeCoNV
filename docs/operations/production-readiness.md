@@ -15,7 +15,7 @@ go-live checklist, Dutch), `production-fresh-start.md`.
 
 | # | Severity | What | Why it blocks | Action | Who |
 | --- | --- | --- | --- | --- | --- |
-| 1 | Critical | Migrations `202610060001`–`202610060007` are not applied to the hosted Supabase project (`dljbeheogaeviokpcvca`) | Without them, in production: a contractor cannot complete an NCR through the share link (42501), report signing is refused, new organizations get roles without submission rights, visual-marker findings lose their source photo, uploads are not hash-verified | Apply the seven migrations in order after merge (`supabase db push`), then run the advisors again | CODECO owner of Supabase, with the developer |
+| 1 | Critical | Migrations `202610060001`–`202610060007` and `202610100001`–`202610100002` are not applied to the hosted Supabase project (`dljbeheogaeviokpcvca`) | Without them, in production: a contractor cannot complete an NCR through the share link (42501), report signing is refused, new organizations get roles without submission rights, visual-marker findings lose their source photo, uploads are not hash-verified; the screens cannot tell a client from a supervisor (they show every button, as before) and new projects keep English workforce disciplines | Apply the nine migrations in order after merge (`supabase db push`), then run the advisors again | CODECO owner of Supabase, with the developer |
 | 2 | Critical | Every Git deployment on Vercel since 3 September 2026 is `BLOCKED`; production still serves commit `d793c6a` (25 August) | Nothing that was fixed can reach users. Cause: Hobby plan, the commit author is not the Vercel account owner | Move the project to a CODECO-owned Pro team, or connect the Git author to the owning account, then redeploy | CODECO (Vercel owner) |
 | 3 | Critical | `www.codeconv.com` points at the old host (107.180.3.102) with a certificate that expired in March 2024; no custom domain is attached to the Vercel project | The canonical address does not serve this application and shows a certificate error | Attach the domain in Vercel, switch DNS, verify the redirects in `next.config.ts` | CODECO (DNS owner) |
 | 4 | High | Preview deployments use the production Supabase project and Blob store | A preview build can write to production data | Create a separate Supabase project and Blob store for preview, set the Preview environment variables | CODECO + developer |
@@ -34,7 +34,7 @@ Per area:
   report signing repaired; role defaults restored (submission rights) and pinned by a test;
   source photo linked to findings made from visual markers; explicit `service_role` grants;
   `files.content_verified_at`; rate-limit actions for the proxies. pgTAP re-baselined on the
-  multi-building contract: 16 files, 506 assertions.
+  multi-building contract: 17 files, 513 assertions (adds `017_my_project_permissions`).
 - **Security** — Next.js 16.3.8 and sharp 0.35.5 (advisories); billable proxies (maps,
   weather) authenticated and rate limited; push subscription hardening; server-side SHA-256
   verification of every uploaded object (mismatch → rejected); backups refuse to share a
@@ -55,6 +55,14 @@ Per area:
 - **CI** — a browser-flow job that cannot silently skip (`CODECO_E2E_REQUIRED=1`): day report
   lifecycle, controlled document, online/offline create and sync, account isolation on a
   shared device, offline boot, and the layout walk over every module and width.
+- **UI consistency pass** (details and the screen-by-screen record in `ui-consistency-matrix.md`) —
+  one dialog contract for every dialog (focus trap, inert background, Escape, focus return) with
+  a browser test for each dialog at three widths; type scale floor of 11 px (430 rules used
+  7–10 px); accessible names and heading hierarchy; screens that hide what the signed-in role
+  cannot do (`public.my_project_permissions`, fails open); one vocabulary for the local queue;
+  ≈ 330 explanatory sentences, card descriptions and repeated placeholders removed in both
+  languages; offline manager reachable on phones; Dutch default workforce disciplines;
+  Management → Project setup translated; notifications titled in the interface language.
 
 ## 3. How to verify (local)
 
@@ -95,8 +103,25 @@ local stack; the seed script stops when the URL is not local.
 | H — formal PDF and Word from the frozen version | `day-report-lifecycle.spec.ts` downloads both; inspected by hand: 4 pages, numbered, Dutch, Suriname time, signature image | Pass |
 | Layout — all eight modules, signed in, at 360, 390, 430, 820, 1024×768, 1280, 1440 and 1920 px, plus 125 % and 150 % zoom on a 1280 px laptop (1024 and 853 CSS px): the page never scrolls sideways | `viewport-walk.spec.ts`; component rules in `responsive-audit` (320/390/820/1280), `responsive-workspace`, `layout-hygiene`, `field-readiness` | Pass (found and fixed: Management was 8 px too wide on phones) |
 
-Not verified: a real phone on a site connection, screen readers, dialogs and forms at every
-width (the walk covers the module screens, not every dialog).
+Not verified: a real phone on a site connection, an actual screen reader (the accessibility
+tree, focus order, names and live regions were checked in Chrome only), anything that renders an
+uploaded image or drawing (Flow C, below).
+
+**Flow C — what is needed.** Evidence upload, photo markup, 360° and drawing pins need a private Vercel
+Blob store the local stack does not have, and the store's read/write token. Nothing was created on
+the Vercel account for this: the available tooling can create a store but not return its token, and
+a store on the shared team is a billable, outward change that is the owner's to make. To close it:
+create a *separate* private Blob store (not the production one, not the backup one), set
+`BLOB_READ_WRITE_TOKEN` and `BACKUP_BLOB_READ_WRITE_TOKEN` (two different stores) in a
+git-ignored `apps/web/.env.production.local` or in the Preview environment together with a separate
+Supabase project, then run `npx playwright test media-and-sharing`. Expected: upload → marker →
+linked finding → reload → marker persists → void marker → audit row remains; then 360° annotation;
+then drawing pin create/move/void. Faking the Blob API locally was considered and rejected: the
+SDK signs and verifies against Vercel's own endpoints and hosts, so an emulator would test the
+emulator.
+
+**UI pass.** Dialogs: 11 dialogs × 3 widths (`dialogs.spec.ts`). Roles: client, contractor and
+supervisor (`role-views.spec.ts`). Both run in the release gate.
 
 ## 5. Production environment (read-only inspection, 10 October 2026)
 
@@ -118,7 +143,7 @@ projects were created with. The migrations do not: a database built from the rep
 gives `service_role` only what `202610060005_service_role_explicit_grants.sql` lists. The
 application works with the narrow set (CI runs on it). Production is therefore *more*
 permissive than the repository describes. Narrowing production to the migration's set is a
-separate, deliberate change — do it after the seven migrations are applied and the server
+separate, deliberate change — do it after the nine migrations are applied and the server
 routes have been exercised on a preview, not as part of this release.
 
 ## 6. Environment variables
@@ -155,8 +180,7 @@ routes have been exercised on a preview, not as part of this release.
 - Offline changes to existing central records are not queued (by design; see
   `offline-security-model.md`).
 - A full or blocked device store has no dedicated message.
-- Discipline names in workforce (Carpenters, Electricians, …) are project data seeded in
-  English at project creation; they are editable per project but not translated.
+- Discipline names in workforce are project data. New projects start with CODECO's Dutch list; projects that still had the untouched English default are migrated by `202610100002`; anything a project edited, and every attendance already recorded, is left exactly as stored. the database as English at project creation; they are editable per project but not translated.
 - Free text is stored in the language it was typed in; a Dutch reader sees English answers
   if the supervisor wrote English.
 - Modal dialogs close on Escape and Back but do not trap keyboard focus.
@@ -166,7 +190,7 @@ routes have been exercised on a preview, not as part of this release.
 ## 9. Release procedure
 
 1. Review and merge the pull request; all three `Quality gates` jobs must be green.
-2. Apply migrations `202610060001`–`202610060007` to production; re-run both advisors.
+2. Apply migrations `202610060001`–`202610060007` and `202610100001`–`202610100002` to production; re-run both advisors.
 3. Resolve the Vercel deployment block; deploy `main`; check the security headers and
    `/supervisie` on the deployment URL.
 4. Sign in with a real account: start a day, record a finding, share it with a contractor,

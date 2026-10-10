@@ -69,7 +69,7 @@ test("a two-building day is started, closed, submitted, approved, frozen, signed
   await page.locator('[data-workspace-destination="workforce"]').click();
   const workforce = dialog(page);
   const selects = workforce.locator("select");
-  for (const [building, discipline, count] of [["Hoofdgebouw", "Carpenters", 4], ["Nieuwbouw Oost", "Electricians", 3]] as const) {
+  for (const [building, discipline, count] of [["Hoofdgebouw", "Timmerlieden", 4], ["Nieuwbouw Oost", "Elektriciens", 3]] as const) {
     await workforce.getByRole("tab", { name: new RegExp(`^${building}`) }).click();
     await selects.nth(0).selectOption({ label: "Hoofdaannemer E2E" });
     await selects.nth(1).selectOption({ label: discipline });

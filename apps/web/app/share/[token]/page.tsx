@@ -72,7 +72,7 @@ export default async function SharedProjectRecord({ params }: { params: Promise<
           </section>
         ) : null}
         <ExternalShareActions token={token} sourceType={record.source_type} status={record.status} recordKind={record.record_kind ?? null} />
-        <footer><CheckCircle2 size={16} /><span>Deze beveiligde link vervalt op {date(record.expires_at)}. Er is geen CODECO-account nodig; CODECO verifieert iedere gereedmelding.</span></footer>
+        <footer><CheckCircle2 size={16} /><span>Link geldig tot {date(record.expires_at)}. CODECO verifieert elke gereedmelding.</span></footer>
       </section>
     </main>
   );

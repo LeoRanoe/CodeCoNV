@@ -8704,7 +8704,7 @@ textarea:focus-visible {
   margin: 0;
 }
 .media-detail-facts > div { display: grid; gap: 2px; min-width: 0; }
-.media-detail-facts dt { color: var(--ink-500); font-size: 9.5px; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
+.media-detail-facts dt { color: var(--ink-500); font-size: var(--text-xs); font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
 .media-detail-facts dd { color: var(--ink-900); font-size: 12.5px; margin: 0; overflow-wrap: anywhere; }
 .media-detail-links { display: grid; gap: 6px; }
 .media-detail-links > strong { color: var(--ink-600); font-size: 11px; }
@@ -9435,7 +9435,7 @@ textarea:focus-visible {
   background: rgba(20, 21, 26, .72);
   bottom: 0;
   color: #fff;
-  font-size: 9.5px;
+  font-size: var(--text-xs);
   font-weight: 700;
   left: 0;
   padding: 3px 0;
@@ -10326,7 +10326,7 @@ textarea:focus-visible {
 }
 .field-guide-dialog {
   background: #fff;
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 30px 90px rgba(4,19,24,.3);
   max-height: calc(100vh - 32px);
   max-width: 860px;
@@ -10336,7 +10336,7 @@ textarea:focus-visible {
 }
 .field-guide-dialog > header { align-items: flex-start; display: flex; justify-content: space-between; gap: 15px; }
 .field-guide-dialog > header span { color: var(--signal); font-size: var(--text-xs); font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
-.field-guide-dialog h2 { color: var(--ink-900); font-size: clamp(22px, 4vw, 34px); line-height: 1.12; margin: 5px 0 0; }
+.field-guide-dialog h2 { color: var(--ink-900); font-size: 21px; line-height: 1.2; margin: 5px 0 0; }
 .field-guide-dialog > header p { color: var(--ink-500); font-size: 11px; line-height: 1.5; margin: 7px 0 0; }
 .field-guide-dialog > header button { background: var(--ink-50); border: 0; border-radius: var(--radius-control); color: var(--ink-600); cursor: pointer; display: grid; height: 36px; place-items: center; width: 36px; }
 .field-guide-body {
@@ -10545,7 +10545,7 @@ textarea:focus-visible {
   .field-guide-trigger span { display: none; }
   .field-guide-trigger { height: 44px; justify-content: center; padding: 0; width: 44px; }
   .field-guide-backdrop { align-items: flex-end; padding: 0; }
-  .field-guide-dialog { border-radius: 18px 18px 0 0; max-height: calc(100dvh - 12px); padding: var(--space-4); }
+  .field-guide-dialog { border-radius: var(--radius-lg) var(--radius-lg) 0 0; max-height: calc(100dvh - 12px); padding: var(--space-4); }
   .field-guide-dialog h2 { font-size: 24px; }
   .field-guide-task-detail { min-height: 270px; padding: 13px; }
   .field-guide-navigation { padding: 9px; }
@@ -10661,12 +10661,14 @@ textarea:focus-visible {
 
 .media-folder-create > span {
   display: flex; align-items: center;
+  flex: 1 1 260px;
   gap: var(--space-2);
+  min-width: 0;
 }
 
 .media-folder-create input {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 140px;
+  min-width: 120px;
 }
 
 @media (max-width: 720px) {
@@ -12273,6 +12275,9 @@ button {
 .overview-work-list strong,
 .overview-work-list small {
   display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .overview-work-list strong { color: #1a2521; font-size: var(--text-xs); }
@@ -13590,7 +13595,7 @@ button {
 
   .mobile-module-sheet {
     background: #fff;
-    border-radius: 20px 20px 0 0;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     box-shadow: 0 -16px 48px rgba(7, 25, 29, .2);
     display: block;
     max-height: min(660px, calc(100vh - 104px));
@@ -13615,19 +13620,19 @@ button {
 
   .mobile-module-sheet > header h2 {
     color: var(--ink-900);
-    font-size: 18px;
+    font-size: 21px;
     margin: var(--space-1) 0 0;
   }
 
   .mobile-module-sheet > header > button {
     background: #f1f5f4;
     border: 0;
-    border-radius: 50%;
+    border-radius: var(--radius-control);
     color: var(--ink-700);
     display: grid;
-    height: 38px;
+    height: 36px;
     place-items: center;
-    width: 38px;
+    width: 36px;
   }
 
   .mobile-module-grid {
@@ -14646,7 +14651,7 @@ button {
   background: #f1f5f4;
   border-radius: var(--radius-pill);
   color: var(--ink-700);
-  font-size: 9.5px;
+  font-size: var(--text-xs);
   font-weight: 800;
   justify-self: start;
   letter-spacing: .03em;
@@ -14806,7 +14811,7 @@ button {
   border-radius: var(--radius-pill);
   color: var(--ink-700);
   display: inline-flex;
-  font-size: 9.5px;
+  font-size: var(--text-xs);
   font-weight: 700;
   gap: 5px;
   padding: 3px 9px;
@@ -15408,7 +15413,7 @@ button {
   padding: 7px 9px;
 }
 .backup-counts-grid strong { color: var(--ink-950); font-size: 13px; }
-.backup-counts-grid small { color: var(--ink-500); font-size: 9.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.backup-counts-grid small { color: var(--ink-500); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .backup-empty { color: var(--ink-500); font-size: 11px; line-height: 1.5; margin: 0; }
 
@@ -15448,7 +15453,7 @@ button {
 
 .backup-history-status {
   border-radius: var(--radius-pill);
-  font-size: 9.5px;
+  font-size: var(--text-xs);
   font-weight: 800;
   letter-spacing: 0.04em;
   padding: 3px 9px;
@@ -15475,7 +15480,7 @@ button {
 .backup-history-detail { border-top: 1px solid var(--ink-100); display: grid; gap: 11px; padding: var(--space-3) 13px; }
 .backup-history-detail dl { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin: 0; }
 .backup-history-detail dl > div { display: grid; gap: 2px; min-width: 0; }
-.backup-history-detail dt { color: var(--ink-500); font-size: 9.5px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+.backup-history-detail dt { color: var(--ink-500); font-size: var(--text-xs); font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
 .backup-history-detail dd { color: var(--ink-900); font-size: 11.5px; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .backup-history-detail code { background: var(--ink-100); border-radius: 5px; font-size: var(--text-xs); padding: 1px 5px; }
 .backup-history-error { color: var(--red); font-size: 11.5px; line-height: 1.5; margin: 0; }

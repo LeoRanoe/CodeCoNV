@@ -156,7 +156,7 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
       <label className="form-field"><span>{responseType === "proposed_correction" ? "Voorgestelde correctieve actie" : "Toelichting"}</span><textarea rows={3} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Kies hierboven een optie; aanpassen mag." /></label>
       <label className="external-photo-input">
         <Camera size={20} />
-        <span><strong>{photo ? photo.name : "Bewijsfoto toevoegen (optioneel)"}</strong><small>De foto wordt verkleind om mobiele data te besparen.</small></span>
+        <span><strong>{photo ? photo.name : "Bewijsfoto toevoegen (optioneel)"}</strong></span>
         <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => setPhoto(event.target.files?.[0] ?? null)} />
       </label>
       <label className="form-field"><span>{signatureRequired ? "Naam van de ondertekenaar" : "Naam (optioneel)"}</span><input value={contactName} onChange={(event) => setContactName(event.target.value)} autoComplete="name" required={signatureRequired} /></label>

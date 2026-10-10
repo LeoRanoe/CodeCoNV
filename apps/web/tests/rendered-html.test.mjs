@@ -106,7 +106,7 @@ test("explains an invalid external-party link without exposing a token error", a
   assert.equal(response.status, 404);
   const html = await response.text();
   assert.match(html, /Deze gedeelde link is niet meer beschikbaar/i);
-  assert.match(html, /geen account nodig/i);
+  assert.match(html, /nieuwe link/i);
   assert.doesNotMatch(html, /JWT|invalid token|token expired|stack trace/i);
 });
 
@@ -998,7 +998,7 @@ test("processes the five annotated field screens from 31 July", async () => {
 });
 
 test("processes the second batch of annotated screens from 31 July", async () => {
-  const [app, dailyLog, workspace, evidence, picker, locationPicker, operations, queue, controlledDocuments, styles] = await Promise.all([
+  const [app, dailyLog, workspace, , picker, locationPicker, operations, queue, controlledDocuments, styles] = await Promise.all([
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
