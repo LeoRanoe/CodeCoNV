@@ -24,7 +24,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BuildingChoiceField, BuildingMultiPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { DrawingLocationPicker, drawingLocationLabel, pickableDrawings, type DrawingLocation } from "@/app/drawing-location-picker";
@@ -32,6 +32,7 @@ import { dutchDirectionLabels } from "@/app/photo-evidence";
 import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-markup";
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
 import { useLanguage } from "@/lib/i18n";
+import { imageContentType, orderedTour, validTourPosition } from "@/lib/images/content-type.mjs";
 import { currentCompassPoint, startCompassWatch } from "@/lib/images/compass";
 import { readPhotoDirection } from "@/lib/images/exif-direction.mjs";
 import { compassPointFromDegrees, describePanoramaImage, fieldPhotoMimeTypes, looksLikeDualFisheye, normalizedImagePoint, panoramaFileExtensions, panoramaUploadSource, photoMarkupToneColors, photoTitleFromDescription } from "@/lib/images/field-image.mjs";
@@ -212,7 +213,12 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   const initialFileHandled = useRef(false);
   const [cameraHandoff, setCameraHandoff] = useState(false);
 
-  const stageImage = (chosen: File | null, type: VisualCapture["capture_type"]) => {
+  const stagedImageRef = useRef(0);
+  const uploadingRef = useRef(false);
+  useEffect(() => () => { stagedImageRef.current += 1; }, []);
+
+  const stageImage = useCallback((chosen: File | null, type: VisualCapture["capture_type"]) => {
+    const generation = ++stagedImageRef.current;
     setFileError("");
     setPhotoMarkerCount(0);
     setPanoramaImage(null);
@@ -236,6 +242,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       // may be uploaded, only what the screen says about it.
       void imageDimensions(selected)
         .then((dimensions) => {
+          if (generation !== stagedImageRef.current) return;
           const description = describePanoramaImage(dimensions.width, dimensions.height);
           if (!description.valid) {
             setFileError(text("The selected file is not a readable image.", "Het gekozen bestand is geen leesbare afbeelding."));
@@ -243,7 +250,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           }
           setPanoramaImage({ width: dimensions.width, height: dimensions.height, projection: description.projection, notice: description.notice });
         })
-        .catch(() => setFileError(text("The selected file is not a readable image.", "Het gekozen bestand is geen leesbare afbeelding.")));
+        .catch(() => { if (generation === stagedImageRef.current) setFileError(text("The selected file is not a readable image.", "Het gekozen bestand is geen leesbare afbeelding.")); });
     }
     setCaptureForm((current) => ({
       ...current,
@@ -255,11 +262,12 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     // "Kan dit automatisch?" — the camera writes its own bearing into the picture, and when it
     // did not, the compass of the device still knows which way the phone was held.
     void readPhotoDirection(selected).then((degrees) => {
+      if (generation !== stagedImageRef.current) return;
       const measured = compassPointFromDegrees(degrees) || currentCompassPoint();
       if (!measured) return;
       setCaptureForm((current) => current.directionAutomatic ? { ...current, direction: measured } : current);
     });
-  };
+  }, [text]);
 
   useEffect(() => {
     return () => {
@@ -270,6 +278,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   const emptyCaptureForm = { type: "photo" as VisualCapture["capture_type"], description: "", locationNodeId: "", direction: "", directionAutomatic: true, tourName: "", tourOrder: "" };
 
   const discardCapture = () => {
+    stagedImageRef.current += 1;
     setFile(null);
     setFileError("");
     setPhotoMarkerCount(0);
@@ -291,7 +300,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     }, 0);
     return () => window.clearTimeout(handoff);
     // stageImage intentionally runs once for the camera hand-off.
-  }, [initialFiles, onInitialFilesConsumed]);
+  }, [initialFiles, onInitialFilesConsumed, stageImage]);
 
   // Tapping "Upload 360° image" in the photo library asked for the 360° form, so the form
   // opens here instead of asking for the same button a second time.
@@ -305,13 +314,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     onStart360UploadConsumed?.();
   }, [onStart360UploadConsumed, start360Upload]);
 
-  const tour = (() => {
-    if (!activeCapture?.tour_name) return [];
-    return captures
-      .filter((capture) => capture.tour_name === activeCapture.tour_name)
-      .sort((left, right) => (left.tour_order ?? 0) - (right.tour_order ?? 0));
-  })();
-  const tourIndex = activeCapture ? tour.findIndex((capture) => capture.id === activeCapture.id) : -1;
+  const tour = orderedTour(captures, activeCapture);
+  const tourIndex = activeCapture ? tour.findIndex((capture: VisualCapture) => capture.id === activeCapture.id) : -1;
 
   /**
    * What the chosen 360° image is, said plainly: how large it is, how much of the sphere it
@@ -357,12 +361,22 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   );
 
   const uploadCapture = async () => {
-    if (!file || captureForm.description.trim().length < 3) return;
+    if (!file || captureForm.description.trim().length < 3 || uploadingRef.current) return;
+    if (!validTourPosition(captureForm.tourName, captureForm.tourOrder)) {
+      setFileError(text("Enter a tour position from 1 to 10000.", "Vul een tourpositie van 1 tot 10000 in."));
+      return;
+    }
+    uploadingRef.current = true;
+    const generation = stagedImageRef.current;
+    try {
     setFileError("");
     try {
       // The only thing that can stop a 360° image here is an image the browser cannot read at
       // all; how much of the sphere it covers is shown on the form, not enforced.
+      const detected = imageContentType(new Uint8Array(await file.slice(0, 16).arrayBuffer()));
+      if (!detected || detected !== file.type) throw new Error("invalid-image-type");
       const dimensions = await imageDimensions(file);
+      if (generation !== stagedImageRef.current) return;
       if (captureForm.type === "panorama" && !describePanoramaImage(dimensions.width, dimensions.height).valid) {
         throw new Error("invalid-image");
       }
@@ -374,6 +388,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     const prepared = captureForm.type === "photo"
       ? { ...await compressFieldPhoto(file, dataSaverEnabled()), fits: true }
       : await preparePanoramaUpload(file, maxFileSizeBytes);
+    if (generation !== stagedImageRef.current) return;
     if (!prepared.fits) {
       setFileError(text(
         `This 360° image is ${humanFileSize(file.size)} and could not be reduced to the project limit of ${data.settings?.max_file_size_mb ?? 25} MB on this device. Export it at a smaller resolution, or raise the limit in project settings.`,
@@ -431,7 +446,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
         });
       }
     }, text("Saved on this device. Sent when you're online.", "Opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent."));
-    if (okay) {
+    if (okay && generation === stagedImageRef.current) {
       setCaptureForm(emptyCaptureForm);
       setDrawingLocation(null);
       setFile(null);
@@ -440,6 +455,10 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       setPanoramaImage(null);
       setShowUpload(false);
     }
+    } catch (caught) {
+      setFileError(caught instanceof Error ? caught.message : text("Image upload failed. Try again.", "Upload mislukt. Probeer opnieuw."));
+    } finally { uploadingRef.current = false; }
+
   };
 
   const saveIssue = async () => {
@@ -643,7 +662,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           {file && captureForm.type === "photo" && file.size > maxFileSizeBytes ? <p className="field-error">{text("This image exceeds the project file limit.", "Deze afbeelding is groter dan de bestandslimiet van het project.")}</p> : null}
           {fileError ? <p className="field-error" role="alert">{fileError}</p> : null}
           {file && captureForm.description.trim().length < 3 ? <p className="form-intro">{text("Write one line about this photo to save it.", "Schrijf één regel over deze foto om hem op te slaan.")}</p> : null}
-          <button className="primary-button" type="button" disabled={busy || !file || (captureForm.type === "photo" && file.size > maxFileSizeBytes) || !fieldPhotoMimeTypes.includes(file.type) || captureForm.description.trim().length < 3 || (captureForm.type === "panorama" && Boolean(captureForm.tourName) !== Boolean(captureForm.tourOrder))} onClick={() => void uploadCapture()}>{busy ? <Loader2 className="spin" size={15} /> : <Camera size={15} />} {captureForm.type === "panorama" ? text("Secure and sync 360° image", "Beveilig en synchroniseer 360°-beeld") : text("Save photo", "Foto opslaan")}</button>
+          <button className="primary-button" type="button" disabled={busy || !file || (captureForm.type === "photo" && file.size > maxFileSizeBytes) || !fieldPhotoMimeTypes.includes(file.type) || captureForm.description.trim().length < 3 || (captureForm.type === "panorama" && (!panoramaImage || Boolean(fileError) || !validTourPosition(captureForm.tourName, captureForm.tourOrder)))} onClick={() => void uploadCapture()}>{busy ? <Loader2 className="spin" size={15} /> : <Camera size={15} />} {captureForm.type === "panorama" ? text("Secure and sync 360° image", "Beveilig en synchroniseer 360°-beeld") : text("Save photo", "Foto opslaan")}</button>
         </div>
       ) : null}
 
@@ -832,6 +851,8 @@ export function PanoramaViewer({ imageUrl, annotations, pendingPoint, focusAnnot
     let active = true;
     if (!containerRef.current) return;
     setViewerState("loading");
+    setGyroscope("unavailable");
+    setAutorotating(false);
     void Promise.all([
       import("@photo-sphere-viewer/core"),
       import("@photo-sphere-viewer/markers-plugin"),
@@ -904,7 +925,7 @@ export function PanoramaViewer({ imageUrl, annotations, pendingPoint, focusAnnot
         if (active) setGyroscope(supported ? "off" : "unavailable");
       }).catch(() => undefined);
     }).catch(() => {
-      if (active) setViewerState("error");
+      if (active) { viewerRef.current?.destroy(); viewerRef.current = null; setViewerState("error"); }
     });
     return () => {
       active = false;

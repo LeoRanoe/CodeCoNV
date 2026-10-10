@@ -2,7 +2,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Calculator, CheckCircle2, NotebookPen, Pencil, Save, ShieldCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { AgreementSignatureFields, agreementSignatureDetails, emptyAgreementSignature } from "@/app/agreement-signature";
 import { resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton, speechToTextAvailable } from "@/app/dictate-button";
@@ -13,42 +13,12 @@ import { signatureFromDetails } from "@/lib/signatures/handwritten-signature.mjs
 import { useLanguage } from "@/lib/i18n";
 import type { ProjectParty } from "@/lib/supabase/data";
 import { createRegisterEntry, updateRegisterRecord, type OperationSnapshot } from "@/lib/supabase/operations";
+import { calculateExpression } from "@/lib/field-tools/calculator.mjs";
 import { typeText, partyTypeText } from "@/lib/status-labels";
 
 function numeric(value: string) {
   const result = Number(value.replace(",", "."));
   return Number.isFinite(result) ? result : 0;
-}
-
-function calculateExpression(source: string) {
-  const tokens = source.replace(/,/g, ".").match(/\d+(?:\.\d+)?|[()+\-*/]/g) ?? [];
-  if (tokens.join("") !== source.replace(/[\s,]/g, (match) => match === "," ? "." : "")) throw new Error("Ongeldig teken in berekening.");
-  let index = 0;
-  const factor = (): number => {
-    const token = tokens[index];
-    if (token === "+" || token === "-") { index += 1; return token === "-" ? -factor() : factor(); }
-    if (token === "(") { index += 1; const result = expression(); if (tokens[index] !== ")") throw new Error("Ontbrekend sluithaakje."); index += 1; return result; }
-    if (!token || !/^\d/.test(token)) throw new Error("Ongeldige berekening.");
-    index += 1;
-    return Number(token);
-  };
-  const term = (): number => {
-    let result = factor();
-    while (tokens[index] === "*" || tokens[index] === "/") {
-      const operator = tokens[index]; index += 1; const right = factor();
-      if (operator === "/" && right === 0) throw new Error("Delen door nul is niet toegestaan.");
-      result = operator === "*" ? result * right : result / right;
-    }
-    return result;
-  };
-  const expression = (): number => {
-    let result = term();
-    while (tokens[index] === "+" || tokens[index] === "-") { const operator = tokens[index]; index += 1; const right = term(); result = operator === "+" ? result + right : result - right; }
-    return result;
-  };
-  const result = expression();
-  if (index !== tokens.length || !Number.isFinite(result)) throw new Error("Ongeldige berekening.");
-  return result;
 }
 
 export function FieldTools({ data, projectId, buildingId, buildings, parties, reportId, currentUserName, client, busy, run }: {
@@ -75,18 +45,19 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
   const [noteSignature, setNoteSignature] = useState<HandwrittenSignature | null>(null);
   /** The saved note being corrected, so saving updates it instead of writing a second one. */
   const [editingNoteId, setEditingNoteId] = useState("");
+  const savingRef = useRef(false);
   const [noteLocationNodeId, setNoteLocationNodeId] = useState("");
   const [dictated, setDictated] = useState(false);
   const [dimensions, setDimensions] = useState({ length: "", width: "", height: "", quantity: "1" });
   const [expression, setExpression] = useState("");
   const [expressionResult, setExpressionResult] = useState<string>("");
   const [calculatorError, setCalculatorError] = useState("");
-  const notes = data.registerEntries.filter((entry) => ["notepad", "agreement", "technical_instruction"].includes(entry.register_type));
+  const notes = data.registerEntries.filter((entry) => ["notepad", "agreement"].includes(entry.register_type));
   const agreementPartyOptions = Array.from(new Set(["CODECO N.V.", ...parties.map((party) => party.name)].filter(Boolean)));
   const length = numeric(dimensions.length);
   const width = numeric(dimensions.width);
   const height = numeric(dimensions.height);
-  const quantity = numeric(dimensions.quantity) || 1;
+  const quantity = dimensions.quantity.trim() ? numeric(dimensions.quantity) : 1;
   const measurements = useMemo(() => ({ area: length * width * quantity, volume: length * width * height * quantity }), [height, length, quantity, width]);
   const speechAvailable = speechToTextAvailable();
 
@@ -107,12 +78,23 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
     setNoteBuildingIds(entry.building_ids?.length ? entry.building_ids : entry.building_id ? [entry.building_id] : []);
     setNoteLocationNodeId(entry.location_node_id ?? "");
     setNoteSignature(signatureFromDetails(entry.signed_by, entry.signed_at, entry.signature_image) as HandwrittenSignature | null);
+    const between = Array.isArray(details.agreed_between) ? details.agreed_between : [];
+    setAgreement({
+      partyA: String(between[0] ?? ""), partyB: String(between[1] ?? ""),
+      positionA: String(details.position_first ?? ""), positionB: String(details.position_second ?? ""),
+      signedByA: String(details.signed_by_first ?? ""), signedAtA: String(details.signed_at_first ?? ""), signatureA: String(details.signature_first_image ?? ""),
+      signedByB: String(details.signed_by_second ?? ""), signedAtB: String(details.signed_at_second ?? ""), signatureB: String(details.signature_second_image ?? ""),
+    });
+    setDictated(details.source === "voice_and_keyboard");
     setEditingNoteId(entry.id);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const saveNote = async () => {
     if (note.title.trim().length < 3 || note.body.trim().length < 3) return;
+    if (savingRef.current) return;
+    savingRef.current = true;
+    try {
     const targetBuildingIds = noteBuildingIds.length ? noteBuildingIds : [noteBuildingId];
     const noteDetails = {
       text: note.body.trim(),
@@ -163,6 +145,7 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
       ? text("Agreement saved.", "Afspraak opgeslagen.")
       : text("Field note saved.", "Veldnotitie opgeslagen."));
     if (okay) { setNote({ ...emptyNote }); setAgreement({ ...emptyAgreementSignature }); setNoteSignature(null); setNoteLocationNodeId(""); setDictated(false); setEditingNoteId(""); }
+    } finally { savingRef.current = false; }
   };
 
   const runExpression = () => {
@@ -179,11 +162,11 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
         status={editingNoteId ? text("Editing", "Bewerken") : text("New", "Nieuw")}
         busy={busy}
         className="field-tool-card note-tool-card"
-        headerAside={editingNoteId ? <button className="ghost-button" type="button" onClick={() => { setNote({ ...emptyNote }); setNoteSignature(null); setNoteLocationNodeId(""); setEditingNoteId(""); }}>{text("New note", "Nieuwe notitie")}</button> : null}
+        headerAside={editingNoteId ? <button className="ghost-button" type="button" onClick={() => { setNote({ ...emptyNote }); setAgreement({ ...emptyAgreementSignature }); setDictated(false); setNoteSignature(null); setNoteLocationNodeId(""); setEditingNoteId(""); }}>{text("New note", "Nieuwe notitie")}</button> : null}
       >
         <RecordFormSection number={1} title={text("Context and subject", "Context en onderwerp")}>
         <RecordBuildingsField id="note-buildings" buildings={buildings} value={noteBuildingIds} onChange={(next) => { setNoteBuildingIds(next); setNoteBuildingId(next[0] ?? noteBuildingId); setNoteLocationNodeId(""); }} />
-        <div className="form-grid-2"><label className="form-field"><span>{text("Record type", "Type registratie")}</span><select value={note.type} onChange={(event) => setNote({ ...note, type: event.target.value })}><option value="notepad">{text("Notepad", "Notitieblok")}</option><option value="agreement">{text("Formal agreement", "Formele afspraak")}</option></select></label><label className="form-field"><span>{note.type === "agreement" ? text("Agreement subject", "Onderwerp afspraak") : text("Subject", "Onderwerp")}</span><input value={note.title} onChange={(event) => setNote({ ...note, title: event.target.value })} /></label></div>
+        <div className="form-grid-2"><label className="form-field"><span>{text("Record type", "Type registratie")}</span><select disabled={Boolean(editingNoteId)} value={note.type} onChange={(event) => setNote({ ...note, type: event.target.value })}><option value="notepad">{text("Notepad", "Notitieblok")}</option><option value="agreement">{text("Formal agreement", "Formele afspraak")}</option></select></label><label className="form-field"><span>{note.type === "agreement" ? text("Agreement subject", "Onderwerp afspraak") : text("Subject", "Onderwerp")}</span><input value={note.title} onChange={(event) => setNote({ ...note, title: event.target.value })} /></label></div>
         <LocationPicker id="note-location" nodes={data.locationNodes} buildingId={noteBuildingId} value={noteLocationNodeId} onChange={setNoteLocationNodeId} requiredDepth={data.settings?.required_location_depth ?? "building"} />
         </RecordFormSection>
         {note.type === "agreement" ? <div className="agreement-fields">

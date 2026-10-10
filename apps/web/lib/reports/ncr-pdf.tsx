@@ -1,3 +1,4 @@
+import { downloadBlob } from "@/lib/browser/download";
 /* eslint-disable jsx-a11y/alt-text -- @react-pdf/renderer Image has no HTML alt prop. */
 import { Document, Image, Page, StyleSheet, Text, View, pdf } from "@react-pdf/renderer";
 import type { Finding, FindingProgressUpdate } from "@/lib/supabase/operations";
@@ -102,10 +103,5 @@ export function NcrDocument({ finding, progress, context, logoSource = "/codeco-
 
 export async function downloadNcrPdf(finding: Finding, progress: FindingProgressUpdate | undefined, context: NcrContext) {
   const blob = await pdf(<NcrDocument finding={finding} progress={progress} context={context} />).toBlob();
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `${finding.finding_number}-${finding.title}`.replace(/[^a-z0-9._-]+/gi, "-") + ".pdf";
-  anchor.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  downloadBlob(blob, `${finding.finding_number}-${finding.title}`.replace(/[^a-z0-9._-]+/gi, "-") + ".pdf");
 }

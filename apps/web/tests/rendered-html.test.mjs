@@ -1074,7 +1074,7 @@ test("lets a new deployment reach an installed field app", async () => {
 
   // Documents are never served from the cache first; that is what kept a deployed
   // change invisible on a phone that had the app installed.
-  assert.match(serviceWorker, /const CACHE = "codeco-field-shell-v4"/);
+  assert.match(serviceWorker, /const CACHE = "codeco-field-shell-v5"/);
   assert.match(serviceWorker, /const isDocument = request\.mode === "navigate"/);
   assert.match(serviceWorker, /_rsc/);
   assert.doesNotMatch(serviceWorker, /SHELL = \["\/supervisie"/);
@@ -2393,7 +2393,7 @@ test("shows the spot on a satellite view without opening the application to the 
   assert.match(config, /geolocation=\(self\)/);
 
   // Tapping the picture moves the pin: the provider's own script is not needed for that.
-  assert.match(mapComponent, /function coordinatesFromTap\(/);
+  assert.match(mapComponent, /import \{ coordinatesFromTap, validMapCoordinates \} from "@\/lib\/maps\/mercator\.mjs"/);
   assert.match(mapComponent, /Tap the map to move the pin|Tik op de kaart om de speld te verplaatsen/);
   assert.match(styles, /\.record-location-map img \{/);
 

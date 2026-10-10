@@ -1,9 +1,10 @@
 "use client";
 
-import { idbClear, idbGet, idbGetAll, idbKeys, idbPut } from "@/lib/offline/idb";
+import { idbClear, idbGet, idbGetAll, idbKeys, idbPut, activeOfflineUser } from "@/lib/offline/idb";
 
 type CachedFile = {
   id: string;
+  ownerUserId: string;
   projectId: string;
   mimeType: string;
   sizeBytes: number;
@@ -17,9 +18,11 @@ type CachedFile = {
  * therefore kept here, in the same private per-origin storage as the rest of the offline
  * copy, and are thrown away together with it.
  */
-export async function cacheProjectFile(fileId: string, projectId: string, blob: Blob) {
+export async function cacheProjectFile(fileId: string, projectId: string, blob: Blob, ownerUserId = activeOfflineUser()) {
+  if (!ownerUserId || ownerUserId !== activeOfflineUser()) throw new Error("The signed-in account changed while loading this file.");
   await idbPut<CachedFile>("files", {
     id: fileId,
+    ownerUserId,
     projectId,
     mimeType: blob.type || "application/octet-stream",
     sizeBytes: blob.size,

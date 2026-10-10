@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
  * connection. These checks need no account: they prove the shell itself boots, hydrates and
  * reacts with the network switched off, which is the part a login cannot rescue.
  */
-const shellCache = "codeco-field-shell-v4";
+const shellCache = "codeco-field-shell-v5";
 
 test.describe("offline field app", () => {
   test("boots, hydrates and reacts with the network switched off", async ({ page, context }) => {

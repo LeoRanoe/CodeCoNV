@@ -158,6 +158,10 @@ export function PhotoMarkupPad({
   useBackToClose(true, close);
   const imageRef = useRef<HTMLImageElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
+  const pointerRef = useRef<number | null>(null);
+  const flatteningRef = useRef(false);
+  const mountedRef = useRef(false);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; pointerRef.current = null; }; }, []);
   const drawingRef = useRef<{ id: string; moved: boolean } | null>(null);
   const draggingMarkerRef = useRef<{ id: string; moved: boolean } | null>(null);
   const [tool, setTool] = useState<Tool>("marker");
@@ -275,12 +279,14 @@ export function PhotoMarkupPad({
 
 
   const startOnStage = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!event.isPrimary || event.button !== 0 || pointerRef.current !== null || flatteningRef.current) return;
     if (draggingMarkerRef.current) return;
     if (tool === "marker") return;
     // Without this the browser starts dragging the photo as an image, which cancels the
     // pointer stream and cuts the line off after a few millimetres.
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
+    pointerRef.current = event.pointerId;
     const point = ratioFrom(event.clientX, event.clientY);
     const id = newId();
     const shape: Shape = tool === "pen"
@@ -292,6 +298,7 @@ export function PhotoMarkupPad({
   };
 
   const moveOnStage = (event: React.PointerEvent<HTMLElement>) => {
+    if (pointerRef.current !== event.pointerId) return;
     const point = ratioFrom(event.clientX, event.clientY);
     const dragging = draggingMarkerRef.current;
     if (dragging) {
@@ -311,6 +318,7 @@ export function PhotoMarkupPad({
   };
 
   const endOnStage = () => {
+    pointerRef.current = null;
     const dragging = draggingMarkerRef.current;
     if (dragging) {
       draggingMarkerRef.current = null;
@@ -354,10 +362,14 @@ export function PhotoMarkupPad({
 
   /** Burn the drawing into the picture itself, at the resolution of the original photo. */
   const flatten = async () => {
+    if (flatteningRef.current) return;
+    flatteningRef.current = true;
+    endOnStage();
     setBusy(true);
     setError("");
     try {
       const image = await loadImage(previewUrl);
+      if (!mountedRef.current) return;
       const size = markupCanvasSize(image.naturalWidth, image.naturalHeight);
       const canvas = document.createElement("canvas");
       canvas.width = size.width;
@@ -394,6 +406,7 @@ export function PhotoMarkupPad({
       const notes = markers.map(describeMarker);
 
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+      if (!mountedRef.current) return;
       if (!blob) throw new Error("unreadable-image");
       // The marked photo keeps the moment the picture was taken, not the moment it was marked,
       // so the evidence stays in the order the site was walked.
@@ -409,12 +422,14 @@ export function PhotoMarkupPad({
         markerCount: markers.length,
       });
     } catch {
+      if (!mountedRef.current) return;
       setError(text(
         "The markings could not be saved onto this photo. The original photo stays attached.",
         "De markeringen konden niet op deze foto worden vastgelegd. De oorspronkelijke foto blijft gekoppeld.",
       ));
     } finally {
-      setBusy(false);
+      flatteningRef.current = false;
+      if (mountedRef.current) setBusy(false);
     }
   };
 
@@ -481,7 +496,7 @@ export function PhotoMarkupPad({
             onPointerUp={endOnStage}
             onPointerCancel={endOnStage}
             onClick={(event) => {
-              if (event.target !== imageRef.current || tool !== "marker") return;
+              if (event.target !== imageRef.current || tool !== "marker" || flatteningRef.current || event.button !== 0) return;
               addMarker(ratioFrom(event.clientX, event.clientY));
             }}
           >
@@ -516,7 +531,9 @@ export function PhotoMarkupPad({
                 // A marker can be dragged to the exact spot after it has been placed.
                 onPointerDown={(event) => {
                   event.stopPropagation();
+                  if (!event.isPrimary || event.button !== 0 || pointerRef.current !== null || flatteningRef.current) return;
                   event.preventDefault();
+                  pointerRef.current = event.pointerId;
                   event.currentTarget.setPointerCapture(event.pointerId);
                   draggingMarkerRef.current = { id: marker.id, moved: false };
                 }}

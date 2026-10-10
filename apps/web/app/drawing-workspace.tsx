@@ -49,6 +49,7 @@ import {
   listDrawingPinMutations,
   saveDrawingPinOnlineOrQueue,
   syncDrawingPinMutations,
+  type DrawingPinMutation,
 } from "@/lib/offline/drawing-pin-queue";
 import { loadProjectFilePreviewObjectUrl, uploadProjectFile } from "@/lib/storage/gateway";
 import {
@@ -147,6 +148,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
   const [pinOverrides, setPinOverrides] = useState<Record<string, PinPoint>>({});
   const [hiddenPinIds, setHiddenPinIds] = useState<string[]>([]);
   const [localPins, setLocalPins] = useState<DrawingPin[]>([]);
+  const [queueError, setQueueError] = useState("");
+  const [queuedMutations, setQueuedMutations] = useState<DrawingPinMutation[]>([]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [tool, setTool] = useState<DrawingTool>(pendingRecord || initialFindingId || initialInspectionId ? "pin" : "pan");
@@ -170,7 +173,23 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
   const [pageLabels, setPageLabels] = useState<string[]>([]);
   const [documentTitle, setDocumentTitle] = useState("");
 
-  const allPins = [...data.drawingPins, ...localPins.filter((local) => !data.drawingPins.some((pin) => pin.linked_record_type === local.linked_record_type && pin.linked_record_id === local.linked_record_id && pin.drawing_file_id === local.drawing_file_id))];
+  const restoredPins: DrawingPin[] = queuedMutations.flatMap((mutation) => {
+    if (mutation.kind !== "create") return [];
+    const input = mutation.input;
+    const finding = data.findings.find((record) => record.id === input.linkedRecordId);
+    const inspection = data.inspections.find((record) => record.id === input.linkedRecordId);
+    const entry = data.registerEntries.find((record) => record.id === input.linkedRecordId);
+    return [{ id: `pending:${mutation.id}`, drawing_file_id: input.drawingFileId, page_number: input.pageNumber,
+      x_ratio: input.xRatio, y_ratio: input.yRatio, linked_record_type: input.linkedRecordType, linked_record_id: input.linkedRecordId,
+      linked_record_number: finding?.finding_number ?? inspection?.inspection_number ?? entry?.entry_number ?? "Pending",
+      linked_record_title: finding?.title ?? inspection?.title ?? entry?.title ?? input.linkedRecordId,
+      note: null, status: "active", created_at: mutation.createdAt }];
+  });
+  const restoredMoves = Object.fromEntries(queuedMutations.flatMap((mutation) => mutation.kind === "move" ? [[mutation.input.pinId, { xRatio: mutation.input.xRatio, yRatio: mutation.input.yRatio }]] : []));
+  const restoredHidden = queuedMutations.flatMap((mutation) => mutation.kind === "void" ? [mutation.input.pinId] : []);
+  const savedPins = data.drawingPins.map((pin) => restoredMoves[pin.id] ? { ...pin, x_ratio: restoredMoves[pin.id].xRatio, y_ratio: restoredMoves[pin.id].yRatio } : pin).filter((pin) => !restoredHidden.includes(pin.id));
+  const pendingPins = [...localPins, ...restoredPins.filter((pin) => !localPins.some((local) => local.id === pin.id))];
+  const allPins = [...savedPins, ...pendingPins.filter((local) => !data.drawingPins.some((pin) => pin.linked_record_type === local.linked_record_type && pin.linked_record_id === local.linked_record_id && pin.drawing_file_id === local.drawing_file_id))];
   const activePins = activeDrawing
     ? allPins
       .filter((pin) => pin.drawing_file_id === activeDrawing.id && pin.page_number === pageNumber && pin.status === "active" && !hiddenPinIds.includes(pin.id))
@@ -221,18 +240,26 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
   const pageLabel = (page: number) => pageLabels[page - 1]?.trim() || String(page);
 
   useEffect(() => {
+    let active = true;
+    const reloadQueue = async () => {
+      const queued = await listDrawingPinMutations(projectId);
+      if (active) { setQueuedMutations(queued); setQueueError(""); }
+      return queued;
+    };
     const synchronize = () => {
-      void listDrawingPinMutations(projectId).then((queued) => {
-        if (!queued.length || !navigator.onLine) return;
-        void run(
-          () => syncDrawingPinMutations(client, projectId),
-          text("Waiting pin changes sent.", "Wachtende pinwijzigingen verzonden."),
-        );
-      });
+      void reloadQueue().then(async (queued) => {
+        if (!active || !queued.length || !navigator.onLine) return;
+        await run(async () => {
+          const result = await syncDrawingPinMutations(client, projectId);
+          if (result.failed || result.paused) throw new Error(text("Some pin changes are still waiting. Reconnect or correct the failed change and retry.", "Er wachten nog pinwijzigingen. Verbind opnieuw of corrigeer de mislukte wijziging en probeer opnieuw."));
+          return result;
+        }, text("Waiting pin changes sent.", "Wachtende pinwijzigingen verzonden."));
+        await reloadQueue();
+      }).catch(() => { if (active) setQueueError(text("Waiting pin changes could not be read. Check device storage and retry.", "Wachtende pinwijzigingen konden niet worden gelezen. Controleer apparaatopslag en probeer opnieuw.")); });
     };
     window.addEventListener("online", synchronize);
     synchronize();
-    return () => window.removeEventListener("online", synchronize);
+    return () => { active = false; window.removeEventListener("online", synchronize); };
   }, [client, projectId, run, text]);
 
   const selectDrawing = (drawingId: string) => {
@@ -523,6 +550,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
 
   return (
     <section className="drawing-workspace-shell">
+      {queueError ? <p className="operation-alert error" role="alert">{queueError}</p> : null}
       <div className="visual-toolbar">
         <div>
           <span className="record-number">{text("Drawings workspace", "Tekeningenwerkruimte")}</span>
@@ -788,9 +816,12 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
   const [previewUrl, setPreviewUrl] = useState("");
   const [mimeType, setMimeType] = useState("");
   const [loading, setLoading] = useState(true);
+  const [renderedSource, setRenderedSource] = useState("");
   const [error, setError] = useState("");
   const [aspectRatio, setAspectRatio] = useState("4 / 3");
   const [renderWidth, setRenderWidth] = useState(900);
+  const expectedSource = `${file.id}:${previewUrl}:${pageNumber}:${mimeType === "application/pdf" ? renderWidth : 0}`;
+  const interactionReady = !loading && renderedSource === expectedSource;
   /** The rendered page in its own pixels: the overlay draws in exactly this space. */
   const [pageSize, setPageSize] = useState({ width: 900, height: 675 });
   const [draftPoints, setDraftPoints] = useState<NormalizedPoint[]>([]);
@@ -846,6 +877,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
     setLoading(true);
     setError("");
     void import("pdfjs-dist").then(async (pdfjs) => {
+      if (cancelled) return;
       pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
       const task = pdfjs.getDocument({ url: previewUrl });
       loadingTask = task;
@@ -880,7 +912,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
       if (!context) throw new Error("Drawing canvas is unavailable.");
       renderTask = page.render({ canvas, canvasContext: context, viewport: pdfViewport, transform: pixelRatio === 1 ? undefined : [pixelRatio, 0, 0, pixelRatio, 0, 0] });
       await renderTask.promise;
-      if (!cancelled) setLoading(false);
+      if (!cancelled) { setRenderedSource(`${file.id}:${previewUrl}:${pageNumber}:${renderWidth}`); setLoading(false); }
     }).catch((caught: unknown) => {
       if (!cancelled) {
         setLoading(false);
@@ -890,7 +922,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
     return () => {
       cancelled = true;
       renderTask?.cancel();
-      void loadingTask?.destroy();
+      void loadingTask?.destroy().catch(() => undefined);
     };
   }, [mimeType, onDocumentDetails, onPageCount, pageNumber, previewUrl, renderWidth, text]);
 
@@ -934,6 +966,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
   };
 
   const beginPointer = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!interactionReady || error || event.button !== 0) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -987,6 +1020,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
   };
 
   const finishPointer = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!interactionReady || error || !pointersRef.current.has(event.pointerId)) { cancelPointers(); return; }
     if (pointerLiftPlacesPin({ tool, activePointerCount: pointersRef.current.size, gesture: singleGestureRef.current })) {
       const point = normalizedPoint(event.clientX, event.clientY);
       onPoint({ xRatio: point.x, yRatio: point.y });
@@ -1007,16 +1041,27 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
     updateDraftPoints([]);
   };
 
+  useEffect(() => {
+    pointersRef.current.clear();
+    pinchRef.current = null;
+    singleGestureRef.current = null;
+    drawingRef.current = false;
+    draftPointsRef.current = [];
+    const reset = requestAnimationFrame(() => { setDraftPoints([]); setDraggedPin(null); });
+    return () => cancelAnimationFrame(reset);
+  }, [pageNumber, tool, previewUrl]);
+
   const beginPinDrag = (event: React.PointerEvent<HTMLButtonElement>, pin: DrawingPin) => {
-    event.preventDefault();
     event.stopPropagation();
+    if (!interactionReady || !event.isPrimary || event.button !== 0) return;
+    event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     onSelectPin(pin.id);
     setDraggedPin({ id: pin.id, point: { xRatio: Number(pin.x_ratio), yRatio: Number(pin.y_ratio) } });
   };
 
   const movePinDrag = (event: React.PointerEvent<HTMLButtonElement>, pin: DrawingPin) => {
-    if (draggedPin?.id !== pin.id) return;
+    if (!interactionReady || draggedPin?.id !== pin.id) return;
     event.preventDefault();
     event.stopPropagation();
     const point = normalizedPoint(event.clientX, event.clientY);
@@ -1024,7 +1069,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
   };
 
   const finishPinDrag = (event: React.PointerEvent<HTMLButtonElement>, pin: DrawingPin) => {
-    if (draggedPin?.id !== pin.id) return;
+    if (!interactionReady || draggedPin?.id !== pin.id) return;
     event.preventDefault();
     event.stopPropagation();
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
@@ -1048,7 +1093,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
           data-page={pageNumber}
           data-scale={viewport.scale.toFixed(3)}
           aria-label={text("Interactive drawing. Pan, zoom or place a linked pin.", "Interactieve tekening. Verschuif, zoom of plaats een gekoppelde pin.")}
-          onKeyDown={(event) => { if (tool === "pin" && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onPoint({ xRatio: 0.5, yRatio: 0.5 }); } }}
+          onKeyDown={(event) => { if (interactionReady && tool === "pin" && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onPoint({ xRatio: 0.5, yRatio: 0.5 }); } }}
           onPointerDown={beginPointer}
           onPointerMove={movePointer}
           onPointerUp={finishPointer}
@@ -1057,7 +1102,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
           <div className="drawing-viewport-content" style={{ transform: `translate(${viewport.offset.x}px, ${viewport.offset.y}px) scale(${viewport.scale})` }}>
             {mimeType === "application/pdf" ? <canvas ref={canvasRef} /> : previewUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={previewUrl} alt={file.original_name} onLoad={(event) => { setAspectRatio(`${event.currentTarget.naturalWidth} / ${event.currentTarget.naturalHeight}`); setLoading(false); onPageCount(1); }} onError={() => { setLoading(false); setError(text("Drawing image could not be displayed.", "De tekeningafbeelding kon niet worden weergegeven.")); }} />
+            <img key={`${file.id}:${previewUrl}`} src={previewUrl} alt={file.original_name} onLoad={(event) => { setAspectRatio(`${event.currentTarget.naturalWidth} / ${event.currentTarget.naturalHeight}`); setRenderedSource(expectedSource); setLoading(false); onPageCount(1); }} onError={() => { setLoading(false); setError(text("Drawing image could not be displayed.", "De tekeningafbeelding kon niet worden weergegeven.")); }} />
           ) : null}
           {/* The overlay works in the page's own pixels, so nothing in it is stretched. */}
           <svg className="drawing-markup-layer" viewBox={`0 0 ${pageSize.width} ${pageSize.height}`} aria-hidden="true">
@@ -1070,7 +1115,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
             const shownPoint = draggedPin?.id === pin.id ? draggedPin.point : { xRatio: Number(pin.x_ratio), yRatio: Number(pin.y_ratio) };
             return (
             <span className="drawing-pin-anchor" style={{ left: `${shownPoint.xRatio * 100}%`, top: `${shownPoint.yRatio * 100}%`, transform: `scale(${1 / viewport.scale})`, transformOrigin: "0 0" }} key={pin.id}>
-              <button className={`drawing-pin ${pinTypeClass[pin.linked_record_type]}`} type="button" aria-label={`${pin.linked_record_number} · ${pin.linked_record_title}`} onPointerDown={(event) => beginPinDrag(event, pin)} onPointerMove={(event) => movePinDrag(event, pin)} onPointerUp={(event) => finishPinDrag(event, pin)}><span>{index + 1}</span></button>
+              <button className={`drawing-pin ${pinTypeClass[pin.linked_record_type]}`} type="button" aria-label={`${pin.linked_record_number} · ${pin.linked_record_title}`} onPointerDown={(event) => beginPinDrag(event, pin)} onPointerMove={(event) => movePinDrag(event, pin)} onPointerUp={(event) => finishPinDrag(event, pin)} onPointerCancel={(event) => { event.stopPropagation(); setDraggedPin(null); }}><span>{index + 1}</span></button>
               <em className={`drawing-pin-code ${pinTypeClass[pin.linked_record_type]}`}>{pin.linked_record_number}</em>
             </span>
             );

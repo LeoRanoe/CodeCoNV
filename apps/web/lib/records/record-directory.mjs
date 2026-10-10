@@ -157,29 +157,47 @@ const kindWords = new Map([
   ["tekening", "drawing"], ["tekeningen", "drawing"], ["drawing", "drawing"], ["drawings", "drawing"],
 ]);
 
+/** Calendar dates in search use the project timezone, even on a device abroad. */
+export function projectRecordDay(value) {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const date = new Date(`${value}T12:00:00Z`);
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value ? value : "";
+  }
+  const date = new Date(value);
+  if (!value || !Number.isFinite(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Paramaribo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  const part = (type) => parts.find((item) => item.type === type)?.value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
 function isoDay(date) {
   const pad = (number) => String(number).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
 }
 
 function dateWindow(query, now) {
   const lower = query.toLocaleLowerCase("nl");
-  const day = new Date(now ?? Date.now());
-  day.setHours(12, 0, 0, 0);
+  const localDay = projectRecordDay(now ?? new Date().toISOString());
+  if (!localDay) return {};
+  const day = new Date(`${localDay}T12:00:00Z`);
   const range = (from, to = from) => ({ dateFrom: isoDay(from), dateTo: isoDay(to) });
   if (/\b(vandaag|today)\b/.test(lower)) return range(day);
-  if (/\b(gisteren|yesterday)\b/.test(lower)) { const date = new Date(day); date.setDate(date.getDate() - 1); return range(date); }
-  const startOfWeek = new Date(day); startOfWeek.setDate(day.getDate() - ((day.getDay() + 6) % 7));
+  if (/\b(gisteren|yesterday)\b/.test(lower)) { const date = new Date(day); date.setUTCDate(date.getUTCDate() - 1); return range(date); }
+  const startOfWeek = new Date(day); startOfWeek.setUTCDate(day.getUTCDate() - ((day.getUTCDay() + 6) % 7));
   if (/\b(deze week|this week)\b/.test(lower)) return range(startOfWeek, day);
-  if (/\b(vorige week|last week)\b/.test(lower)) { const from = new Date(startOfWeek); from.setDate(from.getDate() - 7); const to = new Date(startOfWeek); to.setDate(to.getDate() - 1); return range(from, to); }
-  if (/\b(deze maand|this month)\b/.test(lower)) return range(new Date(day.getFullYear(), day.getMonth(), 1), day);
-  if (/\b(vorige maand|last month)\b/.test(lower)) return range(new Date(day.getFullYear(), day.getMonth() - 1, 1), new Date(day.getFullYear(), day.getMonth(), 0));
-  if (/\b(dit jaar|this year)\b/.test(lower)) return range(new Date(day.getFullYear(), 0, 1), day);
+  if (/\b(vorige week|last week)\b/.test(lower)) { const from = new Date(startOfWeek); from.setUTCDate(from.getUTCDate() - 7); const to = new Date(startOfWeek); to.setUTCDate(to.getUTCDate() - 1); return range(from, to); }
+  if (/\b(deze maand|this month)\b/.test(lower)) return range(new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), 1)), day);
+  if (/\b(vorige maand|last month)\b/.test(lower)) return range(new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth() - 1, 1)), new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), 0)));
+  if (/\b(dit jaar|this year)\b/.test(lower)) return range(new Date(Date.UTC(day.getUTCFullYear(), 0, 1)), day);
   const explicit = lower.match(/\b(\d{1,2})-(\d{1,2})-(\d{4})\b/);
-  if (explicit) return range(new Date(Number(explicit[3]), Number(explicit[2]) - 1, Number(explicit[1])));
+  if (explicit) {
+    const expected = `${explicit[3]}-${explicit[2].padStart(2, "0")}-${explicit[1].padStart(2, "0")}`;
+    const date = new Date(`${expected}T12:00:00Z`);
+    return Number.isFinite(date.getTime()) && isoDay(date) === expected ? range(date) : { dateFrom: "invalid", dateTo: "invalid" };
+  }
   const months = ["januari|january", "februari|february", "maart|march", "april", "mei|may", "juni|june", "juli|july", "augustus|august", "september", "oktober|october", "november", "december"];
   const monthIndex = months.findIndex((names) => new RegExp(`\\b(?:${names})\\b`).test(lower));
-  if (monthIndex >= 0) return range(new Date(day.getFullYear(), monthIndex, 1), new Date(day.getFullYear(), monthIndex + 1, 0));
+  if (monthIndex >= 0) return range(new Date(Date.UTC(day.getUTCFullYear(), monthIndex, 1)), new Date(Date.UTC(day.getUTCFullYear(), monthIndex + 1, 0)));
   return {};
 }
 
@@ -249,8 +267,8 @@ export function filterRecordDirectory(entries, query, filters = {}, context = {}
     && (!combined.kind || item.kind === combined.kind || (combined.kind === "file" && ["file", "report"].includes(item.kind)))
     && (!combined.buildingIds?.length || combined.buildingIds.some((id) => item.buildingIds.includes(id)))
     && (!combined.status || (combined.status === "open" ? !["closed", "cancelled", "completed", "approved", "archived"].some((status) => itemStatus.includes(status)) : combined.status === "urgent" ? ["critical", "urgent", "overdue", "action_required"].some((status) => itemStatus.includes(status)) : itemStatus.includes(combined.status)))
-    && (!combined.dateFrom || item.date.slice(0, 10) >= combined.dateFrom)
-    && (!combined.dateTo || item.date.slice(0, 10) <= combined.dateTo)
+    && (!combined.dateFrom || projectRecordDay(item.date) >= combined.dateFrom)
+    && (!combined.dateTo || projectRecordDay(item.date) <= combined.dateTo)
     && (!combined.author || item.author.toLocaleLowerCase("nl").includes(combined.author.toLocaleLowerCase("nl")))
     && (combined.minDelayHours == null || item.delayHours > combined.minDelayHours)
   ).sort((left, right) => left.rank - right.rank || String(right.item.date).localeCompare(String(left.item.date)) || left.item.code.localeCompare(right.item.code))

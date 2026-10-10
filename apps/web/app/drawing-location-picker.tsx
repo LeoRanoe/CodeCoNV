@@ -241,6 +241,7 @@ function DrawingPointCanvas({ file, pageNumber, client, point, onPageCount, onPo
     setLoading(true);
     setError("");
     void import("pdfjs-dist").then(async (pdfjs) => {
+      if (cancelled) return;
       pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
       const task = pdfjs.getDocument({ url: previewUrl });
       loadingTask = task;
@@ -271,7 +272,7 @@ function DrawingPointCanvas({ file, pageNumber, client, point, onPageCount, onPo
     return () => {
       cancelled = true;
       renderTask?.cancel();
-      void loadingTask?.destroy();
+      void loadingTask?.destroy().catch(() => undefined);
     };
   }, [mimeType, onPageCount, pageNumber, previewUrl, surfaceWidth, text]);
 
@@ -287,7 +288,7 @@ function DrawingPointCanvas({ file, pageNumber, client, point, onPageCount, onPo
         tabIndex={0}
         aria-label={text("Drawing. Tap the spot where the photo was taken.", "Tekening. Tik op de plek waar de foto is genomen.")}
         onPointerDown={(event) => {
-          if (!event.isPrimary || event.button !== 0) return;
+          if (loading || !event.isPrimary || event.button !== 0) return;
           pointerStartRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
           event.currentTarget.setPointerCapture(event.pointerId);
         }}
@@ -295,7 +296,7 @@ function DrawingPointCanvas({ file, pageNumber, client, point, onPageCount, onPo
           const start = pointerStartRef.current;
           pointerStartRef.current = null;
           if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-          if (!start || start.id !== event.pointerId || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) return;
+          if (loading || !start || start.id !== event.pointerId || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) return;
           onPoint(event.clientX, event.clientY, event.currentTarget);
         }}
         onPointerCancel={() => { pointerStartRef.current = null; }}
