@@ -42,11 +42,17 @@ async function signedInUser(request: NextRequest) {
     auth: { autoRefreshToken: false, detectSessionInUrl: false, persistSession: false },
   });
   const result = await client.auth.getUser(accessToken);
-  return result.error ? null : result.data.user;
+  if (result.error || !result.data.user) return null;
+  const userClient = createClient(supabaseUrl, publishableKey, {
+    accessToken: async () => accessToken,
+    auth: { autoRefreshToken: false, detectSessionInUrl: false, persistSession: false },
+  });
+  return { user: result.data.user, userClient };
 }
 
 export async function GET(request: NextRequest) {
-  if (!await signedInUser(request)) {
+  const auth = await signedInUser(request);
+  if (!auth) {
     return NextResponse.json(
       { error: "Signing in is required." },
       { status: 401, headers: { "Cache-Control": "no-store" } },
@@ -70,6 +76,21 @@ export async function GET(request: NextRequest) {
   });
   if (!input.success) {
     return NextResponse.json({ error: "Invalid map coordinates." }, { status: 400 });
+  }
+
+  const rateLimit = await auth.userClient.rpc("consume_security_rate_limit", {
+    p_action_code: "map_lookup",
+    p_max_requests: 30,
+    p_window_minutes: 10,
+  });
+  if (rateLimit.error) {
+    return NextResponse.json({ error: "The map security limit could not be checked." }, { status: 503 });
+  }
+  if (rateLimit.data !== true) {
+    return NextResponse.json(
+      { error: "Too many map requests. Please try again later." },
+      { status: 429, headers: { "Retry-After": "600", "Cache-Control": "no-store" } },
+    );
   }
 
   const { latitude, longitude, zoom, width, height } = input.data;

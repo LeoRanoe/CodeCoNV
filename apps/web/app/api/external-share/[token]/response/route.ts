@@ -1,3 +1,4 @@
+import { logEvent, requestIdFrom } from "@/lib/observability/log";
 import { z } from "zod";
 import { loadActiveExternalShare } from "@/lib/external-share/server";
 import { normalizeExternalShareToken } from "@/lib/external-share/token.mjs";
@@ -57,10 +58,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     if (result.error) {
       if (result.error.code === "P0002") return storageJson({ error: "Deze link is verlopen of ingetrokken." }, 404);
       if (result.error.message.includes("rate limit")) return storageJson({ error: "Te veel reacties. Probeer het later opnieuw." }, 429);
+      logEvent("error", "external_share", "response_rejected", { requestId: requestIdFrom(request), error: result.error });
       throw new Error("De reactie kon niet veilig worden opgeslagen.");
     }
     return storageJson(result.data, 201);
   } catch (error) {
-    return storageErrorResponse(error);
+    return storageErrorResponse(error, request, "external_share");
   }
 }

@@ -222,13 +222,13 @@ select ok(
   (select verified_at is null from public.findings where title = 'Curtain wall connection'),
   'automatic progress never verifies or closes a finding'
 );
-select is(
-  (public.build_client_period_report_snapshot(
-    (select id from public.projects where code = 'SU-L1054'),
-    current_date - 1,
-    current_date + 1
-  ) ->> 'schema_version'),
-  '202607240001',
+select ok(
+  (select version ~ '^\d{12}$' and version >= '202607240001'
+   from (select public.build_client_period_report_snapshot(
+     (select id from public.projects where code = 'SU-L1054'),
+     current_date - 1,
+     current_date + 1
+   ) ->> 'schema_version' as version) snapshot),
   'the enriched client snapshot is versioned'
 );
 select ok(

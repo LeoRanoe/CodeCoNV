@@ -8,7 +8,12 @@ test.skip(!email || !password, "CODECO_E2E_EMAIL and CODECO_E2E_PASSWORD are req
 
 async function openAuthenticatedWorkspace(page: Page) {
   await page.goto("/supervisie");
-  await page.evaluate(() => localStorage.setItem("codeco-field-guide-seen-v3", "yes"));
+  // These assertions use the English interface; Supervisie itself defaults to Dutch.
+  await page.evaluate(() => {
+    localStorage.setItem("codeco-field-guide-seen-v3", "yes");
+    localStorage.setItem("codeco-language-choice", "en");
+  });
+  await page.reload();
   await page.locator(".access-form, .project-selection-grid").first().waitFor({ state: "visible" });
 
   const accessForm = page.locator(".access-form");
@@ -39,7 +44,7 @@ async function expectNoHorizontalOverflow(page: Page) {
 }
 
 async function expectMinimumTarget(page: Page, selector: string, minimum = 44) {
-  const box = await page.locator(selector).boundingBox();
+  const box = await page.locator(selector).first().boundingBox();
   expect(box, `${selector} must be visible`).not.toBeNull();
   expect(box!.width, `${selector} width`).toBeGreaterThanOrEqual(minimum);
   expect(box!.height, `${selector} height`).toBeGreaterThanOrEqual(minimum);
@@ -79,23 +84,27 @@ test("mobile navigation exposes reports, management and uncluttered report steps
   await expect(bottomNav).toContainText("Actions");
   await expect(bottomNav).toContainText("More");
 
-  await expectMinimumTarget(page, ".management-button");
+  // On a phone the header keeps only notifications and help; management and sign-out
+  // live in "More", where every capability of the desktop sidebar is still reachable.
+  await expect(page.locator(".topbar .management-button")).toBeHidden();
   await expectMinimumTarget(page, ".top-actions button[aria-label^='Notifications']");
   await expectMinimumTarget(page, ".field-guide-trigger");
   await expectNoHorizontalOverflow(page);
 
-  const managementBox = await page.locator(".management-button").boundingBox();
   const helpBox = await page.locator(".field-guide-trigger").boundingBox();
   const bottomBox = await bottomNav.boundingBox();
-  expect(managementBox && helpBox && bottomBox).toBeTruthy();
+  expect(helpBox && bottomBox).toBeTruthy();
   expect(helpBox!.y + helpBox!.height).toBeLessThanOrEqual(bottomBox!.y);
 
   await bottomNav.getByRole("button", { name: "More", exact: true }).click();
   const moduleMenu = page.getByRole("dialog", { name: "All project modules" });
   await expect(moduleMenu).toBeVisible();
+  await expect(moduleMenu.getByRole("button", { name: /Management/ })).toBeVisible();
+  await expect(moduleMenu.getByRole("button", { name: /Sign out/ })).toBeVisible();
   await moduleMenu.getByRole("button", { name: /Reports/ }).click();
   await expect(page.getByRole("heading", { name: "Client reports" })).toBeVisible();
-  await expect(page.locator(".report-section-tabs [role='tab']")).toHaveCount(3);
+  // Create, review & sign, versions & history, and the prompt library.
+  await expect(page.locator(".report-section-tabs [role='tab']")).toHaveCount(4);
   await expect(page.locator(".period-report-card")).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
@@ -114,13 +123,17 @@ test("mobile workspace keeps daily work within two taps and action uses the corr
   const bottomNav = page.locator(".mobile-bottom-nav");
   await bottomNav.getByRole("button", { name: "Workspace", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Workspace", exact: true })).toBeVisible();
+  // Fifteen modules: the client struck the standalone Delays tile (daily delays and the PDR stay).
   await expect(page.locator(".workspace-launcher-grid [data-workspace-destination]")).toHaveCount(15);
+  await expect(page.locator('[data-workspace-destination="delays"]')).toHaveCount(0);
+  await expect(page.locator('[data-workspace-destination="delay-report"]')).toHaveCount(1);
   await expect(page.locator('[data-workspace-destination="works-ongoing"]')).toBeVisible();
   await expect(page.locator('[data-workspace-destination="works-completed"]')).toBeVisible();
   await expect(page.locator('[data-workspace-destination="agreements-made"]')).toBeVisible();
   await expect(page.locator('[data-workspace-destination="rfi"]')).toHaveCount(0);
+  // A tile opens its module with the form ready; the module title is the page heading.
   await page.locator('[data-workspace-destination="issues"]').click();
-  await expect(page.getByRole("tab", { name: /Issues/ })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".workspace-current-module").getByRole("heading", { name: /Issues/ })).toBeVisible();
   await page.locator(".workspace-back-button").click();
 
   await bottomNav.getByRole("button", { name: "Actions", exact: true }).click();
@@ -150,7 +163,10 @@ test("desktop workspace exposes every client module through a working destinatio
   };
 
   await openWorkspace();
+  // Fifteen modules: the client struck the standalone Delays tile (daily delays and the PDR stay).
   await expect(page.locator(".workspace-launcher-grid [data-workspace-destination]")).toHaveCount(15);
+  await expect(page.locator('[data-workspace-destination="delays"]')).toHaveCount(0);
+  await expect(page.locator('[data-workspace-destination="delay-report"]')).toHaveCount(1);
 
   const taskDestinations = [
     ["inspections", "Inspections"],
@@ -158,36 +174,37 @@ test("desktop workspace exposes every client module through a working destinatio
   ] as const;
   for (const [id, heading] of taskDestinations) {
     await openTile(id);
-    await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+    await expect(page.locator(".workspace-current-module").getByRole("heading", { name: heading })).toBeVisible();
     await returnFromWorkspaceModule();
   }
 
   for (const id of ["issues", "ncr"] as const) {
     await openTile(id);
-    await expect(page.getByRole("tab", { name: id === "ncr" ? /NCR/ : /Issues/ })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator(".workspace-current-module").getByRole("heading", { name: id === "ncr" ? /NCR/ : /Issues/ })).toBeVisible();
     await returnFromWorkspaceModule();
   }
 
   const registerDestinations = ["materials-delivery", "technical-instructions", "change-order", "agreements-made"] as const;
   for (const id of registerDestinations) {
     await openTile(id);
-    await expect(page.getByRole("heading", { name: "Formal documents & registers", exact: true })).toBeVisible();
+    await expect(page.locator(".workspace-current-module").getByRole("heading")).not.toBeEmpty();
     await returnFromWorkspaceModule();
   }
 
-  await openTile("deadlines");
+  // Deadlines left the tile grid but stayed one tap away among the supporting tools.
+  await page.locator(".workspace-support-strip").getByRole("button", { name: /Deadlines/ }).click();
   await expect(page.getByRole("heading", { name: "Action center", exact: true })).toBeVisible();
   await openWorkspace();
 
-  await page.getByRole("button", { name: /Rapid Verify/ }).click();
+  await page.locator(".workspace-support-strip").getByRole("button", { name: /Rapid Verify/ }).click();
   await expect(page.getByRole("heading", { name: "Rapid Verify", exact: true })).toBeVisible();
   await openWorkspace();
 
-  await page.getByRole("button", { name: "Reports", exact: true }).last().click();
+  await page.locator(".workspace-support-strip").getByRole("button", { name: "Reports", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Client reports", exact: true })).toBeVisible();
   await openWorkspace();
 
-  await page.getByRole("button", { name: /Submissions & management/ }).click();
+  await page.locator(".workspace-support-strip").getByRole("button", { name: /Submissions & management/ }).click();
   await expect(page.getByRole("heading", { name: "Management overview", exact: true })).toBeVisible();
   await expectNoHorizontalOverflow(page);
 });

@@ -23,11 +23,13 @@ import {
 import { useEffect, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
 import { queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
 import { normalizeRecordCode } from "@/lib/records/record-directory.mjs";
 import { downloadProjectFile, loadProjectFileBlob } from "@/lib/storage/gateway";
 import { createMediaFolder, linkFileToRecord, updateProjectFile, type OperationSnapshot } from "@/lib/supabase/operations";
+import { statusText, typeText } from "@/lib/status-labels";
 
 type DocumentView = "all" | "drawings" | "renders" | "boq" | "specifications" | "contracts";
 
@@ -61,6 +63,9 @@ export function ProjectDocumentsHome({
   createDocument: () => void;
 }) {
   const { locale, text } = useLanguage();
+  const permissions = useProjectPermissions();
+  const canManageFiles = permissions.can("files.manage");
+  const canCreateRecords = permissions.can("records.create");
   const [view, setView] = useState<DocumentView>("all");
   const [query, setQuery] = useState("");
   const [folderFilter, setFolderFilter] = useState("all");
@@ -172,7 +177,7 @@ export function ProjectDocumentsHome({
       }
       if (navigator.onLine) return syncOfflineUploads(client, projectId, { force: true });
       return { synced: 0, failed: 0, paused: true };
-    }, text("Documents stored centrally or queued safely in their chosen folder.", "Documenten centraal opgeslagen of veilig in de gekozen map klaargezet."));
+    }, text("Documents saved.", "Documenten opgeslagen."));
     if (okay) setDragging(false);
   };
 
@@ -220,17 +225,17 @@ export function ProjectDocumentsHome({
   return (
     <section className="project-documents">
       <div className="project-documents-summary">
-        <div><span>{text("Controlled project information", "Beheerde projectinformatie")}</span><h2>{text("Project document center", "Projectdocumentencentrum")}</h2><p>{text("Find the current approved source, then continue in the correct controlled workflow.", "Vind de actuele goedgekeurde bron en ga daarna verder in de juiste gecontroleerde workflow.")}</p></div>
+        <div><span>{text("Controlled project information", "Beheerde projectinformatie")}</span><h1>{text("Project document center", "Projectdocumentencentrum")}</h1></div>
         <div className="project-documents-actions">
-          <button className="secondary-button" type="button" onClick={() => document.getElementById("project-document-upload")?.scrollIntoView({ behavior: "smooth", block: "center" })}><Upload size={15} /> {text("Upload file", "Upload bestand")}</button>
-          <button className="primary-button" type="button" onClick={createDocument}><Plus size={15} /> {text("New controlled record", "Nieuw beheerd record")}</button>
+          {canManageFiles ? <button className="secondary-button" type="button" onClick={() => document.getElementById("project-document-upload")?.scrollIntoView({ behavior: "smooth", block: "center" })}><Upload size={15} /> {text("Upload file", "Upload bestand")}</button> : null}
+          {canCreateRecords ? <button className="primary-button" type="button" onClick={createDocument}><Plus size={15} /> {text("New controlled record", "Nieuw beheerd record")}</button> : null}
         </div>
       </div>
 
-      <section className="project-document-intake" id="project-document-upload" aria-label={text("Create a folder and upload", "Map maken en uploaden")}>
+      {canManageFiles ? <section className="project-document-intake" id="project-document-upload" aria-label={text("Create a folder and upload", "Map maken en uploaden")}>
         <div className="project-document-folder-create">
           <span className="record-number">{text("1. Folder and project link", "1. Map en projectkoppeling")}</span>
-          <h3>{text("Create the destination here", "Maak de bestemming hier")}</h3>
+          <h2>{text("Create the destination here", "Maak de bestemming hier")}</h2>
           <div className="project-document-intake-row">
             <label className="form-field"><span>{text("New folder name", "Naam nieuwe map")}</span><input value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} placeholder={text("Example: Approved drawings", "Bijvoorbeeld: Goedgekeurde tekeningen")} /></label>
             <BuildingPicker id="document-folder-building" buildings={buildings} value={folderBuildingId} onChange={setFolderBuildingId} />
@@ -256,7 +261,7 @@ export function ProjectDocumentsHome({
             <input type="file" multiple disabled={busy || !uploadFolderId} accept={uploadKind === "drawing" ? ".pdf,.dwg,image/png,image/jpeg,image/webp" : ".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"} onChange={(event) => { if (event.target.files) void uploadFiles(event.target.files); event.target.value = ""; }} />
           </label>
         </div>
-      </section>
+      </section> : null}
 
       <div className="project-document-tabs" role="tablist" aria-label={text("Document category", "Documentcategorie")}>
         {tabs.map((tab) => <button className={view === tab.id ? "active" : ""} type="button" role="tab" aria-selected={view === tab.id} onClick={() => setView(tab.id)} key={tab.id}>{tab.icon}<span><strong>{tab.label}</strong><small>{tab.count} {text("items", "items")}</small></span></button>)}
@@ -274,7 +279,7 @@ export function ProjectDocumentsHome({
         <div className="project-document-filters">
           <label><span>{text("Folder", "Map")}</span><select value={folderFilter} onChange={(event) => setFolderFilter(event.target.value)}><option value="all">{text("All folders", "Alle mappen")}</option>{folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}</select></label>
           <label><span>{text("Building", "Gebouw")}</span><select value={buildingFilter} onChange={(event) => setBuildingFilter(event.target.value)}><option value="all">{text("All buildings", "Alle gebouwen")}</option>{buildings.map((building) => <option value={building.id} key={building.id}>{building.name}</option>)}</select></label>
-          <label><span>{text("Type", "Type")}</span><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="all">{text("All types", "Alle typen")}</option>{documentTypes.map((type) => <option value={type} key={type}>{type.replaceAll("_", " ")}</option>)}</select></label>
+          <label><span>{text("Type", "Type")}</span><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="all">{text("All types", "Alle typen")}</option>{documentTypes.map((type) => <option value={type} key={type}>{typeText(type, text)}</option>)}</select></label>
           <label><span>{text("From date", "Vanaf datum")}</span><input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
           <label><span>{text("Sort", "Sorteren")}</span><select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="recent">{text("Newest", "Nieuwste")}</option><option value="oldest">{text("Oldest", "Oudste")}</option><option value="name">{text("Name", "Naam")}</option></select></label>
         </div>
@@ -283,12 +288,12 @@ export function ProjectDocumentsHome({
           {items.length ? items.slice(0, 12).map((item) => (
             <button type="button" disabled={openingFileId === item.id} onClick={() => void openItem(item)} key={`${item.source}:${item.id}`}>
               <span className={`document-type-icon ${item.type}`}>{item.source === "file" ? <FolderOpen size={18} /> : item.type === "boq" ? <DatabaseBackup size={18} /> : <FileText size={18} />}</span>
-              <span><strong>{item.code ? `${item.code} · ` : ""}{item.title}</strong><small>{item.type.replaceAll("_", " ")} · {item.folderId ? folders.find((folder) => folder.id === item.folderId)?.name : text("No folder", "Geen map")} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "America/Paramaribo" }).format(new Date(item.date))}</small></span>
-              <span className={`document-status ${["approved", "closed", "available"].includes(item.status) ? "approved" : ""}`}>{item.status.replaceAll("_", " ")}</span>
+              <span><strong>{item.code ? `${item.code} · ` : ""}{item.title}</strong><small>{typeText(item.type, text)} · {item.folderId ? folders.find((folder) => folder.id === item.folderId)?.name : text("No folder", "Geen map")} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "America/Paramaribo" }).format(new Date(item.date))}</small></span>
+              <span className={`document-status ${["approved", "closed", "available"].includes(item.status) ? "approved" : ""}`}>{statusText(item.status, text)}</span>
               <ArrowRight size={15} />
             </button>
           )) : (
-            <div className="project-document-empty"><span><FolderOpen size={25} /></span><div><strong>{text("No documents in this category yet", "Nog geen documenten in deze categorie")}</strong><p>{text("Use a real project file or controlled record; the overview intentionally shows no sample content.", "Gebruik een echt projectbestand of beheerd record; dit overzicht toont bewust geen voorbeeldinhoud.")}</p></div><button className="secondary-button" type="button" onClick={view === "drawings" || view === "renders" ? openFiles : createDocument}><Plus size={14} /> {text("Add first item", "Voeg eerste item toe")}</button></div>
+            <div className="project-document-empty"><span><FolderOpen size={25} /></span><div><strong>{text("No documents in this category yet", "Nog geen documenten in deze categorie")}</strong></div><button className="secondary-button" type="button" onClick={view === "drawings" || view === "renders" ? openFiles : createDocument}><Plus size={14} /> {text("Add first item", "Voeg eerste item toe")}</button></div>
           )}
         </div>
         {items.length ? <button className="project-document-footer" type="button" onClick={openCurrent}>{text("Open the complete controlled workflow", "Open de volledige gecontroleerde workflow")} <ArrowRight size={14} /></button> : null}

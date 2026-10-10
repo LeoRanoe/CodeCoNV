@@ -27,7 +27,7 @@ type BackupScope = "project" | "organization";
 function hoursSince(value: string | null | undefined) {
   if (!value) return null;
   const then = new Date(value).getTime();
-  if (Number.isNaN(then)) return null;
+  if (!Number.isFinite(then) || then > Date.now() + 60_000) return null;
   return (Date.now() - then) / 3_600_000;
 }
 
@@ -111,13 +111,14 @@ export function BackupCenter({
   const [lastExport, setLastExport] = useState<{ scope: BackupScope; size: number; sha256: string; counts: Record<string, number> } | null>(null);
   const [lastDryRun, setLastDryRun] = useState<BackupRun | null>(null);
 
-  const runs = data.backupRuns;
+  const runs = useMemo(() => [...data.backupRuns].sort((left, right) => String(right.created_at).localeCompare(String(left.created_at))), [data.backupRuns]);
+  const scheduledAttempt = runs.find((item) => item.run_type === "scheduled");
   const latestScheduled = runs.find((item) => item.run_type === "scheduled" && item.status === "verified");
   const latestRestoreTest = runs.find((item) => item.run_type === "restore_test" && item.status === "dry_run_passed");
   const latestFailure = runs.find((item) => item.status === "failed");
 
   const scheduledAge = hoursSince(latestScheduled?.verified_at);
-  const backupStale = scheduledAge === null || scheduledAge > backupStaleAfterHours;
+  const backupStale = scheduledAge === null || scheduledAge > backupStaleAfterHours || scheduledAttempt?.status === "failed";
   const restoreAge = hoursSince(latestRestoreTest?.verified_at);
   const restoreStale = restoreAge === null || restoreAge > restoreTestStaleAfterDays * 24;
 
@@ -168,17 +169,16 @@ export function BackupCenter({
         <article className={`backup-health-card ${restoreStale ? "attention" : "healthy"}`}>
           <span>{restoreStale ? <AlertTriangle size={20} /> : <ShieldCheck size={20} />}</span>
           <div>
-            <strong>{text("Last restore test", "Laatste hersteltest")}</strong>
+            <strong>{text("Last restore validation", "Laatste herstelvalidatie")}</strong>
             <b>{ageLabel(latestRestoreTest?.verified_at, dutch)}</b>
-            <small>{text(`A backup nobody has read back is a promise, not a copy. Test at least every ${restoreTestStaleAfterDays} days.`, `Een back-up die niemand heeft teruggelezen is een belofte, geen kopie. Test minstens elke ${restoreTestStaleAfterDays} dagen.`)}</small>
+            <small>{text("A validation checks the archive; a restore rehearsal in a separate environment is still required.", "Validatie controleert het archief; een hersteloefening in een aparte omgeving blijft vereist.")}</small>
           </div>
         </article>
-        <article className={`backup-health-card ${isStorageGatewayConfigured ? "healthy" : "attention"}`}>
+        <article className={`backup-health-card ${isStorageGatewayConfigured && !backupStale ? "healthy" : "attention"}`}>
           <span><HardDrive size={20} /></span>
           <div>
             <strong>{text("Backup storage", "Back-upopslag")}</strong>
             <b>{isStorageGatewayConfigured ? text("Private and connected", "Privé en gekoppeld") : text("Not connected", "Niet gekoppeld")}</b>
-            <small>{text("Copies are held privately and are never publicly reachable.", "Kopieën staan privé en zijn nooit openbaar bereikbaar.")}</small>
           </div>
         </article>
       </div>
@@ -195,14 +195,14 @@ export function BackupCenter({
 
       <div className="backup-workbench">
         <article className="backup-tool">
-          <header><DatabaseBackup size={17} /><div><strong>{text("Take a backup now", "Nu een back-up maken")}</strong><small>{text("Runs the same verified job as the nightly one. It is skipped when today's copy already exists.", "Draait dezelfde geverifieerde taak als die van vannacht. Hij wordt overgeslagen als de kopie van vandaag al bestaat.")}</small></div></header>
+          <header><DatabaseBackup size={17} /><div><strong>{text("Take a backup now", "Nu een back-up maken")}</strong><small>{text("Same job as the nightly backup. Skipped if today's copy exists.", "Dezelfde taak als de nachtelijke back-up. Overgeslagen als de kopie van vandaag bestaat.")}</small></div></header>
           <button
             className="secondary-button"
             type="button"
             disabled={busy || !canManageOrganization}
             onClick={() => void run(
               () => ensureDailyBackup(client, organizationId),
-              text("The backup job finished. The history below shows the result.", "De back-uptaak is klaar. De historie hieronder toont het resultaat."),
+              text("Backup finished.", "Back-up afgerond."),
             )}
           >
             {busy ? <Loader2 className="spin" size={15} /> : <DatabaseBackup size={15} />} {text("Run backup job", "Back-uptaak draaien")}
@@ -210,7 +210,7 @@ export function BackupCenter({
         </article>
 
         <article className="backup-tool">
-          <header><Archive size={17} /><div><strong>{text("Download a copy", "Een kopie downloaden")}</strong><small>{text("A checksummed export you keep yourself, outside this application.", "Een export met checksum die je zelf bewaart, buiten deze applicatie.")}</small></div></header>
+          <header><Archive size={17} /><div><strong>{text("Download a copy", "Een kopie downloaden")}</strong><small>{text("Download a checksummed copy.", "Download een kopie met controlesom.")}</small></div></header>
           <label className="form-field">
             <span>{text("What to include", "Wat meenemen")}</span>
             <select value={scope} onChange={(event) => setScope(event.target.value as BackupScope)}>
@@ -226,14 +226,14 @@ export function BackupCenter({
               const result = await downloadManualBackup(client, organizationId, scope === "project" ? projectId : null);
               setLastExport({ scope, size: result.size, sha256: result.sha256, counts: result.recordCounts });
               return result;
-            }, text("Backup downloaded and its checksum verified centrally.", "Back-up gedownload en de checksum is centraal geverifieerd."))}
+            }, text("Backup downloaded and verified.", "Back-up gedownload en geverifieerd."))}
           >
             <DatabaseBackup size={15} /> {text("Download verified backup", "Download geverifieerde back-up")}
           </button>
         </article>
 
         <article className="backup-tool">
-          <header><RotateCcw size={17} /><div><strong>{text("Test a backup file", "Een back-upbestand testen")}</strong><small>{text("Reads a downloaded file back and reports what it holds. Nothing is overwritten.", "Leest een gedownload bestand terug en meldt wat erin zit. Er wordt niets overschreven.")}</small></div></header>
+          <header><RotateCcw size={17} /><div><strong>{text("Test a backup file", "Een back-upbestand testen")}</strong><small>{text("Check a downloaded backup. Nothing is overwritten.", "Controleer een gedownloade back-up. Er wordt niets overschreven.")}</small></div></header>
           <button className="secondary-button" type="button" disabled={busy || !canManageOrganization} onClick={() => fileInput.current?.click()}>
             <RotateCcw size={15} /> {text("Choose a backup file", "Kies een back-upbestand")}
           </button>
@@ -271,20 +271,20 @@ export function BackupCenter({
       {lastDryRun ? (
         <article className="backup-result">
           <header><ShieldCheck size={16} /> <strong>{text("Restore test result", "Resultaat hersteltest")}</strong></header>
-          <p>{text("The file is complete and belongs to this organization. It was not written back.", "Het bestand is compleet en hoort bij deze organisatie. Er is niets teruggeschreven.")}</p>
+          <p>{text("The file is complete and belongs to this organization. Nothing was restored.", "Het bestand is compleet en hoort bij deze organisatie. Er is niets hersteld.")}</p>
           <RecordCounts counts={lastDryRun.record_counts} />
         </article>
       ) : null}
 
       <article className="backup-retention">
         <header><Archive size={16} /> <strong>{text("What is kept", "Wat wordt bewaard")}</strong></header>
-        <p>{text("Verified automatic backups are held as 7 daily, 4 weekly and 3 monthly copies. Anything outside that set is deleted on the next run.", "Geverifieerde automatische back-ups worden bewaard als 7 dagelijkse, 4 wekelijkse en 3 maandelijkse kopieën. Alles daarbuiten wordt bij de volgende run verwijderd.")}</p>
+        <p>{text("Automatic backups: 7 daily, 4 weekly, 3 monthly. Older copies are deleted on the next run.", "Automatische back-ups: 7 dagelijks, 4 wekelijks, 3 maandelijks. Oudere kopieën worden bij de volgende run verwijderd.")}</p>
         <div className="backup-retention-tiers">
           <span><strong>{heldCopies.daily}</strong><small>{text("of 7 daily", "van 7 dagelijks")}</small></span>
           <span><strong>{heldCopies.weekly}</strong><small>{text("of 4 weekly", "van 4 wekelijks")}</small></span>
           <span><strong>{heldCopies.monthly}</strong><small>{text("of 3 monthly", "van 3 maandelijks")}</small></span>
         </div>
-        <small>{text("Keep one downloaded copy outside this application as well: retention protects against mistakes, not against losing the account itself.", "Bewaar daarnaast één gedownloade kopie buiten deze applicatie: retentie beschermt tegen fouten, niet tegen verlies van het account zelf.")}</small>
+        <small>{text("Keep a downloaded copy outside this application too.", "Bewaar ook een gedownloade kopie buiten deze applicatie.")}</small>
       </article>
 
       <article className="backup-history">
@@ -339,7 +339,7 @@ export function BackupCenter({
       </article>
 
       {!canManageOrganization ? (
-        <p className="backup-empty">{text("Backups are managed by an organization administrator. You can read this page but not run anything from it.", "Back-ups worden beheerd door een organisatiebeheerder. Je kunt deze pagina lezen maar er niets vanaf starten.")}</p>
+        <p className="backup-empty">{text("Only an administrator can run backups.", "Alleen een beheerder kan back-ups uitvoeren.")}</p>
       ) : null}
     </section>
   );

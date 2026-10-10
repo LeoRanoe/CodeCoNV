@@ -222,14 +222,7 @@ export function DailyLogModal({
               ? text("Record a delay", "Vertraging vastleggen")
               : ongoingOnly ? text("Record works ongoing", "Werkzaamheden gaande vastleggen")
                 : completedOnly ? text("Record works completed", "Werkzaamheden afgerond vastleggen")
-                  : text("Today on site", "Vandaag op de bouwplaats")}</h2>
-            <p>{delayOnly
-              ? text("Cause, time lost, what actually happened and the contractor's acknowledgement, stored with today's closeout.", "Oorzaak, tijdverlies, wat er werkelijk gebeurde en de erkenning van de aannemer, bewaard bij de dagafsluiting van vandaag.")
-              : ongoingOnly
-                ? text("What is running right now, and where. This is the record the works-ongoing list shows.", "Wat er op dit moment loopt, en waar. Dit is de registratie die de lijst Werkzaamheden gaande toont.")
-                : completedOnly
-                  ? text("What was finished today, and how far the work stands. This is the record the works-completed list shows.", "Wat vandaag is afgerond, en hoe ver het werk staat. Dit is de registratie die de lijst Werkzaamheden afgerond toont.")
-                : text("The same blocks as your weekly report, in the same order.", "Dezelfde blokken als in je weekrapport, in dezelfde volgorde.")}</p>
+                  : text("Today on site", "Vandaag op de bouwplaats")}</h2>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
@@ -240,10 +233,7 @@ export function DailyLogModal({
             buildings={buildings}
             value={buildingIds}
             onChange={setBuildingIds}
-            hint={text(
-              "Choose every building this day applies to. The log is saved once per building.",
-              "Kies elk gebouw waarvoor deze dag geldt. De log wordt per gebouw opgeslagen.",
-            )}
+            hint={text("Saved once per building.", "Eén keer per gebouw opgeslagen.")}
           />
 
           <section className="daily-log-block weather">
@@ -252,7 +242,7 @@ export function DailyLogModal({
               <p className="daily-log-readout"><strong>{weatherLabel}</strong><span>{shiftLabel}</span></p>
             ) : (
               <div className="daily-log-missing">
-                <span>{text("Weather and working hours come from Project start and are not confirmed yet.", "Weer en werktijden komen uit Projectstart en zijn nog niet bevestigd.")}</span>
+                <span>{text("Weather and hours are not confirmed yet (Project start).", "Weer en uren zijn nog niet bevestigd (Projectstart).")}</span>
                 <button className="secondary-button" type="button" onClick={openProjectStart}>{text("Confirm project start", "Bevestig projectstart")}</button>
               </div>
             )}
@@ -402,7 +392,7 @@ export function DailyLogModal({
             {log.delayCause !== "none" ? <div className="delay-responsibility-block">
               <label className="form-field">
                 <span>{text("Reason for delay", "Reden van vertraging")}</span>
-                <textarea rows={3} value={log.delayReason} onChange={(event) => setLog({ ...log, delayReason: event.target.value })} placeholder={text("Describe what actually happened, not only the category.", "Beschrijf wat er daadwerkelijk is gebeurd, niet alleen de categorie.")} />
+                <textarea rows={3} value={log.delayReason} onChange={(event) => setLog({ ...log, delayReason: event.target.value })} />
                 <DictateButton onText={(transcript) => setLog((current) => ({ ...current, delayReason: appendDictation(current.delayReason, transcript) }))} />
               </label>
               <label className="form-field">

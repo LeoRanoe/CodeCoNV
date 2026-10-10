@@ -1,3 +1,4 @@
+import { logEvent } from "@/lib/observability/log";
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -147,7 +148,8 @@ export async function sendPendingNotificationEmails(admin: SupabaseClient): Prom
         email_last_error: null,
       });
       result.sent += 1;
-    } catch {
+    } catch (error) {
+      logEvent("warn", "notification", "email_delivery_failed", { notificationId: notification.id, error });
       await markDelivery(admin, notification.id, {
         email_status: "failed",
         email_last_error: "Aflevering via de e-mailprovider is mislukt; de geplande taak probeert opnieuw.",

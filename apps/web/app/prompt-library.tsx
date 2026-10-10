@@ -1,7 +1,8 @@
 "use client";
 
 import { ArrowUpRight, Check, Copy, Paperclip, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { copyText } from "@/lib/browser/clipboard";
 import { useLanguage } from "@/lib/i18n";
 
 /**
@@ -229,6 +230,9 @@ export function PromptLibrary({ shortcuts }: { shortcuts: PromptShortcutTargets 
   const prompts = usePromptLibrary();
   const [term, setTerm] = useState("");
   const [copiedId, setCopiedId] = useState("");
+  const [copyError, setCopyError] = useState("");
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
 
   /**
    * Two of the sources are not this application's to hand over — a schedule and a meeting
@@ -265,13 +269,21 @@ export function PromptLibrary({ shortcuts }: { shortcuts: PromptShortcutTargets 
     : prompts;
 
   const copy = async (item: LibraryPrompt) => {
-    await navigator.clipboard.writeText(item.prompt);
-    setCopiedId(item.id);
-    window.setTimeout(() => setCopiedId((current) => (current === item.id ? "" : current)), 2400);
+    setCopyError("");
+    setCopiedId("");
+    try {
+      await copyText(item.prompt);
+      setCopiedId(item.id);
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopiedId(""), 2400);
+    } catch {
+      setCopyError(text("Copy failed. Open the prompt and copy its text manually.", "Kopiëren mislukt. Open de prompt en kopieer de tekst handmatig."));
+    }
   };
 
   return (
     <section className="prompt-library">
+      {copyError ? <p className="field-error" role="alert">{copyError}</p> : null}
       <header className="prompt-library-intro">
         <div>
           <p className="eyebrow">{text("Outside this application", "Buiten deze applicatie")}</p>
@@ -334,13 +346,6 @@ export function PromptLibrary({ shortcuts }: { shortcuts: PromptShortcutTargets 
       })}
 
       {!visible.length ? <p className="backup-empty">{text("No prompt matches that.", "Geen prompt komt hiermee overeen.")}</p> : null}
-
-      <p className="prompt-library-footnote">
-        {text(
-          "Nothing here sends project data anywhere. You choose the export, the tool and the moment.",
-          "Hier wordt geen projectdata verstuurd. Jij kiest de export, het hulpmiddel en het moment.",
-        )}
-      </p>
     </section>
   );
 }

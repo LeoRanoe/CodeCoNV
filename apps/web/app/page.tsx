@@ -374,7 +374,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="studio-values" aria-labelledby="values-title">
+        <section className="studio-values" id="values" aria-labelledby="values-title">
           <div className="studio-values-image">
             <Image src={consultingDesign} alt="Contemporary building design by CODECO" fill placeholder="blur" quality={78} sizes="100vw" />
           </div>
@@ -388,7 +388,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="studio-clients" aria-labelledby="clients-title">
+        <section className="studio-clients" id="clients" aria-labelledby="clients-title">
           <div className="studio-wrap" data-reveal="rise"><p className="studio-label" id="clients-title">Selected clients</p></div>
           <div className="studio-client-track">
             {[0, 1].map((copy) => (

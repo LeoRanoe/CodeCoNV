@@ -13,7 +13,11 @@ function allowedConnectSources() {
   for (const candidate of [process.env.NEXT_PUBLIC_SUPABASE_URL]) {
     if (!candidate) continue;
     try {
-      sources.push(new URL(candidate).origin);
+      const origin = new URL(candidate);
+      sources.push(origin.origin);
+      // Realtime runs over a websocket on the same host; *.supabase.co is covered above, a
+      // custom domain or a local stack is not.
+      sources.push(`${origin.protocol === "http:" ? "ws:" : "wss:"}//${origin.host}`);
     } catch {
       // Invalid values fail the application configuration check; never add them to CSP.
     }
@@ -42,9 +46,33 @@ const contentSecurityPolicy = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  images: {
+    // These are the intentional quality values used by the public portfolio images.
+    // Declaring them avoids Next.js falling back to an unconfigured quality warning.
+    qualities: [75, 78, 82],
+  },
   // Playwright and field devices may reach the local dev server through its numeric host.
   // Production CSP stays strict; this only lets Next's development HMR origin through.
   allowedDevOrigins: ["127.0.0.1"],
+  // The previous WordPress site's pages, mapped to the section of the one-page site that
+  // now carries the same content, so links and search results keep working after the
+  // cutover. Theme demo pages (/icons, /pricing-and-plans, /landing-page, /faq) had no
+  // CODECO content and are deliberately left to 404 instead of being sent to "/".
+  async redirects() {
+    const toSection = (paths: string[], section: string) => paths.map((path) => ({
+      source: path,
+      destination: `/#${section}`,
+      permanent: true,
+    }));
+    return [
+      ...toSection(["/about-us", "/our-history", "/team", "/company-career"], "about"),
+      ...toSection(["/core-values"], "values"),
+      ...toSection(["/our-clients"], "clients"),
+      ...toSection(["/engineering", "/consulting", "/project-management", "/contracting", "/our-solutions-image-overlay"], "services"),
+      ...toSection(["/projects", "/projects-2", "/portfolio/:slug*", "/category-portfolio/:slug*"], "work"),
+      ...toSection(["/contact"], "contact"),
+    ];
+  },
   async headers() {
     return [{
       source: "/:path*",

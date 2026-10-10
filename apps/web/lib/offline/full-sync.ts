@@ -5,8 +5,9 @@ import { cacheProjectSnapshot } from "@/lib/offline/project-cache";
 import { cacheQueryResult } from "@/lib/offline/query-cache";
 import { offlineQueryKeys } from "@/lib/offline/query-keys";
 import { cacheProjectDay, cacheWorkspace } from "@/lib/offline/workspace-cache";
-import { cachedFileUsage, clearCachedProjectFiles } from "@/lib/offline/file-cache";
-import { idbGet, idbPut } from "@/lib/offline/idb";
+import { cachedFileUsage } from "@/lib/offline/file-cache";
+import { purgeReadableOfflineData } from "@/lib/offline/account-isolation";
+import { idbGet, idbKeys, idbPut } from "@/lib/offline/idb";
 import { storeProjectFileOffline } from "@/lib/storage/gateway";
 import {
   loadInternalAccess,
@@ -180,24 +181,28 @@ export async function syncEverythingForOffline(
 }
 
 /**
- * Throws away the offline copy. Queued field uploads are untouched on purpose: they are the
- * only records that exist nowhere but on this device.
+ * Throws away the readable offline copy: every cached project, day, query result and file,
+ * and unsent form drafts. Queued field work (records, photos, drawing pins) is untouched on
+ * purpose: it exists nowhere but on this device. Resolves only once the stores are empty, so
+ * "the offline copy has been removed" is true when the user reads it.
  */
 export async function clearOfflineCopy() {
-  await clearCachedProjectFiles();
-  await idbPut("settings", { id: summaryId, summary: null }).catch(() => undefined);
+  await purgeReadableOfflineData();
 }
 
 /** What the device is holding, for the line under the button. */
 export async function offlineStorageUsage() {
-  const [files, estimate] = await Promise.all([
+  const [files, snapshots, estimate] = await Promise.all([
     cachedFileUsage(),
+    // Project data cached on its own, including a download that was stopped half-way.
+    idbKeys("snapshots").then((keys) => keys.length).catch(() => 0),
     typeof navigator !== "undefined" && navigator.storage?.estimate
       ? navigator.storage.estimate().catch(() => null)
       : Promise.resolve(null),
   ]);
   return {
     files: files.count,
+    snapshots,
     bytes: files.bytes,
     quotaBytes: estimate?.quota ?? 0,
     usedBytes: estimate?.usage ?? 0,

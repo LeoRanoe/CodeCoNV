@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile as readRawFile } from "node:fs/promises";
 import test from "node:test";
+
+// Source assertions are written against LF. A Windows checkout with core.autocrlf yields
+// CRLF, which would make every multi-line pattern fail locally while CI passes.
+async function readFile(path, encoding) {
+  const text = await readRawFile(path, encoding);
+  return typeof text === "string" ? text.replace(/\r\n/g, "\n") : text;
+}
 import {
   externalShareUrl,
   normalizeExternalShareToken,
@@ -284,7 +291,7 @@ test("gives every attached photo one written field and location without a direct
   // photo, next to the picture instead of drawn on it. The feedback of 2 August cut that back
   // to one written field: "voor nr is 1 invoer voldoende". The title, the category and the
   // typed room name are gone; the description carries the words and names the file.
-  assert.match(evidence, /What is on this photo, and why does it matter\?/);
+  assert.match(evidence, /\{text\("Description", "Omschrijving"\)\}/);
   assert.match(evidence, /Exact location/);
   assert.doesNotMatch(evidence, /FacingDirectionField/);
   assert.doesNotMatch(visualCapture, /FacingDirectionField/);
@@ -321,7 +328,7 @@ test("gives every attached photo one written field and location without a direct
 
   // The capture screen in the photo workspace asks the same single question, and never the
   // three fields the client struck through on it.
-  assert.match(visualCapture, /What is on this photo, and why does it matter\?/);
+  assert.match(visualCapture, /\{text\("Description", "Omschrijving"\)\}/);
   assert.doesNotMatch(visualCapture, /photoCategories/);
   assert.doesNotMatch(visualCapture, /Room \/ location in your own words/);
   assert.doesNotMatch(visualCapture, /Adjust title, location or context/);
@@ -371,7 +378,7 @@ test("offers marking on the photo everywhere a photo can be attached", async () 
   }
 
   // A marker carries more than a pin: words, severity, and where it belongs.
-  for (const field of [/Full description/, /Severity/, /Where does this belong\?/, /Responsible party/, /Work package/, /Floor \/ room \/ element/]) {
+  for (const field of [/\{text\("Description", "Omschrijving"\)\}/, /Severity/, /Where does this belong\?/, /Responsible party/, /Work package/, /Floor \/ room \/ element/]) {
     assert.match(markup, field);
   }
   // Draw, arrow and frame are offered next to the marker tool.
@@ -464,7 +471,6 @@ test("enforces project configuration, exact locations and auditable BOQ progress
   assert.match(app, /requiredLocationDepth/);
   assert.match(app, /action-location/);
   assert.match(app, /authTimeout/);
-  assert.match(operations, /Datums technische instructie/);
   assert.match(operations, /Change order \(CO\)/);
   assert.match(operations, /recordBoqProgress/);
   assert.match(operations, /findingLocationNodeId/);
@@ -769,7 +775,7 @@ test("overview filters keep exact document codes first at project scale", () => 
 });
 
 test("keeps a written signature small, named and dated", () => {
-  const ink = `data:image/png;base64,${"A".repeat(400)}`;
+  const ink = `data:image/png;base64,${Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), Buffer.alloc(292)]).toString("base64")}`;
   const signature = handwrittenSignature("  Ravi Sardjoe  ", ink, "2026-08-04T12:00:00.000Z");
   assert.deepEqual(signature, { name: "Ravi Sardjoe", image: ink, signedAt: "2026-08-04T12:00:00.000Z" });
   assert.equal(isSigned(signature), true);

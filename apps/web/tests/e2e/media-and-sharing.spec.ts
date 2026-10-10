@@ -18,7 +18,12 @@ test.setTimeout(300_000);
 
 async function openAuthenticatedWorkspace(page: Page) {
   await page.goto("/supervisie");
-  await page.evaluate(() => localStorage.setItem("codeco-field-guide-seen-v3", "yes"));
+  // These assertions use the English interface; Supervisie itself defaults to Dutch.
+  await page.evaluate(() => {
+    localStorage.setItem("codeco-field-guide-seen-v3", "yes");
+    localStorage.setItem("codeco-language-choice", "en");
+  });
+  await page.reload();
   await page.locator(".access-form, .project-selection-grid").first().waitFor({ state: "visible" });
   const accessForm = page.locator(".access-form");
   if (await accessForm.isVisible().catch(() => false)) {

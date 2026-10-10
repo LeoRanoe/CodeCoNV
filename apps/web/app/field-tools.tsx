@@ -2,7 +2,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Calculator, CheckCircle2, NotebookPen, Pencil, Save, ShieldCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { AgreementSignatureFields, agreementSignatureDetails, emptyAgreementSignature } from "@/app/agreement-signature";
 import { resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton, speechToTextAvailable } from "@/app/dictate-button";
@@ -13,41 +13,12 @@ import { signatureFromDetails } from "@/lib/signatures/handwritten-signature.mjs
 import { useLanguage } from "@/lib/i18n";
 import type { ProjectParty } from "@/lib/supabase/data";
 import { createRegisterEntry, updateRegisterRecord, type OperationSnapshot } from "@/lib/supabase/operations";
+import { calculateExpression } from "@/lib/field-tools/calculator.mjs";
+import { typeText, partyTypeText } from "@/lib/status-labels";
 
 function numeric(value: string) {
   const result = Number(value.replace(",", "."));
   return Number.isFinite(result) ? result : 0;
-}
-
-function calculateExpression(source: string) {
-  const tokens = source.replace(/,/g, ".").match(/\d+(?:\.\d+)?|[()+\-*/]/g) ?? [];
-  if (tokens.join("") !== source.replace(/[\s,]/g, (match) => match === "," ? "." : "")) throw new Error("Ongeldig teken in berekening.");
-  let index = 0;
-  const factor = (): number => {
-    const token = tokens[index];
-    if (token === "+" || token === "-") { index += 1; return token === "-" ? -factor() : factor(); }
-    if (token === "(") { index += 1; const result = expression(); if (tokens[index] !== ")") throw new Error("Ontbrekend sluithaakje."); index += 1; return result; }
-    if (!token || !/^\d/.test(token)) throw new Error("Ongeldige berekening.");
-    index += 1;
-    return Number(token);
-  };
-  const term = (): number => {
-    let result = factor();
-    while (tokens[index] === "*" || tokens[index] === "/") {
-      const operator = tokens[index]; index += 1; const right = factor();
-      if (operator === "/" && right === 0) throw new Error("Delen door nul is niet toegestaan.");
-      result = operator === "*" ? result * right : result / right;
-    }
-    return result;
-  };
-  const expression = (): number => {
-    let result = term();
-    while (tokens[index] === "+" || tokens[index] === "-") { const operator = tokens[index]; index += 1; const right = term(); result = operator === "+" ? result + right : result - right; }
-    return result;
-  };
-  const result = expression();
-  if (index !== tokens.length || !Number.isFinite(result)) throw new Error("Ongeldige berekening.");
-  return result;
 }
 
 export function FieldTools({ data, projectId, buildingId, buildings, parties, reportId, currentUserName, client, busy, run }: {
@@ -74,18 +45,19 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
   const [noteSignature, setNoteSignature] = useState<HandwrittenSignature | null>(null);
   /** The saved note being corrected, so saving updates it instead of writing a second one. */
   const [editingNoteId, setEditingNoteId] = useState("");
+  const savingRef = useRef(false);
   const [noteLocationNodeId, setNoteLocationNodeId] = useState("");
   const [dictated, setDictated] = useState(false);
   const [dimensions, setDimensions] = useState({ length: "", width: "", height: "", quantity: "1" });
   const [expression, setExpression] = useState("");
   const [expressionResult, setExpressionResult] = useState<string>("");
   const [calculatorError, setCalculatorError] = useState("");
-  const notes = data.registerEntries.filter((entry) => ["notepad", "agreement", "technical_instruction"].includes(entry.register_type));
+  const notes = data.registerEntries.filter((entry) => ["notepad", "agreement"].includes(entry.register_type));
   const agreementPartyOptions = Array.from(new Set(["CODECO N.V.", ...parties.map((party) => party.name)].filter(Boolean)));
   const length = numeric(dimensions.length);
   const width = numeric(dimensions.width);
   const height = numeric(dimensions.height);
-  const quantity = numeric(dimensions.quantity) || 1;
+  const quantity = dimensions.quantity.trim() ? numeric(dimensions.quantity) : 1;
   const measurements = useMemo(() => ({ area: length * width * quantity, volume: length * width * height * quantity }), [height, length, quantity, width]);
   const speechAvailable = speechToTextAvailable();
 
@@ -106,12 +78,23 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
     setNoteBuildingIds(entry.building_ids?.length ? entry.building_ids : entry.building_id ? [entry.building_id] : []);
     setNoteLocationNodeId(entry.location_node_id ?? "");
     setNoteSignature(signatureFromDetails(entry.signed_by, entry.signed_at, entry.signature_image) as HandwrittenSignature | null);
+    const between = Array.isArray(details.agreed_between) ? details.agreed_between : [];
+    setAgreement({
+      partyA: String(between[0] ?? ""), partyB: String(between[1] ?? ""),
+      positionA: String(details.position_first ?? ""), positionB: String(details.position_second ?? ""),
+      signedByA: String(details.signed_by_first ?? ""), signedAtA: String(details.signed_at_first ?? ""), signatureA: String(details.signature_first_image ?? ""),
+      signedByB: String(details.signed_by_second ?? ""), signedAtB: String(details.signed_at_second ?? ""), signatureB: String(details.signature_second_image ?? ""),
+    });
+    setDictated(details.source === "voice_and_keyboard");
     setEditingNoteId(entry.id);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const saveNote = async () => {
     if (note.title.trim().length < 3 || note.body.trim().length < 3) return;
+    if (savingRef.current) return;
+    savingRef.current = true;
+    try {
     const targetBuildingIds = noteBuildingIds.length ? noteBuildingIds : [noteBuildingId];
     const noteDetails = {
       text: note.body.trim(),
@@ -159,9 +142,10 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
       signedAt: note.type === "agreement" ? undefined : noteSignature?.signedAt,
       signatureImage: note.type === "agreement" ? null : noteSignature?.image ?? null,
     }), note.type === "agreement"
-      ? text("Agreement stored with date, time, responsible party and deadline.", "Afspraak opgeslagen met datum, tijd, verantwoordelijke partij en deadline.")
-      : text("Field note stored centrally with its automatic date and time.", "Veldnotitie centraal opgeslagen met automatische datum en tijd."));
+      ? text("Agreement saved.", "Afspraak opgeslagen.")
+      : text("Field note saved.", "Veldnotitie opgeslagen."));
     if (okay) { setNote({ ...emptyNote }); setAgreement({ ...emptyAgreementSignature }); setNoteSignature(null); setNoteLocationNodeId(""); setDictated(false); setEditingNoteId(""); }
+    } finally { savingRef.current = false; }
   };
 
   const runExpression = () => {
@@ -178,28 +162,28 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
         status={editingNoteId ? text("Editing", "Bewerken") : text("New", "Nieuw")}
         busy={busy}
         className="field-tool-card note-tool-card"
-        headerAside={editingNoteId ? <button className="ghost-button" type="button" onClick={() => { setNote({ ...emptyNote }); setNoteSignature(null); setNoteLocationNodeId(""); setEditingNoteId(""); }}>{text("New note", "Nieuwe notitie")}</button> : null}
+        headerAside={editingNoteId ? <button className="ghost-button" type="button" onClick={() => { setNote({ ...emptyNote }); setAgreement({ ...emptyAgreementSignature }); setDictated(false); setNoteSignature(null); setNoteLocationNodeId(""); setEditingNoteId(""); }}>{text("New note", "Nieuwe notitie")}</button> : null}
       >
         <RecordFormSection number={1} title={text("Context and subject", "Context en onderwerp")}>
         <RecordBuildingsField id="note-buildings" buildings={buildings} value={noteBuildingIds} onChange={(next) => { setNoteBuildingIds(next); setNoteBuildingId(next[0] ?? noteBuildingId); setNoteLocationNodeId(""); }} />
-        <div className="form-grid-2"><label className="form-field"><span>{text("Record type", "Type registratie")}</span><select value={note.type} onChange={(event) => setNote({ ...note, type: event.target.value })}><option value="notepad">{text("Notepad", "Notitieblok")}</option><option value="agreement">{text("Formal agreement", "Formele afspraak")}</option></select></label><label className="form-field"><span>{note.type === "agreement" ? text("Agreement subject", "Onderwerp afspraak") : text("Subject", "Onderwerp")}</span><input value={note.title} onChange={(event) => setNote({ ...note, title: event.target.value })} /></label></div>
+        <div className="form-grid-2"><label className="form-field"><span>{text("Record type", "Type registratie")}</span><select disabled={Boolean(editingNoteId)} value={note.type} onChange={(event) => setNote({ ...note, type: event.target.value })}><option value="notepad">{text("Notepad", "Notitieblok")}</option><option value="agreement">{text("Formal agreement", "Formele afspraak")}</option></select></label><label className="form-field"><span>{note.type === "agreement" ? text("Agreement subject", "Onderwerp afspraak") : text("Subject", "Onderwerp")}</span><input value={note.title} onChange={(event) => setNote({ ...note, title: event.target.value })} /></label></div>
         <LocationPicker id="note-location" nodes={data.locationNodes} buildingId={noteBuildingId} value={noteLocationNodeId} onChange={setNoteLocationNodeId} requiredDepth={data.settings?.required_location_depth ?? "building"} />
         </RecordFormSection>
         {note.type === "agreement" ? <div className="agreement-fields">
           <div className="form-grid-2">
             <label className="form-field"><span>{text("Agreement date", "Datum afspraak")}</span><input type="date" value={note.agreementDate} onChange={(event) => setNote({ ...note, agreementDate: event.target.value })} /></label>
             <label className="form-field"><span>{text("Agreement time", "Tijd afspraak")}</span><input type="time" value={note.agreementTime} onChange={(event) => setNote({ ...note, agreementTime: event.target.value })} /></label>
-            <label className="form-field"><span>{text("Responsible project party", "Verantwoordelijke projectpartij")}</span><select value={note.responsiblePartyId} onChange={(event) => setNote({ ...note, responsiblePartyId: event.target.value })}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name} · {party.type}</option>)}</select></label>
+            <label className="form-field"><span>{text("Responsible project party", "Verantwoordelijke projectpartij")}</span><select value={note.responsiblePartyId} onChange={(event) => setNote({ ...note, responsiblePartyId: event.target.value })}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name} · {partyTypeText(party.type, text)}</option>)}</select></label>
             <label className="form-field"><span>{text("Deadline / follow-up date", "Deadline / opvolgdatum")}</span><input type="date" min={note.agreementDate} value={note.dueDate} onChange={(event) => setNote({ ...note, dueDate: event.target.value })} /></label>
             <label className="form-field"><span>{text("Agreement status", "Status afspraak")}</span><select value={note.status} onChange={(event) => setNote({ ...note, status: event.target.value })}><option value="agreed">{text("Agreed", "Afgesproken")}</option><option value="open">{text("Open for confirmation", "Open voor bevestiging")}</option><option value="in_progress">{text("In progress", "In uitvoering")}</option><option value="completed">{text("Completed", "Afgerond")}</option></select></label>
           </div>
           <AgreementSignatureFields options={agreementPartyOptions} value={agreement} onChange={setAgreement} />
-          <div className="operation-alert"><CheckCircle2 size={17} /><div><strong>{text("Traceable agreement", "Traceerbare afspraak")}</strong><span>{text("Project, building, author and registration time are added automatically. The agreement date and deadline remain visible in reports.", "Project, gebouw, maker en registratietijd worden automatisch toegevoegd. De afspraakdatum en deadline blijven zichtbaar in rapporten.")}</span></div></div>
+          <div className="operation-alert"><CheckCircle2 size={17} /><div><strong>{text("Traceable agreement", "Traceerbare afspraak")}</strong></div></div>
         </div> : null}
         <label className="form-field"><span>{text("Text", "Tekst")}</span><textarea rows={7} value={note.body} onChange={(event) => setNote({ ...note, body: event.target.value })} /><DictateButton onText={(transcript) => { setNote((current) => ({ ...current, body: appendDictation(current.body, transcript) })); setDictated(true); }} /></label>
         {note.type !== "agreement" ? <RecordSignatureField value={noteSignature} onChange={setNoteSignature} nameSuggestion={currentUserName} declaration={text("I confirm that this note reflects what I recorded on site.", "Ik bevestig dat deze notitie weergeeft wat ik op de bouwplaats heb vastgelegd.")} /> : null}
         <div className="button-row"><button className="primary-button" type="button" disabled={busy || ((data.settings?.required_location_depth ?? "building") !== "building" && !noteLocationNodeId) || note.title.trim().length < 3 || note.body.trim().length < 3 || (note.type === "agreement" && (!note.agreementDate || !note.agreementTime))} onClick={() => void saveNote()}><Save size={15} /> {editingNoteId ? text("Save changes", "Wijzigingen opslaan") : note.type === "agreement" ? text("Save agreement", "Afspraak opslaan") : text("Save note", "Notitie opslaan")}</button></div>
-        {!speechAvailable ? <p className="field-tool-hint">{text("This browser does not provide speech recognition; keyboard entry remains available.", "Deze browser biedt geen spraakherkenning; invoer met het toetsenbord blijft beschikbaar.")}</p> : null}
+        {!speechAvailable ? <p className="field-tool-hint">{text("Speech recognition is not available in this browser.", "Spraakherkenning is niet beschikbaar in deze browser.")}</p> : null}
       </RecordFormShell>
 
       <div className="field-tool-card calculator-card">
@@ -213,7 +197,7 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
 
       <div className="field-tool-card saved-notes-card">
         <span className="record-number">{text("Saved notes and agreements", "Opgeslagen notities en afspraken")}</span>
-        {notes.length ? notes.map((entry) => <article className={editingNoteId === entry.id ? "record-focused" : ""} key={entry.id}><div><strong>{entry.title}</strong><span>{entry.entry_number} · {buildings.find((building) => building.id === entry.building_id)?.name ?? text("Project-wide", "Projectbreed")}{entry.location_node_id ? ` → ${locationBreadcrumb(data.locationNodes, entry.location_node_id)}` : ""} · {entry.register_type.replaceAll("_", " ")}</span></div><small>{entry.register_type === "agreement" && entry.details.agreement_date ? `${text("Agreement", "Afspraak")} ${String(entry.details.agreement_date)} ${String(entry.details.agreement_time ?? "")} · ${text("Deadline", "Deadline")} ${String(entry.details.due_date ?? "—")}` : new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(entry.occurred_at))}</small><p>{String(entry.details.text ?? entry.details.description ?? "")}</p><div className="record-row-actions"><button className="secondary-button" type="button" onClick={() => openNote(entry)}><Pencil size={14} /> {text("Open and edit", "Openen en bewerken")}</button></div></article>) : <div className="empty-list-state"><NotebookPen size={20} /><strong>{text("No field notes yet", "Nog geen veldnotities")}</strong></div>}
+        {notes.length ? notes.map((entry) => <article className={editingNoteId === entry.id ? "record-focused" : ""} key={entry.id}><div><strong>{entry.title}</strong><span>{entry.entry_number} · {buildings.find((building) => building.id === entry.building_id)?.name ?? text("Project-wide", "Projectbreed")}{entry.location_node_id ? ` → ${locationBreadcrumb(data.locationNodes, entry.location_node_id)}` : ""} · {typeText(entry.register_type, text)}</span></div><small>{entry.register_type === "agreement" && entry.details.agreement_date ? `${text("Agreement", "Afspraak")} ${String(entry.details.agreement_date)} ${String(entry.details.agreement_time ?? "")} · ${text("Deadline", "Deadline")} ${String(entry.details.due_date ?? "—")}` : new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(entry.occurred_at))}</small><p>{String(entry.details.text ?? entry.details.description ?? "")}</p><div className="record-row-actions"><button className="secondary-button" type="button" onClick={() => openNote(entry)}><Pencil size={14} /> {text("Open and edit", "Openen en bewerken")}</button></div></article>) : <div className="empty-list-state"><NotebookPen size={20} /><strong>{text("No field notes yet", "Nog geen veldnotities")}</strong></div>}
       </div>
     </section>
   );

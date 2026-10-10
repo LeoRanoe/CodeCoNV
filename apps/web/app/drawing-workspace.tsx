@@ -49,6 +49,7 @@ import {
   listDrawingPinMutations,
   saveDrawingPinOnlineOrQueue,
   syncDrawingPinMutations,
+  type DrawingPinMutation,
 } from "@/lib/offline/drawing-pin-queue";
 import { loadProjectFilePreviewObjectUrl, uploadProjectFile } from "@/lib/storage/gateway";
 import {
@@ -60,6 +61,7 @@ import {
   type NormalizedPoint,
   type OperationSnapshot,
 } from "@/lib/supabase/operations";
+import { typeText } from "@/lib/status-labels";
 
 function humanFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -146,6 +148,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
   const [pinOverrides, setPinOverrides] = useState<Record<string, PinPoint>>({});
   const [hiddenPinIds, setHiddenPinIds] = useState<string[]>([]);
   const [localPins, setLocalPins] = useState<DrawingPin[]>([]);
+  const [queueError, setQueueError] = useState("");
+  const [queuedMutations, setQueuedMutations] = useState<DrawingPinMutation[]>([]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [tool, setTool] = useState<DrawingTool>(pendingRecord || initialFindingId || initialInspectionId ? "pin" : "pan");
@@ -169,7 +173,23 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
   const [pageLabels, setPageLabels] = useState<string[]>([]);
   const [documentTitle, setDocumentTitle] = useState("");
 
-  const allPins = [...data.drawingPins, ...localPins.filter((local) => !data.drawingPins.some((pin) => pin.linked_record_type === local.linked_record_type && pin.linked_record_id === local.linked_record_id && pin.drawing_file_id === local.drawing_file_id))];
+  const restoredPins: DrawingPin[] = queuedMutations.flatMap((mutation) => {
+    if (mutation.kind !== "create") return [];
+    const input = mutation.input;
+    const finding = data.findings.find((record) => record.id === input.linkedRecordId);
+    const inspection = data.inspections.find((record) => record.id === input.linkedRecordId);
+    const entry = data.registerEntries.find((record) => record.id === input.linkedRecordId);
+    return [{ id: `pending:${mutation.id}`, drawing_file_id: input.drawingFileId, page_number: input.pageNumber,
+      x_ratio: input.xRatio, y_ratio: input.yRatio, linked_record_type: input.linkedRecordType, linked_record_id: input.linkedRecordId,
+      linked_record_number: finding?.finding_number ?? inspection?.inspection_number ?? entry?.entry_number ?? "Pending",
+      linked_record_title: finding?.title ?? inspection?.title ?? entry?.title ?? input.linkedRecordId,
+      note: null, status: "active", created_at: mutation.createdAt }];
+  });
+  const restoredMoves = Object.fromEntries(queuedMutations.flatMap((mutation) => mutation.kind === "move" ? [[mutation.input.pinId, { xRatio: mutation.input.xRatio, yRatio: mutation.input.yRatio }]] : []));
+  const restoredHidden = queuedMutations.flatMap((mutation) => mutation.kind === "void" ? [mutation.input.pinId] : []);
+  const savedPins = data.drawingPins.map((pin) => restoredMoves[pin.id] ? { ...pin, x_ratio: restoredMoves[pin.id].xRatio, y_ratio: restoredMoves[pin.id].yRatio } : pin).filter((pin) => !restoredHidden.includes(pin.id));
+  const pendingPins = [...localPins, ...restoredPins.filter((pin) => !localPins.some((local) => local.id === pin.id))];
+  const allPins = [...savedPins, ...pendingPins.filter((local) => !data.drawingPins.some((pin) => pin.linked_record_type === local.linked_record_type && pin.linked_record_id === local.linked_record_id && pin.drawing_file_id === local.drawing_file_id))];
   const activePins = activeDrawing
     ? allPins
       .filter((pin) => pin.drawing_file_id === activeDrawing.id && pin.page_number === pageNumber && pin.status === "active" && !hiddenPinIds.includes(pin.id))
@@ -220,18 +240,26 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
   const pageLabel = (page: number) => pageLabels[page - 1]?.trim() || String(page);
 
   useEffect(() => {
+    let active = true;
+    const reloadQueue = async () => {
+      const queued = await listDrawingPinMutations(projectId);
+      if (active) { setQueuedMutations(queued); setQueueError(""); }
+      return queued;
+    };
     const synchronize = () => {
-      void listDrawingPinMutations(projectId).then((queued) => {
-        if (!queued.length || !navigator.onLine) return;
-        void run(
-          () => syncDrawingPinMutations(client, projectId),
-          text("Queued drawing-pin changes synchronized.", "Wachtende tekeningspinwijzigingen gesynchroniseerd."),
-        );
-      });
+      void reloadQueue().then(async (queued) => {
+        if (!active || !queued.length || !navigator.onLine) return;
+        await run(async () => {
+          const result = await syncDrawingPinMutations(client, projectId);
+          if (result.failed || result.paused) throw new Error(text("Some pin changes are still waiting. Reconnect or correct the failed change and retry.", "Er wachten nog pinwijzigingen. Verbind opnieuw of corrigeer de mislukte wijziging en probeer opnieuw."));
+          return result;
+        }, text("Waiting pin changes sent.", "Wachtende pinwijzigingen verzonden."));
+        await reloadQueue();
+      }).catch(() => { if (active) setQueueError(text("Waiting pin changes could not be read. Check device storage and retry.", "Wachtende pinwijzigingen konden niet worden gelezen. Controleer apparaatopslag en probeer opnieuw.")); });
     };
     window.addEventListener("online", synchronize);
     synchronize();
-    return () => window.removeEventListener("online", synchronize);
+    return () => { active = false; window.removeEventListener("online", synchronize); };
   }, [client, projectId, run, text]);
 
   const selectDrawing = (drawingId: string) => {
@@ -276,11 +304,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
     const okay = await run(
       () => uploadProjectFile(client, { projectId, buildingId: uploadBuildingId, category: "drawing", file: uploadFile, onProgress: setUploadProgress }),
       dwgSource
-        ? text(
-          "DWG source stored. It is kept and downloadable; upload its PDF export beside it to place pins in the browser.",
-          "DWG-bron opgeslagen. Die blijft bewaard en downloadbaar; upload er de PDF-export naast om in de browser pins te plaatsen.",
-        )
-        : text("Drawing uploaded securely. Open it here to place project links.", "Tekening veilig geüpload. Open deze hier om projectkoppelingen te plaatsen."),
+        ? text("DWG source stored. Upload its PDF export beside it to place pins.", "DWG-bron opgeslagen. Upload de PDF-export ernaast om pins te plaatsen.")
+        : text("Drawing uploaded.", "Tekening geüpload."),
     );
     if (okay) {
       setUploadFile(null);
@@ -326,7 +351,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
         });
         return saved;
       },
-      text("The pin is saved centrally or safely waiting for synchronization.", "De pin is centraal opgeslagen of wacht veilig op synchronisatie."),
+      text("Pin saved.", "Pin opgeslagen."),
     );
     const wasQueued = (saved as Awaited<ReturnType<typeof saveDrawingPinOnlineOrQueue>> | null)?.queued ?? false;
     if (okay && wasQueued) {
@@ -401,7 +426,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
         },
       });
       return saved;
-    }, text("The pin is saved centrally or safely waiting for synchronization.", "De pin is centraal opgeslagen of wacht veilig op synchronisatie."));
+    }, text("Pin saved.", "Pin opgeslagen."));
     if (okay && ((saved as Awaited<ReturnType<typeof saveDrawingPinOnlineOrQueue>> | null)?.queued ?? false)) {
       setLocalPins((current) => [...current, {
         id: `pending:${mutationId}`,
@@ -482,7 +507,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
         kind: "move",
         input: { pinId: pin.id, xRatio: nextPoint.xRatio, yRatio: nextPoint.yRatio },
       }),
-      text("Pin position saved or queued safely.", "Pinpositie opgeslagen of veilig in de wachtrij gezet."),
+      text("Pin moved.", "Pin verplaatst."),
     );
     if (!okay) setPinOverrides((current) => ({ ...current, [pin.id]: previous }));
     return okay;
@@ -499,7 +524,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
         kind: "void",
         input: { pinId: pin.id, reason: text("Removed from drawing by supervisor", "Door toezichthouder van tekening verwijderd") },
       }),
-      text("Drawing pin removed or queued safely.", "Tekeningspin verwijderd of veilig in de wachtrij gezet."),
+      text("Pin removed.", "Pin verwijderd."),
     );
     if (!okay) {
       setHiddenPinIds((current) => current.filter((id) => id !== pin.id));
@@ -525,11 +550,11 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
 
   return (
     <section className="drawing-workspace-shell">
+      {queueError ? <p className="operation-alert error" role="alert">{queueError}</p> : null}
       <div className="visual-toolbar">
         <div>
           <span className="record-number">{text("Drawings workspace", "Tekeningenwerkruimte")}</span>
           <h2>{text("Pins that open the exact project record", "Pins die het juiste projectrecord openen")}</h2>
-          <p>{text("Upload a PDF or drawing image, choose a page and link an exact location to an RFI, submittal, document, observation, inspection or site image.", "Upload een PDF of tekeningsafbeelding, kies een pagina en koppel een exacte locatie aan een RFI, submittal, document, observatie, inspectie of terreinbeeld.")}</p>
         </div>
       </div>
 
@@ -540,8 +565,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
           <div>
             <strong>{text(`Place ${pendingRecord.label} on a drawing`, `Plaats ${pendingRecord.label} op een tekening`)}</strong>
             <span>{pendingRecord.point
-              ? text("The spot is chosen. Go back to the record and save it; the pin is placed with the record's own number, name and date.", "De plek is gekozen. Ga terug naar de registratie en sla op; de pin wordt geplaatst met het eigen nummer, de naam en de datum van de registratie.")
-              : text("Choose the drawing and the page, then tap the exact spot. The pin takes the name, number and date of this record.", "Kies de tekening en de pagina en tik daarna de exacte plek aan. De pin krijgt de naam, het nummer en de datum van deze registratie.")}</span>
+              ? text("Spot chosen. Go back to the record and save it.", "Punt gekozen. Ga terug naar de registratie en sla op.")
+              : text("Choose the drawing and page, then tap the exact spot.", "Kies de tekening en pagina en tik op het exacte punt.")}</span>
           </div>
         </div>
       ) : null}
@@ -551,7 +576,6 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
           <MapPin size={18} />
           <div>
             <strong>{text(`Place ${incomingInspection.inspection_number} on a drawing`, `Plaats ${incomingInspection.inspection_number} op een tekening`)}</strong>
-            <span>{text("Choose the drawing and the page, then tap the exact spot the checklist covers.", "Kies de tekening en de pagina en tik daarna de exacte plek aan die de checklist betreft.")}</span>
           </div>
         </div>
       ) : null}
@@ -562,10 +586,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
           <div>
             <strong>{incomingPin
               ? text(`${incomingFinding.finding_number} is already on a drawing`, `${incomingFinding.finding_number} staat al op een tekening`)
-              : text(`Place ${incomingFinding.finding_number} on a drawing`, `Plaats ${incomingFinding.finding_number} op een tekening`)}</strong>
-            <span>{incomingPin
-              ? text("The drawing and page below already show this issue.", "De tekening en pagina hieronder tonen dit issue al.")
-              : text("The link is preset to this issue. Choose the drawing and page, then click the exact location.", "De koppeling staat al op dit issue. Kies de tekening en pagina en klik daarna op de exacte locatie.")}</span>
+              : text(`Place ${incomingFinding.finding_number} on a drawing`, `Plaats ${incomingFinding.finding_number} op een tekening`)}</strong>
           </div>
         </div>
       ) : null}
@@ -591,7 +612,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
         {uploadProgress > 0 ? <div className="upload-progress" aria-label={`${text("Upload", "Upload")} ${uploadProgress}%`}><span style={{ width: `${uploadProgress}%` }} /><small>{uploadProgress}%</small></div> : null}
       </div>
 
-      {dwgSources.length ? <div className="operation-alert"><FileText size={18} /><div><strong>{text(`${dwgSources.length} native DWG source file(s) retained`, `${dwgSources.length} native DWG-bronbestand(en) bewaard`)}</strong><span>{text("DWG is stored and downloadable as the contractual source. Upload its controlled PDF export beside it for browser markup and pins.", "DWG wordt als contractueel bronbestand opgeslagen en is downloadbaar. Upload daarnaast de gecontroleerde PDF-export voor markeringen en pins in de browser.")}</span></div></div> : null}
+      {dwgSources.length ? <div className="operation-alert"><FileText size={18} /><div><strong>{text(`${dwgSources.length} native DWG source file(s) retained`, `${dwgSources.length} native DWG-bronbestand(en) bewaard`)}</strong><span>{text("Upload a PDF export to mark up or pin on this drawing.", "Upload een PDF-export om te markeren of pins te plaatsen.")}</span></div></div> : null}
 
       {drawings.length && activeDrawing ? (
         <div className="drawing-workspace-grid">
@@ -667,7 +688,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
               onMovePin={movePin}
               onCreateMarkup={saveMarkup}
             />
-            <div className="visual-stage-help">{tool === "pin" ? <MapPin size={15} /> : <MousePointer2 size={15} />}<span>{tool === "pin" ? text("Click the exact drawing location, then choose the record to link. Pins use normalized coordinates and remain correctly positioned when the drawing scales.", "Klik op de exacte locatie in de tekening en kies daarna het te koppelen record. Pins gebruiken genormaliseerde coördinaten en blijven correct staan wanneer de tekening schaalt.") : text("Draw directly over the secured preview. Freehand lines, clouds, arrows and text are stored as normalized, auditable overlays without changing the original.", "Teken direct over de beveiligde weergave. Vrije lijnen, wolken, pijlen en tekst worden genormaliseerd en geaudit opgeslagen zonder het origineel te wijzigen.")}</span></div>
+            <div className="visual-stage-help">{tool === "pin" ? <MapPin size={15} /> : <MousePointer2 size={15} />}<span>{tool === "pin" ? text("Click the exact location, then choose the record to link.", "Klik op de exacte locatie en kies de registratie om te koppelen.") : text("Draw over the drawing. The original is not changed.", "Teken over de tekening. Het origineel blijft ongewijzigd.")}</span></div>
           </div>
 
           <aside className="drawing-link-panel">
@@ -685,8 +706,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                       ? text("The pin is placed when you save the record", "De pin wordt geplaatst zodra je de registratie opslaat")
                       : text("Confirm this exact location", "Bevestig deze exacte locatie")}</strong>
                     <span>{pendingRecord
-                      ? text("It takes the name, the number and the date of the record itself. Tap another spot to move it.", "Hij krijgt de naam, het nummer en de datum van de registratie zelf. Tik een andere plek aan om hem te verplaatsen.")
-                      : text("Nothing is saved until you confirm. The pin will carry the record number and title.", "Er wordt niets opgeslagen totdat je bevestigt. De pin krijgt het registratienummer en de titel.")}</span>
+                      ? text("Tap another spot to move the pin.", "Tik op een ander punt om de pin te verplaatsen.")
+                      : text("Nothing is saved until you confirm.", "Er wordt niets opgeslagen tot je bevestigt.")}</span>
                   </div>
                 </div>
                 <div className="button-row"><button className="primary-button" type="button" disabled={busy} onClick={() => void placePin(point)}><MapPin size={15} /> {text("Confirm pin", "Pin bevestigen")}</button><button className="secondary-button" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button></div>
@@ -733,7 +754,6 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                         {pinnableRecords.map((record) => <option value={record.value} key={record.value}>{record.placed ? "• " : ""}{record.code} · {record.title}</option>)}
                       </select>
                     </label>
-                    <p className="form-helper">{text("A dot marks a record that already stands somewhere on a drawing.", "Een stip markeert een registratie die al ergens op een tekening staat.")}</p>
                     <div className="button-row">
                       <button className="primary-button" type="button" disabled={busy || !spotRecord} onClick={() => void linkRecordToPoint(point)}><MapPin size={15} /> {text("Place pin", "Pin plaatsen")}</button>
                       <button className="secondary-button" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button>
@@ -743,7 +763,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
               </div>
             ) : selectedPin ? <DrawingPinDetails pin={selectedPin} onOpen={() => onOpenLinkedRecord(selectedPin.linked_record_type, selectedPin.linked_record_id)} onDelete={() => void deletePin(selectedPin)} /> : (
               <div className="drawing-unplaced-panel">
-                <div className="visual-panel-empty"><MapPin size={24} /><strong>{text("Place or select a drawing pin", "Plaats of selecteer een tekeningspin")}</strong><span>{text("Choose the pin tool and tap the drawing. Every pin keeps its page, exact position and record identity in the audit trail.", "Kies de pin-tool en tik op de tekening. Elke pin bewaart pagina, exacte positie en recordidentiteit in het auditspoor.")}</span></div>
+                <div className="visual-panel-empty"><MapPin size={24} /><strong>{text("Place or select a drawing pin", "Plaats of selecteer een tekeningspin")}</strong><span>{text("Choose the pin tool and tap the drawing.", "Kies de pin-tool en tik op de tekening.")}</span></div>
                 {/* Everything in this building that has no spot yet, so placing the backlog
                     is a tap on a name rather than a hunt through the modules. */}
                 {unplacedRecords.length ? <section className="drawing-unplaced-list" aria-label={text("Records without a spot", "Registraties zonder plek")}>
@@ -761,10 +781,10 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
           </aside>
         </div>
       ) : (
-        <div className="empty-list-state visual-empty"><FileUp size={24} /><strong>{text("No previewable drawing yet", "Nog geen bekijkbare tekening")}</strong><span>{text("Upload a PDF or drawing image to start placing linked project records.", "Upload een PDF of tekeningsafbeelding om gekoppelde projectrecords te plaatsen.")}</span></div>
+        <div className="empty-list-state visual-empty"><FileUp size={24} /><strong>{text("No previewable drawing yet", "Nog geen bekijkbare tekening")}</strong></div>
       )}
 
-      <div className="operation-alert"><ShieldCheck size={18} /><div><strong>{text("Original drawing remains unchanged", "Originele tekening blijft ongewijzigd")}</strong><span>{text("Links are stored as a separate audited overlay. DWG source files should be retained in Files and exported to PDF for browser review and pinning.", "Koppelingen worden als afzonderlijke, geaudite overlay opgeslagen. Bewaar DWG-bronbestanden bij Bestanden en exporteer ze naar PDF voor browsercontrole en pins.")}</span></div></div>
+      <div className="operation-alert"><ShieldCheck size={18} /><div><strong>{text("Original drawing remains unchanged", "Originele tekening blijft ongewijzigd")}</strong></div></div>
     </section>
   );
 }
@@ -796,9 +816,12 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
   const [previewUrl, setPreviewUrl] = useState("");
   const [mimeType, setMimeType] = useState("");
   const [loading, setLoading] = useState(true);
+  const [renderedSource, setRenderedSource] = useState("");
   const [error, setError] = useState("");
   const [aspectRatio, setAspectRatio] = useState("4 / 3");
   const [renderWidth, setRenderWidth] = useState(900);
+  const expectedSource = `${file.id}:${previewUrl}:${pageNumber}:${mimeType === "application/pdf" ? renderWidth : 0}`;
+  const interactionReady = !loading && renderedSource === expectedSource;
   /** The rendered page in its own pixels: the overlay draws in exactly this space. */
   const [pageSize, setPageSize] = useState({ width: 900, height: 675 });
   const [draftPoints, setDraftPoints] = useState<NormalizedPoint[]>([]);
@@ -854,6 +877,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
     setLoading(true);
     setError("");
     void import("pdfjs-dist").then(async (pdfjs) => {
+      if (cancelled) return;
       pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
       const task = pdfjs.getDocument({ url: previewUrl });
       loadingTask = task;
@@ -888,7 +912,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
       if (!context) throw new Error("Drawing canvas is unavailable.");
       renderTask = page.render({ canvas, canvasContext: context, viewport: pdfViewport, transform: pixelRatio === 1 ? undefined : [pixelRatio, 0, 0, pixelRatio, 0, 0] });
       await renderTask.promise;
-      if (!cancelled) setLoading(false);
+      if (!cancelled) { setRenderedSource(`${file.id}:${previewUrl}:${pageNumber}:${renderWidth}`); setLoading(false); }
     }).catch((caught: unknown) => {
       if (!cancelled) {
         setLoading(false);
@@ -898,9 +922,9 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
     return () => {
       cancelled = true;
       renderTask?.cancel();
-      void loadingTask?.destroy();
+      void loadingTask?.destroy().catch(() => undefined);
     };
-  }, [mimeType, onDocumentDetails, onPageCount, pageNumber, previewUrl, renderWidth, text]);
+  }, [file.id, mimeType, onDocumentDetails, onPageCount, pageNumber, previewUrl, renderWidth, text]);
 
   const normalizedPoint = (clientX: number, clientY: number): NormalizedPoint => {
     const surface = surfaceRef.current;
@@ -942,6 +966,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
   };
 
   const beginPointer = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!interactionReady || error || event.button !== 0) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -995,6 +1020,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
   };
 
   const finishPointer = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!interactionReady || error || !pointersRef.current.has(event.pointerId)) { cancelPointers(); return; }
     if (pointerLiftPlacesPin({ tool, activePointerCount: pointersRef.current.size, gesture: singleGestureRef.current })) {
       const point = normalizedPoint(event.clientX, event.clientY);
       onPoint({ xRatio: point.x, yRatio: point.y });
@@ -1015,16 +1041,27 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
     updateDraftPoints([]);
   };
 
+  useEffect(() => {
+    pointersRef.current.clear();
+    pinchRef.current = null;
+    singleGestureRef.current = null;
+    drawingRef.current = false;
+    draftPointsRef.current = [];
+    const reset = requestAnimationFrame(() => { setDraftPoints([]); setDraggedPin(null); });
+    return () => cancelAnimationFrame(reset);
+  }, [pageNumber, tool, previewUrl]);
+
   const beginPinDrag = (event: React.PointerEvent<HTMLButtonElement>, pin: DrawingPin) => {
-    event.preventDefault();
     event.stopPropagation();
+    if (!interactionReady || !event.isPrimary || event.button !== 0) return;
+    event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     onSelectPin(pin.id);
     setDraggedPin({ id: pin.id, point: { xRatio: Number(pin.x_ratio), yRatio: Number(pin.y_ratio) } });
   };
 
   const movePinDrag = (event: React.PointerEvent<HTMLButtonElement>, pin: DrawingPin) => {
-    if (draggedPin?.id !== pin.id) return;
+    if (!interactionReady || draggedPin?.id !== pin.id) return;
     event.preventDefault();
     event.stopPropagation();
     const point = normalizedPoint(event.clientX, event.clientY);
@@ -1032,7 +1069,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
   };
 
   const finishPinDrag = (event: React.PointerEvent<HTMLButtonElement>, pin: DrawingPin) => {
-    if (draggedPin?.id !== pin.id) return;
+    if (!interactionReady || draggedPin?.id !== pin.id) return;
     event.preventDefault();
     event.stopPropagation();
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
@@ -1056,7 +1093,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
           data-page={pageNumber}
           data-scale={viewport.scale.toFixed(3)}
           aria-label={text("Interactive drawing. Pan, zoom or place a linked pin.", "Interactieve tekening. Verschuif, zoom of plaats een gekoppelde pin.")}
-          onKeyDown={(event) => { if (tool === "pin" && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onPoint({ xRatio: 0.5, yRatio: 0.5 }); } }}
+          onKeyDown={(event) => { if (interactionReady && tool === "pin" && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onPoint({ xRatio: 0.5, yRatio: 0.5 }); } }}
           onPointerDown={beginPointer}
           onPointerMove={movePointer}
           onPointerUp={finishPointer}
@@ -1065,7 +1102,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
           <div className="drawing-viewport-content" style={{ transform: `translate(${viewport.offset.x}px, ${viewport.offset.y}px) scale(${viewport.scale})` }}>
             {mimeType === "application/pdf" ? <canvas ref={canvasRef} /> : previewUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={previewUrl} alt={file.original_name} onLoad={(event) => { setAspectRatio(`${event.currentTarget.naturalWidth} / ${event.currentTarget.naturalHeight}`); setLoading(false); onPageCount(1); }} onError={() => { setLoading(false); setError(text("Drawing image could not be displayed.", "De tekeningafbeelding kon niet worden weergegeven.")); }} />
+            <img key={`${file.id}:${previewUrl}`} src={previewUrl} alt={file.original_name} onLoad={(event) => { setAspectRatio(`${event.currentTarget.naturalWidth} / ${event.currentTarget.naturalHeight}`); setRenderedSource(expectedSource); setLoading(false); onPageCount(1); }} onError={() => { setLoading(false); setError(text("Drawing image could not be displayed.", "De tekeningafbeelding kon niet worden weergegeven.")); }} />
           ) : null}
           {/* The overlay works in the page's own pixels, so nothing in it is stretched. */}
           <svg className="drawing-markup-layer" viewBox={`0 0 ${pageSize.width} ${pageSize.height}`} aria-hidden="true">
@@ -1078,7 +1115,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
             const shownPoint = draggedPin?.id === pin.id ? draggedPin.point : { xRatio: Number(pin.x_ratio), yRatio: Number(pin.y_ratio) };
             return (
             <span className="drawing-pin-anchor" style={{ left: `${shownPoint.xRatio * 100}%`, top: `${shownPoint.yRatio * 100}%`, transform: `scale(${1 / viewport.scale})`, transformOrigin: "0 0" }} key={pin.id}>
-              <button className={`drawing-pin ${pinTypeClass[pin.linked_record_type]}`} type="button" aria-label={`${pin.linked_record_number} · ${pin.linked_record_title}`} onPointerDown={(event) => beginPinDrag(event, pin)} onPointerMove={(event) => movePinDrag(event, pin)} onPointerUp={(event) => finishPinDrag(event, pin)}><span>{index + 1}</span></button>
+              <button className={`drawing-pin ${pinTypeClass[pin.linked_record_type]}`} type="button" aria-label={`${pin.linked_record_number} · ${pin.linked_record_title}`} onPointerDown={(event) => beginPinDrag(event, pin)} onPointerMove={(event) => movePinDrag(event, pin)} onPointerUp={(event) => finishPinDrag(event, pin)} onPointerCancel={(event) => { event.stopPropagation(); setDraggedPin(null); }}><span>{index + 1}</span></button>
               <em className={`drawing-pin-code ${pinTypeClass[pin.linked_record_type]}`}>{pin.linked_record_number}</em>
             </span>
             );
@@ -1157,7 +1194,7 @@ function DrawingPinDetails({ pin, onOpen, onDelete }: { pin: DrawingPin; onOpen:
   return (
     <div className="visual-annotation-details">
       <span className={`visual-severity-line ${pinTypeClass[pin.linked_record_type]}`} />
-      <span className="record-number">{pin.linked_record_number} · {pin.linked_record_type.replaceAll("_", " ")}</span>
+      <span className="record-number">{pin.linked_record_number} · {typeText(pin.linked_record_type, text)}</span>
       <h2>{pin.linked_record_title}</h2>
       {pin.note ? <p>{pin.note}</p> : null}
       <dl>
@@ -1166,7 +1203,7 @@ function DrawingPinDetails({ pin, onOpen, onDelete }: { pin: DrawingPin; onOpen:
       </dl>
       <button className="primary-button" type="button" onClick={onOpen}><ArrowUpRight size={15} /> {text("Open linked project record", "Open gekoppeld projectrecord")}</button>
       <button className="secondary-button danger-button" type="button" disabled={pin.id.startsWith("pending:")} onClick={() => { if (window.confirm(text("Remove this pin from the drawing? The audit trail is retained.", "Deze pin van de tekening verwijderen? Het auditspoor blijft behouden."))) onDelete(); }}><Trash2 size={15} /> {text("Remove pin", "Pin verwijderen")}</button>
-      <div className="operation-alert"><Link2 size={18} /><div><strong>{text("Traceable project link", "Traceerbare projectkoppeling")}</strong><span>{text("The drawing, page, coordinate and linked record identity remain together in the audit trail.", "Tekening, pagina, coördinaat en identiteit van het gekoppelde record blijven samen in het auditspoor.")}</span></div></div>
+      <div className="operation-alert"><Link2 size={18} /><div><strong>{text("Traceable project link", "Traceerbare projectkoppeling")}</strong></div></div>
     </div>
   );
 }

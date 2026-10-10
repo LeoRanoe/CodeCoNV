@@ -97,8 +97,8 @@ export function DrawingLocationPicker({
               ? text("Tap where this photo was taken", "Tik waar deze foto is genomen")
               : text("Choose the drawing first", "Kies eerst de tekening")}</h2>
             <p>{activeDrawing
-              ? text("The point is saved with the photo and stays on the drawing as a pin.", "Het punt wordt bij de foto opgeslagen en blijft als pin op de tekening staan.")
-              : text("Point at the plan this photo belongs to; the drawing is opened afterwards.", "Wijs de tekening aan waar deze foto bij hoort; daarna wordt die tekening geopend.")}</p>
+              ? text("Saved as a pin on the drawing.", "Opgeslagen als pin op de tekening.")
+              : text("Choose the drawing this photo belongs to.", "Kies de tekening waar deze foto bij hoort.")}</p>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
@@ -241,6 +241,7 @@ function DrawingPointCanvas({ file, pageNumber, client, point, onPageCount, onPo
     setLoading(true);
     setError("");
     void import("pdfjs-dist").then(async (pdfjs) => {
+      if (cancelled) return;
       pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
       const task = pdfjs.getDocument({ url: previewUrl });
       loadingTask = task;
@@ -271,7 +272,7 @@ function DrawingPointCanvas({ file, pageNumber, client, point, onPageCount, onPo
     return () => {
       cancelled = true;
       renderTask?.cancel();
-      void loadingTask?.destroy();
+      void loadingTask?.destroy().catch(() => undefined);
     };
   }, [mimeType, onPageCount, pageNumber, previewUrl, surfaceWidth, text]);
 
@@ -287,7 +288,7 @@ function DrawingPointCanvas({ file, pageNumber, client, point, onPageCount, onPo
         tabIndex={0}
         aria-label={text("Drawing. Tap the spot where the photo was taken.", "Tekening. Tik op de plek waar de foto is genomen.")}
         onPointerDown={(event) => {
-          if (!event.isPrimary || event.button !== 0) return;
+          if (loading || !event.isPrimary || event.button !== 0) return;
           pointerStartRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
           event.currentTarget.setPointerCapture(event.pointerId);
         }}
@@ -295,7 +296,7 @@ function DrawingPointCanvas({ file, pageNumber, client, point, onPageCount, onPo
           const start = pointerStartRef.current;
           pointerStartRef.current = null;
           if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-          if (!start || start.id !== event.pointerId || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) return;
+          if (loading || !start || start.id !== event.pointerId || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) return;
           onPoint(event.clientX, event.clientY, event.currentTarget);
         }}
         onPointerCancel={() => { pointerStartRef.current = null; }}

@@ -20,24 +20,30 @@ values (
   now()
 );
 
-set local role authenticated;
+-- Fixture rows are seeded by the privileged test role (organizations are created only
+-- through bootstrap_organization in production); behaviour is then exercised as the user.
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000c1","role":"authenticated"}';
 
 insert into public.organizations (id, name, slug, created_by)
 values ('00000000-0000-0000-0000-0000000000c2', 'Multi Building Org', 'multi-building-org', auth.uid());
+insert into public.organization_memberships (organization_id, user_id, status)
+values ('00000000-0000-0000-0000-0000000000c2', auth.uid(), 'active');
 insert into public.roles (id, organization_id, scope, code, name, is_system, created_by)
 values ('00000000-0000-0000-0000-0000000000c3', '00000000-0000-0000-0000-0000000000c2', 'project', 'supervisor', 'Supervisor', true, auth.uid());
 insert into public.role_permissions (organization_id, role_id, permission_code)
 select '00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-0000000000c3', code
-from public.permissions;
+from public.permissions
+on conflict do nothing;
 insert into public.projects (id, organization_id, code, name, location, created_by)
 values ('00000000-0000-0000-0000-0000000000c4', '00000000-0000-0000-0000-0000000000c2', 'COD-MULTI-01', 'Multi-building project', 'Paramaribo', auth.uid());
-insert into public.project_memberships (id, organization_id, project_id, user_id, created_by)
-values ('00000000-0000-0000-0000-0000000000c5', '00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-0000000000c4', auth.uid(), auth.uid());
+insert into public.project_memberships (id, organization_id, project_id, user_id)
+values ('00000000-0000-0000-0000-0000000000c5', '00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-0000000000c4', auth.uid());
 insert into public.project_member_roles (organization_id, project_id, membership_id, role_id)
 values ('00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-0000000000c4', '00000000-0000-0000-0000-0000000000c5', '00000000-0000-0000-0000-0000000000c3');
 insert into public.buildings (id, organization_id, project_id, code, name, description, created_by)
 values ('00000000-0000-0000-0000-0000000000c6', '00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-0000000000c4', 'TOWER-A', 'Tower A', 'First tower', auth.uid());
+
+set local role authenticated;
 
 select is((select count(*) from public.buildings where project_id = '00000000-0000-0000-0000-0000000000c4'), 1::bigint, 'the project starts with exactly one building');
 
@@ -161,8 +167,8 @@ select lives_ok(
 select is((select status::text from public.day_reports where project_id = '00000000-0000-0000-0000-0000000000c4'), 'ready_for_review', 'the project-wide report reaches ready-for-review covering both buildings at once');
 
 select throws_ok(
-  $$insert into public.day_start_checks (organization_id, project_id, building_id, day_report_id, planned_work, expected_workers, inspection_planned, high_risk_work, concrete_work, work_permit_status, drawing_status, idempotency_key, created_by)
-    select '00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-0000000000c4', building.id, report.id, 'Duplicate attempt', 1, false, false, false, 'not_required', 'approved', 'multi-building-start-a-duplicate', auth.uid()
+  $$insert into public.day_start_checks (organization_id, project_id, building_id, day_report_id, weather_condition, temperature_c, wind_condition, shift_start, shift_end, planned_work, expected_workers, inspection_planned, high_risk_work, concrete_work, work_permit_status, drawing_status, drawing_issue_reported, automation_rules_snapshot, idempotency_key, created_by)
+    select '00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-0000000000c4', building.id, report.id, 'sunny', 30, 'calm', '07:00', '16:00', 'Duplicate attempt', 1, false, false, false, 'not_required', 'approved', false, '[]'::jsonb, 'multi-building-start-a-duplicate', auth.uid()
     from public.buildings building, public.day_reports report
     where building.project_id = '00000000-0000-0000-0000-0000000000c4' and building.code = 'TOWER-A'
       and report.project_id = '00000000-0000-0000-0000-0000000000c4'$$,

@@ -1,4 +1,4 @@
-import { Document, Paragraph, TextRun } from "docx";
+import { Document, Paragraph, type Table, TextRun } from "docx";
 import {
   bodyText,
   brandHeader,
@@ -11,6 +11,7 @@ import {
   signatureBlock,
 } from "@/lib/reports/docx-shared";
 import type { ControlledDocumentType } from "@/lib/forms/controlled-project-documents";
+import { controlledDocumentSignatures, recipientCaptureNote } from "@/lib/reports/controlled-document-signatures.mjs";
 import type { RegisterEntry } from "@/lib/supabase/operations";
 
 type Details = Record<string, unknown>;
@@ -34,11 +35,15 @@ function humanizeToken(result: string) {
   return result.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
-function options(values: string[]): Paragraph {
-  return new Paragraph({ children: [new TextRun({ text: values.map((item) => `[ ] ${item}`).join("   "), size: 16 })], spacing: { before: 80, after: 80 } });
+const optionKey = (value: string) => value.toLowerCase().replace(/[^a-z]/g, "");
+
+function options(values: string[], selected = ""): Paragraph {
+  const chosen = optionKey(selected);
+  return new Paragraph({ children: [new TextRun({ text: values.map((item) => `[${chosen && optionKey(item) === chosen ? "X" : " "}] ${item}`).join("   "), size: 16 })], spacing: { before: 80, after: 80 } });
 }
 
-function typeSpecificDetails(type: ControlledDocumentType, details: Details): Paragraph[] {
+function typeSpecificDetails(type: ControlledDocumentType, details: Details, entry: RegisterEntry): Array<Paragraph | Table> {
+  const signatures = controlledDocumentSignatures(entry);
   if (type === "inspection_request") {
     return [
       labelValue("Inspection category", text(details, "inspection_category")),
@@ -51,10 +56,8 @@ function typeSpecificDetails(type: ControlledDocumentType, details: Details): Pa
     return [
       labelValue("Discipline / priority", `${text(details, "discipline")} / ${text(details, "priority")}`),
       labelValue("Related RFI / NCR / drawing", text(details, "related_reference")),
-      sectionHeading("Reason for instruction"),
-      bodyText(text(details, "reason")),
+      ...(text(details, "reason").trim() !== text(details, "description").trim() ? [sectionHeading("Reason for instruction"), bodyText(text(details, "reason"))] : []),
       sectionHeading("Required action"),
-      bodyText(text(details, "required_action")),
       options(["Proceed", "Stop work", "Revise", "Submit revised document", "Carry out inspection", "Other"]),
     ];
   }
@@ -82,12 +85,12 @@ function typeSpecificDetails(type: ControlledDocumentType, details: Details): Pa
       // Section 5 and 6: the contractor acknowledges, supervision approves. The developer
       // and contractor-acceptance columns are struck off the client's own form.
       sectionHeading("Acknowledgement · contractor"),
-      labelValue("Contractor representative", [text(details, "contractor_representative"), text(details, "contractor_position")].filter((item) => item !== "—").join(" · ") || "—"),
-      labelValue("Signed", text(details, "contractor_signed_at") === "—" ? "Not acknowledged yet" : String(text(details, "contractor_signed_at")).slice(0, 10)),
-      ...(text(details, "contractor_remarks") === "—" ? [] : [bodyText(text(details, "contractor_remarks"))]),
-      sectionHeading("Approval · supervision"),
-      labelValue("Approved by", text(details, "supervision_signed_by", text(details, "supervision_name"))),
-      labelValue("Date approved", text(details, "supervision_signed_at") === "—" ? "Not approved yet" : String(text(details, "supervision_signed_at")).slice(0, 10)),
+      signatureBlock([
+        ["Contractor representative", signatures.contractor.name, signatures.contractor.ink],
+        ["Position", signatures.contractor.position],
+        ["Signed", signatures.contractor.signedAt || "Not acknowledged yet"],
+      ]),
+      ...(signatures.contractor.remarks ? [bodyText(signatures.contractor.remarks)] : []),
     ];
   }
   if (type === "environmental_report") {
@@ -110,9 +113,7 @@ function typeSpecificDetails(type: ControlledDocumentType, details: Details): Pa
 export function buildControlledDocumentDocx(entry: RegisterEntry, logoBytes: ArrayBuffer): Document {
   const type = entry.register_type as ControlledDocumentType;
   const details = entry.details ?? {};
-  const response = details.response && typeof details.response === "object" && !Array.isArray(details.response)
-    ? details.response as Details
-    : {};
+  const signatures = controlledDocumentSignatures(entry);
 
   return new Document({
     title: `${entry.entry_number} ${entry.title}`,
@@ -136,27 +137,28 @@ export function buildControlledDocumentDocx(entry: RegisterEntry, logoBytes: Arr
             sectionHeading(type === "technical_instruction" ? "Instruction" : type === "change_order" ? "Change description" : "Request / description"),
             bodyText(text(details, "description")),
           ] : []),
-          ...typeSpecificDetails(type, details),
+          ...typeSpecificDetails(type, details, entry),
           labelValue("Reference documents", text(details, "reference_documents")),
           labelValue("Attachments / pages", text(details, "attachments")),
-          // The author signs in the app; the document that leaves the app has to show it.
-          sectionHeading(["wcr", "rfi", "rfa", "inspection_request"].includes(type) ? "Submitted and signed by" : "Issued and signed by"),
+          // Issuer and recipient sign separately; both come from the record, in Suriname time.
+          sectionHeading(["wcr", "rfi", "rfa", "inspection_request"].includes(type) ? "Submitted and signed by" : type === "change_order" ? "Issued and approved by · supervision" : "Issued and signed by"),
           signatureBlock([
-            // The written signature, when the author signed in the app, above their name.
-            ["Name", text(details, "signed_by", text(details, "issued_by")), typeof details.signature_image === "string" ? details.signature_image : null],
-            ["Position / company", [text(details, "signed_by_position", text(details, "issuer_position")), text(details, "issuer_company")].filter((item) => item !== "—" && item !== "").join(" · ")],
-            ["Date signed", text(details, "signed_at") === "—" ? "Not signed yet" : String(text(details, "signed_at")).slice(0, 10)],
+            ["Name", signatures.issuer.name, signatures.issuer.ink],
+            ["Position / company", [signatures.issuer.position, signatures.issuer.company].filter(Boolean).join(" · ")],
+            ["Date signed", signatures.issuer.signed ? signatures.issuer.signedAt : "Not signed yet"],
           ]),
-          sectionHeading(type === "technical_instruction" || type === "change_order" ? "Contractor acknowledgement / closeout" : "Engineer / client response"),
-          labelValue("Decision / status", humanizeToken(text(response, "decision", "Pending formal response"))),
-          bodyText(text(response, "comments", "No response recorded yet.")),
-          signatureBlock([
-            ["Name", text(response, "respondent_name", "")],
-            ["Position / company", [text(response, "respondent_position", ""), text(response, "respondent_company", "")].filter((item) => item !== "—").join(" · ")],
-            ["Date / signature", text(response, "response_date", "")],
+          ...(type === "change_order" && !signatures.recipient.decision ? [] : [
+            sectionHeading(type === "technical_instruction" || type === "change_order" ? "Recipient acknowledgement / closeout" : "Engineer / client response"),
+            labelValue("Decision / status", humanizeToken(signatures.recipient.decision || "Pending formal response")),
+            bodyText(signatures.recipient.comments || "No response recorded yet."),
+            signatureBlock([
+              ["Name", signatures.recipient.name, signatures.recipient.ink],
+              ["Position / company", [signatures.recipient.position, signatures.recipient.company].filter(Boolean).join(" · ")],
+              [signatures.recipient.signed ? "Signed" : "Responded", [signatures.recipient.signedAt, recipientCaptureNote(signatures.recipient)].filter(Boolean).join(" · ")],
+            ]),
           ]),
           new Paragraph({
-            children: [new TextRun({ text: "This document is generated from the controlled project register. Number, revision, project metadata, the author's signature and the recorded response come from the central audit trail. A signature line stays blank until that human signatory confirms the document.", italics: true, color: "666666", size: 14 })],
+            children: [new TextRun({ text: "Generated from the controlled project register. Number, revision, signatures and the recorded response come from the audit trail; times are Suriname time.", italics: true, color: "666666", size: 14 })],
             spacing: { before: 200 },
           }),
         ],

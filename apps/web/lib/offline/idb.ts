@@ -9,6 +9,33 @@ const databaseVersion = 4;
 
 export type OfflineStore = "uploads" | "snapshots" | "settings" | "files" | "records" | "drawingPins";
 
+/**
+ * Work written on this device that exists nowhere else yet. Each item belongs to the person
+ * who wrote it: on a shared device another account must neither see it nor send it under its
+ * own identity. Files also carry an owner to reject late downloads. The readable project copy is
+ * removed whenever the device changes hands (see account-isolation.ts).
+ */
+export const userOwnedStores: readonly OfflineStore[] = ["uploads", "records", "drawingPins"];
+const ownedStores = new Set<OfflineStore>([...userOwnedStores, "files"]);
+
+let activeUserId: string | null = null;
+
+/** Set once the signed-in account is known; null after sign-out. */
+export function setActiveOfflineUser(userId: string | null) {
+  activeUserId = userId;
+}
+
+export function activeOfflineUser() {
+  return activeUserId;
+}
+
+type Owned = { ownerUserId?: string | null };
+
+function visibleToActiveUser(store: OfflineStore, value: unknown) {
+  if (!ownedStores.has(store)) return true;
+  return Boolean(activeUserId) && (value as Owned | undefined)?.ownerUserId === activeUserId;
+}
+
 function openDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
     if (typeof indexedDB === "undefined") {
@@ -16,7 +43,13 @@ function openDatabase() {
       return;
     }
     const request = indexedDB.open(databaseName, databaseVersion);
+    let expired = false;
+    const timer = setTimeout(() => {
+      expired = true;
+      reject(new Error("Offline opslag is geblokkeerd. Sluit andere app-tabbladen en probeer opnieuw."));
+    }, 10_000);
     request.onupgradeneeded = () => {
+      if (expired) { request.transaction?.abort(); return; }
       const database = request.result;
       if (!database.objectStoreNames.contains("uploads")) database.createObjectStore("uploads", { keyPath: "id" });
       if (!database.objectStoreNames.contains("snapshots")) database.createObjectStore("snapshots", { keyPath: "id" });
@@ -25,8 +58,13 @@ function openDatabase() {
       if (!database.objectStoreNames.contains("records")) database.createObjectStore("records", { keyPath: "id" });
       if (!database.objectStoreNames.contains("drawingPins")) database.createObjectStore("drawingPins", { keyPath: "id" });
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("Offline opslag kon niet worden geopend."));
+    request.onsuccess = () => {
+      clearTimeout(timer);
+      if (expired) { request.result.close(); return; }
+      request.result.onversionchange = () => request.result.close();
+      resolve(request.result);
+    };
+    request.onerror = () => { clearTimeout(timer); reject(request.error ?? new Error("Offline opslag kon niet worden geopend.")); };
   });
 }
 
@@ -43,14 +81,21 @@ export async function ensureOfflineDatabase() {
 }
 
 export async function idbPut<T>(store: OfflineStore, value: T) {
+  let stored: unknown = value;
+  if (ownedStores.has(store)) {
+    const owner = (value as Owned).ownerUserId ?? activeUserId;
+    // Unsent work without an author could later be sent by whoever signs in next.
+    if (!owner) throw new Error("Offline werk kan alleen worden opgeslagen terwijl u bent aangemeld.");
+    stored = { ...(value as object), ownerUserId: owner };
+  }
   const database = await openDatabase();
   await new Promise<void>((resolve, reject) => {
     const transaction = database.transaction(store, "readwrite");
-    transaction.objectStore(store).put(value);
+    transaction.objectStore(store).put(stored);
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error ?? new Error("Offline gegevens konden niet worden opgeslagen."));
-  });
-  database.close();
+    transaction.onabort = transaction.onerror;
+  }).finally(() => database.close());
 }
 
 export async function idbGet<T>(store: OfflineStore, id: string) {
@@ -59,31 +104,37 @@ export async function idbGet<T>(store: OfflineStore, id: string) {
     const request = database.transaction(store, "readonly").objectStore(store).get(id);
     request.onsuccess = () => resolve(request.result as T | undefined);
     request.onerror = () => reject(request.error ?? new Error("Offline gegevens konden niet worden gelezen."));
-  });
-  database.close();
-  return value;
+  }).finally(() => database.close());
+  return visibleToActiveUser(store, value) ? value : undefined;
 }
 
-export async function idbGetAll<T>(store: OfflineStore) {
+/** Every item in a store, regardless of who wrote it. Only account-isolation may use this. */
+export async function idbGetAllUnscoped<T>(store: OfflineStore) {
   const database = await openDatabase();
   const values = await new Promise<T[]>((resolve, reject) => {
     const request = database.transaction(store, "readonly").objectStore(store).getAll();
     request.onsuccess = () => resolve(request.result as T[]);
     request.onerror = () => reject(request.error ?? new Error("Offline gegevens konden niet worden gelezen."));
-  });
-  database.close();
+  }).finally(() => database.close());
   return values;
+}
+
+export async function idbGetAll<T>(store: OfflineStore) {
+  const values = await idbGetAllUnscoped<T>(store);
+  return values.filter((value) => visibleToActiveUser(store, value));
 }
 
 /** The keys in a store, without reading the values: a blob store must stay cheap to inspect. */
 export async function idbKeys(store: OfflineStore) {
+  if (ownedStores.has(store)) {
+    return (await idbGetAll<{ id: string }>(store)).map((value) => String(value.id));
+  }
   const database = await openDatabase();
   const keys = await new Promise<string[]>((resolve, reject) => {
     const request = database.transaction(store, "readonly").objectStore(store).getAllKeys();
     request.onsuccess = () => resolve((request.result as IDBValidKey[]).map(String));
     request.onerror = () => reject(request.error ?? new Error("Offline gegevens konden niet worden gelezen."));
-  });
-  database.close();
+  }).finally(() => database.close());
   return keys;
 }
 
@@ -94,8 +145,8 @@ export async function idbDelete(store: OfflineStore, id: string) {
     transaction.objectStore(store).delete(id);
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error ?? new Error("Offline gegeven kon niet worden verwijderd."));
-  });
-  database.close();
+    transaction.onabort = transaction.onerror;
+  }).finally(() => database.close());
 }
 
 /**
@@ -110,6 +161,6 @@ export async function idbClear(store: OfflineStore) {
     transaction.objectStore(store).clear();
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error ?? new Error("Offline gegevens konden niet worden gewist."));
-  });
-  database.close();
+    transaction.onabort = transaction.onerror;
+  }).finally(() => database.close());
 }

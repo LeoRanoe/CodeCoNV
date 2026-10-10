@@ -36,6 +36,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
       },
     });
   } catch (error) {
-    return storageErrorResponse(error);
+    return storageErrorResponse(error, _request, "external_share");
   }
 }

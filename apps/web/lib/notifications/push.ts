@@ -1,3 +1,4 @@
+import { logEvent } from "@/lib/observability/log";
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import webpush from "web-push";
@@ -111,6 +112,7 @@ export async function sendPendingPushNotifications(admin: SupabaseClient, projec
         await admin.from("push_subscriptions").update({ failure_count: 0, last_used_at: new Date().toISOString() }).eq("id", subscription.id);
       } catch (error) {
         const statusCode = typeof error === "object" && error !== null && "statusCode" in error ? Number(error.statusCode) : 0;
+        logEvent("warn", "notification", "push_delivery_failed", { notificationId: notification.id, subscriptionId: subscription.id, statusCode });
         if (statusCode === 404 || statusCode === 410) {
           await admin.from("push_subscriptions").update({ status: "revoked", failure_count: Number(subscription.failure_count ?? 0) + 1 }).eq("id", subscription.id);
           result.revoked += 1;

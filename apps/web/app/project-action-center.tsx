@@ -17,6 +17,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
 import {
   compareActionItems,
@@ -29,6 +30,7 @@ import {
 } from "@/lib/actions/action-center.mjs";
 import type { OperationSnapshot } from "@/lib/supabase/operations";
 import type { ProjectParty } from "@/lib/supabase/data";
+import { statusText, typeText, priorityText } from "@/lib/status-labels";
 
 type ProjectActionItem = {
   id: string;
@@ -113,6 +115,7 @@ export function ProjectActionCenter({
   openProjectArea: (tab: ActionCenterTarget, recordId?: string) => void;
 }) {
   const { locale, text } = useLanguage();
+  const canCreateAction = useProjectPermissions().can("actions.create");
   const [typeFilter, setTypeFilter] = useState<ActionType>("all");
   const [workFilter, setWorkFilter] = useState<WorkFilter>("open");
   const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>("overdue");
@@ -147,7 +150,7 @@ export function ProjectActionCenter({
       // Only the deadline itself. The creation date used to stand here, which made
       // every record look like it had a deadline it never had.
       dueAt: finding.due_at,
-      meta: finding.finding_type.replaceAll("_", " "),
+      meta: typeText(finding.finding_type, text),
       ownerUserId: finding.assigned_user_id ?? null,
       ownerLabel: resolveUserName(finding.assigned_user_id) || partyName(finding.responsible_party_id),
       escalationRequired: Boolean(finding.issue_management?.escalation_required),
@@ -172,7 +175,7 @@ export function ProjectActionCenter({
         status: entry.status,
         priority: String(entry.details.priority ?? "normal"),
         dueAt: entry.due_at,
-        meta: entry.register_type.replaceAll("_", " "),
+        meta: typeText(entry.register_type, text),
         // A controlled document is addressed to a party, never to a single colleague.
         ownerUserId: null,
         ownerLabel: String(entry.details.requested_to ?? entry.details.contractor ?? ""),
@@ -269,17 +272,11 @@ export function ProjectActionCenter({
   };
 
   const escalations = scopedItems.filter(isEscalated).slice(0, 4);
-  const viewIntro = view === "deadlines"
-    ? text("Every open record that has to be met by a date, the closest deadline first.", "Elke openstaande registratie met een datum die gehaald moet worden, de eerstvolgende deadline bovenaan.")
-    : view === "mine"
-      ? text("The records that are waiting for you. Every line says what has to happen next.", "De registraties die op jou wachten. Elke regel zegt wat er nu moet gebeuren.")
-      : text("All follow-up on this project: assigned actions, quality findings and formal requests, with the next step on every line.", "Alle opvolging op dit project: toegewezen acties, kwaliteitspunten en formele verzoeken, met op elke regel de volgende stap.");
-
   return (
     <section className="action-center">
       <header className="action-center-hero">
-        <div><span>{projectName}</span><h1>{text("Action center", "Actiecentrum")}</h1><p>{viewIntro}</p></div>
-        <button className="primary-button" type="button" onClick={createAction}><Plus size={15} /> {text("New action", "Nieuwe actie")}</button>
+        <div><span>{projectName}</span><h1>{text("Action center", "Actiecentrum")}</h1></div>
+        {canCreateAction ? <button className="primary-button" type="button" onClick={createAction}><Plus size={15} /> {text("New action", "Nieuwe actie")}</button> : null}
       </header>
 
       {/* One page, three ways of looking at the same worklist. */}
@@ -324,18 +321,18 @@ export function ProjectActionCenter({
               <button className={overdue(item) ? "overdue" : ""} type="button" onClick={() => openItem(item)} key={`${item.source}:${item.id}`}>
                 <span className={`unified-action-icon ${item.type}`}>{typeIcon(item.type)}</span>
                 <span className="unified-action-copy">
-                  <span><b>{item.type.toUpperCase()}</b><em>{item.reference}</em>{isEscalated(item) ? <i className="unified-action-flag"><ShieldAlert size={10} /> {text("escalation", "escalatie")}</i> : null}</span>
+                  <span><b>{typeTabs.find((tab) => tab.id === item.type)?.label ?? item.type}</b><em>{item.reference}</em>{isEscalated(item) ? <i className="unified-action-flag"><ShieldAlert size={10} /> {text("escalation", "escalatie")}</i> : null}</span>
                   <strong>{item.title}</strong>
                   {/* What has to happen next, in words, so the row can be acted on without
                       opening it first. */}
                   <span className={`unified-action-next step-${nextStepFor(item)}`}><ArrowRight size={11} /> {nextStepLabel(item)}</span>
                   <small className={overdue(item) ? "overdue" : ""}>{ownerLabel(item)} · {deadlineLabel(item)}</small>
                 </span>
-                <span className={`unified-action-priority ${item.priority}`}>{item.priority}</span>
-                <span className={`document-status ${isSettledStatus(item.status) ? "approved" : ""}`}>{item.status.replaceAll("_", " ")}</span>
+                <span className={`unified-action-priority ${item.priority}`}>{priorityText(item.priority, text)}</span>
+                <span className={`document-status ${isSettledStatus(item.status) ? "approved" : ""}`}>{statusText(item.status, text)}</span>
                 <ArrowRight size={15} />
               </button>
-            )) : <div className="action-center-empty"><Filter size={24} /><div><strong>{view === "mine" ? text("Nothing is waiting for you", "Er wacht niets op jou") : view === "deadlines" && deadlineFilter === "overdue" ? text("Nothing is overdue", "Niets is te laat") : text("No records match this view", "Geen registraties in deze weergave")}</strong><p>{view === "mine" ? text("Work assigned to you appears here. Open All project work to see everything on this project.", "Werk dat aan jou is toegewezen verschijnt hier. Open Al het projectwerk om alles op dit project te zien.") : text("Choose another group or create the first assigned action.", "Kies een andere groep of maak de eerste toegewezen actie.")}</p></div><button className="secondary-button" type="button" onClick={() => { setTypeFilter("all"); setWorkFilter("all"); setDeadlineFilter("all"); setSearch(""); }}>{text("Clear filters", "Wis filters")}</button></div>}
+            )) : <div className="action-center-empty"><Filter size={24} /><div><strong>{view === "mine" ? text("Nothing is waiting for you", "Er wacht niets op jou") : view === "deadlines" && deadlineFilter === "overdue" ? text("Nothing is overdue", "Niets is te laat") : text("No records match this view", "Geen registraties in deze weergave")}</strong></div><button className="secondary-button" type="button" onClick={() => { setTypeFilter("all"); setWorkFilter("all"); setDeadlineFilter("all"); setSearch(""); }}>{text("Clear filters", "Wis filters")}</button></div>}
           </div>
         </div>
 
@@ -354,7 +351,7 @@ export function ProjectActionCenter({
                 </li>
               ))}
             </ul>
-          ) : <p className="action-focus-empty"><CheckCircle2 size={16} /> {text("Nothing is late or urgent right now.", "Niets is op dit moment te laat of urgent.")}</p>}
+          ) : <p className="action-focus-empty"><CheckCircle2 size={16} /> {text("Nothing late or urgent.", "Niets te laat of urgent.")}</p>}
           <dl className="action-focus-counts">
             <div><dt>{text("Without an owner", "Zonder verantwoordelijke")}</dt><dd>{scopedItems.filter(unassigned).length}</dd></div>
             <div><dt>{text("Waiting for verification", "Wacht op verificatie")}</dt><dd>{scopedItems.filter((item) => item.status === "ready_for_verification").length}</dd></div>

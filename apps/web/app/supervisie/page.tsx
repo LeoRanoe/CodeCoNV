@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CodecoSupervisionApp } from "../codeco-supervision-app";
+import { DocumentLanguage } from "../document-language";
 import { Providers } from "../providers";
 
 export const metadata: Metadata = {
@@ -9,5 +10,5 @@ export const metadata: Metadata = {
 };
 
 export default function SupervisionPage() {
-  return <Providers><CodecoSupervisionApp /></Providers>;
+  return <><DocumentLanguage /><Providers><CodecoSupervisionApp /></Providers></>;
 }

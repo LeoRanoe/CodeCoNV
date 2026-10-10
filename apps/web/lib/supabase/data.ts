@@ -171,8 +171,9 @@ export type AttendanceInput = {
   notes?: string;
 };
 
-function fail(error: { message: string } | null) {
-  if (error) throw new Error(error.message);
+function fail(error: { message: string; code?: string } | null) {
+  // Keep the SQLSTATE so the screen can explain the failure (lib/user-facing-error.ts).
+  if (error) throw Object.assign(new Error(error.message), { code: error.code });
 }
 
 function schemaColumnMissing(error: { message: string } | null, column: string) {
@@ -1208,27 +1209,8 @@ export async function markNotificationRead(client: SupabaseClient, notificationI
 }
 
 /** The trades a project can record attendance for, when the project itself names none. */
-export const constructionDisciplines = [
-  "Bouwvakkers / algemeen",
-  "Timmerlieden",
-  "Metselaars",
-  "Beton en wapening",
-  "Betonwerkers",
-  "Wapeningwerkers",
-  "Elektriciens",
-  "HVAC",
-  "Loodgieters / sanitair",
-  "Schilders",
-  "Gevelwerk",
-  "Tegelzetters",
-  "Grondwerk",
-  "Staalbouw",
-  "Steigerbouwers",
-  "Dakwerk",
-  "Machine-operators",
-  "HSE / veiligheidsmedewerkers",
-  "Voormannen / supervisors",
-] as const;
+export { constructionDisciplines } from "@/lib/forms/disciplines";
+import { constructionDisciplines } from "@/lib/forms/disciplines";
 
 export type ProjectConfiguration = {
   disciplines: string[];

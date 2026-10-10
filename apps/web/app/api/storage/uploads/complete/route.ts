@@ -1,5 +1,6 @@
 import { head } from "@vercel/blob";
 import { z } from "zod";
+import { sha256OfStoredBlob } from "@/lib/storage/content-hash";
 import {
   authenticateStorageRequest,
   createStorageAdminClient,
@@ -9,6 +10,9 @@ import {
 } from "@/lib/storage/server";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+// Hashing the stored object reads it once; 100 MB (the largest project limit) fits easily.
+export const maxDuration = 60;
 
 const completionSchema = z.object({
   fileId: z.uuid(),
@@ -58,12 +62,19 @@ export async function POST(request: Request) {
     }
 
     const adminClient = createStorageAdminClient();
+    // The declared checksum is the browser's claim; the stored bytes decide.
+    const storedSha256 = await sha256OfStoredBlob(blob.pathname);
+    if (storedSha256 !== input.data.sha256) {
+      await adminClient.from("files").update({ status: "failed" }).eq("id", file.id).in("status", ["pending", "uploading"]);
+      return storageJson({ error: "De opgeslagen bestandsinhoud komt niet overeen met de checksum van dit apparaat. Upload het bestand opnieuw." }, 409);
+    }
     const updateResult = await adminClient
       .from("files")
       .update({
         status: "available",
         size_bytes: blob.size,
-        sha256: input.data.sha256,
+        sha256: storedSha256,
+        content_verified_at: new Date().toISOString(),
         storage_provider: "vercel_blob",
         storage_object_key: blob.pathname,
         storage_parent_key: null,
@@ -78,6 +89,6 @@ export async function POST(request: Request) {
     }
     return storageJson({ fileId: file.id, sha256: input.data.sha256 });
   } catch (error) {
-    return storageErrorResponse(error);
+    return storageErrorResponse(error, request, "storage");
   }
 }

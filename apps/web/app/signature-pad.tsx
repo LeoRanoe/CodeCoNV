@@ -2,6 +2,7 @@
 
 import { Eraser, PenLine, Undo2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { strokeLayout, strokePoint } from "@/lib/images/stroke-layout.mjs";
 import { useLanguage } from "@/lib/i18n";
 import { useBackToClose } from "@/lib/navigation/app-history";
 import {
@@ -26,6 +27,7 @@ export function SignaturePad({
   declaration,
   nameSuggestion = "",
   nameOptions = [],
+  lockName = false,
   close,
   save,
 }: {
@@ -35,6 +37,8 @@ export function SignaturePad({
   nameSuggestion?: string;
   /** Names this project knows, so signing for somebody else is a choice, not typing. */
   nameOptions?: string[];
+  /** The signatory is the signed-in account itself: the name is shown, not typed. */
+  lockName?: boolean;
   close: () => void;
   save: (signature: HandwrittenSignature) => void;
 }) {
@@ -43,19 +47,26 @@ export function SignaturePad({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const strokesRef = useRef<Stroke[]>([]);
   const drawingRef = useRef(false);
+  const pointerRef = useRef<number | null>(null);
+  const spaceRef = useRef({ width: 0, height: 0 });
+  const mountedRef = useRef(false);
   const [name, setName] = useState(nameSuggestion);
   const [empty, setEmpty] = useState(true);
   const [error, setError] = useState("");
 
-  const paint = () => {
-    const canvas = canvasRef.current;
+  const paint = (target?: HTMLCanvasElement, exporting = false) => {
+    const canvas = target ?? canvasRef.current;
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
-    const width = canvas.width / (window.devicePixelRatio > 2 ? 2 : window.devicePixelRatio || 1);
-    const height = canvas.height / (window.devicePixelRatio > 2 ? 2 : window.devicePixelRatio || 1);
-    context.clearRect(0, 0, width, height);
+    const space = spaceRef.current;
+    const bounds = exporting ? { width: space.width, height: space.height } : canvas.getBoundingClientRect();
+    const layout = strokeLayout(space, bounds);
+    if (!layout) return;
+    const ratio = canvas.width / bounds.width;
+    context.setTransform(1, 0, 0, 1, 0, 0);
     context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, width, height);
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.setTransform(ratio * layout.scale, 0, 0, ratio * layout.scale, ratio * layout.x, ratio * layout.y);
     context.lineCap = "round";
     context.lineJoin = "round";
     context.strokeStyle = "#14201c";
@@ -74,8 +85,13 @@ export function SignaturePad({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    mountedRef.current = true;
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      if (!spaceRef.current.width) spaceRef.current = { width: rect.width, height: rect.height };
+      pointerRef.current = null;
+      drawingRef.current = false;
       const ratio = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.round(rect.width * ratio);
       canvas.height = Math.round(rect.height * ratio);
@@ -85,15 +101,19 @@ export function SignaturePad({
     };
     resize();
     window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
+    const observer = new ResizeObserver(resize);
+    observer.observe(canvas);
+    return () => { mountedRef.current = false; observer.disconnect(); window.removeEventListener("resize", resize); };
   }, []);
 
   const pointFrom = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    return strokePoint(event.clientX, event.clientY, rect, spaceRef.current) ?? { x: 0, y: 0 };
   };
 
   const start = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!event.isPrimary || event.button !== 0 || pointerRef.current !== null) return;
+    pointerRef.current = event.pointerId;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     drawingRef.current = true;
@@ -103,7 +123,7 @@ export function SignaturePad({
   };
 
   const move = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!drawingRef.current) return;
+    if (!drawingRef.current || pointerRef.current !== event.pointerId) return;
     event.preventDefault();
     const current = strokesRef.current[strokesRef.current.length - 1];
     if (!current) return;
@@ -111,17 +131,22 @@ export function SignaturePad({
     paint();
   };
 
-  const end = () => {
+  const end = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (pointerRef.current !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    pointerRef.current = null;
     drawingRef.current = false;
   };
 
   const undo = () => {
+    pointerRef.current = null; drawingRef.current = false;
     strokesRef.current = strokesRef.current.slice(0, -1);
     setEmpty(strokesRef.current.length === 0);
     paint();
   };
 
   const clear = () => {
+    pointerRef.current = null; drawingRef.current = false;
     strokesRef.current = [];
     setEmpty(true);
     paint();
@@ -131,8 +156,12 @@ export function SignaturePad({
   const exportSignature = () => {
     const canvas = canvasRef.current;
     if (!canvas || empty) return null;
-    const ratio = Math.min(window.devicePixelRatio || 1, 2);
-    const box = signatureExportBox(signatureInkBounds(strokesRef.current), canvas.width / ratio, canvas.height / ratio);
+    const original = document.createElement("canvas");
+    original.width = Math.max(1, Math.round(spaceRef.current.width * 2));
+    original.height = Math.max(1, Math.round(spaceRef.current.height * 2));
+    paint(original, true);
+    const ratio = original.width / spaceRef.current.width;
+    const box = signatureExportBox(signatureInkBounds(strokesRef.current), spaceRef.current.width, spaceRef.current.height);
     const target = document.createElement("canvas");
     const scale = Math.min(signatureExportSize.width / box.width, signatureExportSize.height / box.height, 2);
     target.width = Math.max(1, Math.round(box.width * scale));
@@ -142,7 +171,7 @@ export function SignaturePad({
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, target.width, target.height);
     context.drawImage(
-      canvas,
+      original,
       box.x * ratio, box.y * ratio, box.width * ratio, box.height * ratio,
       0, 0, target.width, target.height,
     );
@@ -176,7 +205,7 @@ export function SignaturePad({
         <div className="modal-body signature-body">
           <label className="form-field">
             <span>{text("Name of the signatory", "Naam van de ondertekenaar")}</span>
-            <input value={name} onChange={(event) => { setName(event.target.value); setError(""); }} list="signature-name-options" autoComplete="name" />
+            <input value={name} onChange={(event) => { setName(event.target.value); setError(""); }} list={lockName ? undefined : "signature-name-options"} autoComplete="name" readOnly={lockName} />
             {nameOptions.length ? <datalist id="signature-name-options">{nameOptions.map((option) => <option value={option} key={option} />)}</datalist> : null}
           </label>
 
@@ -221,6 +250,8 @@ export function SignatureField({
   hint,
   nameSuggestion = "",
   nameOptions = [],
+  lockName = false,
+  locked = false,
   value,
   onChange,
   disabled = false,
@@ -231,6 +262,9 @@ export function SignatureField({
   hint?: string;
   nameSuggestion?: string;
   nameOptions?: string[];
+  lockName?: boolean;
+  /** A stored signature that cannot be replaced or removed any more. */
+  locked?: boolean;
   value: HandwrittenSignature | null;
   onChange: (signature: HandwrittenSignature | null) => void;
   disabled?: boolean;
@@ -253,10 +287,10 @@ export function SignatureField({
           {/* A drawn signature is a data URL, which the image optimizer cannot handle. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={value!.image} alt={text(`Signature of ${value!.name}`, `Handtekening van ${value!.name}`)} />
-          <div className="signature-field-actions">
+          {locked ? null : <div className="signature-field-actions">
             <button className="ghost-button" type="button" disabled={disabled} onClick={() => setSigning(true)}><PenLine size={14} /> {text("Sign again", "Opnieuw tekenen")}</button>
             <button className="ghost-button" type="button" disabled={disabled} onClick={() => onChange(null)}><Eraser size={14} /> {text("Remove", "Verwijderen")}</button>
-          </div>
+          </div>}
         </div>
       ) : (
         <button className="secondary-button signature-open-button" type="button" disabled={disabled} onClick={() => setSigning(true)}>
@@ -269,6 +303,7 @@ export function SignatureField({
           declaration={declaration}
           nameSuggestion={value?.name || nameSuggestion}
           nameOptions={nameOptions}
+          lockName={lockName}
           close={() => setSigning(false)}
           save={(signature) => { onChange(signature); setSigning(false); }}
         />

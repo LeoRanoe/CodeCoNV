@@ -1,7 +1,7 @@
 begin;
 set local search_path = extensions, pgtap, public;
 
-select plan(41);
+select plan(42);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at)
 values ('00000000-0000-0000-0000-0000000000e1', 'authenticated', 'authenticated', 'formal-admin@example.test', now(), now());
@@ -72,8 +72,19 @@ select lives_ok(
 select is((select status::text from public.day_reports), 'approved', 'approved status is persisted');
 select is((select count(*) from public.report_versions), 1::bigint, 'one immutable report version is created');
 select matches((select sha256 from public.report_versions), '^[a-f0-9]{64}$', 'report version contains a valid SHA-256');
-select is((select snapshot ->> 'schema_version' from public.report_versions), '202607180016', 'snapshot records its schema version');
-select is((select snapshot -> 'building' ->> 'name' from public.report_versions), 'Hoofdgebouw', 'immutable snapshot contains the report building for formal PDF output');
+-- Snapshot contract: a 12-digit migration version, never older than the first multi-building
+-- shape (202607260005) that the PDF/DOCX renderers require for new reports.
+select ok(
+  (select snapshot ->> 'schema_version' ~ '^\d{12}$' and snapshot ->> 'schema_version' >= '202607260005' from public.report_versions),
+  'snapshot records a multi-building schema version'
+);
+select ok(
+  (select snapshot -> 'buildings' @> '[{"name":"Hoofdgebouw"}]'::jsonb
+      and jsonb_typeof(snapshot -> 'start_checks') = 'array'
+      and jsonb_typeof(snapshot -> 'closeouts') = 'array'
+   from public.report_versions),
+  'immutable snapshot contains every project building with per-building start and closeout data'
+);
 select is((select snapshot -> 'created_by_profile' ->> 'display_name' from public.report_versions), 'Formal Admin', 'immutable snapshot contains the authenticated report author');
 select is((select count(*) from public.report_reviews where decision = 'approved'), 1::bigint, 'approval is retained in append-only review history');
 
@@ -91,8 +102,13 @@ select lives_ok(
 );
 select is((select status::text from public.day_reports), 'approved', 'report waits for all required signing roles');
 select lives_ok(
-  format($query$select public.sign_report_version(%L::uuid, 'project_manager', 'Formal Admin', 'Ik bevestig deze vastgezette rapportversie als projectleider.', 'contract_pending')$query$, (select id from public.day_reports)),
-  'project-manager declaration can be attached'
+  -- The app signs through the six-argument routine with the written signature image.
+  format($query$select public.sign_report_version(%L::uuid, 'project_manager', 'Formal Admin', 'Ik bevestig deze vastgezette rapportversie als projectleider.', 'contract_pending', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==')$query$, (select id from public.day_reports)),
+  'project-manager declaration with a written signature can be attached'
+);
+select ok(
+  (select signature_image like 'data:image/png;base64,%' from public.report_signatures where signer_role = 'project_manager'),
+  'the written signature is stored with the declaration'
 );
 select is((select status::text from public.day_reports), 'signed', 'configured required roles move report to signed');
 select is((select count(*) from public.report_signatures), 2::bigint, 'two append-only signer declarations are retained');

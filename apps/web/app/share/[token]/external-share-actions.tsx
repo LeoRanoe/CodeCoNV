@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, Camera, CheckCircle2, ImageOff, Loader2, PenLine, Send, Upload } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
 import { LanguageProvider } from "@/lib/i18n";
 import { compressFieldPhoto } from "@/lib/offline/upload-queue";
@@ -73,6 +73,9 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
+  const submittingRef = useRef(false);
+  const attemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
+  const uploadedRef = useRef<{ photo: File; fileId: string } | null>(null);
   const completionAllowed = sourceType === "finding" && !["ready_for_verification", "closed", "cancelled"].includes(status ?? "");
   const choices = useMemo(() => responseType === "proposed_correction"
     ? [
@@ -105,10 +108,18 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
   const signatureRequired = responseType === "proposed_correction";
   const submit = async () => {
     if (note.trim().length < 3 || (signatureRequired && (contactName.trim().length < 2 || !signature))) return;
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setBusy(true);
     setError("");
     try {
-      const evidenceFileId = photo ? await uploadEvidence(token, photo) : null;
+      const fingerprint = JSON.stringify({ responseType, note: note.trim(), contactName: contactName.trim(), contactPosition: contactPosition.trim(), signature: signature?.image, photo: photo && [photo.name, photo.size, photo.lastModified] });
+      if (attemptRef.current?.fingerprint !== fingerprint) attemptRef.current = { fingerprint, key: `external:${crypto.randomUUID()}` };
+      let evidenceFileId: string | null = null;
+      if (photo) {
+        if (uploadedRef.current?.photo !== photo) uploadedRef.current = { photo, fileId: await uploadEvidence(token, photo) };
+        evidenceFileId = uploadedRef.current.fileId;
+      }
       const response = await fetch(`/api/external-share/${token}/response`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -119,7 +130,7 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
           contactPosition: contactPosition.trim(),
           signatureImage: signature?.image ?? null,
           evidenceFileId,
-          idempotencyKey: `external:${crypto.randomUUID()}`,
+          idempotencyKey: attemptRef.current.key,
         }),
       });
       if (!response.ok) throw new Error(await responseError(response));
@@ -133,6 +144,7 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "De reactie kon niet worden verzonden.");
     } finally {
+      submittingRef.current = false;
       setBusy(false);
     }
   };
@@ -156,7 +168,7 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
       <label className="form-field"><span>{responseType === "proposed_correction" ? "Voorgestelde correctieve actie" : "Toelichting"}</span><textarea rows={3} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Kies hierboven een optie; aanpassen mag." /></label>
       <label className="external-photo-input">
         <Camera size={20} />
-        <span><strong>{photo ? photo.name : "Bewijsfoto toevoegen (optioneel)"}</strong><small>De foto wordt verkleind om mobiele data te besparen.</small></span>
+        <span><strong>{photo ? photo.name : "Bewijsfoto toevoegen (optioneel)"}</strong></span>
         <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => setPhoto(event.target.files?.[0] ?? null)} />
       </label>
       <label className="form-field"><span>{signatureRequired ? "Naam van de ondertekenaar" : "Naam (optioneel)"}</span><input value={contactName} onChange={(event) => setContactName(event.target.value)} autoComplete="name" required={signatureRequired} /></label>
@@ -168,7 +180,7 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
       {/* The client's NCR form has a signature line under the contractor's box, so the
           contractor writes the signature here instead of only typing a name. */}
       {signatureRequired ? (
-        <LanguageProvider>
+        <LanguageProvider fixed="nl">
           <SignatureField
             label="Onderteken de correctieve actie"
             declaration="Met je handtekening bevestig je de correctieve actie die je hierboven hebt ingevuld."

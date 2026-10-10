@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import {
   historyActionFor,
+  sameScreen,
   screenToSearch,
 } from "@/lib/navigation/screen-url.mjs";
 
@@ -27,7 +28,9 @@ export type AppScreen = {
 
 export { emptyScreen, sameScreen, closesOverlay, screenToSearch, screenFromSearch, historyActionFor } from "@/lib/navigation/screen-url.mjs";
 
-type HistoryEntry = { codecoScreen?: AppScreen };
+/** `codecoBelow` is the screen of the entry underneath, so closing a dialog knows whether
+ * stepping back really lands on the screen that is left once the dialog is gone. */
+type HistoryEntry = { codecoScreen?: AppScreen; codecoBelow?: AppScreen | null };
 
 /**
  * Keeps the browser history in step with the screen the app is showing.
@@ -54,20 +57,28 @@ export function useScreenHistory(screen: AppScreen, applyScreen: (screen: AppScr
     restoringRef.current = false;
     if (action === "none") return;
     const url = `${window.location.pathname}${screenToSearch(screen)}`;
-    const entry: HistoryEntry = { codecoScreen: screen };
+    const current = window.history.state as HistoryEntry | null;
     currentRef.current = screen;
     if (action === "replace") {
       // The first screen, and every screen the back button could not restore exactly.
-      window.history.replaceState(entry, "", url);
+      window.history.replaceState({ codecoScreen: screen, codecoBelow: current?.codecoBelow ?? null } satisfies HistoryEntry, "", url);
       return;
     }
     if (action === "back") {
       // The dialog pushed an entry when it opened; closing it by hand spends that entry
-      // so the back button does not bring the dialog back.
-      window.history.back();
+      // so the back button does not bring the dialog back. That is only right when the
+      // entry underneath is the screen that remains: a dialog opened together with a move
+      // to another module sits on top of a *different* screen, and stepping back there
+      // used to restore that older screen — even an older dialog — instead of closing.
+      const below = current?.codecoBelow;
+      if (below && sameScreen(below, screen)) {
+        window.history.back();
+        return;
+      }
+      window.history.replaceState({ codecoScreen: screen, codecoBelow: below ?? null } satisfies HistoryEntry, "", url);
       return;
     }
-    window.history.pushState(entry, "", url);
+    window.history.pushState({ codecoScreen: screen, codecoBelow: previous } satisfies HistoryEntry, "", url);
   }, [screen]);
 
   useEffect(() => {
@@ -105,17 +116,38 @@ export function useBackToClose(open: boolean, close: () => void) {
 
   useEffect(() => {
     if (typeof window === "undefined" || !open) return;
-    const id = Date.now() + Math.random();
+    const state = window.history.state as { codecoOverlay?: number } | null;
+    let id: number;
+    if (pendingOverlayRemoval && state?.codecoOverlay === pendingOverlayRemoval.id) {
+      // The same overlay mounted again straight after unmounting (React StrictMode in
+      // development, or a parent re-keying it). Keep its history entry instead of removing
+      // it: the asynchronous back() would otherwise arrive now and close the new instance.
+      window.clearTimeout(pendingOverlayRemoval.timer);
+      id = pendingOverlayRemoval.id;
+      pendingOverlayRemoval = null;
+    } else {
+      id = Date.now() + Math.random();
+      window.history.pushState({ codecoOverlay: id }, "");
+    }
     marker.current = id;
-    window.history.pushState({ codecoOverlay: id }, "");
     window.addEventListener("popstate", handlePop);
     return () => {
       window.removeEventListener("popstate", handlePop);
       // Closed with the button instead of the back gesture: take the entry back out,
       // otherwise the next back press would only undo an overlay that is already gone.
-      const state = window.history.state as { codecoOverlay?: number } | null;
-      if (marker.current === id && state?.codecoOverlay === id) window.history.back();
+      // Deferred by one task so an immediate remount can claim the entry first.
+      const current = window.history.state as { codecoOverlay?: number } | null;
+      if (marker.current === id && current?.codecoOverlay === id) {
+        const timer = window.setTimeout(() => {
+          pendingOverlayRemoval = null;
+          const now = window.history.state as { codecoOverlay?: number } | null;
+          if (now?.codecoOverlay === id) window.history.back();
+        }, 0);
+        pendingOverlayRemoval = { id, timer };
+      }
       marker.current = 0;
     };
   }, [handlePop, open]);
 }
+
+let pendingOverlayRemoval: { id: number; timer: number } | null = null;

@@ -1,3 +1,4 @@
+import { downloadBlob } from "@/lib/browser/download";
 /* eslint-disable jsx-a11y/alt-text -- @react-pdf/renderer Image has no HTML alt prop. */
 import {
   Document,
@@ -403,10 +404,5 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
 
 export async function downloadPeriodReportPdf(snapshot: PeriodReportSnapshot, options: PeriodReportOptions = {}) {
   const blob = await pdf(<PeriodReportDocument snapshot={snapshot} options={options} />).toBlob();
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `CODECO-${(options.reportTitle ?? "perioderapport").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${snapshot.period.start_date}-${snapshot.period.end_date}.pdf`;
-  anchor.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  downloadBlob(blob, `CODECO-${(options.reportTitle ?? "perioderapport").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${snapshot.period.start_date}-${snapshot.period.end_date}.pdf`);
 }

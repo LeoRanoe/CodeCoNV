@@ -3,6 +3,7 @@ import { Geist_Mono, Hind, Jost } from "next/font/google";
 import { siteConfig } from "../lib/site-config";
 import "./globals.css";
 import "./landing.css";
+import { DialogManager } from "./dialog-manager";
 
 const hind = Hind({
   variable: "--font-hind",
@@ -68,9 +69,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="scroll-smooth">
+    // The workspace sets lang before hydration (see app/document-language.tsx).
+    <html lang="en" className="scroll-smooth" suppressHydrationWarning>
       <body className={`${hind.variable} ${geistMono.variable} ${jost.variable}`}>
         {children}
+        <DialogManager />
       </body>
     </html>
   );

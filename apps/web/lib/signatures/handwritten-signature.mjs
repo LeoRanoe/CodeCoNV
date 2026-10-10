@@ -1,3 +1,5 @@
+import { imageContentType } from "../images/content-type.mjs";
+
 /**
  * A signature is something somebody writes, at the moment they agree to what is on the
  * document. The app used to ask for a tick in a box, which says only that a checkbox was
@@ -24,7 +26,12 @@ export function signatureImageBytes(image) {
 
 export function isSignatureImage(image) {
   const value = String(image ?? "");
-  return imagePattern.test(value) && signatureImageBytes(value) <= maxSignatureBytes;
+  if (!imagePattern.test(value) || signatureImageBytes(value) > maxSignatureBytes) return false;
+  try {
+    const prefix = atob(value.split(",")[1].slice(0, 40));
+    const mime = imageContentType(Uint8Array.from(prefix, (character) => character.charCodeAt(0)));
+    return Boolean(mime) && value.startsWith(`data:${mime};base64,`);
+  } catch { return false; }
 }
 
 /**
@@ -33,7 +40,7 @@ export function isSignatureImage(image) {
  */
 export function handwrittenSignature(name, image, signedAt) {
   const signer = String(name ?? "").trim();
-  if (signer.length < 2 || !isSignatureImage(image)) return null;
+  if (signer.length < 2 || !isSignatureImage(image) || (signedAt && !Number.isFinite(new Date(signedAt).getTime()))) return null;
   return {
     name: signer.slice(0, 120),
     image: String(image),
@@ -42,7 +49,7 @@ export function handwrittenSignature(name, image, signedAt) {
 }
 
 export function isSigned(signature) {
-  return Boolean(signature && signature.name && signature.image);
+  return Boolean(signature && String(signature.name ?? "").trim().length >= 2 && isSignatureImage(signature.image) && signature.signedAt && Number.isFinite(new Date(signature.signedAt).getTime()));
 }
 
 /** What lands in the record's own JSON, under the keys that document already uses. */
@@ -54,7 +61,7 @@ export function signatureDetails(signature, prefix = "signature") {
 
 /** Reads a stored signature back into the shape the form and the pad work with. */
 export function signatureFromDetails(name, signedAt, image) {
-  return handwrittenSignature(name, image, signedAt || null);
+  return signedAt ? handwrittenSignature(name, image, signedAt) : null;
 }
 
 /**

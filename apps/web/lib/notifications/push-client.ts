@@ -6,8 +6,7 @@ import { validAccessToken } from "@/lib/supabase/access-token";
 export type PushState = "unsupported" | "ios-add-to-home-screen" | "blocked" | "not-configured" | "inactive" | "active";
 
 function isIosDevice() {
-  const platform = navigator.userAgent || navigator.platform;
-  return /iPad|iPhone|iPod/.test(platform) || (platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 }
 
 function isStandaloneDisplay() {
@@ -30,26 +29,35 @@ function sameApplicationServerKey(subscription: PushSubscription, expected: Uint
 }
 
 export async function currentPushState(): Promise<PushState> {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return "unsupported";
+  if (isIosDevice() && !isStandaloneDisplay()) return "ios-add-to-home-screen";
   if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
     return isIosDevice() && !isStandaloneDisplay() ? "ios-add-to-home-screen" : "unsupported";
   }
   if (Notification.permission === "denied") return "blocked";
   const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim();
   if (!publicKey) return "not-configured";
-  const registration = await navigator.serviceWorker.getRegistration("/");
-  const subscription = await registration?.pushManager.getSubscription();
-  if (!subscription) return "inactive";
-  return sameApplicationServerKey(subscription, applicationServerKey(publicKey)) ? "active" : "inactive";
+  try {
+    const registration = await navigator.serviceWorker.getRegistration("/");
+    const subscription = await registration?.pushManager.getSubscription();
+    if (!subscription || Notification.permission !== "granted" || (subscription.expirationTime !== null && subscription.expirationTime <= Date.now())) return "inactive";
+    return sameApplicationServerKey(subscription, applicationServerKey(publicKey)) ? "active" : "inactive";
+  } catch { return "unsupported"; }
 }
 
 export async function enablePushNotifications(client: SupabaseClient) {
   const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim();
   if (!publicKey) throw new Error("De pushsleutel is nog niet geconfigureerd.");
   if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) throw new Error("Deze browser ondersteunt geen pushmeldingen.");
+  if (isIosDevice() && !isStandaloneDisplay()) throw new Error("Installeer de app eerst op het beginscherm.");
   const permission = await Notification.requestPermission();
   if (permission !== "granted") throw new Error("Pushmeldingen zijn niet toegestaan in deze browser.");
   await navigator.serviceWorker.register("/sw.js", { scope: "/" });
-  const registration = await navigator.serviceWorker.ready;
+  let readyTimer: ReturnType<typeof setTimeout> | undefined;
+  const registration = await Promise.race([
+    navigator.serviceWorker.ready,
+    new Promise<never>((_, reject) => { readyTimer = setTimeout(() => reject(new Error("De serviceworker is niet beschikbaar. Herlaad de app en probeer opnieuw.")), 15_000); }),
+  ]).finally(() => clearTimeout(readyTimer));
   const expectedKey = applicationServerKey(publicKey);
   let subscription = await registration.pushManager.getSubscription();
   if (subscription && !sameApplicationServerKey(subscription, expectedKey)) {

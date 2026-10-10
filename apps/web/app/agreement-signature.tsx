@@ -204,7 +204,7 @@ export function AgreementSignatureFields({
                   "By signing you confirm this agreement as it is written above.",
                   "Met je handtekening bevestig je deze afspraak zoals die hierboven staat.",
                 )}
-                hint={text("The signature, the name and the date of signing are stored with the agreement.", "De handtekening, de naam en de datum van ondertekenen worden bij de afspraak opgeslagen.")}
+                hint={text("Signature, name and date are stored with the agreement.", "Handtekening, naam en datum worden bij de afspraak bewaard.")}
                 nameSuggestion={partyName}
                 nameOptions={options}
                 disabled={!role && !partyName}

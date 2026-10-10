@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { AlertTriangle, Building2, CalendarDays, CheckCircle2 } from "lucide-react";
 import { normalizeExternalShareToken } from "@/lib/external-share/token.mjs";
 import { createStorageAdminClient } from "@/lib/storage/server";
+import { actionStatusLabels, findingStatusLabels, labelFor, severityLabels } from "@/lib/status-labels";
+import { DocumentLanguage } from "../../document-language";
 import { ExternalShareActions, ExternalSourceImage } from "./external-share-actions";
 
 export const dynamic = "force-dynamic";
@@ -48,8 +50,9 @@ export default async function SharedProjectRecord({ params }: { params: Promise<
   const record = result.data as SharedRecord;
   return (
     <main className="external-share-shell">
+      <DocumentLanguage fixed="nl" />
       <section className="external-share-card">
-        <header><span className="external-share-brand">CODECO N.V. · SUPERVISIE</span><span className={`external-share-status ${record.severity ?? ""}`}>{record.status?.replaceAll("_", " ") ?? "open"}</span></header>
+        <header><span className="external-share-brand">CODECO N.V. · SUPERVISIE</span><span className={`external-share-status ${record.severity ?? ""}`}>{labelFor(record.source_type === "action" ? actionStatusLabels : findingStatusLabels, record.status, "nl", "Open")}</span></header>
         <div className="external-share-context"><Building2 size={18} /><span><strong>{record.project_code} · {record.project_name}</strong><small>{record.building_name ?? "Projectbreed"}</small></span></div>
         <span className="record-number">{record.source_type.toUpperCase()} · {record.source_number}</span>
         <h1>{record.title}</h1>
@@ -57,7 +60,7 @@ export default async function SharedProjectRecord({ params }: { params: Promise<
           <ExternalSourceImage token={token} sourceNumber={record.source_number} />
         ) : null}
         <p>{record.summary}</p>
-        <div className="external-share-meta"><span><AlertTriangle size={16} /><b>Prioriteit</b>{record.severity ?? "normaal"}</span><span><CalendarDays size={16} /><b>Deadline</b>{date(record.due_at)}</span></div>
+        <div className="external-share-meta"><span><AlertTriangle size={16} /><b>Prioriteit</b>{labelFor(severityLabels, record.severity, "nl", "Normaal")}</span><span><CalendarDays size={16} /><b>Deadline</b>{date(record.due_at)}</span></div>
         {/* An NCR asks the contractor for something specific, so the link shows what the
             engineer recommended before it asks for the corrective action. */}
         {record.record_kind === "ncr" ? (
@@ -69,7 +72,7 @@ export default async function SharedProjectRecord({ params }: { params: Promise<
           </section>
         ) : null}
         <ExternalShareActions token={token} sourceType={record.source_type} status={record.status} recordKind={record.record_kind ?? null} />
-        <footer><CheckCircle2 size={16} /><span>Deze beveiligde link vervalt op {date(record.expires_at)}. Er is geen CODECO-account nodig; CODECO verifieert iedere gereedmelding.</span></footer>
+        <footer><CheckCircle2 size={16} /><span>Link geldig tot {date(record.expires_at)}. CODECO verifieert elke gereedmelding.</span></footer>
       </section>
     </main>
   );

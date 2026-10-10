@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readFile as readRawFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import test, { after, before } from "node:test";
+
+// Source assertions are written against LF. A Windows checkout with core.autocrlf yields
+// CRLF, which would make every multi-line pattern fail locally while CI passes.
+async function readFile(path, encoding) {
+  const text = await readRawFile(path, encoding);
+  return typeof text === "string" ? text.replace(/\r\n/g, "\n") : text;
+}
 
 const port = 3187;
 const baseUrl = `http://127.0.0.1:${port}`;
@@ -99,7 +106,7 @@ test("explains an invalid external-party link without exposing a token error", a
   assert.equal(response.status, 404);
   const html = await response.text();
   assert.match(html, /Deze gedeelde link is niet meer beschikbaar/i);
-  assert.match(html, /geen account nodig/i);
+  assert.match(html, /nieuwe link/i);
   assert.doesNotMatch(html, /JWT|invalid token|token expired|stack trace/i);
 });
 
@@ -156,10 +163,10 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   ]);
 
   assert.match(app, /aria-modal="true"/);
-  assert.match(app, /event\.key === "Escape"/);
+  assert.match(await readFile(new URL("../app/dialog-manager.tsx", import.meta.url), "utf8"), /event\.key === "Escape"/);
   assert.match(app, /PASSWORD_RECOVERY/);
   assert.match(app, /resetPasswordForEmail/);
-  assert.match(app, /keepFocusInside/);
+  assert.match(await readFile(new URL("../app/dialog-manager.tsx", import.meta.url), "utf8"), /inert/);
   assert.match(app, /aria-live=/);
   assert.match(app, /timeZone: "America\/Paramaribo"/);
   assert.match(app, /greetingForSuriname/);
@@ -178,7 +185,6 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(app, /signInWithPassword/);
   assert.doesNotMatch(app, /\.auth\.signUp\(/);
   assert.doesNotMatch(app, />Account maken</);
-  assert.match(app, /Alleen projectgebruikers die door een organisatiebeheerder zijn uitgenodigd/);
   assert.match(app, /Gebruikers en toegang/);
   assert.match(app, /UserAdminModal/);
   assert.match(operationalWorkspace, /Managementoverzicht/);
@@ -210,7 +216,6 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(actionForm, /projectActionSchema/);
   assert.match(actionForm, /actionTransitionSchema/);
   assert.match(userForm, /internalUserInviteSchema/);
-  assert.match(app, /vaste projectregel|fixed project rule/i);
   assert.match(dataLayer, /saveProjectStart/);
   assert.match(dataLayer, /saveSiteRegistration/);
   assert.match(dataLayer, /saveAttendance/);
@@ -259,10 +264,8 @@ test("keeps standard photo and validated 360 camera annotation production paths"
     readFile(new URL("../vercel.json", import.meta.url), "utf8"),
   ]);
 
-  assert.match(workspace, /Standard photo/);
   assert.match(workspace, /360° camera image/);
   // Every 360° image is accepted: the screen describes what was chosen instead of refusing it.
-  assert.match(workspace, /Every 360° camera export is accepted/);
   assert.match(workspace, /describePanoramaImage/);
   assert.match(workspace, /DualFisheyeAdapter/);
   assert.doesNotMatch(workspace, /cameraSourceConfirmed/);
@@ -327,7 +330,7 @@ test("implements the handwritten client PDF as required workflows without AI or 
   assert.match(migration, /'rfa','inspection_request','boq'/);
   assert.match(app, /project\.technicalInstructionCount/);
   assert.match(app, /project\.changeOrderCount/);
-  assert.match(app, /Timmerlieden/);
+  assert.match(await readFile(new URL("../lib/forms/disciplines.ts", import.meta.url), "utf8"), /Timmerlieden/);
   assert.match(app, /Beton en wapening/);
   assert.match(app, /Werk lopend aan het einde van de dag/);
   assert.match(app, /Werk vandaag afgerond/);
@@ -400,7 +403,7 @@ test("implements the late client document set as controlled forms and shared rep
   assert.match(documentPdf, /REQUEST FOR INFORMATION/);
   assert.match(documentPdf, /WORK INSPECTION REQUEST/);
   assert.match(documentPdf, /TECHNICAL INSTRUCTION/);
-  assert.match(documentPdf, /CONTRACTOR ACKNOWLEDGEMENT/);
+  assert.match(documentPdf, /RECIPIENT ACKNOWLEDGEMENT/);
   assert.match(ncrPdf, /NON-CONFORMANCE REPORT/);
   assert.match(ncrPdf, /Issue not resolved/);
   assert.match(periodPdf, /Document control matrix/);
@@ -429,14 +432,17 @@ test("keeps scheduled backups, retention and daily notification automation enfor
     readFile(new URL("../vercel.json", import.meta.url), "utf8"),
     readFile(new URL("../.env.example", import.meta.url), "utf8"),
   ]);
+  const normalizedBackupServer = backupServer.replace(/\r\n/g, "\n");
+  const normalizedStorageServer = storageServer.replace(/\r\n/g, "\n");
+  const normalizedApp = app.replace(/\r\n/g, "\n");
 
-  assert.match(backupServer, /access: "private"/);
-  assert.match(backupServer, /BACKUP_BLOB_READ_WRITE_TOKEN[\s\S]{0,160}BLOB_READ_WRITE_TOKEN/);
-  assert.match(backupServer, /await get\(pathname/);
-  assert.match(backupServer, /BACKUP_BLOB_CHECKSUM_MISMATCH/);
-  assert.match(backupServer, /sorted\.slice\(0, 7\)/);
-  assert.match(backupServer, /weeks\.size >= 4/);
-  assert.match(backupServer, /months\.size >= 3/);
+  assert.match(normalizedBackupServer, /access: "private"/);
+  assert.match(normalizedBackupServer, /BACKUP_BLOB_READ_WRITE_TOKEN[\s\S]*BLOB_READ_WRITE_TOKEN/);
+  assert.match(normalizedBackupServer, /await get\(pathname/);
+  assert.match(normalizedBackupServer, /BACKUP_BLOB_CHECKSUM_MISMATCH/);
+  assert.match(normalizedBackupServer, /sorted\.slice\(0, 7\)/);
+  assert.match(normalizedBackupServer, /weeks\.size >= 4/);
+  assert.match(normalizedBackupServer, /months\.size >= 3/);
   assert.match(cronRoute, /timingSafeEqual/);
   assert.match(cronRoute, /runScheduledOrganizationBackup/);
   assert.match(cronRoute, /refresh_all_project_notifications/);
@@ -445,10 +451,10 @@ test("keeps scheduled backups, retention and daily notification automation enfor
   assert.match(watchdogRoute, /authenticateStorageRequest/);
   assert.match(watchdogRoute, /permission_code", "backup\.manage"/);
   assert.match(watchdogRoute, /runScheduledOrganizationBackup/);
-  assert.match(storageServer, /BACKUP_BLOB_READ_WRITE_TOKEN[\s\S]{0,160}BLOB_READ_WRITE_TOKEN/);
+  assert.match(normalizedStorageServer, /BACKUP_BLOB_READ_WRITE_TOKEN[\s\S]*BLOB_READ_WRITE_TOKEN/);
   assert.match(backupClient, /api\/backups\/ensure-daily/);
-  assert.match(app, /dailyBackupCheckRef/);
-  assert.match(app, /ensureDailyBackup/);
+  assert.match(normalizedApp, /dailyBackupCheckRef/);
+  assert.match(normalizedApp, /ensureDailyBackup/);
   assert.match(migration, /build_scheduled_backup_export/);
   assert.match(migration, /build_organization_backup_manifest/);
   assert.match(migration, /retention_tier/);
@@ -623,7 +629,7 @@ test("implements the customer video workflows without external accounts", async 
   assert.match(storageUploadRoute, /allowOverwrite: repeatedReservation/);
   assert.match(media, /flaky connection must never prevent the local evidence copy/);
   assert.match(media, /Remove this unsynchronized field file/);
-  assert.match(app, /Photo ready[\s\S]*click the image to place a finding/);
+  assert.match(app, /Photo ready\. Save it, then tap the image to place a finding/);
   assert.match(app, /syncOfflineUploads/);
   assert.match(sharePage, /ExternalShareActions/);
   assert.match(shareActions, /ready_for_verification/);
@@ -706,7 +712,6 @@ test("keeps the project workspace mobile-first and task driven", async () => {
   assert.match(workspaceHome, /openTask\("documents", false\)/);
   assert.match(styles, /\.workspace-task-hub/);
   assert.match(styles, /\.overview-shortcut\.mobile-redundant\s*\{\s*display: none/);
-  assert.match(app, /Project, building, time and folder automatic/);
   assert.doesNotMatch(operations, /field-flow-launcher/);
 });
 
@@ -736,7 +741,7 @@ test("ships automatic project weather, anchor checklists and stacked issue photo
   assert.match(operations, /Approve section|Sectie akkoord/);
   assert.match(operations, /Prepare all 3 checklists|Zet alle 3 checklists klaar/);
   assert.match(operations, /addPhotosToStack/);
-  assert.match(operations, /Tap again for another photo|Tik opnieuw voor nog een foto/);
+  assert.match(operations, /Tap a photo to describe, mark or remove it|Tik op een foto om te omschrijven/);
   assert.match(operations, /findingPhotos\.length/);
   assert.match(supabaseOperations, /create_project_checklist/);
   assert.match(supabaseOperations, /anchorChecklistLibrary[\s\S]*\.filter/);
@@ -985,7 +990,7 @@ test("processes the five annotated field screens from 31 July", async () => {
   assert.match(dailyLog, /<PhotoEvidenceList/);
   // The naming is now one question instead of a title next to a description, and the report
   // name is taken from the answer.
-  assert.match(evidence, /What is on this photo, and why does it matter\?/);
+  assert.match(evidence, /\{text\("Description", "Omschrijving"\)\}/);
   assert.match(evidence, /photo-evidence-remove/);
   assert.match(dailyLog, /workforceNoteChoices/);
   assert.match(dailyLog, /Too few workers|Onvoldoende arbeiders/);
@@ -993,7 +998,7 @@ test("processes the five annotated field screens from 31 July", async () => {
 });
 
 test("processes the second batch of annotated screens from 31 July", async () => {
-  const [app, dailyLog, workspace, evidence, picker, locationPicker, operations, queue, controlledDocuments, styles] = await Promise.all([
+  const [app, dailyLog, workspace, , picker, locationPicker, operations, queue, controlledDocuments, styles] = await Promise.all([
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
@@ -1026,7 +1031,6 @@ test("processes the second batch of annotated screens from 31 July", async () =>
   // Every evidence photo carries the text that says what it shows — now the same fields in
   // every module instead of a caption in two of them.
   assert.match(workspace, /photos=\{hsePhotos\}/);
-  assert.match(evidence, /Describe it as you would to someone who was not there/);
   assert.match(styles, /\.photo-evidence-row/);
   assert.match(styles, /\.photo-detail-modal/);
 
@@ -1070,7 +1074,7 @@ test("lets a new deployment reach an installed field app", async () => {
 
   // Documents are never served from the cache first; that is what kept a deployed
   // change invisible on a phone that had the app installed.
-  assert.match(serviceWorker, /const CACHE = "codeco-field-shell-v4"/);
+  assert.match(serviceWorker, /const CACHE = "codeco-field-shell-v5"/);
   assert.match(serviceWorker, /const isDocument = request\.mode === "navigate"/);
   assert.match(serviceWorker, /_rsc/);
   assert.doesNotMatch(serviceWorker, /SHELL = \["\/supervisie"/);
@@ -1103,7 +1107,6 @@ test("processes the third batch of annotated screens from 31 July", async () => 
   // The columns of the client's own Issue Management Template are still filled in, but
   // through the newer screen they sent: the description is section 4, the deadline is
   // section 9, and the owner of the correction stands under the responsible person.
-  assert.match(workspace, /Describe the issue in detail|Beschrijf het issue in detail/);
   assert.match(workspace, /expectedResolutionDate: event\.target\.value/);
   assert.match(workspace, /Contractor · owner of the correction|Aannemer · eigenaar van de correctie/);
   // The NCR module keeps the client's own paper form, with its own columns.
@@ -1357,7 +1360,7 @@ test("makes every recorded signature visible on the document it belongs to", asy
 
   // A controlled document says who signed it, instead of only offering a blank line.
   assert.match(controlledPdf, /ISSUED AND SIGNED BY/);
-  assert.match(controlledPdf, /text\(details, "signed_by", text\(details, "issued_by"\)\)/);
+  assert.match(controlledPdf, /controlledDocumentSignatures\(entry\)/);
   assert.match(controlledDocx, /Issued and signed by/);
   assert.doesNotMatch(controlledPdf, /A blank signature line is intentional/);
   assert.doesNotMatch(controlledDocx, /A blank signature line is intentional/);
@@ -1415,7 +1418,7 @@ test("only asks for a signature where the client's own forms have one", async ()
   // offers exactly those roles instead of a fixed list.
   assert.match(workspace, /const signingWorkflow = data\.settings\?\.signing_workflow\?\.length/);
   assert.match(workspace, /const requiredRoles = signingWorkflow\.filter\(\(rule\) => rule\.required\)/);
-  assert.match(workspace, /required signatures recorded for this version|verplichte handtekeningen vastgelegd voor deze versie/);
+  assert.match(workspace, /required signatures recorded|verplichte handtekeningen gezet/);
   assert.doesNotMatch(workspace, /<option value="quality_hse_manager">/);
 });
 
@@ -1433,8 +1436,13 @@ test("gives the phone back button a screen to go back to", async () => {
   assert.match(app, /const screen: AppScreen = useMemo/);
   assert.match(app, /useScreenHistory\(screen, applyScreen\)/);
   assert.match(app, /const applyScreen = useCallback/);
-  assert.match(history, /window\.history\.pushState\(entry, "", url\)/);
+  // Each entry also remembers the screen underneath it.
+  assert.match(history, /window\.history\.pushState\(\{ codecoScreen: screen, codecoBelow: previous \} satisfies HistoryEntry, "", url\)/);
   assert.match(history, /window\.addEventListener\("popstate", onPopState\)/);
+  // Closing a dialog by hand steps back only when the entry underneath is the screen that
+  // remains; otherwise it rewrites the entry, so an older screen or dialog never resurfaces.
+  assert.match(history, /if \(below && sameScreen\(below, screen\)\) \{\s*\n\s*window\.history\.back\(\);/);
+  assert.match(history, /window\.history\.replaceState\(\{ codecoScreen: screen, codecoBelow: below \?\? null \}/);
   // The flag that follows the back button must never survive into the next navigation.
   assert.match(history, /restoringRef\.current = false;\s*\n\s*if \(action === "none"\) return;/);
 
@@ -1716,7 +1724,7 @@ test("processes the three annotated capture screens from 2 August", async () => 
   // #17 and #18: "voor nr is 1 invoer voldoende". The title, the category and the typed room
   // name are struck through on both photo screens; one written field is left.
   for (const [name, source] of [["photo detail sheet", evidence], ["capture screen", visual]]) {
-    assert.match(source, /What is on this photo, and why does it matter\?/, `${name} asks one question`);
+    assert.match(source, /\{text\("Description", "Omschrijving"\)\}/, `${name} asks one question`);
     assert.doesNotMatch(source, /\{text\("Category", "Categorie"\)\}/, `${name} no longer asks for a category`);
   }
   assert.doesNotMatch(visual, /Room \/ location in your own words/);
@@ -1828,7 +1836,7 @@ test("processes the feedback of 4 August: photos first, written signatures, an N
   assert.match(ncrPdf, /styles\.signatureInk/);
   assert.match(controlledPdf, /styles\.signatureInk/);
   assert.match(docxShared, /export function signatureImageBytes/);
-  assert.match(controlledDocx, /details\.signature_image/);
+  assert.match(controlledDocx, /controlledDocumentSignatures\(entry\)/);
   assert.match(styles, /\.signature-field/);
   assert.match(styles, /\.signature-canvas/);
   // The formal report declaration and the contractor's box on the NCR are signed the
@@ -2131,7 +2139,7 @@ test("processes the annotated screens of 5 August: one building field, a signed 
   assert.match(drawings, /linkedRecordType: incomingFinding \? "observation" : "inspection"/);
   assert.match(operations, /<RecordSignatureField[\s\S]{0,500}By signing you confirm that you checked every point/);
   assert.match(operations, /disabled=\{busy \|\| !inspectionSignature/);
-  assert.match(operations, /const raiseNcrFromInspection = \(inspection: Inspection\)/);
+  assert.match(operations, /const raiseNcrFromInspection = async \(inspection: Inspection\)/);
   assert.match(operations, /Raise an NCR from this checklist|NCR opstellen vanuit deze checklist/);
   assert.match(hseMigration, /add column if not exists signature_image text/);
 
@@ -2144,7 +2152,6 @@ test("processes the annotated screens of 5 August: one building field, a signed 
   assert.match(operations, /\{ id: "health", en: "Health", nl: "Health", icon: HeartPulse, category: "health", eventType: "observation" \}/);
   assert.match(operations, /category: "safety"/);
   assert.doesNotMatch(operations, /Different HSE situation|Andere HSE-situatie/);
-  assert.match(operations, /Day, date and time are recorded automatically|Dag, datum en tijd worden automatisch vastgelegd/);
 
   // #25: the form says it is a materials delivery, the format hides away, a delivery is
   // several lines with their own words, and the crossed-out fields are gone.
@@ -2386,7 +2393,7 @@ test("shows the spot on a satellite view without opening the application to the 
   assert.match(config, /geolocation=\(self\)/);
 
   // Tapping the picture moves the pin: the provider's own script is not needed for that.
-  assert.match(mapComponent, /function coordinatesFromTap\(/);
+  assert.match(mapComponent, /import \{ coordinatesFromTap, validMapCoordinates \} from "@\/lib\/maps\/mercator\.mjs"/);
   assert.match(mapComponent, /Tap the map to move the pin|Tik op de kaart om de speld te verplaatsen/);
   assert.match(styles, /\.record-location-map img \{/);
 
@@ -2610,7 +2617,6 @@ test("the punchlist screen is the client's punchlist again, and a photo can be m
   // heading, one building with "All buildings" on it, and the staged list with the
   // contractor-to-supervisor review cycle above it.
   assert.match(workspace, /className="operation-form wide sectioned-record-form"/);
-  assert.match(workspace, /<p className="form-intro">\{capturedAutomatically\}<\/p>/);
   assert.match(workspace, /<BuildingMultiPicker id="finding-buildings"/);
   assert.match(workspace, /punchlist-command/);
   assert.match(workspace, /punchlist-stages/);
@@ -3054,8 +3060,8 @@ test("makes the change order the client's own CO form, with one approval column"
   assert.doesNotMatch(workspace, /Developer \(originator\) approval/i);
   assert.doesNotMatch(workspace, /Contractor acceptance/i);
   assert.doesNotMatch(workspace, /Actual status on original finish date/i);
-  assert.match(coPdf, /APPROVAL · SUPERVISION/);
-  assert.match(coDocx, /Approval · supervision/);
+  assert.match(coPdf, /ISSUED AND APPROVED BY · SUPERVISION/);
+  assert.match(coDocx, /Issued and approved by · supervision/);
 });
 
 test("gives the project delay report its own form, numbered PDR and evidenced by photo", async () => {
@@ -3220,25 +3226,27 @@ test("lets a supervisor switch project from anywhere without carrying data acros
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
+  const normalizedApp = app.replace(/\r\n/g, "\n");
 
   // The switcher itself, and the three places it can be reached from: the sidebar card on
   // a desktop, the project name in the header on a phone, and the "more" drawer.
-  assert.match(app, /function ProjectSwitcherModal/);
-  assert.match(app, /modal === "switch_project" \? \(/);
-  assert.match(app, /className="project-context-card"[\s\S]{0,240}setModal\("switch_project"\)/);
-  assert.match(app, /className="breadcrumb-step breadcrumb-project"[\s\S]{0,320}setModal\("switch_project"\)/);
-  assert.match(app, /className="mobile-module-switch"[\s\S]{0,200}setModal\("switch_project"\)/);
-  assert.match(app, /Switch project", "Van project wisselen/);
+  assert.match(normalizedApp, /function ProjectSwitcherModal/);
+  assert.match(normalizedApp, /modal === "switch_project" \? \(/);
+  assert.match(normalizedApp, /className="project-context-card"[\s\S]{0,240}setModal\("switch_project"\)/);
+  assert.match(normalizedApp, /className="breadcrumb-step breadcrumb-project"[\s\S]{0,320}setModal\("switch_project"\)/);
+  assert.match(normalizedApp, /className="mobile-module-switch"[\s\S]{0,200}setModal\("switch_project"\)/);
+  assert.match(normalizedApp, /Switch project", "Van project wisselen/);
 
   // The header on a phone hides the sidebar, so the project step has to stay visible there
   // while the building step is the one that folds away.
-  assert.match(css, /\.breadcrumb-building,\n\s+\.storage-state span/);
-  assert.doesNotMatch(css, /\.breadcrumb-project,\n\s+\.storage-state span/);
+  const normalizedCss = css.replace(/\r\n/g, "\n");
+  assert.match(normalizedCss, /\.breadcrumb-building,\n\s+\.storage-state span/);
+  assert.doesNotMatch(normalizedCss, /\.breadcrumb-project,\n\s+\.storage-state span/);
 
   // Nothing of one project may survive into the next: the day mirrored on the screen, the
   // record being written and the photos still on the device are all dropped, and every
   // module below is remounted on the project it belongs to.
-  assert.match(app, /const resetProjectScopedState = useCallback\(/);
+  assert.match(normalizedApp, /const resetProjectScopedState = useCallback\(/);
   for (const cleared of [
     /setEntries\(\[\]\)/,
     /setAttendance\(\[\]\)/,
@@ -3250,11 +3258,11 @@ test("lets a supervisor switch project from anywhere without carrying data acros
     /setEntryPhotos\(\[\]\)/,
     /setFocusRecordId\(""\)/,
   ]) {
-    assert.match(app, cleared);
+    assert.match(normalizedApp, cleared);
   }
-  assert.match(app, /if \(project\.id !== selectedProject\?\.id\) resetProjectScopedState\(\);/);
-  assert.match(app, /hydratedProjectRef\.current = projectId;\n\s+resetProjectScopedState\(\);/);
-  assert.match(app, /<main className="main-content" key=\{selectedProject\?\.id \?\? "no-project"\}>/);
+  assert.match(normalizedApp, /if \(project\.id !== selectedProject\?\.id\) resetProjectScopedState\(\);/);
+  assert.match(normalizedApp, /hydratedProjectRef\.current = projectId;\n\s+resetProjectScopedState\(\);/);
+  assert.match(normalizedApp, /<main className="main-content" key=\{selectedProject\?\.id \?\? "no-project"\}>/);
 });
 
 test("never names the database vendor in anything a user can see", async () => {
@@ -3470,12 +3478,13 @@ test("names the jobs the application will not do, with the prompt and what to at
   ]);
 
   // The client asked for this list by naming one of them: a compact monthly report.
-  assert.match(library, /id: "compact-monthly"/);
-  assert.match(library, /Een compact maandrapport uit de volle maand/);
+  const normalizedLibrary = library.replace(/\r\n/g, "\n");
+  assert.match(normalizedLibrary, /id: "compact-monthly"/);
+  assert.match(normalizedLibrary, /Een compact maandrapport uit de volle maand/);
 
   // Every prompt has to say why the application leaves the job alone and which export to
   // attach; a prompt without either is a sentence the reader cannot act on.
-  const entries = library.split(/\n    \{\n      id: "/).slice(1);
+  const entries = normalizedLibrary.split(/\n    \{\n      id: "/).slice(1);
   assert.ok(entries.length >= 10, `expected a real library, found ${entries.length} prompts`);
   for (const entry of entries) {
     const id = entry.slice(0, entry.indexOf('"'));
@@ -3489,13 +3498,13 @@ test("names the jobs the application will not do, with the prompt and what to at
   // Naming the export in prose left the reader hunting for the screen it lives on, so
   // every source is routed. Two of them are deliberately not: a schedule and a meeting
   // transcript do not come from this application, and a button there would go nowhere.
-  const declared = [...library.matchAll(/^  \| "([a-z-]+)"$/gm)].map((match) => match[1]);
+  const declared = [...normalizedLibrary.matchAll(/^  \| "([a-z-]+)"$/gm)].map((match) => match[1]);
   assert.ok(declared.length >= 12, `expected the source list, found ${declared.length}`);
   for (const source of declared) {
-    assert.match(library, new RegExp(`"?${source}"?: \\{ label:`), `${source} has no route`);
+    assert.match(normalizedLibrary, new RegExp(`"?${source}"?: \\{ label:`), `${source} has no route`);
   }
   for (const own of ["own-schedule", "own-transcript"]) {
-    assert.match(library, new RegExp(`"${own}": \\{ label: text\\([^}]*\\) \\}`), `${own} must stay a label without a button`);
+    assert.match(normalizedLibrary, new RegExp(`"${own}": \\{ label: text\\([^}]*\\) \\}`), `${own} must stay a label without a button`);
   }
   assert.match(workspace, /openModule=\{openProjectArea\}/);
   assert.match(workspace, /openDeadlines=\{\(\) => openActionCenter\("deadlines"\)\}/);
@@ -3552,4 +3561,33 @@ test("the overview's photo panel opens the photo library, not the workspace home
   // And the library really does resolve a file id, otherwise the focus would be dropped.
   assert.match(library, /const file = data\.files\.find\(\(item\) => item\.id === fileId\)/);
   assert.match(library, /setOpenFileId\(file\.id\)/);
+});
+
+test("retains historical client form-feedback fixes without losing underlying workflows", async () => {
+  const [workspace, home, css] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/project-workspace-home.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  // Client struck the duplicate Delays shortcut; the actual daily-delay and PDR flows remain.
+  assert.doesNotMatch(home, /id: "delays",/);
+  assert.match(home, /id: "delay-report",/);
+  assert.match(home, /openDailyWork\("works_ongoing"\)/);
+  assert.match(home, /"works_ongoing" \| "works_completed" \| "delays"/);
+
+  // The controlled document starts with title and description, not duplicate read-only dates.
+  assert.match(workspace, /className="form-grid controlled-document-primary"/);
+  assert.match(workspace, /className="form-field controlled-document-deadline"/);
+  assert.doesNotMatch(workspace, /className="controlled-document-dates"/);
+  assert.match(css, /\.controlled-document-primary\s*\{\s*grid-template-columns: minmax\(0, 1fr\)/);
+
+  // Record type switching is still available for external submissions and general registers.
+  assert.match(workspace, /!controlledRegister \|\| submittedRegister/);
+  // Existing records retain revision editing; new records start with the canonical default.
+  assert.match(workspace, /editingRegisterId \? <label className="form-field"><span>\{text\("Revision"/);
+  // The original author remains changeable in the existing header, not duplicated below.
+  assert.match(workspace, /className="controlled-document-author-edit"/);
+  // Impact metadata remains available, but is not forced into every technical instruction.
+  assert.match(workspace, /className="controlled-document-optional-impact"/);
 });

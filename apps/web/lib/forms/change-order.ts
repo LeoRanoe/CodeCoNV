@@ -111,6 +111,34 @@ export function changeOrderFinishDate(originalFinishDate: string, extensionDays:
   return moved.toISOString().slice(0, 10);
 }
 
+/** The form state of a stored change order, so editing one never saves it back empty. */
+export function changeOrderFromDetails(details: Record<string, unknown>): ChangeOrderState {
+  const text = (key: string) => (typeof details[key] === "string" ? (details[key] as string) : "");
+  return {
+    ...emptyChangeOrder,
+    changeOrderType: text("change_order_type"),
+    reason: text("change_reason"),
+    requestedBy: text("requested_by"),
+    scopeAreas: Array.isArray(details.scope_areas) ? (details.scope_areas as unknown[]).map(String) : [],
+    scopeAreaOther: text("scope_area_other"),
+    scopeDetails: text("scope_details"),
+    affectsSchedule: details.affects_schedule === true,
+    originalFinishDate: text("original_finish_date"),
+    newExpectedFinishDate: text("new_expected_finish_date"),
+    extensionDays: String(details.extension_days ?? "0"),
+    contractorRepresentative: text("contractor_representative"),
+    contractorPosition: text("contractor_position"),
+    contractorRemarks: text("contractor_remarks"),
+    contractorSignedBy: text("contractor_signed_by"),
+    contractorSignedAt: text("contractor_signed_at"),
+    contractorSignatureImage: text("contractor_signature_image"),
+    supervisionName: text("supervision_name"),
+    supervisionSignedBy: text("supervision_signed_by"),
+    supervisionSignedAt: text("supervision_signed_at"),
+    supervisionSignatureImage: text("supervision_signature_image"),
+  };
+}
+
 /** What the register, the reports and the printed form read back. */
 export function changeOrderDetails(state: ChangeOrderState) {
   const scheduled = state.affectsSchedule;

@@ -6,6 +6,7 @@ import { resolveDefaultBuildingId, type BuildingOption } from "@/app/building-pi
 import { type HandwrittenSignature } from "@/app/signature-pad";
 import { RecordFormSection, RecordSignatureField } from "@/app/forms/record-form-shell";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
+import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
 import {
   workforceByDiscipline,
@@ -122,10 +123,7 @@ export function WorkforceRegister({
       <div className="empty-list-state workforce-empty">
         <Users size={22} />
         <strong>{text("No project parties configured yet", "Nog geen projectpartijen ingericht")}</strong>
-        <span>{text(
-          "An administrator adds the contractor, the subcontractors and the trades under Management → structure and parties. Workforce can be recorded from that moment on.",
-          "Een beheerder voegt de aannemer, de onderaannemers en de disciplines toe via Management → structuur en partijen. Vanaf dat moment kan bezetting worden vastgelegd.",
-        )}</span>
+        <span>{text("No parties yet. An administrator adds them under Management → Structure and parties.", "Nog geen partijen. Een beheerder voegt ze toe onder Management → Structuur en partijen.")}</span>
       </div>
     );
   }
@@ -190,10 +188,7 @@ export function WorkforceRegister({
           </div>
         ))}
         {!rows.length ? (
-          <p className="form-helper">{text(
-            "Nobody recorded yet. Choose a party and a trade above and add the people who are on site today.",
-            "Nog niemand vastgelegd. Kies hierboven een partij en een discipline en voeg toe wie er vandaag op de bouwplaats is.",
-          )}</p>
+          <p className="form-helper">{text("Nobody recorded yet.", "Nog niemand vastgelegd.")}</p>
         ) : null}
       </div>
     </>
@@ -280,6 +275,8 @@ export function WorkforceModal({
   ) => void | Promise<void>;
 }) {
   const { text } = useLanguage();
+  // Counting the crew is attendance.manage; everyone else may look but not change.
+  const readOnly = !useProjectPermissions().can("attendance.manage");
   const firstBuildingId = resolveDefaultBuildingId(buildings, defaultBuildingId);
   const [buildingId, setBuildingId] = useState(firstBuildingId);
   /** The supervisor who counted the crew, signed on the register itself. */
@@ -403,12 +400,12 @@ export function WorkforceModal({
           <div>
             <span className="record-number">{text("Workforce", "Workforce")}</span>
             <h2 id="workforce-title">{text("Who is on site today?", "Wie is er vandaag op de bouwplaats?")}</h2>
-            <p>{text("Per contractor and per trade. The totals travel into the day report by themselves.", "Per aannemer en per discipline. De totalen komen vanzelf in het dagrapport terecht.")}</p>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
 
         <div className="modal-body workforce-body">
+          <fieldset className="workforce-fieldset" disabled={readOnly}>
           {/* The location and weather tiles that used to stand here were struck through on
               the client's own screenshot. What is left is the number they left standing. */}
           <div className="workforce-headline">
@@ -441,7 +438,6 @@ export function WorkforceModal({
             icon={<Users size={17} />}
             step={1}
             title={text("Workforce by trade", "Bezetting per discipline")}
-            subtitle={text("Choose the trade that is really on site and set today's headcount.", "Kies de discipline die er echt is en zet het aantal van vandaag.")}
             count={workforceTotal(rows)}
             action={(
               <div className="workforce-toolbar">
@@ -471,7 +467,7 @@ export function WorkforceModal({
               icon={<UserCheck size={17} />}
               step={2}
               title={text("Visitors", "Bezoekers")}
-              subtitle={text("On site, but not manning the work. They stay outside every headcount.", "Wel op de bouwplaats, maar niet aan het werk. Ze tellen in geen enkel totaal mee.")}
+              subtitle={text("Not counted in the headcount.", "Niet meegeteld in de bezetting.")}
               count={visitors.length}
             >
               <div className="workforce-add">
@@ -555,7 +551,6 @@ export function WorkforceModal({
               icon={<AlertTriangle size={17} />}
               step={stepDeviations}
               title={text("Deviating workforce", "Afwijkende bezetting")}
-              subtitle={text("Say why, so the report explains the number instead of only stating it.", "Zeg waarom, zodat het rapport het getal uitlegt in plaats van het alleen te noemen.")}
             >
               <ul className="workforce-deviation-list">
                 {deviations.map((deviation) => (
@@ -596,12 +591,9 @@ export function WorkforceModal({
             )}
           />
           </div>
-          <div className="modal-actions">
-            <span className="form-note">
-              <Check size={13} /> {noteMissing
-                ? text("Explain the deviation to confirm.", "Licht de afwijking toe om te bevestigen.")
-                : text("Project, building, date and report are linked automatically.", "Project, gebouw, datum en rapport worden automatisch gekoppeld.")}
-            </span>
+          </fieldset>
+          {readOnly ? null : <div className="modal-actions">
+            {noteMissing ? <span className="form-note">{text("Explain the deviation to confirm.", "Licht de afwijking toe om te bevestigen.")}</span> : null}
             <button
               className="primary-button"
               type="button"
@@ -616,7 +608,7 @@ export function WorkforceModal({
                 ? text(`Confirm attendance · ${filledBuildings.length} buildings`, `Aanwezigheid bevestigen · ${filledBuildings.length} gebouwen`)
                 : text("Confirm attendance", "Aanwezigheid bevestigen")}
             </button>
-          </div>
+          </div>}
         </div>
       </section>
     </div>

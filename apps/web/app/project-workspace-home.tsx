@@ -21,15 +21,16 @@ import {
   Search,
   ShieldAlert,
   ShieldCheck,
-  TimerOff,
   Users,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
 import { filterRecordDirectory } from "@/lib/records/record-directory.mjs";
 import type { BuildingOption } from "@/app/building-picker";
+import { codeText } from "@/lib/status-labels";
 
 type WorkspaceDestination = "inspections" | "findings" | "ncr" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files" | "assets";
 
@@ -78,7 +79,6 @@ type ProjectWorkspaceHomeProps = {
 type WorkspaceTile = {
   id: string;
   label: string;
-  copy: string;
   icon: LucideIcon;
   tone: "orange" | "blue" | "teal" | "green" | "purple" | "slate";
   count?: number;
@@ -103,6 +103,7 @@ export function ProjectWorkspaceHome({
   openManagement,
 }: ProjectWorkspaceHomeProps) {
   const { locale, text } = useLanguage();
+  const permissions = useProjectPermissions();
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState({ kind: "", buildingId: "", status: "", dateFrom: "", dateTo: "", author: "" });
   /* Open where there is room for them, folded away on a phone. Read once, at mount. */
@@ -116,7 +117,6 @@ export function ProjectWorkspaceHome({
       // for. It opens the photo library instead: the photos that are already there, with
       // taking one, uploading one and a 360° upload as the choices on top of them.
       label: text("Photos", "Foto's"),
-      copy: text("Library, camera, upload and 360°", "Bibliotheek, camera, upload en 360°"),
       icon: Camera,
       tone: "blue",
       count: counts.photos,
@@ -126,7 +126,6 @@ export function ProjectWorkspaceHome({
     {
       id: "works-ongoing",
       label: text("Works ongoing", "Werkzaamheden gaande"),
-      copy: text("Work in progress visible to the owner", "Lopend werk zichtbaar voor de eigenaar"),
       icon: HardHat,
       tone: "orange",
       action: () => openDailyWork("works_ongoing"),
@@ -134,7 +133,6 @@ export function ProjectWorkspaceHome({
     {
       id: "works-completed",
       label: text("Works completed", "Werkzaamheden afgerond"),
-      copy: text("Completed work with date and context", "Afgerond werk met datum en context"),
       icon: CheckCircle2,
       tone: "green",
       action: () => openDailyWork("works_completed"),
@@ -142,27 +140,16 @@ export function ProjectWorkspaceHome({
     {
       id: "workforce",
       label: text("Workforce", "Workforce"),
-      copy: text("Attendance by contractor and trade", "Bezetting per aannemer en vakdiscipline"),
       icon: Users,
       tone: "teal",
       // §4.3 of the product plan: the workforce register, not the day's work list.
       action: openWorkforce,
     },
     {
-      id: "delays",
-      label: text("Delays", "Vertragingen"),
-      copy: text("Cause, time lost and schedule effect", "Oorzaak, tijdverlies en planningimpact"),
-      icon: TimerOff,
-      tone: "orange",
-      action: () => openDailyWork("delays"),
-    },
-    {
-      /* The day's lost hours are recorded in the daily closeout, above. This is the other
-         kind of delay: the one that moves the finish date of the works, and that the
-         client's own PDR form has to evidence, have acknowledged and close out. */
+      /* Daily delays remain available in the daily work register. The PDR is the
+         separate formal report for schedule changes that need evidence and sign-off. */
       id: "delay-report",
       label: text("Project Delay Report (PDR)", "Vertragingsrapport (PDR)"),
-      copy: text("Revised finish date, evidenced and acknowledged", "Herziene einddatum, onderbouwd en erkend"),
       icon: CalendarClock,
       tone: "orange",
       action: () => openTask("registers", false, { registerType: "delay_report" }),
@@ -170,7 +157,6 @@ export function ProjectWorkspaceHome({
     {
       id: "issues",
       label: text("Issues", "Issues"),
-      copy: text("Coordination issues, risks and follow-up", "Coördinatiepunten, risico's en opvolging"),
       icon: AlertTriangle,
       tone: "orange",
       count: counts.issues,
@@ -180,7 +166,6 @@ export function ProjectWorkspaceHome({
     {
       id: "hse",
       label: "HSE",
-      copy: text("Safety observations and controls", "Veiligheidsobservaties en maatregelen"),
       icon: ShieldCheck,
       tone: "green",
       count: counts.hse,
@@ -190,7 +175,6 @@ export function ProjectWorkspaceHome({
     {
       id: "materials-delivery",
       label: text("Materials delivery", "Materiaallevering"),
-      copy: text("Quantity, condition and certificates", "Hoeveelheid, staat en certificaten"),
       icon: PackageCheck,
       tone: "teal",
       count: counts.deliveries,
@@ -199,7 +183,6 @@ export function ProjectWorkspaceHome({
     {
       id: "inspections",
       label: text("Inspections", "Inspecties"),
-      copy: text("Checklist, result and supporting evidence", "Checklist, resultaat en onderbouwend bewijs"),
       icon: ClipboardCheck,
       tone: "purple",
       count: counts.inspections,
@@ -209,7 +192,6 @@ export function ProjectWorkspaceHome({
     {
       id: "technical-instructions",
       label: text("Technical instructions", "Technische instructies"),
-      copy: text("Controlled instruction with deadline", "Beheerde instructie met deadline"),
       icon: Wrench,
       tone: "blue",
       action: () => openTask("registers", false, { registerType: "technical_instruction" }),
@@ -217,7 +199,6 @@ export function ProjectWorkspaceHome({
     {
       id: "change-order",
       label: text("Change order (CO)", "Change order (CO)"),
-      copy: text("Controlled scope, cost and schedule change", "Beheerde scope-, kosten- en planningswijziging"),
       icon: FileCheck2,
       tone: "purple",
       action: () => openTask("registers", false, { registerType: "change_order" }),
@@ -225,7 +206,6 @@ export function ProjectWorkspaceHome({
     {
       id: "ncr",
       label: "NCR",
-      copy: text("Formal non-conformance and close-out", "Formele afwijking met correctie en afsluiting"),
       icon: ShieldAlert,
       tone: "orange",
       count: counts.ncr,
@@ -238,7 +218,6 @@ export function ProjectWorkspaceHome({
          already keeps. It moved to the supporting tools, below the grid. */
       id: "lessons-learned",
       label: text("Lessons Learned (LL)", "Geleerde lessen (LL)"),
-      copy: text("Capture, learn and improve", "Vastleggen, leren en verbeteren"),
       icon: Lightbulb,
       tone: "purple",
       action: () => openTask("registers", false, { registerType: "lessons_learned" }),
@@ -246,7 +225,6 @@ export function ProjectWorkspaceHome({
     {
       id: "hse-incident",
       label: text("HSE incident", "HSE-incident"),
-      copy: text("Incident, near miss or stop-work record", "Incident, near miss of werkstop registreren"),
       icon: ShieldAlert,
       tone: "orange",
       module: "hse",
@@ -255,7 +233,6 @@ export function ProjectWorkspaceHome({
     {
       id: "agreements-made",
       label: text("Agreements Made", "Gemaakte afspraken"),
-      copy: text("Decision, owner, deadline and audit trail", "Besluit, eigenaar, deadline en historie"),
       icon: MessageSquareText,
       tone: "blue",
       count: counts.agreements,
@@ -263,10 +240,21 @@ export function ProjectWorkspaceHome({
     },
   ], [counts, openDailyWork, openFinding, openPhotoLibrary, openTask, openWorkforce, text]);
 
+  // A tile opens a module the user must be able to read; otherwise it is an empty page.
+  const readPermission: Record<string, string> = {
+    photos: "files.read",
+    workforce: "attendance.read",
+    issues: "findings.read",
+    ncr: "findings.read",
+    hse: "hse.read",
+    "hse-incident": "hse.read",
+    inspections: "inspections.read",
+  };
   const visibleTiles = tiles.filter((tile) => {
     if (!moduleEnabled(tile.module)) return false;
+    if (!permissions.can(readPermission[tile.id] ?? "records.read")) return false;
     const term = query.trim().toLocaleLowerCase(locale);
-    return !term || `${tile.label} ${tile.copy}`.toLocaleLowerCase(locale).includes(term);
+    return !term || tile.label.toLocaleLowerCase(locale).includes(term);
   });
 
   /**
@@ -310,9 +298,7 @@ export function ProjectWorkspaceHome({
     <section className="workspace-launcher" aria-labelledby="workspace-launcher-title">
       <div className="workspace-launcher-toolbar">
         <div>
-          <span>{text("Project workspace", "Projectwerkruimte")}</span>
-          <h2 id="workspace-launcher-title">{text("Field records and project control", "Veldregistratie en projectsturing")}</h2>
-          <p>{text("The workspace follows the client's reporting structure. Formal contractor submissions are handled under Management.", "De werkruimte volgt de rapportstructuur van de klant. Formele aannemersindieningen worden onder Management afgehandeld.")}</p>
+          <h2 className="sr-only" id="workspace-launcher-title">{text("Field records and project control", "Veldregistratie en projectsturing")}</h2>
         </div>
         <label className="workspace-launcher-search">
           <Search size={16} />
@@ -349,7 +335,7 @@ export function ProjectWorkspaceHome({
           {group.map((record) => (
             <button type="button" onClick={() => openRecord(record.tab, record.id, record.kind)} key={`${record.kind}:${record.id}`}>
               <span className="workspace-code-chip">{record.code || text("no code yet", "nog geen code")}</span>
-              <span><strong>{record.title}</strong><small>{kindLabels[record.kind] ?? record.kind}{record.subtitle ? ` · ${record.subtitle.replaceAll("_", " ")}` : ""}</small></span>
+              <span><strong>{record.title}</strong><small>{kindLabels[record.kind] ?? record.kind}{record.subtitle ? ` · ${codeText(record.subtitle, text)}` : ""}</small></span>
               <ArrowRight size={15} />
             </button>
           ))}</section>)}
@@ -364,7 +350,6 @@ export function ProjectWorkspaceHome({
               <span className="workspace-launcher-icon"><Icon size={23} /></span>
               {typeof tile.count === "number" ? <span className="workspace-launcher-count">{tile.count}</span> : null}
               <strong>{tile.label}</strong>
-              <small>{tile.copy}</small>
               <ArrowRight className="workspace-launcher-arrow" size={15} />
             </button>
           );

@@ -53,3 +53,60 @@ jobs:
       - name: Stop local Supabase
         if: always()
         run: npx --yes supabase@2.109.1 stop --no-backup
+
+  e2e:
+    name: Critical browser flows (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI: "1"
+      CODECO_E2E_CHANNEL: chromium
+      # A release run must not pass by skipping: missing fixtures fail the job.
+      CODECO_E2E_REQUIRED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install web dependencies
+        working-directory: apps/web
+        run: npm ci
+      - name: Install Chromium
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+      - name: Start local Supabase from an empty database
+        run: npx --yes supabase@2.109.1 start
+      - name: Seed local fixture accounts and point the app at the local stack
+        run: |
+          eval "$(npx --yes supabase@2.109.1 status -o env | grep -E '^(API_URL|PUBLISHABLE_KEY|SECRET_KEY)=')"
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$PUBLISHABLE_KEY"
+            echo "SUPABASE_SECRET_KEY=$SECRET_KEY"
+            echo "BLOB_READ_WRITE_TOKEN="
+            echo "BACKUP_BLOB_READ_WRITE_TOKEN="
+            echo "NEXT_PUBLIC_SITE_URL=http://127.0.0.1:3000"
+          } > apps/web/.env.production.local
+          cd apps/web
+          CODECO_E2E_SUPABASE_URL=$API_URL CODECO_E2E_PUBLISHABLE_KEY=$PUBLISHABLE_KEY CODECO_E2E_SECRET_KEY=$SECRET_KEY \
+            node tests/e2e/seed-local-fixtures.mjs | grep -E '^CODECO_E2E_' >> "$GITHUB_ENV"
+          # The two other roles (client, contractor), without demo records.
+          CODECO_E2E_DEMO_DATA=0 CODECO_E2E_SUPABASE_URL=$API_URL CODECO_E2E_PUBLISHABLE_KEY=$PUBLISHABLE_KEY CODECO_E2E_SECRET_KEY=$SECRET_KEY \
+            node tests/e2e/seed-ui-demo-data.mjs | grep -E '^CODECO_E2E_' >> "$GITHUB_ENV"
+      - name: Run browser flows
+        working-directory: apps/web
+        # media-and-sharing needs sample media files and a private Blob store; it is run
+        # against a preview deployment, not in this job (see docs/operations/production-readiness.md).
+        run: npx playwright test controlled-document two-party-signature inspection-workflow day-report-lifecycle dialogs role-views mobile-forms field-readiness layout-hygiene offline-account-isolation offline-app offline-create-and-sync offline-records responsive-audit responsive-workspace viewport-walk
+      - name: Upload Playwright traces, screenshots and videos
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: apps/web/test-results
+          retention-days: 14
+      - name: Stop local Supabase
+        if: always()
+        run: npx --yes supabase@2.109.1 stop --no-backup

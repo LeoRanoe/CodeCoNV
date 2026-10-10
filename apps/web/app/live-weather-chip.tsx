@@ -42,7 +42,7 @@ export function LiveWeatherChip({ location }: { location: string }) {
         ? `${conditionLabel} · ${weather.temperatureC}°C · ${text("feels like", "gevoelstemperatuur")} ${weather.apparentTemperatureC}°C · ${text("wind", "wind")} ${weather.windSpeedKph} km/h · ${text("rain", "regen")} ${weather.precipitationMm} mm · ${weather.resolvedLocation}`
         : error || text("Load live weather", "Laad actueel weer")}
       aria-label={weather
-        ? text(`Live weather: ${conditionLabel}, ${weather.temperatureC} degrees. Refresh.`, `Actueel weer: ${conditionLabel}, ${weather.temperatureC} graden. Ververs.`)
+        ? text(`${weather.temperatureC}°C. Live weather: ${conditionLabel}. Refresh.`, `${weather.temperatureC}°C. Actueel weer: ${conditionLabel}. Ververs.`)
         : text("Refresh live weather", "Ververs actueel weer")}
     >
       {loading && !weather ? <RefreshCw className="spin" size={15} /> : <Icon size={15} />}

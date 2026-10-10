@@ -1,7 +1,7 @@
 begin;
 set local search_path = extensions, pgtap, public;
 
-select plan(58);
+select plan(64);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at) values
   ('00000000-0000-0000-0000-0000000000a1', 'authenticated', 'authenticated', 'admin@example.test', now(), now()),
@@ -149,6 +149,30 @@ insert into public.day_closeouts (
   '00000000-0000-0000-0000-0000000000a1'
 );
 
+-- Runs one write statement as the current role and reports how many rows it touched;
+-- a statement refused by a grant, RLS or a guard trigger touched none.
+create function pg_temp.rows_changed(p_sql text)
+returns bigint
+language plpgsql
+as $fn$
+declare
+  v_count bigint;
+begin
+  execute p_sql;
+  get diagnostics v_count = row_count;
+  return v_count;
+exception when insufficient_privilege then
+  return 0;
+end;
+$fn$;
+
+-- The canonical owner permission set. Any write right appearing here is a regression.
+select is(
+  array(select permission_code::text from public.role_permissions where role_id = '11000000-0000-0000-0000-000000000004' order by 1),
+  array['actions.read','attendance.read','audit.read','files.read','findings.read','hse.read','inspections.read','records.read','reports.read','reports.readapproved','reports.sign','submissions.read','submissions.review']::text[],
+  'the owner role is read-only apart from signing and reviewing submissions'
+);
+
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}';
 select is((select count(*) from public.projects), 1::bigint, 'organization admin sees the project without project membership');
@@ -177,13 +201,42 @@ select is((select count(*) from public.day_closeouts), 0::bigint, 'contractor ca
 select is((select count(*) from public.action_updates), 1::bigint, 'assigned contractor sees action history');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a4","role":"authenticated"}';
-select is((select count(*) from public.site_registrations), 0::bigint, 'client cannot see internal registrations');
-select is((select count(*) from public.day_reports), 1::bigint, 'client sees only the approved report');
-select is((select count(*) from public.report_versions), 1::bigint, 'client sees the immutable version of the approved report');
-select is((select count(*) from public.audit_events), 0::bigint, 'client cannot see the internal audit trail');
-select is((select count(*) from public.day_start_checks), 0::bigint, 'client cannot see internal project-start answers');
-select is((select count(*) from public.day_closeouts), 0::bigint, 'client cannot see the editable daily closeout');
-select is((select count(*) from public.action_updates), 0::bigint, 'client cannot see internal action history');
+-- The client project role is the owner / opdrachtgever (202607300006): read-only
+-- visibility into the daily work, plus signing and reviewing submissions. Never writes.
+select is((select count(*) from public.site_registrations), 1::bigint, 'owner can read site registrations');
+select is((select count(*) from public.day_reports), 2::bigint, 'owner can follow draft and approved reports');
+select is((select count(*) from public.report_versions), 1::bigint, 'owner sees the immutable version of the approved report');
+select cmp_ok((select count(*) from public.audit_events), '>', 0::bigint, 'owner can read the audit trail');
+select is((select count(*) from public.day_start_checks), 1::bigint, 'owner can read project-start answers');
+select is((select count(*) from public.day_closeouts), 1::bigint, 'owner can read the daily closeout');
+select is((select count(*) from public.action_updates), 1::bigint, 'owner can read action history');
+select is(
+  pg_temp.rows_changed($$update public.day_closeouts set day_summary = 'Gewijzigd door de opdrachtgever zonder recht.'$$),
+  0::bigint,
+  'owner cannot edit the daily closeout'
+);
+select is(
+  pg_temp.rows_changed($$update public.site_registrations set title = 'Gewijzigd door opdrachtgever'$$),
+  0::bigint,
+  'owner cannot change site registrations'
+);
+select is(
+  pg_temp.rows_changed($$insert into public.attendance_entries (organization_id, project_id, building_id, day_report_id, party_id, discipline, shift_start, shift_end, headcount, idempotency_key, created_by)
+    values ('10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000001', 'Afbouw', '07:00', '16:00', 3, 'owner-attendance', '00000000-0000-0000-0000-0000000000a4')$$),
+  0::bigint,
+  'owner cannot record attendance'
+);
+select is(
+  pg_temp.rows_changed($$delete from public.audit_events$$),
+  0::bigint,
+  'owner cannot remove audit history'
+);
+select is(
+  pg_temp.rows_changed($$insert into public.project_member_roles (organization_id, project_id, membership_id, role_id)
+    values ('10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '21000000-0000-0000-0000-000000000004', '11000000-0000-0000-0000-000000000006')$$),
+  0::bigint,
+  'owner cannot grant themselves a management role'
+);
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a6","role":"authenticated"}';
 select is((select count(*) from public.site_registrations), 1::bigint, 'lead supervisor sees internal registrations');

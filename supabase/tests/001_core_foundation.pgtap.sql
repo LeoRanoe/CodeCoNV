@@ -241,9 +241,9 @@ select ok(
     where namespace.nspname = 'public'
       and relation.relname = 'attendance_entries'
       and constraint_record.contype = 'u'
-      and pg_get_constraintdef(constraint_record.oid) = 'UNIQUE (day_report_id, party_id, discipline)'
+      and pg_get_constraintdef(constraint_record.oid) = 'UNIQUE (day_report_id, building_id, party_id, discipline)'
   ),
-  'attendance can be safely retried per report, party and discipline'
+  'attendance can be safely retried per report, building, party and discipline'
 );
 
 select is(

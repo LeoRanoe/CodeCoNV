@@ -128,28 +128,13 @@ export function getProjectStartAutomation(
   language: "en" | "nl" = "en",
 ): AutomationRule[] {
   const text = (english: string, dutch: string) => language === "en" ? english : dutch;
-  const rules: AutomationRule[] = [
-    {
-      id: "AUTO-DR-01",
-      title: text("Prepare draft daily report", "Conceptdagrapport klaarzetten"),
-      action: text("Report number, project, building, date and supervisor are prefilled.", "Rapportnummer, project, gebouw, datum en supervisor worden vooraf ingevuld."),
-      source: text("New workday", "Nieuwe werkdag"),
-      tone: "success",
-    },
-    {
-      id: "AUTO-OPEN-01",
-      title: text("Load open matters", "Open zaken ophalen"),
-      action: text("Open actions, critical findings and planned inspections are shown as a start list.", "Open acties, kritieke bevindingen en geplande inspecties worden als startlijst getoond."),
-      source: text("Report started", "Rapport gestart"),
-      tone: "info",
-    },
-  ];
+  const rules: AutomationRule[] = [];
 
   if (answers.weatherCondition === "rain" || answers.weatherCondition === "heavy_rain") {
     rules.push({
       id: "AUTO-WEATHER-01",
       title: text("Actively monitor weather delay", "Weervertraging actief bewaken"),
-      action: text("The supervisor receives a time-loss question and the plan is checked for rain risk.", "De supervisor krijgt een tijdverliesvraag en de planning wordt op regenrisico gecontroleerd."),
+      action: text("Time-loss question added; plan checked for rain risk.", "Tijdverliesvraag toegevoegd; planning gecontroleerd op regenrisico."),
       source: text("Weather = rain", "Weer = regen"),
       tone: answers.weatherCondition === "heavy_rain" ? "critical" : "warning",
     });
@@ -159,7 +144,7 @@ export function getProjectStartAutomation(
     rules.push({
       id: "AUTO-HSE-01",
       title: text("HSE start check required", "HSE-startcheck verplicht"),
-      action: text("PPE, scaffolding, fall protection, lifting, permits and toolbox must be confirmed by a person.", "PBM, steiger, valbeveiliging, hijswerk, vergunning en toolbox moeten menselijk worden bevestigd."),
+      action: text("PPE, scaffolding, fall protection, lifting, permits and toolbox must be confirmed.", "PBM, steiger, valbeveiliging, hijswerk, vergunning en toolbox moeten worden bevestigd."),
       source: answers.windCondition === "strong" ? text("Strong wind", "Sterke wind") : text("High-risk work = yes", "Hoog-risicowerk = ja"),
       tone: "critical",
     });
@@ -169,7 +154,7 @@ export function getProjectStartAutomation(
     rules.push({
       id: "AUTO-CONCRETE-01",
       title: text("Prepare concrete inspection", "Betoncontrole klaarzetten"),
-      action: text("Reinforcement/formwork, delivery, slump/cube test and pour photos are suggested.", "Wapening/bekisting, levering, slump/cube test en stortfoto's worden voorgesteld."),
+      action: text("Suggested: reinforcement/formwork, delivery, slump/cube test, pour photos.", "Voorgesteld: wapening/bekisting, levering, slump/kubustest, stortfoto's."),
       source: text("Concrete work = yes", "Betonwerk = ja"),
       tone: "warning",
     });
@@ -179,7 +164,7 @@ export function getProjectStartAutomation(
     rules.push({
       id: "AUTO-INSPECTION-01",
       title: text("Add inspection to day plan", "Inspectie aan dagplan toevoegen"),
-      action: text("The relevant project-specific checklist is prepared; the supervisor selects and confirms it.", "De relevante projectspecifieke checklist wordt klaargezet; de supervisor kiest en bevestigt deze."),
+      action: text("Choose and confirm the project checklist.", "Kies en bevestig de projectchecklist."),
       source: text("Inspection planned = yes", "Inspectie gepland = ja"),
       tone: "info",
     });
@@ -189,7 +174,7 @@ export function getProjectStartAutomation(
     rules.push({
       id: "AUTO-PERMIT-01",
       title: text("Work permit is missing", "Werkvergunning ontbreekt"),
-      action: text("A critical warning and follow-up action are proposed; the app does not approve work autonomously.", "Een kritieke waarschuwing en opvolgactie worden voorgesteld; de app keurt het werk niet autonoom goed."),
+      action: text("Critical warning and follow-up action proposed. Work is not approved automatically.", "Kritieke waarschuwing en opvolgactie voorgesteld. Werk wordt niet automatisch goedgekeurd."),
       source: text("Work permit = missing", "Werkvergunning = ontbreekt"),
       tone: "critical",
     });
@@ -199,7 +184,7 @@ export function getProjectStartAutomation(
     rules.push({
       id: "AUTO-DRAWING-01",
       title: text("Approved drawing is missing", "Goedgekeurde tekening ontbreekt"),
-      action: text("A document action is proposed and the notice must be confirmed before project start.", "Een documentactie wordt voorgesteld en de melding moet vóór projectstart worden bevestigd."),
+      action: text("Document action proposed. Confirm the notice before project start.", "Documentactie voorgesteld. Bevestig de melding vóór projectstart."),
       source: text("Drawing status = missing", "Tekeningstatus = ontbreekt"),
       tone: "critical",
     });

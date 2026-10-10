@@ -38,6 +38,7 @@ import {
   Share,
   ShieldCheck,
   TimerOff,
+  Trash2,
   Users,
   UserPlus,
   Wrench,
@@ -50,6 +51,7 @@ import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { ALL_BUILDINGS, BuildingMultiPicker, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { actionStatusLabels as canonicalActionStatusLabels, labelMap, statusText, priorityText } from "@/lib/status-labels";
 import { screenFromSearch, useScreenHistory, type AppScreen } from "@/lib/navigation/app-history";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { photoEvidenceLine, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
@@ -64,7 +66,9 @@ import { OperationalWorkspace } from "@/app/operational-workspace";
 import type { ActionCenterView } from "@/app/project-action-center";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { ensureDailyBackup } from "@/lib/backups/client";
+import { constructionDisciplines } from "@/lib/forms/disciplines";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
+import { ProjectPermissionsProvider, useProjectPermissionsQuery } from "@/lib/permissions/project-permissions";
 import { signatureFromDetails } from "@/lib/signatures/handwritten-signature.mjs";
 import { startCompassWatch } from "@/lib/images/compass";
 import { WorkforceModal } from "@/app/workforce-register";
@@ -78,7 +82,16 @@ import { withPendingActions } from "@/lib/offline/pending-records";
 import { offlineQueryKeys } from "@/lib/offline/query-keys";
 import { getSessionWithOfflineFallback, storedSessionOnThisDevice } from "@/lib/supabase/offline-session";
 import { OfflineManagerModal } from "@/app/offline-manager";
+import {
+  discardUnsentWork,
+  prepareOfflineStorageForUser,
+  releaseOfflineStorageOnSignOut,
+  unsentWorkCount,
+} from "@/lib/offline/account-isolation";
+import { setActiveOfflineUser } from "@/lib/offline/idb";
+import { userFacingError } from "@/lib/user-facing-error";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
+import { validAccessToken } from "@/lib/supabase/access-token";
 import {
   clientReportSections,
   createDailyCloseoutSchema,
@@ -264,28 +277,6 @@ type AttendanceRow = {
   crew?: string;
 };
 
-const constructionDisciplines = [
-  "Bouwvakkers / algemeen",
-  "Timmerlieden",
-  "Metselaars",
-  "Beton en wapening",
-  "Betonwerkers",
-  "Wapeningwerkers",
-  "Elektriciens",
-  "HVAC",
-  "Loodgieters / sanitair",
-  "Schilders",
-  "Gevelwerk",
-  "Tegelzetters",
-  "Grondwerk",
-  "Staalbouw",
-  "Steigerbouwers",
-  "Dakwerk",
-  "Machine-operators",
-  "HSE / veiligheidsmedewerkers",
-  "Voormannen / supervisors",
-] as const;
-
 const navigation: { id: NavKey; label: string; icon: LucideIcon; badge?: string }[] = [
   { id: "vandaag", label: "Overzicht", icon: Home },
   { id: "project", label: "Werkruimte", icon: LayoutDashboard },
@@ -363,23 +354,8 @@ const entryTitlesEnglish: Record<string, string> = {
   delay: "Delay",
 };
 
-const actionStatusLabels: Record<ProjectAction["status"], string> = {
-  open: "Open",
-  accepted: "Geaccepteerd",
-  in_progress: "In uitvoering",
-  ready_for_verification: "Gereed voor verificatie",
-  verified: "Geverifieerd",
-  cancelled: "Geannuleerd",
-};
-
-const actionStatusLabelsEnglish: Record<ProjectAction["status"], string> = {
-  open: "Open",
-  accepted: "Accepted",
-  in_progress: "In progress",
-  ready_for_verification: "Ready for verification",
-  verified: "Verified",
-  cancelled: "Cancelled",
-};
+const actionStatusLabels = labelMap(canonicalActionStatusLabels, "nl") as Record<ProjectAction["status"], string>;
+const actionStatusLabelsEnglish = labelMap(canonicalActionStatusLabels, "en") as Record<ProjectAction["status"], string>;
 
 const nextActionStatus: Partial<Record<ProjectAction["status"], ProjectAction["status"]>> = {
   open: "accepted",
@@ -610,6 +586,9 @@ export function CodecoSupervisionApp() {
   const [dailyCloseoutAnswers, setDailyCloseoutAnswers] = useState<DailyCloseoutAnswers | null>(null);
   const [selectedAction, setSelectedAction] = useState<ProjectAction | null>(null);
   const [toast, setToast] = useState("");
+  /** Set while the user is deciding what happens to work that has not been sent yet. */
+  const [signOutPrompt, setSignOutPrompt] = useState<{ unsent: number } | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
   const [clock, setClock] = useState(() => new Date());
   const reportDate = reportDateInSuriname();
 
@@ -661,10 +640,7 @@ export function CodecoSupervisionApp() {
             queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id] }),
             queryClient.invalidateQueries({ queryKey: ["offline-records", selectedProject.id] }),
           ]);
-          setToast(text(
-            `${recordResult.synced} field record(s) sent from this device.`,
-            `${recordResult.synced} veldregistratie(s) vanaf dit apparaat verstuurd.`,
-          ));
+          setToast(text(`${recordResult.synced} record(s) sent.`, `${recordResult.synced} registratie(s) verzonden.`));
         }
       }).catch(() => undefined).finally(() => {
       void syncOfflineUploads(supabase, selectedProject.id).then(async (result) => {
@@ -677,8 +653,8 @@ export function CodecoSupervisionApp() {
         }
         if (result.failed > 0) {
           setToast(text(
-            `${result.failed} field upload(s) still need attention. Open Photos and tap Sync now.`,
-            `${result.failed} veldupload(s) vragen nog aandacht. Open Foto’s en tik op Nu synchroniseren.`,
+            `${result.failed} field upload(s) still need attention. Open Photos and tap Send now.`,
+            `${result.failed} veldupload(s) vragen nog aandacht. Open Foto’s en tik op Nu verzenden.`,
           ));
         }
       }).catch(() => {
@@ -720,6 +696,8 @@ export function CodecoSupervisionApp() {
       )
     ));
   }, [internalAccessQuery.data?.members, selectedProject?.id]);
+
+  const permissions = useProjectPermissionsQuery(supabase as SupabaseClient | null, session?.user.id, selectedProject?.id);
 
   const dayQuery = useQuery({
     queryKey: ["project-day", selectedProject?.id, reportDate],
@@ -812,16 +790,20 @@ export function CodecoSupervisionApp() {
 
   const currentUserName = workspaceQuery.data?.profileName
     ?? String(session?.user.user_metadata?.display_name ?? session?.user.email?.split("@")[0] ?? text("CODECO user", "CODECO-gebruiker"));
-  const storageStatus = !isOnline
-    ? text("No connection · not saved", "Geen verbinding · nog niet opgeslagen")
-    : syncState === "saving"
-      ? text("Saving centrally…", "Centraal opslaan…")
-      : syncState === "error"
-        ? text("Save failed · try again", "Opslaan mislukt · probeer opnieuw")
-        : syncState === "saved"
-          ? text("Saved centrally", "Centraal opgeslagen")
-          : text("Live workspace · synchronized", "Live werkruimte · gesynchroniseerd");
-  const localizedNavigation = navigation.map((item) => ({
+  const onlineStorageStatus = syncState === "saving"
+    ? text("Saving centrally…", "Centraal opslaan…")
+    : syncState === "error"
+      ? text("Save failed · try again", "Opslaan mislukt · probeer opnieuw")
+      : syncState === "saved"
+        ? text("Saved centrally", "Centraal opgeslagen")
+        : text("Live workspace · synchronized", "Live werkruimte · gesynchroniseerd");
+  // A module whose records the user may not read would only ever be an empty page.
+  const navAllowed = (id: NavKey) => id === "acties" ? permissions.canAny("actions.read", "actions.create")
+    : id === "projectdocs" || id === "verify" ? permissions.can("files.read")
+      : id === "punchlist" ? permissions.can("findings.read")
+        : id === "rapporten" ? permissions.canAny("reports.read", "reports.readapproved")
+          : true;
+  const localizedNavigation = navigation.filter((item) => navAllowed(item.id)).map((item) => ({
     ...item,
     label: ({
       vandaag: text("Overview", "Overzicht"),
@@ -850,7 +832,17 @@ export function CodecoSupervisionApp() {
     // session". The session written to this device is used instead: without it an
     // installed app opened in the field showed the login screen with all its data sitting
     // unreachable on the phone.
-    void getSessionWithOfflineFallback(supabase).then((nextSession) => {
+    // Device storage is scoped to the account before anything cached can be shown: on a
+    // shared device the previous account's readable copy is removed first.
+    const scopeOfflineStorage = async (nextSession: Session | null) => {
+      if (!nextSession) {
+        setActiveOfflineUser(null);
+        return;
+      }
+      await prepareOfflineStorageForUser(nextSession.user.id).catch(() => setActiveOfflineUser(nextSession.user.id));
+    };
+    void getSessionWithOfflineFallback(supabase).then(async (nextSession) => {
+      await scopeOfflineStorage(nextSession);
       if (active) {
         setSession(nextSession);
         setAuthReady(true);
@@ -866,14 +858,17 @@ export function CodecoSupervisionApp() {
       // that could not reach the server. Signing out on purpose clears the stored session,
       // so a real sign-out still ends here.
       if (!nextSession && !navigator.onLine && storedSessionOnThisDevice()) return;
-      setSession(nextSession);
-      setAuthReady(true);
-      if (!nextSession) {
-        setPasswordRecovery(false);
-        setSelectedProject(null);
-        setSelectedBuilding(null);
-        setWorkspaceStage("projects");
-      }
+      void scopeOfflineStorage(nextSession).then(() => {
+        if (!active) return;
+        setSession(nextSession);
+        setAuthReady(true);
+        if (!nextSession) {
+          setPasswordRecovery(false);
+          setSelectedProject(null);
+          setSelectedBuilding(null);
+          setWorkspaceStage("projects");
+        }
+      });
     });
     return () => {
       active = false;
@@ -881,6 +876,50 @@ export function CodecoSupervisionApp() {
       data.subscription.unsubscribe();
     };
   }, [supabase]);
+
+  /**
+   * Signing out hands the device to whoever signs in next. The readable project copy is
+   * removed first; unsent work stays on the device for this account unless the user chose to
+   * discard it. The page is reloaded afterwards so nothing of this account survives in memory.
+   */
+  const performSignOut = useCallback(async (options: { discardUnsent: boolean }) => {
+    if (!supabase) return;
+    setSigningOut(true);
+    const userId = session?.user.id;
+    try {
+      if (options.discardUnsent && userId) await discardUnsentWork(userId);
+      await releaseOfflineStorageOnSignOut();
+    } catch {
+      // A storage failure must not keep someone signed in on a device they are handing over.
+    }
+    queryClient.clear();
+    const result = await supabase.auth.signOut().catch((error: unknown) => ({ error }));
+    // Without a connection the server cannot revoke the session; the local copy still goes.
+    if (result.error) await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+    window.location.replace(window.location.pathname);
+  }, [queryClient, session, supabase]);
+
+  const requestSignOut = useCallback(async () => {
+    const unsent = session ? await unsentWorkCount(session.user.id).catch(() => 0) : 0;
+    if (unsent > 0) {
+      setSignOutPrompt({ unsent });
+      return;
+    }
+    await performSignOut({ discardUnsent: false });
+  }, [performSignOut, session]);
+
+  // A screen reader hears the connection change; the sync chip alone is only text on a button.
+  const [connectivityNote, setConnectivityNote] = useState("");
+  const connectivitySeen = useRef(false);
+  useEffect(() => {
+    if (!connectivitySeen.current) {
+      connectivitySeen.current = true;
+      return;
+    }
+    setConnectivityNote(isOnline
+      ? (language === "en" ? "Back online." : "Weer online.")
+      : (language === "en" ? "No connection. Work is saved on this device." : "Geen verbinding. Werk wordt op dit apparaat bewaard."));
+  }, [isOnline, language]);
 
   useEffect(() => {
     const online = () => setIsOnline(true);
@@ -892,53 +931,6 @@ export function CodecoSupervisionApp() {
       window.removeEventListener("offline", offline);
     };
   }, []);
-
-  useEffect(() => {
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setModal(null);
-    };
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, []);
-
-  useEffect(() => {
-    if (!modal) return;
-    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
-    const focusableSelector = 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-    const focusDialog = window.requestAnimationFrame(() => {
-      if (!dialog || dialog.contains(document.activeElement)) return;
-      dialog.querySelector<HTMLElement>(focusableSelector)?.focus();
-    });
-    const keepFocusInside = (event: KeyboardEvent) => {
-      if (event.key !== "Tab" || !dialog) return;
-      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector))
-        .filter((element) => element.offsetParent !== null);
-      if (focusable.length === 0) {
-        event.preventDefault();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", keepFocusInside);
-    return () => {
-      window.cancelAnimationFrame(focusDialog);
-      document.removeEventListener("keydown", keepFocusInside);
-      document.body.style.overflow = previousOverflow;
-      previouslyFocused?.focus();
-    };
-  }, [modal]);
 
   useEffect(() => {
     if (!toast) return;
@@ -1038,6 +1030,19 @@ export function CodecoSupervisionApp() {
     enabled: Boolean(selectedProject),
   });
   const dayActions = withPendingActions(dayQuery.data?.actions ?? [], pendingRecordsQuery.data ?? []);
+  /**
+   * Without a connection the header says what is true: registrations written now are kept
+   * on this device and counted here. It used to say "not saved" even while they were.
+   */
+  const waitingOnDevice = (pendingRecordsQuery.data ?? []).length;
+  const storageStatus = isOnline
+    ? onlineStorageStatus
+    : waitingOnDevice
+      ? text(
+        `No connection · ${waitingOnDevice} waiting on this device`,
+        `Geen verbinding · ${waitingOnDevice} ${waitingOnDevice === 1 ? "registratie wacht" : "registraties wachten"} op dit apparaat`,
+      )
+      : text("No connection · working from this device", "Geen verbinding · je werkt vanaf dit apparaat");
 
   const runSynced = async <T,>(
     operation: () => Promise<T>,
@@ -1048,7 +1053,7 @@ export function CodecoSupervisionApp() {
   ): Promise<T | null> => {
     if (!isOnline && !options.offlineCapable) {
       setSyncState("error");
-      setToast(text("No connection. Your input remains in the open form; try again when you are online.", "Geen verbinding. Je invoer blijft in het geopende formulier; probeer opnieuw zodra je online bent."));
+      setToast(text("No connection. Your input stays in this form.", "Geen verbinding. Je invoer blijft in dit formulier."));
       return null;
     }
     const queuedBefore = selectedProject ? (await listOfflineRecords(selectedProject.id).catch(() => [])).length : 0;
@@ -1057,17 +1062,22 @@ export function CodecoSupervisionApp() {
       const result = await operation();
       if (selectedProject && supabase && isOnline) await requestProjectNotificationDispatch(supabase, selectedProject.id).catch(() => false);
       const queuedAfter = selectedProject ? (await listOfflineRecords(selectedProject.id).catch(() => [])).length : 0;
+      // Show what now waits on this device straight away. The list also polls, but a record
+      // that only appears twenty seconds after "Save" reads as a record that was lost.
+      if (selectedProject && queuedAfter !== queuedBefore) {
+        await queryClient.invalidateQueries({ queryKey: ["offline-records", selectedProject.id] });
+      }
       setSyncState(queuedAfter > queuedBefore ? "idle" : "saved");
       setToast(queuedAfter > queuedBefore
-        ? text(
-          "Saved on this device and sent by itself as soon as there is a connection.",
-          "Op dit apparaat opgeslagen en wordt vanzelf verstuurd zodra er verbinding is.",
-        )
+        ? text("Saved on this device. Sent when you're online.", "Opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent.")
         : successMessage);
-      return result;
+      // Callers test the result for truth to know the save succeeded; an operation that
+      // returns nothing (Promise<void>) must not read as a failure, or the dialog stays open
+      // after a successful save — which is exactly what the daily questions did.
+      return (result === undefined ? true : result) as T;
     } catch (error) {
       setSyncState("error");
-      setToast(error instanceof Error ? `${text("Save failed", "Opslaan mislukt")}: ${error.message}` : text("Save failed. Try again.", "Opslaan mislukt. Probeer opnieuw."));
+      setToast(userFacingError(error, text));
       return null;
     }
   };
@@ -1122,14 +1132,11 @@ export function CodecoSupervisionApp() {
     const captured = Array.from(files ?? []).filter((file) => file.type.startsWith("image/"));
     if (!captured.length) return;
     if (!selectedProject || !selectedBuilding) {
-      setToast(text("Choose a project and building before taking a field photo.", "Kies eerst een project en gebouw voordat je een veldfoto maakt."));
+      setToast(text("Choose a project and building first.", "Kies eerst een project en gebouw."));
       return;
     }
     setPendingQuickPhotos(captured);
-    setToast(text(
-      "Photo ready. Confirm its project context, save it, then click the image to place a finding.",
-      "Foto klaar. Bevestig de projectcontext, sla op en klik daarna op de foto om een bevinding te plaatsen.",
-    ));
+    setToast(text("Photo ready. Save it, then tap the image to place a finding.", "Foto klaar. Sla op en tik op de afbeelding om een bevinding te plaatsen."));
     openWorkspaceModule("visual");
     setModal(null);
   };
@@ -1230,7 +1237,7 @@ export function CodecoSupervisionApp() {
         description: `${singleBuilding ? location || entryBuilding.name : entryBuilding.name}${activityNote ? ` · ${activityNote}` : ""} · ${description.trim()}${workPackageNote}`,
         priority: priorityMap[priority] ?? "normal",
       }))),
-      text(`${entryTitlesEnglish[selectedType]} was saved centrally and linked to the daily report.`, `${entryTitles[selectedType]} is centraal opgeslagen en aan het dagrapport gekoppeld.`),
+      text(`${entryTitlesEnglish[selectedType]} saved.`, `${entryTitles[selectedType]} opgeslagen.`),
     );
     if (!saved) return;
     // The spot that was tapped on the drawing becomes a pin now that the record exists:
@@ -1244,10 +1251,7 @@ export function CodecoSupervisionApp() {
         yRatio: entryDrawingPoint.yRatio,
         linkedRecordType: "registration",
         linkedRecordId: savedRecord.id,
-      }).catch(() => setToast(text(
-        "The record was saved; the pin on the drawing could not be placed.",
-        "De registratie is opgeslagen; de pin op de tekening kon niet worden geplaatst.",
-      )));
+      }).catch(() => setToast(text("Record saved. The drawing pin could not be placed.", "Registratie opgeslagen. De pin op de tekening kon niet worden geplaatst.")));
       setEntryDrawingPoint(null);
     }
     // Photos taken inside the record ride along with it: they are queued for the first
@@ -1318,14 +1322,8 @@ export function CodecoSupervisionApp() {
     }
     if (navigator.onLine) {
       await forceSyncOfflineUploads(supabase, input.projectId, {
-        paused: text(
-          "The connection changed before central photo confirmation. The photos remain safe on this device. Open Photos and tap Sync now.",
-          "De verbinding veranderde vóór de centrale fotobevestiging. De foto’s blijven veilig op dit apparaat. Open Foto’s en tik op Nu synchroniseren.",
-        ),
-        failed: (pendingCount) => text(
-          `${pendingCount} photo upload(s) could not be confirmed centrally. They remain safe on this device. Open Photos and tap Sync now.`,
-          `${pendingCount} foto-upload(s) konden niet centraal worden bevestigd. Ze blijven veilig op dit apparaat. Open Foto’s en tik op Nu synchroniseren.`,
-        ),
+        paused: text("Connection lost before the photos were confirmed. They are still on this device. Open Photos and tap Send now.", "Verbinding verbroken vóór bevestiging van de foto's. Ze staan nog op dit apparaat. Open Foto's en tik op Nu verzenden."),
+        failed: (pendingCount) => text(`${pendingCount} photo upload(s) not confirmed. They are still on this device. Open Photos and tap Send now.`, `${pendingCount} foto-upload(s) niet bevestigd. Ze staan nog op dit apparaat. Open Foto's en tik op Nu verzenden.`),
       });
     }
   };
@@ -1471,6 +1469,10 @@ export function CodecoSupervisionApp() {
   // A reload, a shared link or a phone that reopens the installed app lands on the
   // screen the address bar describes instead of at the beginning.
   const restoredFromUrlRef = useRef(false);
+  // Read once, before the history hook's first replaceState rewrites the address bar to
+  // the project-less start screen; reading it later found an empty query and every reload
+  // dropped the user back on project selection.
+  const [initialSearch] = useState(() => (typeof window === "undefined" ? "" : window.location.search));
   // The projects arrive from the server, so the screen in the address bar can only be
   // restored once they are there. That is exactly what an effect is for.
   useEffect(() => {
@@ -1478,13 +1480,13 @@ export function CodecoSupervisionApp() {
     const projects = workspaceQuery.data?.projects;
     if (!projects?.length) return;
     restoredFromUrlRef.current = true;
-    const fromUrl = screenFromSearch(window.location.search);
+    const fromUrl = screenFromSearch(initialSearch);
     if (!fromUrl.project) return;
     const project = projects.find((candidate) => candidate.id === fromUrl.project);
     if (!project) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- restoring a screen from the address bar can only happen once the projects have loaded
     applyScreen(fromUrl);
-  }, [applyScreen, workspaceQuery.data?.projects]);
+  }, [applyScreen, initialSearch, workspaceQuery.data?.projects]);
 
   const openBuildingStart = (building: BuildingContext) => {
     setContextBuildingId(building.id);
@@ -1543,7 +1545,7 @@ export function CodecoSupervisionApp() {
         answers,
         reportDate,
       }))),
-      text("Project start and the draft daily report were saved centrally.", "Projectstart en het conceptdagrapport zijn centraal opgeslagen."),
+      text("Project start saved.", "Projectstart opgeslagen."),
     );
     if (!saved) return;
     if (buildings.some((building) => building.id === selectedBuilding?.id)) setProjectStartAnswers(answers);
@@ -1557,11 +1559,11 @@ export function CodecoSupervisionApp() {
   };
 
   if (!isSupabaseConfigured || !supabase) {
-    return <AppStateScreen title={text("Workspace configuration is missing", "Werkruimteconfiguratie ontbreekt")} copy={text("The application starts once this environment has been configured. Ask your CODECO administrator to complete the setup.", "De applicatie start zodra deze omgeving is geconfigureerd. Vraag je CODECO-beheerder om de installatie af te ronden.")} />;
+    return <AppStateScreen title={text("Workspace configuration is missing", "Werkruimteconfiguratie ontbreekt")} copy={text("Not configured yet. Ask your CODECO administrator.", "Nog niet geconfigureerd. Vraag het aan je CODECO-beheerder.")} />;
   }
 
   if (!authReady) {
-    return <AppStateScreen title={text("Opening secure workspace", "Veilige werkruimte openen")} copy={text("Your session and project access are being checked.", "Je sessie en projecttoegang worden gecontroleerd.")} loading />;
+    return <AppStateScreen title={text("Opening secure workspace", "Veilige werkruimte openen")} copy={text("Checking access…", "Toegang controleren…")} loading />;
   }
 
   if (!session) {
@@ -1583,7 +1585,7 @@ export function CodecoSupervisionApp() {
           window.history.replaceState(null, "", window.location.pathname);
           setSession((current) => current ? { ...current, user: result.data.user } : current);
         }}
-        signOut={() => void supabase.auth.signOut()}
+        signOut={() => void performSignOut({ discardUnsent: false })}
       />
     );
   }
@@ -1592,7 +1594,7 @@ export function CodecoSupervisionApp() {
     return (
       <AppStateScreen
         title={text("Loading CODECO workspace", "CODECO-werkruimte laden")}
-        copy={text("Your projects, buildings and permissions are being prepared.", "Je projecten, gebouwen en rechten worden klaargezet.")}
+        copy={text("Loading projects…", "Projecten laden…")}
         loading
         steps={[
           text("Session verified", "Sessie geverifieerd"),
@@ -1612,7 +1614,7 @@ export function CodecoSupervisionApp() {
       return (
         <AccessPendingScreen
           email={session.user.email ?? ""}
-          signOut={() => void supabase.auth.signOut()}
+          signOut={() => void performSignOut({ discardUnsent: false })}
         />
       );
     }
@@ -1632,7 +1634,7 @@ export function CodecoSupervisionApp() {
           if (saved) await queryClient.invalidateQueries({ queryKey: ["workspace", session.user.id] });
           return Boolean(saved);
         }}
-        signOut={() => void supabase.auth.signOut()}
+        signOut={() => void performSignOut({ discardUnsent: false })}
       />
     );
   }
@@ -1647,12 +1649,12 @@ export function CodecoSupervisionApp() {
               organizationId: workspaceQuery.data.organizations[0].id,
               ...answers,
             }),
-            text("Project, building and standard parties have been created.", "Project, gebouw en standaardpartijen zijn aangemaakt."),
+            text("Project created.", "Project aangemaakt."),
           );
           if (saved) await queryClient.invalidateQueries({ queryKey: ["workspace", session.user.id] });
           return Boolean(saved);
         }}
-        signOut={() => void supabase.auth.signOut()}
+        signOut={() => void performSignOut({ discardUnsent: false })}
       />
     );
   }
@@ -1678,6 +1680,15 @@ export function CodecoSupervisionApp() {
         storageStatus={storageStatus}
         isOnline={isOnline}
         offlineCached={Boolean(workspaceQuery.data._offlineCached)}
+        signOut={() => void requestSignOut()}
+        signOutDialog={signOutPrompt ? (
+          <SignOutDialog
+            unsent={signOutPrompt.unsent}
+            busy={signingOut}
+            close={() => setSignOutPrompt(null)}
+            signOut={(discardUnsent) => void performSignOut({ discardUnsent })}
+          />
+        ) : null}
       />
     );
   }
@@ -1696,6 +1707,8 @@ export function CodecoSupervisionApp() {
     );
   }
 
+  // Taking a photo files a record and a file; a reader (the client) does neither.
+  const canRecord = permissions.canAny("records.create", "files.manage");
   const projectName = selectedProject?.name ?? "Project";
   const availableProjects = workspaceQuery.data.projects;
   const projectCount = availableProjects.length;
@@ -1747,6 +1760,7 @@ export function CodecoSupervisionApp() {
   };
 
   return (
+    <ProjectPermissionsProvider value={permissions}>
     <div className="app-shell">
       <FieldGuide
         canManage={canManageMembers}
@@ -1769,6 +1783,8 @@ export function CodecoSupervisionApp() {
       <input
         ref={quickCameraInputRef}
         className="visually-hidden"
+        aria-hidden="true"
+        tabIndex={-1}
         type="file"
         accept="image/jpeg,image/png,image/webp"
         capture="environment"
@@ -1782,9 +1798,10 @@ export function CodecoSupervisionApp() {
           <CompanyLogo subtitle={text("Supervision", "Supervisie")} />
         </div>
 
-        <button className="project-context-card" type="button" aria-haspopup="dialog" aria-label={text("Switch project", "Van project wisselen")} onClick={() => setModal("switch_project")}>
+        <button className="project-context-card" type="button" aria-haspopup="dialog" onClick={() => setModal("switch_project")}>
           <span className="project-context-icon"><Building2 size={17} /></span>
           <span className="project-context-copy">
+            <span className="sr-only">{text("Switch project: ", "Van project wisselen: ")}</span>
             <strong>{projectName}</strong>
             <small>{buildingContextLabel} · {selectedProject?.location}</small>
           </span>
@@ -1810,13 +1827,16 @@ export function CodecoSupervisionApp() {
         </nav>
 
         <div className="sidebar-spacer" />
-        <button className="quick-add-side" type="button" onClick={openQuickAdd}>
-          <Camera size={18} strokeWidth={2.4} />
-          {text("Take photo", "Foto maken")}
-        </button>
-        <button className="user-card" type="button" onClick={() => void supabase.auth.signOut()} title={text("Sign out", "Afmelden")}>
-          <span className="avatar">{initials(currentUserName)}</span>
+        {canRecord ? (
+          <button className="quick-add-side" type="button" onClick={openQuickAdd}>
+            <Camera size={18} strokeWidth={2.4} />
+            {text("Take photo", "Foto maken")}
+          </button>
+        ) : null}
+        <button className="user-card" type="button" onClick={() => void requestSignOut()} title={text("Sign out", "Afmelden")}>
+          <span className="avatar" aria-hidden="true">{initials(currentUserName)}</span>
           <span className="user-copy">
+            <span className="sr-only">{text("Sign out: ", "Afmelden: ")}</span>
             <strong>{currentUserName}</strong>
             <small>{text("CODECO user", "CODECO-gebruiker")}</small>
           </span>
@@ -1834,9 +1854,9 @@ export function CodecoSupervisionApp() {
               className="breadcrumb-step breadcrumb-project"
               type="button"
               aria-haspopup="dialog"
-              aria-label={text(`Switch project. ${projectName} is open.`, `Van project wisselen. ${projectName} is geopend.`)}
               onClick={() => setModal("switch_project")}
             >
+              <span className="sr-only">{text("Switch project. Open project: ", "Van project wisselen. Geopend project: ")}</span>
               <span className="breadcrumb-root">{text("My projects", "Mijn projecten")}</span>
               <ChevronRight className="breadcrumb-arrow" size={13} />
               <span className="breadcrumb-name">{projectName}</span>
@@ -1857,7 +1877,7 @@ export function CodecoSupervisionApp() {
             <LanguageSwitcher compact />
             {/* The connection chip is the way into the offline copy: it is where a
                 supervisor already looks when the connection is the question. */}
-            <button className={`storage-state ${syncState}`} type="button" title={storageStatus} onClick={() => setModal("offline")} aria-label={text("Offline availability", "Offline beschikbaarheid")}>{syncState === "error" || !isOnline ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />} <span>{storageStatus}</span></button>
+            <button className={`storage-state ${syncState}`} type="button" title={storageStatus} onClick={() => setModal("offline")} aria-label={`${storageStatus}. ${text("Offline availability", "Offline beschikbaarheid")}`}>{syncState === "error" || !isOnline ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />} <span>{storageStatus}</span></button>
             <button className={`icon-button management-button ${activeNav === "meer" ? "active" : ""}`} type="button" aria-label={text("Open management and settings", "Open beheer en instellingen")} title={text("Management and settings", "Beheer en instellingen")} onClick={() => navigate("meer")}><Settings size={17} /></button>
             <button className="icon-button" type="button" aria-label={`${text("Notifications", "Meldingen")}${unreadNotificationCount ? `, ${unreadNotificationCount} ${text("unread", "ongelezen")}` : ""}`} onClick={() => setModal("notifications")}>
               <Bell size={17} />
@@ -1963,10 +1983,7 @@ export function CodecoSupervisionApp() {
                 // An action that is still waiting on the device has no central record to
                 // update yet; opening its detail would offer buttons that cannot work.
                 if (isPendingRecordId(action.id)) {
-                  setToast(text(
-                    "This action is still on this device. It opens as soon as it has been sent.",
-                    "Deze actie staat nog op dit apparaat. Ze opent zodra ze is verstuurd.",
-                  ));
+                  setToast(text("Not sent yet. It opens after sending.", "Nog niet verzonden. Opent na verzending."));
                   return;
                 }
                 setSelectedAction(action);
@@ -1987,6 +2004,7 @@ export function CodecoSupervisionApp() {
               openRapidVerify={() => navigate("verify")}
               openReports={() => navigate("rapporten")}
               openManagement={() => navigate("meer")}
+              openReportCheck={() => setModal("report")}
             />
           ) : (
             <SecondaryView
@@ -2021,7 +2039,7 @@ export function CodecoSupervisionApp() {
         </main>
       </div>
 
-      <nav className="mobile-bottom-nav" aria-label={text("Mobile main navigation", "Mobiele hoofdnavigatie")}>
+      <nav className={`mobile-bottom-nav${canRecord ? "" : " four"}`} aria-label={text("Mobile main navigation", "Mobiele hoofdnavigatie")}>
         {localizedNavigation.filter((item) => item.id === "vandaag" || item.id === "project").map((item) => {
           const Icon = item.icon;
           return (
@@ -2031,10 +2049,12 @@ export function CodecoSupervisionApp() {
             </button>
           );
         })}
-        <button className="mobile-nav-button quick" type="button" onClick={openQuickAdd} aria-label={text("Quick add", "Snel toevoegen")}>
-          <span className="mobile-plus"><Camera size={23} /></span>
-          {text("Photo", "Foto")}
-        </button>
+        {canRecord ? (
+          <button className="mobile-nav-button quick" type="button" onClick={openQuickAdd} aria-label={text("Photo (quick add)", "Foto (snel toevoegen)")}>
+            <span className="mobile-plus"><Camera size={23} /></span>
+            {text("Photo", "Foto")}
+          </button>
+        ) : null}
         {localizedNavigation.filter((item) => item.id === "acties").map((item) => {
           const Icon = item.icon;
           return (
@@ -2079,10 +2099,7 @@ export function CodecoSupervisionApp() {
                 <span>
                   <strong>{text("Switch project", "Van project wisselen")}</strong>
                   <small>
-                    {text(
-                      `${projectCount} project(s) available to you`,
-                      `${projectCount} project(en) voor jou beschikbaar`,
-                    )}
+                    {projectCount} {projectCount === 1 ? text("project", "project") : text("projects", "projecten")}
                   </small>
                 </span>
                 <ChevronRight size={17} />
@@ -2098,31 +2115,35 @@ export function CodecoSupervisionApp() {
                 <span>
                   <strong>{text("Buildings", "Gebouwen")}</strong>
                   <small>
-                    {text(
-                      `${selectedProject?.buildings.length ?? 0} in this project · view or add`,
-                      `${selectedProject?.buildings.length ?? 0} in dit project · bekijken of toevoegen`,
-                    )}
+                    {text(`${selectedProject?.buildings.length ?? 0} in this project`, `${selectedProject?.buildings.length ?? 0} in dit project`)}
                   </small>
                 </span>
                 <ChevronRight size={17} />
               </button>
               {localizedNavigation.filter((item) => ["projectdocs", "punchlist", "verify", "rapporten", "meer"].includes(item.id)).map((item) => {
                 const Icon = item.icon;
-                const descriptions: Record<string, string> = {
-                  projectdocs: text("Drawings, BOQ, specifications and contracts", "Tekeningen, BOQ, specificaties en contracten"),
-                  punchlist: text("Contractor and supervisor verification", "Verificatie door aannemer en supervisor"),
-                  verify: text("Check project documents quickly", "Controleer projectdocumenten snel"),
-                  rapporten: text("Daily, weekly and monthly output", "Dag-, week- en maandrapportage"),
-                  meer: text("Team, rules and project setup", "Team, regels en projectinrichting"),
-                };
                 return (
                   <button className={activeNav === item.id ? "active" : ""} type="button" onClick={() => navigate(item.id)} key={item.id}>
                     <span><Icon size={19} /></span>
-                    <span><strong>{item.label}</strong><small>{descriptions[item.id]}</small></span>
+                    <span><strong>{item.label}</strong></span>
                     <ChevronRight size={17} />
                   </button>
                 );
               })}
+              {/* On a phone the sidebar with the account card is hidden; signing out has
+                  to stay reachable on a shared field device. */}
+              <button
+                className="mobile-module-sign-out"
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  void requestSignOut();
+                }}
+              >
+                <span><LogOut size={19} /></span>
+                <span><strong>{text("Sign out", "Afmelden")}</strong><small>{currentUserName}</small></span>
+                <ChevronRight size={17} />
+              </button>
             </div>
           </section>
         </div>
@@ -2217,7 +2238,7 @@ export function CodecoSupervisionApp() {
                   send: () => createProjectAction(supabase, input),
                 });
               })),
-              text("The action has been created with its deadline and responsible party.", "De actie is aangemaakt met deadline en verantwoordelijke."),
+              text("Action created.", "Actie aangemaakt."),
               { offlineCapable: true },
             );
             if (!saved) return false;
@@ -2226,6 +2247,14 @@ export function CodecoSupervisionApp() {
             await queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] });
             return true;
           }}
+        />
+      ) : null}
+      {signOutPrompt ? (
+        <SignOutDialog
+          unsent={signOutPrompt.unsent}
+          busy={signingOut}
+          close={() => setSignOutPrompt(null)}
+          signOut={(discardUnsent) => void performSignOut({ discardUnsent })}
         />
       ) : null}
       {modal === "offline" && supabase && session ? (
@@ -2277,14 +2306,14 @@ export function CodecoSupervisionApp() {
             if (!snapshot) return;
             const { downloadDailyReportPdf } = await import("@/lib/reports/daily-report-pdf");
             await downloadDailyReportPdf(snapshot);
-            setToast(text("The draft PDF has been generated from the saved report data.", "De concept-PDF is gegenereerd uit de opgeslagen rapportgegevens."));
+            setToast(text("Draft PDF generated.", "Concept-PDF gemaakt."));
           }}
           onDownloadDocx={async () => {
             const snapshot = buildDraftReportSnapshot();
             if (!snapshot) return;
             const { downloadDailyReportDocx } = await import("@/lib/reports/daily-report-docx");
             await downloadDailyReportDocx(snapshot);
-            setToast(text("The draft Word document has been generated from the saved report data.", "Het concept-Worddocument is gegenereerd uit de opgeslagen rapportgegevens."));
+            setToast(text("Draft Word document generated.", "Concept-Word gemaakt."));
           }}
           onSubmit={async () => {
             const reportId = dayQuery.data?.report?.id;
@@ -2311,7 +2340,11 @@ export function CodecoSupervisionApp() {
           onChangeBuilding={setContextBuildingId}
           close={() => { setModal(null); setContextBuildingId(null); }}
           initialAnswers={contextDailyCloseoutAnswers}
-          projectStartAnswers={contextProjectStartAnswers}
+          // Weather is site-wide: closing all buildings at once takes it from the day's
+          // recorded start instead of leaving the "automatic" weather empty and blocking.
+          projectStartAnswers={contextProjectStartAnswers ?? (contextIsAllBuildings
+            ? projectStartAnswers ?? projectStartFromRow(dayQuery.data?.startChecks[0] ?? null)
+            : null)}
           save={async (answers) => {
             const targetBuildings = contextIsAllBuildings ? selectedProject.buildings : [contextBuilding!];
             const saved = await runSynced(
@@ -2326,10 +2359,7 @@ export function CodecoSupervisionApp() {
                   answers,
                 })));
               },
-              text(
-                "The day's questions are saved and carried into the report review.",
-                "De dagvragen zijn opgeslagen en in de rapportcontrole verwerkt.",
-              ),
+              text("Day questions saved.", "Dagvragen opgeslagen."),
             );
             if (!saved) return;
             if (targetBuildings.some((building) => building.id === selectedBuilding?.id)) {
@@ -2447,10 +2477,7 @@ export function CodecoSupervisionApp() {
                   }
                 }
               },
-              text(
-                `${total} people present are now linked to today's day report.`,
-                `${total} aanwezigen zijn aan het dagrapport van vandaag gekoppeld.`,
-              ),
+              text(`${total} people recorded for today.`, `${total} personen vastgelegd voor vandaag.`),
             );
             if (!saved) return;
             setModal(null);
@@ -2540,14 +2567,8 @@ export function CodecoSupervisionApp() {
                 }
                 if (navigator.onLine) {
                   await forceSyncOfflineUploads(supabase, selectedProject.id, {
-                    paused: text(
-                      "The connection changed before central photo confirmation. The photos remain safe on this device. Open Photos and tap Sync now.",
-                      "De verbinding veranderde vóór de centrale fotobevestiging. De foto’s blijven veilig op dit apparaat. Open Foto’s en tik op Nu synchroniseren.",
-                    ),
-                    failed: (pendingCount) => text(
-                      `${pendingCount} photo upload(s) could not be confirmed centrally. They remain safe on this device. Open Photos and tap Sync now.`,
-                      `${pendingCount} foto-upload(s) konden niet centraal worden bevestigd. Ze blijven veilig op dit apparaat. Open Foto’s en tik op Nu synchroniseren.`,
-                    ),
+                    paused: text("Connection lost before the photos were confirmed. They are still on this device. Open Photos and tap Send now.", "Verbinding verbroken vóór bevestiging van de foto's. Ze staan nog op dit apparaat. Open Foto's en tik op Nu verzenden."),
+                    failed: (pendingCount) => text(`${pendingCount} photo upload(s) not confirmed. They are still on this device. Open Photos and tap Send now.`, `${pendingCount} foto-upload(s) niet bevestigd. Ze staan nog op dit apparaat. Open Foto's en tik op Nu verzenden.`),
                   });
                 }
               }
@@ -2596,7 +2617,7 @@ export function CodecoSupervisionApp() {
           changeProjectRole={async (userId, projectId, roleCode, reason) => {
             const saved = await runSynced(
               () => setUserProjectRole(supabase, { organizationId: activeOrganizationId, userId, projectId, roleCode, reason }),
-              text("Project permissions changed and recorded in the audit history.", "Projectrechten aangepast en in de auditgeschiedenis vastgelegd."),
+              text("Project permissions updated.", "Projectrechten bijgewerkt."),
             );
             if (!saved) return false;
             await internalAccessQuery.refetch();
@@ -2652,8 +2673,10 @@ export function CodecoSupervisionApp() {
           <button className="entry-resume-dismiss" type="button" onClick={() => setEntryDraftParked(false)} aria-label={text("Discard this record", "Deze registratie laten vallen")}><X size={14} /></button>
         </div>
       ) : null}
+      <div className="sr-only" role="status" aria-live="polite">{connectivityNote}</div>
       {toast ? <div className={`toast ${syncState === "error" ? "error" : ""}`} role={syncState === "error" ? "alert" : "status"} aria-live={syncState === "error" ? "assertive" : "polite"}>{syncState === "error" ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />} {toast}</div> : null}
     </div>
+    </ProjectPermissionsProvider>
   );
 }
 
@@ -2725,8 +2748,21 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
       const result = await client.auth.signInWithPassword({ email: answers.email, password: answers.password });
       if (result.error) throw result.error;
     } catch (caught) {
-      const raw = caught instanceof Error ? caught.message : text("Sign-in failed.", "Aanmelden is niet gelukt.");
-      setError(raw.includes("Invalid login credentials") ? text("The email address or password is incorrect.", "E-mailadres of wachtwoord is onjuist.") : raw);
+      // Only sentences a person can act on: raw provider or browser messages ("Failed to
+      // fetch", rate-limit internals) are translated, never shown as they are.
+      const raw = caught instanceof Error ? caught.message : "";
+      const status = (caught as { status?: number } | null)?.status;
+      setError(
+        raw.includes("Invalid login credentials")
+          ? text("The email address or password is incorrect.", "E-mailadres of wachtwoord is onjuist.")
+          : status === 429 || /rate limit|too many/i.test(raw)
+            ? text("Too many sign-in attempts. Wait a few minutes and try again.", "Te veel aanmeldpogingen. Wacht een paar minuten en probeer het opnieuw.")
+            : /fetch|network|load failed|timeout/i.test(raw) || (typeof navigator !== "undefined" && !navigator.onLine)
+              ? text("The server cannot be reached. Check the connection and try again.", "De server is niet bereikbaar. Controleer de verbinding en probeer het opnieuw.")
+              : /email not confirmed/i.test(raw)
+                ? text("This account has not been activated yet. Use the link in your invitation email.", "Dit account is nog niet geactiveerd. Gebruik de link in je uitnodigingsmail.")
+                : text("Signing in did not work. Try again, or ask your CODECO administrator.", "Aanmelden is niet gelukt. Probeer het opnieuw of vraag je CODECO-beheerder."),
+      );
     } finally {
       setBusy(false);
     }
@@ -2762,13 +2798,12 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
         <div className="auth-heading">
           <p className="eyebrow">{text("Internal CODECO workspace", "Interne CODECO-werkruimte")}</p>
           <h1>{text("Welcome back", "Welkom terug")}</h1>
-          <p>{text("Only project users invited by an organization administrator can sign in.", "Alleen projectgebruikers die door een organisatiebeheerder zijn uitgenodigd kunnen aanmelden.")}</p>
         </div>
         <form className="access-form" onSubmit={handleSubmit(submit)} noValidate>
           <label className="form-field"><span>{text("Email address", "E-mailadres")}</span><input type="email" autoComplete="email" {...register("email")} />{errors.email ? <small className="field-error">{errors.email.message}</small> : null}</label>
           <label className="form-field"><span>{text("Password", "Wachtwoord")}</span><input type="password" autoComplete="current-password" {...register("password")} />{errors.password ? <small className="field-error">{errors.password.message}</small> : null}</label>
           {error ? <p className="access-message error" role="alert">{error}</p> : null}
-          {resetSent ? <p className="access-message success" role="status">{text("If this account exists, a secure recovery link has been sent. Check your inbox and spam folder.", "Als dit account bestaat, is een beveiligde herstellink verstuurd. Controleer je inbox en spammap.")}</p> : null}
+          {resetSent ? <p className="access-message success" role="status">{text("If the account exists, a recovery link was sent. Check your inbox and spam folder.", "Als het account bestaat, is een herstellink verstuurd. Controleer je inbox en spam.")}</p> : null}
           <button className="primary-button access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <LogIn size={16} />}{text("Sign in securely", "Veilig aanmelden")}</button>
           <button className="auth-help-button" type="button" disabled={busy} onClick={() => void sendPasswordReset()}>{text("Forgot your password?", "Wachtwoord vergeten?")}</button>
         </form>
@@ -2833,7 +2868,7 @@ function AccessPendingScreen({ email, signOut }: { email: string; signOut: () =>
         <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={text("Internal access", "Interne toegang")} /></div><LanguageSwitcher /></div>
         <span className="state-icon"><ShieldCheck size={26} /></span>
         <h1>{text("No project access yet", "Nog geen projecttoegang")}</h1>
-        <p>{text("The signed-in account", "Het account")} <strong>{email}</strong> {text("has no CODECO organization or project assigned. Ask an organization administrator to assign the appropriate role.", "is aangemeld, maar heeft geen CODECO-organisatie of project toegewezen. Vraag een organisatiebeheerder om de juiste rol toe te kennen.")}</p>
+        <p>{text("The signed-in account", "Het account")} <strong>{email}</strong> {text("has no organization or project. Ask an administrator for access.", "heeft geen organisatie of project. Vraag een beheerder om toegang.")}</p>
         <button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button>
       </section>
     </div>
@@ -2944,7 +2979,7 @@ function ProjectSetupScreen({
     <div className={embedded ? "modal-backdrop" : "access-shell setup-shell"} onMouseDown={(event) => embedded && event.target === event.currentTarget && close?.()}>
       <section className={embedded ? "modal setup-card project-setup-card" : "access-card setup-card project-setup-card"} role={embedded ? "dialog" : undefined} aria-modal={embedded ? true : undefined}>
         <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={`${organizationName} · ${embedded ? text("New project", "Nieuw project") : text("Initial setup", "Eerste inrichting")}`} /></div><LanguageSwitcher />{embedded ? <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button> : <button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button>}</div>
-        <p className="eyebrow">{embedded ? text("Configure before activation", "Configureer vóór activatie") : text("Step 2 of 2", "Stap 2 van 2")}</p><h1>{embedded ? text("Create configured project", "Maak geconfigureerd project") : text("First project and building", "Eerste project en gebouw")}</h1><p>{text("The project, buildings, location tree, client parameters and standard parties are stored before field work starts.", "Project, gebouwen, locatieboom, klantparameters en standaardpartijen worden opgeslagen voordat het veldwerk start.")}</p>
+        <p className="eyebrow">{embedded ? text("Configure before activation", "Configureer vóór activatie") : text("Step 2 of 2", "Stap 2 van 2")}</p><h1>{embedded ? text("Create configured project", "Maak geconfigureerd project") : text("First project and building", "Eerste project en gebouw")}</h1>
         <form className="access-form setup-form two-columns" onSubmit={handleSubmit(submit)} noValidate>
           <label className="form-field"><span>{text("Project code", "Projectcode")}</span><input {...register("code")} />{errors.code ? <small className="field-error">{errors.code.message}</small> : null}</label>
           <label className="form-field"><span>{text("Project name", "Projectnaam")}</span><input {...register("name")} /></label>
@@ -2957,7 +2992,7 @@ function ProjectSetupScreen({
             <summary>{text("Buildings and exact location structure", "Gebouwen en exacte locatiestructuur")}</summary>
             <div className="form-grid two-columns">
               <label className="form-field wide"><span>{text("Additional buildings · CODE|Name · one per line", "Extra gebouwen · CODE|Naam · één per regel")}</span><textarea rows={3} {...register("additionalBuildings")} placeholder={"B2|Building 2\nB3|Building 3"} /></label>
-              <label className="form-field wide"><span>{text("Location template · type|code|name|optional parent code", "Locatiesjabloon · type|code|naam|optionele bovenliggende code")}</span><textarea rows={6} {...register("locationLevels")} /><small>{text("Types: zone, floor, room, element or work_package. The template is applied to every building.", "Typen: zone, floor, room, element of work_package. Het sjabloon wordt op ieder gebouw toegepast.")}</small></label>
+              <label className="form-field wide"><span>{text("Location template · type|code|name|optional parent code", "Locatiesjabloon · type|code|naam|optionele bovenliggende code")}</span><textarea rows={6} {...register("locationLevels")} /><small>{text("Types: zone, floor, room, element, work_package. Applied to every building.", "Typen: zone, floor, room, element, work_package. Geldt voor elk gebouw.")}</small></label>
               <label className="form-field"><span>{text("Required location detail", "Verplicht locatieniveau")}</span><select {...register("requiredLocationDepth")}><option value="building">{text("Building", "Gebouw")}</option><option value="floor">{text("Floor", "Verdieping")}</option><option value="room">{text("Room", "Ruimte")}</option><option value="element">{text("Element", "Element")}</option></select></label>
             </div>
           </details>
@@ -3004,6 +3039,8 @@ function ContextSelection({
   storageStatus,
   isOnline,
   offlineCached,
+  signOut,
+  signOutDialog,
 }: {
   projects: ProjectContext[];
   chooseProject: (project: ProjectContext) => void;
@@ -3013,26 +3050,34 @@ function ContextSelection({
   storageStatus: string;
   isOnline: boolean;
   offlineCached: boolean;
+  signOut: () => void;
+  signOutDialog: React.ReactNode;
 }) {
   const { text } = useLanguage();
   const [showProjectSetup, setShowProjectSetup] = useState(false);
   return (
     <div className="context-shell">
+      {signOutDialog}
       <header className="context-topbar">
         <div className="context-brand">
           <CompanyLogo subtitle={text("Supervision", "Supervisie")} />
         </div>
-        <div className="context-user"><LanguageSwitcher compact /><span className="avatar">{initials(currentUserName)}</span><span><strong>{currentUserName}</strong><small>{text("CODECO user", "CODECO-gebruiker")}</small></span></div>
+        <div className="context-user">
+          <LanguageSwitcher compact />
+          <span className="avatar">{initials(currentUserName)}</span>
+          <span className="context-user-name"><strong>{currentUserName}</strong><small>{text("CODECO user", "CODECO-gebruiker")}</small></span>
+          <button className="ghost-button" type="button" onClick={signOut} aria-label={text(`Sign out ${currentUserName}`, `${currentUserName} afmelden`)}><LogOut size={14} /> <span className="context-sign-out-label">{text("Sign out", "Afmelden")}</span></button>
+        </div>
       </header>
 
       <main className="context-content">
         <div className={`data-mode-notice ${isOnline ? "connected" : "offline"}`} role="status">
           {isOnline ? <CheckCircle2 size={17} /> : <HardDrive size={17} />}
-          <span><strong>{isOnline ? text("Online workspace", "Online werkruimte") : text("Offline field mode", "Offline veldmodus")}</strong> {storageStatus}. {offlineCached ? text("The last synchronized projects and buildings are available; photos and drawings can be queued locally.", "De laatst gesynchroniseerde projecten en gebouwen zijn beschikbaar; foto’s en tekeningen kunnen lokaal worden klaargezet.") : text("Only centrally confirmed changes receive the saved status.", "Alleen centraal bevestigde wijzigingen krijgen de status opgeslagen.")}</span>
+          <span><strong>{isOnline ? text("Online", "Online") : text("Offline", "Offline")}</strong> · {storageStatus}{isOnline ? "" : offlineCached ? ` · ${text("Last synced projects are available.", "Laatst gesynchroniseerde projecten zijn beschikbaar.")}` : ` · ${text("Only synced changes count as saved.", "Alleen gesynchroniseerde wijzigingen tellen als opgeslagen.")}`}</span>
         </div>
 
         <section className="context-heading">
-          <div><p className="eyebrow">{text("My projects", "Mijn projecten")}</p><h1>{text("Where will you work today?", "Waar ga je vandaag werken?")}</h1><p>{text("Select a project to open its dashboard. Every building in the project is available from there.", "Kies een project om het dashboard te openen. Alle gebouwen van het project zijn daar direct beschikbaar.")}</p></div>
+          <div><h1>{text("My projects", "Mijn projecten")}</h1></div>
           <button className="primary-button portfolio-cta" type="button" onClick={() => setShowProjectSetup(true)}><Plus size={15} /> {text("New configured project", "Nieuw geconfigureerd project")}</button>
         </section>
         {/* No portfolio counters here: this screen only has to answer "which project am I
@@ -3047,7 +3092,7 @@ function ContextSelection({
                 <strong><span className="selection-icon"><Building2 size={18} /></span> {project.name}</strong>
                 <small><MapPin size={12} /> {project.location}</small>
               </span>
-              <span className="selection-meta"><span>{project.buildings.length} {text("buildings", "gebouwen")}</span><span>{project.openIssues} {text("open actions", "open acties")}</span></span>
+              <span className="selection-meta"><span>{project.buildings.length} {project.buildings.length === 1 ? text("building", "gebouw") : text("buildings", "gebouwen")}</span><span>{project.openIssues} {project.openIssues === 1 ? text("open action", "open actie") : text("open actions", "open acties")}</span></span>
               <span className="project-register-metrics" aria-label={text("Project register totals", "Totalen projectregisters")}>
                 <span><b>{project.issueCount}</b>{text("Issues", "Issues")}</span>
                 <span><b>{project.ncrCount}</b>NCR</span>
@@ -3131,8 +3176,12 @@ function ProjectStartForm({
   const loadAutomaticWeather = useCallback(async () => {
     setWeatherLoadState("loading");
     try {
+      const client = getSupabaseBrowserClient();
+      if (!client) throw new Error("weather-unavailable");
+      const accessToken = await validAccessToken(client);
       const response = await fetch(`/api/weather/current?location=${encodeURIComponent(project.location)}`, {
         cache: "no-store",
+        headers: { authorization: `Bearer ${accessToken}` },
       });
       const payload = await response.json() as CurrentProjectWeather | { error?: string };
       if (!response.ok || !("condition" in payload)) {
@@ -3189,7 +3238,7 @@ function ProjectStartForm({
         <form className="project-start-form" onSubmit={handleSubmit(save)} noValidate>
           <BuildingPicker id="project-start-building" buildings={buildings} value={buildingId} onChange={onChangeBuilding} allowAll />
           <section className="form-section-card">
-            <header><span className="form-section-number">1</span><span><strong>{text("Weather and working hours", "Weer en werktijden")}</strong><small>{text("Weather loads automatically from the project location", "Weer laadt automatisch vanuit de projectlocatie")}</small></span></header>
+            <header><span className="form-section-number">1</span><span><strong>{text("Weather and working hours", "Weer en werktijden")}</strong></span></header>
             <div className={`automatic-weather-status ${weatherLoadState}`}>
               <span className="automatic-weather-icon">{weatherLoadState === "loading" ? <Loader2 className="spin" size={18} /> : weatherLoadState === "ready" ? <CheckCircle2 size={18} /> : <CloudSun size={18} />}</span>
               <span>
@@ -3202,7 +3251,7 @@ function ProjectStartForm({
                       : text("Automatic source unavailable · check the fields below", "Automatische bron niet beschikbaar · controleer de velden hieronder")}</strong>
                 <small>{weatherLoadState === "ready" && automaticWeather
                   ? text(`${automaticWeather.source} · wind ${automaticWeather.windSpeedKph} km/h · humidity ${automaticWeather.relativeHumidityPercent}%`, `${automaticWeather.source} · wind ${automaticWeather.windSpeedKph} km/u · luchtvochtigheid ${automaticWeather.relativeHumidityPercent}%`)
-                  : text("The supervisor can always correct the suggested values.", "De supervisor kan de voorgestelde waarden altijd corrigeren.")}</small>
+                  : ""}</small>
               </span>
               {!initialAnswers ? <button type="button" onClick={() => void loadAutomaticWeather()} disabled={weatherLoadState === "loading"}><RefreshCw size={15} /> {text("Refresh", "Vernieuw")}</button> : null}
             </div>
@@ -3217,13 +3266,13 @@ function ProjectStartForm({
           </section>
 
           <section className="form-section-card">
-            <header><span className="form-section-number">2</span><span><strong>{text("What is planned today?", "Wat staat vandaag gepland?")}</strong><small>{text("This feeds the day plan and suggested modules", "Dit voedt het dagplan en de voorgestelde modules")}</small></span></header>
+            <header><span className="form-section-number">2</span><span><strong>{text("What is planned today?", "Wat staat vandaag gepland?")}</strong></span></header>
             <div className="form-grid two-columns">
               <div className="work-option-grid wide" aria-label={text("Choose planned work", "Kies geplande werkzaamheden")}>{constructionWorkOptions.map((option) => { const label = language === "en" ? option.en : option.nl; const active = selectedWork.includes(label); return <button className={active ? "active" : ""} type="button" aria-pressed={active} onClick={() => toggleWork(label)} key={option.en}>{active ? <Check size={14} /> : <Plus size={14} />}{label}</button>; })}</div>
               {errors.plannedWork ? <small className="field-error wide">{errors.plannedWork.message}</small> : null}
               <details className="optional-text-entry wide">
                 <summary>{text("Other planned work · optional", "Andere werkzaamheden · optioneel")}</summary>
-                <label className="form-field"><span>{text("Only add work that is not listed above", "Voeg alleen werk toe dat hierboven niet staat")}</span><textarea rows={3} {...register("plannedWork")} /><DictateButton onText={(transcript) => setValue("plannedWork", appendDictation(getValues("plannedWork") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label>
+                <label className="form-field"><span>{text("Other work", "Overig werk")}</span><textarea rows={3} {...register("plannedWork")} /><DictateButton onText={(transcript) => setValue("plannedWork", appendDictation(getValues("plannedWork") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label>
               </details>
               <label className="form-field"><span>{text("Inspection planned?", "Inspectie gepland?")}</span><select {...register("inspectionPlanned")}><option value="yes">{text("Yes", "Ja")}</option><option value="no">{text("No", "Nee")}</option></select></label>
               <label className="form-field"><span>{text("Concrete work planned?", "Betonwerk gepland?")}</span><select {...register("concreteWork")}><option value="yes">{text("Yes", "Ja")}</option><option value="no">{text("No", "Nee")}</option></select></label>
@@ -3233,16 +3282,16 @@ function ProjectStartForm({
           </section>
 
           <section className="form-section-card">
-            <header><span className="form-section-number">3</span><span><strong>{text("Documents and expected risks", "Documenten en verwachte risico’s")}</strong><small>{text("The app warns; the supervisor remains the decision maker", "De app waarschuwt; de supervisor blijft beslissen")}</small></span></header>
+            <header><span className="form-section-number">3</span><span><strong>{text("Documents and expected risks", "Documenten en verwachte risico’s")}</strong></span></header>
             <div className="form-grid two-columns">
               <label className="form-field"><span>{text("Approved working drawing", "Goedgekeurde werktekening")}</span><select {...register("drawingStatus")}><option value="approved">{text("Current revision available", "Actuele revisie aanwezig")}</option><option value="not_required">{text("Not required", "Niet vereist")}</option><option value="missing">{text("Missing / uncertain", "Ontbreekt / onzeker")}</option></select></label>
               <div className="quick-issue-presets wide" aria-label={text("Choose expected risks", "Kies verwachte risico's")}>{riskOptions.map((option) => <button className={selectedRisks.includes(option) ? "active" : ""} type="button" aria-pressed={selectedRisks.includes(option)} onClick={() => toggleRisk(option)} key={option}>{option}</button>)}</div>
               <details className="optional-text-entry wide">
                 <summary>{text("Other risk · optional", "Ander risico · optioneel")}</summary>
-                <label className="form-field"><span>{text("Only add an exceptional project-specific risk", "Voeg alleen een uitzonderlijk projectspecifiek risico toe")}</span><textarea rows={3} {...register("riskNotes")} /><DictateButton onText={(transcript) => setValue("riskNotes", appendDictation(getValues("riskNotes") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label>
+                <label className="form-field"><span>{text("Other risks", "Overige risico's")}</span><textarea rows={3} {...register("riskNotes")} /><DictateButton onText={(transcript) => setValue("riskNotes", appendDictation(getValues("riskNotes") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label>
               </details>
               {answers.drawingStatus === "missing" ? (
-                <label className="confirmation-check wide"><input type="checkbox" {...register("drawingIssueReported")} /><span><strong>{text("Missing drawing was reported", "Ontbrekende tekening is gemeld")}</strong><small>{text("Human confirmation is required before the workday opens.", "Menselijke bevestiging vereist voordat de werkdag wordt geopend.")}</small>{errors.drawingIssueReported ? <em className="field-error">{errors.drawingIssueReported.message}</em> : null}</span></label>
+                <label className="confirmation-check wide"><input type="checkbox" {...register("drawingIssueReported")} /><span><strong>{text("Missing drawing was reported", "Ontbrekende tekening is gemeld")}</strong>{errors.drawingIssueReported ? <em className="field-error">{errors.drawingIssueReported.message}</em> : null}</span></label>
               ) : null}
             </div>
           </section>
@@ -3253,18 +3302,17 @@ function ProjectStartForm({
           </div>
         </form>
 
-        <aside className="automation-panel">
-          <header><span className="automation-panel-icon"><Settings size={19} /></span><span><strong>{text("Visible automation", "Zichtbare automatisering")}</strong><small>{automation.length} {text("fixed rules active", "vaste regels actief")}</small></span></header>
-              <p className="automation-intro">{text("Every action comes from a fixed project rule and remains under supervisor control.", "Iedere actie komt uit een vaste projectregel en blijft door de supervisor controleerbaar.")}</p>
+        {automation.length ? <aside className="automation-panel">
+          <header><span className="automation-panel-icon"><Settings size={19} /></span><span><strong>{text("Checks", "Controles")}</strong></span></header>
           <div className="automation-rule-list">
             {automation.map((rule) => (
               <article className={`automation-rule ${rule.tone}`} key={rule.id}>
                 <span className="automation-rule-state">{rule.tone === "critical" ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}</span>
-                <span><strong>{rule.title}</strong><p>{rule.action}</p><small>{text("Triggered by", "Geactiveerd door")}: {rule.source} · {rule.id}</small></span>
+                <span><strong>{rule.title}</strong><p>{rule.action}</p></span>
               </article>
             ))}
           </div>
-        </aside>
+        </aside> : null}
       </div>
       </section>
     </div>
@@ -3379,6 +3427,9 @@ function TodayView({
         openActions={openActions}
         openWorkspace={openWorkspace}
         openDailyQuestions={openDailyQuestions}
+        openProjectStart={openProjectStart}
+        openReportCheck={openReport}
+        dayStarted={Boolean(projectStartAnswers)}
         openRecord={openRecord}
       />
     );
@@ -3406,9 +3457,9 @@ function TodayView({
       </section>
 
       <section className="overview-shortcuts" aria-label={text("Quick routes", "Directe routes")}>
-        <button className="overview-shortcut primary" type="button" onClick={openQuickAdd}><span><Camera size={18} /></span><strong>{text("Take a photo", "Foto maken")}</strong><small>{text("Project, building, time and folder automatic", "Project, gebouw, tijd en map automatisch")}</small><ArrowRight size={16} /></button>
+        <button className="overview-shortcut primary" type="button" onClick={openQuickAdd}><span><Camera size={18} /></span><strong>{text("Take a photo", "Foto maken")}</strong><ArrowRight size={16} /></button>
         {/* One route, one meaning: the day's log in the client's own report format. */}
-        <button className="overview-shortcut" type="button" onClick={openOneTapLog}><span><ClipboardCheck size={18} /></span><strong>{text("Daily log", "Daglog")}</strong><small>{text("Today's log in your own report format", "De dag van vandaag in je eigen rapportformaat")}</small><ArrowRight size={16} /></button>
+        <button className="overview-shortcut" type="button" onClick={openOneTapLog}><span><ClipboardCheck size={18} /></span><strong>{text("Daily log", "Daglog")}</strong><ArrowRight size={16} /></button>
         <button className="overview-shortcut mobile-redundant" type="button" onClick={openActions}><span><ClipboardCheck size={18} /></span><strong>{text("Open actions", "Acties openen")}</strong><small>{text(`${actions.filter((action) => action.status !== "verified" && action.status !== "cancelled").length} require follow-up`, `${actions.filter((action) => action.status !== "verified" && action.status !== "cancelled").length} vragen opvolging`)}</small><ArrowRight size={16} /></button>
         <button className="overview-shortcut mobile-redundant" type="button" onClick={canManageMembers ? openSettings : openWorkspace}><span>{canManageMembers ? <Settings size={18} /> : <LayoutDashboard size={18} />}</span><strong>{canManageMembers ? text("Manage workspace", "Werkruimte beheren") : text("Open project workspace", "Projectwerkruimte openen")}</strong><small>{canManageMembers ? text("Users, rules and project structure", "Gebruikers, regels en projectstructuur") : text("Inspections, findings and files", "Inspecties, bevindingen en bestanden")}</small><ArrowRight size={16} /></button>
       </section>
@@ -3418,7 +3469,6 @@ function TodayView({
           <div className="report-copy">
             <div className="status-kicker"><span className="live-dot" /> {text("Report in progress", "Rapport in uitvoering")}</div>
             <h2>{text("Daily report", "Dagrapport")} {reportNumber}</h2>
-            <p>{text("Data from all buildings is automatically brought together in this project report.", "Gegevens uit alle gebouwen worden automatisch in dit projectrapport samengebracht.")}</p>
             <button className="inline-button" type="button" onClick={openReport}>
               {text("View report status", "Rapportstatus bekijken")} <ArrowRight size={14} />
             </button>
@@ -3435,7 +3485,7 @@ function TodayView({
               <span className="critical-badge">{criticalEntry ? text("Critical", "Kritiek") : text("No critical record", "Geen kritieke registratie")}</span>
             </div>
             <h3>{criticalEntry?.title ?? text("No immediate blocker recorded", "Geen directe blokkade geregistreerd")}</h3>
-            <p>{criticalEntry?.detail ?? text("New critical records appear here immediately.", "Nieuwe kritieke registraties worden hier direct zichtbaar.")}</p>
+            <p>{criticalEntry?.detail ?? text("No critical records.", "Geen kritieke registraties.")}</p>
           </div>
           <button className="text-link" type="button" onClick={showCritical}>{text("Open central action list", "Open centrale actielijst")} <ArrowRight size={13} /></button>
         </article>
@@ -3446,7 +3496,6 @@ function TodayView({
           <header className="panel-header">
             <div className="section-heading">
               <h2>{text("Buildings in today's report", "Gebouwen in het rapport van vandaag")}</h2>
-              <p>{text("One project-wide report, complete once every building below has its own start check and closeout.", "Eén projectbreed rapport, compleet zodra elk gebouw hieronder een eigen projectstart en dagafsluiting heeft.")}</p>
             </div>
           </header>
           <div className="todo-list">
@@ -3477,7 +3526,6 @@ function TodayView({
           <span className="questionnaire-copy">
             <span className="status-kicker">{text("Client format", "Klantformat")} · {clientReportSections.length} {text("report sections", "rapportonderdelen")}</span>
             <strong>{dailyCloseoutAnswers ? text("Daily questions confirmed", "Dagvragen bevestigd") : text("How did the project go today?", "Hoe is het project vandaag gegaan?")}</strong>
-            <p>{text("Four short question groups feed the right modules: progress, quality/HSE, logistics and tomorrow's plan.", "Vier korte vraaggroepen vullen de juiste modules: verloop, kwaliteit/HSE, logistiek en planning morgen.")}</p>
           </span>
         </div>
         <div className="questionnaire-automation">
@@ -3556,7 +3604,7 @@ function TodayView({
       <section className="report-control-bar">
         <div className="report-control-copy">
           <span className="report-control-icon"><FileCheck2 size={19} /></span>
-          <span><strong>{text("Ready for the final check?", "Klaar voor de eindcontrole?")}</strong><span>{text("The app checks required data and compiles the summary.", "De app controleert verplichte gegevens en stelt de samenvatting samen.")}</span></span>
+          <span><strong>{text("Ready for the final check?", "Klaar voor de eindcontrole?")}</strong></span>
         </div>
         <button className="primary-button" type="button" onClick={openReport}>{text("Check report", "Rapport controleren")} <ArrowRight size={14} /></button>
       </section>
@@ -3625,14 +3673,14 @@ function SecondaryView({
   if (activeNav === "project") {
     const registrationsByKind = (kind: EntryKind) => entries.filter((entry) => entry.kind === kind).length;
     const modules = [
-      { title: text("Attendance", "Aanwezigheid"), copy: text("Parties, disciplines, headcounts and shifts", "Partijen, disciplines, aantallen en diensten"), icon: Users, count: `${attendanceTotal} ${text("today", "vandaag")}`, action: openAttendance },
-      { title: text("Activities", "Activiteiten"), copy: text("Work packages, planning and progress", "Werkpakketten, planning en voortgang"), icon: Wrench, count: `${registrationsByKind("activity")} ${text("today", "vandaag")}`, action: openQuickAdd },
+      { title: text("Attendance", "Aanwezigheid"), icon: Users, count: `${attendanceTotal} ${text("today", "vandaag")}`, action: openAttendance },
+      { title: text("Activities", "Activiteiten"), icon: Wrench, count: `${registrationsByKind("activity")} ${text("today", "vandaag")}`, action: openQuickAdd },
       // Each tile opens the module it names. Inspections, findings and photos all used to
       // land on the quick-add sheet or the action centre instead.
-      { title: text("Inspections", "Inspecties"), copy: text("Planned, completed and re-inspections", "Gepland, uitgevoerd en herinspecties"), icon: ClipboardCheck, count: `${registrationsByKind("inspection")} ${text("today", "vandaag")}`, action: () => openProjectTab("inspections") },
-      { title: text("Findings", "Bevindingen"), copy: text("Quality, NCR and repair verification", "Kwaliteit, NCR en herstelverificatie"), icon: AlertTriangle, count: `${registrationsByKind("finding")} ${text("today", "vandaag")}`, action: () => openProjectTab("findings") },
-      { title: text("Actions", "Acties"), copy: text("Assignment, deadlines and verification", "Toewijzing, deadlines en verificatie"), icon: ShieldCheck, count: `${actions.length} ${text("central", "centraal")}`, action: () => navigate("acties") },
-      { title: text("Photos", "Foto’s"), copy: text("Evidence, locations and links", "Bewijs, locaties en koppelingen"), icon: Image, count: `${registrationsByKind("photo")} ${text("today", "vandaag")}`, action: () => openProjectTab("files") },
+      { title: text("Inspections", "Inspecties"), icon: ClipboardCheck, count: `${registrationsByKind("inspection")} ${text("today", "vandaag")}`, action: () => openProjectTab("inspections") },
+      { title: text("Findings", "Bevindingen"), icon: AlertTriangle, count: `${registrationsByKind("finding")} ${text("today", "vandaag")}`, action: () => openProjectTab("findings") },
+      { title: text("Actions", "Acties"), icon: ShieldCheck, count: `${actions.length} ${text("central", "centraal")}`, action: () => navigate("acties") },
+      { title: text("Photos", "Foto’s"), icon: Image, count: `${registrationsByKind("photo")} ${text("today", "vandaag")}`, action: () => openProjectTab("files") },
     ];
     return (
       <>
@@ -3646,7 +3694,7 @@ function SecondaryView({
             return (
               <button className="module-card" type="button" key={item.title} onClick={item.action} style={{ textAlign: "left", cursor: "pointer" }}>
                 <span className="module-card-top"><span className="module-card-icon"><Icon size={19} /></span><span className="module-count">{item.count}</span></span>
-                <h2>{item.title}</h2><p>{item.copy}</p>
+                <h2>{item.title}</h2>
               </button>
             );
           })}
@@ -3663,7 +3711,7 @@ function SecondaryView({
     return (
       <>
         <header className="secondary-header">
-          <div><p className="eyebrow">{actions.length} {text("centrally recorded", "centraal geregistreerd")}</p><h1>{text("Actions", "Acties")}</h1><p>{text("Personal and assigned follow-up in one list.", "Persoonlijke en toegewezen opvolging in één lijst.")}</p></div>
+          <div><p className="eyebrow">{actions.length} {text("centrally recorded", "centraal geregistreerd")}</p><h1>{text("Actions", "Acties")}</h1></div>
           <button className="primary-button" type="button" onClick={openActionCreate}><Plus size={15} /> {text("Add action", "Actie toevoegen")}</button>
         </header>
         <nav className="action-record-shortcuts" aria-label={text("Open work and document records", "Openstaande werk- en documentregistraties")}>
@@ -3677,7 +3725,7 @@ function SecondaryView({
         </nav>
         <section className="action-overview" aria-label={text("Action summary", "Actieoverzicht")}><button className={actionFilter === "open" ? "active" : ""} type="button" onClick={() => setActionFilter("open")}><strong>{openActions.length}</strong><span>{text("Open", "Open")}</span></button><button className={actionFilter === "urgent" ? "active urgent" : "urgent"} type="button" onClick={() => setActionFilter("urgent")}><strong>{urgentActions.length}</strong><span>{text("Urgent", "Urgent")}</span></button><button className={actionFilter === "completed" ? "active" : ""} type="button" onClick={() => setActionFilter("completed")}><strong>{completedActions.length}</strong><span>{text("Completed", "Afgerond")}</span></button><button className={actionFilter === "all" ? "active" : ""} type="button" onClick={() => setActionFilter("all")}><strong>{actions.length}</strong><span>{text("All", "Alles")}</span></button></section>
         <section className="actions-list">
-          {visibleActions.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{actionFilter === "urgent" ? text("Nothing urgent", "Niets urgent") : actionFilter === "completed" ? text("No completed actions", "Nog geen afgeronde acties") : text("No open actions", "Geen open acties")}</strong><span>{text("Choose another filter or create a new action.", "Kies een ander filter of maak een nieuwe actie aan.")}</span></div> : null}
+          {visibleActions.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{actionFilter === "urgent" ? text("Nothing urgent", "Niets urgent") : actionFilter === "completed" ? text("No completed actions", "Nog geen afgeronde acties") : text("No open actions", "Geen open acties")}</strong></div> : null}
           {visibleActions.map((action) => {
             const dueAt = action.due_at ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(action.due_at)) : text("No deadline", "Geen deadline");
             const latestUpdate = actionUpdates.find((update) => update.action_id === action.id);
@@ -3696,12 +3744,12 @@ function SecondaryView({
   if (activeNav === "rapporten") {
     return (
       <>
-        <header className="secondary-header"><div><p className="eyebrow">{text("Daily reports", "Dagrapporten")}</p><h1>{text("Report history", "Rapporthistorie")}</h1><p>{text("Drafts, versions, reviews and distribution history.", "Concepten, versies, reviews en verzendhistorie.")}</p></div></header>
+        <header className="secondary-header"><div><p className="eyebrow">{text("Daily reports", "Dagrapporten")}</p><h1>{text("Report history", "Rapporthistorie")}</h1></div></header>
         <section className="actions-list">
           <button className="action-row" type="button" style={{ textAlign: "left", cursor: "pointer" }} onClick={openReport}>
               <span className="action-icon" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}><FileText size={18} /></span>
               <span className="action-copy"><strong>{reportNumber} · {text("Today", "Vandaag")}</strong><span>{projectName} · {text("all buildings", "alle gebouwen")}</span></span>
-              <span className={`task-status ${reportStatus === "approved" ? "green" : ""}`}>{reportStatus.replaceAll("_", " ")}</span>
+              <span className={`task-status ${reportStatus === "approved" ? "green" : ""}`}>{statusText(reportStatus, text)}</span>
           </button>
         </section>
       </>
@@ -3711,25 +3759,25 @@ function SecondaryView({
   // A row with a chevron promises a screen. These three had no action at all, so tapping
   // them did nothing; each one now opens the screen that actually holds what it describes.
   const settings = [
-    { title: text("Reports", "Rapporten"), copy: text("History, revisions and distribution", "Historie, revisies en distributie"), icon: FileText, action: () => navigate("rapporten") },
-    { title: "Dashboard", copy: text("KPIs, trends and source data", "KPI’s, trends en brongegevens"), icon: Gauge, action: () => navigate("vandaag") },
-    { title: text("Tomorrow's plan", "Planning morgen"), copy: text("Activities, risks and inspections", "Activiteiten, risico’s en inspecties"), icon: CalendarDays, action: openDailyLog },
+    { title: text("Reports", "Rapporten"), icon: FileText, action: () => navigate("rapporten") },
+    { title: "Dashboard", icon: Gauge, action: () => navigate("vandaag") },
+    { title: text("Tomorrow's plan", "Planning morgen"), icon: CalendarDays, action: openDailyLog },
     // "Project settings · locations, parties and configuration" used to stand here pointing
     // at the access screen, which holds none of those three. Locations, parties and the
     // project rules live in the management workspace, and that is where the row goes.
-    { title: text("Project settings", "Projectinstellingen"), copy: text("Locations, parties and configuration", "Locaties, partijen en configuratie"), icon: Settings, action: () => navigate("meer") },
-    ...(canManageMembers ? [{ title: text("Users and access", "Gebruikers en toegang"), copy: text("Invite employees or external parties and assign roles", "Medewerkers of externe partijen uitnodigen en rollen toewijzen"), icon: Users, action: openUserAdmin }] : []),
+    { title: text("Project settings", "Projectinstellingen"), icon: Settings, action: () => navigate("meer") },
+    ...(canManageMembers ? [{ title: text("Users and access", "Gebruikers en toegang"), icon: Users, action: openUserAdmin }] : []),
   ];
   return (
     <>
-      <header className="secondary-header"><div><p className="eyebrow">{text("Workspace", "Werkruimte")}</p><h1>{text("More", "Meer")}</h1><p>{text("Reporting, planning and project management.", "Rapportage, planning en projectbeheer.")}</p></div></header>
+      <header className="secondary-header"><div><p className="eyebrow">{text("Workspace", "Werkruimte")}</p><h1>{text("More", "Meer")}</h1></div></header>
       <section className="settings-list">
         {settings.map((item) => {
           const Icon = item.icon;
           return (
             <button className="settings-row" type="button" key={item.title} onClick={item.action}>
               <span className="module-card-icon"><Icon size={18} /></span>
-              <span style={{ textAlign: "left" }}><strong>{item.title}</strong><span>{item.copy}</span></span>
+              <span style={{ textAlign: "left" }}><strong>{item.title}</strong></span>
               <ChevronRight size={16} color="#718995" />
             </button>
           );
@@ -3762,7 +3810,7 @@ function NotificationsModal({ client, notifications, loading, close, markRead }:
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal notifications-modal" role="dialog" aria-modal="true" aria-labelledby="notifications-title">
-        <header className="modal-header"><div><h2 id="notifications-title">{text("Push notifications and deadlines", "Pushmeldingen en deadlines")}</h2><p>{text("Automatic device notifications from actions, findings and report reviews, with an auditable copy in this inbox.", "Automatische apparaatmeldingen uit acties, bevindingen en rapportreviews, met een auditeerbare kopie in deze inbox.")}</p></div><button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button></header>
+        <header className="modal-header"><div><h2 id="notifications-title">{text("Push notifications and deadlines", "Pushmeldingen en deadlines")}</h2></div><button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button></header>
         <div className="modal-body notification-list">
           <div className={`push-activation ${pushState}`}>
             {pushState === "ios-add-to-home-screen" ? <Share size={19} /> : <Bell size={19} />}
@@ -3776,22 +3824,22 @@ function NotificationsModal({ client, notifications, loading, close, markRead }:
                   : text("Activate push on this device", "Activeer push op dit apparaat")}
               </strong>
               <small>
-                {pushState === "active" ? text("Use Test push to verify the complete browser, subscription and delivery chain.", "Gebruik Test push om de volledige browser-, registratie- en afleverketen te controleren.")
-                  : pushState === "not-configured" ? text("An administrator still needs to add the VAPID keys (NEXT_PUBLIC_VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT) to the deployment. Nobody can activate push until that's done.", "Een beheerder moet de VAPID-sleutels (NEXT_PUBLIC_VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT) nog toevoegen aan de omgeving. Niemand kan push activeren zolang dat niet is gebeurd.")
-                  : pushState === "ios-add-to-home-screen" ? text("iPhone and iPad only support push for apps opened from the Home Screen. Tap Share, then \"Add to Home Screen\", and open the app from there to activate push.", "iPhone en iPad ondersteunen push alleen voor apps die vanaf het beginscherm zijn geopend. Tik op Delen, dan op \"Zet op beginscherm\", en open de app van daaruit om push te activeren.")
-                  : pushState === "inactive" ? text("If Activate fails on a Chromium browser (Brave, Chrome, Edge), check that the browser isn't blocking Google push services: Brave disables this by default under Settings → Privacy and security → Use Google services for push messaging.", "Als Activeren mislukt in een Chromium-browser (Brave, Chrome, Edge), controleer dan of de browser Google-pushservices niet blokkeert: Brave zet dit standaard uit onder Instellingen → Privacy en beveiliging → Google-services gebruiken voor pushmeldingen.")
-                  : text("Deadlines are generated automatically from fixed project rules.", "Deadlines worden automatisch uit vaste projectregels gegenereerd.")}
+                {pushState === "active" ? ""
+                  : pushState === "not-configured" ? text("Push is not configured. An administrator must add the VAPID keys.", "Push is niet geconfigureerd. Een beheerder moet de VAPID-sleutels toevoegen.")
+                  : pushState === "ios-add-to-home-screen" ? text("On iPhone and iPad, push works only from the Home Screen. Tap Share, then Add to Home Screen, and open the app from there.", "Op iPhone en iPad werkt push alleen vanaf het beginscherm. Tik op Deel, dan Zet op beginscherm, en open de app daar.")
+                  : pushState === "inactive" ? text("Activate failed? Check that your browser allows Google push services (Brave: Settings → Privacy and security → Use Google services for push messaging).", "Activeren mislukt? Controleer of je browser Google-pushdiensten toestaat (Brave: Instellingen → Privacy en beveiliging → Google-services voor pushberichten gebruiken).")
+                  : ""}
               </small>
             </span>
             {pushState === "inactive" || pushState === "active" ? <button className={pushState === "active" ? "secondary-button" : "primary-button"} type="button" disabled={pushBusy} onClick={() => void activatePush()}>{pushBusy ? <Loader2 className="spin" size={15} /> : <Bell size={15} />}{pushState === "active" ? text("Test push", "Test push") : text("Activate", "Activeren")}</button> : null}
           </div>
           {pushError ? <div className="operation-alert error">{pushError}</div> : null}
-          {loading ? <div className="empty-list-state"><Loader2 className="spin" size={22} /><strong>{text("Loading notifications", "Meldingen laden")}</strong><span>{text("Deadlines are checked using fixed rules.", "Deadlines worden regelgestuurd gecontroleerd.")}</span></div> : null}
-          {!loading && notifications.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No notifications", "Geen meldingen")}</strong><span>{text("There are no open personal reminders.", "Er zijn geen openstaande persoonlijke herinneringen.")}</span></div> : null}
+          {loading ? <div className="empty-list-state"><Loader2 className="spin" size={22} /><strong>{text("Loading notifications", "Meldingen laden")}</strong></div> : null}
+          {!loading && notifications.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No notifications", "Geen meldingen")}</strong></div> : null}
           {notifications.map((notification) => (
             <button className={`notification-row ${notification.read_at ? "read" : ""}`} type="button" key={notification.id} onClick={() => void markRead(notification.id)}>
               <span className="notification-row-icon">{notification.notification_type.includes("overdue") || notification.notification_type.includes("critical") ? <AlertTriangle size={17} /> : <Bell size={17} />}</span>
-              <span><strong>{notification.title}</strong><span>{notification.body}</span><small>{notification.due_at ? `${text("Deadline", "Deadline")} ${new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(notification.due_at))}` : text("Immediate follow-up", "Directe opvolging")} · {notification.push_status === "sent" ? text("Push sent", "Push verzonden") : notification.push_status === "failed" ? text("Push retry pending", "Nieuwe pushpoging gepland") : notification.push_status === "skipped" ? text("Activate push on a device", "Activeer push op een apparaat") : text("Push queued", "Push in wachtrij")}</small></span>
+              <span><strong>{notificationTitle(notification.title, text)}</strong><span>{notification.body}</span><small>{notification.due_at ? `${text("Deadline", "Deadline")} ${new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(notification.due_at))}` : text("Immediate follow-up", "Directe opvolging")} · {notification.push_status === "sent" ? text("Push sent", "Push verzonden") : notification.push_status === "failed" ? text("Push retry pending", "Nieuwe pushpoging gepland") : notification.push_status === "skipped" ? text("Activate push on a device", "Activeer push op een apparaat") : text("Push queued", "Push in wachtrij")}</small></span>
               {!notification.read_at ? <i aria-label={text("Unread", "Ongelezen")} /> : null}
             </button>
           ))}
@@ -3925,7 +3973,7 @@ function UserAdminModal({
     const saved = await changeStatus(memberAction.userId, memberAction.nextStatus, memberAction.reason.trim());
     if (saved) {
       setMemberAction(null);
-      setSuccess(text("The access status and reason were stored centrally and audited.", "De toegangsstatus en reden zijn centraal opgeslagen en geaudit."));
+      setSuccess(text("Access status saved.", "Toegangsstatus opgeslagen."));
     } else {
       setMemberError(text("The access status could not be changed.", "De toegangsstatus kon niet worden gewijzigd."));
     }
@@ -3950,7 +3998,7 @@ function UserAdminModal({
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal user-admin-modal" role="dialog" aria-modal="true" aria-labelledby="user-admin-title">
         <header className="modal-header">
-          <div><p className="eyebrow">{text("Access management", "Toegangsbeheer")}</p><h2 id="user-admin-title">{text("Users and access", "Gebruikers en toegang")}</h2><p>{text("Invite employees or external project parties and keep access explicit.", "Nodig medewerkers of externe projectpartijen uit en houd de toegang expliciet.")}</p></div>
+          <div><p className="eyebrow">{text("Access management", "Toegangsbeheer")}</p><h2 id="user-admin-title">{text("Users and access", "Gebruikers en toegang")}</h2></div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <div className="modal-body user-admin-body">
@@ -3962,14 +4010,14 @@ function UserAdminModal({
             <div className="invite-progress" aria-label={text(`Step ${inviteStep} of 3`, `Stap ${inviteStep} van 3`)}>
               {[text("Person", "Persoon"), text("Access", "Toegang"), text("Check", "Controleren")].map((label, index) => <span className={inviteStep >= index + 1 ? "active" : ""} key={label}><i>{inviteStep > index + 1 ? <Check size={12} /> : index + 1}</i>{label}</span>)}
             </div>
-            <div className="section-heading"><span className="module-card-icon"><UserPlus size={18} /></span><span><h3 id="invite-heading">{text("Invite project user", "Projectgebruiker uitnodigen")}</h3><p>{text("Invite an employee, contractor, consultant or owner with a personal login and a project-scoped role.", "Nodig een medewerker, aannemer, adviseur of eigenaar uit met een persoonlijke login en projectgebonden rol.")}</p></span></div>
-            {success ? <div className="invite-success" role="status"><span><CheckCircle2 size={24} /></span><div><h3>{text("Invitation is on its way", "Uitnodiging is onderweg")}</h3><p>{text(`${invitedEmail} receives a secure link to set a password. The account remains marked as invited until the first sign-in.`, `${invitedEmail} ontvangt een beveiligde link om een wachtwoord in te stellen. Tot de eerste aanmelding blijft het account als uitgenodigd gemarkeerd.`)}</p><div className="button-row"><button className="primary-button" type="button" onClick={startAnotherInvite}><UserPlus size={15} /> {text("Invite another", "Nog iemand uitnodigen")}</button><button className="ghost-button" type="button" onClick={() => setActivePanel("members")}>{text("View access", "Toegang bekijken")} <ArrowRight size={14} /></button></div></div></div> : <form className={`invite-flow step-${inviteStep}`} onSubmit={handleSubmit(submit)} noValidate>
+            <div className="section-heading"><span className="module-card-icon"><UserPlus size={18} /></span><span><h3 id="invite-heading">{text("Invite project user", "Projectgebruiker uitnodigen")}</h3><p>{text("Invite a person", "Persoon uitnodigen")}</p></span></div>
+            {success ? <div className="invite-success" role="status"><span><CheckCircle2 size={24} /></span><div><h3>{text("Invitation is on its way", "Uitnodiging is onderweg")}</h3><p>{text(`${invitedEmail} receives a link to set a password.`, `${invitedEmail} ontvangt een link om een wachtwoord in te stellen.`)}</p><div className="button-row"><button className="primary-button" type="button" onClick={startAnotherInvite}><UserPlus size={15} /> {text("Invite another", "Nog iemand uitnodigen")}</button><button className="ghost-button" type="button" onClick={() => setActivePanel("members")}>{text("View access", "Toegang bekijken")} <ArrowRight size={14} /></button></div></div></div> : <form className={`invite-flow step-${inviteStep}`} onSubmit={handleSubmit(submit)} noValidate>
               <input type="hidden" {...register("organizationId")} />
               {inviteStep === 1 ? <div className="form-grid"><label className="form-field"><span>{text("Full name *", "Volledige naam *")}</span><input autoFocus autoComplete="name" placeholder={text("e.g. Jane Doe", "bijv. Jane Doe")} {...register("displayName")} />{errors.displayName ? <small className="field-error">{errors.displayName.message}</small> : null}</label><label className="form-field"><span>{text("Business email address *", "Zakelijk e-mailadres *")}</span><input type="email" autoComplete="email" placeholder="naam@bedrijf.com" {...register("email")} />{errors.email ? <small className="field-error">{errors.email.message}</small> : null}</label></div> : null}
               <label className="form-field"><span>{text("Role *", "Rol *")}</span><select {...register("roleCode")} disabled={!access?.roles.length}><option value="">{text("Choose a role", "Kies een rol")}</option><optgroup label={text("Project roles · least privilege", "Projectrollen · minimale rechten")}>{projectRoles.map((role) => <option value={role.code} key={role.id}>{role.name}</option>)}</optgroup><optgroup label={text("Organization roles · internal only", "Organisatierollen · alleen intern")}>{access?.roles.filter((role) => role.scope === "organization").map((role) => <option value={role.code} key={role.id}>{role.name}</option>)}</optgroup></select>{errors.roleCode ? <small className="field-error">{errors.roleCode.message}</small> : null}</label>
               {selectedRole ? <div className={`role-access-preview ${selectedRole.code === "external_guest" ? "restricted" : ""}`}><KeyRound size={16} /><span><strong>{selectedRole.name} · {selectedRole.scope === "project" ? text("this project only", "alleen dit project") : text("entire organization", "hele organisatie")}</strong><small>{text(selectedRoleCopy[0], selectedRoleCopy[1])}</small></span></div> : null}
               {selectedRole?.scope === "project" ? <label className="form-field"><span>Project *</span><select {...register("projectId")}><option value="">{text("Choose a project", "Kies een project")}</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.code} · {project.name}</option>)}</select>{errors.projectId ? <small className="field-error">{errors.projectId.message}</small> : null}</label> : <div className="scope-note"><ShieldCheck size={16} /><span><strong>{text("Organization-wide access", "Organisatiebrede toegang")}</strong><small>{text("This role applies to all current projects in the organization.", "Deze rol geldt voor alle huidige projecten binnen de organisatie.")}</small></span></div>}
-              {inviteStep === 3 ? <><dl className="invite-summary"><div><dt>{text("Project user", "Projectgebruiker")}</dt><dd>{displayName}<small>{email}</small></dd></div><div><dt>{text("Role", "Rol")}</dt><dd>{selectedRole?.name}</dd></div><div><dt>{text("Access", "Toegang")}</dt><dd>{selectedRole?.scope === "organization" ? text("All projects in the organization", "Alle projecten in de organisatie") : selectedInviteProject ? `${selectedInviteProject.code} · ${selectedInviteProject.name}` : text("No project selected", "Geen project geselecteerd")}</dd></div></dl><div className="invitation-explainer"><ShieldCheck size={17} /><span><strong>{text("What happens next?", "Wat gebeurt hierna?")}</strong>{text("The invited person opens the personal email link, sets a password and can then access only the scope shown above.", "De uitgenodigde persoon opent de persoonlijke e-maillink, stelt een wachtwoord in en krijgt daarna alleen toegang tot de scope hierboven.")}</span></div></> : null}
+              {inviteStep === 3 ? <><dl className="invite-summary"><div><dt>{text("Project user", "Projectgebruiker")}</dt><dd>{displayName}<small>{email}</small></dd></div><div><dt>{text("Role", "Rol")}</dt><dd>{selectedRole?.name}</dd></div><div><dt>{text("Access", "Toegang")}</dt><dd>{selectedRole?.scope === "organization" ? text("All projects in the organization", "Alle projecten in de organisatie") : selectedInviteProject ? `${selectedInviteProject.code} · ${selectedInviteProject.name}` : text("No project selected", "Geen project geselecteerd")}</dd></div></dl><div className="invitation-explainer"><ShieldCheck size={17} /><span><strong>{text("What happens next?", "Wat gebeurt hierna?")}</strong>{text("Access is limited to the scope above.", "Toegang is beperkt tot het bereik hierboven.")}</span></div></> : null}
               {inviteError ? <p className="access-message error full" role="alert">{inviteError}</p> : null}
               <div className="invite-actions">{inviteStep > 1 ? <button className="ghost-button" type="button" onClick={() => setInviteStep(inviteStep === 3 ? 2 : 1)}><ArrowLeft size={14} /> {text("Back", "Terug")}</button> : <span />}{inviteStep < 3 ? <button className="primary-button" type="button" disabled={loading || Boolean(loadError)} onClick={() => void continueInvite()}>{text("Continue", "Doorgaan")} <ArrowRight size={15} /></button> : <button className="primary-button" type="submit" disabled={busy || loading || Boolean(loadError)}>{busy ? <Loader2 className="spin" size={15} /> : <UserPlus size={15} />}{text("Send invitation", "Uitnodiging versturen")}</button>}</div>
             </form>}
@@ -3977,10 +4025,10 @@ function UserAdminModal({
 
           {activePanel === "members" ? <section className="internal-members" aria-labelledby="members-heading">
             <div className="member-list-heading"><span><h3 id="members-heading">{text("Project accounts", "Projectaccounts")}</h3><p>{access?.members.length ?? 0} {text("account(s) with organization or project access", "account(s) met organisatie- of projecttoegang")}</p></span>{loadError ? <button className="ghost-button" type="button" onClick={reload}>{text("Reload", "Opnieuw laden")}</button> : null}</div>
-            {loading ? <div className="empty-list-state"><Loader2 className="spin" size={22} /><strong>{text("Loading accounts", "Accounts laden")}</strong><span>{text("Roles and project access are being verified.", "Rollen en projecttoegang worden gecontroleerd.")}</span></div> : null}
+            {loading ? <div className="empty-list-state"><Loader2 className="spin" size={22} /><strong>{text("Loading accounts", "Accounts laden")}</strong></div> : null}
             {loadError ? <p className="access-message error" role="alert">{loadError}</p> : null}
             {memberError ? <p className="access-message error" role="alert">{memberError}</p> : null}
-            {!loading && !loadError && access?.members.length === 0 ? <div className="empty-list-state"><Users size={22} /><strong>{text("No accounts yet", "Nog geen accounts")}</strong><span>{text("Send the first project invitation above.", "Verstuur hierboven de eerste projectuitnodiging.")}</span></div> : null}
+            {!loading && !loadError && access?.members.length === 0 ? <div className="empty-list-state"><Users size={22} /><strong>{text("No accounts yet", "Nog geen accounts")}</strong></div> : null}
             <div className="member-list">
               {access?.members.map((member) => {
                 const roles = [
@@ -4010,6 +4058,26 @@ function UserAdminModal({
   );
 }
 
+/**
+ * The database writes a notification's title in Dutch when it creates it ("Actie nadert
+ * deadline: ACT-2026-0003"). The interface says it in the language it is set to; a title it
+ * does not know stays as stored.
+ */
+function notificationTitle(stored: string, text: (english: string, dutch: string) => string) {
+  const exact: Record<string, string> = {
+    "Dagrapport wacht op review": text("Daily report waiting for review", "Dagrapport wacht op review"),
+    "Automatische back-up mislukt": text("Automatic backup failed", "Automatische back-up mislukt"),
+  };
+  if (exact[stored]) return exact[stored];
+  const prefixes: Array<[string, string]> = [
+    ["Actie verlopen: ", text("Action overdue: ", "Actie verlopen: ")],
+    ["Actie nadert deadline: ", text("Action due soon: ", "Actie nadert deadline: ")],
+    ["Bevinding nadert deadline: ", text("Finding due soon: ", "Bevinding nadert deadline: ")],
+  ];
+  for (const [dutch, shown] of prefixes) if (stored.startsWith(dutch)) return shown + stored.slice(dutch.length);
+  return stored;
+}
+
 function QuickAddModal({ close, chooseType }: { close: () => void; chooseType: (type: string) => void }) {
   const { language, text } = useLanguage();
   const availableTypes = language === "en" ? quickTypesEnglish : quickTypes;
@@ -4017,7 +4085,7 @@ function QuickAddModal({ close, chooseType }: { close: () => void; chooseType: (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal" role="dialog" aria-modal="true" aria-labelledby="quick-title">
         <header className="modal-header">
-          <div><h2 id="quick-title">{text("Other field record", "Andere veldregistratie")}</h2><p>{text("Choose once; the project, building and daily report are linked automatically.", "Kies één keer; project, gebouw en dagrapport worden automatisch gekoppeld.")}</p></div>
+          <div><h2 id="quick-title">{text("Other field record", "Andere veldregistratie")}</h2></div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <div className="modal-body">
@@ -4193,7 +4261,6 @@ function EntryModal({
                   ? event.target.value.replace(description, "").trim() || event.target.value.trim()
                   : event.target.value)}
                 onFocus={(event) => { if (descriptionSuggested) event.currentTarget.select(); }}
-                placeholder={text("Choose above, dictate, or type what happened.", "Kies hierboven, dicteer of typ wat er is gebeurd.")}
               />
               {/* Dictation replaces the proposed text and then keeps adding to what was
                   already said, instead of asking the supervisor to clean up by hand. */}
@@ -4228,12 +4295,12 @@ function EntryModal({
                   </select>
                   {buildingDrawings.length
                     ? <button className="field-inline-link" type="button" onClick={openDrawings}><MapPin size={12} /> {drawingPoint ? text("Change the spot on the PDF", "Plek op de PDF wijzigen") : text("Open the PDF to place a pin", "Open de PDF om een pin te plaatsen")}</button>
-                    : <small>{text("No drawing has been uploaded for this building yet. Upload the PDF under Project Docs.", "Voor dit gebouw is nog geen tekening geüpload. Upload de PDF bij Project Docs.")}</small>}
+                    : <small>{text("No drawing for this building. Upload one under Project Docs.", "Geen tekening voor dit gebouw. Upload er een onder Project Docs.")}</small>}
                   {/* The pin itself is created when this record is saved, so it carries the
                       record's own number, name and date instead of a hand-picked link. */}
                   {drawingPoint ? (
                     <small className="entry-pin-set">
-                      <MapPin size={12} /> {text(`Spot chosen on page ${drawingPoint.pageNumber} · the pin is placed when you save`, `Plek gekozen op pagina ${drawingPoint.pageNumber} · de pin wordt geplaatst bij opslaan`)}
+                      <MapPin size={12} /> {text(`Spot on page ${drawingPoint.pageNumber} · pin is placed when you save`, `Punt op pagina ${drawingPoint.pageNumber} · pin wordt geplaatst bij opslaan`)}
                       <button className="field-inline-link" type="button" onClick={clearDrawingPoint}>{text("Remove", "Verwijderen")}</button>
                     </small>
                   ) : null}
@@ -4244,7 +4311,9 @@ function EntryModal({
               <div className="form-field">
                 <label htmlFor="priority">{text("Priority", "Prioriteit")}</label>
                 <select id="priority" value={priority} onChange={(event) => setPriority(event.target.value)}>
-                  <option>{text("Low", "Laag")}</option><option>{text("Normal", "Normaal")}</option><option>{text("High", "Hoog")}</option><option>{text("Critical", "Kritiek")}</option>
+                  {/* The value is the stored code; without it the translated label was submitted
+                      and every priority was silently saved as "normal". */}
+                  <option value="low">{text("Low", "Laag")}</option><option value="normal">{text("Normal", "Normaal")}</option><option value="high">{text("High", "Hoog")}</option><option value="critical">{text("Critical", "Kritiek")}</option>
                 </select>
               </div>
             ) : (
@@ -4273,7 +4342,6 @@ function EntryModal({
                 setPhotos={setPhotos}
                 markupContext={markupContext}
               />
-              <span className="form-note"><CheckCircle2 size={12} /> {text("Time, author, project and building are recorded automatically.", "Tijd, maker, project en gebouw worden automatisch vastgelegd.")}</span>
             </div>
           </div>
           <div className="modal-actions">
@@ -4356,21 +4424,20 @@ function ActionCreateModal({
         <form className="modal-body" onSubmit={handleSubmit(submit)} noValidate>
           <div className="form-grid two-columns">
             <div className="quick-issue-presets full" aria-label={text("Choose a standard action", "Kies een standaardactie")}>{actionTemplates.map((template) => <button className={selectedActionTitle === template.title ? "active" : ""} type="button" aria-pressed={selectedActionTitle === template.title} onClick={() => applyTemplate(template)} key={template.title}>{template.title}</button>)}</div>
-            {errors.title || errors.description ? <small className="field-error full">{text("Choose a standard action or open “Different action”.", "Kies een standaardactie of open ‘Andere actie’.")}</small> : null}
+            
             <details className="optional-text-entry full">
               <summary>{text("Different action", "Andere actie")}</summary>
               <div className="form-grid">
                 <label className="form-field"><span>{text("Action *", "Actie *")}</span><input placeholder={text("What must demonstrably be completed?", "Wat moet aantoonbaar worden uitgevoerd?")} {...register("title")} />{errors.title ? <small className="field-error">{errors.title.message}</small> : null}</label>
-                <label className="form-field"><span>{text("Context and acceptance criterion *", "Context en acceptatiecriterium *")}</span><textarea rows={4} placeholder={text("Describe the location, required measure and completion criterion.", "Beschrijf locatie, gewenste maatregel en wanneer de actie gereed is.")} {...register("description")} /><DictateButton onText={(transcript) => setValue("description", appendDictation(getValues("description") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} />{errors.description ? <small className="field-error">{errors.description.message}</small> : null}</label>
+                <label className="form-field"><span>{text("Context and acceptance criterion *", "Context en acceptatiecriterium *")}</span><textarea rows={4} {...register("description")} /><DictateButton onText={(transcript) => setValue("description", appendDictation(getValues("description") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} />{errors.description ? <small className="field-error">{errors.description.message}</small> : null}</label>
               </div>
             </details>
             <BuildingPicker id="action-building" buildings={buildings} value={buildingId} onChange={(next) => { setBuildingId(next); setLocationNodeId(""); }} allowAll />
             {buildingId !== ALL_BUILDINGS ? <LocationPicker id="action-location" nodes={locationNodes} buildingId={buildingId} value={locationNodeId} onChange={setLocationNodeId} requiredDepth={requiredLocationDepth} /> : null}
             <label className="form-field"><span>{text("Responsible party *", "Verantwoordelijke partij *")}</span><select {...register("ownerPartyId")} disabled={parties.length === 0}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select>{errors.ownerPartyId ? <small className="field-error">{errors.ownerPartyId.message}</small> : null}</label>
-            <label className="form-field"><span>{text("Assigned company employee *", "Toegewezen bedrijfsmedewerker *")}</span><select {...register("ownerUserId")} disabled={employees.length === 0}><option value="">{text("Choose employee", "Kies medewerker")}</option>{employees.map((employee) => <option value={employee.userId} key={employee.userId}>{employee.displayName || employee.email} · {[...employee.organizationRoles.map((role) => role.name), ...employee.projectRoles.filter((role) => role.projectId).map((role) => role.roleName)][0] ?? text("Employee", "Medewerker")}</option>)}</select>{errors.ownerUserId ? <small className="field-error">{errors.ownerUserId.message}</small> : null}{employees.length === 0 ? <small className="field-error">{text("No active company employees are available. Invite or activate one under Management → Team and access.", "Er zijn geen actieve bedrijfsmedewerkers beschikbaar. Nodig iemand uit of activeer het account via Management → Team en toegang.")}</small> : null}</label>
+            <label className="form-field"><span>{text("Assigned company employee *", "Toegewezen bedrijfsmedewerker *")}</span><select {...register("ownerUserId")} disabled={employees.length === 0}><option value="">{text("Choose employee", "Kies medewerker")}</option>{employees.map((employee) => <option value={employee.userId} key={employee.userId}>{employee.displayName || employee.email} · {[...employee.organizationRoles.map((role) => role.name), ...employee.projectRoles.filter((role) => role.projectId).map((role) => role.roleName)][0] ?? text("Employee", "Medewerker")}</option>)}</select>{errors.ownerUserId ? <small className="field-error">{errors.ownerUserId.message}</small> : null}{employees.length === 0 ? <small className="field-error">{text("No active employees. Add one under Management → Team and access.", "Geen actieve medewerkers. Voeg er een toe onder Management → Team en toegang.")}</small> : null}</label>
             <div className="form-field"><label htmlFor="action-deadline">Deadline *</label><input id="action-deadline" type="datetime-local" {...register("dueAt")} />{errors.dueAt ? <small className="field-error">{errors.dueAt.message}</small> : null}<span className="period-date-presets">{[[0, text("Today", "Vandaag")], [1, text("Tomorrow", "Morgen")], [3, text("3 days", "3 dagen")], [7, text("7 days", "7 dagen")]].map(([days, label]) => <button type="button" onClick={() => setValue("dueAt", actionDeadlineFromToday(Number(days)), { shouldDirty: true, shouldValidate: true })} key={String(label)}>{label}</button>)}</span></div>
             <label className="form-field"><span>{text("Priority", "Prioriteit")}</span><select {...register("priority")}><option value="low">{text("Low", "Laag")}</option><option value="normal">{text("Normal", "Normaal")}</option><option value="high">{text("High", "Hoog")}</option><option value="critical">{text("Critical", "Kritiek")}</option></select></label>
-            <div className="action-rule-note"><ShieldCheck size={16} /><span><strong>{text("Controlled follow-up flow", "Vaste opvolgflow")}</strong><small>{text("Open → accepted → in progress → verification → closed.", "Open → geaccepteerd → in uitvoering → verificatie → gesloten.")}</small></span></div>
           </div>
           <div className="modal-actions">
             <button className="back-button" type="button" onClick={goBack}><ArrowLeft size={14} /> {text("Back", "Terug")}</button>
@@ -4430,7 +4497,7 @@ function ActionDetailModal({
         </header>
         <div className="modal-body action-detail-body">
           <div className="action-detail-summary">
-            <span className={`task-status ${action.priority === "critical" ? "red" : ""}`}>{action.priority}</span>
+            <span className={`task-status ${action.priority === "critical" ? "red" : ""}`}>{priorityText(action.priority, text)}</span>
             <span className={`task-status ${action.status === "verified" ? "green" : ""}`}>{statusLabels[action.status]}</span>
             <p>{action.description}</p>
           </div>
@@ -4453,12 +4520,67 @@ function ActionDetailModal({
               {errors.note ? <small className="field-error">{text("Choose a standard status note or enter a different note.", "Kies een standaard statusnotitie of voer een andere notitie in.")}</small> : null}
               <details className="optional-text-entry">
                 <summary>{text("Different status note", "Andere statusnotitie")}</summary>
-                <label className="form-field"><span>{nextStatus === "verified" ? text("Verification note *", "Verificatienotitie *") : text("Execution note *", "Uitvoeringsnotitie *")}</span><textarea rows={3} placeholder={text("Record what was completed, checked or is still required.", "Leg vast wat is uitgevoerd, gecontroleerd of nog nodig is.")} {...register("note")} /><DictateButton onText={(transcript) => setValue("note", appendDictation(getValues("note") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} />{errors.note ? <small className="field-error">{errors.note.message}</small> : null}</label>
+                <label className="form-field"><span>{nextStatus === "verified" ? text("Verification note *", "Verificatienotitie *") : text("Execution note *", "Uitvoeringsnotitie *")}</span><textarea rows={3} {...register("note")} /><DictateButton onText={(transcript) => setValue("note", appendDictation(getValues("note") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} />{errors.note ? <small className="field-error">{errors.note.message}</small> : null}</label>
               </details>
               <button className="primary-button" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={14} /> : <ArrowRight size={14} />} {text("Move to", "Naar")} {statusLabels[nextStatus].toLowerCase()}</button>
             </form>
           ) : <p className="action-complete-note"><CheckCircle2 size={16} /> {action.status === "verified" ? text("This action has been formally verified and closed.", "Deze actie is formeel geverifieerd en gesloten.") : text("This action was cancelled and remains visible in the history.", "Deze actie is geannuleerd en blijft in de historie zichtbaar.")}</p>}
         </div>
+      </section>
+    </div>
+  );
+}
+
+/**
+ * Signing out while work is still waiting on this device. Keeping it is the default and the
+ * safe choice: it stays tied to this account, is invisible to anyone else who signs in here,
+ * and is sent the next time this account signs in. Discarding is possible but is spelled out.
+ */
+function SignOutDialog({
+  unsent,
+  busy,
+  close,
+  signOut,
+}: {
+  unsent: number;
+  busy: boolean;
+  close: () => void;
+  signOut: (discardUnsent: boolean) => void;
+}) {
+  const { text } = useLanguage();
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !busy && close()}>
+      <section className="modal sign-out-modal" role="alertdialog" aria-modal="true" aria-labelledby="sign-out-title" aria-describedby="sign-out-copy">
+        <header className="modal-header">
+          <div>
+            <h2 id="sign-out-title">{text("Sign out with unsent work?", "Afmelden met niet-verstuurd werk?")}</h2>
+            <p id="sign-out-copy">{text(`${unsent} item(s) on this device have not been sent. Project data is removed when you sign out. Unsent work stays here, hidden from others, and is sent the next time you sign in.`, `${unsent} item(s) op dit apparaat zijn nog niet verzonden. Projectgegevens worden verwijderd bij afmelden. Niet-verzonden werk blijft hier, verborgen voor anderen, en wordt verstuurd zodra je weer aanmeldt.`)}</p>
+          </div>
+          <button className="modal-close" type="button" onClick={close} disabled={busy} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
+        </header>
+        {confirmDiscard ? (
+          <div className="modal-body">
+            <p className="field-error" role="alert">{text(
+              `The ${unsent} unsent item(s) will be deleted permanently. They exist nowhere else and cannot be recovered.`,
+              `De ${unsent} niet-verstuurde item(s) worden definitief verwijderd. Ze bestaan nergens anders en kunnen niet worden hersteld.`,
+            )}</p>
+          </div>
+        ) : null}
+        <footer className="modal-actions">
+          {confirmDiscard ? (
+            <>
+              <button className="secondary-button" type="button" disabled={busy} onClick={() => setConfirmDiscard(false)}>{text("Back", "Terug")}</button>
+              <button className="danger-button" type="button" disabled={busy} onClick={() => signOut(true)}>{busy ? <Loader2 className="spin" size={15} /> : <Trash2 size={15} />} {text("Delete and sign out", "Verwijderen en afmelden")}</button>
+            </>
+          ) : (
+            <>
+              <button className="ghost-button" type="button" disabled={busy} onClick={() => setConfirmDiscard(true)}>{text("Discard unsent work…", "Niet-verstuurd werk weggooien…")}</button>
+              <button className="secondary-button" type="button" disabled={busy} onClick={close}>{text("Stay signed in", "Aangemeld blijven")}</button>
+              <button className="primary-button" type="button" disabled={busy} onClick={() => signOut(false)}>{busy ? <Loader2 className="spin" size={15} /> : <LogOut size={15} />} {text("Keep work and sign out", "Werk bewaren en afmelden")}</button>
+            </>
+          )}
+        </footer>
       </section>
     </div>
   );
@@ -4498,7 +4620,6 @@ function ProjectSwitcherModal({
         <header className="modal-header">
           <div>
             <h2 id="switch-project-title">{text("Switch project", "Van project wisselen")}</h2>
-            <p>{text("Every project keeps its own records, photos and reports. Opening another project closes this one and loads its own data.", "Elk project houdt zijn eigen registraties, foto’s en rapporten. Een ander project openen sluit dit project en laadt uitsluitend de eigen gegevens.")}</p>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
@@ -4536,7 +4657,7 @@ function ProjectSwitcherModal({
                     <strong>{project.name}</strong>
                     <small><MapPin size={12} /> {project.location}</small>
                     <small className="project-switcher-meta">
-                      {project.code} · {project.buildings.length} {text("buildings", "gebouwen")} · {project.openIssues} {text("open actions", "open acties")}
+                      {project.code} · {project.buildings.length} {project.buildings.length === 1 ? text("building", "gebouw") : text("buildings", "gebouwen")} · {project.openIssues} {project.openIssues === 1 ? text("open action", "open actie") : text("open actions", "open acties")}
                     </small>
                   </span>
                   <span className="project-switcher-state">
@@ -4591,7 +4712,6 @@ function ManageBuildingsModal({
         <header className="modal-header">
           <div>
             <h2 id="manage-buildings-title">{text("Buildings in this project", "Gebouwen in dit project")}</h2>
-            <p>{text("The daily report already covers every building. Every record — photo, finding, inspection, log — lets you choose its own building individually. Buildings you add here become available to pick from.", "Het dagrapport dekt al elk gebouw. Elke registratie — foto, bevinding, inspectie, log — laat je zelf het gebouw kiezen. Gebouwen die je hier toevoegt, worden overal beschikbaar om uit te kiezen.")}</p>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
@@ -4751,7 +4871,7 @@ function DailyQuestionsModal({
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal daily-questions-modal" role="dialog" aria-modal="true" aria-labelledby="daily-questions-title">
         <header className="modal-header">
-          <div><h2 id="daily-questions-title">{text("Daily questions for the report", "Dagvragen voor het rapport")} · {buildingName}</h2><p>{clientReportSections.length} {text("client sections · reused across modules · step", "klantonderdelen · modulair hergebruikt · stap")} {step + 1} {text("of", "van")} 4</p></div>
+          <div><h2 id="daily-questions-title">{text("Daily questions for the report", "Dagvragen voor het rapport")} · {buildingName}</h2><p>{text("Step", "Stap")} {step + 1} {text("of", "van")} 4</p></div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <form className="modal-body daily-questions-body" onSubmit={handleSubmit(save)} noValidate>
@@ -4762,7 +4882,7 @@ function DailyQuestionsModal({
 
           {step === 0 ? (
             <section className="question-group">
-              <header><span className="question-group-icon"><Gauge size={18} /></span><span><h3>{text("How did the project go today?", "Hoe is het project vandaag gegaan?")}</h3><p>{text("These answers feed the summary, work performed and progress; the underlying modules remain the source.", "Deze antwoorden voeden samenvatting, werkzaamheden en voortgang; de onderliggende modules blijven de bron.")}</p></span></header>
+              <header><span className="question-group-icon"><Gauge size={18} /></span><span><h3>{text("How did the project go today?", "Hoe is het project vandaag gegaan?")}</h3></span></header>
               <div className="form-grid two-columns">
                 <div className="quick-issue-presets wide" aria-label={text("Choose a daily summary", "Kies een dagsamenvatting")}>{dailySummaryOptions.map((option) => <button className={daySummary === option ? "active" : ""} type="button" onClick={() => setValue("daySummary", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div>
                 {errors.daySummary ? <small className="field-error wide">{errors.daySummary.message}</small> : null}
@@ -4782,22 +4902,20 @@ function DailyQuestionsModal({
                 <label className="form-field"><span>{text("Project progress", "Voortgang project")}</span><span className="input-with-unit"><input type="number" min="0" max="100" {...register("progressPercent", { valueAsNumber: true })} /><em>%</em></span>{errors.progressPercent ? <small className="field-error">{errors.progressPercent.message}</small> : null}</label>
                 <div className="click-answer-block wide">
                   <strong>{text("Work ongoing at day end", "Werk lopend aan het einde van de dag")}</strong>
-                  <small>{text("Select work that started but was not yet completed.", "Kies werkzaamheden die zijn gestart maar nog niet zijn afgerond.")}</small>
                   <div className="work-option-grid" aria-label={text("Choose ongoing work", "Kies lopend werk")}>{constructionWorkOptions.map((option) => { const label = language === "en" ? option.en : option.nl; const active = String(workOngoing).split("; ").includes(label); return <button className={active ? "active" : ""} type="button" aria-pressed={active} onClick={() => toggleCloseoutWork("workOngoing", label)} key={option.en}>{active ? <Check size={14} /> : <Plus size={14} />}{label}</button>; })}</div>
                   <details className="optional-text-entry">
                     <summary>{text("Other ongoing work", "Ander lopend werk")}</summary>
-                    <label className="form-field"><textarea rows={3} {...register("workOngoing")} /><DictateButton onText={(transcript) => setValue("workOngoing", appendDictation(getValues("workOngoing") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label>
+                    <label className="form-field"><textarea rows={3} aria-label={text("Work ongoing at day end", "Werk lopend aan het einde van de dag")} {...register("workOngoing")} /><DictateButton onText={(transcript) => setValue("workOngoing", appendDictation(getValues("workOngoing") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label>
                   </details>
                 </div>
                 <div className="click-answer-block wide">
                   <strong>{text("Work completed today *", "Werk vandaag afgerond *")}</strong>
-                  <small>{text("Select the work that was actually completed today.", "Kies de werkzaamheden die vandaag daadwerkelijk zijn afgerond.")}</small>
                   <div className="work-option-grid" aria-label={text("Choose completed work", "Kies afgerond werk")}>{constructionWorkOptions.map((option) => { const label = language === "en" ? option.en : option.nl; const active = String(workPerformed).split("; ").includes(label); return <button className={active ? "active" : ""} type="button" aria-pressed={active} onClick={() => toggleCloseoutWork("workPerformed", label)} key={option.en}>{active ? <Check size={14} /> : <Plus size={14} />}{label}</button>; })}</div>
                 </div>
                 {errors.workPerformed ? <small className="field-error wide">{errors.workPerformed.message}</small> : null}
                 <details className="optional-text-entry wide">
                   <summary>{text("Other completed work", "Andere uitgevoerde werkzaamheden")}</summary>
-                  <label className="form-field"><span>{text("Only add work that is not listed above", "Voeg alleen werk toe dat hierboven niet staat")}</span><textarea rows={4} {...register("workPerformed")} /><DictateButton onText={(transcript) => setValue("workPerformed", appendDictation(getValues("workPerformed") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label>
+                  <label className="form-field"><span>{text("Other work", "Overig werk")}</span><textarea rows={4} {...register("workPerformed")} /><DictateButton onText={(transcript) => setValue("workPerformed", appendDictation(getValues("workPerformed") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label>
                 </details>
               </div>
             </section>
@@ -4805,7 +4923,7 @@ function DailyQuestionsModal({
 
           {step === 1 ? (
             <section className="question-group">
-              <header><span className="question-group-icon"><ShieldCheck size={18} /></span><span><h3>{text("What was checked and were there deviations?", "Wat is gecontroleerd en waren er afwijkingen?")}</h3><p>{text("Failed answers are only proposed as a draft finding or HSE record; the supervisor confirms severity and follow-up.", "Niet-akkoord antwoorden worden alleen als conceptbevinding of HSE-melding voorgesteld; de supervisor bevestigt ernst en vervolg.")}</p></span></header>
+              <header><span className="question-group-icon"><ShieldCheck size={18} /></span><span><h3>{text("What was checked and were there deviations?", "Wat is gecontroleerd en waren er afwijkingen?")}</h3></span></header>
               <div className="form-grid two-columns">
                 <label className="form-field"><span>{text("Inspections performed", "Inspecties uitgevoerd")}</span><select {...register("inspectionResult")}><option value="none">{text("No inspection", "Geen inspectie")}</option><option value="all_ok">{text("Performed · all passed", "Uitgevoerd · alles akkoord")}</option><option value="issues">{text("Performed · deviation found", "Uitgevoerd · afwijking gevonden")}</option></select></label>
                 <label className="form-field"><span>{text("Quality findings?", "Kwaliteitsbevindingen?")}</span><select {...register("qualityIssues")}><option value="no">{text("No", "Nee")}</option><option value="yes">{text("Yes", "Ja")}</option></select></label>
@@ -4813,13 +4931,13 @@ function DailyQuestionsModal({
                 <label className="form-field"><span>{text("Safety event?", "Veiligheidsgebeurtenis?")}</span><select {...register("hseEvent")}><option value="none">{text("No incident / near miss", "Geen incident / near miss")}</option><option value="near_miss">Near miss</option><option value="incident">Incident</option></select></label>
                 {hseEvent !== "none" ? <div className="wide"><div className="quick-issue-presets" aria-label={text("Choose an HSE description", "Kies een HSE-omschrijving")}>{hseDetailOptions.map((option) => <button type="button" onClick={() => setValue("hseDetails", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div>{errors.hseDetails ? <small className="field-error">{errors.hseDetails.message}</small> : null}<details className="optional-text-entry"><summary>{text("Different HSE event", "Andere HSE-gebeurtenis")}</summary><label className="form-field"><span>{text("Event and immediate measure *", "Gebeurtenis en directe maatregel *")}</span><textarea rows={4} {...register("hseDetails")} /><DictateButton onText={(transcript) => setValue("hseDetails", appendDictation(getValues("hseDetails") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details></div> : null}
               </div>
-              <div className="question-module-note"><AlertTriangle size={14} /><span>{text("The app never closes an incident, NCR or repair autonomously. This remains a human action.", "De app sluit nooit autonoom een incident, NCR of herstel. Dit blijft een menselijke handeling.")}</span></div>
+              <div className="question-module-note"><AlertTriangle size={14} /></div>
             </section>
           ) : null}
 
           {step === 2 ? (
             <section className="question-group">
-              <header><span className="question-group-icon"><PackageCheck size={18} /></span><span><h3>{text("Which logistics, tests or delays affected the day?", "Welke logistiek, testen of vertraging speelden mee?")}</h3><p>{text("Answers are linked to equipment, deliveries, measurements, variation work and delay.", "Antwoorden worden gekoppeld aan materieel, leveringen, metingen, meer-/minderwerk en vertraging.")}</p></span></header>
+              <header><span className="question-group-icon"><PackageCheck size={18} /></span><span><h3>{text("Which logistics, tests or delays affected the day?", "Welke logistiek, testen of vertraging speelden mee?")}</h3></span></header>
               <div className="form-grid two-columns">
                 <div className="click-answer-block"><strong>{text("Equipment and status", "Materieel en status")}</strong><div className="quick-issue-presets">{equipmentOptions.map((option) => <button className={equipmentStatus === option ? "active" : ""} type="button" onClick={() => setValue("equipmentStatus", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Other equipment status", "Andere materieelstatus")}</summary><label className="form-field"><textarea rows={3} {...register("equipmentStatus")} /><DictateButton onText={(transcript) => setValue("equipmentStatus", appendDictation(getValues("equipmentStatus") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details></div>
                 <div className="click-answer-block"><strong>{text("Materials delivered", "Materialen geleverd")}</strong><div className="quick-issue-presets">{deliveryOptions.map((option) => <button className={deliveries === option ? "active" : ""} type="button" onClick={() => setValue("deliveries", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Other delivery detail", "Andere leveringsinformatie")}</summary><label className="form-field"><textarea rows={3} {...register("deliveries")} /><DictateButton onText={(transcript) => setValue("deliveries", appendDictation(getValues("deliveries") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details></div>
@@ -4828,7 +4946,7 @@ function DailyQuestionsModal({
                 <label className="form-field"><span>{text("Was there a delay?", "Was er vertraging?")}</span><select {...register("delayCause")}><option value="none">{text("No delay", "Geen vertraging")}</option><option value="weather">{text("Weather", "Weer")}</option><option value="delivery">{text("Late delivery", "Levering te laat")}</option><option value="material">{text("Material shortage", "Materiaaltekort")}</option><option value="equipment">{text("Equipment failure", "Materieelstoring")}</option><option value="other">{text("Other cause", "Andere oorzaak")}</option></select></label>
                 {delayCause !== "none" ? <>
                   <label className="form-field"><span>{text("Time lost", "Tijdverlies")}</span><span className="input-with-unit"><input type="number" min="0" max="24" step="0.25" {...register("delayHours", { valueAsNumber: true })} /><em>{text("hours", "uur")}</em></span>{errors.delayHours ? <small className="field-error">{errors.delayHours.message}</small> : null}</label>
-                  <label className="form-field wide"><span>{text("Reason for delay", "Reden van vertraging")}</span><textarea rows={3} placeholder={text("Describe what actually happened, not only the category.", "Beschrijf wat er daadwerkelijk is gebeurd, niet alleen de categorie.")} {...register("delayReason")} />{errors.delayReason ? <small className="field-error">{errors.delayReason.message}</small> : null}</label>
+                  <label className="form-field wide"><span>{text("Reason for delay", "Reden van vertraging")}</span><textarea rows={3} {...register("delayReason")} />{errors.delayReason ? <small className="field-error">{errors.delayReason.message}</small> : null}</label>
                   <label className="form-field"><span>{text("Responsible contractor company", "Verantwoordelijk aannemersbedrijf")}</span><input {...register("contractorCompany")} />{errors.contractorCompany ? <small className="field-error">{errors.contractorCompany.message}</small> : null}</label>
                   <div className="wide">
                     <SignatureField
@@ -4851,7 +4969,7 @@ function DailyQuestionsModal({
 
           {step === 3 ? (
             <section className="question-group">
-              <header><span className="question-group-icon"><CalendarDays size={18} /></span><span><h3>{text("What was agreed and what is planned for tomorrow?", "Wat is afgesproken en wat staat morgen gepland?")}</h3><p>{text("Agreements, risks and planning remain structured and carry over to the next day.", "Afspraken, risico’s en planning blijven gestructureerd en worden meegenomen naar de volgende dag.")}</p></span></header>
+              <header><span className="question-group-icon"><CalendarDays size={18} /></span><span><h3>{text("What was agreed and what is planned for tomorrow?", "Wat is afgesproken en wat staat morgen gepland?")}</h3></span></header>
               <div className="form-grid two-columns">
                 <div className="click-answer-block"><strong>{text("Communication and agreements", "Communicatie en gemaakte afspraken")}</strong><div className="quick-issue-presets">{communicationOptions.map((option) => <button className={communication === option ? "active" : ""} type="button" onClick={() => setValue("communication", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Other agreement", "Andere afspraak")}</summary><label className="form-field"><textarea rows={4} {...register("communication")} /><DictateButton onText={(transcript) => setValue("communication", appendDictation(getValues("communication") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details></div>
                 <div className="click-answer-block"><strong>{text("Open risks", "Open risico’s")}</strong><div className="quick-issue-presets">{openRiskOptions.map((option) => <button className={risks === option ? "active" : ""} type="button" onClick={() => setValue("risks", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Other open risk", "Ander open risico")}</summary><label className="form-field"><textarea rows={4} {...register("risks")} /><DictateButton onText={(transcript) => setValue("risks", appendDictation(getValues("risks") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details></div>
@@ -4865,7 +4983,6 @@ function DailyQuestionsModal({
           ) : null}
 
           <div className="modal-actions daily-question-actions">
-            <span className="form-note"><CheckCircle2 size={13} /> {text("After server confirmation, answers are reused centrally in the cockpit and report review.", "Na serverbevestiging worden antwoorden centraal hergebruikt in cockpit en rapportcontrole.")}</span>
             <div>
               {step > 0 ? <button className="ghost-button" type="button" onClick={() => setStep((current) => current - 1)}><ArrowLeft size={14} /> {text("Previous", "Vorige")}</button> : null}
               {step < 3 ? <button className="primary-button" type="button" onClick={nextStep}>{text("Next questions", "Volgende vragen")} <ArrowRight size={14} /></button> : <button className="primary-button" type="submit">{text("Confirm daily questions", "Dagvragen bevestigen")} <Check size={14} /></button>}
@@ -4913,13 +5030,13 @@ function ReportModal({
   const tomorrowComplete = completedTodos.includes(3) || Boolean(dailyCloseoutAnswers?.tomorrowPlan);
   const buildingsMissing = buildings.filter((building) => !startChecks.some((row) => row.building_id === building.id) || !closeouts.some((row) => row.building_id === building.id));
   const checks = [
-    { title: text("Project and report details", "Project- en rapportgegevens"), detail: text("Number, date, shift and buildings", "Nummer, datum, dienst en gebouwen"), complete: true },
+    { title: text("Project and report details", "Project- en rapportgegevens"), detail: "", complete: true },
     { title: text("Attendance and activities", "Aanwezigheid en activiteiten"), detail: text(`${attendanceTotal} people and ${entries.length} daily records`, `${attendanceTotal} personen en ${entries.length} dagregistraties`), complete: true },
     { title: text("Inspections and findings", "Inspecties en bevindingen"), detail: text(`${entries.filter((entry) => entry.kind === "inspection").length} inspections · ${entries.filter((entry) => entry.badgeTone === "red").length} critical record(s)`, `${entries.filter((entry) => entry.kind === "inspection").length} inspecties · ${entries.filter((entry) => entry.badgeTone === "red").length} kritieke registratie(s)`), complete: true },
-    { title: text("Daily questions in the client format", "Dagvragen volgens klantformat"), detail: dailyCloseoutAnswers ? text("Progress, weather, logistics, risks and tomorrow confirmed", "Verloop, weer, logistiek, risico's en morgen bevestigd") : text("Four guided question groups still need completion", "Vier begeleide vraaggroepen nog invullen"), complete: Boolean(dailyCloseoutAnswers) },
-    { title: text("Daily HSE check", "HSE-dagcheck"), detail: hseComplete ? text("All checkpoints completed", "Alle controlepunten ingevuld") : text("3 checkpoints are still missing", "Nog 3 controlepunten ontbreken"), complete: hseComplete },
-    { title: text("Tomorrow's plan", "Planning voor morgen"), detail: tomorrowComplete ? text("The plan is confirmed", "Planning is bevestigd") : text("Not completed yet", "Nog niet ingevuld"), complete: tomorrowComplete },
-    { title: text("Start check and closeout for every building", "Projectstart en dagafsluiting per gebouw"), detail: buildingsMissing.length === 0 ? text("Every building has confirmed its start check and closeout", "Elk gebouw heeft een bevestigde projectstart en dagafsluiting") : text(`Still missing for: ${buildingsMissing.map((building) => building.name).join(", ")}`, `Nog niet compleet voor: ${buildingsMissing.map((building) => building.name).join(", ")}`), complete: buildingsMissing.length === 0 },
+    { title: text("Daily questions in the client format", "Dagvragen volgens klantformat"), detail: dailyCloseoutAnswers ? text("Confirmed", "Bevestigd") : text("Not completed yet", "Nog niet ingevuld"), complete: Boolean(dailyCloseoutAnswers) },
+    { title: text("Daily HSE check", "HSE-dagcheck"), detail: hseComplete ? text("Completed", "Ingevuld") : text("3 checkpoints are still missing", "Nog 3 controlepunten ontbreken"), complete: hseComplete },
+    { title: text("Tomorrow's plan", "Planning voor morgen"), detail: tomorrowComplete ? text("Confirmed", "Bevestigd") : text("Not completed yet", "Nog niet ingevuld"), complete: tomorrowComplete },
+    { title: text("Start check and closeout for every building", "Projectstart en dagafsluiting per gebouw"), detail: buildingsMissing.length === 0 ? text("All buildings", "Alle gebouwen") : text(`Still missing for: ${buildingsMissing.map((building) => building.name).join(", ")}`, `Nog niet compleet voor: ${buildingsMissing.map((building) => building.name).join(", ")}`), complete: buildingsMissing.length === 0 },
   ];
   const missing = checks.filter((check) => !check.complete).length;
   const submitted = ["ready_for_review", "in_review", "approved"].includes(reportStatus);
@@ -4943,10 +5060,9 @@ function ReportModal({
           <div className="report-summary-box">
             <label htmlFor="summary">{text("Proposed daily summary", "Voorgestelde dagsamenvatting")}</label>
             <textarea id="summary" defaultValue={dailyCloseoutAnswers?.daySummary ?? text(`${attendanceTotal} people were present at project ${projectName}. ${entries.length} central daily records were captured.`, `Er waren ${attendanceTotal} personen aanwezig op project ${projectName}. Er zijn ${entries.length} centrale dagregistraties vastgelegd.`)} />
-            <small className="summary-source">{text("Fixed summary based on confirmed daily questions and module data; the supervisor reviews the text.", "Vaste samenvatting op basis van bevestigde dagvragen en modulegegevens; supervisor controleert de tekst.")}</small>
           </div>
           <div className="modal-actions">
-            <span style={{ color: missing ? "var(--yellow)" : "var(--green)", fontSize: 10, fontWeight: 680 }}>{missing ? text(`${missing} item(s) still need completion`, `${missing} onderdeel${missing > 1 ? "en" : ""} nog aanvullen`) : text("All checks passed", "Alle controles geslaagd")}</span>
+            <span style={{ color: missing ? "var(--yellow)" : "var(--green)", fontSize: 11, fontWeight: 680 }}>{missing ? text(`${missing} item(s) still need completion`, `${missing} onderdeel${missing > 1 ? "en" : ""} nog aanvullen`) : text("All checks passed", "Alle controles geslaagd")}</span>
             <div className="report-action-buttons">
               <ReportDownloadButtons disabled={missing > 0} onDownloadPdf={onDownload} onDownloadWord={onDownloadDocx} />
               <button className="primary-button" type="button" disabled={missing > 0 || submitted} onClick={onSubmit}>{submitted ? text("Submitted", "Ingediend") : text("Ready for review", "Gereed voor review")} <ArrowRight size={14} /></button>
