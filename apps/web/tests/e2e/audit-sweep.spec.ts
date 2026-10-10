@@ -155,6 +155,15 @@ test("sweep every module and workspace tile at five widths", async ({ page }, te
     }
   });
 
+  // The Next.js development indicator sits over the bottom-left tab of a phone layout; it does
+  // not exist in a production build and would only make every click there time out.
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const style = document.createElement("style");
+      style.textContent = "nextjs-portal{display:none!important}";
+      document.head.appendChild(style);
+    });
+  });
   await page.setViewportSize({ width: viewports[0].width, height: viewports[0].height });
   await signIn(page);
 
@@ -172,12 +181,12 @@ test("sweep every module and workspace tile at five widths", async ({ page }, te
     if (mobile(width)) {
       // On a phone the destinations live in the bottom bar and the "more" drawer.
       const direct = page.locator("nav, .mobile-nav, .bottom-bar").getByRole("button", { name: new RegExp(`^${name}`) }).first();
-      if (await direct.isVisible().catch(() => false)) { await direct.click(); return true; }
+      if (await direct.isVisible().catch(() => false)) { await direct.click({ timeout: 6000 }); return true; }
       const more = page.getByRole("button", { name: /^(More|Menu)/ }).first();
       if (await more.isVisible().catch(() => false)) {
-        await more.click();
+        await more.click({ timeout: 6000 });
         const inDrawer = page.getByRole("button", { name: new RegExp(`^${name}`) }).first();
-        if (await inDrawer.isVisible().catch(() => false)) { await inDrawer.click(); return true; }
+        if (await inDrawer.isVisible().catch(() => false)) { await inDrawer.click({ timeout: 6000 }); return true; }
         await page.keyboard.press("Escape");
       }
       return false;

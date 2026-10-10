@@ -3521,7 +3521,7 @@ function ProjectOperations({
             <div className="punchlist-stages">
               {[
                 [text("Open", "Open"), scopedFindings.filter((item) => ["draft", "open", "assigned"].includes(item.status)).length],
-                [text("In progress", "In uitvoering"), scopedFindings.filter((item) => ["in_progress", "reopened", "rejected"].includes(item.status)).length],
+                [text("In progress", "In uitvoering"), scopedFindings.filter((item) => ["in_progress", "reopened"].includes(item.status)).length],
                 [text("Ready for verification", "Gereed voor verificatie"), scopedFindings.filter((item) => item.status === "ready_for_verification").length],
                 [text("Verified", "Geverifieerd"), scopedFindings.filter((item) => item.status === "closed").length],
               ].map(([label, count], index) => <div className={index === 2 ? "attention" : index === 3 ? "complete" : ""} key={String(label)}><span>{index + 1}</span><strong>{count}</strong><small>{label}</small></div>)}
@@ -3540,6 +3540,7 @@ function ProjectOperations({
             progressUpdates={data.findingProgressUpdates}
             visualAnnotations={data.visualAnnotations}
             externalShareLinks={data.externalShareLinks ?? []}
+            currentUserId={currentUserId}
             projectName={projectName}
             projectCode={projectCode}
             buildings={buildings}
@@ -4957,7 +4958,7 @@ function SubmittedRecordShare({ finding, scope, projectName, projectCode, buildi
   );
 }
 
-function FindingList({ data, client, run, findings, progressUpdates, visualAnnotations, externalShareLinks, projectId, projectName, projectCode, buildings, locationNodes, currentUserName, resolveUserName, parties, busy, focusRecordId = "", transition, recordProgress, share, revoke, linkVisual, linkDrawing, openPhotoMarking, viewRecord, editRecord, withdrawRecord }: {
+function FindingList({ data, client, run, findings, progressUpdates, visualAnnotations, externalShareLinks, currentUserId, projectId, projectName, projectCode, buildings, locationNodes, currentUserName, resolveUserName, parties, busy, focusRecordId = "", transition, recordProgress, share, revoke, linkVisual, linkDrawing, openPhotoMarking, viewRecord, editRecord, withdrawRecord }: {
   data: OperationSnapshot;
   client: SupabaseClient;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
@@ -4965,6 +4966,8 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   progressUpdates: OperationSnapshot["findingProgressUpdates"];
   visualAnnotations: OperationSnapshot["visualAnnotations"];
   externalShareLinks: NonNullable<OperationSnapshot["externalShareLinks"]>;
+  /** Who is looking: an assigned finding may be moved on by its assignee. */
+  currentUserId: string;
   projectId: string;
   projectName: string;
   projectCode: string;
@@ -5073,7 +5076,16 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
     <div className="record-stack">
       {findings.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No findings yet", "Nog geen bevindingen")}</strong></div> : null}
       {findings.map((finding) => {
-        const nextStatus = next[finding.status];
+        // The database rule, so the screen offers only the step this role can actually take: the
+        // assignee or a finding manager moves a finding on; closing and reopening may also be done
+        // by whoever holds the verify permission. Anything else would only end in a refusal after
+        // the whole verification form, signature included, had been filled in.
+        const mayStep = (status: string | undefined) => Boolean(status) && (
+          (Boolean(currentUserId) && finding.assigned_user_id === currentUserId)
+          || permissions.can("findings.manage")
+          || (["closed", "reopened"].includes(String(status)) && permissions.can("findings.verify"))
+        );
+        const nextStatus = mayStep(next[finding.status]) ? next[finding.status] : undefined;
         const latestProgress = progressUpdates.find((item) => item.finding_id === finding.id);
         const visualAnnotation = visualAnnotations.find((item) => item.finding_id === finding.id && item.status === "active");
         const drawingPin = data.drawingPins.find((pin) => pin.linked_record_type === "observation" && pin.linked_record_id === finding.id && pin.status === "active");
@@ -5132,7 +5144,9 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
                 </div>
                 <div className={finding.proposed_correction ? "answered" : ""}>
                   <span>{text("Proposed corrective action by contractor", "Voorgestelde correctieve actie door de aannemer")}</span>
-                  <p>{finding.proposed_correction || text("Waiting for the contractor's answer through the sent link.", "Wacht op het antwoord van de aannemer via de verstuurde link.")}</p>
+                  <p>{finding.proposed_correction || (activeExternalShares.length
+                    ? text("Waiting for the contractor's answer through the sent link.", "Wacht op het antwoord van de aannemer via de verstuurde link.")
+                    : text("No contractor answer yet.", "Nog geen antwoord van de aannemer."))}</p>
                   {/* The name the contractor typed under the correction is the signature. */}
                   {finding.proposed_correction && issue.correction_signature_image ? (
                     // The signature the contractor wrote through the shared link.
@@ -5263,6 +5277,17 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
                     <label className="form-field"><span>{text("Position", "Functie")}</span><input value={verification.position} onChange={(event) => setVerification({ ...verification, position: event.target.value })} placeholder={text("Quality Engineer", "Quality Engineer")} /></label>
                   </div>
                 ) : null}
+                {(() => {
+                  // A disabled button that does not say why is how a verification form gets abandoned.
+                  const missing = [
+                    note.trim().length < 2 ? text("note", "notitie") : "",
+                    nextStatus === "ready_for_verification" && measure.trim().length < 3 ? text("final measure", "definitieve maatregel") : "",
+                    finding.finding_type === "ncr" && nextStatus === "closed" && !verification.inspectionDate ? text("date of QC inspection", "datum QC-inspectie") : "",
+                    finding.finding_type === "ncr" && nextStatus === "closed" && verification.comments.trim().length < 3 ? text("verification comments", "verificatiecommentaar") : "",
+                    finding.finding_type === "ncr" && nextStatus === "closed" && !verificationSignature ? text("signature", "handtekening") : "",
+                  ].filter(Boolean);
+                  return missing.length ? <small className="confirm-needs">{text("Still needed", "Nog nodig")}: {missing.join(" · ")}</small> : null;
+                })()}
                 <button className="primary-button" type="button" disabled={busy || note.trim().length < 2 || (nextStatus === "ready_for_verification" && measure.trim().length < 3) || (finding.finding_type === "ncr" && nextStatus === "closed" && (!verificationSignature || !verification.inspectionDate || verification.comments.trim().length < 3))} onClick={() => void transition(finding, nextStatus, note, measure, correction, verificationSignature?.name ?? "", verificationSignature?.image ?? "", finding.finding_type === "ncr" && nextStatus === "closed" ? {
                   verification_signed_position: verification.position.trim(),
                   verification_comments: verification.comments.trim(),

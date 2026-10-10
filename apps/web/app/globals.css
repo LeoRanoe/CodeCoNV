@@ -9527,6 +9527,7 @@ textarea:focus-visible {
 .record-add-photo:hover { background: var(--signal-soft); border-color: var(--signal); }
 .record-add-photo input { height: 1px; opacity: 0; position: absolute; width: 1px; }
 .record-photo-hint { color: var(--ink-500); font-size: var(--text-xs); }
+.confirm-needs { color: var(--ink-600); display: block; font-size: var(--text-xs); margin-bottom: var(--space-2); }
 
 /* The deadline says what it means, and the cross clears a choice that was made by mistake. */
 .record-due-distance { color: var(--ink-600); flex: 0 0 auto; font-size: 11.5px; }

@@ -79,7 +79,9 @@ export function userFacingError(error: unknown, text: Translate) {
     return text("Your session has expired. Sign in again; your input is still in the form.", "Je sessie is verlopen. Meld je opnieuw aan; je invoer staat nog in het formulier.");
   }
   if (code === "P0002" || code === "PGRST116") {
-    return text("This record no longer exists or you no longer have access to it.", "Dit record bestaat niet meer of je hebt er geen toegang meer toe.");
+    // The database answers "not found" both for a removed row and for a row the role may see but not
+    // change, so the sentence has to hold for both.
+    return text("This record was removed, or your role cannot change it.", "Dit record is verwijderd, of je rol mag het niet wijzigen.");
   }
   if (code === "23505") {
     return text("This already exists. Refresh to see the current version.", "Dit bestaat al. Vernieuw om de actuele versie te zien.");
