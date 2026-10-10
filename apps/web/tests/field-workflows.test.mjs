@@ -291,7 +291,7 @@ test("gives every attached photo one written field and location without a direct
   // photo, next to the picture instead of drawn on it. The feedback of 2 August cut that back
   // to one written field: "voor nr is 1 invoer voldoende". The title, the category and the
   // typed room name are gone; the description carries the words and names the file.
-  assert.match(evidence, /What is on this photo, and why does it matter\?/);
+  assert.match(evidence, /\{text\("Description", "Omschrijving"\)\}/);
   assert.match(evidence, /Exact location/);
   assert.doesNotMatch(evidence, /FacingDirectionField/);
   assert.doesNotMatch(visualCapture, /FacingDirectionField/);
@@ -328,7 +328,7 @@ test("gives every attached photo one written field and location without a direct
 
   // The capture screen in the photo workspace asks the same single question, and never the
   // three fields the client struck through on it.
-  assert.match(visualCapture, /What is on this photo, and why does it matter\?/);
+  assert.match(visualCapture, /\{text\("Description", "Omschrijving"\)\}/);
   assert.doesNotMatch(visualCapture, /photoCategories/);
   assert.doesNotMatch(visualCapture, /Room \/ location in your own words/);
   assert.doesNotMatch(visualCapture, /Adjust title, location or context/);
@@ -378,7 +378,7 @@ test("offers marking on the photo everywhere a photo can be attached", async () 
   }
 
   // A marker carries more than a pin: words, severity, and where it belongs.
-  for (const field of [/Full description/, /Severity/, /Where does this belong\?/, /Responsible party/, /Work package/, /Floor \/ room \/ element/]) {
+  for (const field of [/\{text\("Description", "Omschrijving"\)\}/, /Severity/, /Where does this belong\?/, /Responsible party/, /Work package/, /Floor \/ room \/ element/]) {
     assert.match(markup, field);
   }
   // Draw, arrow and frame are offered next to the marker tool.

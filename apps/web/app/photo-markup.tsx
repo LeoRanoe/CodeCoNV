@@ -435,7 +435,6 @@ export function PhotoMarkupPad({
           <div>
             <p className="eyebrow">{text("Mark on the photo", "Markeren op de foto")}</p>
             <h2 id="photo-markup-title">{text("Tap the photo where the problem is", "Tik op de foto waar het probleem zit")}</h2>
-            <p>{text("Place a numbered marker, draw an arrow or a frame, and write what is wrong, where it belongs and who has to fix it.", "Plaats een genummerde marker, teken een pijl of kader, en schrijf op wat er mis is, waar het bij hoort en wie het moet oplossen.")}</p>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
@@ -554,12 +553,11 @@ export function PhotoMarkupPad({
                 <input
                   value={activeMarker.label}
                   onChange={(event) => patchMarker(activeMarker.id, { label: event.target.value })}
-                  placeholder={text("Choose above or type it in a few words.", "Kies hierboven of typ het in een paar woorden.")}
                   autoFocus
                 />
               </label>
               <label className="form-field">
-                <span>{text("Full description · what, how much, what has to happen", "Volledige omschrijving · wat, hoeveel, wat moet er gebeuren")}</span>
+                <span>{text("Description", "Omschrijving")}</span>
                 <textarea
                   rows={3}
                   value={activeMarker.description}
@@ -639,7 +637,7 @@ export function PhotoMarkupPad({
             <>
               <p className="photo-markup-hint">
                 {tool === "marker"
-                  ? text("Tap the photo to place a marker, then write what is wrong and where it belongs. Drag a marker to move it.", "Tik op de foto om een marker te plaatsen en schrijf daarna wat er mis is en waar het bij hoort. Sleep een marker om hem te verplaatsen.")
+                  ? text("Tap the photo to place a marker. Drag a marker to move it.", "Tik op de foto om een markering te plaatsen. Sleep een markering om hem te verplaatsen.")
                   : tool === "box"
                     ? text("Drag a frame around the area the problem covers.", "Sleep een kader om het gebied waar het probleem zich uitstrekt.")
                     : tool === "arrow"

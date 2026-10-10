@@ -120,7 +120,6 @@ export function SketchPad({ close, save }: { close: () => void; save: (file: Fil
           <div>
             <p className="eyebrow">{text("Sketch", "Schets")}</p>
             <h2 id="sketch-title">{text("Draw the situation", "Teken de situatie")}</h2>
-            <p>{text("The sketch is added as a photo, with the same project context.", "De schets wordt als foto toegevoegd, met dezelfde projectcontext.")}</p>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>

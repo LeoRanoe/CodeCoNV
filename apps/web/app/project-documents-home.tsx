@@ -173,7 +173,7 @@ export function ProjectDocumentsHome({
       }
       if (navigator.onLine) return syncOfflineUploads(client, projectId, { force: true });
       return { synced: 0, failed: 0, paused: true };
-    }, text("Documents stored centrally or queued safely in their chosen folder.", "Documenten centraal opgeslagen of veilig in de gekozen map klaargezet."));
+    }, text("Documents saved.", "Documenten opgeslagen."));
     if (okay) setDragging(false);
   };
 
@@ -221,7 +221,7 @@ export function ProjectDocumentsHome({
   return (
     <section className="project-documents">
       <div className="project-documents-summary">
-        <div><span>{text("Controlled project information", "Beheerde projectinformatie")}</span><h2>{text("Project document center", "Projectdocumentencentrum")}</h2><p>{text("Find the current approved source, then continue in the correct controlled workflow.", "Vind de actuele goedgekeurde bron en ga daarna verder in de juiste gecontroleerde workflow.")}</p></div>
+        <div><span>{text("Controlled project information", "Beheerde projectinformatie")}</span><h1>{text("Project document center", "Projectdocumentencentrum")}</h1></div>
         <div className="project-documents-actions">
           <button className="secondary-button" type="button" onClick={() => document.getElementById("project-document-upload")?.scrollIntoView({ behavior: "smooth", block: "center" })}><Upload size={15} /> {text("Upload file", "Upload bestand")}</button>
           <button className="primary-button" type="button" onClick={createDocument}><Plus size={15} /> {text("New controlled record", "Nieuw beheerd record")}</button>
@@ -231,7 +231,7 @@ export function ProjectDocumentsHome({
       <section className="project-document-intake" id="project-document-upload" aria-label={text("Create a folder and upload", "Map maken en uploaden")}>
         <div className="project-document-folder-create">
           <span className="record-number">{text("1. Folder and project link", "1. Map en projectkoppeling")}</span>
-          <h3>{text("Create the destination here", "Maak de bestemming hier")}</h3>
+          <h2>{text("Create the destination here", "Maak de bestemming hier")}</h2>
           <div className="project-document-intake-row">
             <label className="form-field"><span>{text("New folder name", "Naam nieuwe map")}</span><input value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} placeholder={text("Example: Approved drawings", "Bijvoorbeeld: Goedgekeurde tekeningen")} /></label>
             <BuildingPicker id="document-folder-building" buildings={buildings} value={folderBuildingId} onChange={setFolderBuildingId} />
@@ -289,7 +289,7 @@ export function ProjectDocumentsHome({
               <ArrowRight size={15} />
             </button>
           )) : (
-            <div className="project-document-empty"><span><FolderOpen size={25} /></span><div><strong>{text("No documents in this category yet", "Nog geen documenten in deze categorie")}</strong><p>{text("Use a real project file or controlled record; the overview intentionally shows no sample content.", "Gebruik een echt projectbestand of beheerd record; dit overzicht toont bewust geen voorbeeldinhoud.")}</p></div><button className="secondary-button" type="button" onClick={view === "drawings" || view === "renders" ? openFiles : createDocument}><Plus size={14} /> {text("Add first item", "Voeg eerste item toe")}</button></div>
+            <div className="project-document-empty"><span><FolderOpen size={25} /></span><div><strong>{text("No documents in this category yet", "Nog geen documenten in deze categorie")}</strong></div><button className="secondary-button" type="button" onClick={view === "drawings" || view === "renders" ? openFiles : createDocument}><Plus size={14} /> {text("Add first item", "Voeg eerste item toe")}</button></div>
           )}
         </div>
         {items.length ? <button className="project-document-footer" type="button" onClick={openCurrent}>{text("Open the complete controlled workflow", "Open de volledige gecontroleerde workflow")} <ArrowRight size={14} /></button> : null}

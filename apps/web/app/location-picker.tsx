@@ -81,10 +81,7 @@ export function LocationPicker({
         ))}
       </select>
       {!available.length ? (
-        <small>{text(
-          "No location tree exists for this building yet. Add floors, rooms or elements in Project settings.",
-          "Voor dit gebouw bestaat nog geen locatieboom. Voeg verdiepingen, ruimten of elementen toe bij Projectinstellingen.",
-        )}</small>
+        <small>{text("No location tree for this building. Add floors, rooms or elements in Project settings.", "Geen locatieboom voor dit gebouw. Voeg verdiepingen, ruimtes of elementen toe in Projectinstellingen.")}</small>
       ) : null}
     </label>
   );

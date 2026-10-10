@@ -19,7 +19,6 @@ import {
   Ruler,
   Search,
   ShieldCheck,
-  Sparkles,
   TimerReset,
   Wrench,
   X,
@@ -417,7 +416,7 @@ export function ClientDashboard({
         <div>
           <span className="overview-kicker"><LayoutDashboard size={15} /> {text("Live project control", "Actuele projectsturing")}</span>
           <h1>{projectName}</h1>
-          <p>{buildingContextLabel} · {text("One operational view for today’s work, risks and evidence.", "Eén operationeel overzicht voor het werk, de risico’s en het bewijs van vandaag.")}</p>
+          <p>{buildingContextLabel}</p>
         </div>
         <div className="overview-hero-actions">
           <label className="overview-search">
@@ -451,9 +450,9 @@ export function ClientDashboard({
 
         <div className="overview-metrics">
           <MetricCard icon={<FileCheck2 size={21} />} label={text("Open follow-up", "Open opvolging")} value={openItems.length} detail={`${urgentItems.length} ${text("high priority", "hoge prioriteit")}`} tone="teal" onClick={openActions} />
-          <MetricCard icon={<AlertTriangle size={21} />} label={text("Quality issues", "Kwaliteitspunten")} value={issues.length} detail={text("Findings and NCRs", "Bevindingen en NCR's")} tone="orange" onClick={openActions} />
-          <MetricCard icon={<ClipboardCheck size={21} />} label={text("Inspections", "Inspecties")} value={inspections.length} detail={text("Recorded in this report", "In dit rapport vastgelegd")} tone="blue" onClick={openWorkspace} />
-          <MetricCard icon={<Camera size={21} />} label={text("Pictures", "Foto's")} value={photoEntries.length} detail={text("Photos linked to context", "Foto's met projectcontext")} tone="violet" onClick={() => openRecord("files", "")} />
+          <MetricCard icon={<AlertTriangle size={21} />} label={text("Quality issues", "Kwaliteitspunten")} value={issues.length} detail={text("Open items", "Open punten")} tone="orange" onClick={openActions} />
+          <MetricCard icon={<ClipboardCheck size={21} />} label={text("Inspections", "Inspecties")} value={inspections.length} detail={text("Recorded", "Vastgelegd")} tone="blue" onClick={openWorkspace} />
+          <MetricCard icon={<Camera size={21} />} label={text("Pictures", "Foto's")} value={photoEntries.length} detail={text("With location", "Met locatie")} tone="violet" onClick={() => openRecord("files", "")} />
         </div>
 
         <div className="overview-primary-grid">
@@ -466,14 +465,14 @@ export function ClientDashboard({
               {visibleEntries.length ? visibleEntries.map((entry, index) => (
                 <button type="button" key={entry.id} onClick={openWorkspace}>
                   <span className="overview-work-index">{String(index + 1).padStart(2, "0")}</span>
-                  <span><strong>{entry.title}</strong><small>{entry.detail || text("No additional note", "Geen aanvullende notitie")}</small></span>
+                  <span><strong>{entry.title}</strong><small>{entry.detail || text("No note", "Geen notitie")}</small></span>
                   <span className="overview-work-location"><MapPin size={13} /> {entry.location || buildingName}</span>
                   <time>{entry.time}</time>
                 </button>
               )) : (
                 <div className="overview-purposeful-empty">
                   <span><HardHat size={24} /></span>
-                  <div><strong>{text("No work recorded for this view", "Geen werkzaamheden in deze weergave")}</strong><p>{text("The overview fills itself with verified project data once the first field record has been made.", "Het overzicht vult zich met gecontroleerde projectdata zodra de eerste veldregistratie is gemaakt.")}</p></div>
+                  <div><strong>{text("No work recorded", "Geen werk vastgelegd")}</strong></div>
                   <button className="secondary-button" type="button" onClick={openWorkspace}>{text("Open workspace", "Open werkruimte")} <ArrowRight size={15} /></button>
                 </div>
               )}
@@ -498,9 +497,9 @@ export function ClientDashboard({
                   <ArrowRight size={14} />
                 </button>
               ))}
-              {!openItems.length ? <div className="overview-clear-state"><CheckCircle2 size={22} /><span><strong>{text("No open actions", "Geen open acties")}</strong><small>{text("New assigned work will appear here.", "Nieuw toegewezen werk verschijnt hier.")}</small></span></div> : null}
+              {!openItems.length ? <div className="overview-clear-state"><CheckCircle2 size={22} /><span><strong>{text("No open actions", "Geen open acties")}</strong></span></div> : null}
             </div>
-            <button className="overview-text-link" type="button" onClick={openActions}>{text("View the complete action center", "Bekijk het volledige actiecentrum")} <ArrowRight size={14} /></button>
+            <button className="overview-text-link" type="button" onClick={openActions}>{text("All actions", "Alle acties")} <ArrowRight size={14} /></button>
           </article>
         </div>
 
@@ -518,7 +517,7 @@ export function ClientDashboard({
                   <span><strong>{entry.title}</strong><small>{entry.person} · {entry.location || buildingName}</small></span>
                   <time>{entry.time}</time>
                 </button>
-              )) : <p className="overview-inline-empty">{text("Activity appears after the first project record.", "Activiteit verschijnt na de eerste projectregistratie.")}</p>}
+              )) : <p className="overview-inline-empty">{text("No activity yet.", "Nog geen activiteit.")}</p>}
             </div>
           </article>
 
@@ -540,7 +539,7 @@ export function ClientDashboard({
               )) : [0, 1, 2, 3].map((index) => (
                 <button className="empty" type="button" onClick={() => openRecord("files", "")} key={index}>
                   <span className={`evidence-placeholder tone-${index + 1}`}><Camera size={20} /></span>
-                  <span><strong>{text("No photo yet", "Nog geen foto")}</strong><small>{text("Site evidence appears here", "Bouwplaatsbewijs verschijnt hier")}</small></span>
+                  <span><strong>{text("No photo yet", "Nog geen foto")}</strong><small>{text("Add photo", "Foto toevoegen")}</small></span>
                 </button>
               ))}
             </div>
@@ -561,15 +560,6 @@ export function ClientDashboard({
               <span><small>{text("Wind", "Wind")}</small><strong>{liveWeather.windSpeedKph} km/h</strong></span>
               <span><small>{text("Rain", "Regen")}</small><strong>{liveWeather.precipitationMm} mm</strong></span>
             </div> : weatherError ? <p className="overview-weather-error">{weatherError}</p> : null}
-            <button className="overview-plan-placeholder" type="button" onClick={openWorkspace}>
-              <span className="plan-grid-lines" />
-              <span className="plan-mass mass-one" />
-              <span className="plan-mass mass-two" />
-              <span className="plan-mass mass-three" />
-              <i className="plan-pin pin-one"><MapPin size={14} /></i>
-              <i className="plan-pin pin-two"><MapPin size={14} /></i>
-              <span className="plan-caption"><Sparkles size={13} /> {text("Open linked project drawing", "Open gekoppelde projecttekening")}</span>
-            </button>
             <div className="overview-site-meta"><span><TimerReset size={14} /> {text("Current report context", "Actuele rapportcontext")}</span><strong>{buildingContextLabel}</strong></div>
           </article>
         </div>

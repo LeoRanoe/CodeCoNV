@@ -426,20 +426,11 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       }
       if (navigator.onLine) {
         await forceSyncOfflineUploads(client, projectId, {
-          paused: text(
-            "The connection changed before central image confirmation. The image remains safe on this device. Keep this form open, then open Photos and tap Sync now.",
-            "De verbinding veranderde vóór de centrale beeldbevestiging. Het beeld blijft veilig op dit apparaat. Houd dit formulier open, open daarna Foto’s en tik op Nu synchroniseren.",
-          ),
-          failed: (pendingCount) => text(
-            `${pendingCount} image upload(s) could not be confirmed centrally. They remain safe on this device. Keep this form open, then open Photos and tap Sync now.`,
-            `${pendingCount} beeld-upload(s) konden niet centraal worden bevestigd. Ze blijven veilig op dit apparaat. Houd dit formulier open, open daarna Foto’s en tik op Nu synchroniseren.`,
-          ),
+          paused: text("Connection lost before the images were confirmed. They are still on this device. Keep this form open, then open Photos and tap Sync now.", "Verbinding verbroken vóór bevestiging van de beelden. Ze staan nog op dit apparaat. Houd dit formulier open, open Foto's en tik op Nu synchroniseren."),
+          failed: (pendingCount) => text(`${pendingCount} image upload(s) not confirmed. They are still on this device. Keep this form open, then open Photos and tap Sync now.`, `${pendingCount} beeld-upload(s) niet bevestigd. Ze staan nog op dit apparaat. Houd dit formulier open, open Foto's en tik op Nu synchroniseren.`),
         });
       }
-    }, text(
-      "Visual secured on this device; central synchronization runs automatically.",
-      "Beeld veilig op dit apparaat opgeslagen; centrale synchronisatie loopt automatisch.",
-    ));
+    }, text("Saved on this device. Syncs when you're online.", "Opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent."));
     if (okay) {
       setCaptureForm(emptyCaptureForm);
       setDrawingLocation(null);
@@ -507,7 +498,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       },
       existingFinding
         ? text(`Marker linked to ${existingFinding.finding_number}.`, `Marker gekoppeld aan ${existingFinding.finding_number}.`)
-        : text("Issue marker and traceable finding created together.", "Probleemmarker en traceerbare bevinding zijn samen aangemaakt."),
+        : text("Marker and finding created.", "Markering en bevinding aangemaakt."),
     );
     if (okay) {
       setActiveCaptureId(savedCaptureId);
@@ -534,7 +525,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   return (
     <section className="visual-evidence-shell">
       <div className="visual-toolbar">
-        <div><span className="record-number">{text("Visual evidence", "Visueel bewijs")}</span><h2>{text("Photos, 360° camera tours and exact issue locations", "Foto’s, 360°-cameratours en exacte probleemlocaties")}</h2><p>{text("Standard photos are the default. The interactive 360° mode accepts every 360° image: an Insta360, Ricoh Theta or GoPro Max export, a phone panorama, and any resolution.", "Gewone foto’s zijn standaard. De interactieve 360°-modus accepteert elk 360°-beeld: een export van Insta360, Ricoh Theta of GoPro Max, een telefoonpanorama, en elke resolutie.")}</p></div>
+        <div><span className="record-number">{text("Visual evidence", "Visueel bewijs")}</span></div>
         <div className="visual-toolbar-actions">
           <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { stageImage(event.currentTarget.files?.[0] ?? null, "photo"); event.currentTarget.value = ""; }} />
           {/* The compass is started on the tap that opens the camera: it is the gesture a phone
@@ -544,10 +535,10 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
         </div>
       </div>
 
-      {existingFinding ? <div className="operation-alert success visual-finding-link-banner"><CircleDot size={18} /><div><strong>{text(`Selected issue: ${existingFinding.finding_number}`, `Geselecteerd issue: ${existingFinding.finding_number}`)} · {existingFinding.title}</strong><span>{text("Choose a visual image and click the exact problem location. The pointer and issue will then remain linked.", "Kies een beeld en klik op de exacte probleemlocatie. De pointer en het issue blijven daarna gekoppeld.")}</span></div></div> : null}
-      {cameraHandoff && showUpload ? <div className="operation-alert success visual-camera-handoff"><Camera size={18} /><div><strong>{text("Step 1 of 2 · confirm and save this photo", "Stap 1 van 2 · bevestig en sla deze foto op")}</strong><span>{text("After saving, the photo opens here. Click the exact location to create or link an Issue or NCR.", "Na opslaan opent de foto hier. Klik op de exacte locatie om een Issue of NCR te maken of te koppelen.")}</span></div></div> : null}
+      {existingFinding ? <div className="operation-alert success visual-finding-link-banner"><CircleDot size={18} /><div><strong>{text(`Selected issue: ${existingFinding.finding_number}`, `Geselecteerd issue: ${existingFinding.finding_number}`)} · {existingFinding.title}</strong><span>{text("Click the exact problem location on the image.", "Klik op de exacte probleemlocatie op de afbeelding.")}</span></div></div> : null}
+      {cameraHandoff && showUpload ? <div className="operation-alert success visual-camera-handoff"><Camera size={18} /><div><strong>{text("Step 1 of 2 · confirm and save this photo", "Stap 1 van 2 · bevestig en sla deze foto op")}</strong><span>{text("Click the location on the photo to create or link an Issue or NCR.", "Klik op de locatie op de foto om een Issue of NCR aan te maken of te koppelen.")}</span></div></div> : null}
 
-      {!isStorageGatewayConfigured ? <div className="operation-alert warning"><ShieldCheck size={18} /><div><strong>{text("Private image storage must be connected", "Private beeldopslag moet worden gekoppeld")}</strong><span>{text("Connect a private Vercel Blob store to enable authorized uploads and viewing.", "Koppel een private Vercel Blob-store om geautoriseerde uploads en weergave mogelijk te maken.")}</span></div></div> : null}
+      {!isStorageGatewayConfigured ? <div className="operation-alert warning"><ShieldCheck size={18} /><div><strong>{text("Private image storage must be connected", "Private beeldopslag moet worden gekoppeld")}</strong><span>{text("Storage is not configured. Ask an administrator.", "Opslag is niet geconfigureerd. Vraag het een beheerder.")}</span></div></div> : null}
 
       {showUpload ? (
         <div className="operation-form wide visual-upload-form">
@@ -594,12 +585,11 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           {/* One text box, in the supervisor's own words. Everything else on this form is
               either a tap or something the app fills in by itself. */}
           <label className="form-field">
-            <span>{text("What is on this photo, and why does it matter?", "Wat is er op deze foto te zien, en waarom is dat belangrijk?")}</span>
+            <span>{text("Description", "Omschrijving")}</span>
             <textarea
               rows={3}
               value={captureForm.description}
               onChange={(event) => setCaptureForm({ ...captureForm, description: event.target.value })}
-              placeholder={text("Describe it as you would to someone who was not there.", "Beschrijf het alsof je het uitlegt aan iemand die er niet bij was.")}
             />
             <DictateButton onText={(transcript) => setCaptureForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} />
           </label>
@@ -649,7 +639,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
             />
           ) : null}
           {captureForm.type === "panorama" ? <div className="form-grid-2"><label className="form-field"><span>{text("Tour name · optional", "Tournaam · optioneel")}</span><input value={captureForm.tourName} onChange={(event) => setCaptureForm({ ...captureForm, tourName: event.target.value })} placeholder={text("Ground floor walkthrough", "Rondgang begane grond")} /></label><label className="form-field"><span>{text("Position in tour", "Volgorde in tour")}</span><input type="number" min="1" max="10000" disabled={!captureForm.tourName} value={captureForm.tourOrder} onChange={(event) => setCaptureForm({ ...captureForm, tourOrder: event.target.value })} /></label></div> : null}
-          {captureForm.type === "panorama" ? <div className="operation-alert"><ScanLine size={18} /><div><strong>{text("Every 360° camera export is accepted", "Elke 360°-camera-export wordt geaccepteerd")}</strong><span>{panoramaSummary ?? text("Insta360, Ricoh Theta, GoPro Max, a phone panorama or any other stitched export. The viewer places the image on the sphere it actually covers; larger exports are scaled to the project limit before they are uploaded.", "Insta360, Ricoh Theta, GoPro Max, een telefoonpanorama of elke andere gestitchte export. De viewer plaatst het beeld op het deel van de bol dat het werkelijk bedekt; grotere exports worden vóór het uploaden naar de projectlimiet geschaald.")}</span></div></div> : null}
+          {captureForm.type === "panorama" ? <div className="operation-alert"><ScanLine size={18} /><div><span>{panoramaSummary ?? text("Larger exports are scaled to the project limit before upload.", "Grotere exports worden vóór het uploaden verkleind tot de projectlimiet.")}</span></div></div> : null}
           {file && captureForm.type === "photo" && file.size > maxFileSizeBytes ? <p className="field-error">{text("This image exceeds the project file limit.", "Deze afbeelding is groter dan de bestandslimiet van het project.")}</p> : null}
           {fileError ? <p className="field-error" role="alert">{fileError}</p> : null}
           {file && captureForm.description.trim().length < 3 ? <p className="form-intro">{text("Write one line about this photo to save it.", "Schrijf één regel over deze foto om hem op te slaan.")}</p> : null}
@@ -674,8 +664,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
                 <div className="visual-stage-header"><div><span className="record-number">{activeCapture.capture_type === "panorama" ? text("Interactive 360° camera image", "Interactief 360°-camerabeeld") : text("Annotated photo", "Geannoteerde foto")}</span><h2>{activeCapture.title}</h2><p><MapPin size={13} /> {activeCapture.location_label}{activeCapture.tour_name ? ` · ${activeCapture.tour_name}` : ""}</p></div>{tour.length > 1 ? <div className="tour-controls"><button type="button" aria-label={text("Previous 360° camera image", "Vorig 360°-camerabeeld")} onClick={() => chooseTourCapture(-1)}><ChevronLeft size={17} /></button><span>{tourIndex + 1} / {tour.length}</span><button type="button" aria-label={text("Next 360° camera image", "Volgend 360°-camerabeeld")} onClick={() => chooseTourCapture(1)}><ChevronRight size={17} /></button></div> : null}</div>
                 <VisualViewer key={activeCapture.id} capture={activeCapture} file={activeFile} annotations={activeAnnotations} pendingPoint={point} focusAnnotationId={selectedAnnotationId} client={client} onPoint={(nextPoint) => { setPoint(nextPoint); setSelectedAnnotationId(null); }} onSelectAnnotation={(annotationId) => { setSelectedAnnotationId(annotationId); setPoint(null); }} />
                 <div className="visual-stage-help"><CircleDot size={15} /><span>{activeCapture.capture_type === "panorama"
-                  ? text("Drag to look around, pinch or use the zoom buttons to come closer, then click the exact damaged or non-conforming area to place a marker. The compass shows which way you are looking.", "Sleep om rond te kijken, knijp of gebruik de zoomknoppen om dichterbij te komen en klik daarna exact op de beschadiging of afwijking om een marker te plaatsen. Het kompas laat zien welke kant je op kijkt.")
-                  : text("Click the exact damaged or non-conforming area to create a marker.", "Klik exact op de beschadiging of afwijking om een marker te maken.")}</span></div>
+                  ? text("Drag to look around, pinch to zoom, then tap the damaged area to place a marker.", "Sleep om rond te kijken, knijp om te zoomen en tik op het beschadigde gebied om een markering te plaatsen.")
+                  : text("Click the damaged area to place a marker.", "Klik op het beschadigde gebied om een markering te plaatsen.")}</span></div>
                 {/* Everything the picture itself carries — the same words a normal photo gets
                     — next to the image instead of only in the upload form. */}
                 <CaptureDetails capture={activeCapture} file={activeFile} client={client} />
@@ -684,10 +674,10 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
             ) : null}
           </div>
           <aside className="visual-issue-panel">
-            {point && activeCapture ? <IssueForm point={point} capture={activeCapture} issue={issue} setIssue={setIssue} findings={data.findings} annotations={data.visualAnnotations} existingFindingId={existingFindingId} setExistingFindingId={setExistingFindingId} parties={parties} buildings={buildings} captureBuildingId={captureBuildingId} busy={busy} signature={issueSignature} setSignature={setIssueSignature} save={() => void saveIssue()} cancel={() => { setPoint(null); setIssue(emptyIssue); setIssueSignature(null); setExistingFindingId(""); }} /> : selectedAnnotation && selectedFinding ? <AnnotationDetails annotation={selectedAnnotation} finding={selectedFinding} /> : <div className="visual-panel-empty"><ScanLine size={24} /><strong>{text("Select or place a marker", "Selecteer of plaats een marker")}</strong><span>{text("The exact image position and the formal finding remain linked.", "De exacte beeldpositie en de formele bevinding blijven gekoppeld.")}</span></div>}
+            {point && activeCapture ? <IssueForm point={point} capture={activeCapture} issue={issue} setIssue={setIssue} findings={data.findings} annotations={data.visualAnnotations} existingFindingId={existingFindingId} setExistingFindingId={setExistingFindingId} parties={parties} buildings={buildings} captureBuildingId={captureBuildingId} busy={busy} signature={issueSignature} setSignature={setIssueSignature} save={() => void saveIssue()} cancel={() => { setPoint(null); setIssue(emptyIssue); setIssueSignature(null); setExistingFindingId(""); }} /> : selectedAnnotation && selectedFinding ? <AnnotationDetails annotation={selectedAnnotation} finding={selectedFinding} /> : <div className="visual-panel-empty"><ScanLine size={24} /><strong>{text("Select or place a marker", "Selecteer of plaats een marker")}</strong></div>}
           </aside>
         </div>
-      ) : showUpload ? null : <div className="empty-list-state visual-empty"><Camera size={24} /><strong>{text("No project photos yet", "Nog geen projectfoto's")}</strong><span>{text("Take the first photo here; it appears in Visual Evidence and Photos after synchronization.", "Maak hier de eerste foto; die verschijnt na synchronisatie in Visueel bewijs en Foto's.")}</span><button className="primary-button" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={15} /> {text("Take photo", "Maak foto")}</button></div>}
+      ) : showUpload ? null : <div className="empty-list-state visual-empty"><Camera size={24} /><strong>{text("No project photos yet", "Nog geen projectfoto's")}</strong><button className="primary-button" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={15} /> {text("Take photo", "Maak foto")}</button></div>}
     </section>
   );
 }
@@ -1106,7 +1096,7 @@ function IssueForm({ point, capture, issue, setIssue, findings, annotations, exi
           onChange={(next) => setIssue({ ...issue, buildingIds: next, buildingId: next[0] ?? issue.buildingId })}
         />
         <label className="form-field"><span>{text("Severity", "Ernst")}</span><select value={issue.severity} onChange={(event) => setIssue({ ...issue, severity: event.target.value as Finding["severity"] })}><option value="low">{text("Low · 14 days", "Laag · 14 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label>
-        <label className="form-field"><span>{text("Title", "Titel")}</span><input value={issue.title} onChange={(event) => setIssue({ ...issue, title: event.target.value })} placeholder={text("Choose above or type a short title.", "Kies hierboven of typ een korte titel.")} /></label>
+        <label className="form-field"><span>{text("Title", "Titel")}</span><input value={issue.title} onChange={(event) => setIssue({ ...issue, title: event.target.value })} /></label>
         <label className="form-field"><span>{text("Responsible party", "Verantwoordelijke partij")}</span><select value={issue.responsiblePartyId} onChange={(event) => setIssue({ ...issue, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
       </>}
       <label className="form-field"><span>{existingFinding ? text("What does the pointer indicate?", "Wat wijst de pointer precies aan?") : text("Factual description", "Feitelijke omschrijving")}</span><textarea rows={3} value={issue.description} onChange={(event) => setIssue({ ...issue, description: event.target.value })} /><DictateButton onText={(transcript) => setIssue({ ...issue, description: appendDictation(issue.description, transcript) })} /></label>
@@ -1132,5 +1122,5 @@ function IssueForm({ point, capture, issue, setIssue, findings, annotations, exi
 
 function AnnotationDetails({ annotation, finding }: { annotation: VisualAnnotation; finding: Finding }) {
   const { locale, text } = useLanguage();
-  return <div className="visual-annotation-details"><span className={`visual-severity-line ${annotation.severity}`} /><span className="record-number">{finding.finding_number} · {annotation.severity}</span><h2>{annotation.title}</h2><p>{annotation.description}</p><dl><div><dt>{text("Finding status", "Status bevinding")}</dt><dd>{statusText(finding.status, text)}</dd></div><div><dt>{text("Exact position", "Exacte positie")}</dt><dd>{annotation.coordinate_mode === "photo" ? `X ${Math.round(Number(annotation.x_ratio) * 100)}% · Y ${Math.round(Number(annotation.y_ratio) * 100)}%` : `${degrees(Number(annotation.yaw))} · ${degrees(Number(annotation.pitch))}`}</dd></div><div><dt>{text("Due", "Deadline")}</dt><dd>{finding.due_at ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "America/Paramaribo" }).format(new Date(finding.due_at)) : "—"}</dd></div></dl><div className="operation-alert"><ShieldCheck size={18} /><div><strong>{text("Traceable link", "Traceerbare koppeling")}</strong><span>{text("This marker, original image and finding remain linked in the audit trail.", "Deze marker, het originele beeld en de bevinding blijven gekoppeld in het auditspoor.")}</span></div></div></div>;
+  return <div className="visual-annotation-details"><span className={`visual-severity-line ${annotation.severity}`} /><span className="record-number">{finding.finding_number} · {annotation.severity}</span><h2>{annotation.title}</h2><p>{annotation.description}</p><dl><div><dt>{text("Finding status", "Status bevinding")}</dt><dd>{statusText(finding.status, text)}</dd></div><div><dt>{text("Exact position", "Exacte positie")}</dt><dd>{annotation.coordinate_mode === "photo" ? `X ${Math.round(Number(annotation.x_ratio) * 100)}% · Y ${Math.round(Number(annotation.y_ratio) * 100)}%` : `${degrees(Number(annotation.yaw))} · ${degrees(Number(annotation.pitch))}`}</dd></div><div><dt>{text("Due", "Deadline")}</dt><dd>{finding.due_at ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "America/Paramaribo" }).format(new Date(finding.due_at)) : "—"}</dd></div></dl><div className="operation-alert"><ShieldCheck size={18} /><div><strong>{text("Traceable link", "Traceerbare koppeling")}</strong></div></div></div>;
 }

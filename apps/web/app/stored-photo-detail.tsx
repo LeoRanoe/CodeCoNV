@@ -93,7 +93,7 @@ function StoredPanorama({ client, file, markers }: { client: SupabaseClient; fil
   return (
     <>
       <PanoramaViewer imageUrl={source} annotations={markers} pendingPoint={null} focusAnnotationId={null} onPoint={() => undefined} onSelectAnnotation={() => undefined} />
-      <div className="visual-stage-help"><CircleDot size={15} /><span>{text("Drag to look around, pinch or use the zoom buttons to come closer. The compass shows which way you are looking.", "Sleep om rond te kijken, knijp of gebruik de zoomknoppen om dichterbij te komen. Het kompas laat zien welke kant je op kijkt.")}</span></div>
+      <div className="visual-stage-help"><CircleDot size={15} /><span>{text("Drag to look around, pinch to zoom.", "Sleep om rond te kijken, knijp om te zoomen.")}</span></div>
     </>
   );
 }

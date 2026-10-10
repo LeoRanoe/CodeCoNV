@@ -64,10 +64,7 @@ export function BuildingPicker(props: SingleBuildingPickerProps | MultiBuildingP
             </label>
           ))}
         </div>
-        <small>{props.hint ?? text(
-          "Choose one building, several, or all. One numbered record is filed under every selected building.",
-          "Kies één gebouw, meerdere of alle. Eén genummerde registratie wordt onder elk gekozen gebouw getoond.",
-        )}</small>
+        <small>{props.hint ?? text("One numbered record is filed under every selected building.", "Eén genummerde registratie wordt onder elk gekozen gebouw vastgelegd.")}</small>
       </fieldset>
     );
   }
@@ -161,10 +158,7 @@ export function BuildingChoiceField({
           );
         })}
       </div>
-      <small>{hint ?? text(
-        "Tap a second building when the photo covers more than one. The photo is then filed under each of them.",
-        "Tik een tweede gebouw aan als de foto er meer dan één laat zien. De foto wordt dan onder elk gebouw opgeslagen.",
-      )}</small>
+      <small>{hint ?? text("The photo is filed under each selected building.", "De foto wordt onder elk gekozen gebouw vastgelegd.")}</small>
     </fieldset>
   );
 }

@@ -262,14 +262,8 @@ export function MediaLibraryWorkspace({
       await syncOfflineRecords(client, projectId).catch(() => undefined);
       const result = requireComplete
         ? await forceSyncOfflineUploads(client, projectId, {
-          paused: text(
-            "The connection changed before central confirmation. Your files remain safe on this device. Keep this page open, check the connection and tap Sync now again.",
-            "De verbinding veranderde vóór de centrale bevestiging. Je bestanden blijven veilig op dit apparaat. Houd deze pagina open, controleer de verbinding en tik opnieuw op Nu synchroniseren.",
-          ),
-          failed: (pendingCount) => text(
-            `${pendingCount} file upload(s) could not be confirmed centrally. They remain safe on this device. Check the connection and tap Sync now again.`,
-            `${pendingCount} bestandsupload(s) konden niet centraal worden bevestigd. Ze blijven veilig op dit apparaat. Controleer de verbinding en tik opnieuw op Nu synchroniseren.`,
-          ),
+          paused: text("Connection lost before the files were confirmed. They are still on this device. Keep this page open, check the connection and tap Sync now.", "Verbinding verbroken vóór bevestiging van de bestanden. Ze staan nog op dit apparaat. Houd deze pagina open, controleer de verbinding en tik op Nu synchroniseren."),
+          failed: (pendingCount) => text(`${pendingCount} file upload(s) not confirmed. They are still on this device. Check the connection and tap Sync now.`, `${pendingCount} bestandsupload(s) niet bevestigd. Ze staan nog op dit apparaat. Controleer de verbinding en tik op Nu synchroniseren.`),
         })
         : await syncOfflineUploads(client, projectId, { force });
       if (result.synced > 0) {
@@ -380,10 +374,7 @@ export function MediaLibraryWorkspace({
           text("Files uploaded and linked automatically.", "Bestanden geüpload en automatisch gekoppeld."),
         );
         if (!synchronized) {
-          setFieldError(text(
-            "Central upload is still waiting. Your files remain safe below. Check the connection and tap Sync now.",
-            "De centrale upload wacht nog. Je bestanden blijven hieronder veilig staan. Controleer de verbinding en tik op Nu synchroniseren.",
-          ));
+          setFieldError(text("Upload is waiting. Your files are still on this device. Check the connection and tap Sync now.", "Upload wacht. Je bestanden staan nog op dit apparaat. Controleer de verbinding en tik op Nu synchroniseren."));
         }
       }
     } catch (error) {
@@ -604,9 +595,6 @@ export function MediaLibraryWorkspace({
         <div>
           <span className={`connectivity-pill ${online ? "online" : "offline"}`}>{online ? text("Online", "Online") : text("Offline · stored on device", "Offline · opgeslagen op apparaat")}</span>
           <h2>{assetsMode ? text("Project assets", "Projectmiddelen") : text("Project photos", "Projectfoto's")}</h2>
-          <p>{assetsMode
-            ? text("Photos, documents, drawings, reports and signed files in one managed folder library.", "Foto's, documenten, tekeningen, rapporten en ondertekende bestanden in één beheerde mappenbibliotheek.")
-            : text("Take, upload, describe, stack, view or delete project photos, under the day they were taken.", "Maak, upload, omschrijf, stapel, bekijk of verwijder projectfoto's, onder de dag waarop ze zijn gemaakt.")}</p>
         </div>
         <label className="data-saver-toggle"><input type="checkbox" checked={savingData} onChange={(event) => { setSavingData(event.target.checked); setDataSaverEnabled(event.target.checked); }} /><span><strong>{text("Save mobile data", "Mobiele data besparen")}</strong><small>{text("Compress regular photos; never alter 360° images or drawings.", "Comprimeert gewone foto’s; wijzigt nooit 360°-beelden of tekeningen.")}</small></span></label>
       </div>
@@ -617,15 +605,15 @@ export function MediaLibraryWorkspace({
       <div className="media-choice-bar" role="group" aria-label={assetsMode ? text("Add a project asset", "Voeg een projectmiddel toe") : text("Add photos", "Voeg foto's toe")}>
         <button className="media-choice primary" type="button" onClick={() => { setKind("photo"); cameraInputRef.current?.click(); }}>
           <span><Camera size={20} /></span>
-          <span><strong>{text("Take photo", "Maak foto")}</strong><small>{assetsMode ? text("Camera, with today's folder", "Camera, met de map van vandaag") : text("Camera, filed under today", "Camera, bewaard onder vandaag")}</small></span>
+          <span><strong>{text("Take photo", "Maak foto")}</strong></span>
         </button>
         <button className="media-choice" type="button" onClick={() => { setKind("photo"); photoImportRef.current?.click(); }}>
           <span><Upload size={19} /></span>
-          <span><strong>{text("Upload photos", "Foto's uploaden")}</strong><small>{text("From this device's gallery", "Uit de galerij van dit toestel")}</small></span>
+          <span><strong>{text("Upload photos", "Foto's uploaden")}</strong></span>
         </button>
         <button className="media-choice media-choice-360" type="button" onClick={open360Upload}>
           <span><ScanLine size={19} /></span>
-          <span><strong>{text("Upload 360°", "360° uploaden")}</strong><small>{text("Any 360° camera export or panorama", "Elke 360°-camera-export of panorama")}</small></span>
+          <span><strong>{text("Upload 360°", "360° uploaden")}</strong></span>
         </button>
         {assetsMode ? <button className="media-choice" type="button" onClick={() => { setKind("drawing"); drawingImportRef.current?.click(); }}>
           <span><HardDrive size={19} /></span>
@@ -716,7 +704,6 @@ export function MediaLibraryWorkspace({
               <span><Camera size={18} /></span>
               <div>
                 <strong>{pendingCapture.length === 1 ? pendingCapture[0]?.original.name : `${pendingCapture.length} ${text("photos", "foto's")}`}</strong>
-                <small>{text("Describe each photo before saving. Each one is filed under today's date with its own words.", "Beschrijf elke foto vóór het opslaan. Elke foto wordt met haar eigen tekst onder de datum van vandaag bewaard.")}</small>
               </div>
             </div>
             {/* Marking and describing happen before the photo leaves the device, so what is
@@ -742,7 +729,6 @@ export function MediaLibraryWorkspace({
               <textarea
                 value={photoDescription}
                 onChange={(event) => setPhotoDescription(event.target.value)}
-                placeholder={text("What is visible, where was it taken and why does it matter?", "Wat is zichtbaar, waar is de foto gemaakt en waarom is dit belangrijk?")}
                 rows={3}
               />
               <DictateButton onText={(transcript) => setPhotoDescription((current) => appendDictation(current, transcript))} />
@@ -784,11 +770,11 @@ export function MediaLibraryWorkspace({
       {!assetsMode && selectedFiles.length ? <div className="photo-stack-actions"><strong>{selectedFiles.length} {text("photos selected", "foto's geselecteerd")}</strong><button className="primary-button" type="button" disabled={selectedFiles.length < 2} onClick={() => void stackSelectedPhotos()}><ImageIcon size={15} /> {text("Make one stack", "Maak één stapel")}</button><button className="secondary-button" type="button" onClick={() => void softDeleteFiles(selectedFiles)}><Trash2 size={15} /> {text("Delete", "Verwijderen")}</button><button className="ghost-button" type="button" onClick={() => setSelectedIds([])}>{text("Cancel selection", "Selectie stoppen")}</button></div> : null}
       {fieldError ? <div className="operation-alert error" role="alert"><HardDrive size={17} /> {fieldError}</div> : null}
 
-      {queue.length ? <div className="offline-queue"><div><strong>{queue.length} {text("upload(s) waiting", "upload(s) wachten")}</strong><span>{!online ? text("They synchronize automatically when the connection returns.", "Ze synchroniseren automatisch zodra de verbinding terug is.") : savingData && connectionIsMetered() ? text("Automatic sync is paused on this metered connection.", "Automatische synchronisatie is gepauzeerd op deze databundel.") : text("Automatic synchronization is active.", "Automatische synchronisatie is actief.")}</span></div><button className="secondary-button" type="button" disabled={!online || syncing} onClick={() => void run(() => synchronize(true, true), text("Offline uploads synchronized.", "Offline uploads gesynchroniseerd."))}>{syncing ? <Loader2 className="spin" size={15} /> : <RefreshCw size={15} />} {text("Sync now", "Nu synchroniseren")}</button><div className="offline-queue-list">{queue.map((upload) => <span className={upload.lastError ? "failed" : ""} key={upload.id}><ImageIcon size={14} /><b>{upload.fileName}</b><small title={upload.lastError ?? undefined}>{upload.lastError ? text("Sync failed · tap Sync now", "Sync mislukt · tik op Nu synchroniseren") : humanSize(upload.queuedSize)}{!upload.lastError && upload.compressed ? ` · ${Math.round((1 - upload.queuedSize / upload.originalSize) * 100)}% bespaard` : ""}</small><button type="button" aria-label={text("Remove queued upload", "Verwijder wachtende upload")} onClick={() => { if (window.confirm(text("Remove this unsynchronized field file from this device?", "Dit niet-gesynchroniseerde veldbestand van dit apparaat verwijderen?"))) void removeOfflineUpload(upload.id).then(reloadQueue); }}><Trash2 size={14} /></button></span>)}</div></div> : null}
+      {queue.length ? <div className="offline-queue"><div><strong>{queue.length} {text("upload(s) waiting", "upload(s) wachten")}</strong><span>{!online ? text("Syncs when you're online.", "Wordt verstuurd zodra je online bent.") : savingData && connectionIsMetered() ? text("Automatic sync is paused on this metered connection.", "Automatische synchronisatie is gepauzeerd op deze databundel.") : text("Automatic synchronization is active.", "Automatische synchronisatie is actief.")}</span></div><button className="secondary-button" type="button" disabled={!online || syncing} onClick={() => void run(() => synchronize(true, true), text("Offline uploads synchronized.", "Offline uploads gesynchroniseerd."))}>{syncing ? <Loader2 className="spin" size={15} /> : <RefreshCw size={15} />} {text("Sync now", "Nu synchroniseren")}</button><div className="offline-queue-list">{queue.map((upload) => <span className={upload.lastError ? "failed" : ""} key={upload.id}><ImageIcon size={14} /><b>{upload.fileName}</b><small title={upload.lastError ?? undefined}>{upload.lastError ? text("Sync failed · tap Sync now", "Sync mislukt · tik op Nu synchroniseren") : humanSize(upload.queuedSize)}{!upload.lastError && upload.compressed ? ` · ${Math.round((1 - upload.queuedSize / upload.originalSize) * 100)}% bespaard` : ""}</small><button type="button" aria-label={text("Remove queued upload", "Verwijder wachtende upload")} onClick={() => { if (window.confirm(text("Remove this unsynchronized field file from this device?", "Dit niet-gesynchroniseerde veldbestand van dit apparaat verwijderen?"))) void removeOfflineUpload(upload.id).then(reloadQueue); }}><Trash2 size={14} /></button></span>)}</div></div> : null}
 
 
       {assetsMode && assetRecords.length ? <section className="asset-record-library" aria-label={text("Project reports and forms", "Projectrapporten en formulieren")}>
-        <header><div><strong>{text("Reports and registered forms", "Rapporten en geregistreerde formulieren")}</strong><small>{text("Open the source record to preview, edit or export it without copying its identity.", "Open de bronregistratie om deze zonder kopie te bekijken, bewerken of exporteren.")}</small></div><b>{assetRecords.length}</b></header>
+        <header><div><strong>{text("Reports and registered forms", "Rapporten en geregistreerde formulieren")}</strong></div><b>{assetRecords.length}</b></header>
         <div className="asset-record-grid">{assetRecords.map((record) => <button type="button" onClick={() => openRecord?.(record.tab, record.id, record.kind)} key={`${record.tab}:${record.id}`}><span className="media-code-chip">{record.code}</span><strong>{record.title}</strong><small>{statusText(record.status, text)} · {record.date.slice(0, 10)}</small>{record.signed ? <em>{text("Signed", "Ondertekend")}</em> : null}</button>)}</div>
       </section> : null}
 
@@ -836,9 +822,7 @@ export function MediaLibraryWorkspace({
           folder is empty" named a thing the supervisor could not go and look at. */}
       {!files.length ? <div className="empty-list-state">{assetsMode ? <Folder size={24} /> : <ImageIcon size={24} />}<strong>{originFilter === "all"
         ? assetsMode ? text("This folder is empty", "Deze map is leeg") : text("No photos yet", "Nog geen foto's")
-        : text("No photo matches this filter", "Geen foto voldoet aan dit filter")}</strong><span>{originFilter === "all"
-        ? text("Take a photo or select files; they can also be queued offline.", "Maak een foto of kies bestanden; dit kan ook volledig offline.")
-        : assetsMode ? text("Choose another link filter to see the rest of this folder.", "Kies een ander koppelfilter om de rest van deze map te zien.") : text("Choose another link filter to see the rest of the photos.", "Kies een ander koppelfilter om de overige foto's te zien.")}</span></div> : null}
+        : text("No photo matches this filter", "Geen foto voldoet aan dit filter")}</strong></div> : null}
       {openFile ? (
         <StoredPhotoDetail
           data={data}

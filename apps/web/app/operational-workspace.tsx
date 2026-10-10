@@ -12,7 +12,6 @@ import {
   ChevronRight,
   Circle,
   ClipboardCheck,
-  Clock3,
   CloudSun,
   Construction,
   Copy,
@@ -870,10 +869,7 @@ export function OperationalWorkspace({
       // A registration that had to wait says so, instead of claiming it is central.
       const waiting = await listOfflineRecords(projectId).catch(() => []);
       setNotice(waiting.length > queuedBefore
-        ? text(
-          "Saved on this device. It is in the list below marked as waiting, and is sent by itself as soon as there is a connection.",
-          "Op dit apparaat opgeslagen. Het staat hieronder in de lijst als wachtend en wordt vanzelf verstuurd zodra er verbinding is.",
-        )
+        ? text("Saved on this device. Syncs when you're online.", "Opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent.")
         : success);
       await refresh();
       return true;
@@ -881,10 +877,7 @@ export function OperationalWorkspace({
       // Offline the real cause is always the same one, and the generic database message
       // reads like data loss. Photos are the exception: they queue on the device.
       setError(typeof navigator !== "undefined" && !navigator.onLine
-        ? text(
-          "No connection. This record cannot be saved centrally yet; your input stays in the open form. Photos you take are kept on this device and upload by themselves.",
-          "Geen verbinding. Deze registratie kan nog niet centraal worden opgeslagen; je invoer blijft in het geopende formulier staan. Foto's die je maakt blijven op dit apparaat en gaan er vanzelf naartoe.",
-        )
+        ? text("No connection. Not saved yet; your input stays in this form. Photos stay on this device.", "Geen verbinding. Nog niet opgeslagen; je invoer blijft in dit formulier. Foto's blijven op dit apparaat.")
         : userFacingError(caught, text));
       return false;
     } finally {
@@ -905,7 +898,7 @@ export function OperationalWorkspace({
 
   return (
     <>
-      {snapshot._offlineCached ? <div className="operation-alert warning"><HardDrive size={17} /><div><strong>{text("Offline project copy", "Offline projectkopie")}</strong><span>{text("You can inspect the last synchronized data and queue photos or drawings. Formal changes synchronize only when the connection returns.", "Je kunt de laatst gesynchroniseerde gegevens bekijken en foto’s of tekeningen klaarzetten. Formele wijzigingen synchroniseren pas zodra de verbinding terug is.")} {snapshot._offlineSavedAt ? `${text("Saved", "Opgeslagen")} ${formatDate(snapshot._offlineSavedAt)}.` : ""}</span></div></div> : null}
+      {snapshot._offlineCached ? <div className="operation-alert warning"><HardDrive size={17} /><div><strong>{text("Offline project copy", "Offline projectkopie")}</strong><span>{text("Offline. Last synced data is available; formal changes wait for a connection.", "Offline. Laatst gesynchroniseerde gegevens zijn beschikbaar; formele wijzigingen wachten op verbinding.")} {snapshot._offlineSavedAt ? `${text("Saved", "Opgeslagen")} ${formatDate(snapshot._offlineSavedAt)}.` : ""}</span></div></div> : null}
       {error ? <div className="operation-alert error"><AlertTriangle size={17} /> {error}</div> : null}
       {notice ? <div className="operation-alert success"><CheckCircle2 size={17} /> {notice}</div> : null}
       {mode === "project" ? (
@@ -1346,10 +1339,7 @@ function ProjectOperations({
   const online = typeof navigator === "undefined" ? true : navigator.onLine;
   // Every form says the same thing about a photo, because a photo works the same in
   // every form: tap it to describe it, mark it or throw it away.
-  const photoCaptureHint = text(
-    "Tap again for another photo. Tap a photo in the list to describe, mark or remove it.",
-    "Tik opnieuw voor nog een foto. Tik op een foto in de lijst om te omschrijven, markeren of verwijderen.",
-  );
+  const photoCaptureHint = text("Tap a photo to describe, mark or remove it.", "Tik op een foto om te omschrijven, te markeren of te verwijderen.");
   /** The record screens show a strip of pictures, not a list, so the sentence says so. */
   const photoStripHint = text(
     "Tap a photo to describe it, mark it or remove it.",
@@ -1459,7 +1449,7 @@ function ProjectOperations({
   /** Section 5: the spot itself, as the phone reads it. */
   const captureHsePosition = () => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setHseLocationError(text("This device does not share a position. Type the coordinates instead.", "Dit apparaat deelt geen positie. Vul de coördinaten zelf in."));
+      setHseLocationError(text("Location unavailable. Enter the coordinates.", "Locatie niet beschikbaar. Voer de coördinaten in."));
       setHseManualPosition(true);
       return;
     }
@@ -1475,7 +1465,7 @@ function ProjectOperations({
         setHseLocating(false);
       },
       () => {
-        setHseLocationError(text("The position could not be read. Type the coordinates instead.", "De positie kon niet worden gelezen. Vul de coördinaten zelf in."));
+        setHseLocationError(text("Location could not be read. Enter the coordinates.", "Locatie niet gelezen. Voer de coördinaten in."));
         setHseManualPosition(true);
         setHseLocating(false);
       },
@@ -1507,18 +1497,15 @@ function ProjectOperations({
       await syncOfflineRecords(client, projectId);
       await syncQueuedEvidenceNow();
     },
-    text("Everything on this device has been offered to the central project.", "Alles op dit apparaat is aan het centrale project aangeboden."),
+    text("Sent to the project.", "Naar het project verzonden."),
   );
   /** The line the client's own screens carry: what the app already filled in by itself. */
   // Before the phone has been asked anything, the map already knows roughly where the
   // project stands: the same place the live weather was resolved for.
   const projectCenter = liveWeather ? { latitude: liveWeather.latitude, longitude: liveWeather.longitude } : null;
-  const syncChip = online
-    ? { label: text("Online", "Online"), detail: text("Data syncs directly", "Gegevens gaan direct mee") }
-    : { label: text("Offline", "Offline"), detail: text("Data will sync", "Gegevens synchroniseren later") };
+  const syncChip = online ? { label: text("Online", "Online"), detail: "" } : { label: text("Offline", "Offline"), detail: "" };
   const issueTile = issueTypeTiles.find((tile) => tile.id === findingForm.issueType) ?? issueTypeTiles[0];
   const issueTileLabel = (tile: (typeof issueTypeTiles)[number]) => text(tile.en, tile.nl);
-  const capturedAutomatically = text("All key info captured automatically", "Alle kerngegevens worden automatisch vastgelegd");
   const issueCategoryOption = issueCategories.find((option) => option.id === findingForm.issueCategory);
   const ncrCategoryOption = ncrCategories.find((option) => option.id === findingForm.ncrCategory);
   const ncrWorkTypeOption = ncrWorkTypes.find((option) => option.id === findingForm.ncrWorkType);
@@ -1539,7 +1526,7 @@ function ProjectOperations({
   /** Section 5 of the issue screen: the spot itself, as the phone reads it. */
   const captureIssuePosition = () => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setIssueLocationError(text("This device does not share a position. Type the coordinates instead.", "Dit apparaat deelt geen positie. Vul de coördinaten zelf in."));
+      setIssueLocationError(text("Location unavailable. Enter the coordinates.", "Locatie niet beschikbaar. Voer de coördinaten in."));
       setIssueManualPosition(true);
       return;
     }
@@ -1555,7 +1542,7 @@ function ProjectOperations({
         setIssueLocating(false);
       },
       () => {
-        setIssueLocationError(text("The position could not be read. Type the coordinates instead.", "De positie kon niet worden gelezen. Vul de coördinaten zelf in."));
+        setIssueLocationError(text("Location could not be read. Enter the coordinates.", "Locatie niet gelezen. Voer de coördinaten in."));
         setIssueManualPosition(true);
         setIssueLocating(false);
       },
@@ -1739,7 +1726,7 @@ function ProjectOperations({
   const withdrawRecord = (record: ViewedWorkspaceRecord) => {
     const reason = window.prompt(text("Why is this record being withdrawn?", "Waarom wordt deze registratie ingetrokken?"), "");
     if (!reason) return;
-    void run(() => withdrawWorkspaceRecord(client, record.kind, record.id, reason), text(`${record.code} withdrawn; its audit history remains available.`, `${record.code} ingetrokken; de auditgeschiedenis blijft beschikbaar.`)).then((okay) => {
+    void run(() => withdrawWorkspaceRecord(client, record.kind, record.id, reason), text(`${record.code} withdrawn. History kept.`, `${record.code} ingetrokken. Historie bewaard.`)).then((okay) => {
       if (okay) setViewedRecord(null);
     });
   };
@@ -2014,10 +2001,7 @@ function ProjectOperations({
         await installChecklistLibraryTemplate(client, projectId, code);
       }
     },
-    text(
-      "The three CODECO anchor checklists are ready for this project.",
-      "De drie CODECO-ankerchecklists staan klaar voor dit project.",
-    ),
+    text("Checklists installed.", "Checklists geïnstalleerd."),
   );
 
   const existingMediaFolderId = (name: string, forBuildingId: string) => {
@@ -2026,14 +2010,8 @@ function ProjectOperations({
   };
 
   const syncQueuedEvidenceNow = () => forceSyncOfflineUploads(client, projectId, {
-    paused: text(
-      "The connection changed before central evidence confirmation. The photos remain safe on this device. Keep this form open, then open Photos and tap Sync now.",
-      "De verbinding veranderde vóór de centrale bewijsbevestiging. De foto’s blijven veilig op dit apparaat. Houd dit formulier open, open daarna Foto’s en tik op Nu synchroniseren.",
-    ),
-    failed: (pendingCount) => text(
-      `${pendingCount} evidence upload(s) could not be confirmed centrally. They remain safe on this device. Keep this form open, then open Photos and tap Sync now.`,
-      `${pendingCount} bewijsupload(s) konden niet centraal worden bevestigd. Ze blijven veilig op dit apparaat. Houd dit formulier open, open daarna Foto’s en tik op Nu synchroniseren.`,
-    ),
+    paused: text("Connection lost before the photos were confirmed. They are still on this device. Keep this form open, then tap Sync now in Photos.", "Verbinding verbroken vóór bevestiging van de foto's. Ze staan nog op dit apparaat. Houd dit formulier open en tik in Foto's op Nu synchroniseren."),
+    failed: (pendingCount) => text(`${pendingCount} photo upload(s) not confirmed. They are still on this device. Keep this form open, then tap Sync now in Photos.`, `${pendingCount} foto-upload(s) niet bevestigd. Ze staan nog op dit apparaat. Houd dit formulier open en tik in Foto's op Nu synchroniseren.`),
   });
 
   /**
@@ -2110,7 +2088,7 @@ function ProjectOperations({
           if (navigator.onLine) await syncQueuedEvidenceNow();
         }
       },
-      text("Inspection completed; every photo is secured locally and linked during automatic sync.", "Inspectie afgerond; elke foto is lokaal veiliggesteld en wordt automatisch gekoppeld."),
+      text("Saved on this device. Photos sync when you're online.", "Opgeslagen op dit apparaat. Foto's synchroniseren zodra je online bent."),
     );
     if (okay) {
       setActiveInspection(null);
@@ -2241,8 +2219,8 @@ function ProjectOperations({
     let created: Finding | null = null;
     let queuedOffline = false;
     const success = findingPhotos.length
-      ? text("Issue and photo stack secured; numbering and assignment synchronize automatically.", "Probleem en fotostapel veiliggesteld; nummering en toewijzing synchroniseren automatisch.")
-      : text("Finding numbered, assigned and given a rule-driven deadline.", "Bevinding genummerd, toegewezen en van een regelgestuurde deadline voorzien.");
+      ? text("Issue saved on this device. Syncs when you're online.", "Issue opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent.")
+      : text("Finding saved with number and deadline.", "Bevinding opgeslagen met nummer en deadline.");
     const okay = await run(async () => {
       // Creating the day report needs the network. Without one the record keeps the report
       // it already knows about; the queue attaches it to today's report when it is sent.
@@ -2251,7 +2229,7 @@ function ProjectOperations({
       // to the device and appears in the list marked as waiting, so a supervisor sees
       // that the issue is registered instead of nothing at all.
       if (editingFindingId) {
-        if (!online) throw new Error(text("Reconnect before editing an existing issue; the original remains safely stored.", "Maak opnieuw verbinding voordat je een bestaand issue bewerkt; het origineel blijft veilig opgeslagen."));
+        if (!online) throw new Error(text("Go online to edit an existing record.", "Ga online om een bestaande registratie te bewerken."));
         created = await updateFindingRecord(client, {
           projectId,
           id: editingFindingId,
@@ -2455,7 +2433,7 @@ function ProjectOperations({
         };
         let eventId = editingHseId;
         if (editingHseId) {
-          if (!hseOnline) throw new Error(text("Reconnect before editing an existing HSE record; the original remains safely stored.", "Maak opnieuw verbinding voordat je een bestaande HSE-registratie bewerkt; het origineel blijft veilig opgeslagen."));
+          if (!hseOnline) throw new Error(text("Go online to edit an existing record.", "Ga online om een bestaande registratie te bewerken."));
           await updateHseRecord(client, {
             projectId,
             id: editingHseId,
@@ -2534,7 +2512,7 @@ function ProjectOperations({
           if (navigator.onLine) await syncQueuedEvidenceNow();
         }
       },
-      text("HSE event recorded; every photo is secured locally and linked during automatic sync.", "HSE-gebeurtenis vastgelegd; elke foto is lokaal veiliggesteld en wordt automatisch gekoppeld."),
+      text("Saved on this device. Photos sync when you're online.", "Opgeslagen op dit apparaat. Foto's synchroniseren zodra je online bent."),
     );
     if (okay) {
       // The issue is filed, so the parked draft of it has nothing left to protect.
@@ -2620,10 +2598,7 @@ function ProjectOperations({
         // can still be written to the device — the attachment cannot, and saying so is
         // better than dropping the file silently.
         if (!registerOnline && registerFiles.length) {
-          throw new Error(text(
-            "Attached documents need a connection. Remove the attachment to save this register item on the device, or wait until you are online.",
-            "Bijgevoegde documenten vragen verbinding. Verwijder de bijlage om dit registeritem op het apparaat op te slaan, of wacht tot je online bent.",
-          ));
+          throw new Error(text("Attachments need a connection. Remove them to save on this device, or go online.", "Bijlagen hebben verbinding nodig. Verwijder ze om op dit apparaat op te slaan, of ga online."));
         }
         const effectiveReportId = registerOnline ? await ensureProjectDayReport(client, projectId, reportId) : reportId;
         const uploadedFiles = [];
@@ -2665,7 +2640,7 @@ function ProjectOperations({
         };
         let entry: Pick<RegisterEntry, "id" | "entry_number">;
         if (editingRegisterId) {
-          if (!registerOnline) throw new Error(text("Reconnect before editing an existing register item; the original remains safely stored.", "Maak opnieuw verbinding voordat je een bestaand registeritem bewerkt; het origineel blijft veilig opgeslagen."));
+          if (!registerOnline) throw new Error(text("Go online to edit an existing record.", "Ga online om een bestaande registratie te bewerken."));
           const updated = await updateRegisterRecord(client, {
             projectId,
             id: editingRegisterId,
@@ -2773,7 +2748,7 @@ function ProjectOperations({
         }
         return entry;
       },
-      text(`${registerNames[registerForm.type] ?? "Record"} was saved centrally and linked to the daily report.`, `${registerNames[registerForm.type] ?? "Registeritem"} centraal opgeslagen en aan het dagrapport gekoppeld.`),
+      text(`${registerNames[registerForm.type] ?? "Record"} saved.`, `${registerNames[registerForm.type] ?? "Registratie"} opgeslagen.`),
     );
     if (okay) {
       setRegisterForm({ ...emptyControlledDocumentDraft, type: registerForm.type });
@@ -2812,7 +2787,7 @@ function ProjectOperations({
     if (!boqItems.length) return;
     const okay = await run(
       () => importProjectBoq(client, { projectId, buildingId: boqBuildingId, reportId, items: boqItems }),
-      text(`${boqItems.length} BOQ lines imported with quantity, value and progress.`, `${boqItems.length} BOQ-regels geïmporteerd met hoeveelheid, waarde en voortgang.`),
+      text(`${boqItems.length} BOQ lines imported.`, `${boqItems.length} BOQ-regels geïmporteerd.`),
     );
     if (okay) {
       setBoqFile(null);
@@ -2859,7 +2834,6 @@ function ProjectOperations({
         <div>
           <p className="eyebrow">{projectName}</p>
           <h1>{text("Workspace", "Werkruimte")}</h1>
-          <p>{text("Choose one task. Project context and filing are handled automatically.", "Kies één taak. Projectcontext en ordening worden automatisch geregeld.")}</p>
         </div>
       </header> : null}
 
@@ -2908,7 +2882,7 @@ function ProjectOperations({
             <div className="workspace-current-module" aria-live="polite">
               <span>{projectName}</span>
               {/* The module's own title: a heading, so it is announced and navigable. */}
-              <h2>{activeSectionLabel}</h2>
+              <h1>{activeSectionLabel}</h1>
               <b>{activeSectionCount}</b>
             </div>
             {/* The "Switch module" dropdown used to sit here. The client wrote next to it: "ik
@@ -2958,7 +2932,7 @@ function ProjectOperations({
         <section className="operation-panel">
           {activeInspection && activeTemplate ? (
             <RecordFormShell code={activeInspection.inspection_number} title={activeInspection.title} status={text("In progress", "In uitvoering")} busy={busy} className="wide sectioned-record-form">
-              <p className="form-intro">{text("Answer every required checkpoint. A failed point automatically creates a traceable finding on completion; the app never closes it by itself.", "Beantwoord alle verplichte controlepunten. Een afkeur maakt bij afronding automatisch een traceerbare bevinding; de app sluit die nooit zelf.")}</p>
+              <p className="form-intro">{text("A failed point creates a finding when you complete the inspection.", "Een niet-geslaagd punt maakt een bevinding aan zodra je de inspectie afrondt.")}</p>
               <div className="checklist-progress" aria-label={text("Checklist progress", "Checklistvoortgang")}>
                 <span><b>{answeredChecklistItems}</b> / {activeTemplate.items.length} {text("answered", "beantwoord")}</span>
                 <span className="checklist-progress-track"><i style={{ width: `${activeTemplate.items.length ? Math.round((answeredChecklistItems / activeTemplate.items.length) * 100) : 0}%` }} /></span>
@@ -3022,7 +2996,7 @@ function ProjectOperations({
                   "By signing you confirm that you checked every point of this checklist yourself.",
                   "Met je handtekening bevestig je dat je elk punt van deze checklist zelf hebt gecontroleerd.",
                 )}
-                hint={text("The signature, the name and the moment are stored with the inspection.", "De handtekening, de naam en het moment worden bij de inspectie opgeslagen.")}
+                hint={text("Signature, name and time are stored with the inspection.", "Handtekening, naam en tijdstip worden bij de inspectie bewaard.")}
                 nameSuggestion={currentUserName}
                 nameOptions={documentIssuerOptions}
                 value={inspectionSignature}
@@ -3044,13 +3018,12 @@ function ProjectOperations({
           ) : null}
           {showForm && !activeInspection ? (
             <RecordFormShell code={text("Inspection report", "Inspectierapport")} title={text("Start inspection", "Inspectie starten")} status={text("New", "Nieuw")} busy={busy} className="wide sectioned-record-form">
-              {!reportId ? <p className="form-helper">{text("Starting this checklist prepares today’s draft report automatically.", "Bij het starten van deze checklist wordt het conceptrapport van vandaag automatisch klaargezet.")}</p> : null}
+              
               {anchorWorkPlanned && missingAnchorChecklistCodes.length ? (
                 <div className="operation-alert success recommended-checklist-install">
                   <ClipboardCheck size={18} />
                   <div>
                     <strong>{text("Anchor work recognized", "Ankerwerk herkend")}</strong>
-                    <span>{text("Install the three client-based checklists here; no searching or typing required.", "Installeer hier de drie klantchecklists; zoeken of typen is niet nodig.")}</span>
                     <button className="primary-button" type="button" disabled={busy} onClick={() => void installRecommendedAnchorPackage()}>
                       {busy ? <Loader2 className="spin" size={15} /> : <Plus size={15} />}
                       {text("Prepare all 3 checklists", "Zet alle 3 checklists klaar")}
@@ -3058,13 +3031,13 @@ function ProjectOperations({
                   </div>
                 </div>
               ) : null}
-              {inspectionTemplates.length ? <RecordFormSection number={1} title={text("Checklist and location", "Checklist en locatie")} description={text("Choose every building this one numbered inspection covers.", "Kies ieder gebouw waarop deze ene genummerde inspectie betrekking heeft.")}>
+              {inspectionTemplates.length ? <RecordFormSection number={1} title={text("Checklist and location", "Checklist en locatie")}>
                 <RecordBuildingsField id="inspection-buildings" buildings={buildings} value={inspectionBuildingIds} onChange={(next) => { setInspectionBuildingIds(next); setInspectionBuildingId(next[0] ?? inspectionBuildingId); setInspectionLocationNodeId(""); }} />
                 <LocationPicker id="inspection-location" nodes={data.locationNodes} buildingId={inspectionBuildingId} value={inspectionLocationNodeId} onChange={setInspectionLocationNodeId} requiredDepth={requiredLocationDepth} />
                 <label className="form-field"><span>{text("Checklist · recommended for today's work first", "Checklist · aanbevolen voor vandaag eerst")}</span><select value={inspectionTemplateId || inspectionTemplates[0]?.id || ""} onChange={(event) => { setInspectionTemplateId(event.target.value); setInspectionTitle(""); }}>{inspectionTemplates.map((template) => <option value={template.id} key={template.id}>{["LIB-101", "LIB-102", "LIB-103"].includes(template.code) ? "★ " : ""}{template.name} · v{template.version_number}</option>)}</select></label>
                 <details className="inspection-subject-details"><summary>{text("Add a different subject or element · optional", "Ander onderwerp of element toevoegen · optioneel")}</summary><label className="form-field"><span>{text("Subject / element", "Onderwerp / element")}</span><input value={inspectionTitle} onChange={(event) => setInspectionTitle(event.target.value)} placeholder={`${inspectionTemplates.find((template) => template.id === (inspectionTemplateId || inspectionTemplates[0]?.id))?.name ?? text("Inspection", "Inspectie")} · ${buildingName}`} /></label></details>
                 <button className="primary-button start-checklist-button" type="button" disabled={busy || (exactLocationRequired && !inspectionLocationNodeId)} onClick={() => void beginInspection()}><ClipboardCheck size={15} /> {text("Start recommended checklist", "Start aanbevolen checklist")}</button>
-              </RecordFormSection> : <div className="operation-alert warning"><AlertTriangle size={18} /><div><strong>{text("No project checklist is published yet", "Nog geen projectchecklist gepubliceerd")}</strong><span>{text("An administrator can install the ready-made CODECO checklist package under More.", "Een beheerder kan het kant-en-klare CODECO-pakket onder Meer installeren.")}</span></div></div>}
+              </RecordFormSection> : <div className="operation-alert warning"><AlertTriangle size={18} /><div><strong>{text("No project checklist is published yet", "Nog geen projectchecklist gepubliceerd")}</strong><span>{text("Only an administrator can install checklists (Management).", "Alleen een beheerder kan checklists installeren (Management).")}</span></div></div>}
             </RecordFormShell>
           ) : null}
           <div className="operation-form inspection-search">
@@ -3114,9 +3087,8 @@ function ProjectOperations({
                 <button className="record-back-button" type="button" onClick={() => { resetFindingForm(); setShowForm(false); }} aria-label={text("Leave this screen", "Dit scherm verlaten")}><ArrowLeft size={18} /></button>
                 <div>
                   <h2>{text("Create issue", "Issue registreren")}</h2>
-                  <p className="form-intro">{capturedAutomatically}</p>
                 </div>
-                <button className={`record-sync-chip${online ? "" : " offline"}`} type="button" disabled={busy} onClick={syncWaitingRecordsNow} title={text("Send what is still waiting on this device", "Verstuur wat nog op dit apparaat wacht")}>{online ? <CloudSun size={15} /> : <WifiOff size={15} />}<span><strong>{syncChip.label}</strong><small>{syncChip.detail}</small></span></button>
+                <button className={`record-sync-chip${online ? "" : " offline"}`} type="button" disabled={busy} onClick={syncWaitingRecordsNow} title={text("Send what is still waiting on this device", "Verstuur wat nog op dit apparaat wacht")}>{online ? <CloudSun size={15} /> : <WifiOff size={15} />}<span><strong>{syncChip.label}</strong></span></button>
                 <button className="secondary-button record-heading-draft" type="button" onClick={() => writeRecordDraft("issue", projectId, findingForm)}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
               </div>
               <section className="controlled-document-context sectioned-record-context" aria-label={text("Issue header", "Kop van het issue")}>
@@ -3129,7 +3101,6 @@ function ProjectOperations({
                 <div><small>{text("Department", "Afdeling")}</small><strong>{reporterDepartment}</strong><span>{text("Of the reporter", "Van de melder")}</span></div>
                 <div><small>{text("Status", "Status")}</small><strong className="record-status-preview">{issueStatusLabel}</strong><span>{text("On submit", "Bij indienen")}</span></div>
               </section>
-              <p className="form-helper"><Clock3 size={13} /> {text(`Day, date and time are recorded automatically · ${issueDateLabel} ${issueTime}`, `Dag, datum en tijd worden automatisch vastgelegd · ${issueDateLabel} ${issueTime}`)}</p>
               {issueParkedDraft ? (
                 <p className="form-helper record-draft-notice">
                   <Save size={13} /> {text("A saved draft of this screen is waiting on this device.", "Op dit apparaat staat een opgeslagen concept van dit scherm.")}
@@ -3177,7 +3148,7 @@ function ProjectOperations({
                   <section className="record-section record-order-4" aria-label={text("Description", "Omschrijving")}>
                     <h3><span className="record-section-number">4</span> {text("Description", "Omschrijving")} <em className="record-section-required">*</em></h3>
                     <label className="form-field record-description-field">
-                      <textarea rows={5} maxLength={1000} value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} placeholder={text("Describe the issue in detail...", "Beschrijf het issue in detail...")} />
+                      <textarea rows={5} maxLength={1000} value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} />
                       <div className="record-field-foot">
                         <DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} />
                         <span className="record-counter">{findingForm.description.length} / 1000</span>
@@ -3240,7 +3211,7 @@ function ProjectOperations({
                       ))}
                       <label className="record-action-check record-action-other">
                         <MoreHorizontal size={14} />
-                        <input type="text" value={findingForm.immediateActionOther} onChange={(event) => setFindingForm({ ...findingForm, immediateActionOther: event.target.value })} maxLength={240} placeholder={text("Other · specify", "Overig · omschrijf")} />
+                        <input type="text" value={findingForm.immediateActionOther} onChange={(event) => setFindingForm({ ...findingForm, immediateActionOther: event.target.value })} maxLength={240} aria-label={text("Other · specify", "Overig · omschrijf")} placeholder={text("Other · specify", "Overig · omschrijf")} />
                       </label>
                     </div>
                   </section>
@@ -3279,7 +3250,7 @@ function ProjectOperations({
                       <div><small>{text("Status", "Status")}</small><span className="record-status-badge">{issueStatusLabel}</span></div>
                       <div className="record-derived-assignee"><small>{text("Automatically assigned to", "Automatisch toegewezen aan")}</small><strong>{findingForm.responsiblePerson || parties.find((party) => party.id === findingForm.responsiblePartyId)?.name || text("Nobody yet", "Nog niemand")}</strong></div>
                     </div>
-                    <p className="form-helper">{text("The deadline follows the severity: critical 1 day, high 3 days, medium 7 days, low 14 days. Change it when the site says otherwise.", "De deadline volgt de ernst: kritiek 1 dag, hoog 3 dagen, middel 7 dagen, laag 14 dagen. Pas hem aan als het werk anders vraagt.")}</p>
+                    <p className="form-helper">{text("Default deadline by severity: critical 1 day, high 3, medium 7, low 14.", "Standaarddeadline per ernst: kritiek 1 dag, hoog 3, midden 7, laag 14.")}</p>
                   </section>
 
                   <section className="record-section record-order-10" aria-label={text("Root cause", "Oorzaak")}>
@@ -3309,14 +3280,14 @@ function ProjectOperations({
                   <div className="click-answer-block">
                     <strong>{text("Impact", "Impact")}</strong>
                     <div className="quick-issue-presets">{findingImpactPresets.map((option) => <button className={findingForm.impactSummary === option ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, impactSummary: findingForm.impactSummary === option ? "" : option })} key={option}>{option}</button>)}</div>
-                    <label className="form-field"><textarea rows={2} value={findingForm.impactSummary} onChange={(event) => setFindingForm({ ...findingForm, impactSummary: event.target.value })} placeholder={text("Choose above, or write what this means for the work.", "Kies hierboven of schrijf wat dit voor het werk betekent.")} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, impactSummary: appendDictation(current.impactSummary, transcript) }))} /></label>
+                    <label className="form-field"><textarea rows={2} aria-label={text("Impact", "Impact")} value={findingForm.impactSummary} onChange={(event) => setFindingForm({ ...findingForm, impactSummary: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, impactSummary: appendDictation(current.impactSummary, transcript) }))} /></label>
                   </div>
                   <div className="click-answer-block">
                     <strong>{text("Required follow-up", "Vereiste opvolging")}</strong>
                     <div className="quick-issue-presets">{findingActionPresets.map((option) => <button className={findingForm.actionSteps === option ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, actionSteps: findingForm.actionSteps === option ? "" : option })} key={option}>{option}</button>)}</div>
-                    <label className="form-field"><textarea rows={2} value={findingForm.actionSteps} onChange={(event) => setFindingForm({ ...findingForm, actionSteps: event.target.value })} placeholder={text("Choose above, or write what has to happen.", "Kies hierboven of schrijf wat er moet gebeuren.")} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, actionSteps: appendDictation(current.actionSteps, transcript) }))} /></label>
+                    <label className="form-field"><textarea rows={2} aria-label={text("Required follow-up", "Vereiste opvolging")} value={findingForm.actionSteps} onChange={(event) => setFindingForm({ ...findingForm, actionSteps: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, actionSteps: appendDictation(current.actionSteps, transcript) }))} /></label>
                   </div>
-                  <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required (Y/N)", "Escalation Required (Y/N)")}</label>
+                  <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required (Y/N)", "Escalatie vereist (J/N)")}</label>
                 </div>
               </details>
               {/* The client wrote "signature" beside the issue form too. */}
@@ -3326,7 +3297,7 @@ function ProjectOperations({
                   "By signing you report this issue under your own name.",
                   "Met je handtekening meld je dit issue onder je eigen naam.",
                 )}
-                hint={text("The signature, the name and the moment of signing are stored with the report.", "De handtekening, de naam en het moment van ondertekenen worden bij het rapport opgeslagen.")}
+                hint={text("Signature, name and time are stored with the report.", "Handtekening, naam en tijdstip worden bij het rapport bewaard.")}
                 nameSuggestion={currentUserName}
                 nameOptions={documentIssuerOptions}
                 value={signatureFromDetails(findingForm.signedBy, findingForm.signedAt, findingForm.signatureImage)}
@@ -3395,14 +3366,14 @@ function ProjectOperations({
                 type: "deficiency",
                 issueType: "quality",
               });
-              }}><option value="">{text("Choose only when applicable", "Kies alleen indien van toepassing")}</option>{issueCatalogPresets.map((preset) => <option value={preset.subject} key={preset.subject}>{preset.subject}</option>)}</select><small>{text("The historic spreadsheet is used as a quick-entry catalog; choosing an item does not mark it as an active project issue until you submit it.", "Het historische spreadsheet is een snelinvoercatalogus; een keuze wordt pas een actief projectpunt nadat je het indient.")}</small></label>
+              }}><option value="">{text("Choose only when applicable", "Kies alleen indien van toepassing")}</option>{issueCatalogPresets.map((preset) => <option value={preset.subject} key={preset.subject}>{preset.subject}</option>)}</select></label>
               {/* The two lists at the head of the client's own NCR form: what the
                   non-conformance is, and which work it hit. The third list on that sheet,
                   "Source", is struck through — an NCR is answered by what is wrong and
                   where in the works, not by which inspection happened to find it. */}
               <div className="form-grid-2">
-                <label className="form-field"><span>{text("Category", "Categorie")}</span><small>{text("What is the nature of the non-conformance?", "Wat voor soort afwijking is het?")}</small><select value={findingForm.ncrCategory} onChange={(event) => setFindingForm({ ...findingForm, ncrCategory: event.target.value })}><option value="">{text("Choose a category", "Kies een categorie")}</option>{ncrCategories.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
-                <label className="form-field"><span>{text("Type", "Type")}</span><small>{text("What type of work or activity is affected?", "Welk soort werk of activiteit is geraakt?")}</small><select value={findingForm.ncrWorkType} onChange={(event) => setFindingForm({ ...findingForm, ncrWorkType: event.target.value })}><option value="">{text("Choose a type of work", "Kies een soort werk")}</option>{ncrWorkTypes.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
+                <label className="form-field"><span>{text("Category", "Categorie")}</span><select value={findingForm.ncrCategory} onChange={(event) => setFindingForm({ ...findingForm, ncrCategory: event.target.value })}><option value="">{text("Choose a category", "Kies een categorie")}</option>{ncrCategories.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
+                <label className="form-field"><span>{text("Type", "Type")}</span><select value={findingForm.ncrWorkType} onChange={(event) => setFindingForm({ ...findingForm, ncrWorkType: event.target.value })}><option value="">{text("Choose a type of work", "Kies een soort werk")}</option>{ncrWorkTypes.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
               </div>
               <div className="form-grid-2">
                 {/* In the NCR module the type is the NCR itself; a dropdown that can only
@@ -3437,7 +3408,7 @@ function ProjectOperations({
               <div className="click-answer-block">
                 <strong>{text("Impact", "Impact")}</strong>
                 <div className="quick-issue-presets">{findingImpactPresets.map((option) => <button className={findingForm.impactSummary === option ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, impactSummary: findingForm.impactSummary === option ? "" : option })} key={option}>{option}</button>)}</div>
-                <label className="form-field"><span>{text("Impact in your own words", "Impact in eigen woorden")}</span><textarea rows={2} value={findingForm.impactSummary} onChange={(event) => setFindingForm({ ...findingForm, impactSummary: event.target.value })} placeholder={text("Choose above, or write what this means for the work.", "Kies hierboven of schrijf wat dit voor het werk betekent.")} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, impactSummary: appendDictation(current.impactSummary, transcript) }))} /></label>
+                <label className="form-field"><span>{text("Impact in your own words", "Impact in eigen woorden")}</span><textarea rows={2} value={findingForm.impactSummary} onChange={(event) => setFindingForm({ ...findingForm, impactSummary: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, impactSummary: appendDictation(current.impactSummary, transcript) }))} /></label>
               </div>
               {/* "Corrective Action Required" is struck through on the client's own NCR
                   form, and rightly so: what has to happen is already the engineer's
@@ -3449,7 +3420,7 @@ function ProjectOperations({
                 <label className="form-field"><span>{text("Expected resolution date", "Expected Resolution Date")}</span><input type="date" value={findingForm.expectedResolutionDate} onChange={(event) => setFindingForm({ ...findingForm, expectedResolutionDate: event.target.value })} /></label>
               </div>
               <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required (Y/N)", "Escalation Required (Y/N)")}</label>
-              <p className="form-helper">{text(`Entered by ${currentUserName} · the ID, current status and actual resolution date are kept by the app itself.`, `Entered By ${currentUserName} · het ID, de status en de Actual Resolution Date houdt de app zelf bij.`)}</p>
+              <p className="form-helper">{text(`Entered by ${currentUserName}`, `Ingevoerd door ${currentUserName}`)}</p>
               <div className="form-grid-2">
                 <BuildingMultiPicker id="ncr-buildings" buildings={buildings} value={findingBuildingIds} onChange={chooseFindingBuildings} />
                 <label className="form-field"><span>{text("Contractor · receives this NCR", "Aannemer · ontvangt deze NCR")}</span><select value={findingForm.responsiblePartyId} onChange={(event) => setFindingForm({ ...findingForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Nog niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
@@ -3467,7 +3438,7 @@ function ProjectOperations({
                   "By signing you issue this non-conformance report to the contractor named above.",
                   "Met je handtekening geef je dit non-conformance report uit aan de hierboven genoemde aannemer.",
                 )}
-                hint={text("The signature, the name and the date of signing are stored with the report.", "De handtekening, de naam en de datum van ondertekenen worden bij het rapport opgeslagen.")}
+                hint={text("Signature, name and date are stored with the report.", "Handtekening, naam en datum worden bij het rapport bewaard.")}
                 nameSuggestion={currentUserName}
                 nameOptions={documentIssuerOptions}
                 value={signatureFromDetails(findingForm.signedBy, findingForm.signedAt, findingForm.signatureImage)}
@@ -3482,7 +3453,7 @@ function ProjectOperations({
                   under the line. The name and the date come from the act of signing; the
                   job the signer holds is the one thing the app cannot know. */}
               <label className="form-field ncr-signature-position"><span>{text("Position", "Functie")}</span><input value={findingForm.signedPosition} onChange={(event) => setFindingForm({ ...findingForm, signedPosition: event.target.value })} placeholder={text("Quality Engineer", "Quality Engineer")} /></label>
-                <div className="operation-alert warning"><RotateCcw size={17} /><div><strong>{text("The contractor fills in the correction", "De aannemer vult de correctie in")}</strong><span>{text("After submitting you send this NCR to the contractor with one tap. The contractor fills in the proposed corrective action and sends it back; the quality-control close-out stays with CODECO.", "Na indienen stuur je deze NCR met één tik naar de aannemer. De aannemer vult de voorgestelde correctieve actie in en stuurt die terug; de eindcontrole blijft bij CODECO.")}</span></div></div>
+                <div className="operation-alert warning"><RotateCcw size={17} /><div><strong>{text("The contractor fills in the correction", "De aannemer vult de correctie in")}</strong><span>{text("Submit, then send the NCR to the contractor. The contractor proposes the corrective action; CODECO verifies and closes.", "Dien in en stuur de NCR naar de aannemer. De aannemer stelt de corrigerende maatregel voor; CODECO verifieert en sluit.")}</span></div></div>
               <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit NCR", "NCR indienen")}</button>
             </div>
           ) : null}
@@ -3512,7 +3483,7 @@ function ProjectOperations({
             </div>
             <div className="punchlist-cycle-card">
               <span><RotateCcw size={19} /></span>
-              <div><strong>{text("Contractor-to-supervisor review cycle", "Reviewcyclus aannemer naar supervisor")}</strong><p>{text("The contractor marks work ready with evidence. A supervisor verifies, closes or reopens it with a reason. The history remains intact.", "De aannemer meldt werk gereed met bewijs. Een supervisor verifieert, sluit of heropent het met reden. De historie blijft intact.")}</p></div>
+              <div><strong>{text("Contractor-to-supervisor review cycle", "Reviewcyclus aannemer naar supervisor")}</strong></div>
               <div className="button-row"><button className="secondary-button" type="button" onClick={() => setTab("visual")}><Camera size={14} /> {text("Open normal photo", "Open normale foto")}</button><button className="secondary-button" type="button" onClick={() => setTab("visual")}><RotateCcw size={14} /> {text("Open 360° image", "Open 360°-beeld")}</button></div>
             </div>
           </div>
@@ -3538,12 +3509,12 @@ function ProjectOperations({
             transition={(finding, nextStatus, note, finalMeasure, correction, verificationSignedBy, verificationSignatureImage, verification) => run(() => transitionFinding(client, finding.id, nextStatus, note, finalMeasure, correction, verificationSignedBy, verificationSignatureImage, verification), `Bevinding ${finding.finding_number} staat nu op ${findingStatusLabels[nextStatus] ?? nextStatus}.`)}
             recordProgress={(finding, progressPercent, disposition, note) => run(
               () => recordFindingProgress(client, { findingId: finding.id, progressPercent, disposition, note }),
-              text(`Progress for ${finding.finding_number} recorded; 100% still requires verification.`, `Voortgang voor ${finding.finding_number} vastgelegd; ook 100% vraagt nog verificatie.`),
+              text(`Progress recorded. 100% still needs verification.`, `Voortgang vastgelegd. 100% moet nog worden geverifieerd.`),
             )}
             share={shareFinding}
             revoke={(shareId) => run(
               () => revokeExternalShareLink(client, shareId),
-              text("External link revoked. A previously sent WhatsApp link no longer works.", "Externe link ingetrokken. Een eerder verstuurde WhatsApp-link werkt niet meer."),
+              text("External link revoked.", "Externe link ingetrokken."),
             )}
             linkVisual={(finding) => {
               setVisualFindingId(finding.id);
@@ -3570,7 +3541,7 @@ function ProjectOperations({
               className="wide sectioned-record-form"
               headerAside={<>
                 <button className="record-back-button" type="button" onClick={() => { resetHseForm(); setShowForm(false); }} aria-label={text("Leave this screen", "Dit scherm verlaten")}><ArrowLeft size={18} /></button>
-                <button className={`record-sync-chip${online ? "" : " offline"}`} type="button" disabled={busy} onClick={syncWaitingRecordsNow} title={text("Send what is still waiting on this device", "Verstuur wat nog op dit apparaat wacht")}>{online ? <CloudSun size={15} /> : <WifiOff size={15} />}<span><strong>{syncChip.label}</strong><small>{syncChip.detail}</small></span></button>
+                <button className={`record-sync-chip${online ? "" : " offline"}`} type="button" disabled={busy} onClick={syncWaitingRecordsNow} title={text("Send what is still waiting on this device", "Verstuur wat nog op dit apparaat wacht")}>{online ? <CloudSun size={15} /> : <WifiOff size={15} />}<span><strong>{syncChip.label}</strong></span></button>
                 <button className="secondary-button record-heading-draft" type="button" onClick={() => writeRecordDraft("hse", projectId, hseForm)}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
               </>}
             >
@@ -3588,7 +3559,6 @@ function ProjectOperations({
                 <div><small>{text("Status", "Status")}</small><strong className="record-status-preview">{hseStatusLabel}</strong><span>{text("On submit", "Bij indienen")}</span></div>
               </section>
               {/* "Ik vermoed dat dag, datum & tijd zelf komen" — the form says so out loud. */}
-              <p className="form-helper"><Clock3 size={13} /> {text(`Day, date and time are recorded automatically · ${issueDateLabel} ${issueTime}`, `Dag, datum en tijd worden automatisch vastgelegd · ${issueDateLabel} ${issueTime}`)}</p>
               {hseParkedDraft ? (
                 <p className="form-helper record-draft-notice">
                   <Save size={13} /> {text("A saved draft of this screen is waiting on this device.", "Op dit apparaat staat een opgeslagen concept van dit scherm.")}
@@ -3639,7 +3609,7 @@ function ProjectOperations({
                         fill this box and every box they belong to, and stay editable. */}
                     <div className="quick-issue-presets" aria-label={text("Choose a standard HSE record", "Kies een standaard HSE-registratie")}>{hsePresets.map((preset) => <button className={hseForm.description === preset.description ? "active" : ""} type="button" onClick={() => { chooseHseIssueType(preset.issueType); setHseForm((current) => ({ ...current, issueType: preset.issueType, severity: preset.severity, description: preset.description, immediateActions: preset.actions })); }} key={preset.label}>{preset.label}</button>)}</div>
                     <label className="form-field record-description-field">
-                      <textarea rows={5} maxLength={1000} value={hseForm.description} onChange={(event) => setHseForm({ ...hseForm, description: event.target.value })} placeholder={text("Describe what happened or what you observed...", "Beschrijf wat er gebeurd is of wat je hebt waargenomen...")} />
+                      <textarea rows={5} maxLength={1000} value={hseForm.description} onChange={(event) => setHseForm({ ...hseForm, description: event.target.value })} />
                       <div className="record-field-foot">
                         <DictateButton onText={(transcript) => setHseForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} />
                         <span className="record-counter">{hseForm.description.length} / 1000</span>
@@ -3682,7 +3652,7 @@ function ProjectOperations({
                       <div><small>{text("Status", "Status")}</small><span className="record-status-badge">{hseStatusLabel}</span></div>
                       <div className="record-derived-assignee"><small>{text("Automatically assigned to", "Automatisch toegewezen aan")}</small><strong>{hseForm.responsiblePerson || text("Nobody yet", "Nog niemand")}</strong></div>
                     </div>
-                    <p className="form-helper">{text(`The deadline follows the severity: critical 1 day, high 3 days, medium 7 days, low 14 days. Change it when the site says otherwise.`, `De deadline volgt de ernst: kritiek 1 dag, hoog 3 dagen, middel 7 dagen, laag 14 dagen. Pas hem aan als het werk anders vraagt.`)}</p>
+                    <p className="form-helper">{text(`Default deadline by severity: critical 1 day, high 3, medium 7, low 14.`, `Standaarddeadline per ernst: kritiek 1 dag, hoog 3, midden 7, laag 14.`)}</p>
                   </section>
                 </div>
 
@@ -3736,7 +3706,7 @@ function ProjectOperations({
                       ))}
                       <label className="record-action-check record-action-other">
                         <MoreHorizontal size={14} />
-                        <input type="text" value={hseForm.immediateActionOther} onChange={(event) => setHseForm({ ...hseForm, immediateActionOther: event.target.value })} maxLength={240} placeholder={text("Other · specify", "Overig · omschrijf")} />
+                        <input type="text" value={hseForm.immediateActionOther} onChange={(event) => setHseForm({ ...hseForm, immediateActionOther: event.target.value })} maxLength={240} aria-label={text("Other · specify", "Overig · omschrijf")} placeholder={text("Other · specify", "Overig · omschrijf")} />
                       </label>
                     </div>
                   </section>
@@ -3752,7 +3722,7 @@ function ProjectOperations({
                   <section className="record-section record-order-11" aria-label={text("Corrective action required", "Vereiste correctieve actie")}>
                     <h3><span className="record-section-number">11</span> {text("Corrective action required", "Vereiste correctieve actie")}</h3>
                     <label className="form-field">
-                      <textarea rows={3} maxLength={1000} value={hseForm.correctiveAction} onChange={(event) => setHseForm({ ...hseForm, correctiveAction: event.target.value })} placeholder={text("What corrective action is required?", "Welke correctieve actie is nodig?")} />
+                      <textarea rows={3} maxLength={1000} value={hseForm.correctiveAction} onChange={(event) => setHseForm({ ...hseForm, correctiveAction: event.target.value })} aria-label={text("What corrective action is required?", "Welke correctieve actie is nodig?")} placeholder={text("What corrective action is required?", "Welke correctieve actie is nodig?")} />
                       <DictateButton onText={(transcript) => setHseForm((current) => ({ ...current, correctiveAction: appendDictation(current.correctiveAction, transcript) }))} />
                     </label>
                   </section>
@@ -3840,7 +3810,6 @@ function ProjectOperations({
                     <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDateLabel}</strong><span>{issueTime}</span></div>
                     <div><small>{text("Reported by", "Gemeld door")}</small><strong>{currentUserName}</strong><span>{reporterDepartment}</span></div>
                   </section>
-                  <p className="form-helper"><Clock3 size={13} /> {text(`Day, date and time are recorded automatically · ${issueDateLabel} ${issueTime}`, `Dag, datum en tijd worden automatisch vastgelegd · ${issueDateLabel} ${issueTime}`)}</p>
                 </>
               ) : null}
               {/* A controlled document starts with the project information and the dates:
@@ -3854,7 +3823,7 @@ function ProjectOperations({
                   <div><small>{text("Drawn up by", "Opgemaakt door")}</small><strong>{registerForm.issuerName.trim() || currentUserName}</strong><span>{registerForm.signedBy ? text("Signed", "Ondertekend") : text("Not signed yet", "Nog niet ondertekend")}</span></div>
                 </section>
                   <section className="controlled-document-dates" aria-label={text("Document dates", "Documentdatums")}>
-                    <header><FileCheck2 size={17} /><div><strong>{registerForm.type === "technical_instruction" ? text("Technical instruction dates", "Datums technische instructie") : text("Document dates", "Documentdatums")}</strong><small>{text("The issue date and time come from the controlled project context; the deadline is selected explicitly.", "De uitgiftedatum en -tijd komen uit de gecontroleerde projectcontext; de deadline wordt expliciet gekozen.")}</small></div></header>
+                    <header><FileCheck2 size={17} /><div><strong>{registerForm.type === "technical_instruction" ? text("Technical instruction dates", "Datums technische instructie") : text("Document dates", "Documentdatums")}</strong></div></header>
                     <div className="form-grid">
                       <label className="form-field"><span>{text("Issue date · automatic", "Uitgiftedatum · automatisch")}</span><input type="date" value={issueDate} readOnly /></label>
                       <label className="form-field"><span>{text("Issue time · automatic", "Uitgiftetijd · automatisch")}</span><input type="time" value={issueTime} readOnly /></label>
@@ -3899,7 +3868,6 @@ function ProjectOperations({
                   <RecordFormSection
                     number={1}
                     title={text("Delay details", "Details van de vertraging")}
-                    description={text("Which work slipped, why, and by how many calendar days.", "Welk werk is uitgelopen, waarom, en met hoeveel kalenderdagen.")}
                   >
                     <div className="form-grid-2">
                       <label className="form-field"><span>{text("Activity / work affected", "Activiteit / getroffen werk")}</span><select value={delayForm.activity} onChange={(event) => setDelayForm({ ...delayForm, activity: event.target.value })}><option value="">{text("Select activity / work", "Kies activiteit / werk")}</option>{delayActivities.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
@@ -3950,7 +3918,6 @@ function ProjectOperations({
                   <RecordFormSection
                     number={2}
                     title={text("Delay dates", "Datums van de vertraging")}
-                    description={text("The baseline finish date, and where the delay puts it. The delay start date is the date of this report, and the actual completion date belongs to section 5.", "De oorspronkelijke einddatum, en waar de vertraging die naartoe schuift. De startdatum is de datum van dit rapport; de werkelijke afrondingsdatum hoort bij sectie 5.")}
                   >
                     <div className="form-grid-2">
                       <label className="form-field"><span>{text("Original finish date (baseline)", "Oorspronkelijke einddatum (baseline)")}</span><input type="date" value={delayForm.originalFinishDate} onChange={(event) => setDelayForm({ ...delayForm, originalFinishDate: event.target.value, newExpectedFinishDate: delayRevisedFinishDate(event.target.value, delayForm.durationDays) })} /></label>
@@ -3963,7 +3930,6 @@ function ProjectOperations({
                   <RecordFormSection
                     number={3}
                     title={text("Status on original finish date", "Status op de oorspronkelijke einddatum")}
-                    description={text("What the works actually looked like on the day they should have been finished. The photo is what makes this a record instead of an opinion.", "Hoe het werk er werkelijk uitzag op de dag dat het klaar had moeten zijn. De foto maakt dit een registratie in plaats van een mening.")}
                   >
                     <div className="form-grid-2 named-photo-pair">
                       <div className="form-field">
@@ -3987,9 +3953,8 @@ function ProjectOperations({
                   <RecordFormSection
                     number={4}
                     title={text("Contractor acknowledgement", "Erkenning door de aannemer")}
-                    description={text("The contractor acknowledges the delay and how it will be recovered. The revised finish date is agreed once, in section 2.", "De aannemer erkent de vertraging en hoe die wordt ingelopen. De herziene einddatum wordt één keer afgesproken, in sectie 2.")}
                   >
-                    <label className="form-field"><span>{text("Proposed recovery plan (brief)", "Voorgesteld inloopplan (kort)")}</span><textarea rows={3} maxLength={250} value={delayForm.recoveryPlan} onChange={(event) => setDelayForm({ ...delayForm, recoveryPlan: event.target.value })} placeholder={text("Describe the proposed recovery actions.", "Beschrijf de voorgestelde inloopmaatregelen.")} /><DictateButton onText={(transcript) => setDelayForm((current) => ({ ...current, recoveryPlan: appendDictation(current.recoveryPlan, transcript) }))} /></label>
+                    <label className="form-field"><span>{text("Proposed recovery plan (brief)", "Voorgesteld inloopplan (kort)")}</span><textarea rows={3} maxLength={250} value={delayForm.recoveryPlan} onChange={(event) => setDelayForm({ ...delayForm, recoveryPlan: event.target.value })} /><DictateButton onText={(transcript) => setDelayForm((current) => ({ ...current, recoveryPlan: appendDictation(current.recoveryPlan, transcript) }))} /></label>
                     <label className="form-field"><span>{text("Contractor representative", "Vertegenwoordiger aannemer")}</span><input list="delay-contractors" value={delayForm.contractorRepresentative} onChange={(event) => setDelayForm({ ...delayForm, contractorRepresentative: event.target.value })} placeholder={text("Enter name", "Voer naam in")} /><datalist id="delay-contractors">{parties.map((party) => <option value={party.name} key={party.id} />)}</datalist></label>
                     <SignatureField
                       label={text("Signature · contractor representative", "Handtekening · vertegenwoordiger aannemer")}
@@ -3997,7 +3962,7 @@ function ProjectOperations({
                         "By signing you acknowledge this delay and the recovery plan written above.",
                         "Met je handtekening erken je deze vertraging en het hierboven beschreven inloopplan.",
                       )}
-                      hint={text("The signature, the name and the date of signing are stored with the report.", "De handtekening, de naam en de datum van ondertekenen worden bij het rapport opgeslagen.")}
+                      hint={text("Signature, name and date are stored with the report.", "Handtekening, naam en datum worden bij het rapport bewaard.")}
                       nameSuggestion={delayForm.contractorRepresentative}
                       value={signatureFromDetails(delayForm.contractorSignedBy, delayForm.contractorSignedAt, delayForm.contractorSignatureImage)}
                       onChange={(signature) => setDelayForm({
@@ -4013,7 +3978,6 @@ function ProjectOperations({
                   <RecordFormSection
                     number={5}
                     title={text("Completion verification", "Verificatie van de afronding")}
-                    description={text("To be filled in once the delayed work is actually finished: the date, the status it finished in, and the photo that proves it.", "In te vullen zodra het vertraagde werk echt af is: de datum, de status waarin het is opgeleverd, en de foto die dat bewijst.")}
                   >
                     <div className="form-grid-2 named-photo-pair">
                       <div className="form-field">
@@ -4044,13 +4008,12 @@ function ProjectOperations({
                   <RecordFormSection
                     number={1}
                     title={text("Change description", "Omschrijving van de wijziging")}
-                    description={text("What is being changed, and on whose request.", "Wat wordt er gewijzigd, en op wiens verzoek.")}
                   >
                     <div className="form-grid-2">
                       <label className="form-field"><span>{text("Change order type", "Type wijzigingsopdracht")}</span><select value={changeOrder.changeOrderType} onChange={(event) => setChangeOrder({ ...changeOrder, changeOrderType: event.target.value })}><option value="">{text("Select type", "Kies type")}</option>{changeOrderTypes.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
                       <label className="form-field"><span>{text("Title / subject", "Titel / onderwerp")}</span><input value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} placeholder={text("Enter title / subject", "Voer titel / onderwerp in")} /></label>
                     </div>
-                    <label className="form-field"><span>{text("Description of change", "Omschrijving van de wijziging")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} placeholder={text("Describe the change in detail, including reason and background.", "Beschrijf de wijziging in detail, inclusief reden en achtergrond.")} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
+                    <label className="form-field"><span>{text("Description of change", "Omschrijving van de wijziging")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
                     <div className="form-grid-2">
                       <label className="form-field"><span>{text("Reason for change", "Reden van de wijziging")}</span><select value={changeOrder.reason} onChange={(event) => setChangeOrder({ ...changeOrder, reason: event.target.value })}><option value="">{text("Select reason", "Kies reden")}</option>{changeOrderReasons.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
                       <label className="form-field"><span>{text("Requested by", "Aangevraagd door")}</span><input list="change-order-requesters" value={changeOrder.requestedBy} onChange={(event) => setChangeOrder({ ...changeOrder, requestedBy: event.target.value })} placeholder={text("Enter name", "Voer naam in")} /><datalist id="change-order-requesters">{documentIssuerOptions.map((name) => <option value={name} key={name} />)}{parties.map((party) => <option value={party.name} key={party.id} />)}</datalist></label>
@@ -4060,7 +4023,6 @@ function ProjectOperations({
                   <RecordFormSection
                     number={2}
                     title={text("Scope of change", "Omvang van de wijziging")}
-                    description={text("Which parts of the contract move, and exactly what changes in them.", "Welke onderdelen van het contract verschuiven, en wat er precies verandert.")}
                   >
                     <div className="record-action-grid">
                       {changeOrderScopeAreas.map((area) => (
@@ -4083,7 +4045,7 @@ function ProjectOperations({
                       <label className="form-field"><span>{text("Other · specify", "Overig · omschrijf")}</span><input value={changeOrder.scopeAreaOther} maxLength={240} onChange={(event) => setChangeOrder({ ...changeOrder, scopeAreaOther: event.target.value })} /></label>
                     ) : null}
                     <div className="form-grid-2">
-                      <label className="form-field"><span>{text("Details / what will change?", "Details / wat verandert er?")}</span><textarea rows={4} maxLength={1000} value={changeOrder.scopeDetails} onChange={(event) => setChangeOrder({ ...changeOrder, scopeDetails: event.target.value })} placeholder={text("Specify the exact scope of work / documents / items that will change.", "Benoem precies welk werk, welke documenten of welke posten wijzigen.")} /><DictateButton onText={(transcript) => setChangeOrder((current) => ({ ...current, scopeDetails: appendDictation(current.scopeDetails, transcript) }))} /></label>
+                      <label className="form-field"><span>{text("Details / what will change?", "Details / wat verandert er?")}</span><textarea rows={4} maxLength={1000} value={changeOrder.scopeDetails} onChange={(event) => setChangeOrder({ ...changeOrder, scopeDetails: event.target.value })} /><DictateButton onText={(transcript) => setChangeOrder((current) => ({ ...current, scopeDetails: appendDictation(current.scopeDetails, transcript) }))} /></label>
                       <NamedPhotoSlot
                         label={text("Photo (scope / reference)", "Foto (scope / referentie)")}
                         value={registerNamedPhotos.change_scope ?? null}
@@ -4108,13 +4070,12 @@ function ProjectOperations({
                   <RecordFormSection
                     number={1}
                     title={text("Agreement details", "Details van de afspraak")}
-                    description={text("What was agreed, by when it is to be carried out, and how urgent it is.", "Wat is afgesproken, wanneer het uitgevoerd moet zijn en hoe urgent het is.")}
                   >
                     <div className="form-grid-2">
                       <label className="form-field"><span>{text("Subject / topic", "Onderwerp")}</span><input value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} placeholder={text("Enter subject / topic", "Voer onderwerp in")} /></label>
                       <label className="form-field"><span>{text("Implement / execute by", "Uitvoeren uiterlijk")}</span><input type="date" value={registerForm.dueDate} onChange={(event) => setRegisterForm({ ...registerForm, dueDate: event.target.value })} /></label>
                     </div>
-                    <label className="form-field"><span>{text("Description of agreement", "Omschrijving van de afspraak")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} placeholder={text("Describe the agreement in detail.", "Beschrijf de afspraak in detail.")} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
+                    <label className="form-field"><span>{text("Description of agreement", "Omschrijving van de afspraak")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
                     <div className="form-grid-2">
                       <div className="form-field">
                         <span>{text("Priority", "Prioriteit")}</span>
@@ -4138,7 +4099,6 @@ function ProjectOperations({
                   <RecordFormSection
                     number={2}
                     title={text("Action owner", "Eigenaar van de actie")}
-                    description={text("An agreement without an owner is a sentence nobody carries out.", "Een afspraak zonder eigenaar is een zin die niemand uitvoert.")}
                   >
                     <div className="form-grid-2">
                       <label className="form-field"><span>{text("Responsible party", "Verantwoordelijke partij")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value })}><option value="">{text("Select party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
@@ -4153,14 +4113,13 @@ function ProjectOperations({
                     </div>
                     <div className="form-grid-2">
                       <label className="form-field"><span>{text("Responsible person", "Verantwoordelijke persoon")}</span><input value={agreementRecord.responsiblePerson} onChange={(event) => setAgreementRecord({ ...agreementRecord, responsiblePerson: event.target.value })} placeholder={text("Enter name", "Voer naam in")} /></label>
-                      <label className="form-field"><span>{text("Remarks (optional)", "Opmerkingen (optioneel)")}</span><textarea rows={3} maxLength={500} value={agreementRecord.remarks} onChange={(event) => setAgreementRecord({ ...agreementRecord, remarks: event.target.value })} placeholder={text("Enter any additional remarks.", "Voer eventuele aanvullende opmerkingen in.")} /><DictateButton onText={(transcript) => setAgreementRecord((current) => ({ ...current, remarks: appendDictation(current.remarks, transcript) }))} /></label>
+                      <label className="form-field"><span>{text("Remarks (optional)", "Opmerkingen (optioneel)")}</span><textarea rows={3} maxLength={500} value={agreementRecord.remarks} onChange={(event) => setAgreementRecord({ ...agreementRecord, remarks: event.target.value })} /><DictateButton onText={(transcript) => setAgreementRecord((current) => ({ ...current, remarks: appendDictation(current.remarks, transcript) }))} /></label>
                     </div>
                   </RecordFormSection>
 
                   <RecordFormSection
                     number={3}
                     title={text("Agreement confirmation", "Bevestiging van de afspraak")}
-                    description={text("The contractor's representative and supervision sign for what was agreed; the client struck the developer's column off this box.", "De vertegenwoordiger van de aannemer en de supervisie tekenen voor de afspraak; de kolom van de ontwikkelaar is door de klant geschrapt.")}
                   >
                     <AgreementSignatureFields
                       options={agreementPartyOptions}
@@ -4173,7 +4132,6 @@ function ProjectOperations({
                   <RecordFormSection
                     number={4}
                     title={text("Completion", "Afronding")}
-                    description={text("To be filled in when the agreement is completed: the date it was actually done, and the picture that shows it.", "In te vullen zodra de afspraak is afgerond: de datum waarop het echt klaar was, en de foto die dat laat zien.")}
                   >
                     <div className="form-grid-2">
                       <label className="form-field"><span>{text("Actual completion date", "Werkelijke afrondingsdatum")}</span><input type="date" value={agreementRecord.actualCompletionDate} onChange={(event) => setAgreementRecord({ ...agreementRecord, actualCompletionDate: event.target.value })} /></label>
@@ -4197,10 +4155,10 @@ function ProjectOperations({
                           nothing a month later. Choosing one fills today's date unless a
                           date was already written. */}
                       {agreementRecord.completionStatus && !agreementRecord.actualCompletionDate ? (
-                        <small>{text("Fill in the actual completion date above; it belongs to this status.", "Vul hierboven de werkelijke afrondingsdatum in; die hoort bij deze status.")}</small>
+                        <small>{text("Enter the completion date above.", "Vul hierboven de afrondingsdatum in.")}</small>
                       ) : null}
                     </div>
-                    <label className="form-field"><span>{text("Remarks (optional)", "Opmerkingen (optioneel)")}</span><textarea rows={2} maxLength={500} value={agreementRecord.completionRemarks} onChange={(event) => setAgreementRecord({ ...agreementRecord, completionRemarks: event.target.value })} placeholder={text("Enter remarks about completion.", "Voer opmerkingen over de afronding in.")} /><DictateButton onText={(transcript) => setAgreementRecord((current) => ({ ...current, completionRemarks: appendDictation(current.completionRemarks, transcript) }))} /></label>
+                    <label className="form-field"><span>{text("Remarks (optional)", "Opmerkingen (optioneel)")}</span><textarea rows={2} maxLength={500} value={agreementRecord.completionRemarks} onChange={(event) => setAgreementRecord({ ...agreementRecord, completionRemarks: event.target.value })} /><DictateButton onText={(transcript) => setAgreementRecord((current) => ({ ...current, completionRemarks: appendDictation(current.completionRemarks, transcript) }))} /></label>
                   </RecordFormSection>
                 </div>
               ) : lessonsLearnedRegister ? (
@@ -4209,10 +4167,10 @@ function ProjectOperations({
                       phase and four short questions instead of a free-text register line. */}
                   <label className="form-field"><span>{text("Project phase", "Projectfase")}</span><select value={lessonForm.projectPhase} onChange={(event) => setLessonForm({ ...lessonForm, projectPhase: event.target.value })}><option value="">{text("Choose a phase", "Kies een fase")}</option>{lessonProjectPhases.map((phase) => <option value={phase.id} key={phase.id}>{text(phase.en, phase.nl)}</option>)}</select></label>
                   <div className="form-grid">
-                    <label className="form-field"><span>{text("Issue", "Probleem")}</span><small>{text("Describe the issue or problem encountered.", "Beschrijf het probleem dat is opgetreden.")}</small><textarea rows={3} value={lessonForm.issue} onChange={(event) => setLessonForm({ ...lessonForm, issue: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, issue: appendDictation(current.issue, transcript) }))} /></label>
-                    <label className="form-field"><span>{text("Cause", "Oorzaak")}</span><small>{text("What was the root cause of this issue?", "Wat was de hoofdoorzaak van dit probleem?")}</small><textarea rows={3} value={lessonForm.cause} onChange={(event) => setLessonForm({ ...lessonForm, cause: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, cause: appendDictation(current.cause, transcript) }))} /></label>
-                    <label className="form-field"><span>{text("Solution / improvement", "Oplossing / verbetering")}</span><small>{text("Describe the solution or improvement implemented.", "Beschrijf de oplossing of verbetering die is toegepast.")}</small><textarea rows={3} value={lessonForm.solution} onChange={(event) => setLessonForm({ ...lessonForm, solution: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, solution: appendDictation(current.solution, transcript) }))} /></label>
-                    <label className="form-field"><span>{text("Expected results", "Verwacht resultaat")}</span><small>{text("What results or benefits are expected from this solution?", "Welk resultaat of voordeel wordt van deze oplossing verwacht?")}</small><textarea rows={3} value={lessonForm.expectedResults} onChange={(event) => setLessonForm({ ...lessonForm, expectedResults: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, expectedResults: appendDictation(current.expectedResults, transcript) }))} /></label>
+                    <label className="form-field"><span>{text("Issue", "Probleem")}</span><textarea rows={3} value={lessonForm.issue} onChange={(event) => setLessonForm({ ...lessonForm, issue: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, issue: appendDictation(current.issue, transcript) }))} /></label>
+                    <label className="form-field"><span>{text("Cause", "Oorzaak")}</span><textarea rows={3} value={lessonForm.cause} onChange={(event) => setLessonForm({ ...lessonForm, cause: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, cause: appendDictation(current.cause, transcript) }))} /></label>
+                    <label className="form-field"><span>{text("Solution / improvement", "Oplossing / verbetering")}</span><textarea rows={3} value={lessonForm.solution} onChange={(event) => setLessonForm({ ...lessonForm, solution: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, solution: appendDictation(current.solution, transcript) }))} /></label>
+                    <label className="form-field"><span>{text("Expected results", "Verwacht resultaat")}</span><textarea rows={3} value={lessonForm.expectedResults} onChange={(event) => setLessonForm({ ...lessonForm, expectedResults: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, expectedResults: appendDictation(current.expectedResults, transcript) }))} /></label>
                   </div>
                   {/* The two pictures the client's own form marks required: the problem as
                       it was found, and the result after the improvement. A lesson nobody
@@ -4239,7 +4197,7 @@ function ProjectOperations({
                   </div>
                   {/* Follow-up: what still has to happen, who does it, and where it
                       stands — no target date, the client struck that field off the form. */}
-                  <label className="form-field"><span>{text("Follow-up action", "Vervolgactie")}</span><small>{text("What follow-up actions are required?", "Welke vervolgactie is nodig?")}</small><textarea rows={2} value={lessonForm.followUpAction} onChange={(event) => setLessonForm({ ...lessonForm, followUpAction: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, followUpAction: appendDictation(current.followUpAction, transcript) }))} /></label>
+                  <label className="form-field"><span>{text("Follow-up action", "Vervolgactie")}</span><textarea rows={2} value={lessonForm.followUpAction} onChange={(event) => setLessonForm({ ...lessonForm, followUpAction: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, followUpAction: appendDictation(current.followUpAction, transcript) }))} /></label>
                   <div className="form-grid-2">
                     <label className="form-field"><span>{text("Responsible person", "Verantwoordelijke")}</span><input value={lessonForm.responsiblePerson} onChange={(event) => setLessonForm({ ...lessonForm, responsiblePerson: event.target.value })} /></label>
                     <div className="form-field">
@@ -4337,7 +4295,6 @@ function ProjectOperations({
                     <RecordFormSection
                       number={3}
                       title={text("Schedule impact", "Planningimpact")}
-                      description={text("Either this change moves the finish date or it does not; only when it does are the dates worth asking for.", "Deze wijziging verschuift de einddatum wel of niet; alleen als dat zo is, zijn de datums de moeite waard om te vragen.")}
                     >
                       <div className="form-field">
                         <span>{text("Does this change affect the schedule?", "Heeft deze wijziging invloed op de planning?")}</span>
@@ -4361,7 +4318,6 @@ function ProjectOperations({
                     <RecordFormSection
                       number={5}
                       title={text("Acknowledgement & agreement", "Erkenning & akkoord")}
-                      description={text("The contractor acknowledges the change and its effect on the schedule. What the contractor thinks the new finish date should be is section 3, agreed once — not proposed again here.", "De aannemer erkent de wijziging en het effect op de planning. Wat de aannemer als nieuwe einddatum ziet, staat in sectie 3 en wordt één keer afgesproken — niet hier opnieuw voorgesteld.")}
                     >
                       <div className="form-grid-2">
                         <label className="form-field"><span>{text("Contractor representative", "Vertegenwoordiger aannemer")}</span><input list="change-order-contractors" value={changeOrder.contractorRepresentative} onChange={(event) => setChangeOrder({ ...changeOrder, contractorRepresentative: event.target.value })} placeholder={text("Enter name", "Voer naam in")} /><datalist id="change-order-contractors">{parties.map((party) => <option value={party.name} key={party.id} />)}</datalist></label>
@@ -4373,7 +4329,7 @@ function ProjectOperations({
                           "By signing you acknowledge this change and agree to proceed according to its impact on time, if any.",
                           "Met je handtekening erken je deze wijziging en ga je akkoord met de uitvoering volgens het effect op de tijd, indien van toepassing.",
                         )}
-                        hint={text("The signature, the name and the date of signing are stored with the change order.", "De handtekening, de naam en de datum van ondertekenen worden bij de wijzigingsopdracht opgeslagen.")}
+                        hint={text("Signature, name and date are stored with the change order.", "Handtekening, naam en datum worden bij de wijzigingsopdracht bewaard.")}
                         nameSuggestion={changeOrder.contractorRepresentative}
                         value={signatureFromDetails(changeOrder.contractorSignedBy, changeOrder.contractorSignedAt, changeOrder.contractorSignatureImage)}
                         onChange={(signature) => setChangeOrder({
@@ -4390,7 +4346,6 @@ function ProjectOperations({
                     <RecordFormSection
                       number={6}
                       title={text("Approval · supervision", "Goedkeuring · supervisie")}
-                      description={text("One approval column: the developer originates the change above and the contractor acknowledges it in section 5, so supervision is the one that approves it.", "Eén goedkeuringskolom: de ontwikkelaar geeft de wijziging hierboven uit en de aannemer erkent die in sectie 5, dus supervisie is degene die goedkeurt.")}
                     >
                       <label className="form-field"><span>{text("Name", "Naam")}</span><input list="change-order-supervision" value={changeOrder.supervisionName} onChange={(event) => setChangeOrder({ ...changeOrder, supervisionName: event.target.value })} placeholder={text("Enter name", "Voer naam in")} /><datalist id="change-order-supervision">{documentIssuerOptions.map((name) => <option value={name} key={name} />)}</datalist></label>
                       <SignatureField
@@ -4399,7 +4354,7 @@ function ProjectOperations({
                           "By signing you approve this change order on behalf of supervision.",
                           "Met je handtekening keur je deze wijzigingsopdracht namens de supervisie goed.",
                         )}
-                        hint={text("The signature, the name and the date of signing are stored with the change order.", "De handtekening, de naam en de datum van ondertekenen worden bij de wijzigingsopdracht opgeslagen.")}
+                        hint={text("Signature, name and date are stored with the change order.", "Handtekening, naam en datum worden bij de wijzigingsopdracht bewaard.")}
                         nameSuggestion={changeOrder.supervisionName || currentUserName}
                         nameOptions={documentIssuerOptions}
                         value={signatureFromDetails(changeOrder.supervisionSignedBy, changeOrder.supervisionSignedAt, changeOrder.supervisionSignatureImage)}
@@ -4422,9 +4377,9 @@ function ProjectOperations({
                     ? text("Signature on the submitted form", "Handtekening op het ingediende formulier")
                     : text("Sign as the author of this document", "Ondertekenen als opsteller van dit document")}
                   declaration={submittedRegister
-                    ? text("Record the signature that stands on the received form; CODECO signs at the formal response.", "Leg de handtekening vast die op het ontvangen formulier staat; CODECO tekent bij het formele antwoord.")
+                    ? text("Record the signature on the received form. CODECO signs in the formal response.", "Leg de handtekening op het ontvangen formulier vast. CODECO tekent bij de formele reactie.")
                     : text("By signing you issue this document under your own name.", "Met je handtekening geef je dit document onder je eigen naam uit.")}
-                  hint={text("The signature, the name and the moment of signing are stored with the document.", "De handtekening, de naam en het moment van ondertekenen worden bij het document opgeslagen.")}
+                  hint={text("Signature, name and time are stored with the document.", "Handtekening, naam en tijdstip worden bij het document bewaard.")}
                   nameSuggestion={registerForm.issuerName.trim() || (submittedRegister ? "" : currentUserName)}
                   nameOptions={submittedRegister ? [] : documentIssuerOptions}
                   disabled={submittedRegister && !registerForm.issuerName.trim()}
@@ -4437,9 +4392,7 @@ function ProjectOperations({
                     signatureImage: signature?.image ?? "",
                   })}
                 />
-                <div className="operation-alert warning"><FileCheck2 size={17} /><div><strong>{text("Numbering and metadata are automatic", "Nummering en metadata zijn automatisch")}</strong><span>{submittedRegister
-                  ? text("Project, building, receipt date and audit history are filled from the current context. This form was drawn up and signed by the submitting party; CODECO's own signature belongs to the formal response below.", "Project, gebouw, ontvangstdatum en auditgeschiedenis komen uit de actuele context. Dit formulier is door de indienende partij opgesteld en ondertekend; de handtekening van CODECO hoort bij het formele antwoord hieronder.")
-                  : text("Project, building, issue date, author and audit history are filled from the current context. Approval, acknowledgement and signature remain explicit human actions.", "Project, gebouw, uitgiftedatum, opsteller en auditgeschiedenis komen uit de actuele context. Goedkeuring, ontvangst en ondertekening blijven expliciete menselijke acties.")}</span></div></div>
+                {submittedRegister ? <p className="form-helper">{text("Drawn up and signed by the submitting party. CODECO signs in the formal response below.", "Opgesteld en ondertekend door de indienende partij. CODECO tekent bij de formele reactie hieronder.")}</p> : null}
               </> : null}
               {!controlledRegister && !agreementRegister ? (
                 <RecordSignatureField
@@ -4471,10 +4424,11 @@ function ProjectOperations({
           {/* The bill of quantities has nothing to do with a delivery or any other
               register item you are filling in, so it no longer sits open underneath the
               form. It stays one tap away. */}
+          {registerForm.type === "delivery" ? (
           <details className="boq-import-section">
             <summary>{text("Bill of quantities · import and progress", "Meetstaat · import en voortgang")}<span>{data.registerEntries.filter((entry) => entry.register_type === "boq").length} {text("BOQ lines", "BOQ-regels")}</span></summary>
             <div className="boq-import-card">
-              <div><span className="record-number">{text("BOQ import and progress", "BOQ-import en voortgang")}</span><h2>{text("Import the bill of quantities as a controlled project log", "Importeer de meetstaat als gecontroleerd projectlog")}</h2><p>{text("CSV columns: code, description, quantity, unit, unit rate, contract value and progress percentage. The complete import is atomic: an invalid row stores nothing.", "CSV-kolommen: code, omschrijving, hoeveelheid, eenheid, eenheidsprijs, contractbedrag en voortgangspercentage. De volledige import is atomisch: bij een ongeldige rij wordt niets opgeslagen.")}</p></div>
+              <div><span className="record-number">{text("BOQ import and progress", "BOQ-import en voortgang")}</span><h2>{text("Import BOQ", "BOQ importeren")}</h2><p>{text("CSV columns: code, description, quantity, unit, unit rate, contract value, progress %. One invalid row cancels the whole import.", "CSV-kolommen: code, omschrijving, hoeveelheid, eenheid, eenheidsprijs, contractwaarde, voortgang %. Eén ongeldige regel annuleert de hele import.")}</p></div>
               <BuildingPicker id="boq-building" buildings={buildings} value={boqBuildingId} onChange={setBoqBuildingId} />
               <div className="boq-import-actions"><button className="secondary-button" type="button" onClick={downloadBoqCsvTemplate}><Download size={15} /> {text("Download CSV template", "Download CSV-sjabloon")}</button><label className="secondary-button file-button"><Upload size={15} /> {text("Choose BOQ file", "Kies BOQ-bestand")}<input type="file" accept="text/csv,.csv" hidden onChange={(event) => void inspectBoqFile(event.target.files?.[0] ?? null)} /></label><button className="primary-button" type="button" disabled={busy || !boqItems.length} onClick={() => void importBoq()}><PackageCheck size={15} /> {text("Import BOQ", "Importeer BOQ")}</button></div>
               {boqFile ? <span className="boq-file-summary"><strong>{boqFile.name}</strong>{boqItems.length ? ` · ${boqItems.length} ${text("validated rows", "gevalideerde regels")}` : ""}</span> : null}
@@ -4490,26 +4444,17 @@ function ProjectOperations({
               client={client}
             />
           </details>
+          ) : null}
           <div className="register-summary-grid">{Object.entries(registerNames).map(([type, label]) => <div className="register-summary" key={type}><strong>{data.registerEntries.filter((entry) => entry.register_type === type).length}</strong><span>{label}</span></div>)}</div>
           {externalSubmissionIntent ? (
             <div className="operation-alert success external-submission-notice">
               <Users size={18} />
               <div>
                 <strong>{text("Recording a contractor submission", "Aannemersindiening vastleggen")}</strong>
-                <span>{text("WCR, RFI, RFA and WIR are unlocked here because you came from Management. The decision is recorded there too.", "WCR, RFI, RFA en WIR zijn hier vrijgegeven omdat je vanuit Management komt. Het besluit leg je daar ook vast.")}</span>
               </div>
               <button className="secondary-button" type="button" onClick={openManagement}>{text("Back to Management", "Terug naar Management")}</button>
             </div>
-          ) : (
-          <div className="operation-alert external-submission-notice">
-            <Users size={18} />
-            <div>
-              <strong>{text("WCR, RFI, RFA and WIR are not created here", "WCR, RFI, RFA en WIR maak je hier niet aan")}</strong>
-              <span>{text("The contractor submits them first; the company or owner records the decision under Management.", "De aannemer dient ze eerst in; het bedrijf of de eigenaar legt het besluit vast onder Management.")}</span>
-            </div>
-            <button className="secondary-button" type="button" onClick={openManagement}>{text("Open submissions", "Open indieningen")}</button>
-          </div>
-          )}
+          ) : null}
           <ControlledDocumentList entries={data.registerEntries.filter((entry) => isControlledDocumentType(entry.register_type) && (externalSubmissionIntent || !externalSubmissionRegisterTypes.includes(entry.register_type)))} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={currentUserName} focusRecordId={focusRecordId} client={client} run={run} />
           <RecordList empty={text("No additional project registers yet.", "Nog geen aanvullende projectregisters.")} rows={data.registerEntries.filter((entry) => !isControlledDocumentType(entry.register_type) && entry.register_type !== "boq").map((entry) => {
             // The verdict and the quantity are the point of a delivery line, so the list
@@ -4649,7 +4594,7 @@ function BoqProgressRegister({
                       quantityCompleted: quantity ? Number(quantity) : null,
                       note,
                     }),
-                    text(`BOQ progress for ${String(details.code ?? entry.entry_number)} recorded.`, `BOQ-voortgang voor ${String(details.code ?? entry.entry_number)} vastgelegd.`),
+                    text(`BOQ progress recorded.`, `BOQ-voortgang vastgelegd.`),
                   ).then((okay) => { if (okay) { setActive(null); setNote(""); } })}>{text("Save dated progress", "Sla gedateerde voortgang op")}</button>
                 </div>
               ) : null}
@@ -4730,7 +4675,7 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
             : [];
           const entryWaiting = isPendingRecordId(entry.id);
           return <article className={`controlled-document-card ${entryWaiting ? "record-waiting" : ""} ${focusRecordId === entry.id ? "record-focused" : ""}`} id={recordAnchorId(entry.id)} key={entry.id}>
-            {entryWaiting ? <p className="record-waiting-note"><WifiOff size={14} /> {text("Saved on this device. The number and the formal response follow once it has been sent.", "Op dit apparaat opgeslagen. Het nummer en het formele antwoord volgen zodra het is verstuurd.")}</p> : null}
+            {entryWaiting ? <p className="record-waiting-note"><WifiOff size={14} /> {text("Saved on this device. Number follows after sync.", "Opgeslagen op dit apparaat. Nummer volgt na synchronisatie.")}</p> : null}
             <div className="controlled-document-card-main"><div><span className="record-number">{entry.entry_number} · {typeText(entry.register_type, text).toUpperCase()}</span><h3>{entry.title}</h3><p>{String(details.description ?? "")}</p><small>{entryBuildingName}{entryLocation ? ` → ${entryLocation}` : ""} · {formatDate(entry.occurred_at, locale)}{entry.due_at ? ` · ${text("due", "uiterlijk")} ${formatDate(entry.due_at, locale)}` : ""}{responseData.decision ? ` · ${codeText(String(responseData.decision), text)}` : ""}</small></div><span className={`task-status ${entry.status === "approved" || entry.status === "closed" ? "green" : entry.status === "rejected" ? "red" : ""}`}>{statusText(entry.status, text)}</span></div>
             <div className="finding-actions" hidden={entryWaiting}><button className="secondary-button" type="button" onClick={() => setHistoryActive((current) => current === entry.id ? null : entry.id)}><Archive size={15} /> {historyActive === entry.id ? text("Close record", "Sluit dossier") : text("Open record & history", "Open dossier & historie")}</button>
             {/* Send the document to the contractor over WhatsApp. The formal PDF or Word
@@ -4903,7 +4848,7 @@ function SubmittedRecordShare({ finding, scope, projectName, projectCode, buildi
         </div>
         <button type="button" aria-label={text("Close", "Sluiten")} onClick={close}><X size={16} /></button>
       </header>
-      {scope === "ncr" ? <p>{text("The contractor opens the link without an account, reads the recommended action and fills in the proposed corrective action. CODECO verifies and closes the NCR.", "De aannemer opent de link zonder account, leest de aanbevolen actie en vult de voorgestelde correctieve actie in. CODECO verifieert en sluit de NCR.")}</p> : null}
+      {scope === "ncr" ? <p>{text("The contractor opens the link without an account and proposes the corrective action. CODECO verifies and closes.", "De aannemer opent de link zonder account en stelt de corrigerende maatregel voor. CODECO verifieert en sluit.")}</p> : null}
       {link ? (
         <>
           <label><span>{text("Secure link · expires", "Beveiligde link · vervalt")} {formatDate(link.expiresAt, locale)}</span><input readOnly value={link.url} onFocus={(event) => event.currentTarget.select()} /></label>
@@ -5037,7 +4982,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   ].join("\n");
   return (
     <div className="record-stack">
-      {findings.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No findings yet", "Nog geen bevindingen")}</strong><span>{text("Failed inspection points and manual NCRs appear here.", "Afgekeurde inspectiepunten en handmatige NCR’s verschijnen hier.")}</span></div> : null}
+      {findings.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No findings yet", "Nog geen bevindingen")}</strong></div> : null}
       {findings.map((finding) => {
         const nextStatus = next[finding.status];
         const latestProgress = progressUpdates.find((item) => item.finding_id === finding.id);
@@ -5058,10 +5003,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
             {waitingToBeSent ? (
               <p className="record-waiting-note">
                 <WifiOff size={14} />
-                {text(
-                  "Saved on this device. The number, the deadline and the link to the contractor follow as soon as this record has been sent.",
-                  "Op dit apparaat opgeslagen. Het nummer, de deadline en de link naar de aannemer volgen zodra deze registratie is verstuurd.",
-                )}
+                {text("Saved on this device. Number, deadline and contractor link follow after sync.", "Opgeslagen op dit apparaat. Nummer, deadline en aannemerslink volgen na synchronisatie.")}
               </p>
             ) : null}
             <div className="finding-card-main"><span className={`record-severity ${finding.severity}`}>{severityText(finding.severity, text)}</span><div><span className="record-number">{finding.finding_number} · {finding.finding_type.toUpperCase()}</span><h3>{finding.title}</h3><p>{finding.description}</p>{issue.action_steps ? <p className="finding-required-action"><strong>{text("Required action:", "Vereiste actie:")}</strong> {issue.action_steps}</p> : null}{issue.immediate_actions?.length || issue.immediate_action_other ? <p className="finding-immediate-action"><strong>{text("Already done:", "Al gedaan:")}</strong> {[...(issue.immediate_actions ?? []).map((action) => optionText(immediateActionsTaken, action, text)), issue.immediate_action_other ?? ""].filter(Boolean).join(" · ")}</p> : null}<small>{[issue.issue_category, issue.root_cause ? `${text("cause", "oorzaak")}: ${optionText(recordRootCauses, issue.root_cause, text)}` : "", issue.responsible_person].filter(Boolean).join(" · ")}{[issue.issue_category, issue.root_cause, issue.responsible_person].some(Boolean) ? " · " : ""}{recordBuildingName}{recordLocation ? ` → ${recordLocation}` : ""} · Deadline {formatDate(finding.due_at, locale)}{latestProgress ? ` · ${text("progress", "voortgang")} ${latestProgress.progress_percent}% · ${codeText(latestProgress.disposition, text)}` : ""}{finding.verified_at ? ` · ${text("verified", "geverifieerd")} ${formatDate(finding.verified_at, locale)}` : ""}</small></div><span className={`task-status ${finding.status === "closed" ? "green" : finding.severity === "critical" ? "red" : ""}`}>{statusLabels[finding.status] ?? finding.status}</span></div>
@@ -5143,7 +5085,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
             <RecordPhotoStrip data={data} client={client} kind="finding" recordId={finding.id} resolver={fileOriginResolver} buildings={buildings} projectId={projectId} busy={busy} run={run} openPhotoMarking={openPhotoMarking} />
             {activeExternalShares.length ? (
               <section className="active-external-shares" aria-label={text("Active external links", "Actieve externe links")}>
-                <header><Link2 size={16} /><span><strong>{text(`${activeExternalShares.length} active external link${activeExternalShares.length === 1 ? "" : "s"}`, `${activeExternalShares.length} actieve externe link${activeExternalShares.length === 1 ? "" : "s"}`)}</strong><small>{text("The raw link is shown only once when it is created. It can always be revoked here.", "De ruwe link wordt alleen bij het aanmaken getoond. Intrekken kan hier altijd.")}</small></span></header>
+                <header><Link2 size={16} /><span><strong>{text(`${activeExternalShares.length} active external link${activeExternalShares.length === 1 ? "" : "s"}`, `${activeExternalShares.length} actieve externe link${activeExternalShares.length === 1 ? "" : "s"}`)}</strong><small>{text("The link is shown once. Revoke it here.", "De link wordt één keer getoond. Trek hem hier in.")}</small></span></header>
                 {activeExternalShares.map((shared) => (
                   <div className="active-external-share-row" key={shared.id}>
                     <span><strong>{text("Expires", "Vervalt")} {formatDate(shared.expires_at, locale)}</strong><small>{text(`${shared.view_count} view${shared.view_count === 1 ? "" : "s"}`, `${shared.view_count} keer bekeken`)}</small></span>
@@ -5168,7 +5110,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
               <section className="external-share-preflight" aria-label={text("External party link ready", "Link voor externe partij klaar")}>
                 <div className="external-share-preflight-heading"><span><Link2 size={18} /></span><div><strong>{text("Ready to send · recipient needs no account", "Klaar om te sturen · ontvanger heeft geen account nodig")}</strong><small>{text("Only this workpoint and its evidence are shared.", "Alleen dit werkpunt en het bijbehorende bewijs worden gedeeld.")}</small></div><button type="button" aria-label={text("Close external link panel", "Sluit extern-linkpaneel")} onClick={() => setExternalShare(null)}><X size={16} /></button></div>
                 <ul>
-                  <li>{text("Sees project, building, workpoint, priority, deadline and source photo.", "Ziet project, gebouw, werkpunt, prioriteit, deadline en bronfoto.")}</li>
+                  <li>{text("Contractor sees: project, building, location, priority, deadline, photo.", "Aannemer ziet: project, gebouw, locatie, prioriteit, deadline, foto.")}</li>
                   <li>{text("Can report completion or a problem with one tap.", "Kan met één tik gereedmelden of een probleem terugmelden.")}</li>
                   <li>{text("Can take and attach a correction photo directly.", "Kan direct een correctiefoto maken en meesturen.")}</li>
                 </ul>
@@ -5217,14 +5159,14 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
                       <label className="form-field"><span>{text("Date of QC inspection", "Datum QC-inspectie")}</span><input type="date" value={verification.inspectionDate} onChange={(event) => setVerification({ ...verification, inspectionDate: event.target.value })} /></label>
                     </div>
                     <label className="form-field"><span>{text("Remarks / observations", "Opmerkingen / waarnemingen")}</span><textarea rows={2} maxLength={1000} value={verification.remarks} onChange={(event) => setVerification({ ...verification, remarks: event.target.value })} placeholder={text("What the re-inspection actually saw.", "Wat er bij de herinspectie daadwerkelijk is gezien.")} /><DictateButton onText={(transcript) => setVerification((current) => ({ ...current, remarks: appendDictation(current.remarks, transcript) }))} /></label>
-                    <label className="form-field"><span>{text("Verification comments", "Verificatiecommentaar")}</span><textarea rows={2} maxLength={1000} value={verification.comments} onChange={(event) => setVerification({ ...verification, comments: event.target.value })} placeholder={text("Corrective action verified. Work is acceptable and the NCR can be closed.", "Correctieve actie geverifieerd. Werk is acceptabel en de NCR kan worden gesloten.")} /><DictateButton onText={(transcript) => setVerification((current) => ({ ...current, comments: appendDictation(current.comments, transcript) }))} /></label>
+                    <label className="form-field"><span>{text("Verification comments", "Verificatiecommentaar")}</span><textarea rows={2} maxLength={1000} value={verification.comments} onChange={(event) => setVerification({ ...verification, comments: event.target.value })} placeholder={text("Corrective action verified. NCR can be closed.", "Corrigerende maatregel geverifieerd. NCR kan worden gesloten.")} /><DictateButton onText={(transcript) => setVerification((current) => ({ ...current, comments: appendDictation(current.comments, transcript) }))} /></label>
                     <SignatureField
                       label={text("Sign as the person closing this NCR", "Onderteken als afsluiter van deze NCR")}
                       declaration={text(
                         "By signing you confirm the corrective action was verified and this non-conformance report is closed.",
                         "Met je handtekening bevestig je dat de correctieve actie is geverifieerd en dat dit non-conformance report wordt afgesloten.",
                       )}
-                      hint={text("The signature, the name and the date of closing are stored with the report.", "De handtekening, de naam en de datum van afsluiten worden bij het rapport opgeslagen.")}
+                      hint={text("Signature, name and date are stored with the report.", "Handtekening, naam en datum worden bij het rapport bewaard.")}
                       nameSuggestion={currentUserName}
                       value={verificationSignature}
                       onChange={setVerificationSignature}
@@ -5357,10 +5299,10 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
     : signingWorkflow[0]?.role ?? "supervisor";
   const canDistribute = reportStatus === "signed" || reportStatus === "sent";
   const reportViews = [
-    { id: "create" as const, icon: CalendarRange, title: text("Create report", "Rapport maken"), copy: text("Choose content and period", "Kies inhoud en periode") },
-    { id: "workflow" as const, icon: FileCheck2, title: text("Review & sign", "Review & onderteken"), copy: text("Controlled formal steps", "Beheerste formele stappen") },
-    { id: "history" as const, icon: Archive, title: text("Versions & history", "Versies & historie"), copy: text("Fixed audit trail", "Vast controlespoor") },
-    { id: "prompts" as const, icon: MessageCircle, title: text("Beyond this app", "Buiten deze app"), copy: text("Prompts for what it will not do", "Prompts voor wat ze niet doet") },
+    { id: "create" as const, icon: CalendarRange, title: text("Create report", "Rapport maken") },
+    { id: "workflow" as const, icon: FileCheck2, title: text("Review & sign", "Review & onderteken") },
+    { id: "history" as const, icon: Archive, title: text("Versions & history", "Versies & historie") },
+    { id: "prompts" as const, icon: MessageCircle, title: text("Beyond this app", "Buiten deze app") },
   ];
   const workflowStep = canReview ? 1 : reportStatus === "approved" ? 2 : ["signed", "sent"].includes(reportStatus) ? 3 : 0;
   const workflowGuidance = !reportId
@@ -5414,16 +5356,16 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
     .sort((left, right) => right.end.localeCompare(left.end));
   return (
     <>
-      <header className="secondary-header report-page-header"><div><p className="eyebrow">{text("Reports", "Rapporten")}</p><h1>{text("Client reports", "Klantrapporten")}</h1><p>{text("Create the right PDF first. Formal approval and history stay available in their own clear steps.", "Maak eerst de juiste PDF. Formele goedkeuring en historie blijven beschikbaar in eigen duidelijke stappen.")}</p></div><div className="report-header-state"><span className="record-number">{reportNumber}</span><span className={`report-state-pill ${reportStatus}`}>{statusLabels[reportStatus] ?? reportStatus}</span></div></header>
+      <header className="secondary-header report-page-header"><div><p className="eyebrow">{text("Reports", "Rapporten")}</p><h1>{text("Client reports", "Klantrapporten")}</h1></div><div className="report-header-state"><span className="record-number">{reportNumber}</span><span className={`report-state-pill ${reportStatus}`}>{statusLabels[reportStatus] ?? reportStatus}</span></div></header>
       <nav className="report-frequency-tabs" aria-label={text("Report frequency", "Rapportfrequentie")}>
-        <button className={periodPreset === "day" ? "active" : ""} type="button" onClick={() => { setReportView("create"); applyDatePreset(1, text("Daily supervision report", "Dagelijks supervisierapport"), "day"); }}><CalendarRange size={19} /><span><strong>{text("Daily report", "Dagrapport")}</strong><small>{text("Today and daily records", "Vandaag en dagregistraties")}</small></span></button>
-        <button className={periodPreset === "week" ? "active" : ""} type="button" onClick={() => { setReportView("create"); applyDatePreset(7, text("Weekly supervision report", "Wekelijks supervisierapport"), "week"); }}><FileText size={19} /><span><strong>{text("Weekly report", "Weekrapport")}</strong><small>{text("Last seven days", "Laatste zeven dagen")}</small></span></button>
-        <button className={periodPreset === "month" ? "active" : ""} type="button" onClick={() => { setReportView("create"); setPeriod({ start: `${today.slice(0, 8)}01`, end: today }); setPeriodLabel(text("Monthly supervision report", "Maandelijks supervisierapport")); setPeriodPreset("month"); }}><Archive size={19} /><span><strong>{text("Monthly report", "Maandrapport")}</strong><small>{text("Management summary and trends", "Managementsamenvatting en trends")}</small></span></button>
+        <button className={periodPreset === "day" ? "active" : ""} type="button" onClick={() => { setReportView("create"); applyDatePreset(1, text("Daily supervision report", "Dagelijks supervisierapport"), "day"); }}><CalendarRange size={19} /><span><strong>{text("Daily report", "Dagrapport")}</strong></span></button>
+        <button className={periodPreset === "week" ? "active" : ""} type="button" onClick={() => { setReportView("create"); applyDatePreset(7, text("Weekly supervision report", "Wekelijks supervisierapport"), "week"); }}><FileText size={19} /><span><strong>{text("Weekly report", "Weekrapport")}</strong></span></button>
+        <button className={periodPreset === "month" ? "active" : ""} type="button" onClick={() => { setReportView("create"); setPeriod({ start: `${today.slice(0, 8)}01`, end: today }); setPeriodLabel(text("Monthly supervision report", "Maandelijks supervisierapport")); setPeriodPreset("month"); }}><Archive size={19} /><span><strong>{text("Monthly report", "Maandrapport")}</strong></span></button>
       </nav>
       <nav className="report-section-tabs" role="tablist" aria-label={text("Report workspace", "Rapportwerkruimte")}>
         {reportViews.map((view) => {
           const Icon = view.icon;
-          return <button className={reportView === view.id ? "active" : ""} type="button" role="tab" aria-selected={reportView === view.id} onClick={() => setReportView(view.id)} key={view.id}><Icon size={18} /><span><strong>{view.title}</strong><small>{view.copy}</small></span></button>;
+          return <button className={reportView === view.id ? "active" : ""} type="button" role="tab" aria-selected={reportView === view.id} onClick={() => setReportView(view.id)} key={view.id}><Icon size={18} /><span><strong>{view.title}</strong></span></button>;
         })}
       </nav>
       {reportView === "prompts" ? (
@@ -5446,7 +5388,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
       {reportView === "create" ? (
         <section className="period-report-card">
           <div className="workflow-icon"><CalendarRange size={20} /></div>
-          <div className="period-report-copy"><span className="record-number">{text("Automatic client output", "Automatische klantoutput")}</span><h2>{text("Choose what the client needs", "Kies wat de klant nodig heeft")}</h2><p>{text("The app compiles one consistent snapshot from workforce, progress, inspections, findings, HSE, deliveries, delays, controlled documents and visual evidence.", "De app stelt één consistente momentopname samen uit bezetting, voortgang, inspecties, bevindingen, HSE, leveringen, vertragingen, beheerde documenten en visueel bewijs.")}</p></div>
+          <div className="period-report-copy"><span className="record-number">{text("Automatic client output", "Automatische klantoutput")}</span><h2>{text("Choose what the client needs", "Kies wat de klant nodig heeft")}</h2></div>
           <div className="period-report-types" role="radiogroup" aria-label={text("Report type", "Rapporttype")}>{reportChoices.map((choice) => <button className={reportChoice === choice.id ? "active" : ""} type="button" role="radio" aria-checked={reportChoice === choice.id} onClick={() => setReportChoice(choice.id)} key={choice.id}><strong>{choice.title}</strong><span>{choice.sections.length} {text("automatic sections", "automatische onderdelen")}</span></button>)}</div>
           <fieldset className="report-source-checklist">
             <legend>{text("Include in this report", "Opnemen in dit rapport")}</legend>
@@ -5458,7 +5400,6 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
             <MessageCircle size={15} />
             <span>
               <strong>{text("Something this report cannot do?", "Iets wat dit rapport niet kan?")}</strong>
-              <small>{text("A compact monthly summary, a conflict matrix, a toolbox agenda — with the prompt and the exports to attach.", "Een compacte maandsamenvatting, een conflictmatrix, een toolbox-agenda — met de prompt en de bij te voegen exports.")}</small>
             </span>
             <ChevronRight size={15} />
           </button>
@@ -5485,31 +5426,31 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
             ) : null}
           </div>
           <section className="workflow-grid">
-            <div className={`workflow-card ${workflowStep === 1 ? "current" : workflowStep > 1 ? "complete" : "locked"}`}><div className="workflow-icon"><ClipboardCheck size={19} /></div><h2>1. Review</h2><p>{text("An authorized reviewer approves or returns the report with a reason. Approval automatically freezes the complete snapshot with SHA-256.", "Een bevoegde reviewer keurt goed of stuurt gemotiveerd terug. Bij goedkeuring bevriest de database automatisch de volledige momentopname met SHA-256.")}</p><label className="form-field"><span>{text("Review comment", "Reviewcommentaar")}</span><textarea rows={3} value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} /><DictateButton onText={(transcript) => setReviewComment((current) => appendDictation(current, transcript))} /></label><div className="button-row"><button className="secondary-button" type="button" disabled={busy || !reportId || !canReview || reviewComment.trim().length < 2} onClick={() => void run(() => reviewReport(client, reportId!, "returned", reviewComment), text("Report returned for correction with a reason.", "Rapport gemotiveerd teruggestuurd voor correctie."))}>{text("Return", "Terugsturen")}</button><button className="primary-button" type="button" disabled={busy || !reportId || !canReview || reviewComment.trim().length < 2} onClick={() => void run(() => reviewReport(client, reportId!, "approved", reviewComment), text("Report approved and frozen as an immutable version.", "Rapport goedgekeurd en als onveranderbare versie vastgezet."))}><FileCheck2 size={15} /> {text("Approve and freeze", "Goedkeuren & vastzetten")}</button></div></div>
-            <div className={`workflow-card ${workflowStep === 2 ? "current" : workflowStep > 2 ? "complete" : "locked"}`}><div className="workflow-icon"><FileCheck2 size={19} /></div><h2>2. {text("Signing declaration", "Ondertekenverklaring")}</h2><p>{text("Identity, project role, version hash and declaration remain append-only. The legal level remains", "Identiteit, projectrol, versiehash en verklaring blijven append-only bewaard. Het juridische niveau blijft")} <strong>contract pending</strong> {text("until CODECO formally decides.", "totdat CODECO dit formeel kiest.")}</p><label className="form-field"><span>{text("Sign as", "Onderteken als")}</span><select value={effectiveSignerRole} onChange={(event) => setSignerRole(event.target.value)}>{signingWorkflow.map((rule) => <option value={rule.role} key={rule.role}>{roleLabels[rule.role] ?? rule.role.replaceAll("_", " ")}{rule.required ? ` · ${text("required", "verplicht")}` : ""}</option>)}</select><small>{text(`${signedRequiredRoles.length} of ${requiredRoles.length} required signatures recorded for this version. You can only sign in a project role you actually hold.`, `${signedRequiredRoles.length} van ${requiredRoles.length} verplichte handtekeningen vastgelegd voor deze versie. Je kunt alleen tekenen in een projectrol die je echt hebt.`)}</small></label><label className="form-field"><span>{text("Declaration", "Verklaring")}</span><textarea rows={3} value={declaration} onChange={(event) => setDeclaration(event.target.value)} /><DictateButton onText={(transcript) => setDeclaration((current) => appendDictation(current, transcript))} /></label>{/* The declaration is signed here and now, by hand, like every other document in the app. */}<SignatureField label={text("Sign this declaration", "Onderteken deze verklaring")} declaration={declaration} hint={text("The signature is stored with the version hash and can never be changed afterwards.", "De handtekening wordt bij de versiehash bewaard en kan daarna niet meer worden gewijzigd.")} nameSuggestion={currentUserName} value={reportSignature} onChange={setReportSignature} disabled={!canSign} disabledHint={text("You can only sign in a project role you actually hold.", "Je kunt alleen tekenen in een projectrol die je echt hebt.")} /><button className="primary-button" type="button" disabled={busy || !reportId || !canSign || declaration.trim().length < 10 || !reportSignature} onClick={() => void run(async () => { await signReport(client, reportId!, effectiveSignerRole, reportSignature?.name || currentUserName, declaration, reportSignature?.image ?? null); setReportSignature(null); }, text("Signing declaration immutably linked to the report version.", "Ondertekenverklaring onveranderbaar aan de rapportversie gekoppeld."))}><FileCheck2 size={15} /> {text("Record signed declaration", "Ondertekende verklaring vastleggen")}</button></div>
-            <div className={`workflow-card ${workflowStep === 3 ? "current" : "locked"}`}><div className="workflow-icon"><Users size={19} /></div><h2>3. {text("Distribution", "Distributie")}</h2><p>{text("Only record a delivery that actually occurred. Without an email connector, the app does not claim automatic delivery.", "Registreer alleen een verzending die werkelijk heeft plaatsgevonden. De app claimt zonder e-mailconnector geen automatische bezorging.")}</p><label className="form-field"><span>{text("Recipient", "Ontvanger")}</span><input value={distribution.name} onChange={(event) => setDistribution({ ...distribution, name: event.target.value })} /></label><label className="form-field"><span>{text("Address / reference", "Adres / referentie")}</span><input value={distribution.address} onChange={(event) => setDistribution({ ...distribution, address: event.target.value })} /></label><label className="form-field"><span>{text("Channel", "Kanaal")}</span><select value={distribution.channel} onChange={(event) => setDistribution({ ...distribution, channel: event.target.value })}><option value="manual">{text("Manual transfer", "Handmatige overdracht")}</option><option value="email">{text("Email (sent externally)", "E-mail (extern verzonden)")}</option><option value="download">{text("Secure download", "Beveiligde download")}</option></select></label><button className="primary-button" type="button" disabled={busy || !reportId || !canDistribute || distribution.name.trim().length < 2 || distribution.address.trim().length < 3} onClick={() => void run(() => recordDistribution(client, reportId!, distribution.name, distribution.address, distribution.channel), text("Traceable distribution record added to the fixed version.", "Aantoonbare distributieregel aan de vastgezette versie toegevoegd."))}><FileText size={15} /> {text("Record distribution", "Distributie registreren")}</button></div>
+            <div className={`workflow-card ${workflowStep === 1 ? "current" : workflowStep > 1 ? "complete" : "locked"}`}><div className="workflow-icon"><ClipboardCheck size={19} /></div><h2>1. Review</h2><p>{text("Approval freezes this version (SHA-256). A returned report needs a reason.", "Goedkeuring bevriest deze versie (SHA-256). Retour vraagt een reden.")}</p><label className="form-field"><span>{text("Review comment", "Reviewcommentaar")}</span><textarea rows={3} value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} /><DictateButton onText={(transcript) => setReviewComment((current) => appendDictation(current, transcript))} /></label><div className="button-row"><button className="secondary-button" type="button" disabled={busy || !reportId || !canReview || reviewComment.trim().length < 2} onClick={() => void run(() => reviewReport(client, reportId!, "returned", reviewComment), text("Report returned for correction with a reason.", "Rapport gemotiveerd teruggestuurd voor correctie."))}>{text("Return", "Terugsturen")}</button><button className="primary-button" type="button" disabled={busy || !reportId || !canReview || reviewComment.trim().length < 2} onClick={() => void run(() => reviewReport(client, reportId!, "approved", reviewComment), text("Report approved and frozen as an immutable version.", "Rapport goedgekeurd en als onveranderbare versie vastgezet."))}><FileCheck2 size={15} /> {text("Approve and freeze", "Goedkeuren & vastzetten")}</button></div></div>
+            <div className={`workflow-card ${workflowStep === 2 ? "current" : workflowStep > 2 ? "complete" : "locked"}`}><div className="workflow-icon"><FileCheck2 size={19} /></div><h2>2. {text("Signing declaration", "Ondertekenverklaring")}</h2><p>{text("Identity, project role, version hash and declaration remain append-only. The legal level remains", "Identiteit, projectrol, versiehash en verklaring blijven append-only bewaard. Het juridische niveau blijft")} <strong>contract pending</strong> {text("until CODECO formally decides.", "totdat CODECO dit formeel kiest.")}</p><label className="form-field"><span>{text("Sign as", "Onderteken als")}</span><select value={effectiveSignerRole} onChange={(event) => setSignerRole(event.target.value)}>{signingWorkflow.map((rule) => <option value={rule.role} key={rule.role}>{roleLabels[rule.role] ?? rule.role.replaceAll("_", " ")}{rule.required ? ` · ${text("required", "verplicht")}` : ""}</option>)}</select><small>{text(`${signedRequiredRoles.length} of ${requiredRoles.length} required signatures recorded. You can only sign in a role you hold.`, `${signedRequiredRoles.length} van ${requiredRoles.length} verplichte handtekeningen gezet. Je kunt alleen tekenen in een rol die je hebt.`)}</small></label><label className="form-field"><span>{text("Declaration", "Verklaring")}</span><textarea rows={3} value={declaration} onChange={(event) => setDeclaration(event.target.value)} /><DictateButton onText={(transcript) => setDeclaration((current) => appendDictation(current, transcript))} /></label>{/* The declaration is signed here and now, by hand, like every other document in the app. */}<SignatureField label={text("Sign this declaration", "Onderteken deze verklaring")} declaration={declaration} hint={text("The signature is stored with the version hash and cannot be changed.", "De handtekening wordt met de versiehash bewaard en kan niet worden gewijzigd.")} nameSuggestion={currentUserName} value={reportSignature} onChange={setReportSignature} disabled={!canSign} disabledHint={text("You can only sign in a project role you actually hold.", "Je kunt alleen tekenen in een projectrol die je echt hebt.")} /><button className="primary-button" type="button" disabled={busy || !reportId || !canSign || declaration.trim().length < 10 || !reportSignature} onClick={() => void run(async () => { await signReport(client, reportId!, effectiveSignerRole, reportSignature?.name || currentUserName, declaration, reportSignature?.image ?? null); setReportSignature(null); }, text("Signing declaration immutably linked to the report version.", "Ondertekenverklaring onveranderbaar aan de rapportversie gekoppeld."))}><FileCheck2 size={15} /> {text("Record signed declaration", "Ondertekende verklaring vastleggen")}</button></div>
+            <div className={`workflow-card ${workflowStep === 3 ? "current" : "locked"}`}><div className="workflow-icon"><Users size={19} /></div><h2>3. {text("Distribution", "Distributie")}</h2><p>{text("Record only deliveries that took place.", "Leg alleen verzendingen vast die hebben plaatsgevonden.")}</p><label className="form-field"><span>{text("Recipient", "Ontvanger")}</span><input value={distribution.name} onChange={(event) => setDistribution({ ...distribution, name: event.target.value })} /></label><label className="form-field"><span>{text("Address / reference", "Adres / referentie")}</span><input value={distribution.address} onChange={(event) => setDistribution({ ...distribution, address: event.target.value })} /></label><label className="form-field"><span>{text("Channel", "Kanaal")}</span><select value={distribution.channel} onChange={(event) => setDistribution({ ...distribution, channel: event.target.value })}><option value="manual">{text("Manual transfer", "Handmatige overdracht")}</option><option value="email">{text("Email (sent externally)", "E-mail (extern verzonden)")}</option><option value="download">{text("Secure download", "Beveiligde download")}</option></select></label><button className="primary-button" type="button" disabled={busy || !reportId || !canDistribute || distribution.name.trim().length < 2 || distribution.address.trim().length < 3} onClick={() => void run(() => recordDistribution(client, reportId!, distribution.name, distribution.address, distribution.channel), text("Traceable distribution record added to the fixed version.", "Aantoonbare distributieregel aan de vastgezette versie toegevoegd."))}><FileText size={15} /> {text("Record distribution", "Distributie registreren")}</button></div>
           </section>
         </>
       ) : null}
       {reportView === "history" ? (
         <>
           <section className="report-archive">
-            <header><div><span className="record-number">{text("Report history", "Rapporthistorie")}</span><h2>{text("All available reports", "Alle beschikbare rapporten")}</h2><p>{text("Daily records are the source of truth. Weekly and monthly entries group those same records and remain clickable.", "Dagregistraties zijn de bron. Week- en maanditems groeperen dezelfde registraties en blijven aanklikbaar.")}</p></div><label className="form-field"><span>{text("Report type", "Rapporttype")}</span><select value={historyType} onChange={(event) => setHistoryType(event.target.value as typeof historyType)}><option value="all">{text("All reports", "Alle rapporten")}</option><option value="daily">{text("Daily", "Dagrapport")}</option><option value="weekly">{text("Weekly", "Weekrapport")}</option><option value="monthly">{text("Monthly", "Maandrapport")}</option></select></label></header>
+            <header><div><span className="record-number">{text("Report history", "Rapporthistorie")}</span><h2>{text("All available reports", "Alle beschikbare rapporten")}</h2></div><label className="form-field"><span>{text("Report type", "Rapporttype")}</span><select value={historyType} onChange={(event) => setHistoryType(event.target.value as typeof historyType)}><option value="all">{text("All reports", "Alle rapporten")}</option><option value="daily">{text("Daily", "Dagrapport")}</option><option value="weekly">{text("Weekly", "Weekrapport")}</option><option value="monthly">{text("Monthly", "Maandrapport")}</option></select></label></header>
             <div className="report-archive-list">
               {reportArchive.map((report) => <article className={openHistoryId === report.id ? "open" : ""} key={report.id}>
                 <button type="button" onClick={() => setOpenHistoryId((current) => current === report.id ? "" : report.id)}><span className={`report-type-badge ${report.type}`}>{report.type === "weekly" ? text("Weekly", "Week") : report.type === "monthly" ? text("Monthly", "Maand") : text("Daily", "Dag")}</span><span><strong>{report.title}</strong><small>{formatDay(report.start, locale)}{report.end !== report.start ? ` → ${formatDay(report.end, locale)}` : ""} · {report.count} {text("day record(s)", "dagregistratie(s)")}</small></span><span className="report-archive-progress"><b>{report.completeness}%</b><i><em style={{ width: `${report.completeness}%` }} /></i></span><ArrowRight size={15} /></button>
                 {openHistoryId === report.id ? <div className="report-archive-detail"><span>{text("Status", "Status")}: <strong>{statusText(report.status, text)}</strong></span><span>{text("Content", "Inhoud")}: {text("complete record for this period", "volledige registratie over deze periode")}</span><ReportDownloadButtons disabled={busy} onDownloadPdf={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, report.start, report.end); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { reportTitle: report.title, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text("Archived report view downloaded.", "Rapportweergave uit de historie gedownload."))} onDownloadWord={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, report.start, report.end); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { reportTitle: report.title, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text("Archived report view downloaded as Word.", "Rapportweergave uit de historie als Word gedownload."))} /></div> : null}
               </article>)}
-              {!reportArchive.length ? <div className="empty-list-state"><Archive size={22} /><strong>{text("No reports for this filter", "Geen rapporten voor dit filter")}</strong><span>{text("Create a daily report from Overview first.", "Maak eerst een dagrapport vanuit Overzicht.")}</span></div> : null}
+              {!reportArchive.length ? <div className="empty-list-state"><Archive size={22} /><strong>{text("No reports for this filter", "Geen rapporten voor dit filter")}</strong></div> : null}
             </div>
           </section>
           <section className="report-history-grid">
-            <HistoryColumn title={text("Fixed versions", "Vastgezette versies")} empty={text("No immutable version yet.", "Nog geen vastgezette versie.")} rows={data.reportVersions.map((version) => <div className="history-version" key={version.id}><span>{text("Revision", "Revisie")} {version.revision} · {formatDate(version.created_at, locale)} · SHA {version.sha256.slice(0, 12)}…</span><ReportDownloadButtons disabled={busy} onDownloadPdf={() => run(async () => { const { downloadFormalReportPdf } = await import("@/lib/reports/daily-report-pdf"); await downloadFormalReportPdf(version.snapshot as FormalReportSnapshot, version.revision, version.sha256, signatureLines(version.id)); }, text(`Formal revision ${version.revision} downloaded directly from the immutable snapshot.`, `Formele revisie ${version.revision} rechtstreeks uit de vastgezette momentopname gedownload.`))} onDownloadWord={() => run(async () => { const { downloadFormalReportDocx } = await import("@/lib/reports/daily-report-docx"); await downloadFormalReportDocx(version.snapshot as FormalReportSnapshot, version.revision, version.sha256, signatureLines(version.id)); }, text(`Formal revision ${version.revision} downloaded as Word directly from the immutable snapshot.`, `Formele revisie ${version.revision} als Word rechtstreeks uit de vastgezette momentopname gedownload.`))} /></div>)} />
+            <HistoryColumn title={text("Fixed versions", "Vastgezette versies")} empty={text("No immutable version yet.", "Nog geen vastgezette versie.")} rows={data.reportVersions.map((version) => <div className="history-version" key={version.id}><span>{text("Revision", "Revisie")} {version.revision} · {formatDate(version.created_at, locale)} · SHA {version.sha256.slice(0, 12)}…</span><ReportDownloadButtons disabled={busy} onDownloadPdf={() => run(async () => { const { downloadFormalReportPdf } = await import("@/lib/reports/daily-report-pdf"); await downloadFormalReportPdf(version.snapshot as FormalReportSnapshot, version.revision, version.sha256, signatureLines(version.id)); }, text(`Revision ${version.revision} downloaded.`, `Revisie ${version.revision} gedownload.`))} onDownloadWord={() => run(async () => { const { downloadFormalReportDocx } = await import("@/lib/reports/daily-report-docx"); await downloadFormalReportDocx(version.snapshot as FormalReportSnapshot, version.revision, version.sha256, signatureLines(version.id)); }, text(`Revision ${version.revision} downloaded as Word.`, `Revisie ${version.revision} als Word gedownload.`))} /></div>)} />
             <HistoryColumn title="Reviews" empty={text("No review decision yet.", "Nog geen reviewbesluit.")} rows={data.reportReviews.map((review) => `${statusLabels[review.decision] ?? review.decision} · ${review.comment} · ${formatDate(review.created_at, locale)}`)} />
             <HistoryColumn title={text("Declarations", "Verklaringen")} empty={text("No signing declaration yet.", "Nog geen ondertekenverklaring.")} rows={data.reportSignatures.map((signature) => `${signature.signer_name} · ${roleLabels[signature.signer_role] ?? codeText(signature.signer_role, text)} · ${formatDate(signature.signed_at, locale)}`)} />
             <HistoryColumn title={text("Distribution", "Distributie")} empty={text("No delivery recorded yet.", "Nog geen verzending geregistreerd.")} rows={data.reportDistributions.map((item) => `${item.recipient_name} · ${item.channel} · ${item.status}`)} />
           </section>
-          {reportStatus === "approved" || reportStatus === "signed" || reportStatus === "sent" ? <div className="revision-bar"><div><strong>{text("Correction after freezing?", "Correctie na vastzetten?")}</strong><span>{text("The original version remains; corrections start a new revision.", "De oorspronkelijke versie blijft bestaan; correcties starten een nieuwe revisie.")}</span></div><input value={revisionReason} onChange={(event) => setRevisionReason(event.target.value)} placeholder={text("Required revision reason", "Verplichte revisiereden")} /><button className="secondary-button" type="button" disabled={busy || !reportId || revisionReason.trim().length < 5} onClick={() => void run(() => startRevision(client, reportId!, revisionReason), text("New report revision started; the original version remains immutable.", "Nieuwe rapportrevisie gestart; de oorspronkelijke versie blijft onveranderd."))}><RotateCcw size={15} /> {text("Start revision", "Start revisie")}</button></div> : null}
+          {reportStatus === "approved" || reportStatus === "signed" || reportStatus === "sent" ? <div className="revision-bar"><div><strong>{text("Correction after freezing?", "Correctie na vastzetten?")}</strong><span>{text("Corrections start a new revision.", "Correcties starten een nieuwe revisie.")}</span></div><input value={revisionReason} onChange={(event) => setRevisionReason(event.target.value)} aria-label={text("Required revision reason", "Verplichte revisiereden")} placeholder={text("Required revision reason", "Verplichte revisiereden")} /><button className="secondary-button" type="button" disabled={busy || !reportId || revisionReason.trim().length < 5} onClick={() => void run(() => startRevision(client, reportId!, revisionReason), text("New revision started. The original is unchanged.", "Nieuwe revisie gestart. Het origineel is ongewijzigd."))}><RotateCcw size={15} /> {text("Start revision", "Start revisie")}</button></div> : null}
         </>
       ) : null}
     </>
@@ -5563,33 +5504,33 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
   const addTemplate = () => {
     const prompts = template.prompts.split("\n").map((value) => value.trim()).filter(Boolean);
     if (template.code.trim().length < 2 || template.name.trim().length < 3 || prompts.length === 0) return;
-    void run(() => createChecklist(client, { organizationId, projectId, module: template.module, code: template.code, name: template.name, prompts }), text("Project checklist published; existing inspection results remain linked to their previous version.", "Projectchecklist gepubliceerd; bestaande inspectieresultaten blijven aan hun oude versie gekoppeld.")).then((okay) => { if (okay) setTemplate({ module: "inspection", code: "", name: "", prompts: "" }); });
+    void run(() => createChecklist(client, { organizationId, projectId, module: template.module, code: template.code, name: template.name, prompts }), text("Checklist published. Earlier inspections keep their version.", "Checklist gepubliceerd. Eerdere inspecties behouden hun versie.")).then((okay) => { if (okay) setTemplate({ module: "inspection", code: "", name: "", prompts: "" }); });
   };
   return (
     <>
-      <header className="secondary-header"><div><p className="eyebrow">{text("Management workspace", "Managementwerkruimte")} · {projectName}</p><h1>{section === "overview" ? text("Management overview", "Managementoverzicht") : text("Administration and control", "Beheer en controle")}</h1><p>{text("Decisions, access, project standards and continuity in one place.", "Besluiten, toegang, projectstandaarden en continuïteit op één plek.")}</p></div><div className="management-header-actions">{/* The top bar drops the language switch on phones, so it lives here. */}<LanguageSwitcher />{canManageOrganization ? <button className="primary-button" type="button" onClick={openUserAdmin}><Users size={15} /> {text("Manage team", "Team beheren")}</button> : null}</div></header>
+      <header className="secondary-header"><div><p className="eyebrow">{text("Management workspace", "Managementwerkruimte")} · {projectName}</p><h1>{section === "overview" ? text("Management overview", "Managementoverzicht") : text("Administration and control", "Beheer en controle")}</h1></div><div className="management-header-actions">{/* The top bar drops the language switch on phones, so it lives here. */}<LanguageSwitcher />{canManageOrganization ? <button className="primary-button" type="button" onClick={openUserAdmin}><Users size={15} /> {text("Manage team", "Team beheren")}</button> : null}</div></header>
       <div className="operation-tabs admin-tabs">{[["overview", text("Overview", "Overzicht")], ["settings", text("Team & rules", "Team & regels")], ["structure", text("Project setup", "Projectinrichting")], ["templates", text("Quality standards", "Kwaliteitsstandaarden")], ["backup", text("Backup & continuity", "Back-up & continuïteit")]].map(([id, label]) => <button className={section === id ? "active" : ""} type="button" onClick={() => setSection(id as typeof section)} key={id}>{label}</button>)}</div>
       {section === "overview" ? <section className="management-overview">
         <div className="management-kpis">
-          <button className={data.settings ? "healthy" : "attention"} type="button" onClick={() => setSection("settings")}><span>{text("Project configuration", "Projectconfiguratie")}</span><strong>{data.settings ? text("Active", "Actief") : text("Missing", "Ontbreekt")}</strong><small>{data.settings ? text("Central project rules are stored", "Centrale projectregels zijn opgeslagen") : text("Project rules require configuration", "Projectregels moeten worden ingesteld")}</small></button>
+          <button className={data.settings ? "healthy" : "attention"} type="button" onClick={() => setSection("settings")}><span>{text("Project configuration", "Projectconfiguratie")}</span><strong>{data.settings ? text("Active", "Actief") : text("Missing", "Ontbreekt")}</strong>{data.settings ? null : <small>{text("Project rules require configuration", "Projectregels moeten worden ingesteld")}</small>}</button>
           <button className={criticalFindings.length ? "attention" : ""} type="button" onClick={() => openProjectArea("findings")}><span>{text("High-risk findings", "Hoog-risico bevindingen")}</span><strong>{criticalFindings.length}</strong><small>{openFindings.length} {text("findings still open", "bevindingen nog open")}</small></button>
           <button type="button" onClick={() => openProjectArea("inspections")}><span>{text("Active control work", "Actief controlewerk")}</span><strong>{activeInspections.length}</strong><small>{data.inspections.length} {text("inspections recorded", "inspecties geregistreerd")}</small></button>
           <button className={latestScheduledBackup ? "healthy" : "attention"} type="button" onClick={() => setSection("backup")}><span>{text("Continuity", "Continuïteit")}</span><strong>{latestScheduledBackup ? text("Verified", "Geverifieerd") : text("Pending", "Openstaand")}</strong><small>{latestScheduledBackup ? formatDate(latestScheduledBackup.verified_at) : text("Verified backup required", "Geverifieerde back-up vereist")}</small></button>
         </div>
         <div className="management-columns">
-          <article className="management-card"><header><div><span className="module-card-icon"><AlertTriangle size={18} /></span><div><h2>{text("Management attention", "Managementaandacht")}</h2><p>{text("Items that may block delivery or control.", "Punten die oplevering of beheersing kunnen blokkeren.")}</p></div></div></header><div className="management-attention-list">{criticalFindings.length ? criticalFindings.slice(0, 4).map((item) => <div key={item.id}><span className="risk-dot" /><span><strong>{item.title}</strong><small>{item.finding_number} · {statusText(item.status, text)}</small></span></div>) : <div className="management-clear"><CheckCircle2 size={18} /><span><strong>{text("No high-risk findings", "Geen hoog-risico bevindingen")}</strong><small>{text("Continue monitoring open work.", "Blijf openstaand werk volgen.")}</small></span></div>}</div></article>
-          <article className="management-card"><header><div><span className="module-card-icon"><Settings size={18} /></span><div><h2>{text("Management controls", "Managementbediening")}</h2><p>{text("Go directly to the area you need to manage.", "Ga direct naar het onderdeel dat je wilt beheren.")}</p></div></div></header><div className="management-control-list"><button type="button" onClick={openUserAdmin}><Users size={16} /><span><strong>{text("Team and access", "Team en toegang")}</strong><small>{text("Invite, suspend and review roles", "Uitnodigen, opschorten en rollen controleren")}</small></span></button><button type="button" onClick={() => setSection("settings")}><Settings size={16} /><span><strong>{text("Project rules", "Projectregels")}</strong><small>{text("Reporting, deadlines and retention", "Rapportage, deadlines en bewaartermijn")}</small></span></button><button type="button" onClick={() => setSection("structure")}><Wrench size={16} /><span><strong>{text("Structure and parties", "Structuur en partijen")}</strong><small>{text("Locations, contractors and consultants", "Locaties, aannemers en adviseurs")}</small></span></button><button type="button" onClick={() => setSection("backup")}><DatabaseBackup size={16} /><span><strong>{text("Continuity controls", "Continuïteitscontrole")}</strong><small>{text("Backups and restore verification", "Back-ups en herstelverificatie")}</small></span></button></div></article>
+          <article className="management-card"><header><div><span className="module-card-icon"><AlertTriangle size={18} /></span><div><h2>{text("Management attention", "Managementaandacht")}</h2></div></div></header><div className="management-attention-list">{criticalFindings.length ? criticalFindings.slice(0, 4).map((item) => <div key={item.id}><span className="risk-dot" /><span><strong>{item.title}</strong><small>{item.finding_number} · {statusText(item.status, text)}</small></span></div>) : <div className="management-clear"><CheckCircle2 size={18} /><span><strong>{text("No high-risk findings", "Geen hoog-risico bevindingen")}</strong></span></div>}</div></article>
+          <article className="management-card"><header><div><span className="module-card-icon"><Settings size={18} /></span><div><h2>{text("Management controls", "Managementbediening")}</h2></div></div></header><div className="management-control-list"><button type="button" onClick={openUserAdmin}><Users size={16} /><span><strong>{text("Team and access", "Team en toegang")}</strong></span></button><button type="button" onClick={() => setSection("settings")}><Settings size={16} /><span><strong>{text("Project rules", "Projectregels")}</strong></span></button><button type="button" onClick={() => setSection("structure")}><Wrench size={16} /><span><strong>{text("Structure and parties", "Structuur en partijen")}</strong></span></button><button type="button" onClick={() => setSection("backup")}><DatabaseBackup size={16} /><span><strong>{text("Continuity controls", "Continuïteitscontrole")}</strong></span></button></div></article>
         </div>
         <section className="external-submission-center">
-          <header><div><span className="record-number">{text("External parties", "Externe partijen")}</span><h2>{text("Submissions, decisions and task ownership", "Indieningen, besluiten en taakverdeling")}</h2><p>{text("Contractors submit RFI, RFA, IR/WIR or WCR first. The company or owner records the decision; every response remains in the document history.", "Aannemers dienen eerst RFI, RFA, IR/WIR of WCR in. Het bedrijf of de eigenaar legt het besluit vast; elk antwoord blijft in de documenthistorie.")}</p></div><div className="button-row"><button className="secondary-button" type="button" onClick={() => openProjectArea("submissions")}><FileText size={15} /> {text("Record external submission", "Externe indiening registreren")}</button><button className="secondary-button" type="button" onClick={openActionCenter}><ClipboardCheck size={15} /> {text("Manage tasks", "Taken beheren")}</button><button className="primary-button" type="button" onClick={createProjectAction}><Plus size={15} /> {text("Assign follow-up", "Opvolging toewijzen")}</button></div></header>
+          <header><div><span className="record-number">{text("External parties", "Externe partijen")}</span><h2>{text("Submissions, decisions and task ownership", "Indieningen, besluiten en taakverdeling")}</h2></div><div className="button-row"><button className="secondary-button" type="button" onClick={() => openProjectArea("submissions")}><FileText size={15} /> {text("Record external submission", "Externe indiening registreren")}</button><button className="secondary-button" type="button" onClick={openActionCenter}><ClipboardCheck size={15} /> {text("Manage tasks", "Taken beheren")}</button><button className="primary-button" type="button" onClick={createProjectAction}><Plus size={15} /> {text("Assign follow-up", "Opvolging toewijzen")}</button></div></header>
           <div className="external-access-summary">
-            <span><KeyRound size={17} /><strong>{text("With account", "Met account")}</strong><small>{text("Project role controls what the external party may submit and view.", "De projectrol bepaalt wat de externe partij mag indienen en zien.")}</small></span>
-            <span><Link2 size={17} /><strong>{text("Without account", "Zonder account")}</strong><small>{text("Use a revocable external evidence link; no general project access is granted.", "Gebruik een intrekbare externe bewijslink; er wordt geen algemene projecttoegang gegeven.")}</small></span>
+            <span><KeyRound size={17} /><strong>{text("With account", "Met account")}</strong></span>
+            <span><Link2 size={17} /><strong>{text("Without account", "Zonder account")}</strong></span>
             <span><Archive size={17} /><strong>{externalSubmissions.length} {text("submissions", "indieningen")}</strong><small>{externalSubmissions.filter((entry) => !["approved", "closed", "cancelled"].includes(entry.status)).length} {text("require a decision", "vragen een besluit")}</small></span>
           </div>
           <section className="company-task-assignment">
             <header>
-              <div><span className="record-number">{text("Company employees", "Eigen medewerkers")}</span><h3>{text("Assign and redistribute project tasks", "Projecttaken toewijzen en herverdelen")}</h3><p>{text("Only active company employees are selectable. Every assignment is recorded in the immutable action history.", "Alleen actieve medewerkers van het bedrijf zijn selecteerbaar. Iedere toewijzing wordt vastgelegd in de onveranderbare actiehistorie.")}</p></div>
+              <div><span className="record-number">{text("Company employees", "Eigen medewerkers")}</span><h3>{text("Assign and redistribute project tasks", "Projecttaken toewijzen en herverdelen")}</h3></div>
               <button className="secondary-button" type="button" onClick={openUserAdmin}><Users size={15} /> {text("Manage employees", "Medewerkers beheren")}</button>
             </header>
             {companyEmployees.length ? (
@@ -5608,13 +5549,13 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
                     return <article key={action.id}>
                       <div><span className={`priority-dot ${action.priority}`} /><span><strong>{action.title}</strong><small>{action.action_number} · {statusText(action.status, text)} · {text("Current", "Huidig")}: {employeeName(action.owner_user_id)}</small></span></div>
                       <label className="form-field"><span>{text("Responsible employee", "Verantwoordelijke medewerker")}</span><select value={selectedUserId} onChange={(event) => setAssignmentDrafts((current) => ({ ...current, [action.id]: event.target.value }))}><option value="">{text("Choose an employee", "Kies een medewerker")}</option>{companyEmployees.map((employee) => <option value={employee.userId} key={employee.userId}>{employee.displayName?.trim() || employee.email}</option>)}</select></label>
-                      <button className="primary-button" type="button" disabled={busy || !changed} onClick={() => void run(() => assignProjectAction(client, { actionId: action.id, ownerUserId: selectedUserId, note: "Assigned or reassigned by Management." }), text("Task assigned to the selected company employee; the history was updated.", "Taak aan de gekozen eigen medewerker toegewezen; de historie is bijgewerkt.")).then((okay) => { if (okay) setAssignmentDrafts((current) => { const next = { ...current }; delete next[action.id]; return next; }); })}>{text("Assign", "Toewijzen")}</button>
+                      <button className="primary-button" type="button" disabled={busy || !changed} onClick={() => void run(() => assignProjectAction(client, { actionId: action.id, ownerUserId: selectedUserId, note: "Assigned or reassigned by Management." }), text("Task assigned.", "Taak toegewezen.")).then((okay) => { if (okay) setAssignmentDrafts((current) => { const next = { ...current }; delete next[action.id]; return next; }); })}>{text("Assign", "Toewijzen")}</button>
                     </article>;
                   })}
-                  {!assignableActions.length ? <div className="empty-list-state"><CheckCircle2 size={20} /><strong>{text("No open project tasks", "Geen open projecttaken")}</strong><span>{text("Create a follow-up task when a submission or finding requires an employee.", "Maak een opvolgtaak wanneer een indiening of bevinding een medewerker vereist.")}</span></div> : null}
+                  {!assignableActions.length ? <div className="empty-list-state"><CheckCircle2 size={20} /><strong>{text("No open project tasks", "Geen open projecttaken")}</strong></div> : null}
                 </div>
               </>
-            ) : <div className="operation-alert warning"><Users size={18} /><div><strong>{text("No assignable company employees", "Geen toewijsbare eigen medewerkers")}</strong><span>{text("Add an active employee with an organization role or supervisor/project manager role first.", "Voeg eerst een actieve medewerker met een organisatierol of supervisor/projectmanagerrol toe.")}</span></div></div>}
+            ) : <div className="operation-alert warning"><Users size={18} /><div><strong>{text("No assignable company employees", "Geen toewijsbare eigen medewerkers")}</strong><span>{text("Add an active employee first.", "Voeg eerst een actieve medewerker toe.")}</span></div></div>}
           </section>
           <ControlledDocumentList entries={externalSubmissions} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={text("Company / owner reviewer", "Reviewer bedrijf / eigenaar")} client={client} run={run} />
         </section>
@@ -5623,7 +5564,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
       {section === "settings" ? (
         <section className="operation-panel">
           <div className="admin-card-grid">
-            {canManageOrganization ? <button className="module-card" type="button" onClick={openUserAdmin}><span className="module-card-icon"><Users size={19} /></span><h2>{text("Users and access", "Gebruikers en toegang")}</h2><p>{text("Only administrators create internal accounts and assign organization or project roles.", "Alleen beheerders maken interne accounts en wijzen organisatie- of projectrollen toe.")}</p></button> : null}
+            {canManageOrganization ? <button className="module-card" type="button" onClick={openUserAdmin}><span className="module-card-icon"><Users size={19} /></span><h2>{text("Users and access", "Gebruikers en toegang")}</h2><p>{text("Only administrators can create accounts and assign roles.", "Alleen beheerders kunnen accounts aanmaken en rollen toewijzen.")}</p></button> : null}
             <MfaSecurityCard client={client} />
             <div className="operation-form">
               <div className="operation-form-heading"><div><span className="record-number">{text("Client-controlled configuration", "Klantbeheerbare configuratie")}</span><h2>{text("Project rules", "Projectregels")}</h2></div><span className={`task-status ${data.settings?.configuration_status === "active" ? "green" : ""}`}>{data.settings?.configuration_status ?? "setup"}</span></div>
@@ -5702,17 +5643,17 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
           </div>
         </section>
       ) : null}
-      {section === "structure" ? <section className="operation-panel"><div className="admin-card-grid"><div className="operation-form"><h2>Locatieboom · {buildings.find((item) => item.id === structureBuildingId)?.name ?? buildingName}</h2><BuildingPicker id="structure-building" buildings={buildings} value={structureBuildingId} onChange={setStructureBuildingId} /><div className="form-grid-2"><label className="form-field"><span>Type</span><select value={location.type} onChange={(event) => setLocation({ ...location, type: event.target.value })}><option value="zone">Zone</option><option value="floor">Verdieping</option><option value="room">Ruimte</option><option value="element">Element</option><option value="work_package">Werkpakket</option></select></label><label className="form-field"><span>Code</span><input value={location.code} onChange={(event) => setLocation({ ...location, code: event.target.value })} /></label></div><label className="form-field"><span>Naam</span><input value={location.name} onChange={(event) => setLocation({ ...location, name: event.target.value })} /></label><label className="form-field"><span>Bovenliggende locatie</span><select value={location.parentId} onChange={(event) => setLocation({ ...location, parentId: event.target.value })}><option value="">Direct onder {buildings.find((item) => item.id === structureBuildingId)?.name ?? buildingName}</option>{data.locationNodes.filter((node) => node.building_id === structureBuildingId).map((node) => <option value={node.id} key={node.id}>{node.code} · {node.name}</option>)}</select></label><label className="form-field"><span>Toelichting</span><input value={location.description} onChange={(event) => setLocation({ ...location, description: event.target.value })} /></label><button className="primary-button" type="button" disabled={busy || location.code.trim().length < 1 || location.name.trim().length < 2} onClick={() => void run(() => createLocationNode(client, { organizationId, projectId, buildingId: structureBuildingId, parentId: location.parentId, type: location.type, code: location.code, name: location.name, description: location.description }), "Locatie aan de vaste projecthiërarchie toegevoegd.").then((okay) => { if (okay) setLocation({ type: "zone", code: "", name: "", parentId: "", description: "" }); })}><Plus size={15} /> Locatie toevoegen</button><div className="compact-register">{data.locationNodes.filter((node) => node.building_id === structureBuildingId).map((node) => <span key={node.id}><strong>{node.code}</strong> {node.name} · {node.node_type}</span>)}</div></div><div className="operation-form"><h2>Projectpartijen</h2><div className="form-grid-2"><label className="form-field"><span>Type</span><select value={party.type} onChange={(event) => setParty({ ...party, type: event.target.value })}><option value="client">Opdrachtgever</option><option value="supervisor">Supervisor</option><option value="contractor">Aannemer</option><option value="subcontractor">Onderaannemer</option><option value="supplier">Leverancier</option><option value="consultant">Adviseur</option><option value="other">Overig</option></select></label><label className="form-field"><span>Code</span><input value={party.code} onChange={(event) => setParty({ ...party, code: event.target.value })} /></label></div><label className="form-field"><span>Naam</span><input value={party.name} onChange={(event) => setParty({ ...party, name: event.target.value })} /></label><button className="primary-button" type="button" disabled={busy || party.code.trim().length < 1 || party.name.trim().length < 2} onClick={() => void run(() => createProjectParty(client, { organizationId, projectId, code: party.code, name: party.name, type: party.type }), "Projectpartij centraal toegevoegd en beschikbaar voor aanwezigheid en toewijzing.").then((okay) => { if (okay) setParty({ type: "contractor", code: "", name: "" }); })}><Users size={15} /> Partij toevoegen</button><div className="compact-register">{parties.map((item) => <span key={item.id}><strong>{item.name}</strong> {item.type}</span>)}</div></div></div></section> : null}
+      {section === "structure" ? <section className="operation-panel"><div className="admin-card-grid"><div className="operation-form"><h2>{text("Location tree", "Locatieboom")} · {buildings.find((item) => item.id === structureBuildingId)?.name ?? buildingName}</h2><BuildingPicker id="structure-building" buildings={buildings} value={structureBuildingId} onChange={setStructureBuildingId} /><div className="form-grid-2"><label className="form-field"><span>Type</span><select value={location.type} onChange={(event) => setLocation({ ...location, type: event.target.value })}><option value="zone">{text("Zone", "Zone")}</option><option value="floor">{text("Floor", "Verdieping")}</option><option value="room">{text("Room", "Ruimte")}</option><option value="element">{text("Element", "Element")}</option><option value="work_package">{text("Work package", "Werkpakket")}</option></select></label><label className="form-field"><span>Code</span><input value={location.code} onChange={(event) => setLocation({ ...location, code: event.target.value })} /></label></div><label className="form-field"><span>{text("Name", "Naam")}</span><input value={location.name} onChange={(event) => setLocation({ ...location, name: event.target.value })} /></label><label className="form-field"><span>{text("Parent location", "Bovenliggende locatie")}</span><select value={location.parentId} onChange={(event) => setLocation({ ...location, parentId: event.target.value })}><option value="">{text("Directly under", "Direct onder")} {buildings.find((item) => item.id === structureBuildingId)?.name ?? buildingName}</option>{data.locationNodes.filter((node) => node.building_id === structureBuildingId).map((node) => <option value={node.id} key={node.id}>{node.code} · {node.name}</option>)}</select></label><label className="form-field"><span>{text("Notes", "Toelichting")}</span><input value={location.description} onChange={(event) => setLocation({ ...location, description: event.target.value })} /></label><button className="primary-button" type="button" disabled={busy || location.code.trim().length < 1 || location.name.trim().length < 2} onClick={() => void run(() => createLocationNode(client, { organizationId, projectId, buildingId: structureBuildingId, parentId: location.parentId, type: location.type, code: location.code, name: location.name, description: location.description }), "Locatie aan de vaste projecthiërarchie toegevoegd.").then((okay) => { if (okay) setLocation({ type: "zone", code: "", name: "", parentId: "", description: "" }); })}><Plus size={15} /> {text("Add location", "Locatie toevoegen")}</button><div className="compact-register">{data.locationNodes.filter((node) => node.building_id === structureBuildingId).map((node) => <span key={node.id}><strong>{node.code}</strong> {node.name} · {typeText(node.node_type, text)}</span>)}</div></div><div className="operation-form"><h2>{text("Project parties", "Projectpartijen")}</h2><div className="form-grid-2"><label className="form-field"><span>Type</span><select value={party.type} onChange={(event) => setParty({ ...party, type: event.target.value })}><option value="client">{text("Client", "Opdrachtgever")}</option><option value="supervisor">Supervisor</option><option value="contractor">{text("Contractor", "Aannemer")}</option><option value="subcontractor">{text("Subcontractor", "Onderaannemer")}</option><option value="supplier">{text("Supplier", "Leverancier")}</option><option value="consultant">{text("Consultant", "Adviseur")}</option><option value="other">{text("Other", "Overig")}</option></select></label><label className="form-field"><span>Code</span><input value={party.code} onChange={(event) => setParty({ ...party, code: event.target.value })} /></label></div><label className="form-field"><span>{text("Name", "Naam")}</span><input value={party.name} onChange={(event) => setParty({ ...party, name: event.target.value })} /></label><button className="primary-button" type="button" disabled={busy || party.code.trim().length < 1 || party.name.trim().length < 2} onClick={() => void run(() => createProjectParty(client, { organizationId, projectId, code: party.code, name: party.name, type: party.type }), "Projectpartij centraal toegevoegd en beschikbaar voor aanwezigheid en toewijzing.").then((okay) => { if (okay) setParty({ type: "contractor", code: "", name: "" }); })}><Users size={15} /> {text("Add party", "Partij toevoegen")}</button><div className="compact-register">{parties.map((item) => <span key={item.id}><strong>{item.name}</strong> {partyTypeText(item.type, text)}</span>)}</div></div></div></section> : null}
       {section === "templates" ? (
         <section className="operation-panel checklist-management">
           <div className="checklist-library-header">
-            <div><span className="record-number">{text("Client requirement", "Klanteis")}</span><h2>{text(`${data.checklistLibrary.length} ready-to-install construction checklists`, `${data.checklistLibrary.length} direct installeerbare bouwchecklists`)}</h2><p>{text("Choose a standard. Installation creates a published, project-specific version with all required checkpoints; completed inspections always keep their original version.", "Kies een standaard. Installatie maakt een gepubliceerde, projectspecifieke versie met alle vereiste controlepunten; afgeronde inspecties behouden altijd hun oorspronkelijke versie.")}</p></div>
+            <div><span className="record-number">{text("Client requirement", "Klanteis")}</span><h2>{text(`${data.checklistLibrary.length} ready-to-install construction checklists`, `${data.checklistLibrary.length} direct installeerbare bouwchecklists`)}</h2><p>{text("Installing creates a project version; completed inspections keep their original version.", "Installeren maakt een projectversie; afgeronde inspecties behouden hun oorspronkelijke versie.")}</p></div>
             <label className="form-field"><span>{text("Category", "Categorie")}</span><select value={libraryCategory} onChange={(event) => setLibraryCategory(event.target.value)}><option value="all">{text(`All ${data.checklistLibrary.length}`, `Alle ${data.checklistLibrary.length}`)}</option>{[...new Set(data.checklistLibrary.map((item) => item.category))].map((category) => <option value={category} key={category}>{category}</option>)}</select></label>
           </div>
           <div className="checklist-library-grid">
             {data.checklistLibrary.filter((item) => libraryCategory === "all" || item.category === libraryCategory).map((item) => {
               const installed = data.templates.some((templateItem) => templateItem.project_id === projectId && templateItem.code === item.code && templateItem.status === "published");
-              return <article className="checklist-library-card" key={item.code}><span>{item.code} · {item.category}</span><h3>{item.name}</h3><p>{item.description}</p><small>{item.prompts.length} {text("mandatory checkpoints", "verplichte controlepunten")} · {item.module}</small><button className={installed ? "secondary-button" : "primary-button"} type="button" disabled={busy || installed} onClick={() => void run(() => installChecklistLibraryTemplate(client, projectId, item.code), text(`${item.name} installed as a project checklist.`, `${item.name} als projectchecklist geïnstalleerd.`))}>{installed ? <CheckCircle2 size={15} /> : <Plus size={15} />} {installed ? text("Installed", "Geïnstalleerd") : text("Install checklist", "Installeer checklist")}</button></article>;
+              return <article className="checklist-library-card" key={item.code}><span>{item.code} · {item.category}</span><h3>{item.name}</h3><small>{item.prompts.length} {text("mandatory checkpoints", "verplichte controlepunten")}</small><button className={installed ? "secondary-button" : "primary-button"} type="button" disabled={busy || installed} onClick={() => void run(() => installChecklistLibraryTemplate(client, projectId, item.code), text(`${item.name} installed as a project checklist.`, `${item.name} als projectchecklist geïnstalleerd.`))}>{installed ? <CheckCircle2 size={15} /> : <Plus size={15} />} {installed ? text("Installed", "Geïnstalleerd") : text("Install checklist", "Installeer checklist")}</button></article>;
             })}
           </div>
           <details className="custom-checklist-details"><summary>{text("Create a custom project checklist", "Maak een eigen projectchecklist")}</summary><div className="operation-form"><h2>{text("Publish new project checklist", "Nieuwe projectchecklist publiceren")}</h2><div className="form-grid-2"><label className="form-field"><span>{text("Module", "Module")}</span><select value={template.module} onChange={(event) => setTemplate({ ...template, module: event.target.value })}><option value="inspection">{text("Inspection", "Inspectie")}</option><option value="hse">HSE</option><option value="delivery">{text("Delivery", "Levering")}</option><option value="test">{text("Test / measurement", "Test / meting")}</option></select></label><label className="form-field"><span>Code</span><input value={template.code} onChange={(event) => setTemplate({ ...template, code: event.target.value })} placeholder={text("For example CONC-01", "Bijv. BETON-01")} /></label></div><label className="form-field"><span>{text("Name", "Naam")}</span><input value={template.name} onChange={(event) => setTemplate({ ...template, name: event.target.value })} /></label><label className="form-field"><span>{text("Checkpoints · one per line", "Controlepunten · één per regel")}</span><textarea rows={6} value={template.prompts} onChange={(event) => setTemplate({ ...template, prompts: event.target.value })} /><DictateButton onText={(transcript) => setTemplate((current) => ({ ...current, prompts: appendDictation(current.prompts, transcript) }))} /></label><button className="primary-button" type="button" disabled={busy} onClick={addTemplate}><Plus size={15} /> {text("Publish checklist", "Checklist publiceren")}</button></div></details>
@@ -5775,8 +5716,8 @@ function ReadinessChecklist({ items, editable, busy, run, client }: { items: Pro
         <div className="readiness-summary-copy"><span>{text("Production status", "Productiestatus")}</span><strong>{blockingOpen ? text(`${blockingOpen} blocking items open`, `${blockingOpen} blokkerende punten open`) : text("Go-live checklist complete", "Go-live checklist voltooid")}</strong><p>{text(`${completed} of ${items.length} items demonstrably completed`, `${completed} van ${items.length} punten aantoonbaar afgerond`)} · {percentage}%</p></div>
         <div className="readiness-progress" aria-label={text(`${percentage} percent complete`, `${percentage} procent gereed`)}><span style={{ width: `${percentage}%` }} /></div>
       </div>
-      <div className="operation-alert warning"><AlertTriangle size={18} /><div><strong>{text("Evidence references, never secrets", "Bewijsreferenties, nooit geheimen")}</strong><span>{text("Enter only a ticket number, date, responsible person or document location. Never paste passwords, tokens, OAuth secrets or recovery codes here.", "Vul alleen een ticketnummer, datum, verantwoordelijke of documentlocatie in. Plak hier geen wachtwoorden, tokens, OAuth-secrets of herstelcodes.")}</span></div></div>
-      {!editable ? <div className="operation-alert"><ShieldCheck size={18} /><div><strong>{text("Read only", "Alleen-lezen")}</strong><span>{text("An organization administrator can update the central production status and evidence references.", "Een organisatiebeheerder kan de centrale productiestatus en bewijsreferenties bijwerken.")}</span></div></div> : null}
+      <div className="operation-alert warning"><AlertTriangle size={18} /><div><strong>{text("Evidence references, never secrets", "Bewijsreferenties, nooit geheimen")}</strong><span>{text("Enter only ticket numbers, dates, names or locations. Never paste passwords, tokens or recovery codes.", "Voer alleen ticketnummers, datums, namen of locaties in. Plak nooit wachtwoorden, tokens of herstelcodes.")}</span></div></div>
+      {!editable ? <div className="operation-alert"><ShieldCheck size={18} /><div><strong>{text("Read only", "Alleen-lezen")}</strong><span>{text("Only an administrator can change this.", "Alleen een beheerder kan dit wijzigen.")}</span></div></div> : null}
       <div className="readiness-list">
         {items.map((item) => <ReadinessItem key={`${item.id}:${item.status}:${item.evidence ?? ""}`} item={item} editable={editable} busy={busy} run={run} client={client} />)}
       </div>
@@ -5854,7 +5795,7 @@ function MfaSecurityCard({ client }: { client: SupabaseClient }) {
       setVerified(true);
       setQrCode("");
       setSecret("");
-      setMessage(text("Authenticator confirmed; this session now uses two-step verification.", "Authenticator bevestigd; deze sessie gebruikt nu tweestapsverificatie."));
+      setMessage(text("Two-step verification is on.", "Tweestapsverificatie staat aan."));
     }
     setLoading(false);
   };
@@ -5862,7 +5803,7 @@ function MfaSecurityCard({ client }: { client: SupabaseClient }) {
   return (
     <div className="mfa-card">
       <span className="module-card-icon"><KeyRound size={19} /></span>
-      <div><h2>{text("Two-step verification", "Tweestapsverificatie")}</h2><p>{verified ? text("Authenticator active for this internal account.", "Authenticator actief voor dit interne account.") : text("Protect administration, review and signing actions with an authenticator app.", "Bescherm beheer-, review- en ondertekenhandelingen met een authenticator-app.")}</p></div>
+      <div><h2>{text("Two-step verification", "Tweestapsverificatie")}</h2><p>{verified ? text("Authenticator active for this internal account.", "Authenticator actief voor dit interne account.") : text("Protect admin, review and signing with an authenticator app.", "Beveilig beheer, review en ondertekening met een authenticator-app.")}</p></div>
       {error ? <span className="inline-error">{error}</span> : null}
       {message ? <span className="inline-success">{message}</span> : null}
       {!verified && !qrCode ? <button className="secondary-button" type="button" disabled={loading} onClick={() => void enroll()}>{loading ? <Loader2 className="spin" size={15} /> : <KeyRound size={15} />} {text("Set up authenticator", "Authenticator instellen")}</button> : null}

@@ -97,8 +97,8 @@ export function DrawingLocationPicker({
               ? text("Tap where this photo was taken", "Tik waar deze foto is genomen")
               : text("Choose the drawing first", "Kies eerst de tekening")}</h2>
             <p>{activeDrawing
-              ? text("The point is saved with the photo and stays on the drawing as a pin.", "Het punt wordt bij de foto opgeslagen en blijft als pin op de tekening staan.")
-              : text("Point at the plan this photo belongs to; the drawing is opened afterwards.", "Wijs de tekening aan waar deze foto bij hoort; daarna wordt die tekening geopend.")}</p>
+              ? text("Saved as a pin on the drawing.", "Opgeslagen als pin op de tekening.")
+              : text("Choose the drawing this photo belongs to.", "Kies de tekening waar deze foto bij hoort.")}</p>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>

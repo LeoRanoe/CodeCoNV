@@ -234,15 +234,14 @@ export function RapidVerifyWorkspace({
     <>
       <header className="secondary-header rapid-verify-header">
         <div>
-          <p className="eyebrow">{projectName} · {text("document-grounded checking", "documentgestuurde controle")}</p>
+          <p className="eyebrow">{projectName}</p>
           <h1>Rapid Verify</h1>
-          <p>{text("Ask a question or compare supplied specifications with project drawings and technical specifications.", "Stel een vraag of vergelijk aangeleverde specificaties met projecttekeningen en technische specificaties.")}</p>
         </div>
         <button className="primary-button" type="button" onClick={() => fileInputRef.current?.click()} disabled={busy}>
           {busy ? <Loader2 className="spin" size={16} /> : <Upload size={16} />}
           {text("Add sources", "Bronnen toevoegen")}
         </button>
-        <input ref={fileInputRef} className="visually-hidden" type="file" accept=".pdf,.txt,.md,text/plain,application/pdf" multiple onChange={(event) => void receiveFiles(event.currentTarget.files)} />
+        <input ref={fileInputRef} className="visually-hidden" aria-hidden="true" tabIndex={-1} type="file" accept=".pdf,.txt,.md,text/plain,application/pdf" multiple onChange={(event) => void receiveFiles(event.currentTarget.files)} />
       </header>
 
       {error ? <div className="operation-alert error"><AlertTriangle size={17} /> {error}</div> : null}
@@ -269,7 +268,7 @@ export function RapidVerifyWorkspace({
             </div>
           ) : null}
           <div className="rapid-source-list">
-            {documents.length === 0 ? <p>{text("Add approved project documents to start.", "Voeg goedgekeurde projectdocumenten toe om te beginnen.")}</p> : null}
+            {documents.length === 0 ? <p>{text("No documents indexed.", "Geen documenten geïndexeerd.")}</p> : null}
             {documents.map((document) => (
               <article key={document.id}>
                 <span><FileText size={16} /></span>
@@ -295,7 +294,7 @@ export function RapidVerifyWorkspace({
           ) : (
             <label className="rapid-query-field">
               <span>{text("Specification to verify", "Te verifieren specificatie")}</span>
-              <textarea rows={7} value={comparison} onChange={(event) => setComparison(event.target.value)} placeholder={text("Paste the received specification or requirement here.", "Plak hier de ontvangen specificatie of eis.")} />
+              <textarea rows={7} value={comparison} onChange={(event) => setComparison(event.target.value)} />
               <DictateButton onText={(transcript) => setComparison((current) => appendDictation(current, transcript))} />
             </label>
           )}

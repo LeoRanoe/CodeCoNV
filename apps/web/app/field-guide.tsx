@@ -440,7 +440,7 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
 
   return (
     <>
-      <button className="field-guide-trigger" type="button" onClick={() => setOpen(true)} aria-label={text("Open built-in guide", "Open ingebouwde gids")}>
+      <button className="field-guide-trigger" type="button" onClick={() => setOpen(true)} aria-label={text("Help: open built-in guide", "Help: open ingebouwde gids")}>
         <HelpCircle size={18} />
         <span>{text("Help", "Help")}</span>
       </button>
@@ -450,8 +450,7 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
             <header>
               <div>
                 <span>{text("Built-in field guide", "Ingebouwde veldgids")}</span>
-                <h2 id="field-guide-title">{text("What do you want to do?", "Wat wil je nu doen?")}</h2>
-                <p>{text("Choose a task. The app shows only the steps you need.", "Kies een taak. De app toont alleen de stappen die je nodig hebt.")}</p>
+                <h2 id="field-guide-title">{text("What do you want to do?", "Wat wil je nu doen?")}</h2>
               </div>
               <button type="button" onClick={close} aria-label={text("Close guide", "Sluit gids")}><X size={20} /></button>
             </header>
@@ -492,7 +491,7 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
             </div>
 
             <section className="field-guide-navigation" aria-label={text("Bottom navigation explained", "Uitleg onderste navigatie")}>
-              <header><strong>{text("The five buttons at the bottom", "De vijf knoppen onderaan")}</strong><span>{text("You never need to search.", "Je hoeft nooit te zoeken.")}</span></header>
+              <header><strong>{text("The five buttons at the bottom", "De vijf knoppen onderaan")}</strong></header>
               <div>
                 {navigationItems.map((item) => {
                   const Icon = item.icon;

@@ -193,10 +193,7 @@ export function OfflineManagerModal({
           <div>
             <p className="eyebrow">{text("Working without a connection", "Werken zonder verbinding")}</p>
             <h2 id="offline-manager-title">{text("Offline availability", "Offline beschikbaarheid")}</h2>
-            <p>{text(
-              "The installed app opens and keeps working without internet. Everything you opened while online stays available; this puts all of it on the device in one go.",
-              "De geïnstalleerde app opent en blijft werken zonder internet. Alles wat je online hebt geopend blijft beschikbaar; hiermee zet je het in één keer helemaal op het apparaat.",
-            )}</p>
+            <p>{text("Download everything this account can read, for offline use.", "Download alles wat dit account kan lezen, voor offline gebruik.")}</p>
           </div>
           <button className="modal-close" type="button" onClick={close} disabled={busy} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
@@ -241,10 +238,7 @@ export function OfflineManagerModal({
                   `${waitingRecords.length} record(s) and ${waitingUploads.length} file(s) waiting to be sent`,
                   `${waitingRecords.length} registratie(s) en ${waitingUploads.length} bestand(en) wachten op verzending`,
                 )}</strong>
-                <small>{text(
-                  "They are safe on this device and go by themselves as soon as there is a connection.",
-                  "Ze staan veilig op dit apparaat en gaan vanzelf zodra er verbinding is.",
-                )}</small>
+                <small>{text("Saved on this device. Sent when you're online.", "Opgeslagen op dit apparaat. Verstuurd zodra je online bent.")}</small>
               </div>
               <button className="secondary-button" type="button" disabled={!isOnline || sendingQueue} onClick={() => void sendQueue()}>
                 {sendingQueue ? <Loader2 className="spin" size={15} /> : <CloudUpload size={15} />} {text("Send now", "Nu versturen")}

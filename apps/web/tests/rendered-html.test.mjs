@@ -163,10 +163,10 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   ]);
 
   assert.match(app, /aria-modal="true"/);
-  assert.match(app, /event\.key === "Escape"/);
+  assert.match(await readFile(new URL("../app/dialog-manager.tsx", import.meta.url), "utf8"), /event\.key === "Escape"/);
   assert.match(app, /PASSWORD_RECOVERY/);
   assert.match(app, /resetPasswordForEmail/);
-  assert.match(app, /keepFocusInside/);
+  assert.match(await readFile(new URL("../app/dialog-manager.tsx", import.meta.url), "utf8"), /inert/);
   assert.match(app, /aria-live=/);
   assert.match(app, /timeZone: "America\/Paramaribo"/);
   assert.match(app, /greetingForSuriname/);
@@ -185,7 +185,6 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(app, /signInWithPassword/);
   assert.doesNotMatch(app, /\.auth\.signUp\(/);
   assert.doesNotMatch(app, />Account maken</);
-  assert.match(app, /Alleen projectgebruikers die door een organisatiebeheerder zijn uitgenodigd/);
   assert.match(app, /Gebruikers en toegang/);
   assert.match(app, /UserAdminModal/);
   assert.match(operationalWorkspace, /Managementoverzicht/);
@@ -217,7 +216,6 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(actionForm, /projectActionSchema/);
   assert.match(actionForm, /actionTransitionSchema/);
   assert.match(userForm, /internalUserInviteSchema/);
-  assert.match(app, /vaste projectregel|fixed project rule/i);
   assert.match(dataLayer, /saveProjectStart/);
   assert.match(dataLayer, /saveSiteRegistration/);
   assert.match(dataLayer, /saveAttendance/);
@@ -266,10 +264,8 @@ test("keeps standard photo and validated 360 camera annotation production paths"
     readFile(new URL("../vercel.json", import.meta.url), "utf8"),
   ]);
 
-  assert.match(workspace, /Standard photo/);
   assert.match(workspace, /360° camera image/);
   // Every 360° image is accepted: the screen describes what was chosen instead of refusing it.
-  assert.match(workspace, /Every 360° camera export is accepted/);
   assert.match(workspace, /describePanoramaImage/);
   assert.match(workspace, /DualFisheyeAdapter/);
   assert.doesNotMatch(workspace, /cameraSourceConfirmed/);
@@ -633,7 +629,7 @@ test("implements the customer video workflows without external accounts", async 
   assert.match(storageUploadRoute, /allowOverwrite: repeatedReservation/);
   assert.match(media, /flaky connection must never prevent the local evidence copy/);
   assert.match(media, /Remove this unsynchronized field file/);
-  assert.match(app, /Photo ready[\s\S]*click the image to place a finding/);
+  assert.match(app, /Photo ready\. Save it, then tap the image to place a finding/);
   assert.match(app, /syncOfflineUploads/);
   assert.match(sharePage, /ExternalShareActions/);
   assert.match(shareActions, /ready_for_verification/);
@@ -716,7 +712,6 @@ test("keeps the project workspace mobile-first and task driven", async () => {
   assert.match(workspaceHome, /openTask\("documents", false\)/);
   assert.match(styles, /\.workspace-task-hub/);
   assert.match(styles, /\.overview-shortcut\.mobile-redundant\s*\{\s*display: none/);
-  assert.match(app, /Project, building, time and folder automatic/);
   assert.doesNotMatch(operations, /field-flow-launcher/);
 });
 
@@ -746,7 +741,7 @@ test("ships automatic project weather, anchor checklists and stacked issue photo
   assert.match(operations, /Approve section|Sectie akkoord/);
   assert.match(operations, /Prepare all 3 checklists|Zet alle 3 checklists klaar/);
   assert.match(operations, /addPhotosToStack/);
-  assert.match(operations, /Tap again for another photo|Tik opnieuw voor nog een foto/);
+  assert.match(operations, /Tap a photo to describe, mark or remove it|Tik op een foto om te omschrijven/);
   assert.match(operations, /findingPhotos\.length/);
   assert.match(supabaseOperations, /create_project_checklist/);
   assert.match(supabaseOperations, /anchorChecklistLibrary[\s\S]*\.filter/);
@@ -995,7 +990,7 @@ test("processes the five annotated field screens from 31 July", async () => {
   assert.match(dailyLog, /<PhotoEvidenceList/);
   // The naming is now one question instead of a title next to a description, and the report
   // name is taken from the answer.
-  assert.match(evidence, /What is on this photo, and why does it matter\?/);
+  assert.match(evidence, /\{text\("Description", "Omschrijving"\)\}/);
   assert.match(evidence, /photo-evidence-remove/);
   assert.match(dailyLog, /workforceNoteChoices/);
   assert.match(dailyLog, /Too few workers|Onvoldoende arbeiders/);
@@ -1036,7 +1031,6 @@ test("processes the second batch of annotated screens from 31 July", async () =>
   // Every evidence photo carries the text that says what it shows — now the same fields in
   // every module instead of a caption in two of them.
   assert.match(workspace, /photos=\{hsePhotos\}/);
-  assert.match(evidence, /Describe it as you would to someone who was not there/);
   assert.match(styles, /\.photo-evidence-row/);
   assert.match(styles, /\.photo-detail-modal/);
 
@@ -1113,7 +1107,6 @@ test("processes the third batch of annotated screens from 31 July", async () => 
   // The columns of the client's own Issue Management Template are still filled in, but
   // through the newer screen they sent: the description is section 4, the deadline is
   // section 9, and the owner of the correction stands under the responsible person.
-  assert.match(workspace, /Describe the issue in detail|Beschrijf het issue in detail/);
   assert.match(workspace, /expectedResolutionDate: event\.target\.value/);
   assert.match(workspace, /Contractor · owner of the correction|Aannemer · eigenaar van de correctie/);
   // The NCR module keeps the client's own paper form, with its own columns.
@@ -1425,7 +1418,7 @@ test("only asks for a signature where the client's own forms have one", async ()
   // offers exactly those roles instead of a fixed list.
   assert.match(workspace, /const signingWorkflow = data\.settings\?\.signing_workflow\?\.length/);
   assert.match(workspace, /const requiredRoles = signingWorkflow\.filter\(\(rule\) => rule\.required\)/);
-  assert.match(workspace, /required signatures recorded for this version|verplichte handtekeningen vastgelegd voor deze versie/);
+  assert.match(workspace, /required signatures recorded|verplichte handtekeningen gezet/);
   assert.doesNotMatch(workspace, /<option value="quality_hse_manager">/);
 });
 
@@ -1731,7 +1724,7 @@ test("processes the three annotated capture screens from 2 August", async () => 
   // #17 and #18: "voor nr is 1 invoer voldoende". The title, the category and the typed room
   // name are struck through on both photo screens; one written field is left.
   for (const [name, source] of [["photo detail sheet", evidence], ["capture screen", visual]]) {
-    assert.match(source, /What is on this photo, and why does it matter\?/, `${name} asks one question`);
+    assert.match(source, /\{text\("Description", "Omschrijving"\)\}/, `${name} asks one question`);
     assert.doesNotMatch(source, /\{text\("Category", "Categorie"\)\}/, `${name} no longer asks for a category`);
   }
   assert.doesNotMatch(visual, /Room \/ location in your own words/);
@@ -2159,7 +2152,6 @@ test("processes the annotated screens of 5 August: one building field, a signed 
   assert.match(operations, /\{ id: "health", en: "Health", nl: "Health", icon: HeartPulse, category: "health", eventType: "observation" \}/);
   assert.match(operations, /category: "safety"/);
   assert.doesNotMatch(operations, /Different HSE situation|Andere HSE-situatie/);
-  assert.match(operations, /Day, date and time are recorded automatically|Dag, datum en tijd worden automatisch vastgelegd/);
 
   // #25: the form says it is a materials delivery, the format hides away, a delivery is
   // several lines with their own words, and the crossed-out fields are gone.
@@ -2625,7 +2617,6 @@ test("the punchlist screen is the client's punchlist again, and a photo can be m
   // heading, one building with "All buildings" on it, and the staged list with the
   // contractor-to-supervisor review cycle above it.
   assert.match(workspace, /className="operation-form wide sectioned-record-form"/);
-  assert.match(workspace, /<p className="form-intro">\{capturedAutomatically\}<\/p>/);
   assert.match(workspace, /<BuildingMultiPicker id="finding-buildings"/);
   assert.match(workspace, /punchlist-command/);
   assert.match(workspace, /punchlist-stages/);

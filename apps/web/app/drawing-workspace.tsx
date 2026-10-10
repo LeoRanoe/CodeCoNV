@@ -277,11 +277,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
     const okay = await run(
       () => uploadProjectFile(client, { projectId, buildingId: uploadBuildingId, category: "drawing", file: uploadFile, onProgress: setUploadProgress }),
       dwgSource
-        ? text(
-          "DWG source stored. It is kept and downloadable; upload its PDF export beside it to place pins in the browser.",
-          "DWG-bron opgeslagen. Die blijft bewaard en downloadbaar; upload er de PDF-export naast om in de browser pins te plaatsen.",
-        )
-        : text("Drawing uploaded securely. Open it here to place project links.", "Tekening veilig geüpload. Open deze hier om projectkoppelingen te plaatsen."),
+        ? text("DWG source stored. Upload its PDF export beside it to place pins.", "DWG-bron opgeslagen. Upload de PDF-export ernaast om pins te plaatsen.")
+        : text("Drawing uploaded.", "Tekening geüpload."),
     );
     if (okay) {
       setUploadFile(null);
@@ -327,7 +324,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
         });
         return saved;
       },
-      text("The pin is saved centrally or safely waiting for synchronization.", "De pin is centraal opgeslagen of wacht veilig op synchronisatie."),
+      text("Pin saved.", "Pin opgeslagen."),
     );
     const wasQueued = (saved as Awaited<ReturnType<typeof saveDrawingPinOnlineOrQueue>> | null)?.queued ?? false;
     if (okay && wasQueued) {
@@ -402,7 +399,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
         },
       });
       return saved;
-    }, text("The pin is saved centrally or safely waiting for synchronization.", "De pin is centraal opgeslagen of wacht veilig op synchronisatie."));
+    }, text("Pin saved.", "Pin opgeslagen."));
     if (okay && ((saved as Awaited<ReturnType<typeof saveDrawingPinOnlineOrQueue>> | null)?.queued ?? false)) {
       setLocalPins((current) => [...current, {
         id: `pending:${mutationId}`,
@@ -530,7 +527,6 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
         <div>
           <span className="record-number">{text("Drawings workspace", "Tekeningenwerkruimte")}</span>
           <h2>{text("Pins that open the exact project record", "Pins die het juiste projectrecord openen")}</h2>
-          <p>{text("Upload a PDF or drawing image, choose a page and link an exact location to an RFI, submittal, document, observation, inspection or site image.", "Upload een PDF of tekeningsafbeelding, kies een pagina en koppel een exacte locatie aan een RFI, submittal, document, observatie, inspectie of terreinbeeld.")}</p>
         </div>
       </div>
 
@@ -541,8 +537,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
           <div>
             <strong>{text(`Place ${pendingRecord.label} on a drawing`, `Plaats ${pendingRecord.label} op een tekening`)}</strong>
             <span>{pendingRecord.point
-              ? text("The spot is chosen. Go back to the record and save it; the pin is placed with the record's own number, name and date.", "De plek is gekozen. Ga terug naar de registratie en sla op; de pin wordt geplaatst met het eigen nummer, de naam en de datum van de registratie.")
-              : text("Choose the drawing and the page, then tap the exact spot. The pin takes the name, number and date of this record.", "Kies de tekening en de pagina en tik daarna de exacte plek aan. De pin krijgt de naam, het nummer en de datum van deze registratie.")}</span>
+              ? text("Spot chosen. Go back to the record and save it.", "Punt gekozen. Ga terug naar de registratie en sla op.")
+              : text("Choose the drawing and page, then tap the exact spot.", "Kies de tekening en pagina en tik op het exacte punt.")}</span>
           </div>
         </div>
       ) : null}
@@ -552,7 +548,6 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
           <MapPin size={18} />
           <div>
             <strong>{text(`Place ${incomingInspection.inspection_number} on a drawing`, `Plaats ${incomingInspection.inspection_number} op een tekening`)}</strong>
-            <span>{text("Choose the drawing and the page, then tap the exact spot the checklist covers.", "Kies de tekening en de pagina en tik daarna de exacte plek aan die de checklist betreft.")}</span>
           </div>
         </div>
       ) : null}
@@ -563,10 +558,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
           <div>
             <strong>{incomingPin
               ? text(`${incomingFinding.finding_number} is already on a drawing`, `${incomingFinding.finding_number} staat al op een tekening`)
-              : text(`Place ${incomingFinding.finding_number} on a drawing`, `Plaats ${incomingFinding.finding_number} op een tekening`)}</strong>
-            <span>{incomingPin
-              ? text("The drawing and page below already show this issue.", "De tekening en pagina hieronder tonen dit issue al.")
-              : text("The link is preset to this issue. Choose the drawing and page, then click the exact location.", "De koppeling staat al op dit issue. Kies de tekening en pagina en klik daarna op de exacte locatie.")}</span>
+              : text(`Place ${incomingFinding.finding_number} on a drawing`, `Plaats ${incomingFinding.finding_number} op een tekening`)}</strong>
           </div>
         </div>
       ) : null}
@@ -592,7 +584,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
         {uploadProgress > 0 ? <div className="upload-progress" aria-label={`${text("Upload", "Upload")} ${uploadProgress}%`}><span style={{ width: `${uploadProgress}%` }} /><small>{uploadProgress}%</small></div> : null}
       </div>
 
-      {dwgSources.length ? <div className="operation-alert"><FileText size={18} /><div><strong>{text(`${dwgSources.length} native DWG source file(s) retained`, `${dwgSources.length} native DWG-bronbestand(en) bewaard`)}</strong><span>{text("DWG is stored and downloadable as the contractual source. Upload its controlled PDF export beside it for browser markup and pins.", "DWG wordt als contractueel bronbestand opgeslagen en is downloadbaar. Upload daarnaast de gecontroleerde PDF-export voor markeringen en pins in de browser.")}</span></div></div> : null}
+      {dwgSources.length ? <div className="operation-alert"><FileText size={18} /><div><strong>{text(`${dwgSources.length} native DWG source file(s) retained`, `${dwgSources.length} native DWG-bronbestand(en) bewaard`)}</strong><span>{text("Upload a PDF export to mark up or pin on this drawing.", "Upload een PDF-export om te markeren of pins te plaatsen.")}</span></div></div> : null}
 
       {drawings.length && activeDrawing ? (
         <div className="drawing-workspace-grid">
@@ -668,7 +660,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
               onMovePin={movePin}
               onCreateMarkup={saveMarkup}
             />
-            <div className="visual-stage-help">{tool === "pin" ? <MapPin size={15} /> : <MousePointer2 size={15} />}<span>{tool === "pin" ? text("Click the exact drawing location, then choose the record to link. Pins use normalized coordinates and remain correctly positioned when the drawing scales.", "Klik op de exacte locatie in de tekening en kies daarna het te koppelen record. Pins gebruiken genormaliseerde coördinaten en blijven correct staan wanneer de tekening schaalt.") : text("Draw directly over the secured preview. Freehand lines, clouds, arrows and text are stored as normalized, auditable overlays without changing the original.", "Teken direct over de beveiligde weergave. Vrije lijnen, wolken, pijlen en tekst worden genormaliseerd en geaudit opgeslagen zonder het origineel te wijzigen.")}</span></div>
+            <div className="visual-stage-help">{tool === "pin" ? <MapPin size={15} /> : <MousePointer2 size={15} />}<span>{tool === "pin" ? text("Click the exact location, then choose the record to link.", "Klik op de exacte locatie en kies de registratie om te koppelen.") : text("Draw over the drawing. The original is not changed.", "Teken over de tekening. Het origineel blijft ongewijzigd.")}</span></div>
           </div>
 
           <aside className="drawing-link-panel">
@@ -686,8 +678,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                       ? text("The pin is placed when you save the record", "De pin wordt geplaatst zodra je de registratie opslaat")
                       : text("Confirm this exact location", "Bevestig deze exacte locatie")}</strong>
                     <span>{pendingRecord
-                      ? text("It takes the name, the number and the date of the record itself. Tap another spot to move it.", "Hij krijgt de naam, het nummer en de datum van de registratie zelf. Tik een andere plek aan om hem te verplaatsen.")
-                      : text("Nothing is saved until you confirm. The pin will carry the record number and title.", "Er wordt niets opgeslagen totdat je bevestigt. De pin krijgt het registratienummer en de titel.")}</span>
+                      ? text("Tap another spot to move the pin.", "Tik op een ander punt om de pin te verplaatsen.")
+                      : text("Nothing is saved until you confirm.", "Er wordt niets opgeslagen tot je bevestigt.")}</span>
                   </div>
                 </div>
                 <div className="button-row"><button className="primary-button" type="button" disabled={busy} onClick={() => void placePin(point)}><MapPin size={15} /> {text("Confirm pin", "Pin bevestigen")}</button><button className="secondary-button" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button></div>
@@ -734,7 +726,6 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                         {pinnableRecords.map((record) => <option value={record.value} key={record.value}>{record.placed ? "• " : ""}{record.code} · {record.title}</option>)}
                       </select>
                     </label>
-                    <p className="form-helper">{text("A dot marks a record that already stands somewhere on a drawing.", "Een stip markeert een registratie die al ergens op een tekening staat.")}</p>
                     <div className="button-row">
                       <button className="primary-button" type="button" disabled={busy || !spotRecord} onClick={() => void linkRecordToPoint(point)}><MapPin size={15} /> {text("Place pin", "Pin plaatsen")}</button>
                       <button className="secondary-button" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button>
@@ -744,7 +735,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
               </div>
             ) : selectedPin ? <DrawingPinDetails pin={selectedPin} onOpen={() => onOpenLinkedRecord(selectedPin.linked_record_type, selectedPin.linked_record_id)} onDelete={() => void deletePin(selectedPin)} /> : (
               <div className="drawing-unplaced-panel">
-                <div className="visual-panel-empty"><MapPin size={24} /><strong>{text("Place or select a drawing pin", "Plaats of selecteer een tekeningspin")}</strong><span>{text("Choose the pin tool and tap the drawing. Every pin keeps its page, exact position and record identity in the audit trail.", "Kies de pin-tool en tik op de tekening. Elke pin bewaart pagina, exacte positie en recordidentiteit in het auditspoor.")}</span></div>
+                <div className="visual-panel-empty"><MapPin size={24} /><strong>{text("Place or select a drawing pin", "Plaats of selecteer een tekeningspin")}</strong><span>{text("Choose the pin tool and tap the drawing.", "Kies de pin-tool en tik op de tekening.")}</span></div>
                 {/* Everything in this building that has no spot yet, so placing the backlog
                     is a tap on a name rather than a hunt through the modules. */}
                 {unplacedRecords.length ? <section className="drawing-unplaced-list" aria-label={text("Records without a spot", "Registraties zonder plek")}>
@@ -762,10 +753,10 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
           </aside>
         </div>
       ) : (
-        <div className="empty-list-state visual-empty"><FileUp size={24} /><strong>{text("No previewable drawing yet", "Nog geen bekijkbare tekening")}</strong><span>{text("Upload a PDF or drawing image to start placing linked project records.", "Upload een PDF of tekeningsafbeelding om gekoppelde projectrecords te plaatsen.")}</span></div>
+        <div className="empty-list-state visual-empty"><FileUp size={24} /><strong>{text("No previewable drawing yet", "Nog geen bekijkbare tekening")}</strong></div>
       )}
 
-      <div className="operation-alert"><ShieldCheck size={18} /><div><strong>{text("Original drawing remains unchanged", "Originele tekening blijft ongewijzigd")}</strong><span>{text("Links are stored as a separate audited overlay. DWG source files should be retained in Files and exported to PDF for browser review and pinning.", "Koppelingen worden als afzonderlijke, geaudite overlay opgeslagen. Bewaar DWG-bronbestanden bij Bestanden en exporteer ze naar PDF voor browsercontrole en pins.")}</span></div></div>
+      <div className="operation-alert"><ShieldCheck size={18} /><div><strong>{text("Original drawing remains unchanged", "Originele tekening blijft ongewijzigd")}</strong></div></div>
     </section>
   );
 }
@@ -1167,7 +1158,7 @@ function DrawingPinDetails({ pin, onOpen, onDelete }: { pin: DrawingPin; onOpen:
       </dl>
       <button className="primary-button" type="button" onClick={onOpen}><ArrowUpRight size={15} /> {text("Open linked project record", "Open gekoppeld projectrecord")}</button>
       <button className="secondary-button danger-button" type="button" disabled={pin.id.startsWith("pending:")} onClick={() => { if (window.confirm(text("Remove this pin from the drawing? The audit trail is retained.", "Deze pin van de tekening verwijderen? Het auditspoor blijft behouden."))) onDelete(); }}><Trash2 size={15} /> {text("Remove pin", "Pin verwijderen")}</button>
-      <div className="operation-alert"><Link2 size={18} /><div><strong>{text("Traceable project link", "Traceerbare projectkoppeling")}</strong><span>{text("The drawing, page, coordinate and linked record identity remain together in the audit trail.", "Tekening, pagina, coördinaat en identiteit van het gekoppelde record blijven samen in het auditspoor.")}</span></div></div>
+      <div className="operation-alert"><Link2 size={18} /><div><strong>{text("Traceable project link", "Traceerbare projectkoppeling")}</strong></div></div>
     </div>
   );
 }

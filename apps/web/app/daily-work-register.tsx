@@ -69,8 +69,7 @@ export function DailyWorkRegister({
       <header className="daily-work-heading">
         <div>
           <span className="record-number">{text("Daily work record", "Dagwerkregistratie")}</span>
-          <h2>{text("What is running, what is finished and where time was lost", "Wat loopt, wat af is en waar tijd verloren ging")}</h2>
-          <p>{text("Every line comes from a confirmed day closeout, so the owner sees the same facts as the report.", "Elke regel komt uit een bevestigde dagafsluiting, zodat de eigenaar dezelfde feiten ziet als het rapport.")}</p>
+          <h2>{text("Daily work", "Dagwerk")}</h2>
         </div>
         <div className="daily-work-header-actions">
           {buildings.length > 1 ? (
@@ -127,7 +126,6 @@ export function DailyWorkRegister({
           <div className="empty-list-state">
             <activeView.icon size={22} />
             <strong>{text(`No ${activeView.label.toLowerCase()} recorded yet`, `Nog geen ${activeView.label.toLowerCase()} vastgelegd`)}</strong>
-            <span>{text("Confirm a daily closeout, or record one now.", "Bevestig een dagafsluiting of leg er nu een vast.")}</span>
           </div>
         ) : null}
       </div>

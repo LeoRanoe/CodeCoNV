@@ -422,7 +422,6 @@ export function PhotoDetailSheet({
           <div>
             <p className="eyebrow">{text(`Photo ${index + 1}`, `Foto ${index + 1}`)}</p>
             <h2 id="photo-detail-title">{text("Photo details", "Fotodetails")}</h2>
-            <p>{text("Time, author, project and building are recorded automatically. Everything you add here travels with the photo.", "Tijd, maker, project en gebouw worden automatisch vastgelegd. Alles wat je hier toevoegt reist met de foto mee.")}</p>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
@@ -444,12 +443,11 @@ export function PhotoDetailSheet({
               "voor nr is 1 invoer voldoende". The report title is taken from the first
               sentence of what is written here. */}
           <label className="form-field">
-            <span>{text("What is on this photo, and why does it matter?", "Wat is er op deze foto te zien, en waarom is dat belangrijk?")}</span>
+            <span>{text("Description", "Omschrijving")}</span>
             <textarea
               rows={4}
               value={photo.details.description}
               onChange={(event) => patch({ description: event.target.value })}
-              placeholder={text("Describe it as you would to someone who was not there.", "Beschrijf het alsof je het uitlegt aan iemand die er niet bij was.")}
               autoFocus
             />
             <DictateButton onText={(transcript) => patch({ description: appendDictation(photo.details.description, transcript) })} />

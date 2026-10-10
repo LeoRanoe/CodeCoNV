@@ -160,8 +160,8 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
       signedAt: note.type === "agreement" ? undefined : noteSignature?.signedAt,
       signatureImage: note.type === "agreement" ? null : noteSignature?.image ?? null,
     }), note.type === "agreement"
-      ? text("Agreement stored with date, time, responsible party and deadline.", "Afspraak opgeslagen met datum, tijd, verantwoordelijke partij en deadline.")
-      : text("Field note stored centrally with its automatic date and time.", "Veldnotitie centraal opgeslagen met automatische datum en tijd."));
+      ? text("Agreement saved.", "Afspraak opgeslagen.")
+      : text("Field note saved.", "Veldnotitie opgeslagen."));
     if (okay) { setNote({ ...emptyNote }); setAgreement({ ...emptyAgreementSignature }); setNoteSignature(null); setNoteLocationNodeId(""); setDictated(false); setEditingNoteId(""); }
   };
 
@@ -195,12 +195,12 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
             <label className="form-field"><span>{text("Agreement status", "Status afspraak")}</span><select value={note.status} onChange={(event) => setNote({ ...note, status: event.target.value })}><option value="agreed">{text("Agreed", "Afgesproken")}</option><option value="open">{text("Open for confirmation", "Open voor bevestiging")}</option><option value="in_progress">{text("In progress", "In uitvoering")}</option><option value="completed">{text("Completed", "Afgerond")}</option></select></label>
           </div>
           <AgreementSignatureFields options={agreementPartyOptions} value={agreement} onChange={setAgreement} />
-          <div className="operation-alert"><CheckCircle2 size={17} /><div><strong>{text("Traceable agreement", "Traceerbare afspraak")}</strong><span>{text("Project, building, author and registration time are added automatically. The agreement date and deadline remain visible in reports.", "Project, gebouw, maker en registratietijd worden automatisch toegevoegd. De afspraakdatum en deadline blijven zichtbaar in rapporten.")}</span></div></div>
+          <div className="operation-alert"><CheckCircle2 size={17} /><div><strong>{text("Traceable agreement", "Traceerbare afspraak")}</strong></div></div>
         </div> : null}
         <label className="form-field"><span>{text("Text", "Tekst")}</span><textarea rows={7} value={note.body} onChange={(event) => setNote({ ...note, body: event.target.value })} /><DictateButton onText={(transcript) => { setNote((current) => ({ ...current, body: appendDictation(current.body, transcript) })); setDictated(true); }} /></label>
         {note.type !== "agreement" ? <RecordSignatureField value={noteSignature} onChange={setNoteSignature} nameSuggestion={currentUserName} declaration={text("I confirm that this note reflects what I recorded on site.", "Ik bevestig dat deze notitie weergeeft wat ik op de bouwplaats heb vastgelegd.")} /> : null}
         <div className="button-row"><button className="primary-button" type="button" disabled={busy || ((data.settings?.required_location_depth ?? "building") !== "building" && !noteLocationNodeId) || note.title.trim().length < 3 || note.body.trim().length < 3 || (note.type === "agreement" && (!note.agreementDate || !note.agreementTime))} onClick={() => void saveNote()}><Save size={15} /> {editingNoteId ? text("Save changes", "Wijzigingen opslaan") : note.type === "agreement" ? text("Save agreement", "Afspraak opslaan") : text("Save note", "Notitie opslaan")}</button></div>
-        {!speechAvailable ? <p className="field-tool-hint">{text("This browser does not provide speech recognition; keyboard entry remains available.", "Deze browser biedt geen spraakherkenning; invoer met het toetsenbord blijft beschikbaar.")}</p> : null}
+        {!speechAvailable ? <p className="field-tool-hint">{text("Speech recognition is not available in this browser.", "Spraakherkenning is niet beschikbaar in deze browser.")}</p> : null}
       </RecordFormShell>
 
       <div className="field-tool-card calculator-card">

@@ -334,13 +334,6 @@ export function PromptLibrary({ shortcuts }: { shortcuts: PromptShortcutTargets 
       })}
 
       {!visible.length ? <p className="backup-empty">{text("No prompt matches that.", "Geen prompt komt hiermee overeen.")}</p> : null}
-
-      <p className="prompt-library-footnote">
-        {text(
-          "Nothing here sends project data anywhere. You choose the export, the tool and the moment.",
-          "Hier wordt geen projectdata verstuurd. Jij kiest de export, het hulpmiddel en het moment.",
-        )}
-      </p>
     </section>
   );
 }
