@@ -841,6 +841,10 @@ export function OperationalWorkspace({
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // `busy` only reaches a button after the next render. Two taps that land before it does (a
+  // double-tap on a slow phone, a held Enter key) would both start the save and, as every
+  // save has its own key, both create a record. The ref closes that window at once.
+  const saveInFlight = useRef(false);
   /**
    * The registrations that are on this device and still have to be sent. They are read
    * alongside the project snapshot and shown in the same lists, marked as waiting: a
@@ -869,6 +873,8 @@ export function OperationalWorkspace({
   };
 
   const run = async (operation: () => Promise<unknown>, success: string) => {
+    if (saveInFlight.current) return false;
+    saveInFlight.current = true;
     setBusy(true);
     setError("");
     setNotice("");
@@ -894,6 +900,7 @@ export function OperationalWorkspace({
         : userFacingError(caught, text));
       return false;
     } finally {
+      saveInFlight.current = false;
       setBusy(false);
     }
   };
@@ -4474,6 +4481,24 @@ function ProjectOperations({
                 markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
               />
               {registerPhotoError ? <p className="field-error" role="alert">{registerPhotoError}</p> : null}
+              {(() => {
+                // What is still missing before the save button works, in words. A disabled button
+                // that does not say why is how a form gets abandoned; this mirrors the rules above.
+                const registerMissing = [
+    exactLocationRequired && !registerLocationNodeId ? text("exact location", "exacte locatie") : "",
+    registerTitle.length < 3 ? text("title", "titel") : "",
+    controlledRegister && registerForm.details.trim().length < 3 ? text("description", "omschrijving") : "",
+    controlledRegister && registerForm.type === "environmental_report"
+      ? (registerForm.periodStart && registerForm.periodEnd && registerForm.periodEnd >= registerForm.periodStart ? "" : text("period", "periode"))
+      : controlledRegister && registerForm.requestedTo.trim().length < 2 ? text("recipient", "ontvanger") : "",
+    controlledRegister && registerForm.type === "inspection_request" && !registerForm.readyDate ? text("ready date", "gereeddatum") : "",
+    controlledRegister && registerForm.type === "technical_instruction" && !registerForm.dueDate ? text("deadline", "deadline") : "",
+    controlledRegister && registerForm.type === "change_order" && !changeOrderReady(changeOrder) ? text("change order details", "gegevens wijzigingsopdracht") : "",
+    !lessonFormReady ? text("lesson fields and both photos", "velden en beide foto's van de les") : "",
+    !delayReportFormReady ? text("delay report fields and status photo", "velden en statusfoto van het vertragingsrapport") : "",
+                ].filter(Boolean);
+                return registerMissing.length ? <small className="confirm-needs">{text("Still needed", "Nog nodig")}: {registerMissing.join(" · ")}</small> : null;
+              })()}
               <button className="primary-button" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerTitle.length < 3 || !controlledFormReady || !lessonFormReady || !delayReportFormReady} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : lessonsLearnedRegister ? text("Save lesson learned", "Geleerde les opslaan") : delayReportRegister ? text("Save delay report", "Vertragingsrapport opslaan") : text("Save register item", "Registeritem opslaan")}</button>
             </RecordFormShell>
           ) : null}

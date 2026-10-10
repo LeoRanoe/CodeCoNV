@@ -65,7 +65,7 @@ select is(
   'the NCR shows the latest proposal'
 );
 select results_eq(
-  $$select signature_image, contact_position from public.external_share_responses where idempotency_key in ('ext-status-first','ext-status-second') order by created_at, idempotency_key desc$$,
+  $$select signature_image, contact_position from public.external_share_responses where idempotency_key in ('ext-status-first','ext-status-second') order by idempotency_key$$,
   $$values ('data:image/png;base64,AAAA'::text, 'Uitvoerder'::text), ('data:image/png;base64,BBBB'::text, 'Uitvoerder'::text)$$,
   'every answer keeps its own written signature and position in the history'
 );
