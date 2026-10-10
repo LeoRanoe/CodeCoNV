@@ -3842,7 +3842,7 @@ function ProjectOperations({
               <div className="form-grid-2">
                 <RecordBuildingsField id="register-buildings" buildings={buildings} value={registerBuildingIds} onChange={(next) => { setRegisterBuildingIds(next); setRegisterBuildingId(next[0] ?? registerBuildingId); setRegisterLocationNodeId(""); }} />
                 <LocationPicker id="register-location" nodes={data.locationNodes} buildingId={registerBuildingId} value={registerLocationNodeId} onChange={setRegisterLocationNodeId} requiredDepth={requiredLocationDepth} />
-                <details className="optional-text-entry register-type-switch">
+                {(!controlledRegister || submittedRegister) ? <details className="optional-text-entry register-type-switch">
                   <summary>{text("Record something else", "Iets anders vastleggen")}</summary>
                   {/* Switching format starts the other form empty. Carrying a delay's
                       baseline date into a change order is how a wrong date gets signed. */}
@@ -3855,7 +3855,7 @@ function ProjectOperations({
                     setLessonForm({ ...emptyLessonLearned });
                     setRegisterNamedPhotos({});
                   }}>{Object.entries(registerNames).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
-                </details>
+                </details> : null}
                 {registerDrawings.length ? (
                   <label className="form-field"><span>{text("Location on drawing", "Locatie op tekening")}</span>
                     <select value={registerDrawingId} onChange={(event) => setRegisterDrawingId(event.target.value)}>
@@ -4254,7 +4254,7 @@ function ProjectOperations({
                 </>
               )}
               {controlledRegister ? <>
-                <label className="form-field"><span>{text("Revision", "Revisie")}</span><input value={registerForm.revision} onChange={(event) => setRegisterForm({ ...registerForm, revision: event.target.value })} /></label>
+                {editingRegisterId ? <label className="form-field"><span>{text("Revision", "Revisie")}</span><input value={registerForm.revision} onChange={(event) => setRegisterForm({ ...registerForm, revision: event.target.value })} /></label> : null}
                 {/* Who draws the document up is a choice, not always the person logged in. */}
                 {submittedRegister ? (
                   <div className="form-grid-2">
