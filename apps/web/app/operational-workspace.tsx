@@ -1706,7 +1706,7 @@ function ProjectOperations({
       inspectionCategory: String(details.inspection_category ?? emptyControlledDocumentDraft.inspectionCategory),
       periodStart: String(details.period_start ?? ""), periodEnd: String(details.period_end ?? ""),
       lostHours: String(details.lost_hours ?? "0"), lostHoursReason: String(details.lost_hours_reason ?? ""),
-      responsiblePartyId: "",
+      responsiblePartyId: parties.find((party) => party.name === String(details.requested_to ?? ""))?.id ?? "",
     });
     const lessonStatus = String(details.lesson_status ?? "open");
     setLessonForm({
@@ -1787,6 +1787,14 @@ function ProjectOperations({
   };
   const activeRegisterPresets = registerPresets[registerForm.type] ?? [];
   const controlledRegister = isControlledDocumentType(registerForm.type);
+  // A saved document keeps its original business timestamp while being edited.
+  const editingDocument = data.registerEntries.find((entry) => entry.id === editingRegisterId);
+  const documentIssueMoment = editingDocument?.occurred_at && Number.isFinite(Date.parse(editingDocument.occurred_at))
+    ? new Date(editingDocument.occurred_at)
+    : new Date();
+  const documentIssueDateLabel = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "America/Paramaribo" }).format(documentIssueMoment);
+  const documentIssueTime = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Paramaribo" }).format(documentIssueMoment);
+  const documentIssueDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(documentIssueMoment);
   /* Every register form is wide. Only a controlled document used to be, so the rest — PDR,
      Lessons Learned, Agreements Made, Materials delivery — fell back to the 720px column
      that .operation-form gives an unmarked form, and on a desktop that left two thirds of
@@ -2640,6 +2648,7 @@ function ProjectOperations({
           details: {
             ...(editingRegister?.details ?? {}),
             ...baseDetails,
+            ...(controlledRegister && editingRegister ? { issue_date: String(editingRegister.details?.issue_date || documentIssueDate) } : {}),
             attachment_files: uploadedFiles.length ? uploadedFiles : editingRegister?.details?.attachment_files ?? [],
             drawing_file_id: selectedDrawing?.id ?? editingRegister?.details?.drawing_file_id ?? null,
             drawing_name: selectedDrawing?.original_name ?? editingRegister?.details?.drawing_name ?? null,
@@ -3833,7 +3842,7 @@ function ProjectOperations({
                 <section className="controlled-document-context" aria-label={text("Project information", "Projectinformatie")}>
                   <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
                   <div><small>{text("Applies to", "Geldt voor")}</small><strong>{registerContextLabel}</strong><span>{registerLocationNodeId ? locationBreadcrumb(data.locationNodes, registerLocationNodeId) : text("Building level", "Gebouwniveau")}</span></div>
-                  <div><small>{text("Issue date and time", "Uitgiftedatum en -tijd")}</small><strong>{issueDateLabel}</strong><span>{issueTime}</span></div>
+                  <div><small>{text("Issue date and time", "Uitgiftedatum en -tijd")}</small><strong>{documentIssueDateLabel}</strong><span>{documentIssueTime}</span></div>
                   <div>
                     <small>{text("Drawn up by", "Opgemaakt door")}</small>
                     <strong>{registerForm.issuerName.trim() || currentUserName}</strong>
