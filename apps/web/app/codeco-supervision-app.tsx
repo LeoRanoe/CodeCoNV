@@ -811,15 +811,13 @@ export function CodecoSupervisionApp() {
 
   const currentUserName = workspaceQuery.data?.profileName
     ?? String(session?.user.user_metadata?.display_name ?? session?.user.email?.split("@")[0] ?? text("CODECO user", "CODECO-gebruiker"));
-  const storageStatus = !isOnline
-    ? text("No connection · not saved", "Geen verbinding · nog niet opgeslagen")
-    : syncState === "saving"
-      ? text("Saving centrally…", "Centraal opslaan…")
-      : syncState === "error"
-        ? text("Save failed · try again", "Opslaan mislukt · probeer opnieuw")
-        : syncState === "saved"
-          ? text("Saved centrally", "Centraal opgeslagen")
-          : text("Live workspace · synchronized", "Live werkruimte · gesynchroniseerd");
+  const onlineStorageStatus = syncState === "saving"
+    ? text("Saving centrally…", "Centraal opslaan…")
+    : syncState === "error"
+      ? text("Save failed · try again", "Opslaan mislukt · probeer opnieuw")
+      : syncState === "saved"
+        ? text("Saved centrally", "Centraal opgeslagen")
+        : text("Live workspace · synchronized", "Live werkruimte · gesynchroniseerd");
   const localizedNavigation = navigation.map((item) => ({
     ...item,
     label: ({
@@ -1081,6 +1079,19 @@ export function CodecoSupervisionApp() {
     enabled: Boolean(selectedProject),
   });
   const dayActions = withPendingActions(dayQuery.data?.actions ?? [], pendingRecordsQuery.data ?? []);
+  /**
+   * Without a connection the header says what is true: registrations written now are kept
+   * on this device and counted here. It used to say "not saved" even while they were.
+   */
+  const waitingOnDevice = (pendingRecordsQuery.data ?? []).length;
+  const storageStatus = isOnline
+    ? onlineStorageStatus
+    : waitingOnDevice
+      ? text(
+        `No connection · ${waitingOnDevice} waiting on this device`,
+        `Geen verbinding · ${waitingOnDevice} ${waitingOnDevice === 1 ? "registratie wacht" : "registraties wachten"} op dit apparaat`,
+      )
+      : text("No connection · working from this device", "Geen verbinding · je werkt vanaf dit apparaat");
 
   const runSynced = async <T,>(
     operation: () => Promise<T>,
@@ -1100,6 +1111,11 @@ export function CodecoSupervisionApp() {
       const result = await operation();
       if (selectedProject && supabase && isOnline) await requestProjectNotificationDispatch(supabase, selectedProject.id).catch(() => false);
       const queuedAfter = selectedProject ? (await listOfflineRecords(selectedProject.id).catch(() => [])).length : 0;
+      // Show what now waits on this device straight away. The list also polls, but a record
+      // that only appears twenty seconds after "Save" reads as a record that was lost.
+      if (selectedProject && queuedAfter !== queuedBefore) {
+        await queryClient.invalidateQueries({ queryKey: ["offline-records", selectedProject.id] });
+      }
       setSyncState(queuedAfter > queuedBefore ? "idle" : "saved");
       setToast(queuedAfter > queuedBefore
         ? text(
