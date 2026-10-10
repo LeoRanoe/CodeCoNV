@@ -30,29 +30,36 @@ const png = (value) => (typeof value === "string" && value.startsWith("data:imag
 export function controlledDocumentSignatures(entry) {
   const details = record(entry?.details);
   const response = record(details.response);
-  const issuerInk = png(filled(entry?.signature_image, details.signature_image));
-  const recipientInk = png(filled(response.signature_image));
+  const supervisionInk = png(filled(details.supervision_signature_image));
+  // A change order stored before the issuer signature was asked for carries only the supervision approval.
+  const legacyChangeOrder = details.document_type === "change_order" || entry?.register_type === "change_order";
+  const issuerInk = png(filled(entry?.signature_image, details.signature_image)) ?? (legacyChangeOrder ? supervisionInk : null);
+  // The recipient's signature is the newest signed response; a later answer without one does not erase it.
+  const history = Array.isArray(details.response_history) ? details.response_history.filter((item) => item && typeof item === "object") : [];
+  const signedResponse = [...history].reverse().find((item) => png(filled(item.signature_image))) ?? (png(filled(response.signature_image)) ? response : null);
+  const recipientInk = signedResponse ? png(filled(signedResponse.signature_image)) : null;
   return {
     issuer: {
-      name: filled(entry?.signed_by, details.signed_by, details.issued_by),
+      name: filled(entry?.signed_by, details.signed_by, issuerInk && !png(filled(entry?.signature_image, details.signature_image)) ? details.supervision_signed_by : "", details.issued_by),
       position: filled(details.signed_by_position, details.issuer_position),
       company: filled(details.issuer_company),
       ink: issuerInk,
-      signedAt: signatureMoment(filled(entry?.signed_at, details.signed_at)),
+      signedAt: signatureMoment(filled(entry?.signed_at, details.signed_at, issuerInk && !png(filled(entry?.signature_image, details.signature_image)) ? details.supervision_signed_at : "")),
       signed: Boolean(issuerInk),
     },
     recipient: {
       decision: filled(response.decision),
       comments: filled(response.comments),
-      name: filled(response.respondent_name),
-      position: filled(response.respondent_position),
-      company: filled(response.respondent_company),
+      // The signed response gives the signatory; otherwise the newest answer is shown.
+      name: filled(signedResponse?.respondent_name, response.respondent_name),
+      position: filled(signedResponse?.respondent_position, response.respondent_position),
+      company: filled(signedResponse?.respondent_company, response.respondent_company),
       ink: recipientInk,
       signed: Boolean(recipientInk),
       // A response without a signature still has the moment it was recorded.
-      signedAt: signatureMoment(filled(recipientInk ? response.signed_at : "", response.responded_at)),
-      capturedBy: filled(response.responded_by_name),
-      onDevice: response.signature_capture === "on_device",
+      signedAt: signatureMoment(filled(recipientInk ? signedResponse?.signed_at : "", response.responded_at)),
+      capturedBy: filled(signedResponse?.responded_by_name, response.responded_by_name),
+      onDevice: (signedResponse ?? response).signature_capture === "on_device",
     },
     contractor: {
       name: filled(details.contractor_signed_by, details.contractor_representative),

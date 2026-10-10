@@ -123,7 +123,10 @@ test("mobile workspace keeps daily work within two taps and action uses the corr
   const bottomNav = page.locator(".mobile-bottom-nav");
   await bottomNav.getByRole("button", { name: "Workspace", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Workspace", exact: true })).toBeVisible();
-  await expect(page.locator(".workspace-launcher-grid [data-workspace-destination]")).toHaveCount(16);
+  // Fifteen modules: the client struck the standalone Delays tile (daily delays and the PDR stay).
+  await expect(page.locator(".workspace-launcher-grid [data-workspace-destination]")).toHaveCount(15);
+  await expect(page.locator('[data-workspace-destination="delays"]')).toHaveCount(0);
+  await expect(page.locator('[data-workspace-destination="delay-report"]')).toHaveCount(1);
   await expect(page.locator('[data-workspace-destination="works-ongoing"]')).toBeVisible();
   await expect(page.locator('[data-workspace-destination="works-completed"]')).toBeVisible();
   await expect(page.locator('[data-workspace-destination="agreements-made"]')).toBeVisible();
@@ -160,7 +163,10 @@ test("desktop workspace exposes every client module through a working destinatio
   };
 
   await openWorkspace();
-  await expect(page.locator(".workspace-launcher-grid [data-workspace-destination]")).toHaveCount(16);
+  // Fifteen modules: the client struck the standalone Delays tile (daily delays and the PDR stay).
+  await expect(page.locator(".workspace-launcher-grid [data-workspace-destination]")).toHaveCount(15);
+  await expect(page.locator('[data-workspace-destination="delays"]')).toHaveCount(0);
+  await expect(page.locator('[data-workspace-destination="delay-report"]')).toHaveCount(1);
 
   const taskDestinations = [
     ["inspections", "Inspections"],

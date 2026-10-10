@@ -70,9 +70,12 @@ export function useProjectPermissionsQuery(client: SupabaseClient | null, userId
     },
     retry: false,
   });
-  // A cached answer carries a device through a dropped connection. When the database is reachable
-  // and still refuses to answer, an old answer must not keep write controls on screen.
-  const failedOnline = query.isError && (typeof navigator === "undefined" || navigator.onLine !== false);
+  // A cached answer carries a device through a dropped or weak connection. When the database answers
+  // and refuses, an old answer must not keep write controls on screen.
+  // A network failure keeps the cached answer (the device is simply out of reach); only an answer from
+  // the database itself (a PostgREST or Postgres error code) means the permissions cannot be confirmed.
+  const errorCode = (query.error as unknown as { code?: unknown } | null)?.code;
+  const failedOnline = query.isError && typeof errorCode === "string" && errorCode.length > 0;
   return useMemo(() => (failedOnline ? readOnlyPermissions : permissionsFrom(query.data)), [failedOnline, query.data]);
 }
 

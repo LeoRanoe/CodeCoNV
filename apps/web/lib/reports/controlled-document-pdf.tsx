@@ -91,7 +91,7 @@ function typeSpecificDetails(type: ControlledDocumentType, details: Details, ent
       <View style={styles.grid}><Cell label="Discipline / priority" value={`${text(details, "discipline")} / ${text(details, "priority")}`} right /><Cell label="Related RFI / NCR / drawing" value={text(details, "related_reference")} /></View>
       {/* The reason is derived from the instruction when nobody wrote a separate one; do not print it twice. */}
       {text(details, "reason").trim() !== text(details, "description").trim() ? <Section title="REASON FOR INSTRUCTION"><Text style={styles.sectionText}>{text(details, "reason")}</Text></Section> : null}
-      <Section title="REQUIRED ACTION"><Options values={["Proceed", "Stop work", "Revise", "Submit revised document", "Carry out inspection", "Other"]} selected={text(details, "required_action", "")} /></Section>
+      <Section title="REQUIRED ACTION"><Options values={["Proceed", "Stop work", "Revise", "Submit revised document", "Carry out inspection", "Other"]} /></Section>
     </>;
   }
   if (type === "change_order") {

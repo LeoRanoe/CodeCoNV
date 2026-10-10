@@ -58,7 +58,7 @@ function typeSpecificDetails(type: ControlledDocumentType, details: Details, ent
       labelValue("Related RFI / NCR / drawing", text(details, "related_reference")),
       ...(text(details, "reason").trim() !== text(details, "description").trim() ? [sectionHeading("Reason for instruction"), bodyText(text(details, "reason"))] : []),
       sectionHeading("Required action"),
-      options(["Proceed", "Stop work", "Revise", "Submit revised document", "Carry out inspection", "Other"], text(details, "required_action", "")),
+      options(["Proceed", "Stop work", "Revise", "Submit revised document", "Carry out inspection", "Other"]),
     ];
   }
   if (type === "change_order") {

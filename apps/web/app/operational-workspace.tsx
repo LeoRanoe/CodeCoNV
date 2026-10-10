@@ -102,8 +102,7 @@ import {
   changeOrderReasons,
   changeOrderScopeAreas,
   changeOrderTypes,
-  emptyChangeOrder,
-} from "@/lib/forms/change-order";
+  emptyChangeOrder, changeOrderFromDetails } from "@/lib/forms/change-order";
 import {
   delayActivities,
   delayCategories,
@@ -715,6 +714,11 @@ const genericChecklistGuidance = /^Choose (Yes, No or N\/A|Pass, Fail or N\/A)\.
 function checklistGuidance(item: ChecklistItem) {
   if (item.guidance?.startsWith("AUTO_WEATHER|")) return item.guidance.split("|").slice(1).join("|");
   return item.guidance && genericChecklistGuidance.test(item.guidance.trim()) ? "" : item.guidance;
+}
+
+/** Only a planned or running inspection takes answers; a completed one is read, not re-answered. */
+function inspectionOpen(inspection: Pick<Inspection, "status">) {
+  return inspection.status === "planned" || inspection.status === "in_progress";
 }
 
 function isAutomaticWeatherItem(item: ChecklistItem) {
@@ -1725,6 +1729,7 @@ function ProjectOperations({
     setRegisterBuildingIds(entry.building_ids?.length ? entry.building_ids : entry.building_id ? [entry.building_id] : []);
     setRegisterLocationNodeId(entry.location_node_id ?? "");
     setRegisterSignature(signatureFromDetails(entry.signed_by, entry.signed_at, entry.signature_image));
+    if (entry.register_type === "change_order") setChangeOrder(changeOrderFromDetails(details));
     setEditingRegisterId(entry.id);
     setViewedRecord(null);
     setShowForm(true);
@@ -2042,7 +2047,7 @@ function ProjectOperations({
    */
   const raiseNcrFromInspection = async (inspection: Inspection) => {
     // The answers given so far are stored first: leaving for the NCR form must not lose the checklist.
-    if (!await run(() => saveInspectionAnswers(client, inspection, inspectionAnswers), text("Checklist progress saved.", "Voortgang van de checklist opgeslagen."))) return;
+    if (inspectionOpen(inspection) && !await run(() => saveInspectionAnswers(client, inspection, inspectionAnswers), text("Checklist progress saved.", "Voortgang van de checklist opgeslagen."))) return;
     const failed = activeTemplate?.items.filter((item) => inspectionAnswers[item.id]?.result === "fail" || inspectionAnswers[item.id]?.result === "no") ?? [];
     setFindingForm((current) => ({
       ...current,
@@ -2077,7 +2082,10 @@ function ProjectOperations({
         });
         // The signature is stored first: an inspection that is completed always carries the signature
         // of the person who walked it, even when the connection drops between the two steps.
-        if (inspectionSignature && !activeInspection.signature_image) await signInspection(client, activeInspection.id, inspectionSignature);
+        if (inspectionSignature && !activeInspection.signature_image) {
+          await signInspection(client, activeInspection.id, inspectionSignature);
+          setActiveInspection((current) => current ? { ...current, signed_by: inspectionSignature.name, signed_at: inspectionSignature.signedAt, signature_image: inspectionSignature.image } : current);
+        }
         if (!["passed", "cancelled"].includes(activeInspection.status)) {
           await finishInspection(client, inspectionToFinish, inspectionAnswers);
         }
@@ -2660,6 +2668,8 @@ function ProjectOperations({
             ...(editingRegister?.details ?? {}),
             ...baseDetails,
             ...(controlledRegister && editingRegister ? { issue_date: String(editingRegister.details?.issue_date || documentIssueDate) } : {}),
+            // Editing a document never rewrites what was answered: the response and its history stay as recorded.
+            ...(editingRegister ? Object.fromEntries(["response", "response_history"].filter((key) => key in (editingRegister.details ?? {})).map((key) => [key, editingRegister.details[key]])) : {}),
             attachment_files: uploadedFiles.length ? uploadedFiles : editingRegister?.details?.attachment_files ?? [],
             drawing_file_id: selectedDrawing?.id ?? editingRegister?.details?.drawing_file_id ?? null,
             drawing_name: selectedDrawing?.original_name ?? editingRegister?.details?.drawing_name ?? null,
@@ -3048,7 +3058,7 @@ function ProjectOperations({
               <button className="secondary-button inspection-ncr-button" type="button" onClick={() => raiseNcrFromInspection(activeInspection)}>
                 <ShieldAlert size={15} /> {text("Raise an NCR from this checklist", "NCR opstellen vanuit deze checklist")}
               </button>
-              <div className="form-actions checklist-sticky-actions"><button className="secondary-button" type="button" disabled={busy} onClick={() => void run(() => saveInspectionAnswers(client, activeInspection, inspectionAnswers), text("Checklist progress saved.", "Voortgang van de checklist opgeslagen.")).then((saved) => { if (saved) setActiveInspection(null); })}>{text("Complete later", "Later afronden")}</button><button className="primary-button" type="button" disabled={busy || !inspectionSignature || activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))} onClick={() => void submitInspection()}>{busy ? <Loader2 className="spin" size={15} /> : <FileCheck2 size={15} />} {text("Complete inspection", "Inspectie afronden")}</button></div>
+              <div className="form-actions checklist-sticky-actions"><button className="secondary-button" type="button" disabled={busy} onClick={() => { if (!inspectionOpen(activeInspection)) { setActiveInspection(null); return; } void run(() => saveInspectionAnswers(client, activeInspection, inspectionAnswers), text("Checklist progress saved.", "Voortgang van de checklist opgeslagen.")).then((saved) => { if (saved) setActiveInspection(null); }); }}>{text("Complete later", "Later afronden")}</button><button className="primary-button" type="button" disabled={busy || !inspectionSignature || activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))} onClick={() => void submitInspection()}>{busy ? <Loader2 className="spin" size={15} /> : <FileCheck2 size={15} />} {text("Complete inspection", "Inspectie afronden")}</button></div>
               {!inspectionSignature ? <p className="form-intro">{text("Sign the checklist to complete it.", "Onderteken de checklist om hem af te ronden.")}</p> : null}
             </RecordFormShell>
           ) : null}
@@ -3778,6 +3788,7 @@ function ProjectOperations({
                 onChange={setHseSignature}
                 nameSuggestion={currentUserName}
                 lockName
+                locked={Boolean(data.hseEvents.find((item) => item.id === editingHseId)?.signature_image)}
                 declaration={text("I confirm this HSE record is complete and accurate.", "Ik bevestig dat deze HSE-registratie volledig en juist is.")}
               />
               {/* The bar of the client's screen: leave it, park it, count the evidence,

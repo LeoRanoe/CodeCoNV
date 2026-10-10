@@ -99,6 +99,7 @@ test("an RFI is recorded, answered by a named respondent and keeps its response"
 test("historical feedback: technical instruction prioritizes content over repeated metadata", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-office", "Desktop release gate covers document structure.");
   await signIn(page);
+  await page.locator(".sidebar").getByRole("button", { name: "Workspace", exact: true }).click();
   await page.locator('[data-workspace-destination="technical-instructions"]').click();
   const form = page.locator(".controlled-document-form");
   await expect(form).toBeVisible();
