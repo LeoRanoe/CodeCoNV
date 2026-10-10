@@ -85,7 +85,13 @@ begin
     end if;
   end if;
 
-  if new.signature_image is not null and (tg_op = 'INSERT' or old.signature_image is null) then
+  -- A signature that so far lived only inside details (older records) keeps the signer it was made
+  -- by when it is copied into the columns; whoever saves the record next does not become the signer.
+  if tg_op = 'UPDATE' and old.signature_image is null and new.signature_image is not null
+     and nullif(old.details ->> 'signature_image', '') is not null then
+    new.signed_by := coalesce(nullif(old.details ->> 'signed_by', ''), new.signed_by);
+    new.signed_at := least(coalesce(new.signed_at, now()), now());
+  elsif new.signature_image is not null and (tg_op = 'INSERT' or old.signature_image is null) then
     if new.register_type not in ('wcr','rfi','rfa','inspection_request') and v_actor is not null then
       select profile.display_name into v_name from public.profiles profile where profile.id = v_actor;
       if v_name is not null then
@@ -248,12 +254,12 @@ begin
     if v_entry.signature_image is null and nullif(v_entry.details ->> 'signature_image', '') is null then
       raise exception 'The issuer has to sign the document before the recipient' using errcode = '23514';
     end if;
-    v_issuer_name := lower(btrim(coalesce(v_entry.signed_by, v_entry.details ->> 'signed_by', '')));
-    if v_issuer_name <> '' and lower(btrim(p_response ->> 'respondent_name')) = v_issuer_name then
+    v_issuer_name := lower(regexp_replace(btrim(coalesce(v_entry.signed_by, v_entry.details ->> 'signed_by', '')), '\s+', ' ', 'g'));
+    if v_issuer_name <> '' and lower(regexp_replace(btrim(p_response ->> 'respondent_name'), '\s+', ' ', 'g')) = v_issuer_name then
       raise exception 'The recipient cannot be the issuer of the document' using errcode = '42501';
     end if;
     v_capture := case
-      when lower(btrim(p_response ->> 'respondent_name')) = lower(btrim(coalesce(v_actor_name, ''))) then 'own_account'
+      when lower(regexp_replace(btrim(p_response ->> 'respondent_name'), '\s+', ' ', 'g')) = lower(regexp_replace(btrim(coalesce(v_actor_name, '')), '\s+', ' ', 'g')) then 'own_account'
       else 'on_device'
     end;
   end if;

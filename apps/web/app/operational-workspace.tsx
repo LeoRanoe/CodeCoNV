@@ -77,6 +77,7 @@ import { ProjectDocumentsHome } from "@/app/project-documents-home";
 import { ProjectActionCenter, type ActionCenterView } from "@/app/project-action-center";
 import { RapidVerifyWorkspace } from "@/app/rapid-verify-workspace";
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
+import { detailsForEdit } from "@/lib/forms/edit-details.mjs";
 import { controlledDocumentSignatures, documentSignatureState } from "@/lib/reports/controlled-document-signatures.mjs";
 import { findingStatusLabels as canonicalFindingStatusLabels, labelMap, statusText, typeText, codeText, optionText, severityText, partyTypeText } from "@/lib/status-labels";
 import { reportWeather, reportWind } from "@/lib/reports/report-vocabulary";
@@ -2664,16 +2665,13 @@ function ProjectOperations({
           title: registerTitle,
           responsiblePartyId: registerForm.responsiblePartyId,
           dueAt: registerForm.dueDate || null,
-          details: {
-            ...(editingRegister?.details ?? {}),
+          details: detailsForEdit(editingRegister?.details, {
             ...baseDetails,
             ...(controlledRegister && editingRegister ? { issue_date: String(editingRegister.details?.issue_date || documentIssueDate) } : {}),
-            // Editing a document never rewrites what was answered: the response and its history stay as recorded.
-            ...(editingRegister ? Object.fromEntries(["response", "response_history"].filter((key) => key in (editingRegister.details ?? {})).map((key) => [key, editingRegister.details[key]])) : {}),
             attachment_files: uploadedFiles.length ? uploadedFiles : editingRegister?.details?.attachment_files ?? [],
             drawing_file_id: selectedDrawing?.id ?? editingRegister?.details?.drawing_file_id ?? null,
             drawing_name: selectedDrawing?.original_name ?? editingRegister?.details?.drawing_name ?? null,
-          },
+          }),
           signedBy: controlledRegister ? registerForm.signedBy : registerSignature?.name,
           signedAt: controlledRegister ? registerForm.signedAt : registerSignature?.signedAt,
           signatureImage: controlledRegister ? registerForm.signatureImage || null : registerSignature?.image ?? null,

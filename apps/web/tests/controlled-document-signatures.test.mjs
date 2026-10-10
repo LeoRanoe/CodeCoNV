@@ -66,3 +66,20 @@ test("the release identifier names the newest migration the build expects", asyn
   const source = await readFile(new URL("../lib/release.ts", import.meta.url), "utf8");
   assert.match(source, new RegExp(`expectedSchemaVersion = "${newest}"`));
 });
+
+test("editing a document never rewrites what was answered", async () => {
+  const { detailsForEdit } = await import("../lib/forms/edit-details.mjs");
+  const history = [{ decision: "acknowledged", signature_image: ink }];
+  const answered = detailsForEdit(
+    { description: "old", response: history[0], response_history: history, signed_by: "Ivo" },
+    { description: "new", response: {}, signed_by: "Ivo" },
+  );
+  assert.equal(answered.description, "new");
+  assert.deepEqual(answered.response, history[0]);
+  assert.deepEqual(answered.response_history, history);
+  // A record that was never answered does not gain a response key.
+  const unanswered = detailsForEdit({ description: "old" }, { description: "new", response: {} });
+  assert.equal("response" in unanswered, false);
+  assert.equal("response_history" in unanswered, false);
+  assert.deepEqual(detailsForEdit(undefined, { a: 1, response: {} }), { a: 1 });
+});

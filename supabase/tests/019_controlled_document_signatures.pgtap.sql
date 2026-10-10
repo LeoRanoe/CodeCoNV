@@ -3,7 +3,7 @@ set local search_path = extensions, pgtap, public;
 
 -- Controlled documents keep their signatures, a CODECO-issued document is signed under the
 -- account's own name, and the recipient signs the formal response as a different person.
-select plan(20);
+select plan(21);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at)
 values
@@ -160,6 +160,15 @@ select lives_ok(
     'decision','approved','comments','Approved without a signature.','respondent_name','Issuer Ivo'
   ), 'sig-response-5')$q$, (select id from ref where name = 'rfi')),
   'a response without a signature still works for older app versions'
+);
+
+-- a double space or different case in the name does not hide that the recipient is the issuer
+select throws_ok(
+  format($q$select public.respond_to_controlled_project_document(%L::uuid, jsonb_build_object(
+    'decision','acknowledged','comments','Same person.','respondent_name','Issuer   IVO','respondent_position','Supervisor',
+    'signature_image','data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg=='
+  ), 'sig-response-7')$q$, (select id from ref where name = 'ti')),
+  '42501', null, 'the issuer cannot be the recipient under a differently spaced name'
 );
 
 -- 4. an inspection is signed by the person who stood there
