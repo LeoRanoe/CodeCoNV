@@ -1706,7 +1706,7 @@ function ProjectOperations({
       inspectionCategory: String(details.inspection_category ?? emptyControlledDocumentDraft.inspectionCategory),
       periodStart: String(details.period_start ?? ""), periodEnd: String(details.period_end ?? ""),
       lostHours: String(details.lost_hours ?? "0"), lostHoursReason: String(details.lost_hours_reason ?? ""),
-      responsiblePartyId: "",
+      responsiblePartyId: parties.find((party) => party.name === String(details.requested_to ?? ""))?.id ?? "",
     });
     const lessonStatus = String(details.lesson_status ?? "open");
     setLessonForm({
@@ -1787,6 +1787,14 @@ function ProjectOperations({
   };
   const activeRegisterPresets = registerPresets[registerForm.type] ?? [];
   const controlledRegister = isControlledDocumentType(registerForm.type);
+  // A saved document keeps its original business timestamp while being edited.
+  const editingDocument = data.registerEntries.find((entry) => entry.id === editingRegisterId);
+  const documentIssueMoment = editingDocument?.occurred_at && Number.isFinite(Date.parse(editingDocument.occurred_at))
+    ? new Date(editingDocument.occurred_at)
+    : new Date();
+  const documentIssueDateLabel = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "America/Paramaribo" }).format(documentIssueMoment);
+  const documentIssueTime = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Paramaribo" }).format(documentIssueMoment);
+  const documentIssueDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(documentIssueMoment);
   /* Every register form is wide. Only a controlled document used to be, so the rest — PDR,
      Lessons Learned, Agreements Made, Materials delivery — fell back to the 720px column
      that .operation-form gives an unmarked form, and on a desktop that left two thirds of
@@ -2640,6 +2648,7 @@ function ProjectOperations({
           details: {
             ...(editingRegister?.details ?? {}),
             ...baseDetails,
+            ...(controlledRegister && editingRegister ? { issue_date: String(editingRegister.details?.issue_date || documentIssueDate) } : {}),
             attachment_files: uploadedFiles.length ? uploadedFiles : editingRegister?.details?.attachment_files ?? [],
             drawing_file_id: selectedDrawing?.id ?? editingRegister?.details?.drawing_file_id ?? null,
             drawing_name: selectedDrawing?.original_name ?? editingRegister?.details?.drawing_name ?? null,
@@ -3833,7 +3842,7 @@ function ProjectOperations({
                 <section className="controlled-document-context" aria-label={text("Project information", "Projectinformatie")}>
                   <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
                   <div><small>{text("Applies to", "Geldt voor")}</small><strong>{registerContextLabel}</strong><span>{registerLocationNodeId ? locationBreadcrumb(data.locationNodes, registerLocationNodeId) : text("Building level", "Gebouwniveau")}</span></div>
-                  <div><small>{text("Issue date and time", "Uitgiftedatum en -tijd")}</small><strong>{issueDateLabel}</strong><span>{issueTime}</span></div>
+                  <div><small>{text("Issue date and time", "Uitgiftedatum en -tijd")}</small><strong>{documentIssueDateLabel}</strong><span>{documentIssueTime}</span></div>
                   <div>
                     <small>{text("Drawn up by", "Opgemaakt door")}</small>
                     <strong>{registerForm.issuerName.trim() || currentUserName}</strong>
@@ -4279,7 +4288,10 @@ function ProjectOperations({
                 {/* The party you address it to is the recipient; a second free-text name
                     next to it, plus reference fields nobody filled, are gone. */}
                 <label className="form-field"><span>{text("To:", "Aan:")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => { const party = parties.find((item) => item.id === event.target.value); setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value, requestedTo: party?.name ?? "" }); }}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name} · {partyTypeText(party.type, text)}</option>)}</select></label>
-                <label className="form-field"><span>{text("Attachments and page count", "Bijlagen en aantal pagina's")}</span><input value={registerForm.attachments} onChange={(event) => setRegisterForm({ ...registerForm, attachments: event.target.value })} /></label>
+                <details className="controlled-document-optional-attachments" defaultOpen={Boolean(registerForm.attachments.trim()) || undefined}>
+                  <summary>{text("Additional attachment notes", "Extra bijlageninformatie")}</summary>
+                  <label className="form-field"><span>{text("Page count or reference (if applicable)", "Aantal pagina's of referentie (indien van toepassing)")}</span><input value={registerForm.attachments} onChange={(event) => setRegisterForm({ ...registerForm, attachments: event.target.value })} /></label>
+                </details>
                 <label className="secondary-button file-button controlled-document-upload">
                   <Upload size={15} /> {registerFiles.length
                     ? text(`${registerFiles.length} document(s) selected`, `${registerFiles.length} document(en) geselecteerd`)
@@ -4299,7 +4311,7 @@ function ProjectOperations({
                 {registerFiles.length ? <div className="boq-preview">{registerFiles.map((file) => <div key={`${file.name}:${file.lastModified}`}><FileText size={15} /><span>{file.name}</span><small>{Math.max(1, Math.round(file.size / 1024))} KB</small></div>)}</div> : null}
                 {registerForm.type === "inspection_request" ? <div className="form-grid-2"><label className="form-field"><span>{text("Inspection category", "Inspectiecategorie")}</span><select value={registerForm.inspectionCategory} onChange={(event) => setRegisterForm({ ...registerForm, inspectionCategory: event.target.value })}><option value="architectural">Architectural</option><option value="structural">Structural</option><option value="mep">MEP</option><option value="testing">Testing</option><option value="other">Other</option></select></label><div className="form-grid-2"><label className="form-field"><span>{text("Ready date", "Gereeddatum")}</span><input type="date" value={registerForm.readyDate} onChange={(event) => setRegisterForm({ ...registerForm, readyDate: event.target.value })} /></label><label className="form-field"><span>{text("Ready time", "Gereedtijd")}</span><input type="time" value={registerForm.readyTime} onChange={(event) => setRegisterForm({ ...registerForm, readyTime: event.target.value })} /></label></div></div> : null}
                 {registerForm.type === "technical_instruction" ? <label className="form-field"><span>{text("Discipline", "Discipline")}</span><select value={registerForm.discipline} onChange={(event) => setRegisterForm({ ...registerForm, discipline: event.target.value })}><option value="architectural">Architectural</option><option value="structural">Structural</option><option value="electrical">Electrical</option><option value="mechanical">Mechanical</option><option value="civil">Civil</option><option value="hse">HSE</option></select></label> : null}
-                {registerForm.type === "technical_instruction" ? <details className="controlled-document-optional-impact"><summary>{text("Schedule and cost impact", "Planning- en kostenimpact")}</summary><div className="form-grid-2"><label className="form-field"><span>{text("Schedule impact", "Planningimpact")}</span><select value={registerForm.scheduleImpact} onChange={(event) => setRegisterForm({ ...registerForm, scheduleImpact: event.target.value })}><option value="none">None</option><option value="possible">Possible</option><option value="confirmed">Confirmed</option><option value="unknown">To be assessed</option></select></label><label className="form-field"><span>{text("Cost impact", "Kostenimpact")}</span><select value={registerForm.costImpact} onChange={(event) => setRegisterForm({ ...registerForm, costImpact: event.target.value })}><option value="none">None</option><option value="possible">Possible</option><option value="confirmed">Confirmed</option><option value="unknown">To be assessed</option></select></label></div><label className="form-field"><span>{text("Impact explanation", "Toelichting impact")}</span><textarea rows={2} value={registerForm.impactExplanation} onChange={(event) => setRegisterForm({ ...registerForm, impactExplanation: event.target.value })} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, impactExplanation: appendDictation(current.impactExplanation, transcript) }))} /></label></details> : null}
+                {registerForm.type === "technical_instruction" ? <details className="controlled-document-optional-impact" defaultOpen={registerForm.scheduleImpact !== "none" || registerForm.costImpact !== "none" || Boolean(registerForm.impactExplanation.trim()) || undefined}><summary>{text("Schedule and cost impact", "Planning- en kostenimpact")}</summary><div className="form-grid-2"><label className="form-field"><span>{text("Schedule impact", "Planningimpact")}</span><select value={registerForm.scheduleImpact} onChange={(event) => setRegisterForm({ ...registerForm, scheduleImpact: event.target.value })}><option value="none">None</option><option value="possible">Possible</option><option value="confirmed">Confirmed</option><option value="unknown">To be assessed</option></select></label><label className="form-field"><span>{text("Cost impact", "Kostenimpact")}</span><select value={registerForm.costImpact} onChange={(event) => setRegisterForm({ ...registerForm, costImpact: event.target.value })}><option value="none">None</option><option value="possible">Possible</option><option value="confirmed">Confirmed</option><option value="unknown">To be assessed</option></select></label></div><label className="form-field"><span>{text("Impact explanation", "Toelichting impact")}</span><textarea rows={2} value={registerForm.impactExplanation} onChange={(event) => setRegisterForm({ ...registerForm, impactExplanation: event.target.value })} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, impactExplanation: appendDictation(current.impactExplanation, transcript) }))} /></label></details> : null}
                 {changeOrderRegister ? (
                   <div className="record-form-sections change-order-sections">
                     <RecordFormSection

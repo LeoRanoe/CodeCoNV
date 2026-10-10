@@ -95,3 +95,30 @@ test("an RFI is recorded, answered by a named respondent and keeps its response"
   await expect(reloaded).toContainText("Approved with comments");
   await expect(reloaded).not.toContainText(/approved_with_comments|in_review/);
 });
+
+test("historical feedback: technical instruction prioritizes content over repeated metadata", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-office", "Desktop release gate covers document structure.");
+  await signIn(page);
+  await page.locator('[data-workspace-destination="technical-instructions"]').click();
+  const form = page.locator(".controlled-document-form");
+  await expect(form).toBeVisible();
+  await expect(form.locator(".controlled-document-primary input")).toBeVisible();
+  await expect(form.locator(".controlled-document-primary textarea")).toBeVisible();
+  await expect(form.locator(".controlled-document-dates")).toHaveCount(0);
+  await expect(form.locator(".register-type-switch")).toHaveCount(0);
+  await expect(form.locator("label.form-field").filter({ hasText: "Revision" })).toHaveCount(0);
+
+  // The existing header holds one author. Changing it is an explicit, optional action.
+  const author = form.locator(".controlled-document-author-edit");
+  await expect(author).toHaveCount(1);
+  await author.locator("summary").click();
+  await expect(author.locator("input")).toBeVisible();
+
+  // Contractual impact remains available without occupying the default form.
+  const impact = form.locator(".controlled-document-optional-impact");
+  await expect(impact.locator("summary")).toBeVisible();
+  await impact.locator("summary").click();
+  await expect(impact.getByText("Schedule impact", { exact: true })).toBeVisible();
+  await expect(impact.getByText("Cost impact", { exact: true })).toBeVisible();
+  await expect(form.locator(".controlled-document-deadline input[type=date]")).toBeVisible();
+});
