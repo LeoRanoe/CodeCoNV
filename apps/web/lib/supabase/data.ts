@@ -6,6 +6,8 @@ import {
 } from "@/lib/forms/daily-report";
 import type { InternalUserInviteAnswers } from "@/lib/forms/users";
 import { validAccessToken } from "@/lib/supabase/access-token";
+import { isSettledStatus, settledStatuses } from "@/lib/actions/action-center.mjs";
+import { worklistRegisterTypes } from "@/lib/actions/open-work.mjs";
 
 export type WorkspaceBuilding = {
   id: string;
@@ -268,7 +270,7 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
   const todayStart = new Date(`${today}T00:00:00-03:00`).toISOString();
   const tomorrow = new Date(`${today}T00:00:00-03:00`);
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const [buildingResult, actionResult, progressResult, findingResult, inspectionResult, registerResult, visualResult, dayStartResult] = projectIds.length
+  const [buildingResult, actionResult, progressResult, findingResult, inspectionResult, registerResult, visualResult, dayStartResult, worklistRegisterResult] = projectIds.length
     ? await Promise.all([
         client
           .from("buildings")
@@ -313,8 +315,17 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
           .in("project_id", projectIds)
           .gte("created_at", todayStart)
           .lt("created_at", tomorrow.toISOString()),
+        // Registers that are somebody's turn to act, for the open-work count below.
+        client
+          .from("project_register_entries")
+          .select("project_id,building_id,register_type,status,due_at")
+          .in("project_id", projectIds)
+          .or(`due_at.not.is.null,register_type.in.(${worklistRegisterTypes.join(",")})`)
+          .not("status", "in", `(${settledStatuses.join(",")})`)
+          .limit(5000),
       ])
     : [
+        { data: [], error: null },
         { data: [], error: null },
         { data: [], error: null },
         { data: [], error: null },
@@ -332,6 +343,7 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
   fail(registerResult.error);
   fail(visualResult.error);
   fail(dayStartResult.error);
+  fail(worklistRegisterResult.error);
 
   const progressByProject = new Map<string, number>();
   for (const row of progressResult.data ?? []) {
@@ -342,8 +354,12 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
   const projects: WorkspaceProject[] = projectRows.map((project) => {
     const projectId = project.id as string;
     const progress = progressByProject.get(projectId) ?? 0;
-    const openIssues = (actionResult.data ?? []).filter((row) => row.project_id === projectId).length;
     const findings = (findingResult.data ?? []).filter((row) => row.project_id === projectId);
+    // "Open actions" is what the action centre lists for the project: its actions, its open
+    // findings/NCRs and the registers waiting on somebody, not only the actions table.
+    const openIssues = (actionResult.data ?? []).filter((row) => row.project_id === projectId).length
+      + findings.filter((row) => !isSettledStatus(row.status)).length
+      + (worklistRegisterResult.data ?? []).filter((row) => row.project_id === projectId).length;
     const registers = (registerResult.data ?? []).filter((row) => row.project_id === projectId);
     return {
       id: projectId,
@@ -372,7 +388,9 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
             name: String(building.name),
             description: String(building.description ?? "Projectgebouw"),
             progress: latestProgress ? Number(latestProgress.progress_percent) : progress,
-            openIssues: (actionResult.data ?? []).filter((row) => row.building_id === buildingId).length,
+            openIssues: (actionResult.data ?? []).filter((row) => row.building_id === buildingId).length
+              + buildingFindings.filter((row) => !isSettledStatus(row.status)).length
+              + (worklistRegisterResult.data ?? []).filter((row) => row.building_id === buildingId).length,
             issueCount: buildingFindings.filter((row) => row.finding_type !== "ncr").length,
             ncrCount: buildingFindings.filter((row) => row.finding_type === "ncr").length,
             inspectionCount: (inspectionResult.data ?? []).filter((row) => row.building_id === buildingId).length,

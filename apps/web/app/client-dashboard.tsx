@@ -28,6 +28,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
+import { isOpenItem } from "@/lib/actions/action-center.mjs";
+import { isWorklistRegister, summarizeOpenWork, workItemFromAction, workItemFromFinding, workItemFromRegister } from "@/lib/actions/open-work.mjs";
 import { getCachedProjectSnapshot, cacheProjectSnapshot } from "@/lib/offline/project-cache";
 import { loadProjectFileObjectUrl } from "@/lib/storage/gateway";
 import type { ProjectRecentPhoto } from "@/lib/supabase/data";
@@ -73,6 +75,7 @@ type DashboardAction = {
   title: string;
   status: string;
   priority: string;
+  due_at?: string | null;
 };
 
 type DashboardWeather = {
@@ -188,7 +191,8 @@ function MetricCard({
 }: {
   icon: React.ReactNode;
   label: string;
-  value: number;
+  /** null while the project's own count is still on its way: a dash, never a false zero. */
+  value: number | null;
   detail: string;
   tone: "teal" | "orange" | "blue" | "violet";
   onClick: () => void;
@@ -198,7 +202,7 @@ function MetricCard({
       <span className="overview-metric-icon">{icon}</span>
       <span className="overview-metric-copy">
         <small>{label}</small>
-        <strong>{value}</strong>
+        <strong>{value ?? "–"}</strong>
         <em>{detail}</em>
       </span>
       <ArrowRight size={15} />
@@ -268,27 +272,45 @@ export function ClientDashboard({
   const [search, setSearch] = useState("");
   // Shared with the top bar so both show the same reading from one request.
   const { weather: liveWeather, error: weatherError, loading: weatherLoading, reload: loadLiveWeather } = useLiveProjectWeather(projectLocation);
-  const openItems = actions.filter((action) => !["verified", "cancelled"].includes(action.status));
   const completedItems = actions.filter((action) => ["verified", "cancelled"].includes(action.status));
-  const urgentItems = openItems.filter((action) => ["high", "critical"].includes(action.priority));
-  const inspections = entries.filter((entry) => entry.kind === "inspection");
-  // The quality count is the project's findings and NCRs, not only the ones typed in as a daily
-  // record today: an issue written on the Issues form never was a daily record.
-  const qualityCounts = useQuery({
-    queryKey: ["project-operations", projectId, "quality-counts"],
+  // Every number on this screen is the project's, not today's timeline: an issue written on the
+  // Issues form never was a daily record, and an inspection from last week is still an inspection.
+  // Open work is read the way the action centre reads it (actions, findings/NCRs and the
+  // registers with a deadline), so the two screens cannot disagree about what is open.
+  const projectCounts = useQuery({
+    queryKey: ["project-operations", projectId, "overview-counts"],
     enabled: Boolean(client),
     staleTime: 30_000,
     queryFn: async () => {
-      const result = await client!.from("findings").select("status,finding_type").eq("project_id", projectId).limit(1000);
-      if (result.error) throw result.error;
-      const open = (result.data ?? []).filter((row) => !["verified", "closed", "cancelled", "rejected"].includes(row.status));
-      return { open: open.length, ncr: open.filter((row) => row.finding_type === "ncr").length };
+      const [findings, registers, inspectionCount, photoCount] = await Promise.all([
+        client!.from("findings").select("id,finding_number,title,status,finding_type,priority,due_at,issue_management").eq("project_id", projectId).limit(1000),
+        client!.from("project_register_entries").select("id,entry_number,title,status,register_type,due_at,details").eq("project_id", projectId).limit(2000),
+        client!.from("inspections").select("id", { count: "exact", head: true }).eq("project_id", projectId),
+        client!.from("files").select("id", { count: "exact", head: true }).eq("project_id", projectId).neq("status", "deleted").like("mime_type", "image/%"),
+      ]);
+      if (findings.error) throw findings.error;
+      if (registers.error) throw registers.error;
+      if (inspectionCount.error) throw inspectionCount.error;
+      if (photoCount.error) throw photoCount.error;
+      return {
+        findings: findings.data ?? [],
+        registers: (registers.data ?? []).filter(isWorklistRegister),
+        inspections: inspectionCount.count ?? 0,
+        photos: photoCount.count ?? 0,
+      };
     },
   });
-  const issues = entries.filter((entry) => entry.kind === "finding" || entry.badgeTone === "red");
-  const qualityOpen = qualityCounts.data?.open ?? issues.length;
-  const qualityNcr = qualityCounts.data?.ncr ?? 0;
-  const photoEntries = entries.filter((entry) => entry.kind === "photo");
+  const workItems = useMemo(() => [
+    ...actions.map(workItemFromAction),
+    ...(projectCounts.data?.findings ?? []).map(workItemFromFinding),
+    ...(projectCounts.data?.registers ?? []).map(workItemFromRegister),
+  ], [actions, projectCounts.data]);
+  const openWork = useMemo(() => summarizeOpenWork(workItems), [workItems]);
+  const openFindings = (projectCounts.data?.findings ?? []).filter((row) => isOpenItem(row));
+  const qualityOpen = openFindings.length;
+  const qualityNcr = openFindings.filter((row) => row.finding_type === "ncr").length;
+  const inspectionTotal = projectCounts.data?.inspections ?? 0;
+  const photoTotal = projectCounts.data?.photos ?? 0;
   const workEntries = entries.filter((entry) => entry.kind === "activity");
   const completion = actions.length ? Math.round((completedItems.length / actions.length) * 100) : 0;
 
@@ -442,7 +464,7 @@ export function ClientDashboard({
             <span className="sr-only">{text("Search recent project records", "Doorzoek recente projectregistraties")}</span>
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text("Search today", "Zoek in vandaag")} />
           </label>
-          <button className="overview-icon-button" type="button" aria-label={text("Notifications", "Meldingen")} onClick={openActions}><Bell size={17} />{urgentItems.length ? <i /> : null}</button>
+          <button className="overview-icon-button" type="button" aria-label={text("Notifications", "Meldingen")} onClick={openActions}><Bell size={17} />{openWork.escalated ? <i /> : null}</button>
           {/* The day in its order: start it, answer the day's questions, check the report.
               The built-in guide and the report screen both point here. */}
           {canWriteDay && !dayStarted && openProjectStart ? <button className="overview-icon-button" type="button" aria-label={text("Start today", "Werkdag starten")} title={text("Start today", "Werkdag starten")} onClick={openProjectStart}><CloudSun size={17} /></button> : null}
@@ -467,10 +489,10 @@ export function ClientDashboard({
         <>
 
         <div className="overview-metrics">
-          <MetricCard icon={<FileCheck2 size={21} />} label={text("Open follow-up", "Open opvolging")} value={openItems.length} detail={`${urgentItems.length} ${text("high priority", "hoge prioriteit")}`} tone="teal" onClick={openActions} />
-          <MetricCard icon={<AlertTriangle size={21} />} label={text("Quality issues", "Kwaliteitspunten")} value={qualityOpen} detail={qualityNcr ? `${qualityNcr} NCR` : text("Open", "Open")} tone="orange" onClick={openActions} />
-          <MetricCard icon={<ClipboardCheck size={21} />} label={text("Inspections", "Inspecties")} value={inspections.length} detail={text("Recorded", "Vastgelegd")} tone="blue" onClick={openWorkspace} />
-          <MetricCard icon={<Camera size={21} />} label={text("Pictures", "Foto's")} value={photoEntries.length} detail={text("With location", "Met locatie")} tone="violet" onClick={() => openRecord("files", "")} />
+          <MetricCard icon={<FileCheck2 size={21} />} label={text("Open follow-up", "Open opvolging")} value={projectCounts.data ? openWork.open : null} detail={`${openWork.urgent} ${text("high priority", "hoge prioriteit")}`} tone="teal" onClick={openActions} />
+          <MetricCard icon={<AlertTriangle size={21} />} label={text("Quality issues", "Kwaliteitspunten")} value={projectCounts.data ? qualityOpen : null} detail={qualityNcr ? `${qualityNcr} NCR` : text("Open", "Open")} tone="orange" onClick={openActions} />
+          <MetricCard icon={<ClipboardCheck size={21} />} label={text("Inspections", "Inspecties")} value={projectCounts.data ? inspectionTotal : null} detail={text("In project", "In project")} tone="blue" onClick={openWorkspace} />
+          <MetricCard icon={<Camera size={21} />} label={text("Pictures", "Foto's")} value={projectCounts.data ? photoTotal : null} detail={text("In project", "In project")} tone="violet" onClick={() => openRecord("files", "")} />
         </div>
 
         <div className="overview-primary-grid">
@@ -500,22 +522,22 @@ export function ClientDashboard({
           <article className="overview-panel overview-priority-panel">
             <header className="overview-panel-heading">
               <div><span>{text("Attention", "Aandacht")}</span><h2>{text("Priority queue", "Prioriteitenlijst")}</h2></div>
-              <span className={`overview-health ${urgentItems.length ? "attention" : "stable"}`}>{urgentItems.length ? text("Action needed", "Actie nodig") : text("Under control", "Onder controle")}</span>
+              {projectCounts.data ? <span className={`overview-health ${openWork.escalated ? "attention" : "stable"}`}>{openWork.escalated ? text("Action needed", "Actie nodig") : text("Under control", "Onder controle")}</span> : null}
             </header>
             <div className="overview-progress">
               <div><span>{text("Action completion", "Actievoortgang")}</span><strong>{completion}%</strong></div>
               <span><i style={{ width: `${completion}%` }} /></span>
-              <small>{completedItems.length} {text("completed", "afgerond")} · {openItems.length} open</small>
+              <small>{completedItems.length} {text("completed", "afgerond")} · {actions.length - completedItems.length} open</small>
             </div>
             <div className="overview-priority-list">
-              {(urgentItems.length ? urgentItems : openItems).slice(0, 4).map((action) => (
-                <button type="button" onClick={openActions} key={action.id}>
-                  <span className={`priority-dot ${action.priority}`} />
-                  <span><strong>{action.title}</strong><small>{priorityText(action.priority, text)} · {statusText(action.status, text)}</small></span>
+              {openWork.top.map((item) => (
+                <button type="button" onClick={openActions} key={`${item.source}:${item.id}`}>
+                  <span className={`priority-dot ${item.priority}`} />
+                  <span><strong>{item.title}</strong><small>{[item.reference, priorityText(item.priority, text), statusText(item.status, text)].filter(Boolean).join(" · ")}</small></span>
                   <ArrowRight size={14} />
                 </button>
               ))}
-              {!openItems.length ? <div className="overview-clear-state"><CheckCircle2 size={22} /><span><strong>{text("No open actions", "Geen open acties")}</strong></span></div> : null}
+              {projectCounts.data && !openWork.open ? <div className="overview-clear-state"><CheckCircle2 size={22} /><span><strong>{text("No open actions", "Geen open acties")}</strong></span></div> : null}
             </div>
             <button className="overview-text-link" type="button" onClick={openActions}>{text("All actions", "Alle acties")} <ArrowRight size={14} /></button>
           </article>
