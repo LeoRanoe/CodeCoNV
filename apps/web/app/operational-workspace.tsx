@@ -3843,17 +3843,9 @@ function ProjectOperations({
                         <summary>{text("Change author", "Opsteller wijzigen")}</summary>
                         <label className="form-field">
                           <span>{text("Document author", "Opsteller document")}</span>
-                          <select value={documentIssuerOptions.includes(registerForm.issuerName.trim() || currentUserName) ? registerForm.issuerName.trim() || currentUserName : "__other__"} onChange={(event) => setRegisterForm({ ...registerForm, issuerName: event.target.value === "__other__" ? "" : event.target.value })}>
-                            {documentIssuerOptions.map((name) => <option value={name} key={name}>{name}</option>)}
-                            <option value="__other__">{text("Someone else", "Iemand anders")}</option>
-                          </select>
+                          <input list="controlled-document-author-options" value={registerForm.issuerName || currentUserName} onChange={(event) => setRegisterForm({ ...registerForm, issuerName: event.target.value })} />
+                          <datalist id="controlled-document-author-options">{documentIssuerOptions.map((name) => <option value={name} key={name} />)}</datalist>
                         </label>
-                        {!documentIssuerOptions.includes(registerForm.issuerName.trim() || currentUserName) ? (
-                          <label className="form-field">
-                            <span>{text("Author name", "Naam opsteller")}</span>
-                            <input value={registerForm.issuerName} onChange={(event) => setRegisterForm({ ...registerForm, issuerName: event.target.value })} />
-                          </label>
-                        ) : null}
                       </details>
                     ) : null}
                   </div>
