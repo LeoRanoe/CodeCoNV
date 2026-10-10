@@ -1,6 +1,6 @@
 // Field shell cache. Bump the version on every change to this file: the activate
-// handler deletes every other cache, so a new version wipes what the old one stored.
-const CACHE = "codeco-field-shell-v4";
+// handler deletes older CODECO shell caches, so a new version wipes what the old one stored.
+const CACHE = "codeco-field-shell-v5";
 
 // Only content-addressed or stable assets may be served from the cache. Documents are
 // never cache-first: doing that kept a deployed change invisible until the browser
@@ -35,7 +35,7 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)));
+    await Promise.all(keys.filter((key) => key.startsWith("codeco-field-shell-") && key !== CACHE).map((key) => caches.delete(key)));
     // Navigation preload would race the timeout below and answer with a hanging network
     // response; the stored document has to win in that case.
     if (self.registration.navigationPreload) await self.registration.navigationPreload.disable().catch(() => undefined);
@@ -62,7 +62,11 @@ self.addEventListener("message", (event) => {
     event.waitUntil((async () => {
       const cache = await caches.open(CACHE);
       const missing = [];
-      for (const url of event.data.urls.slice(0, 400)) {
+      for (const candidate of event.data.urls.slice(0, 400)) {
+        let parsed;
+        try { parsed = new URL(candidate, self.location.origin); } catch { continue; }
+        if (parsed.origin !== self.location.origin || !(parsed.pathname.startsWith("/_next/static/") || STATIC_SHELL.includes(parsed.pathname))) continue;
+        const url = parsed.href;
         if (!(await cache.match(url))) missing.push(url);
       }
       await Promise.allSettled(missing.map((url) => cache.add(new Request(url, { credentials: "same-origin" }))));
@@ -111,7 +115,7 @@ self.addEventListener("fetch", (event) => {
         const response = await networkWithTimeout(request, DOCUMENT_NETWORK_TIMEOUT);
         if (request.mode === "navigate" && SHELL_DOCUMENTS.includes(url.pathname) && response.ok) {
           const copy = response.clone();
-          void caches.open(CACHE).then((cache) => cache.put(url.pathname, copy));
+          await caches.open(CACHE).then((cache) => cache.put(url.pathname, copy)).catch(() => undefined);
         }
         return response;
       } catch {
@@ -131,7 +135,7 @@ self.addEventListener("fetch", (event) => {
     || /\.(?:png|jpg|jpeg|webp|svg|ico|woff2?)$/.test(url.pathname);
   if (!cacheable) return;
   event.respondWith(caches.match(request).then((cached) => cached || fetch(request).then((response) => {
-    if (response.ok) void caches.open(CACHE).then((cache) => cache.put(request, response.clone()));
+    if (response.ok) event.waitUntil(caches.open(CACHE).then((cache) => cache.put(request, response.clone())).catch(() => undefined));
     return response;
   }).catch((error) => {
     // An asset that was never fetched cannot be invented; failing loudly is better than
@@ -141,7 +145,9 @@ self.addEventListener("fetch", (event) => {
 });
 
 self.addEventListener("push", (event) => {
-  const payload = event.data?.json?.() ?? {};
+  let payload = {};
+  try { payload = event.data?.json?.() ?? {}; } catch { /* Non-JSON push still shows a generic notification. */ }
+  if (!payload || typeof payload !== "object") payload = {};
   event.waitUntil(self.registration.showNotification(payload.title || "CODECO Supervisie", {
     body: payload.body || "Er is een nieuwe projectmelding.",
     icon: "/icon-192.png",

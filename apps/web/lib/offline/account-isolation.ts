@@ -73,7 +73,7 @@ export async function prepareOfflineStorageForUser(userId: string) {
     await purgeReadableOfflineData();
   }
   if (!owner) {
-    for (const store of userOwnedStores) {
+    for (const store of [...userOwnedStores, "files"] as const) {
       const items = await idbGetAllUnscoped<Owned>(store).catch(() => [] as Owned[]);
       for (const item of items) {
         if (!item.ownerUserId) await idbPut(store, { ...item, ownerUserId: userId });

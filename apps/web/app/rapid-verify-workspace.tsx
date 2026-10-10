@@ -15,7 +15,10 @@ import {
   X,
 } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { copyText } from "@/lib/browser/clipboard";
+import { extractPdfPages } from "@/lib/rapid-verify/pdf-pages.mjs";
+import { normalizeEvidence, searchDocuments, searchTerms } from "@/lib/rapid-verify/search.mjs";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
@@ -35,66 +38,34 @@ type IndexedDocument = {
 };
 
 type VerifyResult = {
+  documentId: string;
   document: string;
   page: number;
   excerpt: string;
   score: number;
 };
 
-const stopWords = new Set([
-  "aan", "als", "bij", "dat", "de", "den", "der", "die", "dit", "een", "en", "het", "hoe",
-  "in", "is", "kan", "met", "naar", "of", "om", "op", "te", "uit", "van", "voor", "wat", "welke",
-  "the", "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how", "in", "is", "of",
-  "on", "or", "that", "the", "this", "to", "what", "which", "with",
-]);
-
-function searchTerms(value: string) {
-  return [...new Set(
-    value
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .split(/[^a-z0-9]+/)
-      .filter((term) => term.length > 2 && !stopWords.has(term)),
-  )];
-}
-
-function excerptAround(text: string, terms: string[]) {
-  const compact = text.replace(/\s+/g, " ").trim();
-  if (compact.length <= 430) return compact;
-  const lower = compact.toLowerCase();
-  const firstIndex = terms
-    .map((term) => lower.indexOf(term))
-    .filter((index) => index >= 0)
-    .sort((left, right) => left - right)[0] ?? 0;
-  const start = Math.max(0, firstIndex - 120);
-  const end = Math.min(compact.length, start + 430);
-  return `${start > 0 ? "…" : ""}${compact.slice(start, end)}${end < compact.length ? "…" : ""}`;
-}
-
-async function indexFile(file: File): Promise<IndexedDocument> {
-  const id = `${file.name}:${file.size}:${file.lastModified}`;
-  const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+async function indexFile(file: File, signal: AbortSignal, onProgress: (page: number, total: number) => void): Promise<IndexedDocument> {
+  if (!file.size || file.size > 25 * 1024 * 1024) throw new Error("Choose a non-empty document up to 25 MB.");
+  const data = await file.arrayBuffer();
+  signal.throwIfAborted();
+  const bytes = new Uint8Array(data);
+  const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  const id = Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
   if (!isPdf) {
-    const text = await file.text();
-    return { id, name: file.name, kind: "text", pages: [{ page: 1, text }] };
+    if (!/\.(txt|md)$/i.test(file.name) && !file.type.startsWith("text/")) throw new Error("Only PDF or plain text sources are supported.");
+    if (bytes.includes(0)) throw new Error("This file contains binary data, not plain text.");
+    const content = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    if (!content.trim() || content.length > 2_000_000) throw new Error("Text source is empty or too large. Split it first.");
+    return { id, name: file.name, kind: "text", pages: [{ page: 1, text: content }] };
   }
-
+  if (!new TextDecoder().decode(bytes.slice(0, 1024)).includes("%PDF-")) throw new Error("This file is not a PDF document.");
   const pdfjs = await import("pdfjs-dist");
+  signal.throwIfAborted();
   pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
-  const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
-  const pdf = await task.promise;
-  const pages: IndexedPage[] = [];
-  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-    const page = await pdf.getPage(pageNumber);
-    const content = await page.getTextContent();
-    const text = content.items
-      .map((item) => ("str" in item ? item.str : ""))
-      .join(" ")
-      .replace(/\s+/g, " ")
-      .trim();
-    pages.push({ page: pageNumber, text });
-  }
+  const task = pdfjs.getDocument({ data: bytes });
+  const pages = await extractPdfPages(task, { signal, onProgress });
   return { id, name: file.name, kind: "pdf", pages };
 }
 
@@ -114,53 +85,72 @@ export function RapidVerifyWorkspace({
   const [documents, setDocuments] = useState<IndexedDocument[]>([]);
   const [question, setQuestion] = useState("");
   const [comparison, setComparison] = useState("");
-  const [results, setResults] = useState<VerifyResult[]>([]);
+  const [storedResults, setResults] = useState<VerifyResult[]>([]);
   const [busy, setBusy] = useState(false);
   const [loadingProjectFileId, setLoadingProjectFileId] = useState("");
   const [error, setError] = useState("");
-  const [searched, setSearched] = useState(false);
+  const [verifiedInput, setVerifiedInput] = useState<{ documents: IndexedDocument[]; query: string; mode: typeof mode } | null>(null);
+  const searched = verifiedInput?.documents === documents && verifiedInput.query === (mode === "question" ? question : comparison) && verifiedInput.mode === mode;
+  const results = useMemo(() => searched ? storedResults : [], [searched, storedResults]);
+  const [progress, setProgress] = useState("");
+  const [projectSourceIds, setProjectSourceIds] = useState<Record<string, string>>({});
+  const indexingRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; indexingRef.current?.abort(); };
+  }, []);
 
   const indexedPages = useMemo(
     () => documents.flatMap((document) => document.pages.map((page) => ({ document, page }))),
     [documents],
   );
 
-  const receiveFiles = async (files: FileList | null) => {
-    if (!files?.length) return;
+  const indexSources = async (sources: Array<{ file?: File; record?: FileRecord }>) => {
+    if (indexingRef.current || !sources.length) return;
+    const controller = new AbortController();
+    indexingRef.current = controller;
     setBusy(true);
     setError("");
+    const failures: string[] = [];
     try {
-      const indexed = await Promise.all([...files].map(indexFile));
-      setDocuments((current) => {
-        const merged = new Map(current.map((document) => [document.id, document]));
-        indexed.forEach((document) => merged.set(document.id, document));
-        return [...merged.values()];
-      });
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : text("The document could not be indexed.", "Het document kon niet worden geindexeerd."));
+      for (const [position, source] of sources.slice(0, 25).entries()) {
+        controller.signal.throwIfAborted();
+        const name = source.file?.name ?? source.record!.original_name;
+        setProgress(`${position + 1} / ${Math.min(25, sources.length)} · ${name}`);
+        try {
+          const blob = source.file ?? await loadProjectFileBlob(client!, source.record!.id);
+          controller.signal.throwIfAborted();
+          const file = source.file ?? new File([blob], name, { type: source.record!.mime_type });
+          const indexed = await indexFile(file, controller.signal, (page, total) => {
+            if (mountedRef.current && !controller.signal.aborted) setProgress(`${name} · ${page} / ${total}`);
+          });
+          controller.signal.throwIfAborted();
+          if (!mountedRef.current) return;
+          setDocuments((current) => {
+            const merged = new Map(current.map((document) => [document.id, document]));
+            merged.set(indexed.id, indexed);
+            return [...merged.values()];
+          });
+          if (source.record) setProjectSourceIds((current) => ({ ...current, [source.record!.id]: indexed.id }));
+        } catch (caught) {
+          if (controller.signal.aborted) return;
+          failures.push(`${name}: ${caught instanceof Error ? caught.message : "Indexing failed"}`);
+        }
+      }
+      if (sources.length > 25) failures.push("Only the first 25 sources were processed. Add the remaining sources separately.");
+      if (mountedRef.current) setError(failures.join(" · "));
     } finally {
-      setBusy(false);
+      if (indexingRef.current === controller) indexingRef.current = null;
+      if (mountedRef.current) { setBusy(false); setLoadingProjectFileId(""); setProgress(""); }
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
-
+  const receiveFiles = (files: FileList | null) => indexSources(files ? [...files].map((file) => ({ file })) : []);
   const addProjectFile = async (file: FileRecord) => {
-    if (!client) return;
+    if (!client || indexingRef.current) return;
     setLoadingProjectFileId(file.id);
-    setError("");
-    try {
-      const blob = await loadProjectFileBlob(client, file.id);
-      const indexed = await indexFile(new File([blob], file.original_name, { type: file.mime_type }));
-      setDocuments((current) => {
-        const merged = new Map(current.map((document) => [document.id, document]));
-        merged.set(indexed.id, indexed);
-        return [...merged.values()];
-      });
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : text("The project document could not be indexed.", "Het projectdocument kon niet worden geïndexeerd."));
-    } finally {
-      setLoadingProjectFileId("");
-    }
+    await indexSources([{ record: file }]);
   };
 
   const availableProjectFiles = projectFiles.filter((file) =>
@@ -168,57 +158,20 @@ export function RapidVerifyWorkspace({
     && (file.mime_type === "application/pdf" || file.mime_type.startsWith("text/") || /\.(pdf|txt|md)$/i.test(file.original_name)),
   );
   const indexExistingSources = async () => {
-    if (!client || !availableProjectFiles.length) return;
-    setBusy(true);
-    setError("");
-    try {
-      for (const projectFile of availableProjectFiles.filter((candidate) => !documents.some((document) => document.name === candidate.original_name)).slice(0, 25)) {
-        const blob = await loadProjectFileBlob(client, projectFile.id);
-        const indexed = await indexFile(new File([blob], projectFile.original_name, { type: projectFile.mime_type }));
-        setDocuments((current) => {
-          const merged = new Map(current.map((document) => [document.id, document]));
-          merged.set(indexed.id, indexed);
-          return [...merged.values()];
-        });
-      }
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : text("Existing project sources could not all be indexed.", "Niet alle bestaande projectbronnen konden worden geïndexeerd."));
-    } finally {
-      setBusy(false);
-    }
+    if (!client) return;
+    await indexSources(availableProjectFiles.filter((file) => !projectSourceIds[file.id] || !documents.some((document) => document.id === projectSourceIds[file.id])).map((record) => ({ record })));
   };
 
   const verify = () => {
-    const sourceText = mode === "question" ? question : comparison;
-    const terms = searchTerms(sourceText);
-    setSearched(true);
-    if (!terms.length || !indexedPages.length) {
-      setResults([]);
-      return;
-    }
-    const ranked = indexedPages
-      .map(({ document, page }) => {
-        const lower = page.text.toLowerCase();
-        const matched = terms.filter((term) => lower.includes(term));
-        const score = matched.reduce((total, term) => total + lower.split(term).length - 1, 0);
-        return {
-          document: document.name,
-          page: page.page,
-          excerpt: excerptAround(page.text, matched.length ? matched : terms),
-          score,
-        };
-      })
-      .filter((result) => result.score > 0 && result.excerpt)
-      .sort((left, right) => right.score - left.score)
-      .slice(0, 4);
-    setResults(ranked);
+    setVerifiedInput({ documents, query: mode === "question" ? question : comparison, mode });
+    setResults(searchDocuments(documents, mode === "question" ? question : comparison));
   };
 
   const coverage = useMemo(() => {
     if (mode !== "compare" || !comparison.trim() || !results.length) return 0;
     const terms = searchTerms(comparison);
     if (!terms.length) return 0;
-    const evidence = results.map((result) => result.excerpt.toLowerCase()).join(" ");
+    const evidence = results.map((result) => normalizeEvidence(result.excerpt)).join(" ");
     return Math.round((terms.filter((term) => evidence.includes(term)).length / terms.length) * 100);
   }, [comparison, mode, results]);
 
@@ -246,6 +199,8 @@ export function RapidVerifyWorkspace({
         <input ref={fileInputRef} className="visually-hidden" aria-hidden="true" tabIndex={-1} type="file" accept=".pdf,.txt,.md,text/plain,application/pdf" multiple onChange={(event) => void receiveFiles(event.currentTarget.files)} />
       </header>
 
+      <p className="rapid-safety-note">{text("Indexed sources stay in this tab. Add them again after a refresh.", "Geïndexeerde bronnen blijven in dit tabblad. Voeg ze na verversen opnieuw toe.")}</p>
+      {progress ? <p role="status">{progress}</p> : null}
       {error ? <div className="operation-alert error"><AlertTriangle size={17} /> {error}</div> : null}
 
       <section className="rapid-verify-layout">
@@ -254,7 +209,7 @@ export function RapidVerifyWorkspace({
             <span><BookOpenCheck size={19} /></span>
             <div><strong>{text("Project sources", "Projectbronnen")}</strong><small>{indexedPages.length} {text("indexed pages", "geindexeerde pagina's")}</small></div>
           </div>
-          {canAddSources ? <button className="rapid-upload-zone" type="button" onClick={() => fileInputRef.current?.click()}>
+          {canAddSources ? <button className="rapid-upload-zone" type="button" disabled={busy} onClick={() => fileInputRef.current?.click()}>
             <Upload size={20} />
             <strong>{text("Upload PDF or text", "Upload PDF of tekst")}</strong>
             <small>{text("Drawings · tech specs · contract", "Tekeningen · tech specs · contract")}</small>
@@ -262,10 +217,10 @@ export function RapidVerifyWorkspace({
           {availableProjectFiles.length ? (
             <div className="rapid-project-library">
               <span>{text("Available in Project Docs", "Beschikbaar in Project Docs")}</span>
-              <button className="rapid-index-all" type="button" disabled={busy || availableProjectFiles.every((file) => documents.some((document) => document.name === file.original_name))} onClick={() => void indexExistingSources()}><BookOpenCheck size={14} /><span><strong>{text("Use existing sources", "Gebruik bestaande bronnen")}</strong><small>{text("Index approved PDFs and text files", "Indexeer goedgekeurde pdf's en tekstbestanden")}</small></span></button>
+              <button className="rapid-index-all" type="button" disabled={busy || availableProjectFiles.every((file) => documents.some((document) => document.id === projectSourceIds[file.id]))} onClick={() => void indexExistingSources()}><BookOpenCheck size={14} /><span><strong>{text("Use existing sources", "Gebruik bestaande bronnen")}</strong><small>{text("Index approved PDFs and text files", "Indexeer goedgekeurde pdf's en tekstbestanden")}</small></span></button>
               {availableProjectFiles.slice(0, 8).map((file) => {
-                const indexed = documents.some((document) => document.name === file.original_name);
-                return <button className={indexed ? "indexed" : ""} type="button" disabled={indexed || Boolean(loadingProjectFileId)} onClick={() => void addProjectFile(file)} key={file.id}><FileText size={14} /><span><strong>{file.original_name}</strong><small>{indexed ? text("Indexed", "Geïndexeerd") : text("Use as source", "Gebruik als bron")}</small></span>{loadingProjectFileId === file.id ? <Loader2 className="spin" size={13} /> : indexed ? <CheckCircle2 size={13} /> : <Plus size={13} />}</button>;
+                const indexed = documents.some((document) => document.id === projectSourceIds[file.id]);
+                return <button className={indexed ? "indexed" : ""} type="button" disabled={indexed || busy} onClick={() => void addProjectFile(file)} key={file.id}><FileText size={14} /><span><strong>{file.original_name}</strong><small>{indexed ? text("Indexed", "Geïndexeerd") : text("Use as source", "Gebruik als bron")}</small></span>{loadingProjectFileId === file.id ? <Loader2 className="spin" size={13} /> : indexed ? <CheckCircle2 size={13} /> : <Plus size={13} />}</button>;
               })}
             </div>
           ) : null}
@@ -283,8 +238,8 @@ export function RapidVerifyWorkspace({
 
         <div className="rapid-query-panel">
           <div className="rapid-mode-tabs" role="tablist" aria-label={text("Verification mode", "Verificatiemodus")}>
-            <button className={mode === "question" ? "active" : ""} type="button" role="tab" aria-selected={mode === "question"} onClick={() => { setMode("question"); setResults([]); setSearched(false); }}><ShieldQuestion size={17} /> {text("Ask project documents", "Vraag projectdocumenten")}</button>
-            <button className={mode === "compare" ? "active" : ""} type="button" role="tab" aria-selected={mode === "compare"} onClick={() => { setMode("compare"); setResults([]); setSearched(false); }}><FileSearch size={17} /> {text("Compare specification", "Vergelijk specificatie")}</button>
+            <button className={mode === "question" ? "active" : ""} type="button" role="tab" aria-selected={mode === "question"} onClick={() => { setMode("question"); setResults([]); setVerifiedInput(null); }}><ShieldQuestion size={17} /> {text("Ask project documents", "Vraag projectdocumenten")}</button>
+            <button className={mode === "compare" ? "active" : ""} type="button" role="tab" aria-selected={mode === "compare"} onClick={() => { setMode("compare"); setResults([]); setVerifiedInput(null); }}><FileSearch size={17} /> {text("Compare specification", "Vergelijk specificatie")}</button>
           </div>
 
           {mode === "question" ? (
@@ -301,7 +256,7 @@ export function RapidVerifyWorkspace({
             </label>
           )}
 
-          <button className="primary-button rapid-run-button" type="button" disabled={!documents.length || !(mode === "question" ? question.trim() : comparison.trim())} onClick={verify}>
+          <button className="primary-button rapid-run-button" type="button" disabled={busy || !documents.length || !(mode === "question" ? question.trim() : comparison.trim())} onClick={verify}>
             <Search size={16} /> {mode === "question" ? text("Find answer in sources", "Vind antwoord in bronnen") : text("Verify against sources", "Toets aan bronnen")}
           </button>
 
@@ -314,8 +269,8 @@ export function RapidVerifyWorkspace({
 
           <div className="rapid-results">
             {results.map((result) => (
-              <article key={`${result.document}:${result.page}`}>
-                <header><span>{result.document} · {text("page", "pagina")} {result.page}</span><button type="button" onClick={() => void navigator.clipboard.writeText(result.excerpt)} aria-label={text("Copy passage", "Kopieer passage")}><Copy size={14} /></button></header>
+              <article key={`${result.documentId}:${result.page}`}>
+                <header><span>{result.document} · {text("page", "pagina")} {result.page}</span><button type="button" onClick={() => { void copyText(result.excerpt).catch(() => setError(text("Copy failed. Select the passage and copy manually.", "Kopiëren mislukt. Selecteer de passage en kopieer handmatig."))); }} aria-label={text("Copy passage", "Kopieer passage")}><Copy size={14} /></button></header>
                 <p>{result.excerpt}</p>
               </article>
             ))}

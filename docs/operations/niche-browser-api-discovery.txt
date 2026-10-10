@@ -1,0 +1,616 @@
+apps/web/public/sw.js:145:  event.waitUntil(self.registration.showNotification(payload.title || "CODECO Supervisie", {
+apps/web/public/sw.js:155:function safeNotificationDestination(value) {
+apps/web/public/sw.js:167:  const destination = safeNotificationDestination(event.notification.data?.url);
+apps/web/lib\drawings\viewport.mjs:59:export function pointerLiftPlacesPin({ tool, activePointerCount, gesture }) {
+apps/web/lib\drawings\viewport.mjs:65: * Whether a pin that was touched actually has to be written back. Selecting a pin is a tap
+apps/web/lib\i18n.tsx:17:  window.addEventListener("storage", callback);
+apps/web/lib\i18n.tsx:18:  window.addEventListener("codeco-language-change", callback);
+apps/web/lib\i18n.tsx:20:    window.removeEventListener("storage", callback);
+apps/web/lib\i18n.tsx:21:    window.removeEventListener("codeco-language-change", callback);
+apps/web/lib\i18n.tsx:35:  const chosen = window.localStorage.getItem(chosenLanguageKey);
+apps/web/lib\i18n.tsx:48:    document.documentElement.lang = language;
+apps/web/lib\i18n.tsx:55:      window.localStorage.setItem(chosenLanguageKey, nextLanguage);
+apps/web/lib\i18n.tsx:56:      window.localStorage.setItem("codeco-language", nextLanguage);
+apps/web/lib\i18n.tsx:57:      window.dispatchEvent(new Event("codeco-language-change"));
+apps/web/lib\boq\csv.ts:90:  const url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
+apps/web/lib\boq\csv.ts:91:  const anchor = document.createElement("a");
+apps/web/lib\images\field-image.mjs:100: * placed in it — stays exactly where it was. An image that already fits is never touched.
+apps/web/lib\images\exif-direction.mjs:67:  // LONG and SHORT sit inside the entry itself and are used for the GPS directory pointer.
+apps/web/lib\images\compass.ts:34:  if (watching || typeof window === "undefined" || typeof window.addEventListener !== "function") return;
+apps/web/lib\images\compass.ts:36:  const permission = (window.DeviceOrientationEvent ?? {}) as unknown as PermissionCapableEvent;
+apps/web/lib\images\compass.ts:50:  window.addEventListener("deviceorientationabsolute", handleOrientation, true);
+apps/web/lib\images\compass.ts:51:  window.addEventListener("deviceorientation", handleOrientation, true);
+apps/web/lib\images\compass.ts:57:  window.removeEventListener("deviceorientationabsolute", handleOrientation, true);
+apps/web/lib\images\compass.ts:58:  window.removeEventListener("deviceorientation", handleOrientation, true);
+apps/web/lib\forms\controlled-project-documents.ts:109:    schema: "codeco.controlled-document.v1",
+apps/web/lib\notifications\push.ts:16:export type NotificationPushResult = { configured: boolean; queued: number; sent: number; failed: number; skipped: number; revoked: number };
+apps/web/lib\notifications\push.ts:44:    await webpush.sendNotification({
+apps/web/lib\notifications\push.ts:58:export async function sendPendingPushNotifications(admin: SupabaseClient, projectId?: string): Promise<NotificationPushResult> {
+apps/web/lib\notifications\push.ts:60:  const result: NotificationPushResult = { configured: config.configured, queued: 0, sent: 0, failed: 0, skipped: 0, revoked: 0 };
+apps/web/lib\notifications\push.ts:105:        await webpush.sendNotification({ endpoint: String(subscription.endpoint), keys: { p256dh: String(subscription.p256dh), auth: String(subscription.auth_secret) } }, JSON.stringify({
+apps/web/lib\notifications\email.ts:5:type QueuedNotification = {
+apps/web/lib\notifications\email.ts:15:export type NotificationEmailResult = {
+apps/web/lib\notifications\email.ts:30:export function isNotificationEmailConfigured() {
+apps/web/lib\notifications\email.ts:70:export async function sendPendingNotificationEmails(admin: SupabaseClient): Promise<NotificationEmailResult> {
+apps/web/lib\notifications\email.ts:82:  const queue = (queueResult.data ?? []) as QueuedNotification[];
+apps/web/lib\notifications\email.ts:93:  const result: NotificationEmailResult = { configured: true, queued: queue.length, sent: 0, failed: 0, skipped: 0 };
+apps/web/lib\notifications\client.ts:4:export async function requestProjectNotificationDispatch(client: SupabaseClient, projectId: string) {
+apps/web/lib\notifications\client.ts:15:export const requestProjectNotificationEmailDispatch = requestProjectNotificationDispatch;
+apps/web/lib\notifications\push-client.ts:9:  const platform = navigator.userAgent || navigator.platform;
+apps/web/lib\notifications\push-client.ts:10:  return /iPad|iPhone|iPod/.test(platform) || (platform === "MacIntel" && navigator.maxTouchPoints > 1);
+apps/web/lib\notifications\push-client.ts:14:  return window.matchMedia?.("(display-mode: standalone)").matches
+apps/web/lib\notifications\push-client.ts:33:  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+apps/web/lib\notifications\push-client.ts:36:  if (Notification.permission === "denied") return "blocked";
+apps/web/lib\notifications\push-client.ts:39:  const registration = await navigator.serviceWorker.getRegistration("/");
+apps/web/lib\notifications\push-client.ts:45:export async function enablePushNotifications(client: SupabaseClient) {
+apps/web/lib\notifications\push-client.ts:48:  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) throw new Error("Deze browser ondersteunt geen pushmeldingen.");
+apps/web/lib\notifications\push-client.ts:49:  const permission = await Notification.requestPermission();
+apps/web/lib\notifications\push-client.ts:51:  await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+apps/web/lib\notifications\push-client.ts:52:  const registration = await navigator.serviceWorker.ready;
+apps/web/lib\offline\account-isolation.ts:19: *   localStorage). It can always be downloaded again, so it is thrown away whenever the
+apps/web/lib\offline\account-isolation.ts:42:    for (let index = 0; index < window.localStorage.length; index += 1) {
+apps/web/lib\offline\account-isolation.ts:43:      const key = window.localStorage.key(index);
+apps/web/lib\offline\account-isolation.ts:46:    for (const key of keys) window.localStorage.removeItem(key);
+apps/web/lib\offline\account-isolation.ts:48:    // Private browsing may block localStorage; then there is nothing stored to remove either.
+apps/web/lib\permissions\project-permissions.tsx:33:    const raw = window.localStorage.getItem(storageKey(userId, projectId));
+apps/web/lib\permissions\project-permissions.tsx:43:    window.localStorage.setItem(storageKey(userId, projectId), JSON.stringify(codes));
+apps/web/lib\navigation\app-history.ts:59:    const url = `${window.location.pathname}${screenToSearch(screen)}`;
+apps/web/lib\navigation\app-history.ts:60:    const current = window.history.state as HistoryEntry | null;
+apps/web/lib\navigation\app-history.ts:64:      window.history.replaceState({ codecoScreen: screen, codecoBelow: current?.codecoBelow ?? null } satisfies HistoryEntry, "", url);
+apps/web/lib\navigation\app-history.ts:75:        window.history.back();
+apps/web/lib\navigation\app-history.ts:78:      window.history.replaceState({ codecoScreen: screen, codecoBelow: below ?? null } satisfies HistoryEntry, "", url);
+apps/web/lib\navigation\app-history.ts:81:    window.history.pushState({ codecoScreen: screen, codecoBelow: previous } satisfies HistoryEntry, "", url);
+apps/web/lib\navigation\app-history.ts:95:    window.addEventListener("popstate", onPopState);
+apps/web/lib\navigation\app-history.ts:96:    return () => window.removeEventListener("popstate", onPopState);
+apps/web/lib\navigation\app-history.ts:119:    const state = window.history.state as { codecoOverlay?: number } | null;
+apps/web/lib\navigation\app-history.ts:125:      window.clearTimeout(pendingOverlayRemoval.timer);
+apps/web/lib\navigation\app-history.ts:130:      window.history.pushState({ codecoOverlay: id }, "");
+apps/web/lib\navigation\app-history.ts:133:    window.addEventListener("popstate", handlePop);
+apps/web/lib\navigation\app-history.ts:135:      window.removeEventListener("popstate", handlePop);
+apps/web/lib\navigation\app-history.ts:139:      const current = window.history.state as { codecoOverlay?: number } | null;
+apps/web/lib\navigation\app-history.ts:141:        const timer = window.setTimeout(() => {
+apps/web/lib\navigation\app-history.ts:143:          const now = window.history.state as { codecoOverlay?: number } | null;
+apps/web/lib\navigation\app-history.ts:144:          if (now?.codecoOverlay === id) window.history.back();
+apps/web/lib\signatures\handwritten-signature.mjs:3: * document. The app used to ask for a tick in a box, which says only that a checkbox was
+apps/web/lib\reports\controlled-document-pdf.tsx:182:        <Text style={styles.notice}>This PDF is generated from the controlled project register. Number, revision, project metadata, the author signature and the recorded response come from the central audit trail. A signature line stays blank until that human signatory confirms the document.</Text>
+apps/web/lib\reports\controlled-document-pdf.tsx:191:  const url = URL.createObjectURL(blob);
+apps/web/lib\reports\controlled-document-pdf.tsx:192:  const anchor = document.createElement("a");
+apps/web/lib\reports\controlled-document-pdf.tsx:196:  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+apps/web/lib\weather-client.ts:71:    const timer = window.setInterval(() => void refresh(trimmed, true), refreshIntervalMs);
+apps/web/lib\weather-client.ts:73:      window.clearInterval(timer);
+apps/web/lib\reports\controlled-document-docx.ts:159:            children: [new TextRun({ text: "This document is generated from the controlled project register. Number, revision, project metadata, the author's signature and the recorded response come from the central audit trail. A signature line stays blank until that human signatory confirms the document.", italics: true, color: "666666", size: 14 })],
+apps/web/lib\reports\daily-report-pdf.tsx:394:  const url = URL.createObjectURL(blob);
+apps/web/lib\reports\daily-report-pdf.tsx:395:  const link = document.createElement("a");
+apps/web/lib\reports\daily-report-pdf.tsx:399:  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+apps/web/lib\reports\docx-shared.ts:160:  const url = URL.createObjectURL(blob);
+apps/web/lib\reports\docx-shared.ts:161:  const link = document.createElement("a");
+apps/web/lib\reports\docx-shared.ts:165:  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+apps/web/lib\user-facing-error.ts:63:  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+apps/web/lib\reports\period-report-pdf.tsx:406:  const url = URL.createObjectURL(blob);
+apps/web/lib\reports\period-report-pdf.tsx:407:  const anchor = document.createElement("a");
+apps/web/lib\reports\period-report-pdf.tsx:411:  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+apps/web/app\client-dashboard.tsx:445:          <button className="overview-icon-button" type="button" aria-label={text("Notifications", "Meldingen")} onClick={openActions}><Bell size={17} />{urgentItems.length ? <i /> : null}</button>
+apps/web/lib\storage\gateway.ts:112:  const url = URL.createObjectURL(blob);
+apps/web/lib\storage\gateway.ts:113:  const anchor = document.createElement("a");
+apps/web/lib\storage\gateway.ts:121:  const previewWindow = window.open("about:blank", "_blank");
+apps/web/lib\storage\gateway.ts:124:    const url = URL.createObjectURL(blob);
+apps/web/lib\storage\gateway.ts:129:      const anchor = document.createElement("a");
+apps/web/lib\storage\gateway.ts:132:      document.body.appendChild(anchor);
+apps/web/lib\storage\gateway.ts:136:    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+apps/web/lib\storage\gateway.ts:175:  return { url: URL.createObjectURL(blob), mimeType: blob.type };
+apps/web/lib\supabase\data.ts:122:export type ProjectNotification = {
+apps/web/lib\supabase\data.ts:1193:export async function loadProjectNotifications(client: SupabaseClient, projectId: string) {
+apps/web/lib\supabase\data.ts:1203:  return (result.data ?? []) as ProjectNotification[];
+apps/web/lib\supabase\data.ts:1206:export async function markNotificationRead(client: SupabaseClient, notificationId: string) {
+apps/web/lib\supabase\client.ts:15: * Project data is never written to localStorage. Without these central values the
+apps/web/app\dialog-manager.tsx:98:      while (node && node !== document.body) {
+apps/web/app\dialog-manager.tsx:115:      previousOverflow.value = document.body.style.overflow;
+apps/web/app\dialog-manager.tsx:116:      document.body.style.overflow = "hidden";
+apps/web/app\dialog-manager.tsx:121:      document.body.style.overflow = previousOverflow.value;
+apps/web/app\dialog-manager.tsx:125:      if (dialog.contains(document.activeElement) && document.activeElement !== dialog) return;
+apps/web/app\dialog-manager.tsx:136:      const present = Array.from(document.querySelectorAll<HTMLElement>(dialogSelector));
+apps/web/app\dialog-manager.tsx:142:        if (document.contains(entry.dialog)) continue;
+apps/web/app\dialog-manager.tsx:150:          window.requestAnimationFrame(() => {
+apps/web/app\dialog-manager.tsx:152:            if (opener && document.contains(opener) && isShown(opener)) opener.focus({ preventScroll: true });
+apps/web/app\dialog-manager.tsx:159:        const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+apps/web/app\dialog-manager.tsx:163:          : replacedOpener ?? (lastTrigger && document.contains(lastTrigger) ? lastTrigger : active && active !== document.body ? active : null);
+apps/web/app\dialog-manager.tsx:171:        if (top) window.requestAnimationFrame(() => moveFocusInside(top));
+apps/web/app\dialog-manager.tsx:195:      const active = document.activeElement;
+apps/web/app\dialog-manager.tsx:217:    const observer = new MutationObserver(sync);
+apps/web/app\dialog-manager.tsx:218:    observer.observe(document.body, { childList: true, subtree: true });
+apps/web/app\dialog-manager.tsx:219:    document.addEventListener("keydown", onKeyDown, true);
+apps/web/app\dialog-manager.tsx:220:    document.addEventListener("focusin", rememberTrigger, true);
+apps/web/app\dialog-manager.tsx:221:    document.addEventListener("pointerdown", rememberTrigger, true);
+apps/web/app\dialog-manager.tsx:222:    document.addEventListener("focusin", onFocusIn);
+apps/web/app\dialog-manager.tsx:227:      document.removeEventListener("keydown", onKeyDown, true);
+apps/web/app\dialog-manager.tsx:228:      document.removeEventListener("focusin", rememberTrigger, true);
+apps/web/app\dialog-manager.tsx:229:      document.removeEventListener("pointerdown", rememberTrigger, true);
+apps/web/app\dialog-manager.tsx:230:      document.removeEventListener("focusin", onFocusIn);
+apps/web/app\dictate-button.tsx:7:type SpeechRecognitionResultLike = { isFinal: boolean; 0: { transcript: string } };
+apps/web/app\dictate-button.tsx:8:type SpeechRecognitionEventLike = { resultIndex: number; results: ArrayLike<SpeechRecognitionResultLike> };
+apps/web/app\dictate-button.tsx:9:type SpeechRecognitionLike = {
+apps/web/app\dictate-button.tsx:15:  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+apps/web/app\dictate-button.tsx:19:type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+apps/web/app\dictate-button.tsx:23:  const browser = window as typeof window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor };
+apps/web/app\dictate-button.tsx:24:  return browser.SpeechRecognition ?? browser.webkitSpeechRecognition ?? null;
+apps/web/app\dictate-button.tsx:47:  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+apps/web/app\api\storage\uploads\route.ts:22:  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+apps/web/app\api\storage\uploads\route.ts:23:  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+apps/web/lib\offline\upload-queue.ts:113:  return window.localStorage.getItem("codeco-data-saver") !== "false";
+apps/web/lib\offline\upload-queue.ts:117:  window.localStorage.setItem("codeco-data-saver", enabled ? "true" : "false");
+apps/web/lib\offline\upload-queue.ts:149:    const canvas = document.createElement("canvas");
+apps/web/lib\offline\upload-queue.ts:152:    const context = canvas.getContext("2d", { alpha: false });
+apps/web/lib\offline\upload-queue.ts:170: * A 360° image is handed to the storage gateway untouched, because scaling a sphere loses the
+apps/web/lib\offline\upload-queue.ts:177:  const untouched = { blob: file as Blob, fileName: file.name, mimeType: file.type || "image/jpeg", resized: false, fits: file.size <= maxBytes };
+apps/web/lib\offline\upload-queue.ts:178:  if (untouched.fits || typeof createImageBitmap !== "function") return untouched;
+apps/web/lib\offline\upload-queue.ts:185:      return untouched;
+apps/web/lib\offline\upload-queue.ts:187:    const canvas = document.createElement("canvas");
+apps/web/lib\offline\upload-queue.ts:190:    const context = canvas.getContext("2d", { alpha: false });
+apps/web/lib\offline\upload-queue.ts:193:      return untouched;
+apps/web/lib\offline\upload-queue.ts:216:    return untouched;
+apps/web/lib\offline\upload-queue.ts:219:    return untouched;
+apps/web/lib\offline\upload-queue.ts:308:  if (typeof navigator !== "undefined" && !navigator.onLine) return { synced: 0, failed: 0, paused: true };
+apps/web/lib\offline\record-queue.ts:98:  return connectionFailure(error, typeof navigator === "undefined" || navigator.onLine);
+apps/web/lib\offline\record-queue.ts:125:  if (typeof navigator !== "undefined" && !navigator.onLine) return { synced: 0, failed: 0, paused: true };
+apps/web/lib\offline\record-queue.ts:180:  if (typeof navigator !== "undefined" && !navigator.onLine) return queue();
+apps/web/lib\reports\ncr-pdf.tsx:105:  const url = URL.createObjectURL(blob);
+apps/web/lib\reports\ncr-pdf.tsx:106:  const anchor = document.createElement("a");
+apps/web/lib\reports\ncr-pdf.tsx:110:  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+apps/web/lib\offline\query-keys.ts:12:  projectNotifications: (projectId: string) => `project-notifications:${projectId}`,
+apps/web/lib\navigation\record-focus.ts:24:    const frame = window.requestAnimationFrame(() => {
+apps/web/lib\navigation\record-focus.ts:25:      document.getElementById(recordAnchorId(recordId))?.scrollIntoView({ block: "center", behavior: "smooth" });
+apps/web/lib\navigation\record-focus.ts:27:    return () => window.cancelAnimationFrame(frame);
+apps/web/app\api\cron\daily\route.ts:4:import { isNotificationEmailConfigured, sendPendingNotificationEmails } from "@/lib/notifications/email";
+apps/web/app\api\cron\daily\route.ts:5:import { sendPendingPushNotifications } from "@/lib/notifications/push";
+apps/web/app\api\cron\daily\route.ts:84:    pushResult = await sendPendingPushNotifications(admin);
+apps/web/app\api\cron\daily\route.ts:92:    if (isNotificationEmailConfigured()) {
+apps/web/app\api\cron\daily\route.ts:93:      emailResult = await sendPendingNotificationEmails(admin);
+apps/web/lib\offline\idb.ts:41:    if (typeof indexedDB === "undefined") {
+apps/web/lib\offline\idb.ts:45:    const request = indexedDB.open(databaseName, databaseVersion);
+apps/web/lib\offline\idb.ts:145: * Empties a store. Used to throw away the offline copy of a project without touching the
+apps/web/lib\offline\drawing-pin-queue.ts:52:  if (typeof navigator !== "undefined" && !navigator.onLine) return queue();
+apps/web/lib\offline\drawing-pin-queue.ts:65:  if (typeof navigator !== "undefined" && !navigator.onLine) return { synced: 0, failed: 0, paused: true };
+apps/web/lib\offline\full-sync.ts:18:  loadProjectNotifications,
+apps/web/lib\offline\full-sync.ts:145:      loadProjectNotifications(client, project.id).then((data) => cacheQueryResult(offlineQueryKeys.projectNotifications(project.id), data)),
+apps/web/lib\offline\full-sync.ts:185: * and unsent form drafts. Queued field work (records, photos, drawing pins) is untouched on
+apps/web/lib\offline\full-sync.ts:199:    typeof navigator !== "undefined" && navigator.storage?.estimate
+apps/web/lib\offline\full-sync.ts:200:      ? navigator.storage.estimate().catch(() => null)
+apps/web/app\api\notifications\dispatch\route.ts:2:import { isNotificationEmailConfigured, sendPendingNotificationEmails } from "@/lib/notifications/email";
+apps/web/app\api\notifications\dispatch\route.ts:3:import { sendPendingPushNotifications } from "@/lib/notifications/push";
+apps/web/app\api\notifications\dispatch\route.ts:32:    const push = await sendPendingPushNotifications(admin, input.data.projectId);
+apps/web/app\api\notifications\dispatch\route.ts:33:    const email = isNotificationEmailConfigured() ? await sendPendingNotificationEmails(admin) : null;
+apps/web/app\document-language.tsx:9:    ? `document.documentElement.lang=${JSON.stringify(fixed)};`
+apps/web/app\document-language.tsx:10:    : "try{var l=localStorage.getItem('codeco-language-choice');document.documentElement.lang=l==='en'?'en':'nl';}catch(e){document.documentElement.lang='nl';}";
+apps/web/app\drawing-location-picker.tsx:197:  const pointerStartRef = useRef<{ id: number; x: number; y: number } | null>(null);
+apps/web/app\drawing-location-picker.tsx:210:    const observer = new ResizeObserver(measure);
+apps/web/app\drawing-location-picker.tsx:255:      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+apps/web/app\drawing-location-picker.tsx:260:      const context = canvas.getContext("2d");
+apps/web/app\drawing-location-picker.tsx:291:          pointerStartRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+apps/web/app\drawing-location-picker.tsx:292:          event.currentTarget.setPointerCapture(event.pointerId);
+apps/web/app\drawing-location-picker.tsx:295:          const start = pointerStartRef.current;
+apps/web/app\drawing-location-picker.tsx:296:          pointerStartRef.current = null;
+apps/web/app\drawing-location-picker.tsx:297:          if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+apps/web/app\drawing-location-picker.tsx:298:          if (!start || start.id !== event.pointerId || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) return;
+apps/web/app\drawing-location-picker.tsx:301:        onPointerCancel={() => { pointerStartRef.current = null; }}
+apps/web/lib\supabase\offline-session.ts:11:function sessionStorageKey() {
+apps/web/lib\supabase\offline-session.ts:37:  const key = sessionStorageKey();
+apps/web/lib\supabase\offline-session.ts:40:    const raw = window.localStorage.getItem(key);
+apps/web/lib\supabase\operations.ts:2109:  const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+apps/web/lib\supabase\operations.ts:2110:  const anchor = document.createElement("a");
+apps/web/app\codeco-supervision-app.tsx:75:import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
+apps/web/app\codeco-supervision-app.tsx:76:import { currentPushState, enablePushNotifications, type PushState } from "@/lib/notifications/push-client";
+apps/web/app\codeco-supervision-app.tsx:136:  loadProjectNotifications,
+apps/web/app\codeco-supervision-app.tsx:139:  markNotificationRead,
+apps/web/app\codeco-supervision-app.tsx:156:  type ProjectNotification,
+apps/web/app\codeco-supervision-app.tsx:530:    () => typeof window !== "undefined" && window.location.hash.includes("type=recovery"),
+apps/web/app\codeco-supervision-app.tsx:534:  const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
+apps/web/app\codeco-supervision-app.tsx:632:    const timer = window.setTimeout(() => {
+apps/web/app\codeco-supervision-app.tsx:670:      window.clearTimeout(timer);
+apps/web/app\codeco-supervision-app.tsx:783:      offlineQueryKeys.projectNotifications(selectedProject!.id),
+apps/web/app\codeco-supervision-app.tsx:784:      () => loadProjectNotifications(supabase as SupabaseClient, selectedProject!.id),
+apps/web/app\codeco-supervision-app.tsx:789:  const unreadNotificationCount = (notificationQuery.data ?? []).filter((notification) => !notification.read_at).length;
+apps/web/app\codeco-supervision-app.tsx:821:    const clockTimer = window.setInterval(() => setClock(new Date()), 60_000);
+apps/web/app\codeco-supervision-app.tsx:822:    return () => window.clearInterval(clockTimer);
+apps/web/app\codeco-supervision-app.tsx:828:    const authTimeout = window.setTimeout(() => {
+apps/web/app\codeco-supervision-app.tsx:853:      window.clearTimeout(authTimeout);
+apps/web/app\codeco-supervision-app.tsx:860:      if (!nextSession && !navigator.onLine && storedSessionOnThisDevice()) return;
+apps/web/app\codeco-supervision-app.tsx:875:      window.clearTimeout(authTimeout);
+apps/web/app\codeco-supervision-app.tsx:899:    window.location.replace(window.location.pathname);
+apps/web/app\codeco-supervision-app.tsx:927:    window.addEventListener("online", online);
+apps/web/app\codeco-supervision-app.tsx:928:    window.addEventListener("offline", offline);
+apps/web/app\codeco-supervision-app.tsx:930:      window.removeEventListener("online", online);
+apps/web/app\codeco-supervision-app.tsx:931:      window.removeEventListener("offline", offline);
+apps/web/app\codeco-supervision-app.tsx:937:    const timeout = window.setTimeout(() => setToast(""), 3200);
+apps/web/app\codeco-supervision-app.tsx:938:    return () => window.clearTimeout(timeout);
+apps/web/app\codeco-supervision-app.tsx:944:    const hydration = window.setTimeout(() => {
+apps/web/app\codeco-supervision-app.tsx:975:    return () => window.clearTimeout(hydration);
+apps/web/app\codeco-supervision-app.tsx:1063:      if (selectedProject && supabase && isOnline) await requestProjectNotificationDispatch(supabase, selectedProject.id).catch(() => false);
+apps/web/app\codeco-supervision-app.tsx:1323:    if (navigator.onLine) {
+apps/web/app\codeco-supervision-app.tsx:1352:    window.scrollTo({ top: 0, behavior: "smooth" });
+apps/web/app\codeco-supervision-app.tsx:1410:    window.scrollTo({ top: 0 });
+apps/web/app\codeco-supervision-app.tsx:1464:    window.scrollTo({ top: 0, behavior: "auto" });
+apps/web/app\codeco-supervision-app.tsx:1475:  const [initialSearch] = useState(() => (typeof window === "undefined" ? "" : window.location.search));
+apps/web/app\codeco-supervision-app.tsx:1554:    window.scrollTo({ top: 0 });
+apps/web/app\codeco-supervision-app.tsx:1585:          window.history.replaceState(null, "", window.location.pathname);
+apps/web/app\codeco-supervision-app.tsx:1882:            <button className="icon-button" type="button" aria-label={`${text("Notifications", "Meldingen")}${unreadNotificationCount ? `, ${unreadNotificationCount} ${text("unread", "ongelezen")}` : ""}`} onClick={() => setModal("notifications")}>
+apps/web/app\codeco-supervision-app.tsx:1884:              {unreadNotificationCount ? <span className="notification-dot" /> : null}
+apps/web/app\codeco-supervision-app.tsx:2568:                if (navigator.onLine) {
+apps/web/app\codeco-supervision-app.tsx:2652:        <NotificationsModal
+apps/web/app\codeco-supervision-app.tsx:2659:              () => markNotificationRead(supabase, notificationId),
+apps/web/app\codeco-supervision-app.tsx:2660:              text("Notification marked as read.", "Melding als gelezen gemarkeerd."),
+apps/web/app\codeco-supervision-app.tsx:2760:            : /fetch|network|load failed|timeout/i.test(raw) || (typeof navigator !== "undefined" && !navigator.onLine)
+apps/web/app\codeco-supervision-app.tsx:2781:      const result = await client.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/supervisie` });
+apps/web/app\codeco-supervision-app.tsx:3023:            {[["enableWorkforce", text("Workforce", "Workforce")], ["enableInspections", text("Inspections", "Inspecties")], ["enableQuality", text("Issues & NCR", "Issues & NCR")], ["enableHse", "HSE"], ["enableDocuments", text("Documents and formal registers", "Documenten en formele registers")], ["enableVisualEvidence", text("Photos, 360° and pointers", "Foto's, 360° en pointers")]].map(([field, label]) => <label className="confirmation-check" key={field}><input type="checkbox" {...register(field as "enableWorkforce" | "enableInspections" | "enableQuality" | "enableHse" | "enableDocuments" | "enableVisualEvidence")} /><span><strong>{label}</strong></span></label>)}
+apps/web/app\codeco-supervision-app.tsx:3202:    const timer = window.setTimeout(() => void loadAutomaticWeather(), 0);
+apps/web/app\codeco-supervision-app.tsx:3203:    return () => window.clearTimeout(timer);
+apps/web/app\codeco-supervision-app.tsx:3695:              <button className="module-card" type="button" key={item.title} onClick={item.action} style={{ textAlign: "left", cursor: "pointer" }}>
+apps/web/app\codeco-supervision-app.tsx:3733:            <button className="action-row" type="button" key={action.id} onClick={() => openAction(action)} style={{ textAlign: "left", cursor: "pointer" }}>
+apps/web/app\codeco-supervision-app.tsx:3749:          <button className="action-row" type="button" style={{ textAlign: "left", cursor: "pointer" }} onClick={openReport}>
+apps/web/app\codeco-supervision-app.tsx:3791:function NotificationsModal({ client, notifications, loading, close, markRead }: { client: SupabaseClient; notifications: ProjectNotification[]; loading: boolean; close: () => void; markRead: (notificationId: string) => Promise<void> }) {
+apps/web/app\codeco-supervision-app.tsx:3801:      await enablePushNotifications(client);
+apps/web/app\drawing-workspace.tsx:41:  pointerLiftPlacesPin,
+apps/web/app\drawing-workspace.tsx:226:        if (!queued.length || !navigator.onLine) return;
+apps/web/app\drawing-workspace.tsx:233:    window.addEventListener("online", synchronize);
+apps/web/app\drawing-workspace.tsx:235:    return () => window.removeEventListener("online", synchronize);
+apps/web/app\drawing-workspace.tsx:288:        "The drawing did not reach central storage. Check the connection and try again; the file on this device is untouched.",
+apps/web/app\drawing-workspace.tsx:799:  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+apps/web/app\drawing-workspace.tsx:830:    const observer = new ResizeObserver(([entry]) => {
+apps/web/app\drawing-workspace.tsx:874:      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+apps/web/app\drawing-workspace.tsx:879:      const context = canvas.getContext("2d");
+apps/web/app\drawing-workspace.tsx:911:    event.currentTarget.setPointerCapture(event.pointerId);
+apps/web/app\drawing-workspace.tsx:926:    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+apps/web/app\drawing-workspace.tsx:938:    event.currentTarget.setPointerCapture(event.pointerId);
+apps/web/app\drawing-workspace.tsx:939:    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+apps/web/app\drawing-workspace.tsx:940:    if (pointersRef.current.size === 2) {
+apps/web/app\drawing-workspace.tsx:946:      const [left, right] = [...pointersRef.current.values()];
+apps/web/app\drawing-workspace.tsx:965:    if (!pointersRef.current.has(event.pointerId)) return;
+apps/web/app\drawing-workspace.tsx:966:    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+apps/web/app\drawing-workspace.tsx:967:    if (pointersRef.current.size >= 2 && pinchRef.current) {
+apps/web/app\drawing-workspace.tsx:968:      const [left, right] = [...pointersRef.current.values()];
+apps/web/app\drawing-workspace.tsx:990:    if (pointerLiftPlacesPin({ tool, activePointerCount: pointersRef.current.size, gesture: singleGestureRef.current })) {
+apps/web/app\drawing-workspace.tsx:996:    pointersRef.current.delete(event.pointerId);
+apps/web/app\drawing-workspace.tsx:997:    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+apps/web/app\drawing-workspace.tsx:998:    if (pointersRef.current.size < 2) pinchRef.current = null;
+apps/web/app\drawing-workspace.tsx:999:    if (!pointersRef.current.size) singleGestureRef.current = null;
+apps/web/app\drawing-workspace.tsx:1003:    pointersRef.current.clear();
+apps/web/app\drawing-workspace.tsx:1013:    event.currentTarget.setPointerCapture(event.pointerId);
+apps/web/app\drawing-workspace.tsx:1030:    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+apps/web/app\drawing-workspace.tsx:1160:      <button className="secondary-button danger-button" type="button" disabled={pin.id.startsWith("pending:")} onClick={() => { if (window.confirm(text("Remove this pin from the drawing? The audit trail is retained.", "Deze pin van de tekening verwijderen? Het auditspoor blijft behouden."))) onDelete(); }}><Trash2 size={15} /> {text("Remove pin", "Pin verwijderen")}</button>
+apps/web/app\field-tools.tsx:111:    window.scrollTo({ top: 0, behavior: "smooth" });
+apps/web/app\field-tools.tsx:129:    // was written and are not touched here.
+apps/web/app\landing-motion.tsx:7:    const root = document.documentElement;
+apps/web/app\landing-motion.tsx:8:    const studio = document.querySelector<HTMLElement>(".studio");
+apps/web/app\landing-motion.tsx:9:    const nav = document.querySelector<HTMLElement>(".studio-nav-shell");
+apps/web/app\landing-motion.tsx:10:    const hero = document.querySelector<HTMLElement>(".studio-hero");
+apps/web/app\landing-motion.tsx:11:    const revealItems = Array.from(document.querySelectorAll<HTMLElement>("[data-reveal]"));
+apps/web/app\landing-motion.tsx:12:    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+apps/web/app\landing-motion.tsx:23:    const observer = new IntersectionObserver(
+apps/web/app\landing-motion.tsx:39:      const scrollY = window.scrollY;
+apps/web/app\landing-motion.tsx:51:      frame = window.requestAnimationFrame(updateScrollState);
+apps/web/app\landing-motion.tsx:55:    window.addEventListener("scroll", onScroll, { passive: true });
+apps/web/app\landing-motion.tsx:59:      window.removeEventListener("scroll", onScroll);
+apps/web/app\landing-motion.tsx:60:      if (frame) window.cancelAnimationFrame(frame);
+apps/web/app\landing-navigation.tsx:17:    const previousOverflow = document.body.style.overflow;
+apps/web/app\landing-navigation.tsx:18:    document.body.style.overflow = open ? "hidden" : previousOverflow;
+apps/web/app\landing-navigation.tsx:22:    document.addEventListener("keydown", handleEscape);
+apps/web/app\landing-navigation.tsx:24:      document.body.style.overflow = previousOverflow;
+apps/web/app\landing-navigation.tsx:25:      document.removeEventListener("keydown", handleEscape);
+apps/web/app\field-guide.tsx:61:      seen = window.localStorage.getItem(guideStorageKey) === "yes";
+apps/web/app\field-guide.tsx:63:      // The guide still works when private browsing blocks localStorage.
+apps/web/app\field-guide.tsx:66:    const timer = window.setTimeout(() => setOpen(true), 700);
+apps/web/app\field-guide.tsx:67:    return () => window.clearTimeout(timer);
+apps/web/app\field-guide.tsx:72:    const previousOverflow = document.body.style.overflow;
+apps/web/app\field-guide.tsx:76:    document.body.style.overflow = "hidden";
+apps/web/app\field-guide.tsx:77:    window.addEventListener("keydown", closeOnEscape);
+apps/web/app\field-guide.tsx:79:      document.body.style.overflow = previousOverflow;
+apps/web/app\field-guide.tsx:80:      window.removeEventListener("keydown", closeOnEscape);
+apps/web/app\field-guide.tsx:86:      window.localStorage.setItem(guideStorageKey, "yes");
+apps/web/app\field-guide.tsx:294:          title: text("Notifications", "Meldingen"),
+apps/web/app\landing.css:208:  pointer-events: none;
+apps/web/app\landing.css:284:  pointer-events: none;
+apps/web/app\landing.css:1342:    cursor: pointer;
+apps/web/app\landing.css:1374:    pointer-events: none;
+apps/web/app\landing.css:1381:    pointer-events: auto;
+apps/web/app\globals.css:140:  cursor: pointer;
+apps/web/app\globals.css:206:  cursor: pointer;
+apps/web/app\globals.css:277:  touch-action: none;
+apps/web/app\globals.css:305:  pointer-events: none;
+apps/web/app\globals.css:342:  cursor: pointer;
+apps/web/app\globals.css:343:  touch-action: none;
+apps/web/app\globals.css:356:.drawing-pin.pending { background: #152f3c; pointer-events: none; }
+apps/web/app\globals.css:396:  cursor: pointer;
+apps/web/app\globals.css:438:  cursor: pointer;
+apps/web/app\globals.css:491:  cursor: pointer;
+apps/web/app\globals.css:583:  cursor: pointer;
+apps/web/app\globals.css:670:  cursor: pointer;
+apps/web/app\globals.css:858:  cursor: pointer;
+apps/web/app\globals.css:998:   is what made every text field on site jump the layout around while typing. On a touch
+apps/web/app\globals.css:1003:@media (max-width: 860px), (pointer: coarse) {
+apps/web/app\globals.css:1254:  cursor: pointer;
+apps/web/app\globals.css:1476:  cursor: pointer;
+apps/web/app\globals.css:1780:  cursor: pointer;
+apps/web/app\globals.css:1958:  cursor: pointer;
+apps/web/app\globals.css:2028:  cursor: pointer;
+apps/web/app\globals.css:2082:  cursor: pointer;
+apps/web/app\globals.css:2104:  cursor: pointer;
+apps/web/app\globals.css:2174:  cursor: pointer;
+apps/web/app\globals.css:2221:  cursor: pointer;
+apps/web/app\globals.css:2252:  cursor: pointer;
+apps/web/app\globals.css:2273:  cursor: pointer;
+apps/web/app\globals.css:2449:  cursor: pointer;
+apps/web/app\globals.css:2493:  cursor: pointer;
+apps/web/app\globals.css:2589:  cursor: pointer;
+apps/web/app\globals.css:2931:  cursor: pointer;
+apps/web/app\globals.css:2977:  cursor: pointer;
+apps/web/app\globals.css:3209:  cursor: pointer;
+apps/web/app\globals.css:3303:  cursor: pointer;
+apps/web/app\globals.css:3331:  cursor: pointer;
+apps/web/app\globals.css:3402:  cursor: pointer;
+apps/web/app\globals.css:3767:  cursor: pointer;
+apps/web/app\globals.css:3787:  cursor: pointer;
+apps/web/app\globals.css:3851:  cursor: pointer;
+apps/web/app\globals.css:4034:  cursor: pointer;
+apps/web/app\globals.css:4117:  cursor: pointer;
+apps/web/app\globals.css:4155:  cursor: pointer;
+apps/web/app\globals.css:4182:  cursor: pointer;
+apps/web/app\globals.css:4226:  cursor: pointer;
+apps/web/app\globals.css:4274:  cursor: pointer;
+apps/web/app\globals.css:4309:   gutter as the header and body, so its buttons never touch the dialog's edges. This
+apps/web/app\globals.css:4327:  cursor: pointer;
+apps/web/app\globals.css:4348:  cursor: pointer;
+apps/web/app\globals.css:4556:  cursor: pointer;
+apps/web/app\globals.css:4611:  touch-action: none;
+apps/web/app\globals.css:4752:  touch-action: none;
+apps/web/app\globals.css:4766:.photo-markup-marker, .photo-markup-label { cursor: grab; touch-action: none; }
+apps/web/app\globals.css:4788:.photo-markup-overlay { inset: 0; pointer-events: none; position: absolute; }
+apps/web/app\globals.css:5392:    cursor: pointer;
+apps/web/app\globals.css:5806:  cursor: pointer;
+apps/web/app\globals.css:5837:  cursor: pointer;
+apps/web/app\globals.css:6184:  cursor: pointer;
+apps/web/app\globals.css:6334:  cursor: pointer;
+apps/web/app\globals.css:6423:  cursor: pointer;
+apps/web/app\globals.css:6483:  cursor: pointer;
+apps/web/app\globals.css:6800:  cursor: pointer;
+apps/web/app\globals.css:6833:  cursor: pointer;
+apps/web/app\globals.css:6947:  cursor: pointer;
+apps/web/app\globals.css:7174:  cursor: pointer;
+apps/web/app\globals.css:7203:  cursor: pointer;
+apps/web/app\globals.css:7268:  cursor: pointer;
+apps/web/app\globals.css:7556:  cursor: pointer;
+apps/web/app\globals.css:7603:  cursor: pointer;
+apps/web/app\globals.css:7700:  /* Also under @container further down, for a card in a narrow column on a wide window. */
+apps/web/app\globals.css:8017:  cursor: pointer;
+apps/web/app\globals.css:8056:  cursor: pointer;
+apps/web/app\globals.css:8109:  cursor: pointer;
+apps/web/app\globals.css:8182:  cursor: pointer;
+apps/web/app\globals.css:8258:  cursor: pointer;
+apps/web/app\globals.css:8278:  cursor: pointer;
+apps/web/app\globals.css:8303:  cursor: pointer;
+apps/web/app\globals.css:8337:  cursor: pointer;
+apps/web/app\globals.css:8374:  cursor: pointer;
+apps/web/app\globals.css:8667:.data-saver-toggle { align-items: center; background: #f5f8f8; border-radius: 11px; cursor: pointer; display: flex; gap: 10px; max-width: 330px; padding: var(--space-3); }
+apps/web/app\globals.css:8693:.media-card-open { background: transparent; border: 0; cursor: pointer; display: block; grid-column: 1 / -1; padding: 0; position: relative; width: 100%; }
+apps/web/app\globals.css:8711:.media-preview-error button { align-items: center; background: #fff; border: 1px solid #d8c4c0; border-radius: var(--radius-xs); color: #7d3b31; cursor: pointer; display: inline-flex; gap: 5px; min-height: 36px; padding: 7px 10px; }
+apps/web/app\globals.css:8792:  cursor: pointer;
+apps/web/app\globals.css:8805:  cursor: pointer;
+apps/web/app\globals.css:8823:.media-file-actions button { align-items: center; background: transparent; border: 0; color: var(--green); cursor: pointer; display: flex; justify-content: center; min-height: 42px; min-width: 42px; padding: var(--space-2); }
+apps/web/app\globals.css:8835:.period-report-types button { background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm); display: grid; gap: 3px; padding: var(--space-3) 13px; text-align: left; cursor: pointer; min-height: 64px; }
+apps/web/app\globals.css:8839:.period-date-presets button { background: #f2f6f7; border: 1px solid var(--border); border-radius: var(--radius-pill); color: var(--text); cursor: pointer; font-size: var(--text-xs); padding: var(--space-2) 11px; }
+apps/web/app\globals.css:8890:.whatsapp-button { align-items: center; background: #eaf8ef; border: 1px solid #9ed8b3; border-radius: var(--radius-control); color: #087a38; cursor: pointer; display: inline-flex; font-weight: 700; gap: 6px; justify-content: center; min-height: var(--control-h-md); padding: var(--space-2) 11px; }
+apps/web/app\globals.css:8897:  cursor: pointer;
+apps/web/app\globals.css:8920:.external-share-preflight-heading > button { background: #fff; border: 1px solid #d4e2dc; border-radius: var(--radius-xs); color: #567067; cursor: pointer; display: grid; height: 36px; place-items: center; width: 36px; }
+apps/web/app\globals.css:8956:  cursor: pointer;
+apps/web/app\globals.css:9009:  cursor: pointer;
+apps/web/app\globals.css:9035:  cursor: pointer;
+apps/web/app\globals.css:9059:  cursor: pointer;
+apps/web/app\globals.css:9082:  cursor: pointer;
+apps/web/app\globals.css:9134:  cursor: pointer;
+apps/web/app\globals.css:9210:  cursor: pointer;
+apps/web/app\globals.css:9236:  cursor: pointer;
+apps/web/app\globals.css:9320:  cursor: pointer;
+apps/web/app\globals.css:9368:  cursor: pointer;
+apps/web/app\globals.css:9387:/* On touch and on phone widths the tick box takes the size of the thumb guard at the end of this file. */
+apps/web/app\globals.css:9388:@media (min-width: 861px) and (pointer: fine) {
+apps/web/app\globals.css:9423:  cursor: pointer;
+apps/web/app\globals.css:9434:  cursor: pointer;
+apps/web/app\globals.css:9459:  cursor: pointer;
+apps/web/app\globals.css:9500:  cursor: pointer;
+apps/web/app\globals.css:9514:  cursor: pointer;
+apps/web/app\globals.css:9534:  cursor: pointer;
+apps/web/app\globals.css:9551:  cursor: pointer;
+apps/web/app\globals.css:9579:  cursor: pointer;
+apps/web/app\globals.css:9677:  cursor: pointer;
+apps/web/app\globals.css:9733:  cursor: pointer;
+apps/web/app\globals.css:9824:  cursor: pointer;
+apps/web/app\globals.css:9879:  cursor: pointer;
+apps/web/app\globals.css:10026:  cursor: pointer;
+apps/web/app\globals.css:10088:.daily-log-extra summary { cursor: pointer; display: flex; align-items: center; font-size: 12.5px; font-weight: 650; gap: 10px; justify-content: space-between; }
+apps/web/app\globals.css:10103:.daily-log-photo-list img { border-radius: var(--radius-xs); cursor: pointer; height: 62px; object-fit: cover; width: 62px; }
+apps/web/app\globals.css:10187:  cursor: pointer;
+apps/web/app\globals.css:10229:  cursor: pointer;
+apps/web/app\globals.css:10260:.inspection-subject-details summary { cursor: pointer; font-size: var(--text-xs); font-weight: 700; }
+apps/web/app\globals.css:10310:  cursor: pointer;
+apps/web/app\globals.css:10334:  cursor: pointer;
+apps/web/app\globals.css:10375:.field-guide-dialog > header button { background: var(--ink-50); border: 0; border-radius: var(--radius-control); color: var(--ink-600); cursor: pointer; display: grid; height: 36px; place-items: center; width: 36px; }
+apps/web/app\globals.css:10392:  cursor: pointer;
+apps/web/app\globals.css:10488:  cursor: pointer;
+apps/web/app\globals.css:10623:  cursor: pointer;
+apps/web/app\globals.css:11470:  cursor: pointer;
+apps/web/app\globals.css:11523:  cursor: pointer;
+apps/web/app\globals.css:13133:  cursor: pointer;
+apps/web/app\globals.css:13562:  cursor: pointer;
+apps/web/app\globals.css:13862:  cursor: pointer;
+apps/web/app\globals.css:13891:  cursor: pointer;
+apps/web/app\globals.css:13951:  cursor: pointer;
+apps/web/app\globals.css:14142:.submitted-record-share > header > button { background: #fff; border: 1px solid #d4e2dc; border-radius: var(--radius-xs); color: #567067; cursor: pointer; display: grid; height: 36px; place-items: center; width: 36px; }
+apps/web/app\globals.css:14183:  cursor: pointer;
+apps/web/app\globals.css:14230:  touch-action: none;
+apps/web/app\globals.css:14233:.signature-canvas { display: block; height: 190px; touch-action: none; width: 100%; }
+apps/web/app\globals.css:14243:  pointer-events: none;
+apps/web/app\globals.css:14252:  pointer-events: none;
+apps/web/app\globals.css:14385:  cursor: pointer;
+apps/web/app\globals.css:14601:  cursor: pointer;
+apps/web/app\globals.css:14640:  cursor: pointer;
+apps/web/app\globals.css:14723:  cursor: pointer;
+apps/web/app\globals.css:14971: * back to scrolling, on a phone. Tablet and desktop are untouched.
+apps/web/app\globals.css:15006:  cursor: pointer;
+apps/web/app\globals.css:15029:  cursor: pointer;
+apps/web/app\globals.css:15148:   fills evenly is never touched, and a strip whose length changes with the data is
+apps/web/app\globals.css:15268:  cursor: pointer;
+apps/web/app\globals.css:15317:  cursor: pointer;
+apps/web/app\globals.css:15478:  cursor: pointer;
+apps/web/app\globals.css:15606:  cursor: pointer;
+apps/web/app\globals.css:15639:  cursor: pointer;
+apps/web/app\globals.css:15661:  cursor: pointer;
+apps/web/app\globals.css:15699:button.prompt-source { cursor: pointer; }
+apps/web/app\globals.css:15730: * supervisor hits in the rain with a glove on, and the forms are full of them. On touch
+apps/web/app\globals.css:15738:@media (max-width: 860px), (pointer: coarse) {
+apps/web/app\globals.css:15796:@media (max-width: 860px), (pointer: coarse) {
+apps/web/app\media-library-workspace.tsx:139:  const [online, setOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
+apps/web/app\media-library-workspace.tsx:155:  const [assetFiltersOpen, setAssetFiltersOpen] = useState(() => typeof window === "undefined" || window.matchMedia("(min-width: 761px)").matches);
+apps/web/app\media-library-workspace.tsx:233:    const focusTimer = window.setTimeout(() => {
+apps/web/app\media-library-workspace.tsx:254:    return () => window.clearTimeout(focusTimer);
+apps/web/app\media-library-workspace.tsx:285:    const initialSync = window.setTimeout(() => {
+apps/web/app\media-library-workspace.tsx:287:      if (navigator.onLine && !(dataSaverEnabled() && connectionIsMetered())) void synchronize(false);
+apps/web/app\media-library-workspace.tsx:294:    window.addEventListener("online", connected);
+apps/web/app\media-library-workspace.tsx:295:    window.addEventListener("offline", disconnected);
+apps/web/app\media-library-workspace.tsx:297:      window.clearTimeout(initialSync);
+apps/web/app\media-library-workspace.tsx:298:      window.removeEventListener("online", connected);
+apps/web/app\media-library-workspace.tsx:299:      window.removeEventListener("offline", disconnected);
+apps/web/app\media-library-workspace.tsx:318:      if (!targetFolder && navigator.onLine) {
+apps/web/app\media-library-workspace.tsx:343:          : ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/csv", "text/plain"].includes(file.type));
+apps/web/app\media-library-workspace.tsx:344:      if (!valid.length) throw new Error(text("Choose a supported photo, drawing or document.", "Kies een ondersteunde foto, tekening of document."));
+apps/web/app\media-library-workspace.tsx:373:      if (navigator.onLine && !(savingData && connectionIsMetered())) {
+apps/web/app\media-library-workspace.tsx:394:    const captureTimer = window.setTimeout(() => {
+apps/web/app\media-library-workspace.tsx:398:    return () => window.clearTimeout(captureTimer);
+apps/web/app\media-library-workspace.tsx:482:    const name = window.prompt(text("New file name", "Nieuwe bestandsnaam"), file.original_name)?.trim();
+apps/web/app\media-library-workspace.tsx:488:    if (!targets.length || !window.confirm(text(`Move ${targets.length} asset(s) out of the active library?`, `${targets.length} middel(en) uit de actieve bibliotheek halen?`))) return;
+apps/web/app\media-library-workspace.tsx:496:    const title = window.prompt(text("Shared title", "Gedeelde titel"), firstCapture?.title ?? automaticTitle(targets[0]?.original_name ?? ""))?.trim();
+apps/web/app\media-library-workspace.tsx:498:    const description = window.prompt(text("Shared description", "Gedeelde omschrijving"), firstCapture?.description ?? "") ?? "";
+apps/web/app\media-library-workspace.tsx:521:    const title = window.prompt(text("Shared stack title", "Gedeelde stapeltitel"), firstCapture?.title ?? automaticTitle(first.original_name))?.trim();
+apps/web/app\media-library-workspace.tsx:523:    const description = window.prompt(text("Shared stack description", "Gedeelde stapelomschrijving"), firstCapture?.description ?? "") ?? "";
+apps/web/app\media-library-workspace.tsx:569:    const name = window.prompt(text("New folder name", "Nieuwe mapnaam"), folder.name)?.trim();
+apps/web/app\media-library-workspace.tsx:589:    if (!window.confirm(text(`Archive folder ${folder.name}? Its files stay available under All.`, `Map ${folder.name} archiveren? De bestanden blijven onder Alles beschikbaar.`))) return;
+apps/web/app\media-library-workspace.tsx:777:      {queue.length ? <div className="offline-queue"><div><strong>{queue.length} {text("upload(s) waiting to be sent", "upload(s) wachten op verzending")}</strong><span>{!online ? text("Sent when you're online.", "Wordt verstuurd zodra je online bent.") : savingData && connectionIsMetered() ? text("Automatic sync is paused on this metered connection.", "Automatische synchronisatie is gepauzeerd op deze databundel.") : text("Automatic synchronization is active.", "Automatische synchronisatie is actief.")}</span></div><button className="secondary-button" type="button" disabled={!online || syncing} onClick={() => void run(() => synchronize(true, true), text("Offline uploads synchronized.", "Offline uploads gesynchroniseerd."))}>{syncing ? <Loader2 className="spin" size={15} /> : <RefreshCw size={15} />} {text("Send now", "Nu verzenden")}</button><div className="offline-queue-list">{queue.map((upload) => <span className={upload.lastError ? "failed" : ""} key={upload.id}><ImageIcon size={14} /><b>{upload.fileName}</b><small title={upload.lastError ?? undefined}>{upload.lastError ? text("Sending failed · tap Send now", "Verzenden mislukt · tik op Nu verzenden") : humanSize(upload.queuedSize)}{!upload.lastError && upload.compressed ? ` · ${Math.round((1 - upload.queuedSize / upload.originalSize) * 100)}% bespaard` : ""}</small><button type="button" aria-label={text("Remove queued upload", "Verwijder wachtende upload")} onClick={() => { if (window.confirm(text("Remove this unsynchronized field file from this device?", "Dit niet-gesynchroniseerde veldbestand van dit apparaat verwijderen?"))) void removeOfflineUpload(upload.id).then(reloadQueue); }}><Trash2 size={14} /></button></span>)}</div></div> : null}
+apps/web/app\offline-manager.tsx:136:    const timer = window.setTimeout(() => void refresh(), 0);
+apps/web/app\offline-manager.tsx:138:      window.clearTimeout(timer);
+apps/web/app\photo-markup.tsx:114:    const image = new window.Image();
+apps/web/app\photo-markup.tsx:172:  const previewUrl = useMemo(() => URL.createObjectURL(file), [file]);
+apps/web/app\photo-markup.tsx:230:    const context2d = canvas?.getContext("2d");
+apps/web/app\photo-markup.tsx:234:    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+apps/web/app\photo-markup.tsx:252:    if (!image || typeof ResizeObserver === "undefined") {
+apps/web/app\photo-markup.tsx:253:      window.addEventListener("resize", paintOverlay);
+apps/web/app\photo-markup.tsx:254:      return () => window.removeEventListener("resize", paintOverlay);
+apps/web/app\photo-markup.tsx:256:    const observer = new ResizeObserver(() => paintOverlay());
+apps/web/app\photo-markup.tsx:281:    // pointer stream and cuts the line off after a few millimetres.
+apps/web/app\photo-markup.tsx:283:    event.currentTarget.setPointerCapture(event.pointerId);
+apps/web/app\photo-markup.tsx:362:      const canvas = document.createElement("canvas");
+apps/web/app\photo-markup.tsx:365:      const context2d = canvas.getContext("2d");
+apps/web/app\photo-markup.tsx:520:                  event.currentTarget.setPointerCapture(event.pointerId);
+apps/web/app\project-workspace-home.tsx:111:  const [filtersOpen, setFiltersOpen] = useState(() => typeof window === "undefined" || window.matchMedia("(min-width: 761px)").matches);
+apps/web/app\prompt-library.tsx:268:    await navigator.clipboard.writeText(item.prompt);
+apps/web/app\prompt-library.tsx:270:    window.setTimeout(() => setCopiedId((current) => (current === item.id ? "" : current)), 2400);
+apps/web/app\project-documents-home.tsx:77:  const [docFiltersOpen, setDocFiltersOpen] = useState(() => typeof window === "undefined" || window.matchMedia("(min-width: 761px)").matches);
+apps/web/app\project-documents-home.tsx:178:      if (navigator.onLine) return syncOfflineUploads(client, projectId, { force: true });
+apps/web/app\project-documents-home.tsx:213:      const url = URL.createObjectURL(blob);
+apps/web/app\project-documents-home.tsx:230:          {canManageFiles ? <button className="secondary-button" type="button" onClick={() => document.getElementById("project-document-upload")?.scrollIntoView({ behavior: "smooth", block: "center" })}><Upload size={15} /> {text("Upload file", "Upload bestand")}</button> : null}
+apps/web/app\providers.tsx:33:    if (!("serviceWorker" in navigator)) return;
+apps/web/app\providers.tsx:38:      void navigator.serviceWorker.getRegistrations()
+apps/web/app\providers.tsx:48:    const hadController = Boolean(navigator.serviceWorker.controller);
+apps/web/app\providers.tsx:52:    void navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" }).then((registration) => {
+apps/web/app\providers.tsx:64:      if (navigator.onLine) {
+apps/web/app\providers.tsx:65:        void navigator.serviceWorker.ready.then((ready) => {
+apps/web/app\providers.tsx:69:            .filter((name) => name.startsWith(window.location.origin) && (name.includes("/_next/static/") || /\.(?:woff2?|css)$/.test(name)));
+apps/web/app\providers.tsx:77:              document.documentElement.dataset.offlineShellReady = "true";
+apps/web/app\providers.tsx:94:      window.location.reload();
+apps/web/app\providers.tsx:96:    navigator.serviceWorker.addEventListener("controllerchange", takeOver);
+apps/web/app\providers.tsx:97:    return () => navigator.serviceWorker.removeEventListener("controllerchange", takeOver);
+apps/web/app\photo-evidence.tsx:50:  /** The untouched original. §4.16: the original photo is always kept. */
+apps/web/app\photo-evidence.tsx:126:  const source = useMemo(() => URL.createObjectURL(file), [file]);
+apps/web/app\photo-evidence.tsx:492:                // The original is never thrown away, so the untouched picture stays available.
+apps/web/app\rapid-verify-workspace.tsx:124:    () => documents.flatMap((document) => document.pages.map((page) => ({ document, page }))),
+apps/web/app\rapid-verify-workspace.tsx:135:        const merged = new Map(current.map((document) => [document.id, document]));
+apps/web/app\rapid-verify-workspace.tsx:136:        indexed.forEach((document) => merged.set(document.id, document));
+apps/web/app\rapid-verify-workspace.tsx:155:        const merged = new Map(current.map((document) => [document.id, document]));
+apps/web/app\rapid-verify-workspace.tsx:175:      for (const projectFile of availableProjectFiles.filter((candidate) => !documents.some((document) => document.name === candidate.original_name)).slice(0, 25)) {
+apps/web/app\rapid-verify-workspace.tsx:179:          const merged = new Map(current.map((document) => [document.id, document]));
+apps/web/app\rapid-verify-workspace.tsx:205:          document: document.name,
+apps/web/app\rapid-verify-workspace.tsx:265:              <button className="rapid-index-all" type="button" disabled={busy || availableProjectFiles.every((file) => documents.some((document) => document.name === file.original_name))} onClick={() => void indexExistingSources()}><BookOpenCheck size={14} /><span><strong>{text("Use existing sources", "Gebruik bestaande bronnen")}</strong><small>{text("Index approved PDFs and text files", "Indexeer goedgekeurde pdf's en tekstbestanden")}</small></span></button>
+apps/web/app\rapid-verify-workspace.tsx:267:                const indexed = documents.some((document) => document.name === file.original_name);
+apps/web/app\rapid-verify-workspace.tsx:275:              <article key={document.id}>
+apps/web/app\rapid-verify-workspace.tsx:277:                <div><strong>{document.name}</strong><small>{document.pages.length} {document.pages.length === 1 ? text("page", "pagina") : text("pages", "pagina's")}</small></div>
+apps/web/app\rapid-verify-workspace.tsx:278:                <button type="button" aria-label={text(`Remove ${document.name}`, `Verwijder ${document.name}`)} onClick={() => setDocuments((current) => current.filter((item) => item.id !== document.id))}><X size={14} /></button>
+apps/web/app\rapid-verify-workspace.tsx:318:                <header><span>{result.document} · {text("page", "pagina")} {result.page}</span><button type="button" onClick={() => void navigator.clipboard.writeText(result.excerpt)} aria-label={text("Copy passage", "Kopieer passage")}><Copy size={14} /></button></header>
+apps/web/app\record-location-map.tsx:92:        objectUrl = URL.createObjectURL(blob);
+apps/web/app\operational-workspace.tsx:124:import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
+apps/web/app\operational-workspace.tsx:589:    return window.localStorage.getItem(recordDraftKey(kind, projectId));
+apps/web/app\operational-workspace.tsx:610:    window.localStorage.setItem(recordDraftKey(kind, projectId), JSON.stringify(form));
+apps/web/app\operational-workspace.tsx:620:    window.localStorage.removeItem(recordDraftKey(kind, projectId));
+apps/web/app\operational-workspace.tsx:669:  window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+apps/web/app\operational-workspace.tsx:674:  window.location.href = `sms:?&body=${encodeURIComponent(message)}`;
+apps/web/app\operational-workspace.tsx:678:  if (navigator.clipboard?.writeText) {
+apps/web/app\operational-workspace.tsx:679:    await navigator.clipboard.writeText(value);
+apps/web/app\operational-workspace.tsx:682:  const field = document.createElement("textarea");
+apps/web/app\operational-workspace.tsx:687:  document.body.appendChild(field);
+apps/web/app\operational-workspace.tsx:689:  const copied = document.execCommand("copy");
+apps/web/app\operational-workspace.tsx:868:      if (typeof navigator === "undefined" || navigator.onLine) await syncOfflineRecords(client, projectId).catch(() => undefined);
+apps/web/app\operational-workspace.tsx:869:      await requestProjectNotificationDispatch(client, projectId).catch(() => false);
+apps/web/app\operational-workspace.tsx:880:      setError(typeof navigator !== "undefined" && !navigator.onLine
+apps/web/app\operational-workspace.tsx:1349:  const online = typeof navigator === "undefined" ? true : navigator.onLine;
+apps/web/app\operational-workspace.tsx:1461:    if (typeof navigator === "undefined" || !navigator.geolocation) {
+apps/web/app\operational-workspace.tsx:1467:    navigator.geolocation.getCurrentPosition(
+apps/web/app\operational-workspace.tsx:1538:    if (typeof navigator === "undefined" || !navigator.geolocation) {
+apps/web/app\operational-workspace.tsx:1544:    navigator.geolocation.getCurrentPosition(
+apps/web/app\operational-workspace.tsx:1636:    window.scrollTo({ top: 0, behavior: "smooth" });
+apps/web/app\operational-workspace.tsx:1672:    window.scrollTo({ top: 0, behavior: "smooth" });
+apps/web/app\operational-workspace.tsx:1729:    window.scrollTo({ top: 0, behavior: "smooth" });
+apps/web/app\operational-workspace.tsx:1737:    const reason = window.prompt(text("Why is this record being withdrawn?", "Waarom wordt deze registratie ingetrokken?"), "");
+apps/web/app\operational-workspace.tsx:1873:    const applyPreset = window.setTimeout(() => {
+apps/web/app\operational-workspace.tsx:1885:    return () => window.clearTimeout(applyPreset);
+apps/web/app\operational-workspace.tsx:1924:    return { shareId, url: externalShareUrl(window.location.origin, sharedToken), expiresAt };
+apps/web/app\operational-workspace.tsx:2048:    window.scrollTo({ top: 0, behavior: "smooth" });
+apps/web/app\operational-workspace.tsx:2098:          if (navigator.onLine) await syncQueuedEvidenceNow();
+apps/web/app\operational-workspace.tsx:2167:    const online = typeof navigator === "undefined" || navigator.onLine;
+apps/web/app\operational-workspace.tsx:2379:        if (navigator.onLine) await syncQueuedEvidenceNow();
+apps/web/app\operational-workspace.tsx:2410:    const hseOnline = typeof navigator === "undefined" || navigator.onLine;
+apps/web/app\operational-workspace.tsx:2522:          if (navigator.onLine) await syncQueuedEvidenceNow();
+apps/web/app\operational-workspace.tsx:2603:    const registerOnline = typeof navigator === "undefined" || navigator.onLine;
+apps/web/app\operational-workspace.tsx:2723:          if (navigator.onLine) await syncQueuedEvidenceNow();
+apps/web/app\operational-workspace.tsx:3081:            onEdit: inspection.status !== "cancelled" ? () => { void resumeInspection(inspection); window.scrollTo({ top: 0, behavior: "smooth" }); } : undefined,
+apps/web/app\operational-workspace.tsx:4390:                  hint={text("Signature, name and time are stored with the document.", "Handtekening, naam en tijdstip worden bij het document bewaard.")}
+apps/web/app\operational-workspace.tsx:5270:  // so unticking one subject always changes the document.
+apps/web/app\operational-workspace.tsx:5479:    pushNotificationsEnabled: data.settings?.push_notifications_enabled ?? true,
+apps/web/app\operational-workspace.tsx:5631:              <label className="confirmation-check"><input type="checkbox" checked={settings.pushNotificationsEnabled} onChange={(event) => setSettings({ ...settings, pushNotificationsEnabled: event.target.checked })} /><span><strong>{text("Automatic push notifications for deadlines", "Automatische pushmeldingen voor deadlines")}</strong><small>{text("The in-app inbox keeps the auditable copy.", "De inbox bewaart de auditeerbare kopie.")}</small></span></label>
+apps/web/app\operational-workspace.tsx:5639:                push_notifications_enabled: settings.pushNotificationsEnabled,
+apps/web/app\signature-pad.tsx:52:    const context = canvas?.getContext("2d");
+apps/web/app\signature-pad.tsx:54:    const width = canvas.width / (window.devicePixelRatio > 2 ? 2 : window.devicePixelRatio || 1);
+apps/web/app\signature-pad.tsx:55:    const height = canvas.height / (window.devicePixelRatio > 2 ? 2 : window.devicePixelRatio || 1);
+apps/web/app\signature-pad.tsx:79:      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+apps/web/app\signature-pad.tsx:82:      const context = canvas.getContext("2d");
+apps/web/app\signature-pad.tsx:87:    window.addEventListener("resize", resize);
+apps/web/app\signature-pad.tsx:88:    return () => window.removeEventListener("resize", resize);
+apps/web/app\signature-pad.tsx:98:    event.currentTarget.setPointerCapture(event.pointerId);
+apps/web/app\signature-pad.tsx:134:    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+apps/web/app\signature-pad.tsx:136:    const target = document.createElement("canvas");
+apps/web/app\signature-pad.tsx:140:    const context = target.getContext("2d");
+apps/web/app\sketch-pad.tsx:31:    const context = canvas?.getContext("2d");
+apps/web/app\sketch-pad.tsx:55:      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+apps/web/app\sketch-pad.tsx:58:      const context = canvas.getContext("2d");
+apps/web/app\sketch-pad.tsx:63:    window.addEventListener("resize", resize);
+apps/web/app\sketch-pad.tsx:64:    return () => window.removeEventListener("resize", resize);
+apps/web/app\sketch-pad.tsx:73:    event.currentTarget.setPointerCapture(event.pointerId);
+apps/web/app\visual-evidence-workspace.tsx:108:    const objectUrl = URL.createObjectURL(file);
+apps/web/app\visual-evidence-workspace.tsx:109:    const image = new window.Image();
+apps/web/app\visual-evidence-workspace.tsx:151:  const filePreviewUrl = useMemo(() => (file ? URL.createObjectURL(file) : ""), [file]);
+apps/web/app\visual-evidence-workspace.tsx:287:    const handoff = window.setTimeout(() => {
+apps/web/app\visual-evidence-workspace.tsx:292:    return () => window.clearTimeout(handoff);
+apps/web/app\visual-evidence-workspace.tsx:427:      if (navigator.onLine) {
+apps/web/app\visual-evidence-workspace.tsx:767:    const canvas = document.createElement("canvas");
+apps/web/app\visual-evidence-workspace.tsx:770:    const context = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
+apps/web/app\visual-evidence-workspace.tsx:862:          [gyro.GyroscopePlugin, { touchmove: true, absolutePosition: false }],
+apps/web/app\visual-evidence-workspace.tsx:868:        touchmoveTwoFingers: false,
+apps/web/app\visual-evidence-workspace.tsx:870:        lang: { loadError: text("The 360° image could not be rendered.", "Het 360°-beeld kon niet worden weergegeven."), fullscreen: text("Fullscreen", "Volledig scherm"), zoom: text("Zoom", "Zoom") },
+apps/web/app\visual-evidence-workspace.tsx:1086:      {existingFinding ? <div className="operation-alert success"><CircleDot size={18} /><div><strong>{existingFinding.finding_number} · {existingFinding.title}</strong><span>{text("This pointer will be added to the existing formal issue.", "Deze pointer wordt aan het bestaande formele issue toegevoegd.")}</span></div></div> : <>
+apps/web/app\visual-evidence-workspace.tsx:1102:      <label className="form-field"><span>{existingFinding ? text("What does the pointer indicate?", "Wat wijst de pointer precies aan?") : text("Factual description", "Feitelijke omschrijving")}</span><textarea rows={3} value={issue.description} onChange={(event) => setIssue({ ...issue, description: event.target.value })} /><DictateButton onText={(transcript) => setIssue({ ...issue, description: appendDictation(issue.description, transcript) })} /></label>
+apps/web/app\visual-evidence-workspace.tsx:1104:          HSE screens sign theirs. Linking a pointer to an existing issue is not a new
+apps/web/app\visual-evidence-workspace.tsx:1118:      <div className="button-row"><button className="secondary-button" type="button" onClick={cancel}>{text("Cancel", "Annuleren")}</button><button className="primary-button" type="button" disabled={busy || issue.title.trim().length < 3 || issue.description.trim().length < 3} onClick={save}><AlertTriangle size={15} /> {existingFinding ? text("Link pointer to issue", "Koppel pointer aan issue") : text("Create finding", "Bevinding maken")}</button></div>

@@ -5,6 +5,7 @@ import { Crosshair, Loader2, LocateFixed, MapPin, Minus, Pencil, Plus } from "lu
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 import { validAccessToken } from "@/lib/supabase/access-token";
+import { coordinatesFromTap, validMapCoordinates } from "@/lib/maps/mercator.mjs";
 
 /**
  * Section 5 of the client's record screens: the spot itself, on the satellite view.
@@ -23,17 +24,6 @@ export type RecordCoordinates = { latitude: string; longitude: string };
 
 const mapWidth = 560;
 const mapHeight = 240;
-
-/** Web Mercator: the tile scheme every satellite view is drawn in. */
-function coordinatesFromTap(center: { latitude: number; longitude: number }, zoom: number, offsetX: number, offsetY: number) {
-  const worldSize = 256 * 2 ** zoom;
-  const sinLatitude = Math.sin((center.latitude * Math.PI) / 180);
-  const centerX = ((center.longitude + 180) / 360) * worldSize;
-  const centerY = worldSize * (0.5 - Math.log((1 + sinLatitude) / (1 - sinLatitude)) / (4 * Math.PI));
-  const longitude = ((centerX + offsetX) / worldSize) * 360 - 180;
-  const latitude = (Math.atan(Math.sinh(Math.PI * (1 - (2 * (centerY + offsetY)) / worldSize))) * 180) / Math.PI;
-  return { latitude, longitude };
-}
 
 export function RecordLocationMap({
   client,
@@ -66,9 +56,9 @@ export function RecordLocationMap({
   const recorded = value.latitude.trim() !== "" && value.longitude.trim() !== ""
     ? { latitude: Number(value.latitude), longitude: Number(value.longitude) }
     : null;
-  const center = recorded && Number.isFinite(recorded.latitude) && Number.isFinite(recorded.longitude)
+  const center = validMapCoordinates(recorded)
     ? recorded
-    : fallbackCenter ?? null;
+    : validMapCoordinates(fallbackCenter) ? fallbackCenter : null;
 
   const mapSource = center
     ? `/api/maps/static?latitude=${center.latitude.toFixed(6)}&longitude=${center.longitude.toFixed(6)}&zoom=${zoom}&width=${mapWidth}&height=${mapHeight}`
@@ -104,6 +94,7 @@ export function RecordLocationMap({
   const moveTo = (event: React.MouseEvent<HTMLImageElement>) => {
     if (!center) return;
     const bounds = event.currentTarget.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) return;
     // The picture is drawn at the width it happens to have on this screen; the map itself
     // was asked for in its own pixels, so the tap is converted back to those first.
     const scaleX = mapWidth / bounds.width;
@@ -111,6 +102,7 @@ export function RecordLocationMap({
     const offsetX = (event.clientX - bounds.left - bounds.width / 2) * scaleX;
     const offsetY = (event.clientY - bounds.top - bounds.height / 2) * scaleY;
     const moved = coordinatesFromTap(center, zoom, offsetX, offsetY);
+    if (!moved) return;
     onChange({ latitude: moved.latitude.toFixed(6), longitude: moved.longitude.toFixed(6) });
   };
 

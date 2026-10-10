@@ -775,7 +775,7 @@ test("overview filters keep exact document codes first at project scale", () => 
 });
 
 test("keeps a written signature small, named and dated", () => {
-  const ink = `data:image/png;base64,${"A".repeat(400)}`;
+  const ink = `data:image/png;base64,${Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), Buffer.alloc(292)]).toString("base64")}`;
   const signature = handwrittenSignature("  Ravi Sardjoe  ", ink, "2026-08-04T12:00:00.000Z");
   assert.deepEqual(signature, { name: "Ravi Sardjoe", image: ink, signedAt: "2026-08-04T12:00:00.000Z" });
   assert.equal(isSigned(signature), true);

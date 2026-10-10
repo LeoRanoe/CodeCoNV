@@ -1,5 +1,7 @@
 "use client";
 
+import { locateCoordinates } from "@/lib/browser/geolocation";
+
 import {
   AlertTriangle,
   Archive,
@@ -955,7 +957,7 @@ export function OperationalWorkspace({
           openProjectArea={(tab, recordId) => openProjectArea(tab, recordId)}
         />
       ) : null}
-      {mode === "verify" ? <RapidVerifyWorkspace projectName={projectName} projectFiles={snapshot.files} client={client} /> : null}
+      {mode === "verify" ? <RapidVerifyWorkspace key={projectId} projectName={projectName} projectFiles={snapshot.files} client={client} /> : null}
       {mode === "reports" ? (
         <ReportOperations
           data={snapshot}
@@ -1161,6 +1163,11 @@ function ProjectOperations({
   const [hseLocationError, setHseLocationError] = useState("");
   /** The coordinates are typed by hand when the phone cannot see the sky. */
   const [hseManualPosition, setHseManualPosition] = useState(false);
+  const gpsRequests = useRef<{ issue: AbortController | null; hse: AbortController | null }>({ issue: null, hse: null });
+  useEffect(() => () => {
+    gpsRequests.current.issue?.abort();
+    gpsRequests.current.hse?.abort();
+  }, [showForm, tab, projectId]);
   /**
    * A parked draft is offered, never pushed back in silently: the person who reopens the
    * screen decides whether the old words are still the ones they want to send.
@@ -1458,29 +1465,24 @@ function ProjectOperations({
   };
   /** Section 5: the spot itself, as the phone reads it. */
   const captureHsePosition = () => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setHseLocationError(text("Location unavailable. Enter the coordinates.", "Locatie niet beschikbaar. Voer de coördinaten in."));
-      setHseManualPosition(true);
-      return;
-    }
+    if (gpsRequests.current.hse) return;
+    const request = new AbortController();
+    gpsRequests.current.hse = request;
+    const original = { latitude: hseForm.latitude, longitude: hseForm.longitude };
     setHseLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setHseForm((current) => ({
-          ...current,
-          latitude: position.coords.latitude.toFixed(6),
-          longitude: position.coords.longitude.toFixed(6),
-        }));
-        setHseLocationError("");
-        setHseLocating(false);
-      },
-      () => {
-        setHseLocationError(text("Location could not be read. Enter the coordinates.", "Locatie niet gelezen. Voer de coördinaten in."));
-        setHseManualPosition(true);
-        setHseLocating(false);
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
-    );
+    void locateCoordinates(request.signal).then((coordinates) => {
+      if (request.signal.aborted) return;
+      setHseForm((current) => current.latitude !== original.latitude || current.longitude !== original.longitude ? current : {
+        ...current, latitude: coordinates.latitude.toFixed(6), longitude: coordinates.longitude.toFixed(6),
+      });
+      setHseLocationError("");
+    }).catch(() => {
+      if (request.signal.aborted) return;
+      setHseLocationError(text("Location could not be read. Enter the coordinates.", "Locatie niet gelezen. Voer de coördinaten in."));
+      setHseManualPosition(true);
+    }).finally(() => {
+      if (gpsRequests.current.hse === request) { gpsRequests.current.hse = null; setHseLocating(false); }
+    });
   };
   /**
    * The client's issue screen is the same shape as the HSE one: numbered sections, one
@@ -1535,29 +1537,24 @@ function ProjectOperations({
   }));
   /** Section 5 of the issue screen: the spot itself, as the phone reads it. */
   const captureIssuePosition = () => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setIssueLocationError(text("Location unavailable. Enter the coordinates.", "Locatie niet beschikbaar. Voer de coördinaten in."));
-      setIssueManualPosition(true);
-      return;
-    }
+    if (gpsRequests.current.issue) return;
+    const request = new AbortController();
+    gpsRequests.current.issue = request;
+    const original = { latitude: findingForm.latitude, longitude: findingForm.longitude };
     setIssueLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setFindingForm((current) => ({
-          ...current,
-          latitude: position.coords.latitude.toFixed(6),
-          longitude: position.coords.longitude.toFixed(6),
-        }));
-        setIssueLocationError("");
-        setIssueLocating(false);
-      },
-      () => {
-        setIssueLocationError(text("Location could not be read. Enter the coordinates.", "Locatie niet gelezen. Voer de coördinaten in."));
-        setIssueManualPosition(true);
-        setIssueLocating(false);
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
-    );
+    void locateCoordinates(request.signal).then((coordinates) => {
+      if (request.signal.aborted) return;
+      setFindingForm((current) => current.latitude !== original.latitude || current.longitude !== original.longitude ? current : {
+        ...current, latitude: coordinates.latitude.toFixed(6), longitude: coordinates.longitude.toFixed(6),
+      });
+      setIssueLocationError("");
+    }).catch(() => {
+      if (request.signal.aborted) return;
+      setIssueLocationError(text("Location could not be read. Enter the coordinates.", "Locatie niet gelezen. Voer de coördinaten in."));
+      setIssueManualPosition(true);
+    }).finally(() => {
+      if (gpsRequests.current.issue === request) { gpsRequests.current.issue = null; setIssueLocating(false); }
+    });
   };
   const resetFindingForm = () => {
     setFindingForm({ ...emptyFindingForm, type: findingScope === "ncr" ? "ncr" : "deficiency" });
@@ -2790,15 +2787,20 @@ function ProjectOperations({
     }
   };
 
+  const boqSelectionRef = useRef(0);
   const inspectBoqFile = async (file: File | null) => {
+    const selection = ++boqSelectionRef.current;
     setBoqFile(file);
     setBoqItems([]);
     setBoqError("");
     if (!file) return;
     try {
-      setBoqItems(parseBoqCsv(await file.text()));
+      if (file.size > 5_000_000) throw new Error("Het CSV-bestand is te groot (maximaal 5 MB).");
+      const content = await file.text();
+      if (selection !== boqSelectionRef.current) return;
+      setBoqItems(parseBoqCsv(content));
     } catch (caught) {
-      setBoqError(userFacingError(caught, text));
+      if (selection === boqSelectionRef.current) setBoqError(userFacingError(caught, text));
     }
   };
 

@@ -2,6 +2,7 @@
 
 import { Eraser, PenLine, Undo2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { strokeLayout, strokePoint } from "@/lib/images/stroke-layout.mjs";
 import { useLanguage } from "@/lib/i18n";
 import { useBackToClose } from "@/lib/navigation/app-history";
 
@@ -21,26 +22,39 @@ export function SketchPad({ close, save }: { close: () => void; save: (file: Fil
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const strokesRef = useRef<Stroke[]>([]);
   const drawingRef = useRef(false);
+  const pointerRef = useRef<number | null>(null);
+  const spaceRef = useRef({ width: 0, height: 0 });
+  const mountedRef = useRef(false);
   const [color, setColor] = useState(sketchColors[0]);
   const [width, setWidth] = useState(3);
   const [empty, setEmpty] = useState(true);
+  const exportingRef = useRef(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
-  const paint = () => {
-    const canvas = canvasRef.current;
+  const paint = (target?: HTMLCanvasElement, exporting = false) => {
+    const canvas = target ?? canvasRef.current;
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
+    const space = spaceRef.current;
+    const bounds = exporting ? { width: space.width, height: space.height } : canvas.getBoundingClientRect();
+    const layout = strokeLayout(space, bounds);
+    if (!layout) return;
+    const ratio = canvas.width / bounds.width;
+    context.setTransform(1, 0, 0, 1, 0, 0);
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, canvas.width, canvas.height);
+    context.setTransform(ratio * layout.scale, 0, 0, ratio * layout.scale, ratio * layout.x, ratio * layout.y);
     context.lineCap = "round";
     context.lineJoin = "round";
     for (const stroke of strokesRef.current) {
-      if (stroke.points.length < 2) continue;
+      if (!stroke.points.length) continue;
       context.strokeStyle = stroke.color;
       context.lineWidth = stroke.width;
       context.beginPath();
       context.moveTo(stroke.points[0].x, stroke.points[0].y);
       for (const point of stroke.points.slice(1)) context.lineTo(point.x, point.y);
+      if (stroke.points.length === 1) context.lineTo(stroke.points[0].x + 0.1, stroke.points[0].y);
       context.stroke();
     }
   };
@@ -50,8 +64,13 @@ export function SketchPad({ close, save }: { close: () => void; save: (file: Fil
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    mountedRef.current = true;
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      if (!spaceRef.current.width) spaceRef.current = { width: rect.width, height: rect.height };
+      pointerRef.current = null;
+      drawingRef.current = false;
       const ratio = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.round(rect.width * ratio);
       canvas.height = Math.round(rect.height * ratio);
@@ -61,23 +80,28 @@ export function SketchPad({ close, save }: { close: () => void; save: (file: Fil
     };
     resize();
     window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
+    const observer = new ResizeObserver(resize);
+    observer.observe(canvas);
+    return () => { mountedRef.current = false; observer.disconnect(); window.removeEventListener("resize", resize); };
   }, []);
 
   const pointFrom = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    return strokePoint(event.clientX, event.clientY, rect, spaceRef.current) ?? { x: 0, y: 0 };
   };
 
   const start = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!event.isPrimary || event.button !== 0 || pointerRef.current !== null) return;
+    pointerRef.current = event.pointerId;
     event.currentTarget.setPointerCapture(event.pointerId);
     drawingRef.current = true;
     strokesRef.current = [...strokesRef.current, { color, width, points: [pointFrom(event)] }];
     setEmpty(false);
+    paint();
   };
 
   const move = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!drawingRef.current) return;
+    if (!drawingRef.current || pointerRef.current !== event.pointerId) return;
     const strokes = strokesRef.current;
     const current = strokes[strokes.length - 1];
     if (!current) return;
@@ -85,17 +109,22 @@ export function SketchPad({ close, save }: { close: () => void; save: (file: Fil
     paint();
   };
 
-  const end = () => {
+  const end = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (pointerRef.current !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    pointerRef.current = null;
     drawingRef.current = false;
   };
 
   const undo = () => {
+    pointerRef.current = null; drawingRef.current = false;
     strokesRef.current = strokesRef.current.slice(0, -1);
     setEmpty(strokesRef.current.length === 0);
     paint();
   };
 
   const clear = () => {
+    pointerRef.current = null; drawingRef.current = false;
     strokesRef.current = [];
     setEmpty(true);
     paint();
@@ -103,11 +132,18 @@ export function SketchPad({ close, save }: { close: () => void; save: (file: Fil
 
   const useSketch = () => {
     const canvas = canvasRef.current;
-    if (!canvas || empty) return;
+    if (!canvas || empty || exportingRef.current) return;
+    exportingRef.current = true;
     setBusy(true);
-    canvas.toBlob((blob) => {
+    const output = document.createElement("canvas");
+    output.width = Math.max(1, Math.round(spaceRef.current.width * 2));
+    output.height = Math.max(1, Math.round(spaceRef.current.height * 2));
+    paint(output, true);
+    output.toBlob((blob) => {
+      exportingRef.current = false;
+      if (!mountedRef.current) return;
       setBusy(false);
-      if (!blob) return;
+      if (!blob) { setError(text("The sketch could not be exported. Try again.", "De schets kon niet worden opgeslagen. Probeer opnieuw.")); return; }
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
       save(new File([blob], `sketch-${stamp}.png`, { type: "image/png" }));
     }, "image/png");
@@ -155,6 +191,7 @@ export function SketchPad({ close, save }: { close: () => void; save: (file: Fil
           onPointerLeave={end}
         />
 
+        {error ? <p className="field-error" role="alert">{error}</p> : null}
         <footer className="modal-actions">
           <button className="secondary-button" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
           <button className="primary-button" type="button" disabled={empty || busy} onClick={useSketch}>{text("Add the sketch", "Voeg de schets toe")}</button>

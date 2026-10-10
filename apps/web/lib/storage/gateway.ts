@@ -1,3 +1,6 @@
+import { activeOfflineUser } from "@/lib/offline/idb";
+import { isConnectionFailure } from "@/lib/offline/record-rules.mjs";
+import { downloadBlob } from "@/lib/browser/download";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cacheProjectFile, readCachedProjectFile } from "@/lib/offline/file-cache";
 import { validAccessToken } from "@/lib/supabase/access-token";
@@ -20,6 +23,8 @@ function uploadToPresignedUrl(url: string, file: File, onProgress?: (percent: nu
   return new Promise<void>((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("PUT", url);
+    request.timeout = 120_000;
+    request.addEventListener("timeout", () => reject(new Error("De upload duurde te lang. Probeer opnieuw.")));
     request.setRequestHeader("content-type", file.type || "application/octet-stream");
     request.upload.addEventListener("progress", (event) => {
       if (event.lengthComputable) onProgress?.(5 + Math.round((event.loaded / event.total) * 90));
@@ -98,23 +103,19 @@ async function authorizedFileResponse(client: SupabaseClient, fileId: string, do
   const response = await fetch(`/api/storage/files/${encodeURIComponent(fileId)}${download ? "?download=1" : ""}`, {
     headers: { authorization: `Bearer ${token}` },
   });
-  if (!response.ok) throw new Error(await storageError(response));
+  if (!response.ok) throw Object.assign(new Error(await storageError(response)), { status: response.status });
   return response;
 }
 
 export async function downloadProjectFile(client: SupabaseClient, fileId: string, filename: string) {
   // Downloading a file that is already on the device must keep working in the field.
   const blob = await authorizedFileResponse(client, fileId, true).then((response) => response.blob()).catch(async (error: unknown) => {
+    if ((error as { status?: number })?.status || !isConnectionFailure(error)) throw error;
     const cached = await readCachedProjectFile(fileId).catch(() => null);
     if (cached) return cached;
     throw error;
   });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, filename);
 }
 
 export async function openProjectFile(client: SupabaseClient, fileId: string, filename: string) {
@@ -146,12 +147,15 @@ export async function openProjectFile(client: SupabaseClient, fileId: string, fi
  * or who made the project available offline, keeps seeing it in the field.
  */
 export async function loadProjectFileBlob(client: SupabaseClient, fileId: string, projectId = "") {
+  const owner = activeOfflineUser();
   try {
     const response = await authorizedFileResponse(client, fileId);
     const blob = await response.blob();
-    await cacheProjectFile(fileId, projectId, blob).catch(() => undefined);
+    if (!owner || owner !== activeOfflineUser()) throw new Error("The signed-in account changed while loading this file.");
+    await cacheProjectFile(fileId, projectId, blob, owner).catch(() => undefined);
     return blob;
   } catch (error) {
+    if ((error as { status?: number })?.status || !isConnectionFailure(error)) throw error;
     const cached = await readCachedProjectFile(fileId).catch(() => null);
     if (cached) return cached;
     throw error;
@@ -180,10 +184,12 @@ export async function loadProjectFilePreviewObjectUrl(client: SupabaseClient, fi
  * skipped when the same file is already stored, so a second run only fetches what is new.
  */
 export async function storeProjectFileOffline(client: SupabaseClient, fileId: string, projectId: string) {
+  const owner = activeOfflineUser();
   const existing = await readCachedProjectFile(fileId).catch(() => null);
   if (existing) return { bytes: existing.size, alreadyStored: true };
   const response = await authorizedFileResponse(client, fileId);
   const blob = await response.blob();
-  await cacheProjectFile(fileId, projectId, blob);
+  if (!owner || owner !== activeOfflineUser()) throw new Error("The signed-in account changed while loading this file.");
+  await cacheProjectFile(fileId, projectId, blob, owner);
   return { bytes: blob.size, alreadyStored: false };
 }

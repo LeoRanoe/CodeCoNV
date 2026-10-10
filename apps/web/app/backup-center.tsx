@@ -27,7 +27,7 @@ type BackupScope = "project" | "organization";
 function hoursSince(value: string | null | undefined) {
   if (!value) return null;
   const then = new Date(value).getTime();
-  if (Number.isNaN(then)) return null;
+  if (!Number.isFinite(then) || then > Date.now() + 60_000) return null;
   return (Date.now() - then) / 3_600_000;
 }
 
@@ -111,13 +111,14 @@ export function BackupCenter({
   const [lastExport, setLastExport] = useState<{ scope: BackupScope; size: number; sha256: string; counts: Record<string, number> } | null>(null);
   const [lastDryRun, setLastDryRun] = useState<BackupRun | null>(null);
 
-  const runs = data.backupRuns;
+  const runs = useMemo(() => [...data.backupRuns].sort((left, right) => String(right.created_at).localeCompare(String(left.created_at))), [data.backupRuns]);
+  const scheduledAttempt = runs.find((item) => item.run_type === "scheduled");
   const latestScheduled = runs.find((item) => item.run_type === "scheduled" && item.status === "verified");
   const latestRestoreTest = runs.find((item) => item.run_type === "restore_test" && item.status === "dry_run_passed");
   const latestFailure = runs.find((item) => item.status === "failed");
 
   const scheduledAge = hoursSince(latestScheduled?.verified_at);
-  const backupStale = scheduledAge === null || scheduledAge > backupStaleAfterHours;
+  const backupStale = scheduledAge === null || scheduledAge > backupStaleAfterHours || scheduledAttempt?.status === "failed";
   const restoreAge = hoursSince(latestRestoreTest?.verified_at);
   const restoreStale = restoreAge === null || restoreAge > restoreTestStaleAfterDays * 24;
 
@@ -168,12 +169,12 @@ export function BackupCenter({
         <article className={`backup-health-card ${restoreStale ? "attention" : "healthy"}`}>
           <span>{restoreStale ? <AlertTriangle size={20} /> : <ShieldCheck size={20} />}</span>
           <div>
-            <strong>{text("Last restore test", "Laatste hersteltest")}</strong>
+            <strong>{text("Last restore validation", "Laatste herstelvalidatie")}</strong>
             <b>{ageLabel(latestRestoreTest?.verified_at, dutch)}</b>
-            <small>{text(`Test a restore at least every ${restoreTestStaleAfterDays} days.`, `Test minstens elke ${restoreTestStaleAfterDays} dagen een herstel.`)}</small>
+            <small>{text("A validation checks the archive; a restore rehearsal in a separate environment is still required.", "Validatie controleert het archief; een hersteloefening in een aparte omgeving blijft vereist.")}</small>
           </div>
         </article>
-        <article className={`backup-health-card ${isStorageGatewayConfigured ? "healthy" : "attention"}`}>
+        <article className={`backup-health-card ${isStorageGatewayConfigured && !backupStale ? "healthy" : "attention"}`}>
           <span><HardDrive size={20} /></span>
           <div>
             <strong>{text("Backup storage", "Back-upopslag")}</strong>

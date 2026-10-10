@@ -1,3 +1,4 @@
+import { downloadBlob } from "@/lib/browser/download";
 import {
   AlignmentType,
   BorderStyle,
@@ -157,10 +158,5 @@ export function documentFooter(text: string): Footer {
 
 export async function downloadDocxBlob(doc: Document, filename: string): Promise<void> {
   const blob = await Packer.toBlob(doc);
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  downloadBlob(blob, filename);
 }

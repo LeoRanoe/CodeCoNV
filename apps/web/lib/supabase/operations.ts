@@ -1,3 +1,4 @@
+import { downloadBlob } from "@/lib/browser/download";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { constructionDisciplines } from "@/lib/forms/disciplines";
 import { anchorChecklistLibrary, legacyAnchorPrompts } from "@/lib/checklists/anchor-library";
@@ -2106,12 +2107,7 @@ export async function downloadManualBackup(client: SupabaseClient, organizationI
   const sha256 = await sha256Hex(bytes);
   const verified = await client.rpc("verify_manual_backup_export", { p_backup_run_id: manifest.backup_run_id, p_sha256: sha256, p_size_bytes: bytes.byteLength });
   fail(verified.error);
-  const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `codeco-${projectId ? "project" : "organisation"}-backup-${new Date().toISOString().slice(0, 10)}.json`;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(new Blob([text], { type: "application/json" }), `codeco-${projectId ? "project" : "organisation"}-backup-${new Date().toISOString().slice(0, 10)}.json`);
   return {
     manifest,
     sha256,

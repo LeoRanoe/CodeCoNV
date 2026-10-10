@@ -1,3 +1,4 @@
+import { downloadBlob } from "@/lib/browser/download";
 /* eslint-disable jsx-a11y/alt-text -- @react-pdf/renderer Image has no HTML alt prop. */
 import { Document, Image, Page, StyleSheet, Text, View, pdf } from "@react-pdf/renderer";
 import { reportDay, reportDelayCause, reportInspection, reportMoment, reportRole, reportVariation, reportWeather, reportWind } from "@/lib/reports/report-vocabulary";
@@ -388,13 +389,4 @@ export async function downloadFormalReportPdf(snapshot: FormalReportSnapshot, re
   const normalized = { ...immutableDailySnapshot(snapshot, revision, sha256), signatures };
   const blob = await pdf(<DailyReportDocument snapshot={normalized} />).toBlob();
   downloadBlob(blob, `${normalized.reportNumber}-revisie-${revision}.pdf`);
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
