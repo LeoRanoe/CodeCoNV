@@ -1443,8 +1443,13 @@ test("gives the phone back button a screen to go back to", async () => {
   assert.match(app, /const screen: AppScreen = useMemo/);
   assert.match(app, /useScreenHistory\(screen, applyScreen\)/);
   assert.match(app, /const applyScreen = useCallback/);
-  assert.match(history, /window\.history\.pushState\(entry, "", url\)/);
+  // Each entry also remembers the screen underneath it.
+  assert.match(history, /window\.history\.pushState\(\{ codecoScreen: screen, codecoBelow: previous \} satisfies HistoryEntry, "", url\)/);
   assert.match(history, /window\.addEventListener\("popstate", onPopState\)/);
+  // Closing a dialog by hand steps back only when the entry underneath is the screen that
+  // remains; otherwise it rewrites the entry, so an older screen or dialog never resurfaces.
+  assert.match(history, /if \(below && sameScreen\(below, screen\)\) \{\s*\n\s*window\.history\.back\(\);/);
+  assert.match(history, /window\.history\.replaceState\(\{ codecoScreen: screen, codecoBelow: below \?\? null \}/);
   // The flag that follows the back button must never survive into the next navigation.
   assert.match(history, /restoringRef\.current = false;\s*\n\s*if \(action === "none"\) return;/);
 

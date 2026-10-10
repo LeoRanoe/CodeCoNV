@@ -1,5 +1,6 @@
 /* eslint-disable jsx-a11y/alt-text -- @react-pdf/renderer Image has no HTML alt prop. */
 import { Document, Image, Page, StyleSheet, Text, View, pdf } from "@react-pdf/renderer";
+import { reportDay, reportDelayCause, reportInspection, reportMoment, reportRole, reportVariation, reportWeather, reportWind } from "@/lib/reports/report-vocabulary";
 import type { DailyCloseoutAnswers, ProjectStartAnswers } from "@/lib/forms/daily-report";
 
 export type BuildingReportBreakdown = {
@@ -73,7 +74,10 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", gap: 8, marginBottom: 4 },
   rowLabel: { width: "30%", color: "#69828d" },
   rowValue: { width: "70%", color: "#183646" },
-  footer: { position: "absolute", bottom: 22, left: 36, right: 36, color: "#78909a", fontSize: 7, textAlign: "center" },
+  // Anchored from the top of an A4 page (842pt) rather than from the bottom: with the page's
+  // inherited lineHeight, react-pdf 4 does not draw bottom-anchored text that is rendered
+  // dynamically (the page numbers), while a top-anchored one is drawn on every page.
+  footer: { position: "absolute", top: 808, left: 36, right: 36, color: "#78909a", fontSize: 7, textAlign: "center" },
   confirmation: { marginTop: 10, borderTopWidth: 1, borderTopColor: "#d9e5e9", paddingTop: 8, color: "#526c77" },
   signatureGrid: { flexDirection: "row", gap: 8, marginTop: 4 },
   signatureCell: { borderColor: "#d9e5e9", borderWidth: 1, borderRadius: 4, padding: 8, width: "32%" },
@@ -105,21 +109,33 @@ function SignatureSection({ signatures }: { signatures: ReportSignatureLine[] })
         <View style={styles.signatureGrid}>
           {roles.slice(0, 3).map((signature, index) => (
             <View style={styles.signatureCell} key={`${signature.role}:${index}`}>
-              <Text style={styles.signatureRole}>{signature.role.replaceAll("_", " ")}</Text>
+              <Text style={styles.signatureRole}>{reportRole(signature.role)}</Text>
               {signature.signatureImage ? <Image src={signature.signatureImage} style={styles.signatureInk} /> : <View style={styles.signatureLine} />}
               <Text style={styles.signatureName}>{signature.name || " "}</Text>
-              <Text style={styles.signatureMeta}>{signature.signedAt ? `Ondertekend ${signature.signedAt.slice(0, 16).replace("T", " ")}` : "Nog niet ondertekend"}</Text>
+              <Text style={styles.signatureMeta}>{signature.signedAt ? `Ondertekend ${reportMoment(signature.signedAt)}` : "Nog niet ondertekend"}</Text>
             </View>
           ))}
         </View>
         {signatures.map((signature, index) => (
           <Text style={styles.declaration} key={`declaration:${index}`}>
-            {signature.name} · {signature.role.replaceAll("_", " ")}: “{signature.declaration}”
+            {signature.name} · {reportRole(signature.role)}: “{signature.declaration}”
           </Text>
         ))}
         {signatures.length > 3 ? <Text style={styles.declaration}>{signatures.length - 3} verdere verklaringen staan in de rapporthistorie.</Text> : null}
       </View>
     </View>
+  );
+}
+
+/** Page numbers are counted by the renderer: a section that flows onto an extra page used
+ * to repeat the previous page's typed-in page number. */
+function PageFooter() {
+  return (
+    <Text
+      style={styles.footer}
+      fixed
+      render={({ pageNumber, totalPages }) => `CODECO Supervisie · gegenereerd uit de centrale projectadministratie · Pagina ${pageNumber} van ${totalPages}`}
+    />
   );
 }
 
@@ -149,13 +165,13 @@ export function DailyReportDocument({ snapshot, logoSource = "/codeco-logo-pdf.p
         <View style={styles.header}>
           <View style={styles.brandRow}><View style={styles.logoPlate}><Image src={logoSource} style={styles.logo} /></View><Text style={styles.brand}>CONSTRUCTIESUPERVISIE</Text></View>
           <Text style={styles.title}>Dagrapport</Text>
-          <Text style={styles.subtitle}>{snapshot.formal ? `Formele immutable revisie ${snapshot.formal.revision}` : "Vaste, controleerbare samenvatting uit bevestigde projectregistraties"}</Text>
+          <Text style={styles.subtitle}>{snapshot.formal ? `Formele, onveranderbare revisie ${snapshot.formal.revision}` : "Vaste, controleerbare samenvatting uit bevestigde projectregistraties"}</Text>
         </View>
 
         <View style={styles.metadata}>
           {[
             ["Rapport", snapshot.reportNumber],
-            ["Datum", snapshot.reportDate],
+            ["Datum", reportDay(snapshot.reportDate)],
             ["Project", `${snapshot.projectCode} · ${snapshot.projectName}`],
             ["Gebouw", snapshot.buildingName],
             ["Locatie", snapshot.location],
@@ -170,7 +186,7 @@ export function DailyReportDocument({ snapshot, logoSource = "/codeco-logo-pdf.p
         </View>
 
         <Section title="1. Projectinformatie, weer en werkuren">
-          <Row label="Weer" value={`${start.weatherCondition}; ${start.temperatureC} °C; wind ${start.windCondition}`} />
+          <Row label="Weer" value={`${reportWeather(start.weatherCondition)}; ${start.temperatureC} °C; wind ${reportWind(start.windCondition)}`} />
           <Row label="Werkuren" value={`${start.shiftStart}–${start.shiftEnd}`} />
           <Row label="Verwachte bezetting" value={start.expectedWorkers} />
         </Section>
@@ -181,18 +197,18 @@ export function DailyReportDocument({ snapshot, logoSource = "/codeco-logo-pdf.p
           <Row label="Werk afgerond" value={closeout.workPerformed} />
           <Row label="Voortgang" value={`${closeout.progressPercent}%`} />
         </Section>
-        <Text style={styles.footer} fixed>CODECO Supervisie · gegenereerd uit de centrale projectadministratie · Pagina 1 van {snapshot.buildings?.length ? 3 : 2}</Text>
+        <PageFooter />
       </Page>
 
       <Page size="A4" style={styles.page}>
         <View style={styles.header}>
           <View style={styles.brandRow}><View style={styles.logoPlate}><Image src={logoSource} style={styles.logo} /></View><Text style={styles.brand}>CONSTRUCTIESUPERVISIE</Text></View>
           <Text style={styles.title}>Dagrapport · vervolg</Text>
-          <Text style={styles.subtitle}>{snapshot.reportNumber} · {snapshot.reportDate} · {snapshot.projectCode} · {snapshot.buildingName}</Text>
+          <Text style={styles.subtitle}>{snapshot.reportNumber} · {reportDay(snapshot.reportDate)} · {snapshot.projectCode} · {snapshot.buildingName}</Text>
         </View>
 
         <Section title="5–7. Inspecties, kwaliteit en HSE">
-          <Row label="Inspecties" value={closeout.inspectionResult} />
+          <Row label="Inspecties" value={reportInspection(closeout.inspectionResult)} />
           <Row label="Kwaliteit" value={closeout.qualityIssues === "yes" ? closeout.qualityDetails : "Geen afwijking gemeld"} />
           <Row label="HSE" value={closeout.hseEvent === "none" ? "Geen incident of near miss gemeld" : closeout.hseDetails} />
         </Section>
@@ -200,13 +216,13 @@ export function DailyReportDocument({ snapshot, logoSource = "/codeco-logo-pdf.p
           <Row label="Materieel" value={closeout.equipmentStatus} />
           <Row label="Leveringen" value={closeout.deliveries} />
           <Row label="Testen/meten" value={closeout.testsMeasurements} />
-          <Row label="Wijzigingswerk" value={closeout.variationWork} />
-          <Row label="Vertraging" value={closeout.delayCause === "none" ? "Geen vertraging" : `${closeout.delayCause}; ${closeout.delayHours} uur`} />
+          <Row label="Wijzigingswerk" value={reportVariation(closeout.variationWork)} />
+          <Row label="Vertraging" value={closeout.delayCause === "none" ? "Geen vertraging" : `${reportDelayCause(closeout.delayCause)}; ${closeout.delayHours} uur`} />
           {closeout.delayCause !== "none" ? <>
             <Row label="Reden vertraging" value={closeout.delayReason} />
             <Row label="Verantwoordelijke aannemer" value={[closeout.contractorSignedBy, closeout.contractorCompany].filter(Boolean).join(" · ")} />
             {closeout.contractorSignatureImage ? <Image src={closeout.contractorSignatureImage} style={styles.signatureInk} /> : null}
-            <Row label="Ondertekend" value={closeout.contractorSignedAt?.slice(0, 16).replace("T", " ")} />
+            <Row label="Ondertekend" value={reportMoment(closeout.contractorSignedAt)} />
           </> : null}
         </Section>
         <Section title="13–16. Communicatie, acties, risico's en morgen">
@@ -218,11 +234,11 @@ export function DailyReportDocument({ snapshot, logoSource = "/codeco-logo-pdf.p
         <Section title="17–18. Foto's en bijlagen">
           <Row label="Foto's" value={closeout.photoCount} />
           <Row label="Bijlagen" value={closeout.attachmentsConfirmed ? "Door supervisor gecontroleerd" : "Nog niet bevestigd"} />
-          <Text style={styles.confirmation}>{snapshot.formal ? `Deze PDF is uitsluitend opgebouwd uit de immutable snapshot van ${snapshot.formal.frozenAt}. Volledige SHA-256: ${snapshot.formal.sha256}` : "Werk-PDF uit bevestigde dagregistraties. Formele status staat in de rapporthistorie."}</Text>
+          <Text style={styles.confirmation}>{snapshot.formal ? `Deze PDF is uitsluitend opgebouwd uit de onveranderbare momentopname van ${reportMoment(snapshot.formal.frozenAt)}. Volledige SHA-256: ${snapshot.formal.sha256}` : "Werk-PDF uit bevestigde dagregistraties. Formele status staat in de rapporthistorie."}</Text>
         </Section>
         <SignatureSection signatures={snapshot.signatures ?? []} />
 
-        <Text style={styles.footer} fixed>CODECO Supervisie · gegenereerd uit de centrale projectadministratie · Pagina 2 van {snapshot.buildings?.length ? 3 : 2}</Text>
+        <PageFooter />
       </Page>
 
       {snapshot.buildings?.length ? (
@@ -230,23 +246,23 @@ export function DailyReportDocument({ snapshot, logoSource = "/codeco-logo-pdf.p
           <View style={styles.header}>
             <View style={styles.brandRow}><View style={styles.logoPlate}><Image src={logoSource} style={styles.logo} /></View><Text style={styles.brand}>CONSTRUCTIESUPERVISIE</Text></View>
             <Text style={styles.title}>Dagrapport · per gebouw</Text>
-            <Text style={styles.subtitle}>{snapshot.reportNumber} · {snapshot.reportDate} · {snapshot.buildings.length} gebouwen in dit projectrapport</Text>
+            <Text style={styles.subtitle}>{snapshot.reportNumber} · {reportDay(snapshot.reportDate)} · {snapshot.buildings.length} gebouwen in dit projectrapport</Text>
           </View>
           {snapshot.buildings.map((building) => (
             <Section title={building.name} key={building.name}>
-              <Row label="Weer" value={`${building.projectStart.weatherCondition}; ${building.projectStart.temperatureC} °C`} />
+              <Row label="Weer" value={`${reportWeather(building.projectStart.weatherCondition)}; ${building.projectStart.temperatureC} °C`} />
               <Row label="Werk lopend" value={building.closeout.workOngoing || "Niet geregistreerd"} />
               <Row label="Werk afgerond" value={building.closeout.workPerformed} />
               <Row label="Voortgang" value={`${building.closeout.progressPercent}%`} />
               <Row label="Kwaliteit" value={building.closeout.qualityIssues === "yes" ? building.closeout.qualityDetails : "Geen afwijking gemeld"} />
               <Row label="HSE" value={building.closeout.hseEvent === "none" ? "Geen incident of near miss gemeld" : building.closeout.hseDetails} />
-              <Row label="Vertraging" value={building.closeout.delayCause === "none" ? "Geen vertraging" : `${building.closeout.delayCause}; ${building.closeout.delayHours} uur · ${building.closeout.delayReason || "geen reden"}`} />
+              <Row label="Vertraging" value={building.closeout.delayCause === "none" ? "Geen vertraging" : `${reportDelayCause(building.closeout.delayCause)}; ${building.closeout.delayHours} uur · ${building.closeout.delayReason || "geen reden"}`} />
               {building.closeout.contractorSignatureImage ? <Image src={building.closeout.contractorSignatureImage} style={styles.signatureInk} /> : null}
               <Row label="Aannemer" value={[building.closeout.contractorSignedBy, building.closeout.contractorCompany].filter(Boolean).join(" · ")} />
               <Row label="Planning morgen" value={building.closeout.tomorrowPlan} />
             </Section>
           ))}
-          <Text style={styles.footer} fixed>CODECO Supervisie · gegenereerd uit de centrale projectadministratie · Pagina 3 van 3</Text>
+          <PageFooter />
         </Page>
       ) : null}
     </Document>

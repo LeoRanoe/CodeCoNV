@@ -1,4 +1,5 @@
 import { Document, Paragraph } from "docx";
+import { reportDay, reportDelayCause, reportInspection, reportMoment, reportRole, reportVariation, reportWeather, reportWind } from "@/lib/reports/report-vocabulary";
 import {
   bodyText,
   brandHeader,
@@ -26,8 +27,8 @@ function signatureFields(signatures: ReportSignatureLine[]): Array<[string, stri
       { name: "", role: "Opdrachtgever", declaration: "", signedAt: "", legalLevel: "" },
     ];
   return roles.map((signature) => [
-    signature.role.replaceAll("_", " "),
-    signature.name ? `${signature.name} · ${signature.signedAt.slice(0, 16).replace("T", " ")}` : "Nog niet ondertekend",
+    reportRole(signature.role),
+    signature.name ? `${signature.name} · ${reportMoment(signature.signedAt)}` : "Nog niet ondertekend",
     // The signature that was written when the version was signed.
     signature.signatureImage ?? null,
   ]);
@@ -37,7 +38,7 @@ export function buildDailyReportDocxDocument(snapshot: DailyReportPdfSnapshot, l
   const { projectStart: start, closeout } = snapshot;
   const metadata: Array<[string, string]> = [
     ["Rapport", snapshot.reportNumber],
-    ["Datum", snapshot.reportDate],
+    ["Datum", reportDay(snapshot.reportDate)],
     ["Project", `${snapshot.projectCode} · ${snapshot.projectName}`],
     ["Gebouw", snapshot.buildingName],
     ["Locatie", snapshot.location],
@@ -50,14 +51,14 @@ export function buildDailyReportDocxDocument(snapshot: DailyReportPdfSnapshot, l
         sectionHeading("Dagrapport · per gebouw"),
         ...snapshot.buildings.flatMap((building) => [
           sectionHeading(building.name),
-          labelValue("Weer", `${building.projectStart.weatherCondition}; ${building.projectStart.temperatureC} °C`),
+          labelValue("Weer", `${reportWeather(building.projectStart.weatherCondition)}; ${building.projectStart.temperatureC} °C`),
           labelValue("Werk lopend", building.closeout.workOngoing || "Niet geregistreerd"),
           labelValue("Werk afgerond", building.closeout.workPerformed),
           labelValue("Voortgang", `${building.closeout.progressPercent}%`),
           labelValue("Kwaliteit", building.closeout.qualityIssues === "yes" ? building.closeout.qualityDetails : "Geen afwijking gemeld"),
           labelValue("HSE", building.closeout.hseEvent === "none" ? "Geen incident of near miss gemeld" : building.closeout.hseDetails),
-          labelValue("Vertraging", building.closeout.delayCause === "none" ? "Geen vertraging" : `${building.closeout.delayCause}; ${building.closeout.delayHours} uur · ${building.closeout.delayReason || "geen reden"}`),
-          ...(building.closeout.contractorSignedBy ? [signatureBlock([["Aannemer", `${building.closeout.contractorSignedBy} · ${building.closeout.contractorCompany || ""} · ${building.closeout.contractorSignedAt?.slice(0, 16).replace("T", " ") || ""}`, building.closeout.contractorSignatureImage ?? null]])] : []),
+          labelValue("Vertraging", building.closeout.delayCause === "none" ? "Geen vertraging" : `${reportDelayCause(building.closeout.delayCause)}; ${building.closeout.delayHours} uur · ${building.closeout.delayReason || "geen reden"}`),
+          ...(building.closeout.contractorSignedBy ? [signatureBlock([["Aannemer", `${building.closeout.contractorSignedBy} · ${building.closeout.contractorCompany || ""} · ${reportMoment(building.closeout.contractorSignedAt)}`, building.closeout.contractorSignatureImage ?? null]])] : []),
           labelValue("Planning morgen", building.closeout.tomorrowPlan),
         ]),
       ]
@@ -70,10 +71,10 @@ export function buildDailyReportDocxDocument(snapshot: DailyReportPdfSnapshot, l
       {
         footers: { default: documentFooter("CODECO Supervisie · gegenereerd uit de centrale projectadministratie") },
         children: [
-          ...brandHeader(logoBytes, "Dagrapport", snapshot.formal ? `Formele immutable revisie ${snapshot.formal.revision}` : "Vaste, controleerbare samenvatting uit bevestigde projectregistraties"),
+          ...brandHeader(logoBytes, "Dagrapport", snapshot.formal ? `Formele, onveranderbare revisie ${snapshot.formal.revision}` : "Vaste, controleerbare samenvatting uit bevestigde projectregistraties"),
           metadataTable(metadata, 3),
           ...section("1. Projectinformatie, weer en werkuren",
-            labelValue("Weer", `${start.weatherCondition}; ${start.temperatureC} °C; wind ${start.windCondition}`),
+            labelValue("Weer", `${reportWeather(start.weatherCondition)}; ${start.temperatureC} °C; wind ${reportWind(start.windCondition)}`),
             labelValue("Werkuren", `${start.shiftStart}–${start.shiftEnd}`),
             labelValue("Verwachte bezetting", start.expectedWorkers),
           ),
@@ -85,7 +86,7 @@ export function buildDailyReportDocxDocument(snapshot: DailyReportPdfSnapshot, l
             labelValue("Voortgang", `${closeout.progressPercent}%`),
           ),
           ...section("5–7. Inspecties, kwaliteit en HSE",
-            labelValue("Inspecties", closeout.inspectionResult),
+            labelValue("Inspecties", reportInspection(closeout.inspectionResult)),
             labelValue("Kwaliteit", closeout.qualityIssues === "yes" ? closeout.qualityDetails : "Geen afwijking gemeld"),
             labelValue("HSE", closeout.hseEvent === "none" ? "Geen incident of near miss gemeld" : closeout.hseDetails),
           ),
@@ -93,14 +94,14 @@ export function buildDailyReportDocxDocument(snapshot: DailyReportPdfSnapshot, l
             labelValue("Materieel", closeout.equipmentStatus),
             labelValue("Leveringen", closeout.deliveries),
             labelValue("Testen/meten", closeout.testsMeasurements),
-            labelValue("Wijzigingswerk", closeout.variationWork),
-            labelValue("Vertraging", closeout.delayCause === "none" ? "Geen vertraging" : `${closeout.delayCause}; ${closeout.delayHours} uur`),
+            labelValue("Wijzigingswerk", reportVariation(closeout.variationWork)),
+            labelValue("Vertraging", closeout.delayCause === "none" ? "Geen vertraging" : `${reportDelayCause(closeout.delayCause)}; ${closeout.delayHours} uur`),
             ...(closeout.delayCause !== "none" ? [
               labelValue("Reden vertraging", closeout.delayReason),
               labelValue("Aannemersbedrijf", closeout.contractorCompany),
             ] : []),
           ),
-          ...(closeout.delayCause !== "none" ? [signatureBlock([["Handtekening aannemer", `${closeout.contractorSignedBy || ""} · ${closeout.contractorSignedAt?.slice(0, 16).replace("T", " ") || ""}`, closeout.contractorSignatureImage ?? null]])] : []),
+          ...(closeout.delayCause !== "none" ? [signatureBlock([["Handtekening aannemer", `${closeout.contractorSignedBy || ""} · ${reportMoment(closeout.contractorSignedAt)}`, closeout.contractorSignatureImage ?? null]])] : []),
           ...section("13–16. Communicatie, acties, risico's en morgen",
             labelValue("Communicatie", closeout.communication),
             labelValue("Registraties", `${snapshot.registrationCount} dagregistraties`),
@@ -111,13 +112,13 @@ export function buildDailyReportDocxDocument(snapshot: DailyReportPdfSnapshot, l
             labelValue("Foto's", closeout.photoCount),
             labelValue("Bijlagen", closeout.attachmentsConfirmed ? "Door supervisor gecontroleerd" : "Nog niet bevestigd"),
             bodyText(snapshot.formal
-              ? `Dit Word-document is uitsluitend opgebouwd uit de immutable snapshot van ${snapshot.formal.frozenAt}. Volledige SHA-256: ${snapshot.formal.sha256}`
+              ? `Dit Word-document is uitsluitend opgebouwd uit de onveranderbare momentopname van ${reportMoment(snapshot.formal.frozenAt)}. Volledige SHA-256: ${snapshot.formal.sha256}`
               : "Werkversie uit bevestigde dagregistraties. Formele status staat in de rapporthistorie."),
           ),
           // Item 19 of the client's day report: control, name/position and signature.
           sectionHeading("19. Controle, naam/functie en ondertekening"),
           signatureBlock(signatureFields(snapshot.signatures ?? [])),
-          ...(snapshot.signatures ?? []).map((signature) => bodyText(`${signature.name} · ${signature.role.replaceAll("_", " ")}: “${signature.declaration}”`)),
+          ...(snapshot.signatures ?? []).map((signature) => bodyText(`${signature.name} · ${reportRole(signature.role)}: “${signature.declaration}”`)),
           ...buildingSections,
         ],
       },
