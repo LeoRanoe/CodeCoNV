@@ -3803,6 +3803,12 @@ function ProjectOperations({
               className={registerFormClassName}
               headerAside={controlledRegister ? <span className="controlled-document-badge">{projectCode} · {registerContextLabel}</span> : null}
             >
+              {controlledRegister ? (
+                <div className="form-grid controlled-document-primary">
+                  <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction title / reference", "Titel / referentie instructie") : text("Title / reference", "Titel / referentie")}</span><input value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} /></label>
+                  <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction description", "Omschrijving instructie") : text("Formal request / instruction / observation", "Formeel verzoek / instructie / observatie")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
+                </div>
+              ) : null}
               {/* The form says what is being recorded — Materials delivery, Agreement,
                   RFI — instead of a general register heading with the answer hidden in a
                   dropdown below it. */}
@@ -3830,14 +3836,7 @@ function ProjectOperations({
                   <div><small>{text("Issue date and time", "Uitgiftedatum en -tijd")}</small><strong>{issueDateLabel}</strong><span>{issueTime}</span></div>
                   <div><small>{text("Drawn up by", "Opgemaakt door")}</small><strong>{registerForm.issuerName.trim() || currentUserName}</strong><span>{registerForm.signedBy ? text("Signed", "Ondertekend") : text("Not signed yet", "Nog niet ondertekend")}</span></div>
                 </section>
-                  <section className="controlled-document-dates" aria-label={text("Document dates", "Documentdatums")}>
-                    <header><FileCheck2 size={17} /><div><strong>{registerForm.type === "technical_instruction" ? text("Technical instruction dates", "Datums technische instructie") : text("Document dates", "Documentdatums")}</strong></div></header>
-                    <div className="form-grid">
-                      <label className="form-field"><span>{text("Issue date · automatic", "Uitgiftedatum · automatisch")}</span><input type="date" value={issueDate} readOnly /></label>
-                      <label className="form-field"><span>{text("Issue time · automatic", "Uitgiftetijd · automatisch")}</span><input type="time" value={issueTime} readOnly /></label>
-                      <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction deadline / required by", "Deadline instructie / uitvoeren uiterlijk") : text("Response / information required by", "Antwoord / informatie nodig uiterlijk")}</span><input type="date" min={issueDate} value={registerForm.dueDate} onChange={(event) => setRegisterForm({ ...registerForm, dueDate: event.target.value })} /></label>
-                    </div>
-                  </section>
+
                 </>
               ) : null}
               <div className="form-grid-2">
@@ -3867,6 +3866,12 @@ function ProjectOperations({
                   </label>
                 ) : null}
               </div>
+              {controlledRegister ? (
+                <label className="form-field controlled-document-deadline">
+                  <span>{registerForm.type === "technical_instruction" ? text("Instruction deadline / required by", "Deadline instructie / uitvoeren uiterlijk") : text("Response / information required by", "Antwoord / informatie nodig uiterlijk")}</span>
+                  <input type="date" min={editingRegisterId ? undefined : issueDate} value={registerForm.dueDate} onChange={(event) => setRegisterForm({ ...registerForm, dueDate: event.target.value })} />
+                </label>
+              ) : null}
               {activeRegisterPresets.length ? <div className="quick-issue-presets" aria-label={text("Choose a standard register item", "Kies een standaard registeritem")}>{activeRegisterPresets.map((preset) => <button className={registerForm.title === preset.title ? "active" : ""} type="button" onClick={() => setRegisterForm({ ...registerForm, ...preset })} key={preset.title}>{preset.title}</button>)}</div> : null}
               {delayReportRegister ? (
                 /* The client's own Project Delay Report. The header above this — project,
@@ -4065,12 +4070,7 @@ function ProjectOperations({
                     </div>
                   </RecordFormSection>
                 </div>
-              ) : controlledRegister ? (
-                <div className="form-grid">
-                  <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction title / reference", "Titel / referentie instructie") : text("Title / reference", "Titel / referentie")}</span><input value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} /></label>
-                  <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction description", "Omschrijving instructie") : text("Formal request / instruction / observation", "Formeel verzoek / instructie / observatie")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
-                </div>
-              ) : agreementRegister ? (
+              ) : controlledRegister ? null : agreementRegister ? (
                 /* The client's own "Agreements Made" form, in its own four numbered
                    boxes: what was agreed, who owns it, who signs for it and — once the
                    work is done — the date and the picture that close it. */
