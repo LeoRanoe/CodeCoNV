@@ -34,6 +34,7 @@ import { getCachedProjectSnapshot, cacheProjectSnapshot } from "@/lib/offline/pr
 import { loadProjectFileObjectUrl } from "@/lib/storage/gateway";
 import type { ProjectRecentPhoto } from "@/lib/supabase/data";
 import { loadProjectOperations } from "@/lib/supabase/operations";
+import { pageAll } from "@/lib/supabase/page-all.mjs";
 import { useLiveProjectWeather } from "@/lib/weather-client";
 import { statusText, typeText, priorityText } from "@/lib/status-labels";
 
@@ -283,8 +284,8 @@ export function ClientDashboard({
     staleTime: 30_000,
     queryFn: async () => {
       const [findings, registers, inspectionCount, photoCount] = await Promise.all([
-        client!.from("findings").select("id,finding_number,title,status,finding_type,priority,due_at,issue_management").eq("project_id", projectId).limit(1000),
-        client!.from("project_register_entries").select("id,entry_number,title,status,register_type,due_at,details").eq("project_id", projectId).limit(2000),
+        pageAll((from, to) => client!.from("findings").select("id,finding_number,title,status,finding_type,priority,due_at,issue_management").eq("project_id", projectId).order("id").range(from, to)),
+        pageAll((from, to) => client!.from("project_register_entries").select("id,entry_number,title,status,register_type,due_at,details").eq("project_id", projectId).order("id").range(from, to)),
         client!.from("inspections").select("id", { count: "exact", head: true }).eq("project_id", projectId),
         client!.from("files").select("id", { count: "exact", head: true }).eq("project_id", projectId).neq("status", "deleted").like("mime_type", "image/%"),
       ]);
