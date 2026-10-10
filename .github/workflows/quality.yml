@@ -92,11 +92,14 @@ jobs:
           cd apps/web
           CODECO_E2E_SUPABASE_URL=$API_URL CODECO_E2E_PUBLISHABLE_KEY=$PUBLISHABLE_KEY CODECO_E2E_SECRET_KEY=$SECRET_KEY \
             node tests/e2e/seed-local-fixtures.mjs | grep -E '^CODECO_E2E_' >> "$GITHUB_ENV"
+          # The two other roles (client, contractor), without demo records.
+          CODECO_E2E_DEMO_DATA=0 CODECO_E2E_SUPABASE_URL=$API_URL CODECO_E2E_PUBLISHABLE_KEY=$PUBLISHABLE_KEY CODECO_E2E_SECRET_KEY=$SECRET_KEY \
+            node tests/e2e/seed-ui-demo-data.mjs | grep -E '^CODECO_E2E_' >> "$GITHUB_ENV"
       - name: Run browser flows
         working-directory: apps/web
         # media-and-sharing needs sample media files and a private Blob store; it is run
         # against a preview deployment, not in this job (see docs/operations/production-readiness.md).
-        run: npx playwright test controlled-document day-report-lifecycle field-readiness layout-hygiene offline-account-isolation offline-app offline-create-and-sync offline-records responsive-audit responsive-workspace viewport-walk
+        run: npx playwright test controlled-document day-report-lifecycle dialogs role-views field-readiness layout-hygiene offline-account-isolation offline-app offline-create-and-sync offline-records responsive-audit responsive-workspace viewport-walk
       - name: Upload Playwright traces, screenshots and videos
         if: failure()
         uses: actions/upload-artifact@v4

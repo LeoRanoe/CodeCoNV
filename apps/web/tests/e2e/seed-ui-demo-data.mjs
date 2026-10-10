@@ -59,12 +59,14 @@ const supervisorId = (await supervisor.auth.getUser()).data.user.id;
 const parties = (await supervisor.from("parties").select("id, name, party_type").eq("project_id", project.id)).data ?? [];
 const contractorParty = parties.find((p) => p.party_type === "contractor") ?? parties[0];
 
-// Stress values: names as long as real ones get, so clipping and wrapping show up on screen.
+// Stress values (CODECO_E2E_STRESS=1): names as long as real ones get, so clipping and
+// wrapping show up on screen. Off by default, because they change what other flows count.
+const stress = process.env.CODECO_E2E_STRESS === "1";
 const longParty = "Coöperatieve Vereniging van Onderaannemers voor Water- en Wegenbouw Suriname N.V.";
-if (!parties.some((p) => p.name === longParty)) {
+if (stress && !parties.some((p) => p.name === longParty)) {
   warn("long party", (await supervisor.from("parties").insert({ organization_id: org.id, project_id: project.id, code: "LONG-1", name: longParty, party_type: "subcontractor", created_by: supervisorId })).error);
 }
-if (!buildings.some((b) => b.code === "LANG")) {
+if (stress && !buildings.some((b) => b.code === "LANG")) {
   warn("long building", (await supervisor.rpc("create_building", { p_project_id: project.id, p_code: "LANG", p_name: "Bouwblok Noord-West inclusief parkeerkelder en technische ruimte fase 2", p_description: "Stress test" })).error);
 }
 console.log(`project ${project.id}, buildings ${buildings.map((b) => b.code).join(",")}, parties ${parties.length}`);
@@ -80,6 +82,18 @@ for (const [role, account, code] of [["client", accounts.client, "client"], ["co
     p_project_id: project.id,
   });
   warn(`provision ${role}`, result.error);
+}
+
+const printAccounts = () => {
+  console.log(`CODECO_E2E_CLIENT_EMAIL=${accounts.client.email}`);
+  console.log(`CODECO_E2E_CLIENT_PASSWORD=${accounts.client.password}`);
+  console.log(`CODECO_E2E_CONTRACTOR_EMAIL=${accounts.contractor.email}`);
+  console.log(`CODECO_E2E_CONTRACTOR_PASSWORD=${accounts.contractor.password}`);
+};
+// CODECO_E2E_DEMO_DATA=0: only the two role accounts, no records (what the release gate needs).
+if (process.env.CODECO_E2E_DEMO_DATA === "0") {
+  printAccounts();
+  process.exit(0);
 }
 
 const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Paramaribo" });
@@ -152,7 +166,4 @@ for (const [type, title, details] of [
   warn(`register ${type}`, result.error);
 }
 
-console.log(`CODECO_E2E_CLIENT_EMAIL=${accounts.client.email}`);
-console.log(`CODECO_E2E_CLIENT_PASSWORD=${accounts.client.password}`);
-console.log(`CODECO_E2E_CONTRACTOR_EMAIL=${accounts.contractor.email}`);
-console.log(`CODECO_E2E_CONTRACTOR_PASSWORD=${accounts.contractor.password}`);
+printAccounts();
