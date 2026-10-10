@@ -4,7 +4,8 @@ Single source of truth for whether the application may go to production, what wa
 and what still has to be done by whom. Last updated: 10 October 2026, branch
 `fix/supervisie-production-readiness` (starting point `54e5d14`).
 
-**Status: NO-GO.** The code on the branch is ready for review; production itself is not
+**Status: NO-GO.** The code on the branch is ready for review (UI pass: see
+`ui-consistency-matrix.md`); production itself is not
 ready, for the reasons under "Blockers". Nothing in production was changed by this work.
 
 Related documents: `role-permission-matrix.md`, `offline-security-model.md`,

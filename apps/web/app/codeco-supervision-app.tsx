@@ -3073,7 +3073,7 @@ function ContextSelection({
       <main className="context-content">
         <div className={`data-mode-notice ${isOnline ? "connected" : "offline"}`} role="status">
           {isOnline ? <CheckCircle2 size={17} /> : <HardDrive size={17} />}
-          <span><strong>{isOnline ? text("Online workspace", "Online werkruimte") : text("Offline field mode", "Offline veldmodus")}</strong> {storageStatus}. {offlineCached ? text("Last synced projects are available.", "Laatst gesynchroniseerde projecten zijn beschikbaar.") : text("Only synced changes count as saved.", "Alleen gesynchroniseerde wijzigingen tellen als opgeslagen.")}</span>
+          <span><strong>{isOnline ? text("Online", "Online") : text("Offline", "Offline")}</strong> · {storageStatus}{isOnline ? "" : offlineCached ? ` · ${text("Last synced projects are available.", "Laatst gesynchroniseerde projecten zijn beschikbaar.")}` : ` · ${text("Only synced changes count as saved.", "Alleen gesynchroniseerde wijzigingen tellen als opgeslagen.")}`}</span>
         </div>
 
         <section className="context-heading">
