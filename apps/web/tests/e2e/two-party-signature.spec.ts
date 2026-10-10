@@ -120,3 +120,47 @@ test("technical instruction: the issuer signs as themself, the recipient signs t
   expect(pdf.suggestedFilename()).toMatch(/\.pdf$/);
   expect(docx.suggestedFilename()).toMatch(/\.docx$/);
 });
+
+test("change order: title and description once, one issuer signature, contractor acknowledgement kept", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-office", "The document workflow is the same on every viewport.");
+  test.setTimeout(180_000);
+  const title = `Two-party CO ${Date.now().toString(36)} · extra anchor row`;
+  await signIn(page);
+  await page.locator(".sidebar").getByRole("button", { name: "Workspace", exact: true }).click();
+  await page.getByRole("button", { name: /^Change order/ }).click();
+  const form = page.locator(".controlled-document-form");
+  await expect(form).toBeVisible();
+
+  // The title and the description are asked once, at the top; section 1 does not ask them again.
+  await expect(form.getByText("Title / subject", { exact: true })).toHaveCount(0);
+  await expect(form.getByText("Description of change", { exact: true })).toHaveCount(0);
+  // One issuer signature: the supervision approval; there is no second author signature.
+  await expect(form.getByText("Sign as the author of this document")).toHaveCount(0);
+
+  await form.locator(".controlled-document-primary input").fill(title);
+  await form.locator(".controlled-document-primary textarea").fill("Add a second row of cast-in anchors along gridline C.");
+  await form.locator("label.form-field").filter({ hasText: "Change order type" }).locator("select").selectOption("addition");
+  await form.locator("label.form-field").filter({ hasText: "Reason for change" }).locator("select").selectOption("design_development");
+  await form.getByText("Work scope", { exact: true }).click();
+  await form.locator("label.form-field").filter({ hasText: "Details / what will change?" }).locator("textarea").fill("Eight additional anchors, 16 mm, at 400 mm centres.");
+  await form.locator("label.form-field").filter({ hasText: "To:" }).locator("select").selectOption({ label: "Hoofdaannemer E2E · Contractor" });
+
+  // Issuer: the account's own name. Contractor: a different person, signing on this device.
+  await form.locator(".signature-field").filter({ hasText: "Signature · supervision (issuer)" }).getByRole("button", { name: "Sign now" }).click();
+  await expect(page.locator(".signature-modal input").first()).toHaveAttribute("readonly", "");
+  await drawSignature(page);
+  await form.locator("label.form-field").filter({ hasText: "Contractor representative" }).locator("input").fill("Cees Contractor");
+  await form.locator("label.form-field").filter({ hasText: "Position" }).locator("input").first().fill("Site manager");
+  await form.locator(".signature-field").filter({ hasText: "Signature · contractor representative" }).getByRole("button", { name: "Sign now" }).click();
+  await drawSignature(page);
+  await form.getByRole("button", { name: "Create controlled document" }).click();
+
+  const card = page.locator(".controlled-document-card").filter({ hasText: title }).first();
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  await card.getByRole("button", { name: /Open record/ }).click();
+  await expect(card.locator(".controlled-history-signatures")).toContainText("Issuer: Supervisor Alpha");
+
+  await mkdir(testInfo.outputPath("documents"), { recursive: true });
+  const [pdf] = await Promise.all([page.waitForEvent("download"), card.getByRole("button", { name: /PDF/ }).click()]);
+  await pdf.saveAs(testInfo.outputPath("documents", "change-order.pdf"));
+});

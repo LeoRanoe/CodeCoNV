@@ -9088,7 +9088,7 @@ textarea:focus-visible {
    carries the shared document header above and below them. */
 .agreement-sections,
 .change-order-sections,
-.delay-report-sections { margin: var(--space-1) 0; }
+.delay-report-sections { align-items: start; margin: var(--space-1) 0; }
 
 /* Category, type and impact stand next to each other on the client's own delay report,
    because they are three answers about one delay, not three questions in a row. */

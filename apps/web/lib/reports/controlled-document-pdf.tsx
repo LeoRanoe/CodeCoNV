@@ -105,7 +105,7 @@ function typeSpecificDetails(type: ControlledDocumentType, details: Details, ent
       <View style={styles.grid}><Cell label="Requested by" value={text(details, "requested_by")} right /><Cell label="Scope of change" value={scopeAreas || "—"} /></View>
       <Section title="DETAILS / WHAT WILL CHANGE"><Text style={styles.sectionText}>{text(details, "scope_details", text(details, "description"))}</Text></Section>
       <Section title="SCHEDULE IMPACT">
-        <Options values={affectsSchedule ? ["[X] Yes", "[ ] No"] : ["[ ] Yes", "[X] No"]} />
+        <Options values={["Yes", "No"]} selected={affectsSchedule ? "Yes" : "No"} />
         {affectsSchedule ? (
           <View style={styles.grid}><Cell label="Original finish date (baseline)" value={text(details, "original_finish_date")} right /><Cell label="New expected finish date · extension" value={`${text(details, "new_expected_finish_date")} · ${text(details, "extension_days", "0")} days`} /></View>
         ) : null}
@@ -121,15 +121,6 @@ function typeSpecificDetails(type: ControlledDocumentType, details: Details, ent
             {contractor.remarks ? <Text style={styles.sectionText}>{contractor.remarks}</Text> : null}
             {contractor.ink ? <Image src={contractor.ink} style={styles.signatureInk} /> : null}
             {contractor.signedAt ? <Text style={styles.sectionText}>Signed {contractor.signedAt}</Text> : null}
-          </>;
-        })()}
-      </Section>
-      <Section title="APPROVAL · SUPERVISION">
-        {(() => {
-          const { supervision } = controlledDocumentSignatures(entry);
-          return <>
-            <Text style={styles.sectionText}>{supervision.name ? `${supervision.name}${supervision.signedAt ? ` · ${supervision.signedAt}` : ""}` : "Not approved yet."}</Text>
-            {supervision.ink ? <Image src={supervision.ink} style={styles.signatureInk} /> : null}
           </>;
         })()}
       </Section>
@@ -177,7 +168,7 @@ export function ControlledDocument({ entry, logoSource = "/codeco-logo-pdf.png" 
             { label: recipient.signed ? "Signed" : "Responded", result: [recipient.signedAt, recipientCaptureNote(recipient)].filter(Boolean).join(" · ") || " ", ink: null },
           ];
           return <>
-            <Text style={styles.sectionTitle}>{external ? "SUBMITTED AND SIGNED BY" : "ISSUED AND SIGNED BY"}</Text>
+            <Text style={styles.sectionTitle}>{external ? "SUBMITTED AND SIGNED BY" : type === "change_order" ? "ISSUED AND APPROVED BY · SUPERVISION" : "ISSUED AND SIGNED BY"}</Text>
             <View style={styles.signatureGrid}>
               {[
                 { label: "Name", result: issuer.name || " ", ink: issuer.ink },
@@ -186,7 +177,7 @@ export function ControlledDocument({ entry, logoSource = "/codeco-logo-pdf.png" 
               ].map((line, index) => <View style={[styles.signature, index < 2 ? styles.borderRight : {}]} key={line.label}><Text style={styles.label}>{line.label}</Text>{line.ink ? <Image src={line.ink} style={styles.signatureInk} /> : <View style={styles.signatureLine} />}<Text>{line.result}</Text></View>)}
             </View>
 
-            <View style={styles.response} wrap={false}>
+            {type === "change_order" && !recipient.decision ? null : <View style={styles.response} wrap={false}>
               <Text style={styles.responseHeader}>{type === "technical_instruction" || type === "change_order" ? "RECIPIENT ACKNOWLEDGEMENT / CLOSEOUT" : "ENGINEER / CLIENT RESPONSE"}</Text>
               <View style={styles.section}>
                 <Text style={styles.label}>Decision / status</Text>
@@ -197,7 +188,7 @@ export function ControlledDocument({ entry, logoSource = "/codeco-logo-pdf.png" 
               <View style={styles.signatureGrid}>
                 {recipientRows.map((line, index) => <View style={[styles.signature, index < 2 ? styles.borderRight : {}]} key={line.label}><Text style={styles.label}>{line.label}</Text>{line.ink ? <Image src={line.ink} style={styles.signatureInk} /> : <View style={styles.signatureLine} />}<Text>{line.result}</Text></View>)}
               </View>
-            </View>
+            </View>}
           </>;
         })()}
         <Text style={styles.notice}>Generated from the controlled project register. Number, revision, signatures and the recorded response come from the audit trail; times are Suriname time.</Text>

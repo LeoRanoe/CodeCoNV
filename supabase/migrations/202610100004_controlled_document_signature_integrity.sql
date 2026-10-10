@@ -47,6 +47,15 @@ begin
     ) then
       raise exception 'A signed document keeps its signature' using errcode = '23514';
     end if;
+    -- The change order's own contractor and supervision signatures are kept the same way.
+    if (nullif(old.details ->> 'contractor_signature_image', '') is not null and (
+        (new.details ->> 'contractor_signature_image') is distinct from (old.details ->> 'contractor_signature_image')
+        or (new.details ->> 'contractor_signed_by') is distinct from (old.details ->> 'contractor_signed_by')))
+      or (nullif(old.details ->> 'supervision_signature_image', '') is not null and (
+        (new.details ->> 'supervision_signature_image') is distinct from (old.details ->> 'supervision_signature_image')
+        or (new.details ->> 'supervision_signed_by') is distinct from (old.details ->> 'supervision_signed_by'))) then
+      raise exception 'A signed document keeps its signature' using errcode = '23514';
+    end if;
     if coalesce(current_setting('codeco.controlled_response', true), '') <> 'on' and (
       (new.details -> 'response') is distinct from (old.details -> 'response')
       or (new.details -> 'response_history') is distinct from (old.details -> 'response_history')
@@ -62,6 +71,15 @@ begin
     select profile.display_name into v_name from public.profiles profile where profile.id = v_actor;
     if v_name is not null then
       new.details := new.details || jsonb_build_object('signed_by', v_name);
+    end if;
+  end if;
+  -- The supervision approval on a change order is the account's own signature too.
+  if nullif(new.details ->> 'supervision_signature_image', '') is not null
+     and (tg_op = 'INSERT' or nullif(old.details ->> 'supervision_signature_image', '') is null)
+     and v_actor is not null then
+    select profile.display_name into v_name from public.profiles profile where profile.id = v_actor;
+    if v_name is not null then
+      new.details := new.details || jsonb_build_object('supervision_signed_by', v_name);
     end if;
   end if;
 

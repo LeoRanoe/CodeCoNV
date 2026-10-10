@@ -91,11 +91,6 @@ function typeSpecificDetails(type: ControlledDocumentType, details: Details, ent
         ["Signed", signatures.contractor.signedAt || "Not acknowledged yet"],
       ]),
       ...(signatures.contractor.remarks ? [bodyText(signatures.contractor.remarks)] : []),
-      sectionHeading("Approval · supervision"),
-      signatureBlock([
-        ["Approved by", signatures.supervision.name, signatures.supervision.ink],
-        ["Date approved", signatures.supervision.signedAt || "Not approved yet"],
-      ]),
     ];
   }
   if (type === "environmental_report") {
@@ -146,19 +141,21 @@ export function buildControlledDocumentDocx(entry: RegisterEntry, logoBytes: Arr
           labelValue("Reference documents", text(details, "reference_documents")),
           labelValue("Attachments / pages", text(details, "attachments")),
           // Issuer and recipient sign separately; both come from the record, in Suriname time.
-          sectionHeading(["wcr", "rfi", "rfa", "inspection_request"].includes(type) ? "Submitted and signed by" : "Issued and signed by"),
+          sectionHeading(["wcr", "rfi", "rfa", "inspection_request"].includes(type) ? "Submitted and signed by" : type === "change_order" ? "Issued and approved by · supervision" : "Issued and signed by"),
           signatureBlock([
             ["Name", signatures.issuer.name, signatures.issuer.ink],
             ["Position / company", [signatures.issuer.position, signatures.issuer.company].filter(Boolean).join(" · ")],
             ["Date signed", signatures.issuer.signed ? signatures.issuer.signedAt : "Not signed yet"],
           ]),
-          sectionHeading(type === "technical_instruction" || type === "change_order" ? "Recipient acknowledgement / closeout" : "Engineer / client response"),
-          labelValue("Decision / status", humanizeToken(signatures.recipient.decision || "Pending formal response")),
-          bodyText(signatures.recipient.comments || "No response recorded yet."),
-          signatureBlock([
-            ["Name", signatures.recipient.name, signatures.recipient.ink],
-            ["Position / company", [signatures.recipient.position, signatures.recipient.company].filter(Boolean).join(" · ")],
-            [signatures.recipient.signed ? "Signed" : "Responded", [signatures.recipient.signedAt, recipientCaptureNote(signatures.recipient)].filter(Boolean).join(" · ")],
+          ...(type === "change_order" && !signatures.recipient.decision ? [] : [
+            sectionHeading(type === "technical_instruction" || type === "change_order" ? "Recipient acknowledgement / closeout" : "Engineer / client response"),
+            labelValue("Decision / status", humanizeToken(signatures.recipient.decision || "Pending formal response")),
+            bodyText(signatures.recipient.comments || "No response recorded yet."),
+            signatureBlock([
+              ["Name", signatures.recipient.name, signatures.recipient.ink],
+              ["Position / company", [signatures.recipient.position, signatures.recipient.company].filter(Boolean).join(" · ")],
+              [signatures.recipient.signed ? "Signed" : "Responded", [signatures.recipient.signedAt, recipientCaptureNote(signatures.recipient)].filter(Boolean).join(" · ")],
+            ]),
           ]),
           new Paragraph({
             children: [new TextRun({ text: "Generated from the controlled project register. Number, revision, signatures and the recorded response come from the audit trail; times are Suriname time.", italics: true, color: "666666", size: 14 })],

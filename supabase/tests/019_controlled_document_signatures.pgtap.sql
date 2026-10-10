@@ -3,7 +3,7 @@ set local search_path = extensions, pgtap, public;
 
 -- Controlled documents keep their signatures, a CODECO-issued document is signed under the
 -- account's own name, and the recipient signs the formal response as a different person.
-select plan(15);
+select plan(17);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at)
 values
@@ -27,7 +27,7 @@ select public.create_day_report((select id from public.projects where code = 'SI
 create temporary table ref (name text primary key, id uuid) on commit drop;
 grant select, insert on ref to authenticated;
 
-create function pg_temp.make_document(p_type text, p_key text, p_signed_by text)
+create function pg_temp.make_document(p_type text, p_key text, p_signed_by text, p_extra jsonb default '{}'::jsonb)
 returns uuid
 language plpgsql
 as $fn$
@@ -46,7 +46,7 @@ begin
       'issue_date', to_char(current_date, 'YYYY-MM-DD'), 'requested_to', 'Contractor',
       'reason', 'Because the test says so', 'required_action', 'proceed',
       'response', '{}'::jsonb
-    ),
+    ) || p_extra,
     p_key
   )).id into v_id;
   if p_signed_by is not null then
@@ -58,12 +58,18 @@ begin
   return v_id;
 end;
 $fn$;
-grant execute on function pg_temp.make_document(text, text, text) to authenticated;
+grant execute on function pg_temp.make_document(text, text, text, jsonb) to authenticated;
 
 insert into ref values
   ('ti', pg_temp.make_document('technical_instruction', 'sig-ti-signed', 'Somebody Else')),
   ('ti_unsigned', pg_temp.make_document('technical_instruction', 'sig-ti-unsigned', null)),
-  ('rfi', pg_temp.make_document('rfi', 'sig-rfi-signed', 'Contractor Cees'));
+  ('rfi', pg_temp.make_document('rfi', 'sig-rfi-signed', 'Contractor Cees')),
+  ('co', pg_temp.make_document('change_order', 'sig-co-signed', null, jsonb_build_object(
+    'supervision_signed_by', 'Fake Supervisor',
+    'supervision_signature_image', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==',
+    'contractor_signed_by', 'Contractor Cees',
+    'contractor_signature_image', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg=='
+  )));
 
 -- 1. who signed
 select is(
@@ -80,6 +86,16 @@ select is(
   (select signed_by from public.project_register_entries where id = (select id from ref where name = 'rfi')),
   'Contractor Cees',
   'a form received from a contractor keeps the submitting person''s name'
+);
+
+select is(
+  (select details ->> 'supervision_signed_by' from public.project_register_entries where id = (select id from ref where name = 'co')),
+  'Issuer Ivo',
+  'the supervision approval on a change order is signed under the account''s own name'
+);
+select throws_ok(
+  format($q$update public.project_register_entries set details = details || '{"contractor_signed_by":"Somebody Else"}'::jsonb where id = %L$q$, (select id from ref where name = 'co')),
+  '23514', null, 'the contractor signature on a change order cannot be replaced'
 );
 
 -- 2. a signed document keeps its signature

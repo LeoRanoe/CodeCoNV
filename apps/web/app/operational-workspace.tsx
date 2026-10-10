@@ -4051,11 +4051,9 @@ function ProjectOperations({
                   >
                     <div className="form-grid-2">
                       <label className="form-field"><span>{text("Change order type", "Type wijzigingsopdracht")}</span><select value={changeOrder.changeOrderType} onChange={(event) => setChangeOrder({ ...changeOrder, changeOrderType: event.target.value })}><option value="">{text("Select type", "Kies type")}</option>{changeOrderTypes.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
-                      <label className="form-field"><span>{text("Title / subject", "Titel / onderwerp")}</span><input value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} placeholder={text("Enter title / subject", "Voer titel / onderwerp in")} /></label>
-                    </div>
-                    <label className="form-field"><span>{text("Description of change", "Omschrijving van de wijziging")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
-                    <div className="form-grid-2">
                       <label className="form-field"><span>{text("Reason for change", "Reden van de wijziging")}</span><select value={changeOrder.reason} onChange={(event) => setChangeOrder({ ...changeOrder, reason: event.target.value })}><option value="">{text("Select reason", "Kies reden")}</option>{changeOrderReasons.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
+                    </div>
+                    <div className="form-grid-2">
                       <label className="form-field"><span>{text("Requested by", "Aangevraagd door")}</span><input list="change-order-requesters" value={changeOrder.requestedBy} onChange={(event) => setChangeOrder({ ...changeOrder, requestedBy: event.target.value })} placeholder={text("Enter name", "Voer naam in")} /><datalist id="change-order-requesters">{documentIssuerOptions.map((name) => <option value={name} key={name} />)}{parties.map((party) => <option value={party.name} key={party.id} />)}</datalist></label>
                     </div>
                   </RecordFormSection>
@@ -4373,24 +4371,29 @@ function ProjectOperations({
                       number={6}
                       title={text("Approval · supervision", "Goedkeuring · supervisie")}
                     >
-                      <label className="form-field"><span>{text("Name", "Naam")}</span><input list="change-order-supervision" value={changeOrder.supervisionName} onChange={(event) => setChangeOrder({ ...changeOrder, supervisionName: event.target.value })} placeholder={text("Enter name", "Voer naam in")} /><datalist id="change-order-supervision">{documentIssuerOptions.map((name) => <option value={name} key={name} />)}</datalist></label>
+                      {/* The supervision approval is the issuer's signature on a change order: one signature,
+                          under the account's own name, not a second one asked at the bottom of the form. */}
                       <SignatureField
-                        label={text("Signature · supervision", "Handtekening · supervisie")}
+                        label={text("Signature · supervision (issuer)", "Handtekening · supervisie (uitgever)")}
                         declaration={text(
-                          "By signing you approve this change order on behalf of supervision.",
-                          "Met je handtekening keur je deze wijzigingsopdracht namens de supervisie goed.",
+                          "By signing you issue and approve this change order on behalf of supervision.",
+                          "Met je handtekening geef je deze wijzigingsopdracht uit en keur je die goed namens de supervisie.",
                         )}
-                        hint={text("Signature, name and date are stored with the change order.", "Handtekening, naam en datum worden bij de wijzigingsopdracht bewaard.")}
-                        nameSuggestion={changeOrder.supervisionName || currentUserName}
-                        nameOptions={documentIssuerOptions}
+                        hint={text("Signed under your own name; it cannot be changed afterwards.", "Ondertekend onder je eigen naam; daarna niet meer te wijzigen.")}
+                        nameSuggestion={currentUserName}
+                        lockName
+                        locked={Boolean(editingDocument?.signature_image || editingDocument?.details?.signature_image)}
                         value={signatureFromDetails(changeOrder.supervisionSignedBy, changeOrder.supervisionSignedAt, changeOrder.supervisionSignatureImage)}
-                        onChange={(signature) => setChangeOrder({
-                          ...changeOrder,
-                          supervisionSignedBy: signature?.name ?? "",
-                          supervisionSignedAt: signature?.signedAt ?? "",
-                          supervisionSignatureImage: signature?.image ?? "",
-                          supervisionName: signature?.name || changeOrder.supervisionName,
-                        })}
+                        onChange={(signature) => {
+                          setChangeOrder({
+                            ...changeOrder,
+                            supervisionSignedBy: signature?.name ?? "",
+                            supervisionSignedAt: signature?.signedAt ?? "",
+                            supervisionSignatureImage: signature?.image ?? "",
+                            supervisionName: signature?.name || "",
+                          });
+                          setRegisterForm((current) => ({ ...current, signedBy: signature?.name ?? "", signedAt: signature?.signedAt ?? "", signatureImage: signature?.image ?? "" }));
+                        }}
                       />
                     </RecordFormSection>
                   </div>
@@ -4398,7 +4401,7 @@ function ProjectOperations({
                 {registerForm.type === "environmental_report" ? <><div className="form-grid-2"><label className="form-field"><span>{text("Period start", "Periode start")}</span><input type="date" value={registerForm.periodStart} onChange={(event) => setRegisterForm({ ...registerForm, periodStart: event.target.value })} /></label><label className="form-field"><span>{text("Period end", "Periode einde")}</span><input type="date" value={registerForm.periodEnd} onChange={(event) => setRegisterForm({ ...registerForm, periodEnd: event.target.value })} /></label></div><div className="form-grid-2"><label className="form-field"><span>{text("Lost hours", "Verloren uren")}</span><input type="number" min="0" value={registerForm.lostHours} onChange={(event) => setRegisterForm({ ...registerForm, lostHours: event.target.value })} /></label><label className="form-field"><span>{text("Reason for lost hours", "Reden verloren uren")}</span><input value={registerForm.lostHoursReason} onChange={(event) => setRegisterForm({ ...registerForm, lostHoursReason: event.target.value })} /></label></div></> : null}
                 {/* The document is signed here, with a written signature, at the moment it
                     is drawn up or the moment the received form is recorded. */}
-                <SignatureField
+                {changeOrderRegister ? null : <SignatureField
                   label={submittedRegister
                     ? text("Signature on the submitted form", "Handtekening op het ingediende formulier")
                     : text("Sign as the author of this document", "Ondertekenen als opsteller van dit document")}
@@ -4419,7 +4422,7 @@ function ProjectOperations({
                     signedAt: signature?.signedAt ?? "",
                     signatureImage: signature?.image ?? "",
                   })}
-                />
+                />}
                 {submittedRegister ? <p className="form-helper">{text("Drawn up and signed by the submitting party. CODECO signs in the formal response below.", "Opgesteld en ondertekend door de indienende partij. CODECO tekent bij de formele reactie hieronder.")}</p> : null}
               </> : null}
               {!controlledRegister && !agreementRegister ? (
