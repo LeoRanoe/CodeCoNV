@@ -91,6 +91,12 @@ Notes that follow from the rules behind the table, not from the table itself:
 | Record a proposed correction, "ready for verification" or a reported problem, with name, position and signature | Close, verify, reopen, reassign or edit the record |
 | Upload evidence for that record (type and size limited, SHA-256 verified server-side) | Read files that are not attached to that record |
 
+Creating a link is a write-level act, checked by the database (`create_external_share_link`,
+migration `202610100003`), not only by the screen: a finding needs `findings.create`, an action
+`actions.create`, an inspection `inspections.manage`, a photo marker `files.manage`. A read-only
+member (the client) can see the record but cannot hand it to anyone outside. Tested in
+`supabase/tests/018_external_share_creation_permission.pgtap.sql`.
+
 Links are random tokens stored only as a SHA-256 hash, expire, and can be revoked. Responses
 and uploads through a link are rate limited. The
 contractor's response only fills the contractor's own fields; verification and closing stay
@@ -104,3 +110,37 @@ completion) run as `service_role`. Migration `202610060005_service_role_explicit
 grants exactly the table privileges those routes use. See "Grant drift" in
 `production-readiness.md`: the hosted project currently has broader default grants than the
 migrations describe.
+
+## Signatures on documents and records
+
+Who signs what, and what the database guarantees (migration `202610100004`, tested in
+`supabase/tests/019_controlled_document_signatures.pgtap.sql` and
+`apps/web/tests/e2e/two-party-signature.spec.ts`, `inspection-workflow.spec.ts`).
+
+| Document | Issuer / author | Recipient | Where the recipient signs |
+| --- | --- | --- | --- |
+| Technical instruction (TI) | CODECO user, own account name | Contractor representative: acknowledges in writing | Formal response (signature required to acknowledge) |
+| Change order (CO) | Supervision approval = the issuer, own account name | Contractor representative (name, position, signature) | Section 5 of the form |
+| Environmental report (ER) | CODECO user, own account name | None | – |
+| RFI, RFA, WCR, WIR | The submitting person (name as on the received form) | CODECO / client responds | Formal response (signature optional, own account or captured on device) |
+| NCR | Engineer signs; contractor signs the correction; quality control signs the verification | see NCR | NCR form / share link |
+| Inspection, HSE report | The person who walked it, own account name | None | – |
+| Agreements Made | Both parties sign | Both parties | Agreement form |
+
+Rules the database enforces:
+
+- A stored signature (columns and the copy inside `details`) cannot be replaced or removed by
+  editing the record. The same holds for the change order's contractor and supervision signatures.
+- The response log (`details.response`, `response_history`) changes only through
+  `respond_to_controlled_project_document`, never by rewriting `details`.
+- A document CODECO issues (TI, CO, ER), an inspection and an HSE report are signed under the
+  signed-in account's own name; a typed name is replaced. A received contractor form keeps the
+  submitting person's typed name.
+- A recipient signature records who captured it (`responded_by_name`), the server's moment of
+  signing and whether it was `own_account` or `on_device` (the recipient signed on the capturing
+  user's device). The recipient cannot be the issuer and an unissued document cannot be
+  countersigned.
+- A signature moment is never in the future. Business times are Suriname time (America/Paramaribo).
+
+A signature drawn in the app is a handwritten image with a name and a moment. It is not a
+qualified electronic signature; the legal level of a document stays a decision for CODECO.
