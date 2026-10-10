@@ -267,3 +267,27 @@ test("Offline pin replay uses stable idempotency and stops after an account swit
     assert.equal(result.paused, true); assert.equal(sends, 1); assert.equal(deletes, 0); assert.equal(key, "offline-drawing-pin:one");
   });
 });
+
+test("permissions never widen when the permission service is missing, failing or empty", async () => {
+  const { permissionsFrom, restrictedPermissions } = await import("../lib/permissions/permission-model.mjs");
+  for (const unknown of [undefined, null, "not-a-list", {}]) {
+    const view = permissionsFrom(unknown);
+    assert.equal(view.known, false);
+    assert.equal(view.can("records.create"), false);
+    assert.equal(view.can("files.manage"), false);
+    assert.equal(view.can("reports.sign"), false);
+    assert.equal(view.canAny("findings.create", "inspections.manage"), false);
+    assert.equal(view.can("records.read"), true);
+  }
+  assert.equal(restrictedPermissions.can("findings.create"), false);
+  const client = permissionsFrom(["records.read", "findings.read"]);
+  assert.equal(client.known, true);
+  assert.equal(client.can("findings.create"), false);
+  assert.equal(client.can("findings.read"), true);
+  const revoked = permissionsFrom([]);
+  assert.equal(revoked.known, true);
+  assert.equal(revoked.can("records.read"), false);
+  assert.equal(revoked.canAny("records.read", "files.read"), false);
+  const supervisor = permissionsFrom(["records.create", "files.manage"]);
+  assert.equal(supervisor.canAny("records.create"), true);
+});

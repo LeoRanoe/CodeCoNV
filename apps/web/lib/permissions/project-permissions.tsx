@@ -3,28 +3,28 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { permissionsFrom as permissionsFromCodes, restrictedPermissions } from "./permission-model.mjs";
 
 /**
  * What the signed-in user may do on the open project, so a screen can leave out the buttons
  * that would only ever answer "403".
  *
- * This is advisory and fails open: until the answer is there, offline without an earlier
- * answer, or against a database that does not have `my_project_permissions` yet, every
- * control is shown as before. The database remains the only authority; every write is
- * checked there whatever the screen shows.
+ * Until the answer is there, offline without an earlier answer, or when the call is missing or
+ * failing, only reading is offered and every control that writes stays hidden. The database
+ * remains the only authority; every write is checked there whatever the screen shows.
  */
 export type ProjectPermissions = {
-  /** True once a real answer is known (not the fail-open default). */
+  /** True once a real answer is known (not the read-only default). */
   known: boolean;
-  /** Whether the user holds this permission code on the project. Always true while unknown. */
+  /** Whether the user holds this permission code on the project. While unknown only read codes are true. */
   can: (code: string) => boolean;
   /** Whether the user holds at least one of the codes. */
   canAny: (...codes: string[]) => boolean;
 };
 
-export const openPermissions: ProjectPermissions = { known: false, can: () => true, canAny: () => true };
+export const readOnlyPermissions: ProjectPermissions = restrictedPermissions;
 
-const ProjectPermissionsContext = createContext<ProjectPermissions>(openPermissions);
+const ProjectPermissionsContext = createContext<ProjectPermissions>(readOnlyPermissions);
 
 const storageKey = (userId: string, projectId: string) => `codeco-permissions:${userId}:${projectId}`;
 
@@ -47,13 +47,7 @@ function writeCached(userId: string, projectId: string, codes: string[]) {
 }
 
 export function permissionsFrom(codes: readonly string[] | undefined): ProjectPermissions {
-  if (!codes) return openPermissions;
-  const granted = new Set(codes);
-  return {
-    known: true,
-    can: (code) => granted.has(code),
-    canAny: (...wanted) => wanted.some((code) => granted.has(code)),
-  };
+  return permissionsFromCodes(codes as string[] | undefined);
 }
 
 /** Loads the permission codes for one project; remembers the last answer per account and project. */
@@ -76,7 +70,10 @@ export function useProjectPermissionsQuery(client: SupabaseClient | null, userId
     },
     retry: false,
   });
-  return useMemo(() => permissionsFrom(query.data), [query.data]);
+  // A cached answer carries a device through a dropped connection. When the database is reachable
+  // and still refuses to answer, an old answer must not keep write controls on screen.
+  const failedOnline = query.isError && (typeof navigator === "undefined" || navigator.onLine !== false);
+  return useMemo(() => (failedOnline ? readOnlyPermissions : permissionsFrom(query.data)), [failedOnline, query.data]);
 }
 
 export function ProjectPermissionsProvider({ value, children }: { value: ProjectPermissions; children: ReactNode }) {
