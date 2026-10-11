@@ -61,8 +61,15 @@ async function uploadEvidence(token: string, selected: File) {
 export function ExternalShareActions({ token, sourceType, status, recordKind = null }: { token: string; sourceType: string; status: string | null; recordKind?: string | null }) {
   // An NCR asks the contractor for the corrective action first; that is the box on the
   // client's own form, and it is what this link is sent for.
-  const correctionAllowed = sourceType === "finding" && recordKind === "ncr";
-  const [responseType, setResponseType] = useState<ResponseType>(correctionAllowed ? "proposed_correction" : "ready_for_verification");
+  //
+  // The link answers only while the record is the contractor's to answer. Once CODECO has it
+  // for verification a new proposal would replace what was signed; once it is finished nothing
+  // can be added. The database refuses both as well; this keeps the form from inviting it.
+  const finished = sourceType === "finding" && ["closed", "cancelled", "rejected"].includes(status ?? "");
+  const waitingForVerification = sourceType === "finding" && status === "ready_for_verification";
+  const correctionAllowed = sourceType === "finding" && recordKind === "ncr" && !finished && !waitingForVerification;
+  const completionAllowed = sourceType === "finding" && !finished && !waitingForVerification;
+  const [responseType, setResponseType] = useState<ResponseType>(correctionAllowed ? "proposed_correction" : completionAllowed ? "ready_for_verification" : "issue");
   const [note, setNote] = useState("");
   const [contactName, setContactName] = useState("");
   /** The job the signer holds; the client's own form prints it under the name. */
@@ -76,7 +83,6 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
   const submittingRef = useRef(false);
   const attemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const uploadedRef = useRef<{ photo: File; fileId: string } | null>(null);
-  const completionAllowed = sourceType === "finding" && !["ready_for_verification", "closed", "cancelled"].includes(status ?? "");
   const choices = useMemo(() => responseType === "proposed_correction"
     ? [
       "Wij verwijderen en herstellen het aangegeven werk volgens de instructie.",
@@ -152,15 +158,18 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
   if (done) {
     return <section className="external-response-success" role="status"><CheckCircle2 size={28} /><h2>Bedankt</h2><p>{done}</p></section>;
   }
+  if (finished) {
+    return <section className="external-response-note" role="status"><p>Dit punt is afgesloten. Neem contact op met CODECO als er nog iets niet klopt.</p></section>;
+  }
 
   return (
     <section className="external-response-panel">
       <div className="external-response-tabs" role="tablist" aria-label="Reactie op werkpunt">
         {correctionAllowed ? <button className={responseType === "proposed_correction" ? "active" : ""} type="button" onClick={() => chooseType("proposed_correction")}><PenLine size={16} /> Correctie invullen</button> : null}
-        <button className={responseType === "ready_for_verification" ? "active" : ""} type="button" disabled={!completionAllowed} onClick={() => chooseType("ready_for_verification")}><CheckCircle2 size={16} /> Gereedmelden</button>
+        {completionAllowed ? <button className={responseType === "ready_for_verification" ? "active" : ""} type="button" onClick={() => chooseType("ready_for_verification")}><CheckCircle2 size={16} /> Gereedmelden</button> : null}
         <button className={responseType === "issue" ? "active issue" : ""} type="button" onClick={() => chooseType("issue")}><AlertTriangle size={16} /> Probleem melden</button>
       </div>
-      {!completionAllowed && responseType === "ready_for_verification" ? <p className="external-response-note">Dit werkpunt is al gereedgemeld of gesloten. Je kunt nog wel een probleem terugmelden.</p> : null}
+      {waitingForVerification ? <p className="external-response-note">Dit werkpunt is gereedgemeld en wacht op controle door CODECO. Je kunt nog wel een probleem terugmelden.</p> : null}
       {responseType === "proposed_correction" ? <p className="external-response-note">Vul in wat u gaat doen om de afwijking op te lossen en stuur het terug. CODECO controleert het werk daarna op locatie.</p> : null}
       <div className="external-choice-grid">
         {choices.map((choice) => <button className={note === choice ? "active" : ""} type="button" onClick={() => setNote(choice)} key={choice}>{choice}</button>)}

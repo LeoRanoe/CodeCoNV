@@ -81,6 +81,7 @@ import { isPendingRecordId, listOfflineRecords, saveRecordOnlineOrQueue, syncOff
 import { withPendingActions } from "@/lib/offline/pending-records";
 import { offlineQueryKeys } from "@/lib/offline/query-keys";
 import { getSessionWithOfflineFallback, storedSessionOnThisDevice } from "@/lib/supabase/offline-session";
+import { isSessionRejected } from "@/lib/supabase/session-rejection.mjs";
 import { OfflineManagerModal } from "@/app/offline-manager";
 import {
   discardUnsentWork,
@@ -600,6 +601,13 @@ export function CodecoSupervisionApp() {
         await cacheWorkspace(session!.user.id, data).catch(() => undefined);
         return data;
       } catch (error) {
+        // The copy on the device is for a server that cannot be reached. A server that answered
+        // and refused the session (account removed or suspended, session revoked) ends it:
+        // showing that account's projects as live would be the opposite of what the refusal says.
+        if (isSessionRejected(error)) {
+          await supabase?.auth.signOut({ scope: "local" }).catch(() => undefined);
+          throw error;
+        }
         const cached = await getCachedWorkspace(session!.user.id).catch(() => null);
         if (cached) return cached;
         throw error;

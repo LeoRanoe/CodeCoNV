@@ -6,6 +6,9 @@ import {
 } from "@/lib/forms/daily-report";
 import type { InternalUserInviteAnswers } from "@/lib/forms/users";
 import { validAccessToken } from "@/lib/supabase/access-token";
+import { pageAll, type PageQuery } from "@/lib/supabase/page-all.mjs";
+import { isSettledStatus, settledStatuses } from "@/lib/actions/action-center.mjs";
+import { worklistRegisterTypes } from "@/lib/actions/open-work.mjs";
 
 export type WorkspaceBuilding = {
   id: string;
@@ -171,9 +174,10 @@ export type AttendanceInput = {
   notes?: string;
 };
 
-function fail(error: { message: string; code?: string } | null) {
-  // Keep the SQLSTATE so the screen can explain the failure (lib/user-facing-error.ts).
-  if (error) throw Object.assign(new Error(error.message), { code: error.code });
+function fail(error: { message: string; code?: string; status?: number; name?: string } | null) {
+  // Keep the SQLSTATE so the screen can explain the failure (lib/user-facing-error.ts), and the
+  // HTTP status and name so a refused session can be told from an unreachable server.
+  if (error) throw Object.assign(new Error(error.message), { code: error.code, status: error.status, name: error.name === "AuthApiError" ? "AuthApiError" : "Error" });
 }
 
 function schemaColumnMissing(error: { message: string } | null, column: string) {
@@ -268,53 +272,73 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
   const todayStart = new Date(`${today}T00:00:00-03:00`).toISOString();
   const tomorrow = new Date(`${today}T00:00:00-03:00`);
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const [buildingResult, actionResult, progressResult, findingResult, inspectionResult, registerResult, visualResult, dayStartResult] = projectIds.length
+  // One project list reads every row of all the user's projects; a single request would stop at
+  // the API's 1000-row limit and silently under-count the busiest project.
+  const paged = (query: PageQuery) => pageAll(query, 100_000);
+  const [buildingResult, actionResult, progressResult, findingResult, inspectionResult, registerResult, visualResult, dayStartResult, worklistRegisterResult] = projectIds.length
     ? await Promise.all([
-        client
+        paged((from, to) => client
           .from("buildings")
           .select("id,project_id,name,description,status")
           .in("project_id", projectIds)
           .eq("status", "active")
-          .order("name"),
-        client
+          .order("name")
+          .order("id").range(from, to)),
+        paged((from, to) => client
           .from("actions")
           .select("project_id,building_id,status")
           .in("project_id", projectIds)
-          .in("status", ["open", "accepted", "in_progress", "ready_for_verification"]),
-        client
+          .in("status", ["open", "accepted", "in_progress", "ready_for_verification"])
+          .order("id").range(from, to)),
+        paged((from, to) => client
           .from("day_closeouts")
           .select("project_id,building_id,progress_percent,created_at")
           .in("project_id", projectIds)
-          .order("created_at", { ascending: false }),
-        client
+          .order("created_at", { ascending: false })
+          .order("id").range(from, to)),
+        paged((from, to) => client
           .from("findings")
           .select("project_id,building_id,finding_type,status")
           .in("project_id", projectIds)
-          .in("status", ["draft", "open", "assigned", "in_progress", "ready_for_verification", "rejected", "reopened"]),
-        client
+          .in("status", ["draft", "open", "assigned", "in_progress", "ready_for_verification", "rejected", "reopened"])
+          .order("id").range(from, to)),
+        paged((from, to) => client
           .from("inspections")
           .select("project_id,building_id,status")
           .in("project_id", projectIds)
-          .neq("status", "cancelled"),
-        client
+          .neq("status", "cancelled")
+          .order("id").range(from, to)),
+        paged((from, to) => client
           .from("project_register_entries")
           .select("project_id,building_id,register_type,status")
           .in("project_id", projectIds)
           .in("register_type", ["technical_instruction", "site_instruction", "change_order", "variation", "agreement"])
-          .neq("status", "cancelled"),
-        client
+          .neq("status", "cancelled")
+          .order("id").range(from, to)),
+        paged((from, to) => client
           .from("visual_captures")
           .select("project_id,building_id")
           .in("project_id", projectIds)
-          .eq("status", "active"),
-        client
+          .eq("status", "active")
+          .order("id").range(from, to)),
+        paged((from, to) => client
           .from("day_start_checks")
           .select("project_id,building_id,planned_work,created_at")
           .in("project_id", projectIds)
           .gte("created_at", todayStart)
-          .lt("created_at", tomorrow.toISOString()),
+          .lt("created_at", tomorrow.toISOString())
+          .order("id").range(from, to)),
+        // Registers that are somebody's turn to act, for the open-work count below.
+        paged((from, to) => client
+          .from("project_register_entries")
+          .select("project_id,building_id,register_type,status,due_at")
+          .in("project_id", projectIds)
+          .or(`due_at.not.is.null,register_type.in.(${worklistRegisterTypes.join(",")})`)
+          .not("status", "in", `(${settledStatuses.join(",")})`)
+          .order("id").range(from, to)),
       ])
     : [
+        { data: [], error: null },
         { data: [], error: null },
         { data: [], error: null },
         { data: [], error: null },
@@ -332,6 +356,7 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
   fail(registerResult.error);
   fail(visualResult.error);
   fail(dayStartResult.error);
+  fail(worklistRegisterResult.error);
 
   const progressByProject = new Map<string, number>();
   for (const row of progressResult.data ?? []) {
@@ -342,8 +367,12 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
   const projects: WorkspaceProject[] = projectRows.map((project) => {
     const projectId = project.id as string;
     const progress = progressByProject.get(projectId) ?? 0;
-    const openIssues = (actionResult.data ?? []).filter((row) => row.project_id === projectId).length;
     const findings = (findingResult.data ?? []).filter((row) => row.project_id === projectId);
+    // "Open actions" is what the action centre lists for the project: its actions, its open
+    // findings/NCRs and the registers waiting on somebody, not only the actions table.
+    const openIssues = (actionResult.data ?? []).filter((row) => row.project_id === projectId).length
+      + findings.filter((row) => !isSettledStatus(row.status)).length
+      + (worklistRegisterResult.data ?? []).filter((row) => row.project_id === projectId).length;
     const registers = (registerResult.data ?? []).filter((row) => row.project_id === projectId);
     return {
       id: projectId,
@@ -372,7 +401,9 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
             name: String(building.name),
             description: String(building.description ?? "Projectgebouw"),
             progress: latestProgress ? Number(latestProgress.progress_percent) : progress,
-            openIssues: (actionResult.data ?? []).filter((row) => row.building_id === buildingId).length,
+            openIssues: (actionResult.data ?? []).filter((row) => row.building_id === buildingId).length
+              + buildingFindings.filter((row) => !isSettledStatus(row.status)).length
+              + (worklistRegisterResult.data ?? []).filter((row) => row.building_id === buildingId).length,
             issueCount: buildingFindings.filter((row) => row.finding_type !== "ncr").length,
             ncrCount: buildingFindings.filter((row) => row.finding_type === "ncr").length,
             inspectionCount: (inspectionResult.data ?? []).filter((row) => row.building_id === buildingId).length,

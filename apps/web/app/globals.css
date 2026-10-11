@@ -9527,6 +9527,7 @@ textarea:focus-visible {
 .record-add-photo:hover { background: var(--signal-soft); border-color: var(--signal); }
 .record-add-photo input { height: 1px; opacity: 0; position: absolute; width: 1px; }
 .record-photo-hint { color: var(--ink-500); font-size: var(--text-xs); }
+.confirm-needs { color: var(--ink-600); display: block; font-size: var(--text-xs); margin-bottom: var(--space-2); }
 
 /* The deadline says what it means, and the cross clears a choice that was made by mistake. */
 .record-due-distance { color: var(--ink-600); flex: 0 0 auto; font-size: 11.5px; }
@@ -14912,8 +14913,12 @@ button {
   align-items: end;
   display: grid;
   gap: var(--space-2);
-  grid-template-columns: minmax(90px, 0.7fr) minmax(80px, 0.6fr) minmax(140px, 1.4fr) auto;
+  grid-template-columns: minmax(64px, 0.7fr) minmax(56px, 0.6fr) minmax(96px, 1.4fr) auto;
 }
+
+/* The row sits in a column that is only ~350px wide beside the outcome buttons at laptop
+   widths; its fields must be allowed to shrink or the remove button leaves the card. */
+.register-line > * { min-width: 0; }
 
 .register-line-remove {
   align-items: center;

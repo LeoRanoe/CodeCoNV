@@ -57,6 +57,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     }
     if (result.error) {
       if (result.error.code === "P0002") return storageJson({ error: "Deze link is verlopen of ingetrokken." }, 404);
+      // The record is no longer the contractor's to answer: finished, or waiting for CODECO's check.
+      if (result.error.code === "55000") {
+        return storageJson({
+          error: result.error.message.includes("waiting for verification")
+            ? "Dit punt wacht op controle door CODECO. Een nieuw voorstel kan pas worden gedaan als CODECO het heropent."
+            : "Dit punt is afgesloten. Neem contact op met CODECO als er nog iets niet klopt.",
+        }, 409);
+      }
       if (result.error.message.includes("rate limit")) return storageJson({ error: "Te veel reacties. Probeer het later opnieuw." }, 429);
       logEvent("error", "external_share", "response_rejected", { requestId: requestIdFrom(request), error: result.error });
       throw new Error("De reactie kon niet veilig worden opgeslagen.");

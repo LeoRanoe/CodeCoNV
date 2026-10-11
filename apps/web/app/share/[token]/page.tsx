@@ -37,6 +37,13 @@ const recommendedActionLabels: Record<string, string> = {
   alternative: "Alternatieve oplossing ter goedkeuring",
 };
 
+/** The page is Dutch; what it shows for the kind of record must be too, and an NCR is an NCR. */
+function recordKindLabel(record: SharedRecord) {
+  if (record.record_kind === "ncr") return "NCR";
+  const labels: Record<string, string> = { finding: "Bevinding", action: "Actie", inspection: "Inspectie", visual: "Foto" };
+  return labels[record.source_type] ?? record.source_type;
+}
+
 function date(value: string | null) {
   return value ? new Intl.DateTimeFormat("nl-SR", { dateStyle: "long", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(value)) : "Geen deadline";
 }
@@ -54,7 +61,7 @@ export default async function SharedProjectRecord({ params }: { params: Promise<
       <section className="external-share-card">
         <header><span className="external-share-brand">CODECO N.V. · SUPERVISIE</span><span className={`external-share-status ${record.severity ?? ""}`}>{labelFor(record.source_type === "action" ? actionStatusLabels : findingStatusLabels, record.status, "nl", "Open")}</span></header>
         <div className="external-share-context"><Building2 size={18} /><span><strong>{record.project_code} · {record.project_name}</strong><small>{record.building_name ?? "Projectbreed"}</small></span></div>
-        <span className="record-number">{record.source_type.toUpperCase()} · {record.source_number}</span>
+        <span className="record-number">{recordKindLabel(record)} · {record.source_number}</span>
         <h1>{record.title}</h1>
         {record.has_source_image ? (
           <ExternalSourceImage token={token} sourceNumber={record.source_number} />
