@@ -1,1 +1,34 @@
-/* shell screen refinements. */
+/* Shell controls remain in flow so they cannot cover record actions. */
+.top-actions .field-guide-trigger {
+  position: static;
+  inset: auto;
+  z-index: auto;
+  border-radius: var(--radius-control);
+  box-shadow: none;
+  color: var(--text);
+  min-height: var(--control-h-md);
+  min-width: var(--control-h-md);
+  padding: var(--space-2);
+}
+
+.top-actions .field-guide-trigger:hover,
+.top-actions .field-guide-trigger:focus-visible {
+  border-color: var(--ink-500);
+  color: var(--text);
+  transform: none;
+}
+
+.metrics-grid .ui-stat { min-width: 0; }
+
+@media (max-width: 640px) {
+  .topbar { flex-wrap: wrap; padding-block: var(--space-2); }
+  .topbar .breadcrumb { flex-basis: 100%; }
+  .topbar .top-actions { justify-content: space-between; width: 100%; }
+  .topbar .top-actions .language-switcher { display: inline-flex; }
+  .topbar .top-actions .language-switcher select { min-height: var(--control-h-md); }
+  .top-actions .field-guide-trigger {
+    height: var(--control-h-md);
+    width: var(--control-h-md);
+  }
+  .top-actions .field-guide-trigger span { display: none; }
+}
