@@ -46,7 +46,9 @@ export function LiveWeatherChip({ location }: { location: string }) {
         : text("Refresh live weather", "Ververs actueel weer")}
     >
       {loading && !weather ? <RefreshCw className="spin" size={15} /> : <Icon size={15} />}
-      {weather ? <span>{weather.temperatureC}°C</span> : <span>—</span>}
+      {weather
+        ? <span>{weather.temperatureC}°C</span>
+        : <span>{loading ? text("Loading weather", "Weer laden") : text("Weather unavailable", "Weer niet beschikbaar")}</span>}
       {windWarning ? <Wind size={13} /> : null}
     </button>
   );

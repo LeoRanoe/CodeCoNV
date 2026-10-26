@@ -346,8 +346,8 @@ test("implements the handwritten client PDF as required workflows without AI or 
   assert.match(migration, /create or replace function public\.import_project_boq/);
   assert.match(migration, /email_notifications_enabled/);
   assert.match(migration, /'rfa','inspection_request','boq'/);
-  assert.match(app, /project\.technicalInstructionCount/);
-  assert.match(app, /project\.changeOrderCount/);
+  assert.match(app, /project\.openIssues/);
+  assert.match(app, /project\.issueCount/);
   assert.match(await readFile(new URL("../lib/forms/disciplines.ts", import.meta.url), "utf8"), /Timmerlieden/);
   assert.match(app, /Beton en wapening/);
   assert.match(app, /Werk lopend aan het einde van de dag/);
@@ -969,7 +969,8 @@ test("processes the five annotated field screens from 31 July", async () => {
   // Screen 1: the project picker only picks a project. No portfolio counters.
   assert.doesNotMatch(app, /portfolio-dashboard/);
   assert.doesNotMatch(styles, /\.portfolio-dashboard/);
-  assert.match(app, /selection-copy[\s\S]{0,180}selection-icon/);
+  assert.match(app, /selection-copy[\s\S]{0,180}project\.location/);
+  assert.doesNotMatch(app, /className="selection-icon"/);
 
   // Screen 2: a smaller project header, and photos are called photos.
   assert.match(styles, /\.overview-hero h1 \{[\s\S]*?font-size: clamp\(var\(--text-lg\)/);
