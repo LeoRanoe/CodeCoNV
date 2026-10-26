@@ -3,7 +3,6 @@
 import {
   AlertTriangle,
   ArrowRight,
-  Bell,
   CalendarDays,
   Camera,
   CheckCircle2,
@@ -11,8 +10,6 @@ import {
   ClipboardCheck,
   FileCheck2,
   FileText,
-  HardHat,
-  LayoutDashboard,
   Loader2,
   MapPin,
   RefreshCw,
@@ -183,30 +180,22 @@ function SearchResults({
 }
 
 function MetricCard({
-  icon,
   label,
   value,
   detail,
-  tone,
   onClick,
 }: {
-  icon: React.ReactNode;
   label: string;
   /** null while the project's own count is still on its way: a dash, never a false zero. */
   value: number | null;
   detail: string;
-  tone: "teal" | "orange" | "blue" | "violet";
   onClick: () => void;
 }) {
   return (
-    <button className={`overview-metric ${tone}`} type="button" onClick={onClick}>
-      <span className="overview-metric-icon">{icon}</span>
-      <span className="overview-metric-copy">
-        <small>{label}</small>
-        <strong>{value ?? "–"}</strong>
-        <em>{detail}</em>
-      </span>
-      <ArrowRight size={15} />
+    <button className="overview-metric ui-stat" type="button" onClick={onClick}>
+      <strong className="ui-stat__value">{value ?? "–"}</strong>
+      <span className="ui-stat__label">{label}</span>
+      <small>{detail}</small>
     </button>
   );
 }
@@ -455,7 +444,6 @@ export function ClientDashboard({
     <section className="project-overview" aria-label={text("Project command center", "Projectcommandocentrum")}>
       <header className="overview-hero">
         <div>
-          <span className="overview-kicker"><LayoutDashboard size={15} /> {text("Live project control", "Actuele projectsturing")}</span>
           <h1>{projectName}</h1>
           <p>{buildingContextLabel}</p>
         </div>
@@ -465,15 +453,14 @@ export function ClientDashboard({
             <span className="sr-only">{text("Search recent project records", "Doorzoek recente projectregistraties")}</span>
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text("Search today", "Zoek in vandaag")} />
           </label>
-          <button className="overview-icon-button" type="button" aria-label={text("Notifications", "Meldingen")} onClick={openActions}><Bell size={17} />{openWork.escalated ? <i /> : null}</button>
           {/* The day in its order: start it, answer the day's questions, check the report.
               The built-in guide and the report screen both point here. */}
           {canWriteDay && !dayStarted && openProjectStart ? <button className="overview-icon-button" type="button" aria-label={text("Start today", "Werkdag starten")} title={text("Start today", "Werkdag starten")} onClick={openProjectStart}><CloudSun size={17} /></button> : null}
-          {canWriteDay ? <button className="overview-icon-button" type="button" aria-label={text("Daily questions", "Dagvragen")} title={text("Daily questions", "Dagvragen")} onClick={openDailyQuestions}><CalendarDays size={17} /></button> : null}
+          {canWriteDay ? <button className="overview-icon-button" type="button" aria-label={text("Day log", "Daglog")} title={text("Day log", "Daglog")} onClick={openDailyQuestions}><CalendarDays size={17} /></button> : null}
           {canWriteDay && openReportCheck ? <button className="overview-icon-button" type="button" aria-label={text("Check report", "Rapport controleren")} title={text("Check report", "Rapport controleren")} onClick={openReportCheck}><FileCheck2 size={17} /></button> : null}
           {/* This screen reads the day; it does not write it. Recording a photo or a field
               record has its own button in the bar at the bottom, on every screen. */}
-          <button className="secondary-button overview-create-button" type="button" onClick={openWorkspace}>{text("Open workspace", "Open werkruimte")} <ArrowRight size={15} /></button>
+          <button className="ui-button ui-button--secondary ui-button--md overview-create-button" type="button" onClick={openWorkspace}>{text("Open workspace", "Open werkruimte")} <ArrowRight size={15} /></button>
         </div>
       </header>
 
@@ -490,17 +477,16 @@ export function ClientDashboard({
         <>
 
         <div className="overview-metrics">
-          <MetricCard icon={<FileCheck2 size={21} />} label={text("Open follow-up", "Open opvolging")} value={projectCounts.data ? openWork.open : null} detail={`${openWork.urgent} ${text("high priority", "hoge prioriteit")}`} tone="teal" onClick={openActions} />
-          <MetricCard icon={<AlertTriangle size={21} />} label={text("Quality issues", "Kwaliteitspunten")} value={projectCounts.data ? qualityOpen : null} detail={qualityNcr ? `${qualityNcr} NCR` : text("Open", "Open")} tone="orange" onClick={openActions} />
-          <MetricCard icon={<ClipboardCheck size={21} />} label={text("Inspections", "Inspecties")} value={projectCounts.data ? inspectionTotal : null} detail={text("In project", "In project")} tone="blue" onClick={openWorkspace} />
-          <MetricCard icon={<Camera size={21} />} label={text("Pictures", "Foto's")} value={projectCounts.data ? photoTotal : null} detail={text("In project", "In project")} tone="violet" onClick={() => openRecord("files", "")} />
+          <MetricCard label={text("Open follow-up", "Open opvolging")} value={projectCounts.data ? openWork.open : null} detail={`${openWork.urgent} ${text("high priority", "hoge prioriteit")}`} onClick={openActions} />
+          <MetricCard label={text("Quality issues", "Kwaliteitspunten")} value={projectCounts.data ? qualityOpen : null} detail={qualityNcr ? `${qualityNcr} NCR` : text("Open", "Open")} onClick={openActions} />
+          <MetricCard label={text("Inspections", "Inspecties")} value={projectCounts.data ? inspectionTotal : null} detail={text("In project", "In project")} onClick={openWorkspace} />
+          <MetricCard label={text("Pictures", "Foto's")} value={projectCounts.data ? photoTotal : null} detail={text("In project", "In project")} onClick={() => openRecord("files", "")} />
         </div>
 
         <div className="overview-primary-grid">
           <article className="overview-panel overview-work-panel">
             <header className="overview-panel-heading">
-              <div><span>{text("Today on site", "Vandaag op locatie")}</span><h2>{text("Latest recorded work", "Laatst vastgelegde werkzaamheden")}</h2></div>
-              <button type="button" onClick={openWorkspace}>{text("Open workspace", "Open werkruimte")} <ArrowRight size={14} /></button>
+              <div><h2>{text("Latest recorded work", "Laatst vastgelegde werkzaamheden")}</h2></div>
             </header>
             <div className="overview-work-list">
               {visibleEntries.length ? visibleEntries.map((entry, index) => (
@@ -512,9 +498,7 @@ export function ClientDashboard({
                 </button>
               )) : (
                 <div className="overview-purposeful-empty">
-                  <span><HardHat size={24} /></span>
                   <div><strong>{text("No work recorded", "Geen werk vastgelegd")}</strong></div>
-                  <button className="secondary-button" type="button" onClick={openWorkspace}>{text("Open workspace", "Open werkruimte")} <ArrowRight size={15} /></button>
                 </div>
               )}
             </div>
@@ -522,7 +506,7 @@ export function ClientDashboard({
 
           <article className="overview-panel overview-priority-panel">
             <header className="overview-panel-heading">
-              <div><span>{text("Attention", "Aandacht")}</span><h2>{text("Priority queue", "Prioriteitenlijst")}</h2></div>
+              <div><h2>{text("Priority queue", "Prioriteitenlijst")}</h2></div>
               {projectCounts.data ? <span className={`overview-health ${openWork.escalated ? "attention" : "stable"}`}>{openWork.escalated ? text("Action needed", "Actie nodig") : text("Under control", "Onder controle")}</span> : null}
             </header>
             <div className="overview-progress">
@@ -532,10 +516,9 @@ export function ClientDashboard({
             </div>
             <div className="overview-priority-list">
               {openWork.top.map((item) => (
-                <button type="button" onClick={openActions} key={`${item.source}:${item.id}`}>
-                  <span className={`priority-dot ${item.priority}`} />
-                  <span><strong>{item.title}</strong><small>{[item.reference, priorityText(item.priority, text), statusText(item.status, text)].filter(Boolean).join(" · ")}</small></span>
-                  <ArrowRight size={14} />
+                <button className="ui-list-row" type="button" onClick={openActions} key={`${item.source}:${item.id}`}>
+                  <span><strong className="ui-list-row__title">{item.title}</strong><small className="ui-list-row__meta">{[item.reference, statusText(item.status, text)].filter(Boolean).join(" · ")}</small></span>
+                  <span className={`ui-status-badge ${item.priority === "critical" ? "ui-status-badge--red" : item.priority === "high" ? "ui-status-badge--amber" : ""}`}>{priorityText(item.priority, text)}</span>
                 </button>
               ))}
               {projectCounts.data && !openWork.open ? <div className="overview-clear-state"><CheckCircle2 size={22} /><span><strong>{text("No open actions", "Geen open acties")}</strong></span></div> : null}
@@ -547,7 +530,7 @@ export function ClientDashboard({
         <div className="overview-secondary-grid">
           <article className="overview-panel overview-activity-panel">
             <header className="overview-panel-heading">
-              <div><span>{text("Traceability", "Traceerbaarheid")}</span><h2>{text("Recent activity", "Recente activiteit")}</h2></div>
+              <div><h2>{text("Recent activity", "Recente activiteit")}</h2></div>
             </header>
             {/* A line in this list is something that already happened. Tapping it opens the
                 record, whatever it is; a photo line used to hand the user to the camera. */}
@@ -564,31 +547,26 @@ export function ClientDashboard({
 
           <article className="overview-panel overview-evidence-panel">
             <header className="overview-panel-heading">
-              <div><span>{text("Visual evidence", "Visueel bewijs")}</span><h2>{text("Latest photo records", "Laatste fotoregistraties")}</h2></div>
+              <div><h2>{text("Latest photo records", "Laatste fotoregistraties")}</h2></div>
               <button type="button" onClick={() => openRecord("files", "")}>{text("View all", "Alles bekijken")} <ArrowRight size={14} /></button>
             </header>
             {/* Straight to the photo library, and to this exact picture in it, rather than
                 to the workspace home screen the reader would have to navigate out of. */}
             <div className="overview-evidence-grid">
-              {evidencePhotos.length ? evidencePhotos.map((photo, index) => (
+              {evidencePhotos.length ? evidencePhotos.map((photo) => (
                 <button type="button" onClick={() => openRecord("files", photo.fileId)} key={photo.id}>
-                  <span className={`evidence-placeholder evidence-thumbnail tone-${(index % 4) + 1}`}>
+                  <span className="evidence-thumbnail">
                     <EvidenceThumbnail client={client} fileId={photo.fileId} alt={photo.title} />
                   </span>
                   <span><strong>{photo.title}</strong><small>{new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Paramaribo" }).format(new Date(photo.capturedAt))}</small></span>
                 </button>
-              )) : [0, 1, 2, 3].map((index) => (
-                <button className="empty" type="button" onClick={() => openRecord("files", "")} key={index}>
-                  <span className={`evidence-placeholder tone-${index + 1}`}><Camera size={20} /></span>
-                  <span><strong>{text("No photo yet", "Nog geen foto")}</strong><small>{text("Add photo", "Foto toevoegen")}</small></span>
-                </button>
-              ))}
+              )) : <button className="ui-button ui-button--quiet ui-button--md overview-evidence-empty" type="button" onClick={() => openRecord("files", "")}>{text("No photos yet · Take photo", "Nog geen foto’s · Maak een foto")}</button>}
             </div>
           </article>
 
           <article className="overview-panel overview-site-panel">
             <header className="overview-panel-heading">
-              <div><span>{text("Live weather register", "Actueel weerregister")}</span><h2>{text("Conditions & location", "Condities & locatie")}</h2></div>
+              <div><h2>{text("Conditions & location", "Condities & locatie")}</h2></div>
               <button className="overview-weather-icon" type="button" onClick={loadLiveWeather} disabled={weatherLoading} aria-label={text("Refresh live weather", "Ververs actueel weer")}><RefreshCw className={weatherLoading ? "spin" : ""} size={18} /></button>
             </header>
             <div className="overview-weather">

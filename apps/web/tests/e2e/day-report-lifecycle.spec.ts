@@ -3,8 +3,8 @@ import { mkdir } from "node:fs/promises";
 
 /**
  * One multi-building day, end to end, through the screens a supervisor uses: start the day
- * for both buildings, count the workforce per building, answer the daily questions, check
- * and submit the report, approve (which freezes the snapshot), sign by hand, and download
+ * for both buildings, count the workforce per building on the Workforce page, write the day
+ * log on its page for both buildings, check and submit the report, approve (which freezes the snapshot), sign by hand, and download
  * the formal PDF and Word document from the immutable version.
  *
  * Runs against the local fixture stack (tests/e2e/seed-local-fixtures.mjs). The downloaded
@@ -64,11 +64,13 @@ test("a two-building day is started, closed, submitted, approved, frozen, signed
   await dialog(page).getByRole("button", { name: "Start daily report centrally" }).click();
   await expect(page.getByRole("button", { name: "Start today" })).toHaveCount(0);
 
-  // 2. Workforce per building.
+  // 2. Workforce per building, on the Workforce page itself — not a pop-up.
   await page.locator(".sidebar").getByRole("button", { name: "Workspace", exact: true }).click();
   await page.locator('[data-workspace-destination="workforce"]').click();
-  const workforce = dialog(page);
-  const selects = workforce.locator("select");
+  await expect(page.getByRole("heading", { name: "Who is on site today?" })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const workforce = page.locator(".workforce-form");
+  const selects = workforce.locator(".workforce-sections select");
   for (const [building, discipline, count] of [["Hoofdgebouw", "Timmerlieden", 4], ["Nieuwbouw Oost", "Elektriciens", 3]] as const) {
     await workforce.getByRole("tab", { name: new RegExp(`^${building}`) }).click();
     await selects.nth(0).selectOption({ label: "Hoofdaannemer E2E" });
@@ -79,21 +81,27 @@ test("a two-building day is started, closed, submitted, approved, frozen, signed
   await workforce.getByPlaceholder("For example: two crews moved to the other building.")
     .fill("Concrete crew starts tomorrow; today only formwork and reinforcement.");
   await workforce.getByRole("button", { name: /Confirm attendance/ }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByText(/7 people recorded for today/)).toBeVisible();
+  // The counted day is listed under the form, per building.
+  await expect(page.locator(".record-row").filter({ hasText: "4 people on site" })).toBeVisible();
+  await expect(page.locator(".record-row").filter({ hasText: "3 people on site" })).toBeVisible();
 
-  // 3. Daily questions for all buildings.
+  // 3. The day log, for both buildings, on its own workspace page.
   await page.locator(".sidebar").getByRole("button", { name: "Overview", exact: true }).click();
-  await page.getByRole("button", { name: "Daily questions" }).click();
-  const questions = dialog(page);
-  await questions.getByRole("button", { name: "Work proceeded according to plan." }).click();
-  await questions.getByRole("button", { name: "Install formwork" }).last().click();
-  await questions.getByRole("button", { name: "Next questions" }).click();
-  await questions.getByRole("button", { name: "Next questions" }).click();
-  await questions.getByRole("button", { name: "Next questions" }).click();
-  await questions.getByRole("button", { name: "Concrete pour" }).click();
-  await questions.getByLabel("Attachments checked").check();
-  await questions.getByRole("button", { name: "Confirm daily questions" }).click();
+  await page.getByRole("button", { name: "Day log" }).click();
+  await expect(page.getByRole("heading", { name: "Today on site" })).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  const dayLog = page.locator(".daily-log-form");
+  await dayLog.getByLabel("All buildings").check();
+  // The crew is read from the Workforce register, not counted a second time.
+  await expect(dayLog.getByText("7 people recorded today")).toBeVisible();
+  await dayLog.getByLabel("What is in progress, and where?").fill("Formwork and reinforcement for the ground floor slab in both buildings.");
+  await dayLog.getByLabel("Work completed today").fill("Formwork of axis A to C installed and checked.");
+  await dayLog.getByLabel("Plan for tomorrow").fill("Concrete pour of the ground floor slab.");
+  await dayLog.getByRole("button", { name: "Save daily log" }).click();
+  await expect(page.getByText(/Daily log saved/)).toBeVisible();
+  await expect(page.locator(".record-row").filter({ hasText: "Formwork and reinforcement" }).first()).toBeVisible();
+  await page.locator(".sidebar").getByRole("button", { name: "Overview", exact: true }).click();
 
   // 4. Check and submit.
   await page.getByRole("button", { name: "Check report" }).click();
@@ -104,7 +112,7 @@ test("a two-building day is started, closed, submitted, approved, frozen, signed
   // 5. Approve (freezes the snapshot) and sign.
   await page.locator(".sidebar").getByRole("button", { name: "Reports", exact: true }).click();
   await page.getByRole("tab", { name: /Review & sign/ }).click();
-  await page.getByLabel("Review comment").fill("Workforce, daily questions and the start of both buildings match the site.");
+  await page.getByLabel("Review comment").fill("Workforce, day log and the start of both buildings match the site.");
   await page.getByRole("button", { name: /Approve and freeze/ }).click();
   await expect(page.getByText(/approved and frozen/i)).toBeVisible();
   await page.getByRole("button", { name: "Sign now" }).click();

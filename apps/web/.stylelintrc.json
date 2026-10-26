@@ -1,0 +1,24 @@
+{
+  "plugins": ["stylelint-declaration-strict-value"],
+  "rules": {
+    "color-no-hex": [true, { "severity": "warning" }],
+    "scale-unlimited/declaration-strict-value": [
+      ["color", "background-color", "border-color", "font-size", "font-weight", "border-radius", "box-shadow"],
+      {
+        "ignoreValues": {
+          "": ["inherit", "initial", "unset", "revert", "transparent", "currentColor", "none", "auto", "normal", "0", "100%"]
+        },
+        "severity": "warning"
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["app/styles/tokens.css"],
+      "rules": {
+        "color-no-hex": null,
+        "scale-unlimited/declaration-strict-value": null
+      }
+    }
+  ]
+}

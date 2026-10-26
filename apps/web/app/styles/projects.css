@@ -1,0 +1,75 @@
+/* The selection view behaves like a project register, with one project per line. */
+.project-selection-grid {
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  display: grid;
+  gap: 0;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.project-selection-grid .project-selection-card,
+.project-selection-grid.single-project .project-selection-card {
+  align-items: center;
+  background: var(--paper);
+  border: 0;
+  border-block-end: 1px solid var(--border);
+  border-radius: initial;
+  box-shadow: none;
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: minmax(100px, auto) minmax(0, 1fr) auto auto;
+  min-height: var(--control-h-lg);
+  padding: var(--space-4);
+  transform: none;
+}
+
+.project-selection-grid .project-selection-card:hover { background: var(--ink-50); border-color: var(--border); }
+.project-selection-grid .project-selection-card:focus-visible { outline: 2px solid var(--ink-900); outline-offset: -2px; }
+
+.project-selection-card .selection-card-top,
+.project-selection-card .selection-copy,
+.project-selection-card .selection-meta,
+.project-selection-card .selection-action,
+.project-selection-grid.single-project .selection-copy,
+.project-selection-grid.single-project .selection-meta,
+.project-selection-grid.single-project .selection-action {
+  align-self: center;
+  grid-column: auto;
+  grid-row: auto;
+  margin: 0;
+}
+
+.project-selection-card .project-code {
+  background: transparent;
+  border-radius: initial;
+  color: var(--ink-600);
+  font-variant-numeric: tabular-nums;
+  padding: 0;
+}
+
+.project-selection-card .selection-copy { align-items: flex-start; display: grid; gap: var(--space-1); }
+.project-selection-card .selection-copy strong { color: var(--text); font-size: var(--text-md); font-weight: var(--weight-semibold); margin: 0; }
+.project-selection-card .selection-copy small { color: var(--muted); font-size: var(--text-sm); margin: 0; }
+.project-selection-card .selection-icon { background: transparent; color: var(--ink-700); height: auto; width: auto; }
+
+.project-selection-card .selection-meta { color: var(--muted); gap: var(--space-3); }
+.project-selection-card .selection-meta span { background: transparent; border-radius: initial; color: var(--muted); font-size: var(--text-sm); padding: 0; }
+.project-selection-card .selection-action { color: var(--text); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+
+.project-selection-card .project-register-metrics { display: none; }
+.project-selection-card .selection-progress { display: none; }
+
+@media (max-width: 640px) {
+  .project-selection-grid .project-selection-card,
+  .project-selection-grid.single-project .project-selection-card {
+    align-items: start;
+    gap: var(--space-2);
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .project-selection-card .selection-card-top { grid-column: 1 / -1; }
+  .project-selection-card .selection-copy { grid-column: 1 / -1; }
+  .project-selection-card .selection-meta { flex-wrap: wrap; grid-column: 1; }
+  .project-selection-card .selection-action { grid-column: 2; }
+}

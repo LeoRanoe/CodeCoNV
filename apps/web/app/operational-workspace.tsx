@@ -67,6 +67,8 @@ import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { VisualEvidenceWorkspace } from "@/app/visual-evidence-workspace";
 import { DailyWorkRegister, type DailyWorkView } from "@/app/daily-work-register";
+import type { DayLogFocus, DayLogToday } from "@/app/daily-log-modal";
+import { reportDateInSuriname } from "@/lib/supabase/data";
 import { DrawingWorkspace } from "@/app/drawing-workspace";
 import { FieldTools } from "@/app/field-tools";
 import { BackupCenter } from "@/app/backup-center";
@@ -120,7 +122,7 @@ import {
 import { externalShareUrl } from "@/lib/external-share/token.mjs";
 import type { ProjectStartAnswers } from "@/lib/forms/daily-report";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
-import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
+import { useLanguage } from "@/lib/i18n";
 import { cacheProjectSnapshot, getCachedProjectSnapshot } from "@/lib/offline/project-cache";
 import { useLiveProjectWeather } from "@/lib/weather-client";
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload } from "@/lib/offline/upload-queue";
@@ -177,15 +179,30 @@ import {
 
 type WorkspaceMode = "project" | "actions" | "verify" | "reports" | "admin";
 /** What a workspace tile asks the module to open on: its own record, not the last one. */
-type WorkspaceTilePreset = { registerType?: string; hseEventType?: string };
+type WorkspaceTilePreset = { registerType?: string; hseEventType?: string; dailyWorkView?: DailyWorkView | "day" };
+
+/**
+ * The two client forms that live in the shell, because they write the day report itself:
+ * the day log and the workforce register. The workspace places them as module pages, the
+ * same as every other record form; the shell supplies the form and its save.
+ */
+/** Places a form the shell renders; a component of its own, so the form keeps its state. */
+function RenderSlot<Input>({ render, input }: { render: (input: Input) => React.ReactNode; input: Input }) {
+  return <>{render(input)}</>;
+}
+
+export type DailyFormRenderers = {
+  renderDayLog: (input: { focus?: DayLogFocus; today: DayLogToday; close: () => void; openModule: (module: "inspections" | "findings" | "ncr" | "hse") => void; openWorkforce: () => void }) => React.ReactNode;
+  renderWorkforce: (input: { close: () => void }) => React.ReactNode;
+};
 
 /** The modules that are a record form plus the list of what was recorded before it. */
-const recordModuleTabs = ["inspections", "findings", "ncr", "hse", "registers"];
+const recordModuleTabs = ["inspections", "findings", "ncr", "hse", "registers", "daily"];
 
-type ProjectTab = "home" | "inspections" | "findings" | "ncr" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files" | "assets";
+type ProjectTab = "home" | "inspections" | "findings" | "ncr" | "hse" | "daily" | "workforce" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files" | "assets";
 
 type ViewedWorkspaceRecord = {
-  kind: "inspection" | "finding" | "hse" | "register_entry";
+  kind: "inspection" | "finding" | "hse" | "register_entry" | "daily_work";
   id: string;
   code: string;
   title: string;
@@ -758,11 +775,10 @@ export function OperationalWorkspace({
   onInitialCameraFilesConsumed,
   pendingRecordPin = null,
   onPlaceRecordPin,
-  openDailyRecord,
+  dailyForms,
   openProjectArea,
   openActionCenter,
   openRapidVerify,
-  openReports,
   openManagement,
   openReportCheck,
   projectActions = [],
@@ -807,12 +823,11 @@ export function OperationalWorkspace({
   /** The field record that is still open on the record screen, waiting for its spot. */
   pendingRecordPin?: { label: string; title: string; point: { xRatio: number; yRatio: number; drawingId: string; pageNumber: number } | null } | null;
   onPlaceRecordPin?: (point: { drawingId: string; pageNumber: number; xRatio: number; yRatio: number }) => void;
-  openDailyRecord: (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => void;
+  dailyForms: DailyFormRenderers;
   /** The optional record id opens that record itself, instead of the list it stands in. */
   openProjectArea: (tab: "inspections" | "findings" | "ncr" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "files" | "assets" | "submissions", recordId?: string) => void;
   openActionCenter: (view?: ActionCenterView) => void;
   openRapidVerify: () => void;
-  openReports: () => void;
   openManagement: () => void;
   /** Opens the day report check, where the supervisor marks it ready for review. */
   openReportCheck?: () => void;
@@ -951,11 +966,10 @@ export function OperationalWorkspace({
           onInitialCameraFilesConsumed={onInitialCameraFilesConsumed}
           pendingRecordPin={pendingRecordPin}
           onPlaceRecordPin={onPlaceRecordPin}
-          openDailyRecord={openDailyRecord}
+          dailyForms={dailyForms}
           openProjectArea={openProjectArea}
           openActionCenter={openActionCenter}
           openRapidVerify={openRapidVerify}
-          openReports={openReports}
           openManagement={openManagement}
           focusRecordId={focusRecordId}
         />
@@ -1046,11 +1060,10 @@ function ProjectOperations({
   onInitialCameraFilesConsumed,
   pendingRecordPin = null,
   onPlaceRecordPin,
-  openDailyRecord,
+  dailyForms,
   openProjectArea,
   openActionCenter,
   openRapidVerify,
-  openReports,
   openManagement,
   externalSubmissionIntent = false,
   focusRecordId = "",
@@ -1085,12 +1098,11 @@ function ProjectOperations({
   /** The field record that is still open on the record screen, waiting for its spot. */
   pendingRecordPin?: { label: string; title: string; point: { xRatio: number; yRatio: number; drawingId: string; pageNumber: number } | null } | null;
   onPlaceRecordPin?: (point: { drawingId: string; pageNumber: number; xRatio: number; yRatio: number }) => void;
-  openDailyRecord: (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => void;
+  dailyForms: DailyFormRenderers;
   /** Opens a module on one record: how the workspace search reaches what it found. */
   openProjectArea: (tab: "inspections" | "findings" | "ncr" | "hse" | "documents" | "registers" | "visual" | "drawings" | "files" | "assets" | "submissions", recordId?: string) => void;
   openActionCenter: (view?: ActionCenterView) => void;
   openRapidVerify: () => void;
-  openReports: () => void;
   openManagement: () => void;
   externalSubmissionIntent?: boolean;
   /** A record the action centre asked for; it opens expanded instead of only its module. */
@@ -1132,6 +1144,12 @@ function ProjectOperations({
   /** The checklist that was sent to the drawings screen to have its location pinned. */
   const [drawingInspectionId, setDrawingInspectionId] = useState("");
   const [dailyWorkView, setDailyWorkView] = useState<DailyWorkView>("works_ongoing");
+  /** The block of the day log the tile asked for; none when the whole day was asked for. */
+  const [dayLogFocus, setDayLogFocus] = useState<DayLogFocus | undefined>(undefined);
+  const openDailyWork = (view: DailyWorkView | "day") => {
+    setDailyWorkView(view === "day" ? "works_ongoing" : view);
+    setDayLogFocus(view === "day" ? undefined : view === "delays" ? "delay" : view);
+  };
   const permissions = useProjectPermissions();
   const [wantsForm, setShowForm] = useState(initialTab !== "home");
   // What a user may write depends on the module. A reader (the client) gets the list and the
@@ -1140,7 +1158,8 @@ function ProjectOperations({
     : tab === "findings" || tab === "ncr" ? permissions.can("findings.create")
       : tab === "hse" ? permissions.can("hse.manage")
         : tab === "registers" ? permissions.can("records.create")
-          : true;
+          : tab === "daily" ? permissions.canAny("reports.create", "reports.edit")
+            : true;
   const showForm = wantsForm && mayCreateHere;
   const [viewedRecord, setViewedRecord] = useState<ViewedWorkspaceRecord | null>(null);
   const [editingFindingId, setEditingFindingId] = useState("");
@@ -1749,9 +1768,12 @@ function ProjectOperations({
     meta: `${recordContextLabel(entry.building_id, entry.location_node_id, entry.building_ids)} · ${formatDate(entry.occurred_at, locale)}`,
   });
   const withdrawRecord = (record: ViewedWorkspaceRecord) => {
+    // A day closeout is corrected in the day log, never withdrawn: the day report stands on it.
+    const kind = record.kind;
+    if (kind === "daily_work") return;
     const reason = window.prompt(text("Why is this record being withdrawn?", "Waarom wordt deze registratie ingetrokken?"), "");
     if (!reason) return;
-    void run(() => withdrawWorkspaceRecord(client, record.kind, record.id, reason), text(`${record.code} withdrawn. History kept.`, `${record.code} ingetrokken. Historie bewaard.`)).then((okay) => {
+    void run(() => withdrawWorkspaceRecord(client, kind, record.id, reason), text(`${record.code} withdrawn. History kept.`, `${record.code} ingetrokken. Historie bewaard.`)).then((okay) => {
       if (okay) setViewedRecord(null);
     });
   };
@@ -1891,8 +1913,8 @@ function ProjectOperations({
    */
   const presetHandled = useRef("");
   useEffect(() => {
-    const key = `${initialRecordPreset?.registerType ?? ""}:${initialRecordPreset?.hseEventType ?? ""}`;
-    if (key === ":" || presetHandled.current === key) return;
+    const key = `${initialRecordPreset?.registerType ?? ""}:${initialRecordPreset?.hseEventType ?? ""}:${initialRecordPreset?.dailyWorkView ?? ""}`;
+    if (key === "::" || presetHandled.current === key) return;
     presetHandled.current = key;
     const applyPreset = window.setTimeout(() => {
       if (initialRecordPreset?.registerType) {
@@ -1903,6 +1925,7 @@ function ProjectOperations({
         setHseForm((current) => ({ ...current, type: initialRecordPreset.hseEventType!, issueType: "safety", category: "safety" }));
         setEditingHseId("");
       }
+      if (initialRecordPreset?.dailyWorkView) openDailyWork(initialRecordPreset.dailyWorkView);
       setShowForm(true);
       onRecordPresetConsumed?.();
     }, 0);
@@ -2848,12 +2871,49 @@ function ProjectOperations({
   };
 
   const moduleEnabled = (module: string) => data.settings?.modules?.[module] !== false;
+  /** What the other modules recorded today, for the quality and safety blocks of the day log. */
+  const todayInSuriname = reportDateInSuriname();
+  const isToday = (...values: Array<string | null | undefined>) => values.some((value) => Boolean(value) && reportDateInSuriname(new Date(value!)) === todayInSuriname);
+  const dayLogToday: DayLogToday = {
+    inspections: data.inspections
+      .filter((inspection) => isToday(inspection.started_at, inspection.completed_at, inspection.planned_at))
+      .map((inspection) => ({ id: inspection.id, code: inspection.inspection_number, title: inspection.title, status: inspection.status })),
+    findings: data.findings
+      .filter((finding) => finding.status !== "cancelled" && isToday(finding.created_at))
+      .map((finding) => ({ id: finding.id, code: finding.finding_number, title: finding.title, type: finding.finding_type === "ncr" ? "ncr" as const : "issue" as const })),
+    hse: data.hseEvents
+      .filter((event) => event.status !== "cancelled" && isToday(event.occurred_at))
+      .map((event) => ({ id: event.id, code: event.event_number, title: event.title, eventType: event.event_type })),
+  };
+  /** The counted days of the Workforce register: one line per day and building. */
+  const reportDates = new Map((data.dayReports ?? []).map((report) => [report.id, report.report_date]));
+  const workforceDays = Array.from((data.attendance ?? []).reduce((days, entry) => {
+    const key = `${entry.day_report_id}:${entry.building_id}`;
+    const day = days.get(key) ?? { key, reportId: entry.day_report_id, buildingId: entry.building_id, headcount: 0, visitors: 0, signedBy: "" };
+    if (entry.entry_type === "visitor") day.visitors += 1;
+    else day.headcount += Number(entry.headcount) || 0;
+    day.signedBy = day.signedBy || entry.signed_by || "";
+    days.set(key, day);
+    return days;
+  }, new Map<string, { key: string; reportId: string; buildingId: string; headcount: number; visitors: number; signedBy: string }>()).values())
+    .map((day) => {
+      const reportDate = reportDates.get(day.reportId) ?? "";
+      return {
+        ...day,
+        reportDate,
+        date: reportDate ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "America/Paramaribo" }).format(new Date(`${reportDate}T12:00:00-03:00`)) : "",
+      };
+    })
+    .sort((left, right) => right.reportDate.localeCompare(left.reportDate));
+
   const projectSections: Array<[Exclude<ProjectTab, "home">, string, number]> = ([
     ["inspections", text("Inspections", "Inspecties"), data.inspections.length],
     ["findings", text("Issues", "Issues"), data.findings.filter((item) => item.finding_type !== "ncr" && item.status !== "closed").length],
     ["ncr", "NCR", data.findings.filter((item) => item.finding_type === "ncr" && item.status !== "closed").length],
     ["hse", "HSE", data.hseEvents.length],
-    ["daily", text("Daily work", "Dagwerk"), (data.dailyWork ?? []).length],
+    // The page is named after what was asked for: one block of the day, or the whole day log.
+    ["daily", !dayLogFocus ? text("Day log", "Daglog") : dailyWorkView === "works_completed" ? text("Works completed", "Werkzaamheden afgerond") : dailyWorkView === "delays" ? text("Delays", "Vertragingen") : text("Works ongoing", "Werkzaamheden gaande"), (data.dailyWork ?? []).length],
+    ["workforce", text("Workforce", "Workforce"), workforceDays.length],
     ["documents", "Project Docs", data.files.filter((file) => file.status === "available").length + data.registerEntries.filter((entry) => ["document", "drawing", "specification", "contract", "boq"].includes(entry.register_type)).length],
     ["registers", text("Formal documents & registers", "Formele documenten & registers"), data.registerEntries.length],
     ["visual", text("Visual evidence", "Visueel bewijs"), data.visualCaptures.length],
@@ -2867,6 +2927,7 @@ function ProjectOperations({
     ncr: moduleEnabled("quality"),
     hse: moduleEnabled("hse"),
     daily: true,
+    workforce: true,
     documents: moduleEnabled("documents"),
     registers: moduleEnabled("documents"),
     visual: moduleEnabled("visual_evidence"),
@@ -2907,7 +2968,7 @@ function ProjectOperations({
             buildings={buildings}
             openRecord={(recordTab, recordId, kind) => {
               if (recordTab === "daily") {
-                setDailyWorkView(kind === "delay" ? "delays" : "works_completed");
+                openDailyWork(kind === "delay" ? "delays" : "works_completed");
                 openTask("daily", false);
               } else if (recordTab === "home") {
                 openTask("home", false);
@@ -2917,13 +2978,11 @@ function ProjectOperations({
             }}
             openPhotoLibrary={() => switchTab("files")}
             openTask={openTask}
-            openWorkforce={() => openDailyRecord("workforce")}
+            openWorkforce={() => switchTab("workforce")}
             openFinding={openFinding}
-            openDailyWork={(view) => { setDailyWorkView(view); switchTab("daily"); }}
+            openDailyWork={(view) => { openDailyWork(view); switchTab("daily"); }}
             openActionCenter={openActionCenter}
             openRapidVerify={openRapidVerify}
-            openReports={openReports}
-            openManagement={openManagement}
           />
         </>
       ) : (
@@ -2967,12 +3026,17 @@ function ProjectOperations({
               } else if (viewedRecord.kind === "hse") {
                 const record = data.hseEvents.find((item) => item.id === viewedRecord.id);
                 if (record) editHse(record);
+              } else if (viewedRecord.kind === "daily_work") {
+                // A day has one closeout: editing it is the day log of that day, already open
+                // above the list with what was saved.
+                setViewedRecord(null);
+                setShowForm(true);
               } else {
                 const record = data.registerEntries.find((item) => item.id === viewedRecord.id);
                 if (record) editRegister(record);
               }
             }}><Wrench size={14} /> {text("Edit in form", "Bewerken in formulier")}</button> : null}
-            {viewedRecord.status !== "cancelled" && permissions.can("records.edit") ? <button className="ghost-button" type="button" onClick={() => withdrawRecord(viewedRecord)}>{text("Withdraw", "Intrekken")}</button> : null}
+            {viewedRecord.status !== "cancelled" && viewedRecord.kind !== "daily_work" && permissions.can("records.edit") ? <button className="ghost-button" type="button" onClick={() => withdrawRecord(viewedRecord)}>{text("Withdraw", "Intrekken")}</button> : null}
             <button className="ghost-button" type="button" onClick={() => setViewedRecord(null)}><X size={14} /> {text("Close", "Sluiten")}</button>
           </div>
         </aside>
@@ -4580,17 +4644,60 @@ function ProjectOperations({
         </section>
       ) : null}
 
-      {tab === "daily" ? <DailyWorkRegister
-        records={data.dailyWork ?? []}
-        dayReports={data.dayReports ?? []}
-        buildings={buildings}
-        view={dailyWorkView}
-        onViewChange={setDailyWorkView}
-        // The works lists read the day closeout, so recording one writes that closeout.
-        // The button used to write an activity registration, which never appeared in the
-        // list it was pressed from.
-        onRecord={(view) => openDailyRecord(view === "delays" ? "delay" : view)}
-      /> : null}
+      {/* Works ongoing, works completed and delays: the day log as the page's form, the
+          recorded days as its list — the same page every other record module is. */}
+      {tab === "daily" ? (
+        <section className="operation-panel">
+          {showForm ? <RenderSlot render={dailyForms.renderDayLog} input={{
+            focus: dayLogFocus,
+            today: dayLogToday,
+            close: () => setShowForm(false),
+            openModule: (module: "inspections" | "findings" | "ncr" | "hse") => switchTab(module),
+            openWorkforce: () => switchTab("workforce"),
+          }} /> : null}
+          <DailyWorkRegister
+            records={data.dailyWork ?? []}
+            dayReports={data.dayReports ?? []}
+            buildings={buildings}
+            view={dailyWorkView}
+            onViewChange={(view) => openDailyWork(view)}
+            onOpen={(record, title, meta) => setViewedRecord({
+              kind: "daily_work",
+              id: record.id,
+              code: text("Day log", "Daglog"),
+              title,
+              status: record.signed_by ? text("Signed", "Ondertekend") : text("Saved", "Opgeslagen"),
+              meta,
+              // The line the list showed is the title; the rest of the day stands below it once.
+              description: [
+                record.work_ongoing ? `${text("Works ongoing", "Werkzaamheden gaande")}: ${record.work_ongoing}` : "",
+                record.work_performed ? `${text("Works completed", "Werkzaamheden afgerond")}: ${record.work_performed}` : "",
+                record.tomorrow_plan ? `${text("Plan for tomorrow", "Planning morgen")}: ${record.tomorrow_plan}` : "",
+              ].filter((line) => line && !line.endsWith(`: ${title}`)).join("\n"),
+            })}
+          />
+        </section>
+      ) : null}
+
+      {/* The Workforce register: today's count as the page's form, the counted days below. */}
+      {tab === "workforce" ? (
+        <section className="operation-panel">
+          <RenderSlot render={dailyForms.renderWorkforce} input={{ close: () => switchTab("home") }} />
+          <RecordList empty={text("No workforce recorded yet.", "Nog geen bezetting vastgelegd.")} rows={workforceDays.map((day) => ({
+            id: day.key,
+            icon: Users,
+            title: day.headcount === 1 ? text("1 person on site", "1 persoon op de bouwplaats") : text(`${day.headcount} people on site`, `${day.headcount} personen op de bouwplaats`),
+            meta: [
+              day.date,
+              buildings.find((building) => building.id === day.buildingId)?.name ?? "",
+              day.visitors ? text(`${day.visitors} visitor(s)`, `${day.visitors} bezoeker(s)`) : "",
+              day.signedBy ? `${text("signed by", "ondertekend door")} ${day.signedBy}` : "",
+            ].filter(Boolean).join(" · "),
+            status: day.signedBy ? text("Signed", "Ondertekend") : text("Counted", "Geteld"),
+            tone: day.signedBy ? "green" : "",
+          }))} />
+        </section>
+      ) : null}
 
       {tab === "visual" ? <VisualEvidenceWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} parties={parties} client={client} busy={busy} run={run} initialFindingId={visualFindingId} initialFileId={visualFileId} onInitialFileConsumed={() => setVisualFileId("")} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} start360Upload={visual360Intent} onStart360UploadConsumed={() => setVisual360Intent(false)} /> : null}
 
@@ -5495,17 +5602,12 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
     .sort((left, right) => right.end.localeCompare(left.end));
   return (
     <>
-      <header className="secondary-header report-page-header"><div><p className="eyebrow">{text("Reports", "Rapporten")}</p><h1>{text("Client reports", "Klantrapporten")}</h1></div><div className="report-header-state"><span className="record-number">{reportNumber}</span><span className={`report-state-pill ${reportStatus}`}>{statusLabels[reportStatus] ?? reportStatus}</span></div></header>
-      <nav className="report-frequency-tabs" aria-label={text("Report frequency", "Rapportfrequentie")}>
-        <button className={periodPreset === "day" ? "active" : ""} type="button" onClick={() => { setReportView("create"); applyDatePreset(1, text("Daily supervision report", "Dagelijks supervisierapport"), "day"); }}><CalendarRange size={19} /><span><strong>{text("Daily report", "Dagrapport")}</strong></span></button>
-        <button className={periodPreset === "week" ? "active" : ""} type="button" onClick={() => { setReportView("create"); applyDatePreset(7, text("Weekly supervision report", "Wekelijks supervisierapport"), "week"); }}><FileText size={19} /><span><strong>{text("Weekly report", "Weekrapport")}</strong></span></button>
-        <button className={periodPreset === "month" ? "active" : ""} type="button" onClick={() => { setReportView("create"); setPeriod({ start: `${today.slice(0, 8)}01`, end: today }); setPeriodLabel(text("Monthly supervision report", "Maandelijks supervisierapport")); setPeriodPreset("month"); }}><Archive size={19} /><span><strong>{text("Monthly report", "Maandrapport")}</strong></span></button>
-      </nav>
-      <nav className="report-section-tabs" role="tablist" aria-label={text("Report workspace", "Rapportwerkruimte")}>
-        {reportViews.map((view) => {
-          const Icon = view.icon;
-          return <button className={reportView === view.id ? "active" : ""} type="button" role="tab" aria-selected={reportView === view.id} onClick={() => setReportView(view.id)} key={view.id}><Icon size={18} /><span><strong>{view.title}</strong></span></button>;
-        })}
+      <header className="secondary-header report-page-header ui-page-header"><div><h1>{text("Client reports", "Klantrapporten")}</h1></div><div className="report-header-state"><span className="record-number ui-page-header__code">{reportNumber}</span><span className={`report-state-pill ui-status-badge ${reportStatus}`}>{statusLabels[reportStatus] ?? reportStatus}</span></div></header>
+      <nav className="report-section-tabs ui-tabs" role="tablist" aria-label={text("Report workspace", "Rapportwerkruimte")}>
+        <button type="button" role="tab" aria-selected={reportView === "create" && periodPreset === "day"} onClick={() => { setReportView("create"); applyDatePreset(1, text("Daily supervision report", "Dagelijks supervisierapport"), "day"); }}>{text("Daily report", "Dagrapport")}</button>
+        <button type="button" role="tab" aria-selected={reportView === "create" && periodPreset === "week"} onClick={() => { setReportView("create"); applyDatePreset(7, text("Weekly supervision report", "Wekelijks supervisierapport"), "week"); }}>{text("Weekly report", "Weekrapport")}</button>
+        <button type="button" role="tab" aria-selected={reportView === "create" && periodPreset === "month"} onClick={() => { setReportView("create"); setPeriod({ start: `${today.slice(0, 8)}01`, end: today }); setPeriodLabel(text("Monthly supervision report", "Maandelijks supervisierapport")); setPeriodPreset("month"); }}>{text("Monthly report", "Maandrapport")}</button>
+        {reportViews.map((view) => <button type="button" role="tab" aria-selected={reportView === view.id && (view.id !== "create" || periodPreset === "custom")} onClick={() => { setReportView(view.id); if (view.id === "create") setPeriodPreset("custom"); }} key={view.id}>{view.title}</button>)}
       </nav>
       {reportView === "prompts" ? (
         <PromptLibrary
@@ -5525,9 +5627,8 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
         />
       ) : null}
       {reportView === "create" ? (
-        <section className="period-report-card">
-          <div className="workflow-icon"><CalendarRange size={20} /></div>
-          <div className="period-report-copy"><span className="record-number">{text("Automatic client output", "Automatische klantoutput")}</span><h2>{text("Choose what the client needs", "Kies wat de klant nodig heeft")}</h2></div>
+        <section className="period-report-card ui-panel">
+          <div className="period-report-copy"><h2>{text("Choose what the client needs", "Kies wat de klant nodig heeft")}</h2></div>
           <div className="period-report-types" role="radiogroup" aria-label={text("Report type", "Rapporttype")}>{reportChoices.map((choice) => <button className={reportChoice === choice.id ? "active" : ""} type="button" role="radio" aria-checked={reportChoice === choice.id} onClick={() => setReportChoice(choice.id)} key={choice.id}><strong>{choice.title}</strong><span>{choice.sections.length} {text("automatic sections", "automatische onderdelen")}</span></button>)}</div>
           <fieldset className="report-source-checklist">
             <legend>{text("Include in this report", "Opnemen in dit rapport")}</legend>
@@ -5542,7 +5643,6 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
             </span>
             <ChevronRight size={15} />
           </button>
-          <div className="period-date-presets"><span>{text("Quick period", "Snelle periode")}</span><button className={periodPreset === "day" ? "active" : ""} type="button" aria-pressed={periodPreset === "day"} onClick={() => applyDatePreset(1, text("Daily supervision report", "Dagelijks supervisierapport"), "day")}>{text("Today", "Vandaag")}</button><button className={periodPreset === "week" ? "active" : ""} type="button" aria-pressed={periodPreset === "week"} onClick={() => applyDatePreset(7, text("Weekly supervision report", "Wekelijks supervisierapport"), "week")}>{text("Last 7 days", "Laatste 7 dagen")}</button><button className={periodPreset === "month" ? "active" : ""} type="button" aria-pressed={periodPreset === "month"} onClick={() => { setPeriod({ start: `${today.slice(0, 8)}01`, end: today }); setPeriodLabel(text("Monthly supervision report", "Maandelijks supervisierapport")); setPeriodPreset("month"); }}>{text("This month", "Deze maand")}</button>{periodPreset === "custom" ? <em>{text("Custom period", "Vrije periode")}</em> : null}</div>
           <label className="form-field"><span>{text("From", "Van")}</span><input type="date" value={period.start} max={period.end} onChange={(event) => { setPeriod({ ...period, start: event.target.value }); setPeriodLabel(text("Period supervision report", "Supervisierapport over periode")); setPeriodPreset("custom"); }} /></label>
           <label className="form-field"><span>{text("Through", "Tot en met")}</span><input type="date" value={period.end} min={period.start} max={today} onChange={(event) => { setPeriod({ ...period, end: event.target.value }); setPeriodLabel(text("Period supervision report", "Supervisierapport over periode")); setPeriodPreset("custom"); }} /></label>
           <ReportDownloadButtons
@@ -5647,8 +5747,8 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
   };
   return (
     <>
-      <header className="secondary-header"><div><p className="eyebrow">{text("Management workspace", "Managementwerkruimte")} · {projectName}</p><h1>{section === "overview" ? text("Management overview", "Managementoverzicht") : text("Administration and control", "Beheer en controle")}</h1></div><div className="management-header-actions">{/* The top bar drops the language switch on phones, so it lives here. */}<LanguageSwitcher />{canManageOrganization ? <button className="primary-button" type="button" onClick={openUserAdmin}><Users size={15} /> {text("Manage team", "Team beheren")}</button> : null}</div></header>
-      <div className="operation-tabs admin-tabs">{[["overview", text("Overview", "Overzicht")], ["settings", text("Team & rules", "Team & regels")], ["structure", text("Project setup", "Projectinrichting")], ["templates", text("Quality standards", "Kwaliteitsstandaarden")], ["backup", text("Backup & continuity", "Back-up & continuïteit")]].map(([id, label]) => <button className={section === id ? "active" : ""} type="button" onClick={() => setSection(id as typeof section)} key={id}>{label}</button>)}</div>
+      <header className="secondary-header ui-page-header"><div><h1>{section === "overview" ? text("Management overview", "Managementoverzicht") : text("Administration and control", "Beheer en controle")}</h1><span className="ui-page-header__code">{projectName}</span></div><div className="management-header-actions">{canManageOrganization ? <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={openUserAdmin}><Users size={15} /> {text("Manage team", "Team beheren")}</button> : null}</div></header>
+      <div className="operation-tabs admin-tabs ui-tabs" role="tablist" aria-label={text("Management sections", "Beheeronderdelen")}>{[["overview", text("Overview", "Overzicht")], ["settings", text("Team & rules", "Team & regels")], ["structure", text("Project setup", "Projectinrichting")], ["templates", text("Quality standards", "Kwaliteitsstandaarden")], ["backup", text("Backup & continuity", "Back-up & continuïteit")]].map(([id, label]) => <button className={section === id ? "active" : ""} type="button" role="tab" aria-selected={section === id} onClick={() => setSection(id as typeof section)} key={id}>{label}</button>)}</div>
       {section === "overview" ? <section className="management-overview">
         <div className="management-kpis">
           <button className={data.settings ? "healthy" : "attention"} type="button" onClick={() => setSection("settings")}><span>{text("Project configuration", "Projectconfiguratie")}</span><strong>{data.settings ? text("Active", "Actief") : text("Missing", "Ontbreekt")}</strong>{data.settings ? null : <small>{text("Project rules require configuration", "Projectregels moeten worden ingesteld")}</small>}</button>
@@ -5657,17 +5757,18 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
           <button className={latestScheduledBackup ? "healthy" : "attention"} type="button" onClick={() => setSection("backup")}><span>{text("Continuity", "Continuïteit")}</span><strong>{latestScheduledBackup ? text("Verified", "Geverifieerd") : text("Pending", "Openstaand")}</strong><small>{latestScheduledBackup ? formatDate(latestScheduledBackup.verified_at) : text("Verified backup required", "Geverifieerde back-up vereist")}</small></button>
         </div>
         <div className="management-columns">
-          <article className="management-card"><header><div><span className="module-card-icon"><AlertTriangle size={18} /></span><div><h2>{text("Management attention", "Managementaandacht")}</h2></div></div></header><div className="management-attention-list">{criticalFindings.length ? criticalFindings.slice(0, 4).map((item) => <div key={item.id}><span className="risk-dot" /><span><strong>{item.title}</strong><small>{item.finding_number} · {statusText(item.status, text)}</small></span></div>) : <div className="management-clear"><CheckCircle2 size={18} /><span><strong>{text("No high-risk findings", "Geen hoog-risico bevindingen")}</strong></span></div>}</div></article>
-          <article className="management-card"><header><div><span className="module-card-icon"><Settings size={18} /></span><div><h2>{text("Management controls", "Managementbediening")}</h2></div></div></header><div className="management-control-list"><button type="button" onClick={openUserAdmin}><Users size={16} /><span><strong>{text("Team and access", "Team en toegang")}</strong></span></button><button type="button" onClick={() => setSection("settings")}><Settings size={16} /><span><strong>{text("Project rules", "Projectregels")}</strong></span></button><button type="button" onClick={() => setSection("structure")}><Wrench size={16} /><span><strong>{text("Structure and parties", "Structuur en partijen")}</strong></span></button><button type="button" onClick={() => setSection("backup")}><DatabaseBackup size={16} /><span><strong>{text("Continuity controls", "Continuïteitscontrole")}</strong></span></button></div></article>
+          <article className="management-card ui-panel"><header className="ui-panel__heading"><h2>{text("Management attention", "Managementaandacht")}</h2></header><div className="management-attention-list">{criticalFindings.length ? criticalFindings.slice(0, 4).map((item) => <div className="ui-list-row" key={item.id}><span><strong>{item.title}</strong><small>{item.finding_number} · {statusText(item.status, text)}</small></span></div>) : <div className="management-clear"><CheckCircle2 size={18} /><span><strong>{text("No high-risk findings", "Geen hoog-risico bevindingen")}</strong></span></div>}</div></article>
+          <article className="management-card ui-panel"><header className="ui-panel__heading"><h2>{text("Management controls", "Managementbediening")}</h2></header><div className="management-control-list"><button type="button" onClick={openUserAdmin}><Users size={16} /><span><strong>{text("Team and access", "Team en toegang")}</strong></span></button><button type="button" onClick={() => setSection("settings")}><Settings size={16} /><span><strong>{text("Project rules", "Projectregels")}</strong></span></button><button type="button" onClick={() => setSection("structure")}><Wrench size={16} /><span><strong>{text("Structure and parties", "Structuur en partijen")}</strong></span></button><button type="button" onClick={() => setSection("backup")}><DatabaseBackup size={16} /><span><strong>{text("Continuity controls", "Continuïteitscontrole")}</strong></span></button></div></article>
         </div>
         <section className="external-submission-center">
-          <header><div><span className="record-number">{text("External parties", "Externe partijen")}</span><h2>{text("Submissions, decisions and task ownership", "Indieningen, besluiten en taakverdeling")}</h2></div><div className="button-row"><button className="secondary-button" type="button" onClick={() => openProjectArea("submissions")}><FileText size={15} /> {text("Record external submission", "Externe indiening registreren")}</button><button className="secondary-button" type="button" onClick={openActionCenter}><ClipboardCheck size={15} /> {text("Manage tasks", "Taken beheren")}</button><button className="primary-button" type="button" onClick={createProjectAction}><Plus size={15} /> {text("Assign follow-up", "Opvolging toewijzen")}</button></div></header>
+          <header><div><span className="record-number">{text("External parties", "Externe partijen")}</span><h2>{text("Submissions, decisions and task ownership", "Indieningen, besluiten en taakverdeling")}</h2></div><div className="button-row"><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => openProjectArea("submissions")}><FileText size={15} /> {text("Record external submission", "Externe indiening registreren")}</button><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={openActionCenter}><ClipboardCheck size={15} /> {text("Manage tasks", "Taken beheren")}</button><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={createProjectAction}><Plus size={15} /> {text("Assign follow-up", "Opvolging toewijzen")}</button></div></header>
           <div className="external-access-summary">
             <span><KeyRound size={17} /><strong>{text("With account", "Met account")}</strong></span>
             <span><Link2 size={17} /><strong>{text("Without account", "Zonder account")}</strong></span>
             <span><Archive size={17} /><strong>{externalSubmissions.length} {text("submissions", "indieningen")}</strong><small>{externalSubmissions.filter((entry) => !["approved", "closed", "cancelled"].includes(entry.status)).length} {text("require a decision", "vragen een besluit")}</small></span>
           </div>
-          <section className="company-task-assignment">
+        </section>
+          <section className="company-task-assignment ui-panel">
             <header>
               <div><span className="record-number">{text("Company employees", "Eigen medewerkers")}</span><h3>{text("Assign and redistribute project tasks", "Projecttaken toewijzen en herverdelen")}</h3></div>
               <button className="secondary-button" type="button" onClick={openUserAdmin}><Users size={15} /> {text("Manage employees", "Medewerkers beheren")}</button>
@@ -5688,7 +5789,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
                     return <article key={action.id}>
                       <div><span className={`priority-dot ${action.priority}`} /><span><strong>{action.title}</strong><small>{action.action_number} · {statusText(action.status, text)} · {text("Current", "Huidig")}: {employeeName(action.owner_user_id)}</small></span></div>
                       <label className="form-field"><span>{text("Responsible employee", "Verantwoordelijke medewerker")}</span><select value={selectedUserId} onChange={(event) => setAssignmentDrafts((current) => ({ ...current, [action.id]: event.target.value }))}><option value="">{text("Choose an employee", "Kies een medewerker")}</option>{companyEmployees.map((employee) => <option value={employee.userId} key={employee.userId}>{employee.displayName?.trim() || employee.email}</option>)}</select></label>
-                      <button className="primary-button" type="button" disabled={busy || !changed} onClick={() => void run(() => assignProjectAction(client, { actionId: action.id, ownerUserId: selectedUserId, note: "Assigned or reassigned by Management." }), text("Task assigned.", "Taak toegewezen.")).then((okay) => { if (okay) setAssignmentDrafts((current) => { const next = { ...current }; delete next[action.id]; return next; }); })}>{text("Assign", "Toewijzen")}</button>
+                      <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={busy || !changed} onClick={() => void run(() => assignProjectAction(client, { actionId: action.id, ownerUserId: selectedUserId, note: "Assigned or reassigned by Management." }), text("Task assigned.", "Taak toegewezen.")).then((okay) => { if (okay) setAssignmentDrafts((current) => { const next = { ...current }; delete next[action.id]; return next; }); })}>{text("Assign", "Toewijzen")}</button>
                     </article>;
                   })}
                   {!assignableActions.length ? <div className="empty-list-state"><CheckCircle2 size={20} /><strong>{text("No open project tasks", "Geen open projecttaken")}</strong></div> : null}
@@ -5697,7 +5798,6 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
             ) : <div className="operation-alert warning"><Users size={18} /><div><strong>{text("No assignable company employees", "Geen toewijsbare eigen medewerkers")}</strong><span>{text("Add an active employee first.", "Voeg eerst een actieve medewerker toe.")}</span></div></div>}
           </section>
           <ControlledDocumentList entries={externalSubmissions} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={text("Company / owner reviewer", "Reviewer bedrijf / eigenaar")} client={client} run={run} />
-        </section>
         <div className="management-context"><div><span>{text("Current report", "Huidig rapport")}</span><strong>{statusText(reportStatus, text)}</strong></div><div><span>{text("Project locations", "Projectlocaties")}</span><strong>{data.locationNodes.length}</strong></div><div><span>{text("Published checklists", "Gepubliceerde checklists")}</span><strong>{data.templates.filter((item) => item.status === "published").length}</strong></div><div><span>{text("Controlled files", "Beheerde bestanden")}</span><strong>{data.files.length}</strong></div></div>
       </section> : null}
       {section === "settings" ? (

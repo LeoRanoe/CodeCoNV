@@ -6,7 +6,25 @@ import test from "node:test";
 // CRLF, which would make every multi-line pattern fail locally while CI passes.
 async function readFile(path, encoding) {
   const text = await readRawFile(path, encoding);
-  return typeof text === "string" ? text.replace(/\r\n/g, "\n") : text;
+  if (typeof text !== "string") return text;
+  const normalized = text.replace(/\r\n/g, "\n");
+  if (!String(path).endsWith("/app/globals.css")) return normalized;
+
+  async function expandLocalImports(source, sourceUrl) {
+    const parts = [];
+    for (const line of source.split("\n")) {
+      const match = line.match(/^@import "(\.\/[^"]+\.css)";$/);
+      if (match) {
+        const importedUrl = new URL(match[1], sourceUrl);
+        const imported = (await readRawFile(importedUrl, "utf8")).replace(/\r\n/g, "\n");
+        parts.push(await expandLocalImports(imported, importedUrl));
+      } else {
+        parts.push(line);
+      }
+    }
+    return parts.join("\n");
+  }
+  return expandLocalImports(normalized, path);
 }
 import {
   externalShareUrl,
@@ -312,13 +330,16 @@ test("gives every attached photo one written field and location without a direct
   assert.match(evidence, /\{text\("Building", "Gebouw"\)\}/);
 
   // One photo block for every module; the client asked for one way of working, not five.
-  for (const [name, source] of [["entry record", entry], ["daily log", dailyLog], ["issues, inspections, HSE and register", operations], ["photo library", media]]) {
+  for (const [name, source] of [["daily log", dailyLog], ["issues, inspections, HSE and register", operations], ["photo library", media]]) {
     assert.match(source, /<PhotoEvidenceList/, `${name} must use the shared photo block`);
     assert.match(source, /toPhotoEvidence\(/, `${name} must wrap a taken photo so it carries its own words`);
   }
   assert.equal(operations.match(/<PhotoEvidenceList/g)?.length, 5);
   // The old one-off stacks are gone rather than left behind next to the shared block.
   assert.doesNotMatch(operations, /FindingPhotoStack/);
+  // The loose field-record form (and its photo strip) is gone: works, delays and photos each
+  // have their own workspace page.
+  assert.doesNotMatch(entry, /function EntryModal/);
   assert.doesNotMatch(entry, /entry-photo-strip/);
   assert.doesNotMatch(dailyLog, /daily-log-photo-list/);
 
@@ -340,11 +361,11 @@ test("gives every attached photo one written field and location without a direct
   assert.match(visualCapture, /readPhotoDirection/);
 
   // A phone zooms in on a field below 16px; that guard has to beat every component rule.
-  assert.match(css, /@media \(max-width: 860px\), \(pointer: coarse\)[\s\S]{0,400}font-size: max\(16px, 1em\) !important/);
+  assert.match(css, /@media \(max-width: 1024px\), \(pointer: coarse\)[\s\S]{0,400}font-size: max\(var\(--text-md\), 1em\) !important/);
 });
 
 test("offers marking on the photo everywhere a photo can be attached", async () => {
-  const [markup, evidencePad, entry, dailyLog, operations, media, visual, css] = await Promise.all([
+  const [markup, evidencePad, , dailyLog, operations, media, visual, css] = await Promise.all([
     readFile(new URL("../app/photo-markup.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/photo-evidence.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
@@ -358,7 +379,7 @@ test("offers marking on the photo everywhere a photo can be attached", async () 
   // The client reported that marking existed but was not reachable from the forms. Every
   // screen that can attach a photo reaches the same marking pad — through the shared photo
   // block, or directly where the photo has its own full form already.
-  for (const [name, source] of [["entry record", entry], ["daily log", dailyLog], ["issues, inspections, HSE and register", operations], ["photo library", media]]) {
+  for (const [name, source] of [["daily log", dailyLog], ["issues, inspections, HSE and register", operations], ["photo library", media]]) {
     assert.match(source, /<PhotoEvidenceList/, `${name} must reach the marking pad through the shared photo block`);
     assert.match(source, /markupContext=\{/, `${name} must tell the marking pad about the project`);
   }

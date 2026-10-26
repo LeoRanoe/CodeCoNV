@@ -26,11 +26,13 @@ const viewports = [
   { name: "360", width: 360, height: 780 },
 ];
 
-const modules = ["Overview", "Workspace", "Actions", "Project Docs", "Issues", "Rapid Verify", "Reports", "Management"];
+// Project Docs and Issues are workspace modules with their own way in on the workspace; the
+// bar no longer repeats them.
+const modules = ["Overview", "Workspace", "Actions", "Rapid Verify", "Reports", "Management"];
 const tiles = [
   "Photos", "Works ongoing", "Works completed", "Workforce", "Project Delay Report", "Issues", "HSE", "Materials delivery",
   "Inspections", "Technical instructions", "Change order", "NCR", "Lessons Learned", "HSE incident", "Agreements Made",
-  "Rapid Verify", "Project Docs", "Assets & folders", "Drawings & pins", "Deadlines", "Reports", "Submissions & management",
+  "Rapid Verify", "Project Docs", "Assets & folders", "Drawings & pins", "Deadlines",
 ];
 
 type Finding = { screen: string; viewport: string; kind: string; detail: string };

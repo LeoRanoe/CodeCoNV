@@ -1,0 +1,146 @@
+/* Management reads as a ruled register with separate, flat work sections. */
+.admin-tabs.ui-tabs {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: initial;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  padding: 0;
+}
+
+.admin-tabs.ui-tabs > button,
+.admin-tabs.ui-tabs > button.active {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: initial;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-normal);
+  padding: var(--space-2) var(--space-1);
+}
+
+.admin-tabs.ui-tabs > button[aria-selected="true"] {
+  border-bottom-color: var(--signal);
+  color: var(--text);
+  font-weight: var(--weight-semibold);
+}
+
+.management-kpis {
+  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  gap: 0;
+}
+
+.management-kpis button,
+.management-kpis button.attention,
+.management-kpis button.healthy {
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-radius: initial;
+  min-height: var(--control-h-lg);
+  padding: var(--space-4);
+  transform: none;
+}
+
+.management-kpis button:last-child {
+  border-right: 0;
+}
+
+.management-kpis button:hover {
+  background: var(--ink-50);
+  transform: none;
+}
+
+.management-kpis strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.management-card.ui-panel {
+  box-shadow: none;
+  padding: var(--space-4);
+}
+
+.management-attention-list > .ui-list-row,
+.management-control-list button {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: initial;
+  min-height: var(--control-h-lg);
+  padding: var(--space-3) 0;
+}
+
+.management-control-list button:hover {
+  background: var(--ink-50);
+}
+
+.management-control-list button > svg {
+  color: var(--ink-700);
+}
+
+.admin-card-grid .module-card-icon,
+.mfa-card .module-card-icon {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--ink-700);
+}
+
+.external-submission-center,
+.company-task-assignment.ui-panel {
+  background: var(--paper);
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+
+.company-task-assignment.ui-panel {
+  margin: 0;
+}
+
+.management-context {
+  border-radius: initial;
+  box-shadow: none;
+}
+
+/* The sign-in view is a plain document entry point. */
+.access-shell {
+  background: var(--canvas);
+}
+
+.access-card {
+  background: var(--paper);
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+
+.access-card .eyebrow {
+  display: none;
+}
+
+.auth-tabs button.active {
+  color: var(--text);
+  box-shadow: none;
+}
+
+@media (max-width: 640px) {
+  .admin-tabs.ui-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .admin-tabs.ui-tabs > button {
+    flex: 0 0 auto;
+  }
+
+  .management-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .management-kpis button:nth-child(even) {
+    border-right: 0;
+  }
+}

@@ -32,7 +32,9 @@ const viewports = [
   { name: "desktop 1920", width: 1920, height: 1080 },
 ];
 
-const moduleNames = ["Overview", "Workspace", "Actions", "Project Docs", "Issues", "Rapid Verify", "Reports", "Management"];
+// Project Docs and Issues are workspace modules with their own way in on the workspace; the
+// bar no longer repeats them.
+const moduleNames = ["Overview", "Workspace", "Actions", "Rapid Verify", "Reports", "Management"];
 
 async function signIn(page: Page) {
   await page.goto("/supervisie");
