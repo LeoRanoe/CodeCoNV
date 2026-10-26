@@ -8,7 +8,27 @@ import test, { after, before } from "node:test";
 // CRLF, which would make every multi-line pattern fail locally while CI passes.
 async function readFile(path, encoding) {
   const text = await readRawFile(path, encoding);
-  return typeof text === "string" ? text.replace(/\r\n/g, "\n") : text;
+  if (typeof text !== "string") return text;
+  const normalized = text.replace(/\r\n/g, "\n");
+  if (!String(path).endsWith("/app/globals.css")) return normalized;
+
+  // Source checks inspect the complete stylesheet. Keep following local imports as
+  // the area styles move out of globals.css; third-party imports have no local source.
+  async function expandLocalImports(source, sourceUrl) {
+    const parts = [];
+    for (const line of source.split("\n")) {
+      const match = line.match(/^@import "(\.\/[^"]+\.css)";$/);
+      if (match) {
+        const importedUrl = new URL(match[1], sourceUrl);
+        const imported = (await readRawFile(importedUrl, "utf8")).replace(/\r\n/g, "\n");
+        parts.push(await expandLocalImports(imported, importedUrl));
+      } else {
+        parts.push(line);
+      }
+    }
+    return parts.join("\n");
+  }
+  return expandLocalImports(normalized, path);
 }
 
 const port = 3187;
@@ -63,11 +83,11 @@ test("server-renders the public CODECO landing page", async () => {
   assert.match(html, /<link rel="canonical" href="https:\/\/www\.codeconv\.com\/?"/i);
   assert.match(html, /application\/ld\+json/i);
   assert.match(html, /ProfessionalService/i);
-  assert.match(html, /Architecture &amp; engineering/i);
+  assert.match(html, /Design and engineering for Suriname/i);
   assert.match(html, /Paramaribo, Suriname/i);
   assert.match(html, /codeco-logo\.png/);
   assert.match(html, /CODECO Construction Designers &amp; Consultants N\.V\./);
-  assert.match(html, /built for Suriname/i);
+  assert.match(html, /Design and engineering for Suriname/i);
   assert.match(html, /Start a project/i);
   assert.match(html, /Newmont Recreation Centre/i);
   assert.match(html, /Kwattaweg 717E/i);
@@ -125,19 +145,17 @@ test("keeps the mobile landing experience intentional and touch friendly", async
   assert.match(navigation, /aria-expanded=/);
   assert.match(navigation, /event\.key === "Escape"/);
   assert.match(navigation, /studio-mobile-overlay/);
-  assert.match(page, /studio-hero-aperture/);
-  assert.match(page, /studio-hero-line/);
-  assert.match(page, /data-reveal="project"/);
+  assert.match(page, /studio-hero-content/);
+  assert.doesNotMatch(page, /studio-hero-aperture|data-reveal="project"/);
   assert.match(page, /studio-icon-arrow/);
   assert.doesNotMatch(`${page}${navigation}`, /[→↗↓]/);
-  assert.match(motion, /IntersectionObserver/);
-  assert.match(motion, /requestAnimationFrame/);
-  assert.match(motion, /prefers-reduced-motion/);
+  assert.match(motion, /window\.addEventListener\("scroll", updateNavigation/);
+  assert.doesNotMatch(motion, /IntersectionObserver|requestAnimationFrame/);
   assert.match(landingCss, /min-height: 100svh/);
   assert.match(landingCss, /scroll-snap-type: x mandatory/);
   assert.match(landingCss, /flex: 0 0 84vw/);
-  assert.match(landingCss, /studio-aperture-line/);
-  assert.match(landingCss, /studio-line-reveal/);
+  assert.match(landingCss, /studio-fade-in 320ms/);
+  assert.doesNotMatch(landingCss, /studio-aperture-line|studio-line-reveal/);
   assert.match(landingCss, /prefers-reduced-motion/);
 });
 
@@ -197,7 +215,7 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(app, /Live werkruimte · gesynchroniseerd/);
   assert.match(app, /postgres_changes/);
   assert.doesNotMatch(app, /Demosessie|Kwattaweg Residence|Commewijne Port Facility/);
-  assert.match(page, /Architecture &amp; engineering/);
+  assert.match(page, /Design and engineering for Suriname/);
   assert.match(page, /Kwattaweg 717E/);
   assert.doesNotMatch(page, /href="\/supervisie/);
   assert.match(supervisionPage, /CodecoSupervisionApp/);
@@ -753,7 +771,7 @@ test("ships automatic project weather, anchor checklists and stacked issue photo
   assert.match(fieldGuide, /Issues, NCR, HSE and actions/);
   assert.match(fieldGuide, /Backups, status signals and recovery/);
   assert.match(fieldGuide, /onOpenDestination/);
-  assert.match(styles, /@media \(max-width: 860px\)[\s\S]*\.field-guide-trigger[\s\S]*bottom: calc\(84px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(styles, /@media \(max-width: 1024px\)[\s\S]*\.field-guide-trigger[\s\S]*bottom: calc\(84px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(migration, /'LIB-101'/);
   assert.match(migration, /'LIB-102'/);
   assert.match(migration, /'LIB-103'/);
@@ -954,7 +972,7 @@ test("processes the five annotated field screens from 31 July", async () => {
   assert.match(app, /selection-copy[\s\S]{0,180}selection-icon/);
 
   // Screen 2: a smaller project header, and photos are called photos.
-  assert.match(styles, /\.overview-hero h1 \{[\s\S]*?font-size: clamp\(1\.15rem/);
+  assert.match(styles, /\.overview-hero h1 \{[\s\S]*?font-size: clamp\(var\(--text-lg\)/);
   assert.match(dashboard, /label=\{text\("Pictures", "Foto's"\)\}/);
   assert.doesNotMatch(dashboard, /text\("Evidence", "Bewijs"\)/);
 
@@ -2470,7 +2488,7 @@ test("gives a file a name a person can read, and a phone controls it can reach",
 
   // A half-transparent orange button reads as broken instead of as not-yet.
   assert.doesNotMatch(styles, /\.primary-button:disabled \{\s*cursor: not-allowed;\s*opacity: 0\.48;/);
-  assert.match(styles, /\.primary-button:disabled \{[^}]*color: #8a9a9a;/);
+  assert.match(styles, /\.primary-button:disabled \{[^}]*color: var\(--ink-500\);/);
 });
 
 test("opens a stored photo on its own screen everywhere it is shown", async () => {
@@ -2578,8 +2596,8 @@ test("records accountable delays and keeps project documents in one short flow",
   assert.match(projectDocuments, /normalizeRecordCode/);
   assert.match(projectDocuments, /linkFileToRecord/);
   assert.match(projectDocuments, /Document linked without copying the file/);
-  assert.match(styles, /@media \(max-width: 1180px\)[\s\S]*\.client-workspace-grid \{ grid-template-columns: repeat\(3/);
-  assert.match(styles, /@media \(max-width: 760px\)[\s\S]*\.client-workspace-grid \{ grid-template-columns: repeat\(2/);
+  assert.match(styles, /@media \(max-width: 1280px\)[\s\S]*\.client-workspace-grid \{ grid-template-columns: repeat\(3/);
+  assert.match(styles, /@media \(max-width: 640px\)[\s\S]*\.client-workspace-grid \{ grid-template-columns: repeat\(2/);
 });
 
 test("a search result opens, the assets tab survives, and a shared day stays on every building", async () => {
@@ -3158,7 +3176,7 @@ test("breaks a record card on its own width, not the window's", async () => {
   assert.ok(container > styles.indexOf("\n.finding-actions {"), ".finding-actions is declared before the container query that overrides it");
 
   // The window-width copy stays: a row outside a record stack has no container to ask.
-  assert.match(styles, /@media \(max-width: 620px\) \{[\s\S]*?\.finding-card-main,\n\s+\.record-row \{\n\s+grid-template-columns: auto minmax\(0, 1fr\);/);
+  assert.match(styles, /@media \(max-width: 640px\) \{[\s\S]*?\.finding-card-main,\n\s+\.record-row \{\n\s+grid-template-columns: auto minmax\(0, 1fr\);/);
 });
 
 test("calls each form what the client's own paper calls it, in one place", async () => {

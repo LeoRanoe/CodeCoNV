@@ -6,7 +6,25 @@ import test from "node:test";
 // CRLF, which would make every multi-line pattern fail locally while CI passes.
 async function readFile(path, encoding) {
   const text = await readRawFile(path, encoding);
-  return typeof text === "string" ? text.replace(/\r\n/g, "\n") : text;
+  if (typeof text !== "string") return text;
+  const normalized = text.replace(/\r\n/g, "\n");
+  if (!String(path).endsWith("/app/globals.css")) return normalized;
+
+  async function expandLocalImports(source, sourceUrl) {
+    const parts = [];
+    for (const line of source.split("\n")) {
+      const match = line.match(/^@import "(\.\/[^"]+\.css)";$/);
+      if (match) {
+        const importedUrl = new URL(match[1], sourceUrl);
+        const imported = (await readRawFile(importedUrl, "utf8")).replace(/\r\n/g, "\n");
+        parts.push(await expandLocalImports(imported, importedUrl));
+      } else {
+        parts.push(line);
+      }
+    }
+    return parts.join("\n");
+  }
+  return expandLocalImports(normalized, path);
 }
 import {
   externalShareUrl,
@@ -340,7 +358,7 @@ test("gives every attached photo one written field and location without a direct
   assert.match(visualCapture, /readPhotoDirection/);
 
   // A phone zooms in on a field below 16px; that guard has to beat every component rule.
-  assert.match(css, /@media \(max-width: 860px\), \(pointer: coarse\)[\s\S]{0,400}font-size: max\(16px, 1em\) !important/);
+  assert.match(css, /@media \(max-width: 1024px\), \(pointer: coarse\)[\s\S]{0,400}font-size: max\(var\(--text-md\), 1em\) !important/);
 });
 
 test("offers marking on the photo everywhere a photo can be attached", async () => {
