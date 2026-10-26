@@ -1,1 +1,117 @@
-/* reports screen refinements. */
+/* Reports use a register header, one tab row, and a plain report builder. */
+.report-page-header.ui-page-header {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--space-4);
+}
+
+.report-header-state {
+  align-items: flex-end;
+}
+
+.report-section-tabs.ui-tabs {
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.report-section-tabs.ui-tabs > button {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: initial;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-normal);
+  min-height: var(--control-h-md);
+  padding: var(--space-2) var(--space-1);
+}
+
+.report-section-tabs.ui-tabs > button[aria-selected="true"] {
+  border-bottom-color: var(--signal);
+  color: var(--text);
+  font-weight: var(--weight-semibold);
+}
+
+.period-report-card.ui-panel {
+  box-shadow: none;
+  padding: var(--space-5);
+}
+
+.period-report-card > .period-report-copy {
+  grid-column: 1 / -1;
+}
+
+.period-report-copy h2 {
+  font-size: var(--text-lg);
+  margin: 0;
+}
+
+.period-report-types {
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+}
+
+.period-report-types button {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: initial;
+  display: grid;
+  min-height: var(--control-h-lg);
+  padding: var(--space-2) var(--space-3);
+}
+
+.period-report-types button.active {
+  background: transparent;
+  border-bottom-color: var(--signal);
+  color: var(--text);
+}
+
+.period-report-types button.active strong {
+  color: var(--text);
+}
+
+.download-group.prominent button:last-child,
+.download-group.prominent button:last-child:hover:not(:disabled) {
+  background: var(--paper);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.workflow-card:not(.current) .primary-button {
+  background: var(--paper);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.workflow-card .workflow-icon {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--ink-700);
+}
+
+.report-history-grid,
+.report-archive-list {
+  border-color: var(--border);
+}
+
+@media (max-width: 640px) {
+  .report-section-tabs.ui-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .report-section-tabs.ui-tabs > button {
+    flex: 0 0 auto;
+  }
+
+  .period-report-card > .period-report-copy {
+    grid-column: 1 / -1;
+  }
+}

@@ -20,10 +20,10 @@ export function ReportDownloadButtons({
   const iconSize = variant === "prominent" ? 15 : 13;
   return (
     <div className={["download-group", variant, className].filter(Boolean).join(" ")} role="group" aria-label={text("Download format", "Downloadformaat")}>
-      <button type="button" disabled={disabled} onClick={() => void onDownloadPdf()}>
+      <button className={`ui-button ${variant === "prominent" ? "ui-button--primary" : "ui-button--secondary"} ui-button--md`} type="button" disabled={disabled} onClick={() => void onDownloadPdf()}>
         <FileText size={iconSize} /> PDF
       </button>
-      <button type="button" disabled={disabled} onClick={() => void onDownloadWord()}>
+      <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={disabled} onClick={() => void onDownloadWord()}>
         <FileType2 size={iconSize} /> Word
       </button>
     </div>
