@@ -80,7 +80,6 @@ type WorkspaceTile = {
   id: string;
   label: string;
   icon: LucideIcon;
-  tone: "orange" | "blue" | "teal" | "green" | "purple" | "slate";
   count?: number;
   module?: string;
   action: () => void;
@@ -118,7 +117,6 @@ export function ProjectWorkspaceHome({
       // taking one, uploading one and a 360° upload as the choices on top of them.
       label: text("Photos", "Foto's"),
       icon: Camera,
-      tone: "blue",
       count: counts.photos,
       module: "visual_evidence",
       action: openPhotoLibrary,
@@ -127,21 +125,18 @@ export function ProjectWorkspaceHome({
       id: "works-ongoing",
       label: text("Works ongoing", "Werkzaamheden gaande"),
       icon: HardHat,
-      tone: "orange",
       action: () => openDailyWork("works_ongoing"),
     },
     {
       id: "works-completed",
       label: text("Works completed", "Werkzaamheden afgerond"),
       icon: CheckCircle2,
-      tone: "green",
       action: () => openDailyWork("works_completed"),
     },
     {
       id: "workforce",
       label: text("Workforce", "Workforce"),
       icon: Users,
-      tone: "teal",
       // §4.3 of the product plan: the workforce register, not the day's work list.
       action: openWorkforce,
     },
@@ -151,14 +146,12 @@ export function ProjectWorkspaceHome({
       id: "delay-report",
       label: text("Project Delay Report (PDR)", "Vertragingsrapport (PDR)"),
       icon: CalendarClock,
-      tone: "orange",
       action: () => openTask("registers", false, { registerType: "delay_report" }),
     },
     {
       id: "issues",
       label: text("Issues", "Issues"),
       icon: AlertTriangle,
-      tone: "orange",
       count: counts.issues,
       module: "quality",
       action: () => openFinding("issue", false),
@@ -167,7 +160,6 @@ export function ProjectWorkspaceHome({
       id: "hse",
       label: "HSE",
       icon: ShieldCheck,
-      tone: "green",
       count: counts.hse,
       module: "hse",
       action: () => openTask("hse", false),
@@ -176,7 +168,6 @@ export function ProjectWorkspaceHome({
       id: "materials-delivery",
       label: text("Materials delivery", "Materiaallevering"),
       icon: PackageCheck,
-      tone: "teal",
       count: counts.deliveries,
       action: () => openTask("registers", false, { registerType: "delivery" }),
     },
@@ -184,7 +175,6 @@ export function ProjectWorkspaceHome({
       id: "inspections",
       label: text("Inspections", "Inspecties"),
       icon: ClipboardCheck,
-      tone: "purple",
       count: counts.inspections,
       module: "inspections",
       action: () => openTask("inspections", false),
@@ -193,21 +183,18 @@ export function ProjectWorkspaceHome({
       id: "technical-instructions",
       label: text("Technical instructions", "Technische instructies"),
       icon: Wrench,
-      tone: "blue",
       action: () => openTask("registers", false, { registerType: "technical_instruction" }),
     },
     {
       id: "change-order",
       label: text("Change order (CO)", "Change order (CO)"),
       icon: FileCheck2,
-      tone: "purple",
       action: () => openTask("registers", false, { registerType: "change_order" }),
     },
     {
       id: "ncr",
       label: "NCR",
       icon: ShieldAlert,
-      tone: "orange",
       count: counts.ncr,
       module: "quality",
       action: () => openFinding("ncr", false),
@@ -219,14 +206,12 @@ export function ProjectWorkspaceHome({
       id: "lessons-learned",
       label: text("Lessons Learned (LL)", "Geleerde lessen (LL)"),
       icon: Lightbulb,
-      tone: "purple",
       action: () => openTask("registers", false, { registerType: "lessons_learned" }),
     },
     {
       id: "hse-incident",
       label: text("HSE incident", "HSE-incident"),
       icon: ShieldAlert,
-      tone: "orange",
       module: "hse",
       action: () => openTask("hse", false, { hseEventType: "incident" }),
     },
@@ -234,7 +219,6 @@ export function ProjectWorkspaceHome({
       id: "agreements-made",
       label: text("Agreements Made", "Gemaakte afspraken"),
       icon: MessageSquareText,
-      tone: "blue",
       count: counts.agreements,
       action: () => openTask("registers", false, { registerType: "agreement" }),
     },
@@ -296,10 +280,8 @@ export function ProjectWorkspaceHome({
 
   return (
     <section className="workspace-launcher" aria-labelledby="workspace-launcher-title">
-      <div className="workspace-launcher-toolbar">
-        <div>
-          <h2 className="sr-only" id="workspace-launcher-title">{text("Field records and project control", "Veldregistratie en projectsturing")}</h2>
-        </div>
+      <div className="workspace-launcher-toolbar ui-page-header">
+        <h2 id="workspace-launcher-title">{text("Field records and project control", "Veldregistratie en projectsturing")}</h2>
         <label className="workspace-launcher-search">
           <Search size={16} />
           <span className="sr-only">{text("Search workspace", "Doorzoek werkruimte")}</span>
@@ -321,7 +303,7 @@ export function ProjectWorkspaceHome({
         <label><span>{text("From", "Vanaf")}</span><input type="date" value={filters.dateFrom} onChange={(event) => setFilters({ ...filters, dateFrom: event.target.value })} /></label>
         <label><span>{text("To", "Tot")}</span><input type="date" value={filters.dateTo} onChange={(event) => setFilters({ ...filters, dateTo: event.target.value })} /></label>
         <label><span>{text("Author", "Auteur")}</span><select value={filters.author} onChange={(event) => setFilters({ ...filters, author: event.target.value })}><option value="">{text("All authors", "Alle auteurs")}</option>{authors.map((author) => <option value={author} key={author}>{author}</option>)}</select></label>
-        {filtersActive ? <button className="ghost-button" type="button" onClick={() => setFilters({ kind: "", buildingId: "", status: "", dateFrom: "", dateTo: "", author: "" })}>{text("Clear filters", "Wis filters")}</button> : null}
+        {filtersActive ? <button className="ui-button ui-button--quiet ui-button--sm" type="button" onClick={() => setFilters({ kind: "", buildingId: "", status: "", dateFrom: "", dateTo: "", author: "" })}>{text("Clear filters", "Wis filters")}</button> : null}
       </div>
       </details>
 
@@ -333,7 +315,7 @@ export function ProjectWorkspaceHome({
           {groupedMatches.map(([kind, group]) => <section className="workspace-code-group" key={kind}>
             <h3>{kindLabels[kind] ?? kind} <span>{group.length}</span></h3>
           {group.map((record) => (
-            <button type="button" onClick={() => openRecord(record.tab, record.id, record.kind)} key={`${record.kind}:${record.id}`}>
+            <button className="ui-list-row" type="button" onClick={() => openRecord(record.tab, record.id, record.kind)} key={`${record.kind}:${record.id}`}>
               <span className="workspace-code-chip">{record.code || text("no code yet", "nog geen code")}</span>
               <span><strong>{record.title}</strong><small>{kindLabels[record.kind] ?? record.kind}{record.subtitle ? ` · ${codeText(record.subtitle, text)}` : ""}</small></span>
               <ArrowRight size={15} />
@@ -346,7 +328,7 @@ export function ProjectWorkspaceHome({
         {visibleTiles.map((tile) => {
           const Icon = tile.icon;
           return (
-            <button className={`workspace-launcher-tile tone-${tile.tone}`} type="button" onClick={tile.action} data-workspace-destination={tile.id} key={tile.id}>
+            <button className="workspace-launcher-tile ui-list-row" type="button" onClick={tile.action} data-workspace-destination={tile.id} key={tile.id}>
               <span className="workspace-launcher-icon"><Icon size={23} /></span>
               {typeof tile.count === "number" ? <span className="workspace-launcher-count">{tile.count}</span> : null}
               <strong>{tile.label}</strong>
@@ -356,7 +338,7 @@ export function ProjectWorkspaceHome({
         })}
       </div>
 
-      {!visibleTiles.length && !matches.length ? <div className="workspace-launcher-empty"><Search size={22} /><div><strong>{text("No workspace item found", "Geen werkruimte-item gevonden")}</strong><p>{text("Try another term.", "Probeer een andere zoekterm.")}</p></div><button className="secondary-button" type="button" onClick={() => setQuery("")}>{text("Clear", "Wissen")}</button></div> : null}
+      {!visibleTiles.length && !matches.length ? <div className="workspace-launcher-empty"><span>{text("No workspace item found. Try another term.", "Geen werkruimte-item gevonden. Probeer een andere zoekterm.")}</span><button className="ui-button ui-button--secondary ui-button--sm" type="button" onClick={() => setQuery("")}>{text("Clear", "Wissen")}</button></div> : null}
 
       <div className="workspace-support-strip" aria-label={text("Supporting project tools", "Ondersteunende projecttools")}>
         <span><Clock3 size={15} /> {text("Supporting tools", "Ondersteunende tools")}</span>
