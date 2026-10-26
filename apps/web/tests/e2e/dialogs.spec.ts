@@ -62,11 +62,9 @@ const openers: Opener[] = [
   { name: "offline manager", open: (page) => page.locator(".storage-state") },
   { name: "switch project", open: (page) => page.locator(".project-context-card, .breadcrumb-project").locator("visible=true").first() },
   { name: "manage buildings", open: (page) => page.locator(".breadcrumb-building, .mobile-nav-button:has-text('More')").locator("visible=true").first() },
-  { name: "daily questions", open: (page) => page.getByRole("button", { name: "Daily questions" }) },
   { name: "report check", open: (page) => page.getByRole("button", { name: "Check report" }) },
   { name: "new action", open: async (page) => { await goTo(page, "Actions"); await page.getByRole("button", { name: /New action/ }).first().click(); } },
   { name: "team and access", open: async (page) => { await goTo(page, "Management"); await page.getByRole("button", { name: /Manage team/ }).first().click(); } },
-  { name: "workforce", open: async (page) => { await goTo(page, "Workspace"); await page.locator("[data-workspace-destination='workforce']").click(); } },
 ];
 
 async function activate(page: Page, opener: Opener) {
@@ -146,21 +144,19 @@ test.describe("every dialog", () => {
     await expect(page.locator(".mobile-bottom-nav").getByRole("button", { name: "More" })).toBeFocused();
   });
 
-  test("a dialog opened from a dialog closes one layer at a time", async ({ page }) => {
+  test("a dialog opened from a page form closes without leaving the page", async ({ page }) => {
     await goTo(page, "Workspace");
     await page.locator("[data-workspace-destination='workforce']").click();
-    const workforce = page.locator(dialogSelector).last();
+    // Workforce is a workspace page now, not a pop-up; the signature pad opens over it.
+    const workforce = page.locator(".workforce-form");
     await expect(workforce).toBeVisible();
-    // The signature pad is the dialog that opens on top of a form dialog.
+    await expect(page.locator(dialogSelector)).toHaveCount(0);
     const signature = workforce.getByRole("button", { name: /sign/i }).first();
     expect(await signature.count(), "the workforce form offers a signature").toBeGreaterThan(0);
-    {
-      await signature.click();
-      await expect(page.locator(dialogSelector)).toHaveCount(2);
-      await page.keyboard.press("Escape");
-      await expect(page.locator(dialogSelector)).toHaveCount(1);
-    }
+    await signature.click();
+    await expect(page.locator(dialogSelector)).toHaveCount(1);
     await page.keyboard.press("Escape");
     await expect(page.locator(dialogSelector)).toHaveCount(0);
+    await expect(workforce).toBeVisible();
   });
 });

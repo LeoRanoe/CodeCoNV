@@ -9,6 +9,8 @@ import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { photoFiles, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
+import { normalizeImageFile } from "@/lib/images/normalize-image";
+import { clearFormDraft, formDraftKey, loadFormDraft, saveFormDraft } from "@/lib/offline/form-drafts";
 import { normalizeRecordCode } from "@/lib/records/record-directory.mjs";
 import {
   dayGroupLabel,
@@ -309,8 +311,8 @@ export function MediaLibraryWorkspace({
     /** What is being uploaded. A choice says it itself instead of relying on the toggle. */
     uploadKind: "photo" | "drawing" | "document" = kind,
     evidenceGroupId?: string | null,
-  ) => {
-    if (!selected?.length) return;
+  ): Promise<boolean> => {
+    if (!selected?.length) return false;
     setFieldError("");
     try {
       let targetFolder = folders.some((folder) => folder.id === folderId) ? folderId : null;
@@ -336,8 +338,18 @@ export function MediaLibraryWorkspace({
         }
       }
       const candidates = Array.from(selected);
+      // A photo is judged by its bytes, not by the label the camera gave it: some Android
+      // cameras call a JPEG "image/jpg" or leave the type empty. The words the supervisor gave
+      // a photo stay attached to the file as it was taken.
+      const relabelled = new Map<File, File>();
+      if (uploadKind === "photo") {
+        for (const file of candidates) {
+          const normalized = await normalizeImageFile(file).catch(() => null);
+          if (normalized) relabelled.set(file, normalized);
+        }
+      }
       const valid = candidates.filter((file) => uploadKind === "photo"
-        ? ["image/jpeg", "image/png", "image/webp"].includes(file.type)
+        ? relabelled.has(file)
         : uploadKind === "drawing"
           ? ["application/pdf", "image/jpeg", "image/png", "image/webp", "application/dwg", "application/acad", "application/x-acad", "image/vnd.dwg", "application/octet-stream"].includes(file.type || "application/octet-stream") || file.name.toLocaleLowerCase().endsWith(".dwg")
           : ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/csv", "text/plain"].includes(file.type));
@@ -347,7 +359,8 @@ export function MediaLibraryWorkspace({
       }
       const capturedAt = new Date(valid[0]?.lastModified || Date.now()).toISOString();
       for (const file of valid) {
-        const prepared = uploadKind === "photo" ? await compressFieldPhoto(file, savingData) : { blob: file as Blob, fileName: file.name, mimeType: file.type || "application/octet-stream", compressed: false };
+        const source = relabelled.get(file) ?? file;
+        const prepared = uploadKind === "photo" ? await compressFieldPhoto(source, savingData) : { blob: file as Blob, fileName: file.name, mimeType: file.type || "application/octet-stream", compressed: false };
         await queueOfflineUpload({
           projectId,
           buildingId: libraryBuildingId,
@@ -379,12 +392,15 @@ export function MediaLibraryWorkspace({
           setFieldError(text("Upload is waiting. Your files are still on this device. Check the connection and tap Send now.", "Upload wacht. Je bestanden staan nog op dit apparaat. Controleer de verbinding en tik op Nu verzenden."));
         }
       }
+      // From here the files are in the device queue, whatever the connection does next.
+      return true;
     } catch (error) {
       setFieldError(error instanceof Error ? error.message : text(
         "The field file could not be stored on this device.",
         "Het veldbestand kon niet op dit apparaat worden opgeslagen.",
       ));
       await reloadQueue().catch(() => undefined);
+      return false;
     }
   }, [libraryBuildingId, libraryBuildingName, client, folderId, folders, kind, photoDescription, projectId, reloadQueue, reportId, run, savingData, synchronize, text]);
 
@@ -393,7 +409,8 @@ export function MediaLibraryWorkspace({
     const captured = [...initialFiles];
     const captureTimer = window.setTimeout(() => {
       onInitialFilesConsumed?.();
-      setPendingCapture(captured.map((file) => toPhotoEvidence(file)));
+      // Added to what is already waiting: a second photo never replaces the first.
+      setPendingCapture((current) => [...current, ...captured.map((file) => toPhotoEvidence(file))]);
     }, 0);
     return () => window.clearTimeout(captureTimer);
   }, [initialFiles, onInitialFilesConsumed]);
@@ -409,7 +426,7 @@ export function MediaLibraryWorkspace({
     const evidenceGroupId = pendingCapture.length > 1 ? crypto.randomUUID() : null;
     const sharedTitle = stackTitle.trim() || (pendingCapture.length > 1 ? photoTitle(pendingCapture[0]!) || automaticTitle(pendingCapture[0]!.original.name) : "");
     const sharedDescription = photoDescription.trim() || (pendingCapture.length > 1 ? pendingCapture.find((photo) => photo.details.description.trim())?.details.description.trim() ?? "" : "");
-    await addFiles(
+    const stored = await addFiles(
       photoFiles(pendingCapture),
       `${text("Daily progress", "Dagvoortgang")} · ${dayKey}`,
       photoDescription,
@@ -425,10 +442,39 @@ export function MediaLibraryWorkspace({
       "photo",
       evidenceGroupId,
     );
+    // A photo that could not be stored stays on the form, with the reason above it. Clearing
+    // it anyway is how a photo taken on site used to disappear.
+    if (!stored) return;
     setPendingCapture([]);
     setPhotoDescription("");
     setStackTitle("");
-  }, [addFiles, language, pendingCapture, photoDescription, stackTitle, text]);
+    void clearFormDraft(formDraftKey("library-photos", projectId));
+  }, [addFiles, language, pendingCapture, photoDescription, projectId, stackTitle, text]);
+
+  // The photos taken here are kept on the device until they are saved or thrown away, so a
+  // back press, a reload or a phone that drops the tab behind the camera does not lose them.
+  const libraryDraftKey = formDraftKey("library-photos", projectId);
+  const [libraryDraftReady, setLibraryDraftReady] = useState(false);
+  useEffect(() => {
+    // The asset library shares this component but takes no photos; it must not touch them.
+    if (assetsMode) return;
+    let cancelled = false;
+    void loadFormDraft<PhotoEvidence[]>(libraryDraftKey).then((draft) => {
+      if (cancelled) return;
+      if (Array.isArray(draft?.value) && draft.value.length) {
+        // A photo that arrived from the camera before the draft was read stays as well.
+        setPendingCapture((current) => [...draft.value.filter((saved) => !current.some((photo) => photo.id === saved.id)), ...current]);
+      }
+      setLibraryDraftReady(true);
+    });
+    return () => { cancelled = true; };
+  }, [assetsMode, libraryDraftKey]);
+  useEffect(() => {
+    if (!libraryDraftReady) return;
+    // Removing the last photo one by one ends the draft as well.
+    if (pendingCapture.length) void saveFormDraft(libraryDraftKey, pendingCapture);
+    else void clearFormDraft(libraryDraftKey);
+  }, [libraryDraftKey, libraryDraftReady, pendingCapture]);
 
   const addFolder = async (name: string) => {
     let createdFolderId = "";
@@ -738,7 +784,7 @@ export function MediaLibraryWorkspace({
               <DictateButton onText={(transcript) => setPhotoDescription((current) => appendDictation(current, transcript))} />
             </label>
             <div className="media-capture-review-actions">
-              <button className="secondary-button" type="button" onClick={() => { setPendingCapture([]); setPhotoDescription(""); setStackTitle(""); }}>{text("Discard", "Verwijderen")}</button>
+              <button className="secondary-button" type="button" onClick={() => { setPendingCapture([]); setPhotoDescription(""); setStackTitle(""); void clearFormDraft(libraryDraftKey); }}>{text("Discard", "Verwijderen")}</button>
               <button className="primary-button" type="button" disabled={busy} onClick={() => void savePendingCapture()}><Upload size={15} /> {pendingCapture.length > 1 ? text("Save photo stack", "Fotostapel opslaan") : text("Save with date", "Opslaan met datum")}</button>
             </div>
           </div>

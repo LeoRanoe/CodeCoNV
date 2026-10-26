@@ -67,6 +67,8 @@ import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { VisualEvidenceWorkspace } from "@/app/visual-evidence-workspace";
 import { DailyWorkRegister, type DailyWorkView } from "@/app/daily-work-register";
+import type { DayLogFocus, DayLogToday } from "@/app/daily-log-modal";
+import { reportDateInSuriname } from "@/lib/supabase/data";
 import { DrawingWorkspace } from "@/app/drawing-workspace";
 import { FieldTools } from "@/app/field-tools";
 import { BackupCenter } from "@/app/backup-center";
@@ -177,15 +179,30 @@ import {
 
 type WorkspaceMode = "project" | "actions" | "verify" | "reports" | "admin";
 /** What a workspace tile asks the module to open on: its own record, not the last one. */
-type WorkspaceTilePreset = { registerType?: string; hseEventType?: string };
+type WorkspaceTilePreset = { registerType?: string; hseEventType?: string; dailyWorkView?: DailyWorkView | "day" };
+
+/**
+ * The two client forms that live in the shell, because they write the day report itself:
+ * the day log and the workforce register. The workspace places them as module pages, the
+ * same as every other record form; the shell supplies the form and its save.
+ */
+/** Places a form the shell renders; a component of its own, so the form keeps its state. */
+function RenderSlot<Input>({ render, input }: { render: (input: Input) => React.ReactNode; input: Input }) {
+  return <>{render(input)}</>;
+}
+
+export type DailyFormRenderers = {
+  renderDayLog: (input: { focus?: DayLogFocus; today: DayLogToday; close: () => void; openModule: (module: "inspections" | "findings" | "ncr" | "hse") => void; openWorkforce: () => void }) => React.ReactNode;
+  renderWorkforce: (input: { close: () => void }) => React.ReactNode;
+};
 
 /** The modules that are a record form plus the list of what was recorded before it. */
-const recordModuleTabs = ["inspections", "findings", "ncr", "hse", "registers"];
+const recordModuleTabs = ["inspections", "findings", "ncr", "hse", "registers", "daily"];
 
-type ProjectTab = "home" | "inspections" | "findings" | "ncr" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files" | "assets";
+type ProjectTab = "home" | "inspections" | "findings" | "ncr" | "hse" | "daily" | "workforce" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files" | "assets";
 
 type ViewedWorkspaceRecord = {
-  kind: "inspection" | "finding" | "hse" | "register_entry";
+  kind: "inspection" | "finding" | "hse" | "register_entry" | "daily_work";
   id: string;
   code: string;
   title: string;
@@ -758,11 +775,10 @@ export function OperationalWorkspace({
   onInitialCameraFilesConsumed,
   pendingRecordPin = null,
   onPlaceRecordPin,
-  openDailyRecord,
+  dailyForms,
   openProjectArea,
   openActionCenter,
   openRapidVerify,
-  openReports,
   openManagement,
   openReportCheck,
   projectActions = [],
@@ -807,12 +823,11 @@ export function OperationalWorkspace({
   /** The field record that is still open on the record screen, waiting for its spot. */
   pendingRecordPin?: { label: string; title: string; point: { xRatio: number; yRatio: number; drawingId: string; pageNumber: number } | null } | null;
   onPlaceRecordPin?: (point: { drawingId: string; pageNumber: number; xRatio: number; yRatio: number }) => void;
-  openDailyRecord: (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => void;
+  dailyForms: DailyFormRenderers;
   /** The optional record id opens that record itself, instead of the list it stands in. */
   openProjectArea: (tab: "inspections" | "findings" | "ncr" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "files" | "assets" | "submissions", recordId?: string) => void;
   openActionCenter: (view?: ActionCenterView) => void;
   openRapidVerify: () => void;
-  openReports: () => void;
   openManagement: () => void;
   /** Opens the day report check, where the supervisor marks it ready for review. */
   openReportCheck?: () => void;
@@ -951,11 +966,10 @@ export function OperationalWorkspace({
           onInitialCameraFilesConsumed={onInitialCameraFilesConsumed}
           pendingRecordPin={pendingRecordPin}
           onPlaceRecordPin={onPlaceRecordPin}
-          openDailyRecord={openDailyRecord}
+          dailyForms={dailyForms}
           openProjectArea={openProjectArea}
           openActionCenter={openActionCenter}
           openRapidVerify={openRapidVerify}
-          openReports={openReports}
           openManagement={openManagement}
           focusRecordId={focusRecordId}
         />
@@ -1046,11 +1060,10 @@ function ProjectOperations({
   onInitialCameraFilesConsumed,
   pendingRecordPin = null,
   onPlaceRecordPin,
-  openDailyRecord,
+  dailyForms,
   openProjectArea,
   openActionCenter,
   openRapidVerify,
-  openReports,
   openManagement,
   externalSubmissionIntent = false,
   focusRecordId = "",
@@ -1085,12 +1098,11 @@ function ProjectOperations({
   /** The field record that is still open on the record screen, waiting for its spot. */
   pendingRecordPin?: { label: string; title: string; point: { xRatio: number; yRatio: number; drawingId: string; pageNumber: number } | null } | null;
   onPlaceRecordPin?: (point: { drawingId: string; pageNumber: number; xRatio: number; yRatio: number }) => void;
-  openDailyRecord: (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => void;
+  dailyForms: DailyFormRenderers;
   /** Opens a module on one record: how the workspace search reaches what it found. */
   openProjectArea: (tab: "inspections" | "findings" | "ncr" | "hse" | "documents" | "registers" | "visual" | "drawings" | "files" | "assets" | "submissions", recordId?: string) => void;
   openActionCenter: (view?: ActionCenterView) => void;
   openRapidVerify: () => void;
-  openReports: () => void;
   openManagement: () => void;
   externalSubmissionIntent?: boolean;
   /** A record the action centre asked for; it opens expanded instead of only its module. */
@@ -1132,6 +1144,12 @@ function ProjectOperations({
   /** The checklist that was sent to the drawings screen to have its location pinned. */
   const [drawingInspectionId, setDrawingInspectionId] = useState("");
   const [dailyWorkView, setDailyWorkView] = useState<DailyWorkView>("works_ongoing");
+  /** The block of the day log the tile asked for; none when the whole day was asked for. */
+  const [dayLogFocus, setDayLogFocus] = useState<DayLogFocus | undefined>(undefined);
+  const openDailyWork = (view: DailyWorkView | "day") => {
+    setDailyWorkView(view === "day" ? "works_ongoing" : view);
+    setDayLogFocus(view === "day" ? undefined : view === "delays" ? "delay" : view);
+  };
   const permissions = useProjectPermissions();
   const [wantsForm, setShowForm] = useState(initialTab !== "home");
   // What a user may write depends on the module. A reader (the client) gets the list and the
@@ -1140,7 +1158,8 @@ function ProjectOperations({
     : tab === "findings" || tab === "ncr" ? permissions.can("findings.create")
       : tab === "hse" ? permissions.can("hse.manage")
         : tab === "registers" ? permissions.can("records.create")
-          : true;
+          : tab === "daily" ? permissions.canAny("reports.create", "reports.edit")
+            : true;
   const showForm = wantsForm && mayCreateHere;
   const [viewedRecord, setViewedRecord] = useState<ViewedWorkspaceRecord | null>(null);
   const [editingFindingId, setEditingFindingId] = useState("");
@@ -1749,9 +1768,12 @@ function ProjectOperations({
     meta: `${recordContextLabel(entry.building_id, entry.location_node_id, entry.building_ids)} · ${formatDate(entry.occurred_at, locale)}`,
   });
   const withdrawRecord = (record: ViewedWorkspaceRecord) => {
+    // A day closeout is corrected in the day log, never withdrawn: the day report stands on it.
+    const kind = record.kind;
+    if (kind === "daily_work") return;
     const reason = window.prompt(text("Why is this record being withdrawn?", "Waarom wordt deze registratie ingetrokken?"), "");
     if (!reason) return;
-    void run(() => withdrawWorkspaceRecord(client, record.kind, record.id, reason), text(`${record.code} withdrawn. History kept.`, `${record.code} ingetrokken. Historie bewaard.`)).then((okay) => {
+    void run(() => withdrawWorkspaceRecord(client, kind, record.id, reason), text(`${record.code} withdrawn. History kept.`, `${record.code} ingetrokken. Historie bewaard.`)).then((okay) => {
       if (okay) setViewedRecord(null);
     });
   };
@@ -1891,8 +1913,8 @@ function ProjectOperations({
    */
   const presetHandled = useRef("");
   useEffect(() => {
-    const key = `${initialRecordPreset?.registerType ?? ""}:${initialRecordPreset?.hseEventType ?? ""}`;
-    if (key === ":" || presetHandled.current === key) return;
+    const key = `${initialRecordPreset?.registerType ?? ""}:${initialRecordPreset?.hseEventType ?? ""}:${initialRecordPreset?.dailyWorkView ?? ""}`;
+    if (key === "::" || presetHandled.current === key) return;
     presetHandled.current = key;
     const applyPreset = window.setTimeout(() => {
       if (initialRecordPreset?.registerType) {
@@ -1903,6 +1925,7 @@ function ProjectOperations({
         setHseForm((current) => ({ ...current, type: initialRecordPreset.hseEventType!, issueType: "safety", category: "safety" }));
         setEditingHseId("");
       }
+      if (initialRecordPreset?.dailyWorkView) openDailyWork(initialRecordPreset.dailyWorkView);
       setShowForm(true);
       onRecordPresetConsumed?.();
     }, 0);
@@ -2848,12 +2871,49 @@ function ProjectOperations({
   };
 
   const moduleEnabled = (module: string) => data.settings?.modules?.[module] !== false;
+  /** What the other modules recorded today, for the quality and safety blocks of the day log. */
+  const todayInSuriname = reportDateInSuriname();
+  const isToday = (...values: Array<string | null | undefined>) => values.some((value) => Boolean(value) && reportDateInSuriname(new Date(value!)) === todayInSuriname);
+  const dayLogToday: DayLogToday = {
+    inspections: data.inspections
+      .filter((inspection) => isToday(inspection.started_at, inspection.completed_at, inspection.planned_at))
+      .map((inspection) => ({ id: inspection.id, code: inspection.inspection_number, title: inspection.title, status: inspection.status })),
+    findings: data.findings
+      .filter((finding) => finding.status !== "cancelled" && isToday(finding.created_at))
+      .map((finding) => ({ id: finding.id, code: finding.finding_number, title: finding.title, type: finding.finding_type === "ncr" ? "ncr" as const : "issue" as const })),
+    hse: data.hseEvents
+      .filter((event) => event.status !== "cancelled" && isToday(event.occurred_at))
+      .map((event) => ({ id: event.id, code: event.event_number, title: event.title, eventType: event.event_type })),
+  };
+  /** The counted days of the Workforce register: one line per day and building. */
+  const reportDates = new Map((data.dayReports ?? []).map((report) => [report.id, report.report_date]));
+  const workforceDays = Array.from((data.attendance ?? []).reduce((days, entry) => {
+    const key = `${entry.day_report_id}:${entry.building_id}`;
+    const day = days.get(key) ?? { key, reportId: entry.day_report_id, buildingId: entry.building_id, headcount: 0, visitors: 0, signedBy: "" };
+    if (entry.entry_type === "visitor") day.visitors += 1;
+    else day.headcount += Number(entry.headcount) || 0;
+    day.signedBy = day.signedBy || entry.signed_by || "";
+    days.set(key, day);
+    return days;
+  }, new Map<string, { key: string; reportId: string; buildingId: string; headcount: number; visitors: number; signedBy: string }>()).values())
+    .map((day) => {
+      const reportDate = reportDates.get(day.reportId) ?? "";
+      return {
+        ...day,
+        reportDate,
+        date: reportDate ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "America/Paramaribo" }).format(new Date(`${reportDate}T12:00:00-03:00`)) : "",
+      };
+    })
+    .sort((left, right) => right.reportDate.localeCompare(left.reportDate));
+
   const projectSections: Array<[Exclude<ProjectTab, "home">, string, number]> = ([
     ["inspections", text("Inspections", "Inspecties"), data.inspections.length],
     ["findings", text("Issues", "Issues"), data.findings.filter((item) => item.finding_type !== "ncr" && item.status !== "closed").length],
     ["ncr", "NCR", data.findings.filter((item) => item.finding_type === "ncr" && item.status !== "closed").length],
     ["hse", "HSE", data.hseEvents.length],
-    ["daily", text("Daily work", "Dagwerk"), (data.dailyWork ?? []).length],
+    // The page is named after what was asked for: one block of the day, or the whole day log.
+    ["daily", !dayLogFocus ? text("Day log", "Daglog") : dailyWorkView === "works_completed" ? text("Works completed", "Werkzaamheden afgerond") : dailyWorkView === "delays" ? text("Delays", "Vertragingen") : text("Works ongoing", "Werkzaamheden gaande"), (data.dailyWork ?? []).length],
+    ["workforce", text("Workforce", "Workforce"), workforceDays.length],
     ["documents", "Project Docs", data.files.filter((file) => file.status === "available").length + data.registerEntries.filter((entry) => ["document", "drawing", "specification", "contract", "boq"].includes(entry.register_type)).length],
     ["registers", text("Formal documents & registers", "Formele documenten & registers"), data.registerEntries.length],
     ["visual", text("Visual evidence", "Visueel bewijs"), data.visualCaptures.length],
@@ -2867,6 +2927,7 @@ function ProjectOperations({
     ncr: moduleEnabled("quality"),
     hse: moduleEnabled("hse"),
     daily: true,
+    workforce: true,
     documents: moduleEnabled("documents"),
     registers: moduleEnabled("documents"),
     visual: moduleEnabled("visual_evidence"),
@@ -2907,7 +2968,7 @@ function ProjectOperations({
             buildings={buildings}
             openRecord={(recordTab, recordId, kind) => {
               if (recordTab === "daily") {
-                setDailyWorkView(kind === "delay" ? "delays" : "works_completed");
+                openDailyWork(kind === "delay" ? "delays" : "works_completed");
                 openTask("daily", false);
               } else if (recordTab === "home") {
                 openTask("home", false);
@@ -2917,13 +2978,11 @@ function ProjectOperations({
             }}
             openPhotoLibrary={() => switchTab("files")}
             openTask={openTask}
-            openWorkforce={() => openDailyRecord("workforce")}
+            openWorkforce={() => switchTab("workforce")}
             openFinding={openFinding}
-            openDailyWork={(view) => { setDailyWorkView(view); switchTab("daily"); }}
+            openDailyWork={(view) => { openDailyWork(view); switchTab("daily"); }}
             openActionCenter={openActionCenter}
             openRapidVerify={openRapidVerify}
-            openReports={openReports}
-            openManagement={openManagement}
           />
         </>
       ) : (
@@ -2967,12 +3026,17 @@ function ProjectOperations({
               } else if (viewedRecord.kind === "hse") {
                 const record = data.hseEvents.find((item) => item.id === viewedRecord.id);
                 if (record) editHse(record);
+              } else if (viewedRecord.kind === "daily_work") {
+                // A day has one closeout: editing it is the day log of that day, already open
+                // above the list with what was saved.
+                setViewedRecord(null);
+                setShowForm(true);
               } else {
                 const record = data.registerEntries.find((item) => item.id === viewedRecord.id);
                 if (record) editRegister(record);
               }
             }}><Wrench size={14} /> {text("Edit in form", "Bewerken in formulier")}</button> : null}
-            {viewedRecord.status !== "cancelled" && permissions.can("records.edit") ? <button className="ghost-button" type="button" onClick={() => withdrawRecord(viewedRecord)}>{text("Withdraw", "Intrekken")}</button> : null}
+            {viewedRecord.status !== "cancelled" && viewedRecord.kind !== "daily_work" && permissions.can("records.edit") ? <button className="ghost-button" type="button" onClick={() => withdrawRecord(viewedRecord)}>{text("Withdraw", "Intrekken")}</button> : null}
             <button className="ghost-button" type="button" onClick={() => setViewedRecord(null)}><X size={14} /> {text("Close", "Sluiten")}</button>
           </div>
         </aside>
@@ -4580,17 +4644,60 @@ function ProjectOperations({
         </section>
       ) : null}
 
-      {tab === "daily" ? <DailyWorkRegister
-        records={data.dailyWork ?? []}
-        dayReports={data.dayReports ?? []}
-        buildings={buildings}
-        view={dailyWorkView}
-        onViewChange={setDailyWorkView}
-        // The works lists read the day closeout, so recording one writes that closeout.
-        // The button used to write an activity registration, which never appeared in the
-        // list it was pressed from.
-        onRecord={(view) => openDailyRecord(view === "delays" ? "delay" : view)}
-      /> : null}
+      {/* Works ongoing, works completed and delays: the day log as the page's form, the
+          recorded days as its list — the same page every other record module is. */}
+      {tab === "daily" ? (
+        <section className="operation-panel">
+          {showForm ? <RenderSlot render={dailyForms.renderDayLog} input={{
+            focus: dayLogFocus,
+            today: dayLogToday,
+            close: () => setShowForm(false),
+            openModule: (module: "inspections" | "findings" | "ncr" | "hse") => switchTab(module),
+            openWorkforce: () => switchTab("workforce"),
+          }} /> : null}
+          <DailyWorkRegister
+            records={data.dailyWork ?? []}
+            dayReports={data.dayReports ?? []}
+            buildings={buildings}
+            view={dailyWorkView}
+            onViewChange={(view) => openDailyWork(view)}
+            onOpen={(record, title, meta) => setViewedRecord({
+              kind: "daily_work",
+              id: record.id,
+              code: text("Day log", "Daglog"),
+              title,
+              status: record.signed_by ? text("Signed", "Ondertekend") : text("Saved", "Opgeslagen"),
+              meta,
+              // The line the list showed is the title; the rest of the day stands below it once.
+              description: [
+                record.work_ongoing ? `${text("Works ongoing", "Werkzaamheden gaande")}: ${record.work_ongoing}` : "",
+                record.work_performed ? `${text("Works completed", "Werkzaamheden afgerond")}: ${record.work_performed}` : "",
+                record.tomorrow_plan ? `${text("Plan for tomorrow", "Planning morgen")}: ${record.tomorrow_plan}` : "",
+              ].filter((line) => line && !line.endsWith(`: ${title}`)).join("\n"),
+            })}
+          />
+        </section>
+      ) : null}
+
+      {/* The Workforce register: today's count as the page's form, the counted days below. */}
+      {tab === "workforce" ? (
+        <section className="operation-panel">
+          <RenderSlot render={dailyForms.renderWorkforce} input={{ close: () => switchTab("home") }} />
+          <RecordList empty={text("No workforce recorded yet.", "Nog geen bezetting vastgelegd.")} rows={workforceDays.map((day) => ({
+            id: day.key,
+            icon: Users,
+            title: day.headcount === 1 ? text("1 person on site", "1 persoon op de bouwplaats") : text(`${day.headcount} people on site`, `${day.headcount} personen op de bouwplaats`),
+            meta: [
+              day.date,
+              buildings.find((building) => building.id === day.buildingId)?.name ?? "",
+              day.visitors ? text(`${day.visitors} visitor(s)`, `${day.visitors} bezoeker(s)`) : "",
+              day.signedBy ? `${text("signed by", "ondertekend door")} ${day.signedBy}` : "",
+            ].filter(Boolean).join(" · "),
+            status: day.signedBy ? text("Signed", "Ondertekend") : text("Counted", "Geteld"),
+            tone: day.signedBy ? "green" : "",
+          }))} />
+        </section>
+      ) : null}
 
       {tab === "visual" ? <VisualEvidenceWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} parties={parties} client={client} busy={busy} run={run} initialFindingId={visualFindingId} initialFileId={visualFileId} onInitialFileConsumed={() => setVisualFileId("")} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} start360Upload={visual360Intent} onStart360UploadConsumed={() => setVisual360Intent(false)} /> : null}
 

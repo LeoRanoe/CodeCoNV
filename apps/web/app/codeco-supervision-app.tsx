@@ -7,7 +7,6 @@ import {
   ArrowRight,
   Bell,
   Building2,
-  CalendarDays,
   Camera,
   Check,
   CheckCircle2,
@@ -15,33 +14,24 @@ import {
   ChevronRight,
   ClipboardCheck,
   CloudSun,
-  FileCheck2,
   FileText,
-  Gauge,
   HardDrive,
   Home,
-  Image,
   KeyRound,
   LayoutDashboard,
   Loader2,
   LogIn,
   LogOut,
   MapPin,
-  MessageSquareText,
-  PackageCheck,
-  PenLine,
   Plus,
   RefreshCw,
-  Ruler,
   Search,
   Settings,
   Share,
   ShieldCheck,
-  TimerOff,
   Trash2,
   Users,
   UserPlus,
-  Wrench,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -50,31 +40,30 @@ import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
-import { ALL_BUILDINGS, BuildingMultiPicker, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
-import { actionStatusLabels as canonicalActionStatusLabels, labelMap, statusText, priorityText } from "@/lib/status-labels";
+import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { actionStatusLabels as canonicalActionStatusLabels, labelMap, priorityText } from "@/lib/status-labels";
 import { screenFromSearch, useScreenHistory, type AppScreen } from "@/lib/navigation/app-history";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
-import { photoEvidenceLine, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
-import { SketchPad } from "@/app/sketch-pad";
-import { ClientDashboard, type SearchDestination } from "@/app/client-dashboard";
-import { DailyLogModal } from "@/app/daily-log-modal";
-import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
+import { photoTitle, photoUploadDescription } from "@/app/photo-evidence";
+import { ClientDashboard } from "@/app/client-dashboard";
+import { DailyLogForm } from "@/app/daily-log-modal";
 import { LiveWeatherChip } from "@/app/live-weather-chip";
 import { LocationPicker, locationBreadcrumb, type ProjectLocationOption } from "@/app/location-picker";
 import { FieldGuide } from "@/app/field-guide";
-import { OperationalWorkspace } from "@/app/operational-workspace";
+import { OperationalWorkspace, type DailyFormRenderers } from "@/app/operational-workspace";
 import type { ActionCenterView } from "@/app/project-action-center";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { ensureDailyBackup } from "@/lib/backups/client";
 import { constructionDisciplines } from "@/lib/forms/disciplines";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 import { ProjectPermissionsProvider, useProjectPermissionsQuery } from "@/lib/permissions/project-permissions";
-import { signatureFromDetails } from "@/lib/signatures/handwritten-signature.mjs";
 import { startCompassWatch } from "@/lib/images/compass";
-import { WorkforceModal } from "@/app/workforce-register";
+import { normalizeImageFile } from "@/lib/images/normalize-image";
+import { WorkforceForm } from "@/app/workforce-register";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import { currentPushState, enablePushNotifications, type PushState } from "@/lib/notifications/push-client";
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
+import { clearFormDraft, formDraftKey, loadFormDraft } from "@/lib/offline/form-drafts";
 import { cacheProjectDay, cacheWorkspace, getCachedProjectDay, getCachedWorkspace } from "@/lib/offline/workspace-cache";
 import { loadWithOfflineCache } from "@/lib/offline/query-cache";
 import { isPendingRecordId, listOfflineRecords, saveRecordOnlineOrQueue, syncOfflineRecords } from "@/lib/offline/record-queue";
@@ -94,8 +83,6 @@ import { userFacingError } from "@/lib/user-facing-error";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import { validAccessToken } from "@/lib/supabase/access-token";
 import {
-  clientReportSections,
-  createDailyCloseoutSchema,
   createProjectStartSchema,
   getProjectStartAutomation,
   type DailyCloseoutAnswers,
@@ -130,9 +117,7 @@ import {
   inviteInternalUser,
   loadInternalAccess,
   loadProjectConfiguration,
-  loadProjectDrawings,
   loadProjectRecentPhotos,
-  type ProjectRecentPhoto,
   loadProjectLocations,
   loadProjectNotifications,
   loadProjectDay,
@@ -143,7 +128,6 @@ import {
   saveAttendance,
   saveDailyCloseout,
   saveProjectStart,
-  saveSiteRegistration,
   setInternalUserAccessStatus,
   setUserProjectRole,
   submitReportForReview,
@@ -155,11 +139,9 @@ import {
   type ProjectDaySnapshot,
   type ProjectParty,
   type ProjectNotification,
-  type ProjectDrawingOption,
   type WorkspaceBuilding,
   type WorkspaceProject,
 } from "@/lib/supabase/data";
-import { createDrawingPin } from "@/lib/supabase/operations";
 import type { DailyReportPdfSnapshot } from "@/lib/reports/daily-report-pdf";
 import type { CurrentProjectWeather } from "@/lib/weather";
 
@@ -181,13 +163,13 @@ function CompanyLogo({ subtitle }: { subtitle?: string }) {
 }
 
 type NavKey = "vandaag" | "project" | "acties" | "projectdocs" | "punchlist" | "verify" | "rapporten" | "meer";
-/** What a field record is about, in the words of the daily work register. */
-type DailyActivityKind = "" | "works_ongoing" | "works_completed" | "delay";
 
-type ProjectTabKey = "home" | "inspections" | "findings" | "ncr" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files" | "assets";
+type ProjectTabKey = "home" | "inspections" | "findings" | "ncr" | "hse" | "daily" | "workforce" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files" | "assets";
 const navKeys: NavKey[] = ["vandaag", "project", "acties", "projectdocs", "punchlist", "verify", "rapporten", "meer"];
-const projectTabKeys: ProjectTabKey[] = ["home", "inspections", "findings", "ncr", "hse", "daily", "documents", "registers", "visual", "drawings", "tools", "files", "assets"];
-type ModalKey = "quick" | "entry" | "action_create" | "action_detail" | "report" | "attendance" | "one_tap_log" | "daily_questions" | "project_start" | "user_admin" | "notifications" | "manage_buildings" | "switch_project" | "offline" | null;
+const projectTabKeys: ProjectTabKey[] = ["home", "inspections", "findings", "ncr", "hse", "daily", "workforce", "documents", "registers", "visual", "drawings", "tools", "files", "assets"];
+type ModalKey = "action_create" | "action_detail" | "report" | "project_start" | "user_admin" | "notifications" | "manage_buildings" | "switch_project" | "offline" | null;
+/** The dialogs a back press or an address may reopen: those that need no record in hand. */
+const restorableModals: Array<Exclude<ModalKey, null>> = ["action_create", "report", "project_start", "user_admin", "notifications", "manage_buildings", "switch_project", "offline"];
 type WorkspaceStage = "projects" | "cockpit";
 type EntryKind =
   | "activity"
@@ -209,17 +191,8 @@ type TimelineEntry = {
   badgeTone?: "green" | "red";
 };
 
-type QuickType = {
-  id: EntryKind | "hse" | "delivery" | "test" | "delay" | "agreement";
-  title: string;
-  description: string;
-  icon: LucideIcon;
-};
-
 type ProjectContext = WorkspaceProject;
 type BuildingContext = WorkspaceBuilding;
-
-/** An uploaded project drawing, used to point a field record at the right plan. */
 
 const constructionWorkOptions = [
   { en: "Site preparation", nl: "Bouwplaatsinrichting" },
@@ -234,37 +207,6 @@ const constructionWorkOptions = [
   { en: "Plumbing installation", nl: "Sanitaire installatie" },
   { en: "Perform finishing work", nl: "Afwerking uitvoeren" },
   { en: "Testing and inspection", nl: "Testen en inspecteren" },
-];
-
-/**
- * Work packages for a field record. Three options (structural work, installations,
- * finishing) never matched a real site day, so the client asked for the packages that
- * their own daily report distinguishes — from site setup to handover.
- */
-const workPackageOptions = [
-  { en: "Site setup and temporary works", nl: "Bouwplaatsinrichting en tijdelijke voorzieningen" },
-  { en: "Survey and setting out", nl: "Uitzetwerk en metingen" },
-  { en: "Demolition and clearing", nl: "Sloop- en opruimwerk" },
-  { en: "Earthworks and excavation", nl: "Grondwerk en ontgraving" },
-  { en: "Piling and foundations", nl: "Heiwerk en fundering" },
-  { en: "Formwork and scaffolding", nl: "Bekisting en steigerwerk" },
-  { en: "Concrete and rebar", nl: "Beton en wapening" },
-  { en: "Masonry", nl: "Metselwerk" },
-  { en: "Steel structure", nl: "Staalconstructie" },
-  { en: "Roof structure and roofing", nl: "Dakconstructie en dakbedekking" },
-  { en: "Carpentry, doors and windows", nl: "Timmerwerk, deuren en ramen" },
-  { en: "Facade and cladding", nl: "Gevel en gevelbekleding" },
-  { en: "Electrical installation", nl: "Elektrotechnische installatie" },
-  { en: "Mechanical installation and HVAC", nl: "Mechanische installatie en HVAC" },
-  { en: "Plumbing and sanitary", nl: "Loodgieterswerk en sanitair" },
-  { en: "Drainage and sewerage", nl: "Riolering en afwatering" },
-  { en: "Plastering and screed", nl: "Stucwerk en vloerafwerking" },
-  { en: "Tiling", nl: "Tegelwerk" },
-  { en: "Painting and finishing", nl: "Schilderwerk en afwerking" },
-  { en: "Paving, roads and site works", nl: "Bestrating, wegen en terreinwerk" },
-  { en: "Landscaping", nl: "Terreininrichting en groen" },
-  { en: "Testing, commissioning and handover", nl: "Testen, inbedrijfstelling en oplevering" },
-  { en: "Other work package", nl: "Ander werkpakket" },
 ];
 
 type AttendanceRow = {
@@ -282,52 +224,13 @@ const navigation: { id: NavKey; label: string; icon: LucideIcon; badge?: string 
   { id: "vandaag", label: "Overzicht", icon: Home },
   { id: "project", label: "Werkruimte", icon: LayoutDashboard },
   { id: "acties", label: "Acties", icon: ClipboardCheck },
-  { id: "projectdocs", label: "Project Docs", icon: FileText },
-  /* One module, one name. This button and the workspace tile open the same screen, and
-     calling it Punchlist here and Issues there described two things that do not exist.
-     Punch list is a register of its own — that is the record this button never opened. */
-  { id: "punchlist", label: "Issues", icon: CheckCircle2 },
+  /* Project Docs and Issues used to stand here as well. Both are workspace modules with their
+     own way in on the workspace itself, so the bar offered the same screen twice. Their keys
+     stay known, so an older address or back press still lands on the module. */
   { id: "verify", label: "Rapid Verify", icon: Search },
   { id: "rapporten", label: "Rapporten", icon: FileText },
   { id: "meer", label: "Instellingen", icon: Settings },
 ];
-
-const quickTypes: QuickType[] = [
-  { id: "photo", title: "Foto", description: "Leg bewijs met context vast", icon: Camera },
-  { id: "finding", title: "Bevinding", description: "Meld kwaliteit of afwijking", icon: AlertTriangle },
-  { id: "activity", title: "Activiteit", description: "Registreer werk en voortgang", icon: Wrench },
-  { id: "inspection", title: "Inspectie", description: "Start een controlelijst", icon: ClipboardCheck },
-  { id: "hse", title: "HSE", description: "Observatie, near miss of incident", icon: ShieldCheck },
-  { id: "action", title: "Actiepunt", description: "Wijs opvolging direct toe", icon: CheckCircle2 },
-  { id: "delivery", title: "Levering", description: "Registreer materiaalontvangst", icon: PackageCheck },
-  { id: "test", title: "Test / meting", description: "Noteer waarde en tolerantie", icon: Ruler },
-  { id: "delay", title: "Vertraging", description: "Leg oorzaak en tijdblok vast", icon: TimerOff },
-  { id: "note", title: "Notitie", description: "Leg een gedateerde veldnotitie vast", icon: MessageSquareText },
-  { id: "agreement", title: "Afspraak", description: "Leg afspraak, verantwoordelijke en deadline vast", icon: FileCheck2 },
-];
-
-const quickTypesEnglish: QuickType[] = [
-  { id: "photo", title: "Photo", description: "Capture evidence with context", icon: Camera },
-  { id: "finding", title: "Finding", description: "Record a quality issue or deviation", icon: AlertTriangle },
-  { id: "activity", title: "Activity", description: "Record work and progress", icon: Wrench },
-  { id: "inspection", title: "Inspection", description: "Start an inspection checklist", icon: ClipboardCheck },
-  { id: "hse", title: "HSE", description: "Observation, near miss or incident", icon: ShieldCheck },
-  { id: "action", title: "Action", description: "Assign follow-up immediately", icon: CheckCircle2 },
-  { id: "delivery", title: "Delivery", description: "Record a material delivery", icon: PackageCheck },
-  { id: "test", title: "Test / measurement", description: "Record a value and tolerance", icon: Ruler },
-  { id: "delay", title: "Delay", description: "Record the cause and time lost", icon: TimerOff },
-  { id: "note", title: "Note", description: "Record a dated field note", icon: MessageSquareText },
-  { id: "agreement", title: "Agreement", description: "Record the agreement, owner and deadline", icon: FileCheck2 },
-];
-
-const entryIcons: Record<EntryKind, LucideIcon> = {
-  activity: Wrench,
-  inspection: ClipboardCheck,
-  finding: AlertTriangle,
-  photo: Camera,
-  action: CheckCircle2,
-  note: MessageSquareText,
-};
 
 const entryTitles: Record<string, string> = {
   activity: "Activiteit",
@@ -340,19 +243,6 @@ const entryTitles: Record<string, string> = {
   delivery: "Levering",
   test: "Test / meting",
   delay: "Vertraging",
-};
-
-const entryTitlesEnglish: Record<string, string> = {
-  activity: "Activity",
-  inspection: "Inspection",
-  finding: "Finding",
-  photo: "Photo",
-  action: "Action",
-  note: "Note",
-  hse: "HSE record",
-  delivery: "Delivery",
-  test: "Test / measurement",
-  delay: "Delay",
 };
 
 const actionStatusLabels = labelMap(canonicalActionStatusLabels, "nl") as Record<ProjectAction["status"], string>;
@@ -375,15 +265,6 @@ function actionDeadlineFromToday(days: number) {
   return `${deadline.getUTCFullYear()}-${String(deadline.getUTCMonth() + 1).padStart(2, "0")}-${String(deadline.getUTCDate()).padStart(2, "0")}T16:00`;
 }
 
-function currentTime(locale = "en-US", date = new Date()) {
-  return new Intl.DateTimeFormat(locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "America/Paramaribo",
-  }).format(date);
-}
-
 function currentDateLabel(locale = "en-US", date = new Date()) {
   const value = new Intl.DateTimeFormat(locale, {
     weekday: "long",
@@ -393,19 +274,6 @@ function currentDateLabel(locale = "en-US", date = new Date()) {
     timeZone: "America/Paramaribo",
   }).format(date);
   return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function greetingForSuriname(language: "en" | "nl", date = new Date()) {
-  const hourPart = new Intl.DateTimeFormat("en-US", {
-    hour: "2-digit",
-    hourCycle: "h23",
-    timeZone: "America/Paramaribo",
-  }).formatToParts(date).find((part) => part.type === "hour")?.value;
-  const hour = Number(hourPart ?? 0);
-  if (hour >= 5 && hour < 12) return language === "en" ? "Good morning" : "Goedemorgen";
-  if (hour >= 12 && hour < 18) return language === "en" ? "Good afternoon" : "Goedemiddag";
-  if (hour >= 18 && hour < 23) return language === "en" ? "Good evening" : "Goedenavond";
-  return language === "en" ? "Good night" : "Goedenacht";
 }
 
 function initials(name: string) {
@@ -540,15 +408,15 @@ export function CodecoSupervisionApp() {
   const [activeNav, setActiveNav] = useState<NavKey>("vandaag");
   const [modal, setModal] = useState<ModalKey>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [selectedType, setSelectedType] = useState<string>("activity");
   const [initialProjectTab, setInitialProjectTab] = useState<ProjectTabKey>("home");
   /** Which block the daily log opens on: the whole day, or the delay it was asked for. */
-  const [dailyLogFocus, setDailyLogFocus] = useState<"delay" | "works_ongoing" | "works_completed" | undefined>(undefined);
   /** Which record a shortcut promised, so the module opens on it and not on the last one. */
-  const [projectTabPreset, setProjectTabPreset] = useState<{ registerType?: string; hseEventType?: string } | undefined>(undefined);
+  const [projectTabPreset, setProjectTabPreset] = useState<{ registerType?: string; hseEventType?: string; dailyWorkView?: "works_ongoing" | "works_completed" | "delays" | "day" } | undefined>(undefined);
   const quickCameraInputRef = useRef<HTMLInputElement>(null);
   const dailyBackupCheckRef = useRef("");
   const [pendingQuickPhotos, setPendingQuickPhotos] = useState<File[]>([]);
+  /** Day-log photos already in the upload queue, so retrying a save never files them twice. */
+  const queuedDailyLogPhotos = useRef(new Set<string>());
   const [externalSubmissionIntent, setExternalSubmissionIntent] = useState(false);
   /** Which view the action centre opens on; the deadline tile asks for the deadlines. */
   const [actionCenterView, setActionCenterView] = useState<ActionCenterView>("work");
@@ -557,40 +425,21 @@ export function CodecoSupervisionApp() {
    * screen of its own, so it stays out of the history and out of the address.
    */
   const [focusRecordId, setFocusRecordId] = useState("");
-  const [description, setDescription] = useState("");
-  // A proposed description must vanish on the first keystroke instead of staying behind.
-  const [descriptionSuggested, setDescriptionSuggested] = useState(false);
-  // Same answer, readable from a speech-recognition callback that captured an older render.
-  const descriptionSuggestedRef = useRef(false);
-  const [location, setLocation] = useState("");
-  const [priority, setPriority] = useState("normal");
-  const [entryBuildingIds, setEntryBuildingIds] = useState<string[]>([]);
-  const [entryLocationNodeId, setEntryLocationNodeId] = useState("");
-  const [entryDrawingId, setEntryDrawingId] = useState("");
-  const [entryWorkPackage, setEntryWorkPackage] = useState(workPackageOptions[0].en);
-  const [entryPhotos, setEntryPhotos] = useState<PhotoEvidence[]>([]);
-  /**
-   * What the record on the field form is about: work that is running, work that is
-   * finished, or a delay. The client asked the record screen itself to say it — "kan hier
-   * staan waarin ik bezig ben? bv works ongoing, works completed" — so the same word ends
-   * up on the record, in the day lists and on the pin that is placed for it.
-   */
-  const [entryActivityKind, setEntryActivityKind] = useState<DailyActivityKind>("");
-  // Set while the supervisor is on the drawing screen with a field record still open.
-  const [entryDraftParked, setEntryDraftParked] = useState(false);
-  /** Where on the drawing this record was placed, picked on the drawing screen itself. */
-  const [entryDrawingPoint, setEntryDrawingPoint] = useState<{ drawingId: string; pageNumber: number; xRatio: number; yRatio: number } | null>(null);
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
-  const [completedTodos, setCompletedTodos] = useState<number[]>([]);
   const [projectStartAnswers, setProjectStartAnswers] = useState<ProjectStartAnswers | null>(null);
   const [dailyCloseoutAnswers, setDailyCloseoutAnswers] = useState<DailyCloseoutAnswers | null>(null);
+  /**
+   * Set once the day of the open project has been read into the screen. The day log and the
+   * workforce form wait for it: a form that opened a moment earlier started empty, and saving
+   * it would have overwritten the day that was already recorded.
+   */
+  const [dayHydrated, setDayHydrated] = useState(false);
   const [selectedAction, setSelectedAction] = useState<ProjectAction | null>(null);
   const [toast, setToast] = useState("");
   /** Set while the user is deciding what happens to work that has not been sent yet. */
   const [signOutPrompt, setSignOutPrompt] = useState<{ unsent: number } | null>(null);
   const [signingOut, setSigningOut] = useState(false);
-  const [clock, setClock] = useState(() => new Date());
   const reportDate = reportDateInSuriname();
 
   const workspaceQuery = useQuery({
@@ -763,15 +612,6 @@ export function CodecoSupervisionApp() {
     enabled: Boolean(supabase && session && selectedProject),
   });
 
-  const projectDrawingsQuery = useQuery({
-    queryKey: ["project-drawings", selectedProject?.id],
-    queryFn: () => loadWithOfflineCache(
-      offlineQueryKeys.projectDrawings(selectedProject!.id),
-      () => loadProjectDrawings(supabase as SupabaseClient, selectedProject!.id),
-    ),
-    enabled: Boolean(supabase && session && selectedProject),
-  });
-
   /* The dashboard's photo panel reads the project's own pictures, not the day's timeline:
      a project full of photos showed four empty placeholders because no photo had been
      filed as a field registration today. */
@@ -824,11 +664,6 @@ export function CodecoSupervisionApp() {
       meer: canManageMembers ? text("Management", "Management") : text("Settings", "Instellingen"),
     } satisfies Record<NavKey, string>)[item.id],
   }));
-
-  useEffect(() => {
-    const clockTimer = window.setInterval(() => setClock(new Date()), 60_000);
-    return () => window.clearInterval(clockTimer);
-  }, []);
 
   useEffect(() => {
     if (!supabase) return;
@@ -954,7 +789,7 @@ export function CodecoSupervisionApp() {
       const closeout = closeoutFromRow(day.closeouts.find((row) => row.building_id === selectedBuilding.id) ?? null);
       setProjectStartAnswers(start);
       setDailyCloseoutAnswers(closeout);
-      setCompletedTodos([...(start ? [1] : []), ...(closeout ? [2, 3] : [])]);
+      setDayHydrated(true);
 
       const buildingNameById = new Map((selectedProject?.buildings ?? []).map((building) => [building.id, building.name]));
       setEntries(day.registrations.map((row) => {
@@ -1010,11 +845,6 @@ export function CodecoSupervisionApp() {
       void supabase.removeChannel(channel);
     };
   }, [queryClient, reportDate, selectedProject, session, supabase]);
-
-  const completeness = useMemo(() => {
-    const complete = 4 + Math.min(completedTodos.length, 3) + (projectStartAnswers ? 1 : 0) + (dailyCloseoutAnswers ? 1 : 0);
-    return Math.round((complete / 9) * 100);
-  }, [completedTodos, dailyCloseoutAnswers, projectStartAnswers]);
 
   const attendanceTotal = useMemo(
     () => attendance.reduce((total, row) => total + row.count, 0),
@@ -1090,256 +920,29 @@ export function CodecoSupervisionApp() {
     }
   };
 
-  /**
-   * Every description change goes through here so the app knows whether the text was
-   * proposed (a preset or a quick action) or typed by the supervisor.
-   */
-  const writeDescription = (value: string, suggested = false) => {
-    setDescription(value);
-    setDescriptionSuggested(suggested && value.length > 0);
-    descriptionSuggestedRef.current = suggested && value.length > 0;
-  };
-
-  /**
-   * Speech recognition keeps calling back with the handler it captured when dictation
-   * started, so the decision cannot depend on values from that render. The ref answers
-   * "is the text still only a proposal?" at the moment each sentence arrives: the first
-   * sentence replaces the proposal, every following one is added to it.
-   */
-  const dictateDescription = (transcript: string) => {
-    const replacing = descriptionSuggestedRef.current;
-    descriptionSuggestedRef.current = false;
-    setDescriptionSuggested(false);
-    setDescription((current) => appendDictation(replacing ? "" : current, transcript));
-  };
-
   const openQuickAdd = () => {
-    writeDescription("");
-    setLocation(selectedBuilding?.name ?? "");
     // The tap that opens the camera is also the moment a phone will hand out its compass, so
     // the photo can say by itself which way it was facing.
     void startCompassWatch();
     quickCameraInputRef.current?.click();
   };
 
-  const prepareEntry = (type: string) => {
-    setSelectedType(type);
-    const defaultBuildingId = resolveDefaultBuildingId(selectedProject?.buildings ?? [], selectedBuilding?.id);
-    setEntryBuildingIds(defaultBuildingId ? [defaultBuildingId] : []);
-    setLocation(selectedProject?.buildings.find((building) => building.id === defaultBuildingId)?.name ?? "");
-    setEntryLocationNodeId("");
-    setEntryDrawingId("");
-    setEntryWorkPackage(workPackageOptions[0].en);
-    setEntryPhotos([]);
-    setEntryActivityKind("");
-    setEntryDrawingPoint(null);
-    setEntryDraftParked(false);
-  };
-
   const receiveQuickCameraPhoto = async (files: FileList | null) => {
-    const captured = Array.from(files ?? []).filter((file) => file.type.startsWith("image/"));
+    // Judged by the bytes: a camera that labels a JPEG "image/jpg" or not at all still counts.
+    const captured = (await Promise.all(Array.from(files ?? []).map((file) => normalizeImageFile(file).catch(() => null))))
+      .filter((file): file is File => Boolean(file));
     if (!captured.length) return;
     if (!selectedProject || !selectedBuilding) {
       setToast(text("Choose a project and building first.", "Kies eerst een project en gebouw."));
       return;
     }
+    // The camera button and the Photos tile are one way of taking photos: the photo lands in
+    // the photo library, next to any photo taken before it that is not saved yet, instead of
+    // replacing it. The library keeps them on the device until they are saved.
     setPendingQuickPhotos(captured);
-    setToast(text("Photo ready. Save it, then tap the image to place a finding.", "Foto klaar. Sla op en tik op de afbeelding om een bevinding te plaatsen."));
-    openWorkspaceModule("visual");
+    setToast(text("Photo added. Describe it and save.", "Foto toegevoegd. Omschrijf en sla op."));
+    openWorkspaceModule("files");
     setModal(null);
-  };
-
-  const chooseType = (type: string) => {
-    if (type === "photo") {
-      openWorkspaceModule("visual");
-      setModal(null);
-      return;
-    }
-    if (type === "finding" || type === "inspection" || type === "hse") {
-      openWorkspaceModule(type === "finding" ? "findings" : type === "inspection" ? "inspections" : "hse");
-      setModal(null);
-      return;
-    }
-    if (type === "note" || type === "agreement") {
-      openWorkspaceModule("tools");
-      setModal(null);
-      return;
-    }
-    prepareEntry(type);
-    writeDescription("");
-    setModal(type === "action" ? "action_create" : "entry");
-  };
-
-  /** The words the client uses for each kind, on the form and on the record itself. */
-  const activityKindLabel = (kind: DailyActivityKind) => kind === "works_ongoing"
-    ? text("Works ongoing", "Werkzaamheden gaande")
-    : kind === "works_completed"
-      ? text("Works completed", "Werkzaamheden afgerond")
-      : kind === "delay"
-        ? text("Delay", "Vertraging")
-        : "";
-
-  /**
-   * Choosing what you are busy with on the record form: it sets the record type, so a
-   * delay is filed as a delay, and proposes the sentence that belongs to it.
-   */
-  const chooseActivityKind = (kind: DailyActivityKind) => {
-    setEntryActivityKind(kind);
-    setSelectedType(kind === "delay" ? "delay" : "activity");
-    if (!description.trim() || descriptionSuggestedRef.current) {
-      writeDescription(kind === "works_ongoing"
-        ? text("Work is ongoing", "Werkzaamheden zijn gaande")
-        : kind === "works_completed"
-          ? text("Work completed", "Werkzaamheden afgerond")
-          : kind === "delay"
-            ? text("Delay recorded", "Vertraging geregistreerd")
-            : "", true);
-    }
-  };
-
-  const openWorkspaceDailyRecord = (type: "works_ongoing" | "works_completed" | "workforce" | "delay") => {
-    if (type === "workforce") {
-      // Workforce opens the attendance screen itself. It used to open the whole daily log
-      // with the workforce block folded shut, which is a day report to read past for one
-      // headcount — and not what the tile promises: "attendance by contractor and trade".
-      setModal("attendance");
-      return;
-    }
-    if (type === "delay") {
-      // A delay is part of the confirmed day closeout: its category, factual reason and
-      // contractor acknowledgement must travel together into daily and period reports.
-      // It opens on the delay itself, with the rest of the day folded away — recording
-      // one used to mean reading past a whole day report to reach the block it is about.
-      setDailyLogFocus("delay");
-      setModal("one_tap_log");
-      return;
-    }
-    // Works ongoing and works completed are read from the day closeout, so this is where
-    // they are written. Writing an activity registration instead meant the record never
-    // turned up in the list the button sits under. They are two different answers on that
-    // closeout, so the screen opens on the one that was asked for.
-    setDailyLogFocus(type === "works_completed" ? "works_completed" : "works_ongoing");
-    setModal("one_tap_log");
-  };
-
-  const saveEntry = async () => {
-    if (!description.trim() || !supabase || !selectedProject || !selectedBuilding) return;
-    const priorityMap: Record<string, string> = { low: "low", normal: "normal", high: "high", critical: "critical" };
-    const targetBuildings = selectedProject.buildings.filter((building) => entryBuildingIds.includes(building.id));
-    if (!targetBuildings.length) targetBuildings.push(selectedBuilding);
-    const singleBuilding = targetBuildings.length === 1;
-    const workPackageLabel = workPackageOptions.find((option) => option.en === entryWorkPackage);
-    const workPackageNote = workPackageLabel && !["finding", "hse", "action"].includes(selectedType)
-      ? ` · ${text(workPackageLabel.en, workPackageLabel.nl)}`
-      : "";
-    // What the record is about stands in the line itself, so the day lists and the pin on
-    // the drawing read the same words the supervisor chose.
-    const activityNote = activityKindLabel(entryActivityKind);
-    const saved = await runSynced(
-      () => Promise.all(targetBuildings.map((entryBuilding) => saveSiteRegistration(supabase, {
-        projectId: selectedProject.id,
-        buildingId: entryBuilding.id,
-        locationNodeId: singleBuilding ? entryLocationNodeId : "",
-        type: selectedType,
-        title: description.trim(),
-        description: `${singleBuilding ? location || entryBuilding.name : entryBuilding.name}${activityNote ? ` · ${activityNote}` : ""} · ${description.trim()}${workPackageNote}`,
-        priority: priorityMap[priority] ?? "normal",
-      }))),
-      text(`${entryTitlesEnglish[selectedType]} saved.`, `${entryTitles[selectedType]} opgeslagen.`),
-    );
-    if (!saved) return;
-    // The spot that was tapped on the drawing becomes a pin now that the record exists:
-    // the database names it after the record itself, with its type and its date.
-    const savedRecord = (Array.isArray(saved) ? saved[0] : saved) as { id?: string } | null;
-    if (entryDrawingPoint && savedRecord?.id) {
-      await createDrawingPin(supabase, {
-        drawingFileId: entryDrawingPoint.drawingId,
-        pageNumber: entryDrawingPoint.pageNumber,
-        xRatio: entryDrawingPoint.xRatio,
-        yRatio: entryDrawingPoint.yRatio,
-        linkedRecordType: "registration",
-        linkedRecordId: savedRecord.id,
-      }).catch(() => setToast(text("Record saved. The drawing pin could not be placed.", "Registratie opgeslagen. De pin op de tekening kon niet worden geplaatst.")));
-      setEntryDrawingPoint(null);
-    }
-    // Photos taken inside the record ride along with it: they are queued for the first
-    // target building and linked to that registration, so evidence keeps its origin.
-    if (entryPhotos.length) {
-      const registration = (Array.isArray(saved) ? saved[0] : saved) as { id?: string; day_report_id?: string } | null;
-      await queueEntryPhotos({
-        photos: entryPhotos,
-        projectId: selectedProject.id,
-        buildingId: targetBuildings[0].id,
-        buildingLabel: singleBuilding ? location || targetBuildings[0].name : targetBuildings[0].name,
-        locationNodeId: singleBuilding ? entryLocationNodeId : "",
-        organizationId: selectedProject.organizationId,
-        registrationId: registration?.id ?? "",
-        reportId: registration?.day_report_id ?? null,
-        title: description.trim(),
-      });
-    }
-    setEntryPhotos([]);
-    setEntryDraftParked(false);
-    setModal(null);
-    await queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] });
-  };
-
-  /**
-   * Field photos never block a saved record: they are queued locally first and then
-   * synchronized, exactly like the daily log and the photo workspace do.
-   */
-  const queueEntryPhotos = async (input: {
-    photos: PhotoEvidence[];
-    projectId: string;
-    buildingId: string;
-    buildingLabel: string;
-    locationNodeId: string;
-    organizationId: string;
-    registrationId: string;
-    reportId: string | null;
-    title: string;
-  }) => {
-    if (!supabase) return;
-    for (const photo of input.photos) {
-      const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
-      // The photo's own words win over the record title, and its own location over the
-      // record's, so the photo register can be read without opening the registration.
-      const uploadTitle = photoTitle(photo) || input.title.trim();
-      await queueOfflineUpload({
-        projectId: input.projectId,
-        buildingId: input.buildingId,
-        reportId: input.reportId,
-        folderId: null,
-        folderName: text("Field records", "Veldregistraties"),
-        kind: "photo",
-        file: prepared.blob,
-        fileName: prepared.fileName,
-        mimeType: prepared.mimeType,
-        title: uploadTitle.slice(0, 120),
-        description: [photoEvidenceLine(photo, language), photo.details.description.trim()].filter(Boolean).join("\n"),
-        locationLabel: input.buildingLabel,
-        locationNodeId: photo.details.locationNodeId || input.locationNodeId || null,
-        capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
-        originalSize: photo.original.size,
-        queuedSize: prepared.blob.size,
-        compressed: prepared.compressed,
-        recordLink: input.registrationId
-          ? { organizationId: input.organizationId, recordType: "registration", recordId: input.registrationId, relationship: "evidence" }
-          : null,
-      });
-    }
-    if (navigator.onLine) {
-      await forceSyncOfflineUploads(supabase, input.projectId, {
-        paused: text("Connection lost before the photos were confirmed. They are still on this device. Open Photos and tap Send now.", "Verbinding verbroken vóór bevestiging van de foto's. Ze staan nog op dit apparaat. Open Foto's en tik op Nu verzenden."),
-        failed: (pendingCount) => text(`${pendingCount} photo upload(s) not confirmed. They are still on this device. Open Photos and tap Send now.`, `${pendingCount} foto-upload(s) niet bevestigd. Ze staan nog op dit apparaat. Open Foto's en tik op Nu verzenden.`),
-      });
-    }
-  };
-
-  const toggleTodo = (id: number) => {
-    setCompletedTodos((current) =>
-      current.includes(id) ? current.filter((todo) => todo !== id) : [...current, id],
-    );
   };
 
   const navigate = (next: NavKey) => {
@@ -1380,30 +983,16 @@ export function CodecoSupervisionApp() {
   const resetProjectScopedState = useCallback(() => {
     setEntries([]);
     setAttendance([]);
-    setCompletedTodos([]);
     setProjectStartAnswers(null);
     setDailyCloseoutAnswers(null);
+    setDayHydrated(false);
     setSelectedAction(null);
     setContextBuildingId(null);
     setFocusRecordId("");
     setProjectTabPreset(undefined);
     setExternalSubmissionIntent(false);
     setActionCenterView("work");
-    setDailyLogFocus(undefined);
     setPendingQuickPhotos([]);
-    setSelectedType("activity");
-    setDescription("");
-    setDescriptionSuggested(false);
-    descriptionSuggestedRef.current = false;
-    setLocation("");
-    setPriority("normal");
-    setEntryBuildingIds([]);
-    setEntryLocationNodeId("");
-    setEntryDrawingId("");
-    setEntryPhotos([]);
-    setEntryActivityKind("");
-    setEntryDraftParked(false);
-    setEntryDrawingPoint(null);
   }, []);
 
   const chooseProject = (project: ProjectContext) => {
@@ -1430,6 +1019,30 @@ export function CodecoSupervisionApp() {
     hydratedProjectRef.current = projectId;
     resetProjectScopedState();
   }, [resetProjectScopedState, selectedProject?.id]);
+
+  /**
+   * Photos that were taken but never saved, found back when the project opens: the photo
+   * library's pending photos, or the one staged on the photo screen. Either way the bar
+   * leads back to them.
+   */
+  const [unsavedPhotos, setUnsavedPhotos] = useState<{ count: number; tab: "files" | "visual"; files: File[] } | null>(null);
+  useEffect(() => {
+    const projectId = selectedProject?.id;
+    if (!projectId) return;
+    let cancelled = false;
+    void Promise.all([
+      loadFormDraft<Array<{ file?: Blob }>>(formDraftKey("library-photos", projectId)),
+      loadFormDraft<File[]>(formDraftKey("quick-photo", projectId)),
+    ]).then(([library, staged]) => {
+      if (cancelled) return;
+      const libraryCount = Array.isArray(library?.value) ? library.value.filter((photo) => photo?.file instanceof Blob).length : 0;
+      const stagedFiles = Array.isArray(staged?.value) ? staged.value.filter((file) => file instanceof Blob) : [];
+      setUnsavedPhotos(libraryCount
+        ? { count: libraryCount, tab: "files", files: [] }
+        : stagedFiles.length ? { count: stagedFiles.length, tab: "visual", files: stagedFiles } : null);
+    });
+    return () => { cancelled = true; };
+  }, [selectedProject?.id]);
 
   /**
    * The screen the app is showing, in the few things a user would call a page: the
@@ -1463,7 +1076,9 @@ export function CodecoSupervisionApp() {
     setInitialProjectTab(projectTabKeys.includes(restored.tab as ProjectTabKey) ? restored.tab as ProjectTabKey : "home");
     // A dialog that only makes sense with a record in hand is not restored from an
     // entry; the screen behind it is what the user asked to go back to.
-    const contextFreeModal = restored.modal && !["action_detail", "entry"].includes(restored.modal)
+    // Only a dialog that still exists comes back: an older address can name one that became a
+    // workspace page, such as the day log or the workforce register.
+    const contextFreeModal = restored.modal && restorableModals.includes(restored.modal as Exclude<ModalKey, null>)
       ? restored.modal as ModalKey
       : null;
     setModal(contextFreeModal);
@@ -1496,24 +1111,20 @@ export function CodecoSupervisionApp() {
     applyScreen(fromUrl);
   }, [applyScreen, initialSearch, workspaceQuery.data?.projects]);
 
-  const openBuildingStart = (building: BuildingContext) => {
-    setContextBuildingId(building.id);
-    setModal("project_start");
-  };
-
-  const openBuildingCloseout = (building: BuildingContext) => {
-    setContextBuildingId(building.id);
-    setModal("daily_questions");
-  };
-
   const openProjectStartForAllBuildings = () => {
     setContextBuildingId(ALL_BUILDINGS);
     setModal("project_start");
   };
 
-  const openDailyQuestionsForAllBuildings = () => {
-    setContextBuildingId(ALL_BUILDINGS);
-    setModal("daily_questions");
+  /**
+   * The day closeout has one form: the day log. A second, four-step "daily questions" form
+   * wrote the same record and asked again for deliveries, agreements, change orders and the
+   * photo count, which each have their own register in the workspace.
+   */
+  const openDayLog = () => {
+    setModal(null);
+    openWorkspaceModule("daily");
+    setProjectTabPreset({ dailyWorkView: "day" });
   };
 
   const addBuilding = async (input: { code: string; name: string; description: string }) => {
@@ -1557,9 +1168,9 @@ export function CodecoSupervisionApp() {
     );
     if (!saved) return;
     if (buildings.some((building) => building.id === selectedBuilding?.id)) setProjectStartAnswers(answers);
+    // Back to where the start was asked for: the overview, or the day log that needed the
+    // weather. Jumping to the overview left a half-written day log behind.
     setModal(null);
-    setActiveNav("vandaag");
-    window.scrollTo({ top: 0 });
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] }),
       queryClient.invalidateQueries({ queryKey: ["workspace", session?.user.id] }),
@@ -1734,11 +1345,6 @@ export function CodecoSupervisionApp() {
     : contextBuilding?.id === selectedBuilding?.id
       ? projectStartAnswers
       : projectStartFromRow(dayQuery.data?.startChecks.find((row) => row.building_id === contextBuilding?.id) ?? null);
-  const contextDailyCloseoutAnswers = contextIsAllBuildings
-    ? null
-    : contextBuilding?.id === selectedBuilding?.id
-      ? dailyCloseoutAnswers
-      : closeoutFromRow(dayQuery.data?.closeouts.find((row) => row.building_id === contextBuilding?.id) ?? null);
 
   const buildDraftReportSnapshot = (): DailyReportPdfSnapshot | null => {
     if (!selectedProject || !selectedBuilding || !projectStartAnswers || !dailyCloseoutAnswers) return null;
@@ -1765,6 +1371,214 @@ export function CodecoSupervisionApp() {
       closeout: dailyCloseoutAnswers,
       buildings: buildingsBreakdown,
     };
+  };
+
+  /**
+   * The day log and the workforce register are workspace pages, like every other record form.
+   * They write the day report itself, so their save lives here; the workspace places them.
+   * Until the day has loaded they wait, so a form never opens empty and stays empty.
+   */
+  const dailyForms: DailyFormRenderers = {
+    renderDayLog: ({ focus, today, close, openModule, openWorkforce }) => {
+      if (!selectedProject || !selectedBuilding) return null;
+      if (!dayQuery.data || !dayHydrated) return <p className="form-helper" role="status"><Loader2 className="spin" size={15} /> {text("Loading today…", "Vandaag laden…")}</p>;
+      return (
+      <DailyLogForm
+        // A day that turns out to be saved already opens again with what was saved.
+        key={`${selectedBuilding.id}:${focus ?? "day"}:${dailyCloseoutAnswers ? "saved" : "new"}`}
+        focus={focus}
+        today={today}
+        openModule={openModule}
+        buildings={selectedProject.buildings}
+        defaultBuildingId={selectedBuilding.id}
+        buildingName={buildingName}
+        projectStartAnswers={projectStartAnswers}
+        initialCloseout={dailyCloseoutAnswers}
+        attendanceTotal={projectAttendanceTotal}
+        parties={dayQuery.data?.parties ?? []}
+        busy={syncState === "saving"}
+        draftKey={formDraftKey("daily-log", selectedProject.id, reportDate)}
+        close={close}
+        openProjectStart={openProjectStartForAllBuildings}
+        // The draft keeps the log while the crew is counted in its own register.
+        openWorkforce={openWorkforce}
+        save={async ({ buildingIds: logBuildingIds, answers, photos }) => {
+          const targetBuildingIds = logBuildingIds.length ? logBuildingIds : [selectedBuilding.id];
+          const primaryBuildingId = targetBuildingIds[0];
+          let photosUnconfirmed = "";
+          const saved = await runSynced(async () => {
+            const report = dayQuery.data?.report ?? await createOrGetReport(supabase, selectedProject.id, reportDate);
+            // The day log is the client's own daily record, so it writes the real
+            // closeout instead of a loose note. Reports and Daily work stay in sync.
+            // One day can cover several buildings; each one gets its own closeout. The crew
+            // is not written here: the Workforce register owns it.
+            for (const logBuildingId of targetBuildingIds) {
+              await saveDailyCloseout(supabase, {
+                report,
+                projectId: selectedProject.id,
+                buildingId: logBuildingId,
+                answers,
+              });
+            }
+            if (photos.length) {
+              const reportId = String(report.id);
+              const logBuildingName = selectedProject.buildings.find((building) => building.id === primaryBuildingId)?.name ?? buildingName;
+              for (const photo of photos) {
+                // A retry after a failed send must not file the same photo twice.
+                if (queuedDailyLogPhotos.current.has(photo.id)) continue;
+                const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
+                await queueOfflineUpload({
+                  projectId: selectedProject.id,
+                  buildingId: primaryBuildingId,
+                  reportId,
+                  folderId: null,
+                  folderName: text("Daily progress", "Dagvoortgang"),
+                  kind: "photo",
+                  file: prepared.blob,
+                  fileName: prepared.fileName,
+                  mimeType: prepared.mimeType,
+                  // The words the supervisor gave the photo are what the report shows.
+                  title: photoTitle(photo).slice(0, 120) || text("Field photo", "Veldfoto"),
+                  description: photoUploadDescription(photo, "", language),
+                  locationLabel: logBuildingName,
+                  locationNodeId: photo.details.locationNodeId || null,
+                  capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
+                  originalSize: photo.original.size,
+                  queuedSize: prepared.blob.size,
+                  compressed: prepared.compressed,
+                });
+                queuedDailyLogPhotos.current.add(photo.id);
+              }
+              // The photos are safe in the device queue from here on. A send that does not go
+              // through is reported, but it no longer turns a saved day into a failed save —
+              // that is what made supervisors take the same photos again.
+              if (navigator.onLine) {
+                try {
+                  await forceSyncOfflineUploads(supabase, selectedProject.id, {
+                    paused: text("Day log saved. Connection lost before the photos were confirmed. They are still on this device. Open Photos and tap Send now.", "Daglog opgeslagen. Verbinding verbroken vóór bevestiging van de foto's. Ze staan nog op dit apparaat. Open Foto's en tik op Nu verzenden."),
+                    failed: (pendingCount) => text(`Day log saved. ${pendingCount} photo upload(s) not confirmed. They are still on this device. Open Photos and tap Send now.`, `Daglog opgeslagen. ${pendingCount} foto-upload(s) niet bevestigd. Ze staan nog op dit apparaat. Open Foto's en tik op Nu verzenden.`),
+                  });
+                } catch (error) {
+                  photosUnconfirmed = error instanceof Error ? error.message : "";
+                }
+              }
+            }
+            return true;
+          }, text("Daily log saved and linked to today's report.", "Daglog opgeslagen en aan het dagrapport van vandaag gekoppeld."));
+          if (!saved) return false;
+          queuedDailyLogPhotos.current.clear();
+          if (photosUnconfirmed) setToast(photosUnconfirmed);
+          if (targetBuildingIds.includes(selectedBuilding.id)) setDailyCloseoutAnswers(answers);
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] }),
+            queryClient.invalidateQueries({ queryKey: ["project-operations", selectedProject.id] }),
+          ]);
+          close();
+          return true;
+        }}
+      />
+      );
+    },
+    renderWorkforce: ({ close }) => {
+      if (!selectedProject || !selectedBuilding) return null;
+      if (!dayQuery.data || !dayHydrated) return <p className="form-helper" role="status"><Loader2 className="spin" size={15} /> {text("Loading today…", "Vandaag laden…")}</p>;
+      return (
+      <WorkforceForm
+        key={selectedBuilding.id}
+        draftKey={formDraftKey("workforce", selectedProject.id, reportDate)}
+        initialRows={attendance}
+        rowsForBuilding={(nextBuildingId) => dayQuery.data
+          ? attendanceRowsForBuilding(dayQuery.data, nextBuildingId, text("Unknown party", "Onbekende partij"), configuredShiftStart, configuredShiftEnd)
+          : []}
+        parties={dayQuery.data?.parties ?? []}
+        disciplines={configuredDisciplines}
+        defaultShiftStart={configuredShiftStart}
+        defaultShiftEnd={configuredShiftEnd}
+        buildings={selectedProject.buildings}
+        defaultBuildingId={selectedBuilding.id}
+        expectedWorkers={projectStartAnswers?.expectedWorkers ?? null}
+        initialNote={attendanceNote}
+        initialVisitors={attendanceVisitors}
+        currentUserName={currentUserName}
+        busy={syncState === "saving"}
+        copyPreviousWorkday={async (workforceBuildingId) => {
+          const previous = await loadPreviousWorkdayAttendance(supabase, selectedProject.id, reportDate, workforceBuildingId);
+          if (!previous) return null;
+          const partyName = new Map((dayQuery.data?.parties ?? []).map((party) => [party.id, party.name]));
+          return {
+            reportDate: previous.reportDate,
+            rows: previous.rows.map((row) => ({
+              partyId: row.partyId,
+              party: partyName.get(row.partyId) ?? text("Unknown party", "Onbekende partij"),
+              discipline: row.discipline,
+              count: row.headcount,
+              shiftStart: row.shiftStart,
+              shiftEnd: row.shiftEnd,
+              crew: row.crew,
+            })),
+          };
+        }}
+        close={close}
+        save={async (perBuilding, note, signature) => {
+          const total = perBuilding.reduce((sum, entry) => sum + entry.rows.reduce((rowSum, row) => rowSum + row.count, 0), 0);
+          const saved = await runSynced(
+            async () => {
+              // Counting the crew is often the first thing done on site, before anyone
+              // opened the day report. The report is started here rather than sending the
+              // supervisor away to press a button somewhere else first.
+              const report = dayQuery.data?.report ?? await createOrGetReport(supabase, selectedProject.id, reportDate);
+              // One save covers every building that was filled in, so a day across two
+              // buildings is not two trips through this screen.
+              for (const entry of perBuilding) {
+                await saveAttendance(supabase, {
+                  report,
+                  projectId: selectedProject.id,
+                  buildingId: entry.buildingId,
+                  // The explanation belongs to the day, so every line of it carries the same
+                  // sentence: a report reader sees it whichever line they open.
+                  rows: entry.rows.map((row) => ({
+                    partyId: row.partyId,
+                    discipline: row.discipline,
+                    count: row.count,
+                    shiftStart: row.shiftStart,
+                    shiftEnd: row.shiftEnd,
+                    crew: row.crew,
+                    notes: note,
+                  })),
+                  signature: signature ? { name: signature.name, signedAt: signature.signedAt, image: signature.image } : null,
+                });
+                if (entry.visitors.length) {
+                  await saveAttendance(supabase, {
+                    report,
+                    projectId: selectedProject.id,
+                    buildingId: entry.buildingId,
+                    rows: entry.visitors.map((visitor) => ({
+                      partyId: visitor.partyId,
+                      // The visitor's own name distinguishes the line from the crew of the
+                      // same organisation, which is counted rather than named.
+                      discipline: visitor.visitorName.slice(0, 100),
+                      visitorName: visitor.visitorName,
+                      entryType: "visitor" as const,
+                      count: visitor.count,
+                      shiftStart: visitor.shiftStart,
+                      shiftEnd: visitor.shiftEnd,
+                    })),
+                  });
+                }
+              }
+            },
+            text(`${total} people recorded for today.`, `${total} personen vastgelegd voor vandaag.`),
+          );
+          if (!saved) return false;
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] }),
+            queryClient.invalidateQueries({ queryKey: ["project-operations", selectedProject.id] }),
+          ]);
+          return true;
+        }}
+      />
+      );
+    },
   };
 
   return (
@@ -1889,44 +1703,25 @@ export function CodecoSupervisionApp() {
             instead of carrying the previous project's selection, filters and drafts. */}
         <main className="main-content" key={selectedProject?.id ?? "no-project"}>
           {activeNav === "vandaag" ? (
-            <TodayView
+            <ClientDashboard
               entries={entries}
+              actions={dayActions}
               recentPhotos={recentPhotosQuery.data ?? []}
               client={supabase as SupabaseClient | null}
-              completeness={completeness}
-              completedTodos={completedTodos}
-              toggleTodo={toggleTodo}
-              openReport={() => setModal("report")}
               projectName={projectName}
               projectLocation={selectedProject?.location ?? "Paramaribo, Suriname"}
               buildingName={buildingName}
-              attendanceTotal={projectAttendanceTotal}
-              projectStartAnswers={projectStartAnswers}
-              dailyCloseoutAnswers={dailyCloseoutAnswers}
-              openProjectStart={() => selectedBuilding && openProjectStartForAllBuildings()}
-              openDailyQuestions={() => selectedBuilding && openDailyQuestionsForAllBuildings()}
-              openQuickAdd={openQuickAdd}
-              openOneTapLog={() => { setDailyLogFocus(undefined); setModal("one_tap_log"); }}
-              openActions={() => navigate("acties")}
-              openWorkspace={() => navigate("project")}
-              openSettings={() => navigate("meer")}
-              canManageMembers={canManageMembers}
-              currentUserName={currentUserName}
-              now={clock}
-              reportNumber={reportNumber}
-              actions={dayActions}
-              showCritical={() => {
-                navigate("acties");
-                setToast(text("The action list is open.", "De actielijst is geopend."));
-              }}
-              buildings={selectedProject?.buildings ?? []}
-              startChecks={dayQuery.data?.startChecks ?? []}
-              closeouts={dayQuery.data?.closeouts ?? []}
-              onStartBuilding={openBuildingStart}
-              onCloseoutBuilding={openBuildingCloseout}
+              buildingCount={selectedProject?.buildings.length ?? 0}
+              weather={projectStartAnswers ? { temperatureC: projectStartAnswers.temperatureC, weatherCondition: projectStartAnswers.weatherCondition } : null}
               organizationId={activeOrganizationId!}
               projectId={selectedProject!.id}
               reportId={dayQuery.data?.report?.id ? String(dayQuery.data.report.id) : null}
+              openActions={() => navigate("acties")}
+              openWorkspace={() => navigate("project")}
+              openDailyQuestions={() => selectedBuilding && openDayLog()}
+              openProjectStart={() => selectedBuilding && openProjectStartForAllBuildings()}
+              openReportCheck={() => setModal("report")}
+              dayStarted={Boolean(projectStartAnswers)}
               // A record found from the overview opens in its own module, on that record —
               // the same route the action centre already uses to point at one.
               openRecord={(tab, recordId) => {
@@ -1934,7 +1729,7 @@ export function CodecoSupervisionApp() {
                 setFocusRecordId(recordId);
               }}
             />
-          ) : activeNav === "project" || activeNav === "acties" || activeNav === "projectdocs" || activeNav === "punchlist" || activeNav === "verify" || activeNav === "rapporten" || activeNav === "meer" ? (
+          ) : (
             <OperationalWorkspace
               mode={activeNav === "acties" ? "actions" : activeNav === "verify" ? "verify" : activeNav === "project" || activeNav === "projectdocs" || activeNav === "punchlist" ? "project" : activeNav === "rapporten" ? "reports" : "admin"}
               client={supabase}
@@ -1965,16 +1760,7 @@ export function CodecoSupervisionApp() {
               focusRecordId={focusRecordId}
               initialCameraFiles={pendingQuickPhotos}
               onInitialCameraFilesConsumed={() => setPendingQuickPhotos([])}
-              pendingRecordPin={entryDraftParked && description.trim() ? {
-                label: activityKindLabel(entryActivityKind) || text("Field record", "Veldregistratie"),
-                title: description.trim(),
-                point: entryDrawingPoint ? { ...entryDrawingPoint } : null,
-              } : null}
-              onPlaceRecordPin={(placed) => {
-                setEntryDrawingPoint(placed);
-                setEntryDrawingId(placed.drawingId);
-              }}
-              openDailyRecord={openWorkspaceDailyRecord}
+              dailyForms={dailyForms}
               projectActions={dayActions}
               openProjectAction={(actionId) => {
                 const action = dayActions.find((item) => item.id === actionId);
@@ -2001,38 +1787,8 @@ export function CodecoSupervisionApp() {
               }}
               openActionCenter={(view = "work") => { navigate("acties"); setActionCenterView(view); }}
               openRapidVerify={() => navigate("verify")}
-              openReports={() => navigate("rapporten")}
               openManagement={() => navigate("meer")}
               openReportCheck={() => setModal("report")}
-            />
-          ) : (
-            <SecondaryView
-              activeNav={activeNav}
-              openQuickAdd={openQuickAdd}
-              navigate={navigate}
-              projectName={projectName}
-              buildingName={buildingName}
-              attendanceTotal={projectAttendanceTotal}
-              openAttendance={() => setModal("attendance")}
-              openDailyLog={() => { setDailyLogFocus(undefined); setModal("one_tap_log"); }}
-              entries={entries}
-              actions={dayActions}
-              actionUpdates={dayQuery.data?.actionUpdates ?? []}
-              locationNodes={projectLocationsQuery.data ?? []}
-              openAction={(action) => {
-                setSelectedAction(action);
-                setModal("action_detail");
-              }}
-              openActionCreate={() => setModal("action_create")}
-              openProjectTab={(tab, preset) => {
-                openWorkspaceModule(tab);
-                setProjectTabPreset(preset);
-              }}
-              reportNumber={reportNumber}
-              reportStatus={String(dayQuery.data?.report?.status ?? "draft")}
-              openReport={() => setModal("report")}
-              canManageMembers={canManageMembers}
-              openUserAdmin={() => setModal("user_admin")}
             />
           )}
         </main>
@@ -2148,54 +1904,6 @@ export function CodecoSupervisionApp() {
         </div>
       ) : null}
 
-      {modal === "quick" ? <QuickAddModal close={() => setModal(null)} chooseType={chooseType} /> : null}
-      {modal === "entry" && selectedProject ? (
-        <EntryModal
-          selectedType={selectedType}
-          activityKind={entryActivityKind}
-          activityKindLabel={activityKindLabel}
-          chooseActivityKind={chooseActivityKind}
-          drawingPoint={entryDrawingPoint}
-          description={description}
-          descriptionSuggested={descriptionSuggested}
-          priority={priority}
-          workPackage={entryWorkPackage}
-          setDescription={writeDescription}
-          dictateDescription={dictateDescription}
-          setWorkPackage={setEntryWorkPackage}
-          setLocation={setLocation}
-          setPriority={setPriority}
-          goBack={() => setModal("quick")}
-          close={() => setModal(null)}
-          save={saveEntry}
-          photos={entryPhotos}
-          setPhotos={setEntryPhotos}
-          addPhotos={(files) => {
-            const captured = Array.from(files ?? []).filter((file) => file.type.startsWith("image/"));
-            if (captured.length) setEntryPhotos((current) => [...current, ...captured.map((file) => toPhotoEvidence(file))]);
-          }}
-          addSketch={(file) => setEntryPhotos((current) => [...current, toPhotoEvidence(file, { category: "overview" })])}
-          projectName={projectName}
-          buildingName={buildingName}
-          buildings={selectedProject.buildings}
-          buildingIds={entryBuildingIds}
-          setBuildingIds={(next) => { setEntryBuildingIds(next); setEntryLocationNodeId(""); setEntryDrawingId(""); }}
-          locationNodes={projectLocationsQuery.data ?? []}
-          locationNodeId={entryLocationNodeId}
-          setLocationNodeId={setEntryLocationNodeId}
-          drawings={projectDrawingsQuery.data ?? []}
-          drawingId={entryDrawingId}
-          setDrawingId={setEntryDrawingId}
-          openDrawings={() => {
-            setModal(null);
-            setEntryDraftParked(true);
-            openWorkspaceModule("drawings");
-          }}
-          clearDrawingPoint={() => setEntryDrawingPoint(null)}
-          requiredLocationDepth={projectConfigurationQuery.data?.required_location_depth ?? "building"}
-          busy={syncState === "saving"}
-        />
-      ) : null}
       {modal === "action_create" && selectedProject && selectedBuilding ? (
         <ActionCreateModal
           parties={dayQuery.data?.parties ?? []}
@@ -2207,7 +1915,6 @@ export function CodecoSupervisionApp() {
           locationNodes={projectLocationsQuery.data ?? []}
           requiredLocationDepth={projectConfigurationQuery.data?.required_location_depth ?? "building"}
           close={() => setModal(null)}
-          goBack={() => setModal("quick")}
           save={async (answers, actionBuildingId, locationNodeId) => {
             const targetBuildingIds = actionBuildingId === ALL_BUILDINGS
               ? selectedProject.buildings.map((building) => building.id)
@@ -2290,16 +1997,16 @@ export function CodecoSupervisionApp() {
       {modal === "report" ? (
         <ReportModal
           close={() => setModal(null)}
-          completedTodos={completedTodos}
           entries={entries}
           attendanceTotal={projectAttendanceTotal}
-          projectName={projectName}
           reportNumber={reportNumber}
           reportStatus={String(dayQuery.data?.report?.status ?? "draft")}
           dailyCloseoutAnswers={dailyCloseoutAnswers}
           buildings={selectedProject?.buildings ?? []}
           startChecks={dayQuery.data?.startChecks ?? []}
           closeouts={dayQuery.data?.closeouts ?? []}
+          openDayLog={openDayLog}
+          openProjectStart={() => { setModal(null); openProjectStartForAllBuildings(); }}
           onDownload={async () => {
             const snapshot = buildDraftReportSnapshot();
             if (!snapshot) return;
@@ -2330,50 +2037,6 @@ export function CodecoSupervisionApp() {
           }}
         />
       ) : null}
-      {modal === "daily_questions" && selectedProject && (contextBuilding || contextIsAllBuildings) ? (
-        <DailyQuestionsModal
-          key={contextBuildingId ?? "none"}
-          buildingName={contextIsAllBuildings ? text("All buildings", "Alle gebouwen") : contextBuilding!.name}
-          buildingId={contextIsAllBuildings ? ALL_BUILDINGS : contextBuilding!.id}
-          buildings={selectedProject.buildings}
-          onChangeBuilding={setContextBuildingId}
-          close={() => { setModal(null); setContextBuildingId(null); }}
-          initialAnswers={contextDailyCloseoutAnswers}
-          // Weather is site-wide: closing all buildings at once takes it from the day's
-          // recorded start instead of leaving the "automatic" weather empty and blocking.
-          projectStartAnswers={contextProjectStartAnswers ?? (contextIsAllBuildings
-            ? projectStartAnswers ?? projectStartFromRow(dayQuery.data?.startChecks[0] ?? null)
-            : null)}
-          save={async (answers) => {
-            const targetBuildings = contextIsAllBuildings ? selectedProject.buildings : [contextBuilding!];
-            const saved = await runSynced(
-              async () => {
-                // Same as the attendance screen: answering the day's questions must not wait
-                // on a report the supervisor has to go and start somewhere else first.
-                const report = dayQuery.data?.report ?? await createOrGetReport(supabase, selectedProject.id, reportDate);
-                await Promise.all(targetBuildings.map((building) => saveDailyCloseout(supabase, {
-                  report,
-                  projectId: selectedProject.id,
-                  buildingId: building.id,
-                  answers,
-                })));
-              },
-              text("Day questions saved.", "Dagvragen opgeslagen."),
-            );
-            if (!saved) return;
-            if (targetBuildings.some((building) => building.id === selectedBuilding?.id)) {
-              setDailyCloseoutAnswers(answers);
-              setCompletedTodos((current) => Array.from(new Set([...current, 2, 3])));
-            }
-            setModal(null);
-            setContextBuildingId(null);
-            await Promise.all([
-              queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] }),
-              queryClient.invalidateQueries({ queryKey: ["workspace", session.user.id] }),
-            ]);
-          }}
-        />
-      ) : null}
       {modal === "project_start" && selectedProject && (contextBuilding || contextIsAllBuildings) ? (
         <ProjectStartForm
           key={contextBuildingId ?? "none"}
@@ -2393,198 +2056,6 @@ export function CodecoSupervisionApp() {
           }}
         />
       ) : null}
-      {modal === "attendance" && selectedProject && selectedBuilding ? (
-        <WorkforceModal
-          initialRows={attendance}
-          rowsForBuilding={(nextBuildingId) => dayQuery.data
-            ? attendanceRowsForBuilding(dayQuery.data, nextBuildingId, text("Unknown party", "Onbekende partij"), configuredShiftStart, configuredShiftEnd)
-            : []}
-          parties={dayQuery.data?.parties ?? []}
-          disciplines={configuredDisciplines}
-          defaultShiftStart={configuredShiftStart}
-          defaultShiftEnd={configuredShiftEnd}
-          buildings={selectedProject.buildings}
-          defaultBuildingId={selectedBuilding.id}
-          expectedWorkers={projectStartAnswers?.expectedWorkers ?? null}
-          initialNote={attendanceNote}
-          initialVisitors={attendanceVisitors}
-          currentUserName={currentUserName}
-          busy={syncState === "saving"}
-          copyPreviousWorkday={async (workforceBuildingId) => {
-            const previous = await loadPreviousWorkdayAttendance(supabase, selectedProject.id, reportDate, workforceBuildingId);
-            if (!previous) return null;
-            const partyName = new Map((dayQuery.data?.parties ?? []).map((party) => [party.id, party.name]));
-            return {
-              reportDate: previous.reportDate,
-              rows: previous.rows.map((row) => ({
-                partyId: row.partyId,
-                party: partyName.get(row.partyId) ?? text("Unknown party", "Onbekende partij"),
-                discipline: row.discipline,
-                count: row.headcount,
-                shiftStart: row.shiftStart,
-                shiftEnd: row.shiftEnd,
-                crew: row.crew,
-              })),
-            };
-          }}
-          close={() => setModal(null)}
-          save={async (perBuilding, note, signature) => {
-            const total = perBuilding.reduce((sum, entry) => sum + entry.rows.reduce((rowSum, row) => rowSum + row.count, 0), 0);
-            const saved = await runSynced(
-              async () => {
-                // Counting the crew is often the first thing done on site, before anyone
-                // opened the day report. The report is started here rather than sending the
-                // supervisor away to press a button somewhere else first.
-                const report = dayQuery.data?.report ?? await createOrGetReport(supabase, selectedProject.id, reportDate);
-                // One save covers every building that was filled in, so a day across two
-                // buildings is not two trips through this screen.
-                for (const entry of perBuilding) {
-                  await saveAttendance(supabase, {
-                    report,
-                    projectId: selectedProject.id,
-                    buildingId: entry.buildingId,
-                    // The explanation belongs to the day, so every line of it carries the same
-                    // sentence: a report reader sees it whichever line they open.
-                    rows: entry.rows.map((row) => ({
-                      partyId: row.partyId,
-                      discipline: row.discipline,
-                      count: row.count,
-                      shiftStart: row.shiftStart,
-                      shiftEnd: row.shiftEnd,
-                      crew: row.crew,
-                      notes: note,
-                    })),
-                    signature: signature ? { name: signature.name, signedAt: signature.signedAt, image: signature.image } : null,
-                  });
-                  if (entry.visitors.length) {
-                    await saveAttendance(supabase, {
-                      report,
-                      projectId: selectedProject.id,
-                      buildingId: entry.buildingId,
-                      rows: entry.visitors.map((visitor) => ({
-                        partyId: visitor.partyId,
-                        // The visitor's own name distinguishes the line from the crew of the
-                        // same organisation, which is counted rather than named.
-                        discipline: visitor.visitorName.slice(0, 100),
-                        visitorName: visitor.visitorName,
-                        entryType: "visitor" as const,
-                        count: visitor.count,
-                        shiftStart: visitor.shiftStart,
-                        shiftEnd: visitor.shiftEnd,
-                      })),
-                    });
-                  }
-                }
-              },
-              text(`${total} people recorded for today.`, `${total} personen vastgelegd voor vandaag.`),
-            );
-            if (!saved) return;
-            setModal(null);
-            await queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] });
-          }}
-        />
-      ) : null}
-      {modal === "one_tap_log" && selectedProject && selectedBuilding ? (
-        <DailyLogModal
-          focus={dailyLogFocus}
-          buildings={selectedProject.buildings}
-          defaultBuildingId={selectedBuilding.id}
-          buildingName={buildingName}
-          projectStartAnswers={projectStartAnswers}
-          initialCloseout={dailyCloseoutAnswers}
-          attendanceRows={attendance}
-          disciplines={configuredDisciplines}
-          parties={dayQuery.data?.parties ?? []}
-          busy={syncState === "saving"}
-          // The focus belongs to the button that was pressed, not to the screen. Leaving it
-          // behind meant the back button could reopen the day log still folded onto a delay
-          // or onto works, long after that was what the supervisor asked for.
-          close={() => { setDailyLogFocus(undefined); setModal(null); }}
-          openProjectStart={() => {
-            setModal(null);
-            openProjectStartForAllBuildings();
-          }}
-          openFullQuestionnaire={() => {
-            setModal(null);
-            openBuildingCloseout(selectedBuilding);
-          }}
-          save={async ({ buildingIds: logBuildingIds, answers, attendance: rows, photos }) => {
-            const targetBuildingIds = logBuildingIds.length ? logBuildingIds : [selectedBuilding.id];
-            const primaryBuildingId = targetBuildingIds[0];
-            const saved = await runSynced(async () => {
-              const report = dayQuery.data?.report ?? await createOrGetReport(supabase, selectedProject.id, reportDate);
-              // The day log is the client's own daily record, so it writes the real
-              // closeout instead of a loose note. Reports and Daily work stay in sync.
-              // One day can cover several buildings; each one gets its own closeout.
-              for (const logBuildingId of targetBuildingIds) {
-                await saveDailyCloseout(supabase, {
-                  report,
-                  projectId: selectedProject.id,
-                  buildingId: logBuildingId,
-                  answers,
-                });
-                if (rows.length) {
-                  await saveAttendance(supabase, {
-                    report,
-                    projectId: selectedProject.id,
-                    buildingId: logBuildingId,
-                    rows: rows.map((row) => ({
-                      partyId: row.partyId,
-                      discipline: row.discipline,
-                      count: row.count,
-                      shiftStart: row.shiftStart,
-                      shiftEnd: row.shiftEnd,
-                    })),
-                  });
-                }
-              }
-              if (photos.length) {
-                const reportId = String(report.id);
-                const logBuildingName = selectedProject.buildings.find((building) => building.id === primaryBuildingId)?.name ?? buildingName;
-                for (const photo of photos) {
-                  const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
-                  await queueOfflineUpload({
-                    projectId: selectedProject.id,
-                    buildingId: primaryBuildingId,
-                    reportId,
-                    folderId: null,
-                    folderName: text("Daily progress", "Dagvoortgang"),
-                    kind: "photo",
-                    file: prepared.blob,
-                    fileName: prepared.fileName,
-                    mimeType: prepared.mimeType,
-                    // The words the supervisor gave the photo are what the report shows.
-                    title: photoTitle(photo).slice(0, 120) || text("Field photo", "Veldfoto"),
-                    description: photoUploadDescription(photo, "", language),
-                    locationLabel: logBuildingName,
-                    locationNodeId: photo.details.locationNodeId || null,
-                    capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
-                    originalSize: photo.original.size,
-                    queuedSize: prepared.blob.size,
-                    compressed: prepared.compressed,
-                  });
-                }
-                if (navigator.onLine) {
-                  await forceSyncOfflineUploads(supabase, selectedProject.id, {
-                    paused: text("Connection lost before the photos were confirmed. They are still on this device. Open Photos and tap Send now.", "Verbinding verbroken vóór bevestiging van de foto's. Ze staan nog op dit apparaat. Open Foto's en tik op Nu verzenden."),
-                    failed: (pendingCount) => text(`${pendingCount} photo upload(s) not confirmed. They are still on this device. Open Photos and tap Send now.`, `${pendingCount} foto-upload(s) niet bevestigd. Ze staan nog op dit apparaat. Open Foto's en tik op Nu verzenden.`),
-                  });
-                }
-              }
-              return true;
-            }, text("Daily log saved and linked to today's report.", "Daglog opgeslagen en aan het dagrapport van vandaag gekoppeld."));
-            if (!saved) return;
-            if (targetBuildingIds.includes(selectedBuilding.id)) {
-              setDailyCloseoutAnswers(answers);
-              setCompletedTodos((current) => Array.from(new Set([...current, 2, 3])));
-            }
-            setDailyLogFocus(undefined);
-            setModal(null);
-            await queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] });
-          }}
-        />
-      ) : null}
-
       {modal === "user_admin" && activeOrganizationId ? (
         <UserAdminModal
           close={() => setModal(null)}
@@ -2663,13 +2134,20 @@ export function CodecoSupervisionApp() {
         />
       ) : null}
 
-      {/* Opening a drawing leaves the record behind. This bar is the way back to it, so
-          the half-filled record is never lost on the drawing screen. */}
-      {entryDraftParked && modal !== "entry" ? (
+      {unsavedPhotos && selectedProject ? (
         <div className="entry-resume-bar" role="status">
-          <span><strong>{text("Your field record is still open", "Je veldregistratie staat nog open")}</strong><small>{description.trim() || text("No description yet", "Nog geen omschrijving")}</small></span>
-          <button className="primary-button" type="button" onClick={() => { setEntryDraftParked(false); setModal("entry"); }}><ArrowLeft size={14} /> {text("Back to the record", "Terug naar de registratie")}</button>
-          <button className="entry-resume-dismiss" type="button" onClick={() => setEntryDraftParked(false)} aria-label={text("Discard this record", "Deze registratie laten vallen")}><X size={14} /></button>
+          <span><strong>{unsavedPhotos.count === 1 ? text("A photo you took is not saved yet", "Een gemaakte foto is nog niet opgeslagen") : text(`${unsavedPhotos.count} photos you took are not saved yet`, `${unsavedPhotos.count} gemaakte foto's zijn nog niet opgeslagen`)}</strong></span>
+          <button className="primary-button" type="button" onClick={() => {
+            // The library puts its own pending photos back; the photo screen is handed its one.
+            if (unsavedPhotos.tab === "visual") setPendingQuickPhotos(unsavedPhotos.files);
+            openWorkspaceModule(unsavedPhotos.tab);
+            setUnsavedPhotos(null);
+            setModal(null);
+          }}><ArrowLeft size={14} /> {unsavedPhotos.count === 1 ? text("Back to the photo", "Terug naar de foto") : text("Back to the photos", "Terug naar de foto's")}</button>
+          <button className="entry-resume-dismiss" type="button" onClick={() => {
+            void clearFormDraft(formDraftKey(unsavedPhotos.tab === "files" ? "library-photos" : "quick-photo", selectedProject.id));
+            setUnsavedPhotos(null);
+          }} aria-label={unsavedPhotos.count === 1 ? text("Discard this photo", "Deze foto weggooien") : text("Discard these photos", "Deze foto's weggooien")}><X size={14} /></button>
         </div>
       ) : null}
       <div className="sr-only" role="status" aria-live="polite">{connectivityNote}</div>
@@ -3308,474 +2786,6 @@ function ProjectStartForm({
   );
 }
 
-function TodayView({
-  entries,
-  recentPhotos,
-  client,
-  completeness,
-  completedTodos,
-  toggleTodo,
-  openReport,
-  showCritical,
-  projectName,
-  projectLocation,
-  buildingName,
-  attendanceTotal,
-  projectStartAnswers,
-  dailyCloseoutAnswers,
-  openProjectStart,
-  openDailyQuestions,
-  openQuickAdd,
-  openOneTapLog,
-  openActions,
-  openWorkspace,
-  openSettings,
-  canManageMembers,
-  currentUserName,
-  now,
-  reportNumber,
-  actions,
-  buildings,
-  startChecks,
-  closeouts,
-  onStartBuilding,
-  onCloseoutBuilding,
-  organizationId,
-  projectId,
-  reportId,
-  openRecord,
-}: {
-  entries: TimelineEntry[];
-  /** The newest pictures in the project, for the visual-evidence panel. */
-  recentPhotos: ProjectRecentPhoto[];
-  client: SupabaseClient | null;
-  completeness: number;
-  completedTodos: number[];
-  toggleTodo: (id: number) => void;
-  openReport: () => void;
-  showCritical: () => void;
-  projectName: string;
-  projectLocation: string;
-  buildingName: string;
-  attendanceTotal: number;
-  projectStartAnswers: ProjectStartAnswers | null;
-  dailyCloseoutAnswers: DailyCloseoutAnswers | null;
-  openProjectStart: () => void;
-  openDailyQuestions: () => void;
-  openQuickAdd: () => void;
-  openOneTapLog: () => void;
-  openActions: () => void;
-  openWorkspace: () => void;
-  openSettings: () => void;
-  canManageMembers: boolean;
-  currentUserName: string;
-  now: Date;
-  reportNumber: string;
-  actions: ProjectAction[];
-  buildings: BuildingContext[];
-  startChecks: Array<Record<string, unknown>>;
-  closeouts: Array<Record<string, unknown>>;
-  onStartBuilding: (building: BuildingContext) => void;
-  onCloseoutBuilding: (building: BuildingContext) => void;
-  organizationId: string;
-  projectId: string;
-  reportId: string | null;
-  /** Opens one record found from the overview in the module it lives in. */
-  openRecord: (tab: SearchDestination, recordId: string) => void;
-}) {
-  const { language, locale, text } = useLanguage();
-  const todos = [
-    { id: 1, title: text("Confirm weather and working hours", "Weer en werktijden bevestigen"), detail: projectStartAnswers ? text("Recorded centrally", "Centraal vastgelegd") : text("Project start required", "Projectstart vereist"), flag: "" },
-    { id: 2, title: text("Confirm quality and HSE", "Kwaliteit en HSE bevestigen"), detail: dailyCloseoutAnswers ? text("Recorded centrally", "Centraal vastgelegd") : text("Daily questions required", "Dagvragen vereist"), flag: "red" },
-    { id: 3, title: text("Complete tomorrow's plan", "Planning voor morgen invullen"), detail: dailyCloseoutAnswers ? text("Recorded centrally", "Centraal vastgelegd") : text("Before daily closeout", "Voor dagafsluiting"), flag: "" },
-  ];
-  const automation = projectStartAnswers ? getProjectStartAutomation(projectStartAnswers, undefined, language) : [];
-  const criticalEntry = entries.find((entry) => entry.badgeTone === "red");
-  const inspectionCount = entries.filter((entry) => entry.kind === "inspection").length;
-  const progress = dailyCloseoutAnswers?.progressPercent ?? 0;
-  const openTodoCount = todos.filter((todo) => !completedTodos.includes(todo.id)).length;
-  const weatherLabel = projectStartAnswers
-    ? `${projectStartAnswers.temperatureC}°C · ${({ sunny: text("Sunny", "Zonnig"), partly_cloudy: text("Partly cloudy", "Licht bewolkt"), cloudy: text("Cloudy", "Bewolkt"), rain: text("Rain", "Regen"), heavy_rain: text("Heavy rain", "Zware regen") })[projectStartAnswers.weatherCondition]}`
-    : text("Weather not confirmed", "Weer nog niet bevestigd");
-
-  if (process.env.NEXT_PUBLIC_SUPERVISION_DASHBOARD !== "legacy") {
-    return (
-      <ClientDashboard
-        entries={entries}
-        actions={actions}
-        recentPhotos={recentPhotos}
-        client={client}
-        projectName={projectName}
-        projectLocation={projectLocation}
-        buildingName={buildingName}
-        buildingCount={buildings.length}
-        weather={projectStartAnswers ? { temperatureC: projectStartAnswers.temperatureC, weatherCondition: projectStartAnswers.weatherCondition } : null}
-        organizationId={organizationId}
-        projectId={projectId}
-        reportId={reportId}
-        openActions={openActions}
-        openWorkspace={openWorkspace}
-        openDailyQuestions={openDailyQuestions}
-        openProjectStart={openProjectStart}
-        openReportCheck={openReport}
-        dayStarted={Boolean(projectStartAnswers)}
-        openRecord={openRecord}
-      />
-    );
-  }
-
-  return (
-    <>
-      <section className="page-intro">
-        <div>
-          <p className="eyebrow">{currentDateLabel(locale, now)} · {currentTime(locale, now)}</p>
-          <h1>{greetingForSuriname(language, now)}, {currentUserName}.</h1>
-          <p>{text("This requires your attention today at", "Dit vraagt vandaag je aandacht bij")} {projectName} · {buildingName}.</p>
-        </div>
-        <div className="page-intro-actions">
-          <div className="weather-chip">
-            <span className="weather-icon"><CloudSun size={20} /></span>
-            <span className="weather-copy">
-              <strong>{weatherLabel}</strong>
-              <span>{text("Confirmed manually at Project start", "Handmatig bevestigd bij Projectstart")}</span>
-            </span>
-            <ChevronRight size={15} color="#718995" />
-          </div>
-          {!projectStartAnswers ? <button className="primary-button day-questions-button" type="button" onClick={openProjectStart}><CloudSun size={15} /> {text("Start today", "Werkdag starten")}</button> : <button className="primary-button day-questions-button" type="button" onClick={openDailyQuestions}><ClipboardCheck size={15} /> {text("Complete daily questions", "Dagvragen invullen")}</button>}
-        </div>
-      </section>
-
-      <section className="overview-shortcuts" aria-label={text("Quick routes", "Directe routes")}>
-        <button className="overview-shortcut primary" type="button" onClick={openQuickAdd}><span><Camera size={18} /></span><strong>{text("Take a photo", "Foto maken")}</strong><ArrowRight size={16} /></button>
-        {/* One route, one meaning: the day's log in the client's own report format. */}
-        <button className="overview-shortcut" type="button" onClick={openOneTapLog}><span><ClipboardCheck size={18} /></span><strong>{text("Daily log", "Daglog")}</strong><ArrowRight size={16} /></button>
-        <button className="overview-shortcut mobile-redundant" type="button" onClick={openActions}><span><ClipboardCheck size={18} /></span><strong>{text("Open actions", "Acties openen")}</strong><small>{text(`${actions.filter((action) => action.status !== "verified" && action.status !== "cancelled").length} require follow-up`, `${actions.filter((action) => action.status !== "verified" && action.status !== "cancelled").length} vragen opvolging`)}</small><ArrowRight size={16} /></button>
-        <button className="overview-shortcut mobile-redundant" type="button" onClick={canManageMembers ? openSettings : openWorkspace}><span>{canManageMembers ? <Settings size={18} /> : <LayoutDashboard size={18} />}</span><strong>{canManageMembers ? text("Manage workspace", "Werkruimte beheren") : text("Open project workspace", "Projectwerkruimte openen")}</strong><small>{canManageMembers ? text("Users, rules and project structure", "Gebruikers, regels en projectstructuur") : text("Inspections, findings and files", "Inspecties, bevindingen en bestanden")}</small><ArrowRight size={16} /></button>
-      </section>
-
-      <section className="day-hero" aria-label={text("Today's status", "Status van vandaag")}>
-        <article className="report-card">
-          <div className="report-copy">
-            <div className="status-kicker"><span className="live-dot" /> {text("Report in progress", "Rapport in uitvoering")}</div>
-            <h2>{text("Daily report", "Dagrapport")} {reportNumber}</h2>
-            <button className="inline-button" type="button" onClick={openReport}>
-              {text("View report status", "Rapportstatus bekijken")} <ArrowRight size={14} />
-            </button>
-          </div>
-          <div className="progress-ring" style={{ background: `conic-gradient(var(--signal) 0 ${completeness}%, rgba(255,255,255,.11) ${completeness}% 100%)` }}>
-            <span className="progress-value"><strong>{completeness}%</strong><span>{text("complete", "compleet")}</span></span>
-          </div>
-        </article>
-
-        <article className={`critical-card ${criticalEntry ? "" : "clear"}`}>
-          <div>
-            <div className="critical-top">
-              <span className="critical-icon">{criticalEntry ? <AlertTriangle size={20} /> : <CheckCircle2 size={20} />}</span>
-              <span className="critical-badge">{criticalEntry ? text("Critical", "Kritiek") : text("No critical record", "Geen kritieke registratie")}</span>
-            </div>
-            <h3>{criticalEntry?.title ?? text("No immediate blocker recorded", "Geen directe blokkade geregistreerd")}</h3>
-            <p>{criticalEntry?.detail ?? text("No critical records.", "Geen kritieke registraties.")}</p>
-          </div>
-          <button className="text-link" type="button" onClick={showCritical}>{text("Open central action list", "Open centrale actielijst")} <ArrowRight size={13} /></button>
-        </article>
-      </section>
-
-      {buildings.length > 1 ? (
-        <section className="panel" aria-label={text("Buildings in this report", "Gebouwen in dit rapport")}>
-          <header className="panel-header">
-            <div className="section-heading">
-              <h2>{text("Buildings in today's report", "Gebouwen in het rapport van vandaag")}</h2>
-            </div>
-          </header>
-          <div className="todo-list">
-            {buildings.map((building) => {
-              const startDone = startChecks.some((row) => row.building_id === building.id);
-              const closeoutDone = closeouts.some((row) => row.building_id === building.id);
-              return (
-                <div className="todo-row" key={building.id}>
-                  <span className={`todo-check ${startDone && closeoutDone ? "done" : ""}`}><Check size={14} /></span>
-                  <span className="todo-copy">
-                    <strong>{building.name}</strong>
-                    <span>{startDone ? text("Start done", "Start gereed") : text("Start missing", "Start ontbreekt")} · {closeoutDone ? text("Closeout done", "Afsluiting gereed") : text("Closeout missing", "Afsluiting ontbreekt")}</span>
-                  </span>
-                  <span className="todo-row-actions">
-                    {!startDone ? <button className="text-link" type="button" onClick={() => onStartBuilding(building)}>{text("Start check", "Start")}</button> : null}
-                    {startDone && !closeoutDone ? <button className="text-link" type="button" onClick={() => onCloseoutBuilding(building)}>{text("Closeout", "Afsluiting")}</button> : null}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      ) : null}
-
-      <section className={`questionnaire-strip ${dailyCloseoutAnswers ? "complete" : ""}`} aria-label={text("Daily questions and automation", "Dagvragen en automatisering")}>
-        <div className="questionnaire-main">
-          <span className="questionnaire-icon"><FileCheck2 size={21} /></span>
-          <span className="questionnaire-copy">
-            <span className="status-kicker">{text("Client format", "Klantformat")} · {clientReportSections.length} {text("report sections", "rapportonderdelen")}</span>
-            <strong>{dailyCloseoutAnswers ? text("Daily questions confirmed", "Dagvragen bevestigd") : text("How did the project go today?", "Hoe is het project vandaag gegaan?")}</strong>
-          </span>
-        </div>
-        <div className="questionnaire-automation">
-          {automation.slice(0, 3).map((rule) => <span className={`rule-chip ${rule.tone}`} title={`${text("Triggered by", "Geactiveerd door")}: ${rule.source}`} key={rule.id}>{rule.title}</span>)}
-        </div>
-        <div className="questionnaire-progress"><strong>{dailyCloseoutAnswers ? "4/4" : "1/4"}</strong><span>{text("question groups", "vraaggroepen")}</span></div>
-        <button className={dailyCloseoutAnswers ? "ghost-button" : "primary-button"} type="button" onClick={openDailyQuestions}>{dailyCloseoutAnswers ? text("View answers", "Antwoorden bekijken") : text("Start questions", "Vragen starten")} <ArrowRight size={14} /></button>
-      </section>
-
-      <section className="dashboard-grid">
-        <article className="panel">
-          <header className="panel-header">
-            <div className="section-heading">
-              <h2>{text("Today's timeline", "Tijdlijn vandaag")}</h2>
-              <p>{entries.length} {text("records · updated in real time", "registraties · realtime bijgewerkt")}</p>
-            </div>
-          </header>
-          <div className="timeline">
-            {entries.map((entry) => {
-              const Icon = entryIcons[entry.kind];
-              return (
-                <article className="timeline-row" key={entry.id}>
-                  <time className="timeline-time">{entry.time}</time>
-                  <span className={`timeline-icon ${entry.kind}`}><Icon size={16} /></span>
-                  <div className="timeline-copy">
-                    <strong>{entry.title}</strong>
-                    <p>{entry.detail}</p>
-                    <div className="timeline-meta">
-                      <span><MapPin size={10} /> {entry.location}</span>
-                      <span><Users size={10} /> {entry.person}</span>
-                    </div>
-                  </div>
-                  <span className={`timeline-badge ${entry.badgeTone ?? ""}`}>{entry.badge}</span>
-                </article>
-              );
-            })}
-          </div>
-        </article>
-
-        <aside className="right-column">
-          <article className="panel">
-            <header className="panel-header">
-              <div className="section-heading"><h2>{text("At a glance", "In één oogopslag")}</h2><p>{text("Updated centrally", "Centraal bijgewerkt")}</p></div>
-            </header>
-            <div className="metrics-grid">
-              <Stat value={String(attendanceTotal)} label={text("people present", "mensen aanwezig")} suffix="" />
-              <Stat value={String(progress)} label={text("project progress", "projectvoortgang")} suffix="%" />
-              <Stat value={String(inspectionCount)} label={text("inspections today", "inspecties vandaag")} suffix="" />
-              <Stat value={String(actions.length)} label={text("actions", "acties")} suffix="" />
-            </div>
-          </article>
-
-          <article className="panel">
-            <header className="panel-header">
-              <div className="section-heading"><h2>{text("Still to do", "Nog te doen")}</h2><p>{text("Before finalizing the report", "Voor je het rapport afrondt")}</p></div>
-              <span className="status-badge" style={{ padding: "5px 8px", background: "var(--yellow-soft)", color: "var(--yellow)" }}>{openTodoCount} {text("open", "open")}</span>
-            </header>
-            <div className="todo-list">
-              {todos.map((todo) => {
-                const done = completedTodos.includes(todo.id);
-                return (
-                  <div className="todo-row" key={todo.id}>
-                    <button className={`todo-check ${done ? "done" : ""}`} type="button" onClick={() => toggleTodo(todo.id)} aria-label={`${todo.title} ${done ? text("reopen", "heropenen") : text("complete", "afronden")}`}>
-                      <Check size={14} />
-                    </button>
-                    <span className="todo-copy"><strong>{todo.title}</strong><span>{done ? text("Completed", "Afgerond") : todo.detail}</span></span>
-                    {!done ? <span className={`todo-flag ${todo.flag}`} /> : null}
-                  </div>
-                );
-              })}
-            </div>
-          </article>
-        </aside>
-      </section>
-
-      <section className="report-control-bar">
-        <div className="report-control-copy">
-          <span className="report-control-icon"><FileCheck2 size={19} /></span>
-          <span><strong>{text("Ready for the final check?", "Klaar voor de eindcontrole?")}</strong></span>
-        </div>
-        <button className="primary-button" type="button" onClick={openReport}>{text("Check report", "Rapport controleren")} <ArrowRight size={14} /></button>
-      </section>
-    </>
-  );
-}
-
-function Stat({ value, suffix, label }: { value: string; suffix: string; label: string }) {
-  return (
-    <div className="ui-stat">
-      <span className="ui-stat__value">{value}{suffix}</span>
-      <span className="ui-stat__label">{label}</span>
-    </div>
-  );
-}
-
-function SecondaryView({
-  activeNav,
-  openQuickAdd,
-  navigate,
-  projectName,
-  buildingName,
-  attendanceTotal,
-  openAttendance,
-  openDailyLog,
-  entries,
-  actions,
-  actionUpdates,
-  locationNodes,
-  openAction,
-  openActionCreate,
-  openProjectTab,
-  reportNumber,
-  reportStatus,
-  openReport,
-  canManageMembers,
-  openUserAdmin,
-}: {
-  activeNav: NavKey;
-  openQuickAdd: () => void;
-  navigate: (next: NavKey) => void;
-  projectName: string;
-  buildingName: string;
-  attendanceTotal: number;
-  openAttendance: () => void;
-  /** The day's own log, where the plan for tomorrow is written. */
-  openDailyLog: () => void;
-  entries: TimelineEntry[];
-  actions: ProjectAction[];
-  actionUpdates: ActionUpdate[];
-  locationNodes: ProjectLocationOption[];
-  openAction: (action: ProjectAction) => void;
-  openActionCreate: () => void;
-  openProjectTab: (tab: "registers" | "findings" | "ncr" | "inspections" | "files" | "drawings", preset?: { registerType?: string; hseEventType?: string }) => void;
-  reportNumber: string;
-  reportStatus: string;
-  /** The day report itself, so the row that names it opens it. */
-  openReport: () => void;
-  canManageMembers: boolean;
-  openUserAdmin: () => void;
-}) {
-  const { language, locale, text } = useLanguage();
-  const statusLabels = language === "en" ? actionStatusLabelsEnglish : actionStatusLabels;
-  const [actionFilter, setActionFilter] = useState<"open" | "urgent" | "completed" | "all">("open");
-  if (activeNav === "project") {
-    const registrationsByKind = (kind: EntryKind) => entries.filter((entry) => entry.kind === kind).length;
-    const modules = [
-      { title: text("Attendance", "Aanwezigheid"), icon: Users, count: `${attendanceTotal} ${text("today", "vandaag")}`, action: openAttendance },
-      { title: text("Activities", "Activiteiten"), icon: Wrench, count: `${registrationsByKind("activity")} ${text("today", "vandaag")}`, action: openQuickAdd },
-      // Each tile opens the module it names. Inspections, findings and photos all used to
-      // land on the quick-add sheet or the action centre instead.
-      { title: text("Inspections", "Inspecties"), icon: ClipboardCheck, count: `${registrationsByKind("inspection")} ${text("today", "vandaag")}`, action: () => openProjectTab("inspections") },
-      { title: text("Findings", "Bevindingen"), icon: AlertTriangle, count: `${registrationsByKind("finding")} ${text("today", "vandaag")}`, action: () => openProjectTab("findings") },
-      { title: text("Actions", "Acties"), icon: ShieldCheck, count: `${actions.length} ${text("central", "centraal")}`, action: () => navigate("acties") },
-      { title: text("Photos", "Foto’s"), icon: Image, count: `${registrationsByKind("photo")} ${text("today", "vandaag")}`, action: () => openProjectTab("files") },
-    ];
-    return (
-      <>
-        <header className="secondary-header">
-          <div><p className="eyebrow">{projectName}</p><h1>{text("Project overview", "Projectoverzicht")}</h1><p>{text("Registers and operational modules for", "Registers en operationele modules voor")} {buildingName}.</p></div>
-          <button className="primary-button" type="button" onClick={openQuickAdd}><Plus size={15} /> {text("New record", "Nieuwe registratie")}</button>
-        </header>
-        <section className="secondary-grid">
-          {modules.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button className="module-card" type="button" key={item.title} onClick={item.action} style={{ textAlign: "left", cursor: "pointer" }}>
-                <span className="module-card-top"><span className="module-card-icon"><Icon size={19} /></span><span className="module-count">{item.count}</span></span>
-                <h2>{item.title}</h2>
-              </button>
-            );
-          })}
-        </section>
-      </>
-    );
-  }
-
-  if (activeNav === "acties") {
-    const openActions = actions.filter((action) => action.status !== "verified" && action.status !== "cancelled");
-    const urgentActions = openActions.filter((action) => action.priority === "high" || action.priority === "critical");
-    const completedActions = actions.filter((action) => action.status === "verified" || action.status === "cancelled");
-    const visibleActions = actionFilter === "urgent" ? urgentActions : actionFilter === "completed" ? completedActions : actionFilter === "all" ? actions : openActions;
-    return (
-      <>
-        <header className="secondary-header">
-          <div><p className="eyebrow">{actions.length} {text("centrally recorded", "centraal geregistreerd")}</p><h1>{text("Actions", "Acties")}</h1></div>
-          <button className="primary-button" type="button" onClick={openActionCreate}><Plus size={15} /> {text("Add action", "Actie toevoegen")}</button>
-        </header>
-        <nav className="action-record-shortcuts" aria-label={text("Open work and document records", "Openstaande werk- en documentregistraties")}>
-          <button type="button" onClick={() => openProjectTab("registers", { registerType: "wcr" })}><FileCheck2 size={16} /><span><strong>WCR</strong><small>{text("Work completion requests", "Werkcontroleverzoeken")}</small></span></button>
-          <button type="button" onClick={() => openProjectTab("registers", { registerType: "rfi" })}><MessageSquareText size={16} /><span><strong>RFI</strong><small>{text("Information requests", "Informatieverzoeken")}</small></span></button>
-          <button type="button" onClick={() => openProjectTab("registers", { registerType: "rfa" })}><PackageCheck size={16} /><span><strong>RFA</strong><small>{text("Approval requests", "Goedkeuringsverzoeken")}</small></span></button>
-          <button type="button" onClick={() => openProjectTab("registers", { registerType: "inspection_request" })}><ClipboardCheck size={16} /><span><strong>WIR</strong><small>{text("Inspection requests", "Inspectieverzoeken")}</small></span></button>
-          <button type="button" onClick={() => openProjectTab("ncr")}><AlertTriangle size={16} /><span><strong>NCR</strong><small>{text("Open findings", "Open bevindingen")}</small></span></button>
-          <button type="button" onClick={() => openProjectTab("findings")}><CheckCircle2 size={16} /><span><strong>Issues</strong><small>{text("Ready for review", "Gereed voor review")}</small></span></button>
-          <button type="button" onClick={() => openProjectTab("drawings")}><MapPin size={16} /><span><strong>{text("Floor plan", "Plattegrond")}</strong><small>{text("All linked pins", "Alle gekoppelde pins")}</small></span></button>
-        </nav>
-        <section className="action-overview" aria-label={text("Action summary", "Actieoverzicht")}><button className={actionFilter === "open" ? "active" : ""} type="button" onClick={() => setActionFilter("open")}><strong>{openActions.length}</strong><span>{text("Open", "Open")}</span></button><button className={actionFilter === "urgent" ? "active urgent" : "urgent"} type="button" onClick={() => setActionFilter("urgent")}><strong>{urgentActions.length}</strong><span>{text("Urgent", "Urgent")}</span></button><button className={actionFilter === "completed" ? "active" : ""} type="button" onClick={() => setActionFilter("completed")}><strong>{completedActions.length}</strong><span>{text("Completed", "Afgerond")}</span></button><button className={actionFilter === "all" ? "active" : ""} type="button" onClick={() => setActionFilter("all")}><strong>{actions.length}</strong><span>{text("All", "Alles")}</span></button></section>
-        <section className="actions-list">
-          {visibleActions.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{actionFilter === "urgent" ? text("Nothing urgent", "Niets urgent") : actionFilter === "completed" ? text("No completed actions", "Nog geen afgeronde acties") : text("No open actions", "Geen open acties")}</strong></div> : null}
-          {visibleActions.map((action) => {
-            const dueAt = action.due_at ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(action.due_at)) : text("No deadline", "Geen deadline");
-            const latestUpdate = actionUpdates.find((update) => update.action_id === action.id);
-            return (
-            <button className="action-row" type="button" key={action.id} onClick={() => openAction(action)} style={{ textAlign: "left", cursor: "pointer" }}>
-              <span className="action-icon"><CheckCircle2 size={18} /></span>
-              <span className="action-copy"><strong>{action.title}</strong><span>{dueAt} · {action.action_number}{action.location_node_id ? ` · ${locationBreadcrumb(locationNodes, action.location_node_id)}` : ""}{latestUpdate ? ` · ${latestUpdate.message}` : ""}</span></span>
-              <span className={`task-status ${action.priority === "critical" ? "red" : action.status === "verified" ? "green" : ""}`}>{statusLabels[action.status]}</span>
-            </button>
-          );})}
-        </section>
-      </>
-    );
-  }
-
-  if (activeNav === "rapporten") {
-    return (
-      <>
-        <header className="secondary-header"><div><p className="eyebrow">{text("Daily reports", "Dagrapporten")}</p><h1>{text("Report history", "Rapporthistorie")}</h1></div></header>
-        <section className="actions-list">
-          <button className="action-row" type="button" style={{ textAlign: "left", cursor: "pointer" }} onClick={openReport}>
-              <span className="action-icon" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}><FileText size={18} /></span>
-              <span className="action-copy"><strong>{reportNumber} · {text("Today", "Vandaag")}</strong><span>{projectName} · {text("all buildings", "alle gebouwen")}</span></span>
-              <span className={`task-status ${reportStatus === "approved" ? "green" : ""}`}>{statusText(reportStatus, text)}</span>
-          </button>
-        </section>
-      </>
-    );
-  }
-
-  // A row with a chevron promises a screen. These three had no action at all, so tapping
-  // them did nothing; each one now opens the screen that actually holds what it describes.
-  const settings = [
-    { title: text("Reports", "Rapporten"), icon: FileText, action: () => navigate("rapporten") },
-    { title: "Dashboard", icon: Gauge, action: () => navigate("vandaag") },
-    { title: text("Tomorrow's plan", "Planning morgen"), icon: CalendarDays, action: openDailyLog },
-    // "Project settings · locations, parties and configuration" used to stand here pointing
-    // at the access screen, which holds none of those three. Locations, parties and the
-    // project rules live in the management workspace, and that is where the row goes.
-    { title: text("Project settings", "Projectinstellingen"), icon: Settings, action: () => navigate("meer") },
-    ...(canManageMembers ? [{ title: text("Users and access", "Gebruikers en toegang"), icon: Users, action: openUserAdmin }] : []),
-  ];
-  return (
-    <>
-      <header className="secondary-header"><div><p className="eyebrow">{text("Workspace", "Werkruimte")}</p><h1>{text("More", "Meer")}</h1></div></header>
-      <section className="settings-list">
-        {settings.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button className="settings-row" type="button" key={item.title} onClick={item.action}>
-              <span className="module-card-icon"><Icon size={18} /></span>
-              <span style={{ textAlign: "left" }}><strong>{item.title}</strong></span>
-              <ChevronRight size={16} color="#718995" />
-            </button>
-          );
-        })}
-      </section>
-    </>
-  );
-
-}
-
 function NotificationsModal({ client, notifications, loading, close, markRead }: { client: SupabaseClient; notifications: ProjectNotification[]; loading: boolean; close: () => void; markRead: (notificationId: string) => Promise<void> }) {
   const { locale, text } = useLanguage();
   const [pushState, setPushState] = useState<PushState>("inactive");
@@ -4066,282 +3076,6 @@ function notificationTitle(stored: string, text: (english: string, dutch: string
   return stored;
 }
 
-function QuickAddModal({ close, chooseType }: { close: () => void; chooseType: (type: string) => void }) {
-  const { language, text } = useLanguage();
-  const availableTypes = language === "en" ? quickTypesEnglish : quickTypes;
-  return (
-    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
-      <section className="modal" role="dialog" aria-modal="true" aria-labelledby="quick-title">
-        <header className="modal-header">
-          <div><h2 id="quick-title">{text("Other field record", "Andere veldregistratie")}</h2></div>
-          <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
-        </header>
-        <div className="modal-body">
-          <div className="quick-grid">
-            {availableTypes.map((type) => {
-              const Icon = type.icon;
-              return (
-                <button className="quick-tile" type="button" onClick={() => chooseType(type.id)} key={type.id}>
-                  <span className="quick-tile-icon"><Icon size={18} /></span>
-                  <strong>{type.title}</strong><span>{type.description}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function EntryModal({
-  selectedType,
-  activityKind,
-  activityKindLabel,
-  chooseActivityKind,
-  drawingPoint,
-  clearDrawingPoint,
-  description,
-  descriptionSuggested,
-  priority,
-  workPackage,
-  setDescription,
-  dictateDescription,
-  setWorkPackage,
-  setLocation,
-  setPriority,
-  goBack,
-  close,
-  save,
-  photos,
-  setPhotos,
-  addPhotos,
-  addSketch,
-  projectName,
-  buildingName,
-  buildings,
-  buildingIds,
-  setBuildingIds,
-  locationNodes,
-  locationNodeId,
-  setLocationNodeId,
-  drawings,
-  drawingId,
-  setDrawingId,
-  openDrawings,
-  requiredLocationDepth,
-  busy,
-}: {
-  selectedType: string;
-  /** What this record is about: work running, work finished or a delay. */
-  activityKind: DailyActivityKind;
-  activityKindLabel: (kind: DailyActivityKind) => string;
-  chooseActivityKind: (kind: DailyActivityKind) => void;
-  /** The spot that was tapped on the drawing for this record, if there is one. */
-  drawingPoint: { drawingId: string; pageNumber: number; xRatio: number; yRatio: number } | null;
-  clearDrawingPoint: () => void;
-  description: string;
-  /** The text was proposed by the app, not typed. It must disappear on the first keystroke. */
-  descriptionSuggested: boolean;
-  priority: string;
-  workPackage: string;
-  setDescription: (value: string, suggested?: boolean) => void;
-  dictateDescription: (transcript: string) => void;
-  setWorkPackage: (value: string) => void;
-  setLocation: (value: string) => void;
-  setPriority: (value: string) => void;
-  goBack: () => void;
-  close: () => void;
-  save: () => void;
-  photos: PhotoEvidence[];
-  setPhotos: (photos: PhotoEvidence[]) => void;
-  addPhotos: (files: FileList | null) => void;
-  addSketch: (file: File) => void;
-  projectName: string;
-  buildingName: string;
-  buildings: BuildingOption[];
-  buildingIds: string[];
-  setBuildingIds: (value: string[]) => void;
-  locationNodes: ProjectLocationOption[];
-  locationNodeId: string;
-  setLocationNodeId: (value: string) => void;
-  drawings: ProjectDrawingOption[];
-  drawingId: string;
-  setDrawingId: (value: string) => void;
-  openDrawings: () => void;
-  requiredLocationDepth: "building" | "floor" | "room" | "element";
-  busy: boolean;
-}) {
-  const { language, locale, text } = useLanguage();
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const [sketching, setSketching] = useState(false);
-  // What this record already knows about the project is offered inside the marking pad, so a
-  // marker can say which building, floor, room and work package it belongs to.
-  const markupContext = useMemo(() => ({
-    buildings: buildings.map((building) => ({ id: building.id, label: building.name })),
-    defaultBuildingId: buildingIds.length === 1 ? buildingIds[0] : "",
-    locations: locationNodes.map((node) => ({ id: node.id, label: locationBreadcrumb(locationNodes, node.id), buildingId: node.building_id })),
-    workPackages: workPackageOptions.map((option) => (language === "en" ? option.en : option.nl)),
-  }), [buildingIds, buildings, language, locationNodes]);
-  const title = (language === "en" ? entryTitlesEnglish : entryTitles)[selectedType] ?? text("Record", "Registratie");
-  const singleBuildingId = buildingIds.length === 1 ? buildingIds[0] : "";
-  const chosenBuildingName = buildingIds.length === buildings.length && buildings.length > 1
-    ? text("All buildings", "Alle gebouwen")
-    : buildingIds.length > 1
-      ? buildings.filter((building) => buildingIds.includes(building.id)).map((building) => building.name).join(" + ")
-      : buildings.find((building) => building.id === singleBuildingId)?.name ?? buildingName;
-  const needsPriority = selectedType === "finding" || selectedType === "hse" || selectedType === "action";
-  const choices: Record<string, string[]> = {
-    activity: [text("Work started as planned.", "Werk volgens planning gestart."), text("Work completed as planned.", "Werk volgens planning afgerond."), text("Work continues tomorrow.", "Werk wordt morgen voortgezet.")],
-    inspection: [text("Inspection completed; all points passed.", "Inspectie uitgevoerd; alle punten akkoord."), text("Inspection completed; follow-up required.", "Inspectie uitgevoerd; opvolging vereist.")],
-    finding: [text("Work is incomplete.", "Werk is niet volledig uitgevoerd."), text("Finish does not meet the requirement.", "Afwerking voldoet niet aan de eis."), text("Executed dimensions differ from the drawing.", "Uitvoering wijkt af van de tekening.")],
-    hse: [text("Unsafe situation was corrected immediately.", "Onveilige situatie direct gecorrigeerd."), text("Safety point requires follow-up.", "Veiligheidspunt vraagt opvolging."), text("Positive safety observation.", "Positieve veiligheidsobservatie.")],
-    delivery: [text("Delivery received and checked.", "Levering ontvangen en gecontroleerd."), text("Delivery incomplete or damaged.", "Levering onvolledig of beschadigd."), text("Delivery rejected.", "Levering geweigerd.")],
-    test: [text("Test performed; result within tolerance.", "Test uitgevoerd; resultaat binnen tolerantie."), text("Test performed; deviation found.", "Test uitgevoerd; afwijking vastgesteld.")],
-    delay: [text("Delay due to weather.", "Vertraging door weersomstandigheden."), text("Delay due to late delivery.", "Vertraging door te late levering."), text("Delay due to equipment failure.", "Vertraging door materieelstoring.")],
-  };
-  const descriptionChoices = choices[selectedType] ?? [];
-  const buildingDrawings = drawings.filter((drawing) => !singleBuildingId || !drawing.buildingId || drawing.buildingId === singleBuildingId);
-  const locationRequired = Boolean(singleBuildingId) && requiredLocationDepth !== "building";
-  const describeLocation = (nodeId: string, drawing: string) => {
-    const parts = [chosenBuildingName];
-    if (nodeId) parts.push(locationBreadcrumb(locationNodes, nodeId));
-    const drawingName = drawings.find((item) => item.id === drawing)?.name;
-    if (drawingName) parts.push(text(`drawing ${drawingName}`, `tekening ${drawingName}`));
-    return parts.filter(Boolean).join(" → ");
-  };
-  return (
-    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
-      <section className="modal" role="dialog" aria-modal="true" aria-labelledby="entry-title">
-        <header className="modal-header">
-          <div><h2 id="entry-title">{text(`Record ${title.toLowerCase()}`, `${title} vastleggen`)}</h2><p>{projectName} · {chosenBuildingName} · {currentTime(locale)}</p></div>
-          <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
-        </header>
-        <div className="modal-body">
-          <div className="form-grid">
-            {/* "Kan hier staan waarin ik bezig ben?" — the record says which part of the
-                day it belongs to, so it lands under Works ongoing, Works completed or
-                Delays instead of in an unnamed pile of activities. */}
-            {selectedType === "activity" || selectedType === "delay" ? (
-              <div className="entry-activity-kind full" role="group" aria-label={text("What are you recording?", "Waar ben je mee bezig?")}>
-                <strong>{text("What are you recording?", "Waar ben je mee bezig?")}</strong>
-                <div className="quick-issue-presets">
-                  {(["works_ongoing", "works_completed", "delay"] as const).map((kind) => (
-                    <button className={activityKind === kind ? "active" : ""} type="button" onClick={() => chooseActivityKind(activityKind === kind ? "" : kind)} key={kind}>{activityKindLabel(kind)}</button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            {descriptionChoices.length ? <div className="quick-issue-presets full" aria-label={text("Choose a standard description", "Kies een standaardomschrijving")}>{descriptionChoices.map((choice) => <button className={description.trim() === choice ? "active" : ""} type="button" onClick={() => setDescription(description.trim() === choice ? "" : choice)} key={choice}>{choice}</button>)}</div> : null}
-            <div className="form-field full">
-              <div className="field-label-row">
-                <label htmlFor="description">{text("Short description *", "Korte omschrijving *")}</label>
-                {description ? <button className="field-clear-button" type="button" onClick={() => setDescription("")} aria-label={text("Clear the description", "Omschrijving wissen")}><X size={13} /> {text("Clear", "Wissen")}</button> : null}
-              </div>
-              {/* A proposed text is a suggestion, never a leftover: typing replaces it in
-                  one go and the clear button empties the field without selecting text. */}
-              <textarea
-                className={descriptionSuggested ? "suggested-value" : ""}
-                id="description"
-                value={description}
-                onChange={(event) => setDescription(descriptionSuggested
-                  // Typing over a proposal replaces it, wherever the caret happened to be.
-                  ? event.target.value.replace(description, "").trim() || event.target.value.trim()
-                  : event.target.value)}
-                onFocus={(event) => { if (descriptionSuggested) event.currentTarget.select(); }}
-              />
-              {/* Dictation replaces the proposed text and then keeps adding to what was
-                  already said, instead of asking the supervisor to clean up by hand. */}
-              <DictateButton onText={dictateDescription} />
-            </div>
-            {buildings.length > 1
-              ? <BuildingMultiPicker
-                id="entry-building"
-                buildings={buildings}
-                value={buildingIds}
-                onChange={(next) => {
-                  setBuildingIds(next);
-                  setLocation(next.length === 1 ? buildings.find((building) => building.id === next[0])?.name ?? "" : "");
-                }}
-              />
-              : null}
-            {singleBuildingId ? (
-              <>
-                <LocationPicker
-                  id="entry-location"
-                  nodes={locationNodes}
-                  buildingId={singleBuildingId}
-                  value={locationNodeId}
-                  onChange={(next) => { setLocationNodeId(next); setLocation(describeLocation(next, drawingId)); }}
-                  requiredDepth={requiredLocationDepth}
-                />
-                <div className="form-field">
-                  <label htmlFor="entry-drawing">{text("Location on the PDF drawing", "Locatie op de PDF-tekening")}</label>
-                  <select id="entry-drawing" value={drawingId} onChange={(event) => { setDrawingId(event.target.value); setLocation(describeLocation(locationNodeId, event.target.value)); }}>
-                    <option value="">{text("No PDF selected", "Geen PDF gekozen")}</option>
-                    {buildingDrawings.map((drawing) => <option value={drawing.id} key={drawing.id}>{drawing.name}</option>)}
-                  </select>
-                  {buildingDrawings.length
-                    ? <button className="field-inline-link" type="button" onClick={openDrawings}><MapPin size={12} /> {drawingPoint ? text("Change the spot on the PDF", "Plek op de PDF wijzigen") : text("Open the PDF to place a pin", "Open de PDF om een pin te plaatsen")}</button>
-                    : <small>{text("No drawing for this building. Upload one under Project Docs.", "Geen tekening voor dit gebouw. Upload er een onder Project Docs.")}</small>}
-                  {/* The pin itself is created when this record is saved, so it carries the
-                      record's own number, name and date instead of a hand-picked link. */}
-                  {drawingPoint ? (
-                    <small className="entry-pin-set">
-                      <MapPin size={12} /> {text(`Spot on page ${drawingPoint.pageNumber} · pin is placed when you save`, `Punt op pagina ${drawingPoint.pageNumber} · pin wordt geplaatst bij opslaan`)}
-                      <button className="field-inline-link" type="button" onClick={clearDrawingPoint}>{text("Remove", "Verwijderen")}</button>
-                    </small>
-                  ) : null}
-                </div>
-              </>
-            ) : null}
-            {needsPriority ? (
-              <div className="form-field">
-                <label htmlFor="priority">{text("Priority", "Prioriteit")}</label>
-                <select id="priority" value={priority} onChange={(event) => setPriority(event.target.value)}>
-                  {/* The value is the stored code; without it the translated label was submitted
-                      and every priority was silently saved as "normal". */}
-                  <option value="low">{text("Low", "Laag")}</option><option value="normal">{text("Normal", "Normaal")}</option><option value="high">{text("High", "Hoog")}</option><option value="critical">{text("Critical", "Kritiek")}</option>
-                </select>
-              </div>
-            ) : (
-              <div className="form-field">
-                <label htmlFor="work-package">{text("Work package", "Werkpakket")}</label>
-                <select id="work-package" value={workPackage} onChange={(event) => setWorkPackage(event.target.value)}>
-                  {workPackageOptions.map((option) => <option value={option.en} key={option.en}>{language === "en" ? option.en : option.nl}</option>)}
-                </select>
-              </div>
-            )}
-            <div className="form-field full">
-              <label>{text("Add evidence", "Bewijs toevoegen")}</label>
-              {/* The camera opens here. Sending the supervisor to the photo workspace lost
-                  the half-filled record, which is what the client reported. */}
-              <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple onChange={(event) => { addPhotos(event.target.files); event.target.value = ""; }} />
-              <div className="evidence-button-row">
-                <button className="ghost-button" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={16} /> {photos.length ? text(`Add another photo · ${photos.length} added`, `Nog een foto toevoegen · ${photos.length} toegevoegd`) : text("Take or choose a photo", "Maak of kies een foto")}</button>
-                <button className="ghost-button" type="button" onClick={() => setSketching(true)}><PenLine size={16} /> {text("Make a sketch", "Schets maken")}</button>
-              </div>
-              {sketching ? <SketchPad close={() => setSketching(false)} save={(file) => { addSketch(file); setSketching(false); }} /> : null}
-              {/* A photo is not finished when it is taken: it carries its own words, its
-                  category, its location and the direction it was taken from, and it can be
-                  marked on the picture itself. */}
-              <PhotoEvidenceList
-                photos={photos}
-                setPhotos={setPhotos}
-                markupContext={markupContext}
-              />
-            </div>
-          </div>
-          <div className="modal-actions">
-            <button className="back-button" type="button" onClick={goBack}><ArrowLeft size={14} /> {text("Back", "Terug")}</button>
-            <button className="primary-button" type="button" onClick={save} disabled={busy || !description.trim() || !buildingIds.length || (locationRequired && !locationNodeId)}>{busy ? <Loader2 className="spin" size={14} /> : null} {text("Save and include", "Opslaan en opnemen")} <Check size={14} /></button>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
 function ActionCreateModal({
   parties,
   employees,
@@ -4352,7 +3086,6 @@ function ActionCreateModal({
   locationNodes,
   requiredLocationDepth,
   close,
-  goBack,
   save,
 }: {
   parties: ProjectParty[];
@@ -4364,7 +3097,6 @@ function ActionCreateModal({
   locationNodes: ProjectLocationOption[];
   requiredLocationDepth: "building" | "floor" | "room" | "element";
   close: () => void;
-  goBack: () => void;
   save: (answers: ProjectActionAnswers, buildingId: string, locationNodeId?: string) => Promise<boolean>;
 }) {
   const { text } = useLanguage();
@@ -4428,7 +3160,9 @@ function ActionCreateModal({
             <label className="form-field"><span>{text("Priority", "Prioriteit")}</span><select {...register("priority")}><option value="low">{text("Low", "Laag")}</option><option value="normal">{text("Normal", "Normaal")}</option><option value="high">{text("High", "Hoog")}</option><option value="critical">{text("Critical", "Kritiek")}</option></select></label>
           </div>
           <div className="modal-actions">
-            <button className="back-button" type="button" onClick={goBack}><ArrowLeft size={14} /> {text("Back", "Terug")}</button>
+            {/* Cancel closes the form. "Back" used to open a hidden sheet of record types that
+                each already have a workspace tile. */}
+            <button className="ghost-button" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
             <button className="primary-button" type="submit" disabled={busy || parties.length === 0 || employees.length === 0 || (buildingId !== ALL_BUILDINGS && requiredLocationDepth !== "building" && !locationNodeId)}>{busy ? <Loader2 className="spin" size={14} /> : <Check size={14} />} {text("Save and assign", "Opslaan en toewijzen")}</button>
           </div>
         </form>
@@ -4726,305 +3460,62 @@ function ManageBuildingsModal({
   );
 }
 
-function DailyQuestionsModal({
-  buildingName,
-  buildingId,
-  buildings,
-  onChangeBuilding,
-  close,
-  initialAnswers,
-  projectStartAnswers,
-  save,
-}: {
-  buildingName: string;
-  buildingId: string;
-  buildings: BuildingOption[];
-  onChangeBuilding: (buildingId: string) => void;
-  close: () => void;
-  initialAnswers: DailyCloseoutAnswers | null;
-  projectStartAnswers: ProjectStartAnswers | null;
-  save: (answers: DailyCloseoutAnswers) => void | Promise<void>;
-}) {
-  const { language, text } = useLanguage();
-  const localizedDailyCloseoutSchema = useMemo(() => createDailyCloseoutSchema(language), [language]);
-  const [step, setStep] = useState(0);
-  const {
-    register,
-    handleSubmit,
-    control,
-    trigger,
-    setValue,
-    getValues,
-    formState: { errors },
-  } = useForm<DailyCloseoutAnswers>({
-    resolver: zodResolver(localizedDailyCloseoutSchema),
-    mode: "onBlur",
-    defaultValues: initialAnswers ?? {
-      daySummary: "",
-      weatherSummary: projectStartAnswers
-        ? `${({ sunny: text("Sunny", "Zonnig"), partly_cloudy: text("Partly cloudy", "Licht bewolkt"), cloudy: text("Cloudy", "Bewolkt"), rain: text("Rain", "Regen"), heavy_rain: text("Heavy rain", "Zware regen") })[projectStartAnswers.weatherCondition]}, ${projectStartAnswers.temperatureC}°C, ${text("wind", "wind")} ${projectStartAnswers.windCondition === "strong" ? text("strong", "sterk") : projectStartAnswers.windCondition === "moderate" ? text("moderate", "matig") : text("calm", "kalm")}`
-        : "",
-      workOngoing: "",
-      workPerformed: "",
-      progressPercent: 67,
-      inspectionResult: "none",
-      qualityIssues: "no",
-      qualityDetails: "",
-      hseEvent: "none",
-      hseDetails: "",
-      equipmentStatus: "",
-      deliveries: "",
-      testsMeasurements: "",
-      variationWork: "none",
-      delayCause: "none",
-      delayHours: 0,
-      delayReason: "",
-      contractorCompany: "",
-      contractorSignedBy: "",
-      contractorSignedAt: "",
-      contractorSignatureImage: "",
-      communication: "",
-      risks: projectStartAnswers?.riskNotes ?? "",
-      tomorrowPlan: "",
-      photoCount: 0,
-      attachmentsConfirmed: false,
-    },
-  });
-  const [qualityIssues, hseEvent, delayCause, workOngoing, workPerformed, tomorrowPlan, daySummary, weatherSummary, equipmentStatus, deliveries, testsMeasurements, communication, risks, contractorSignedBy, contractorSignedAt, contractorSignatureImage] = useWatch({
-    control,
-    name: ["qualityIssues", "hseEvent", "delayCause", "workOngoing", "workPerformed", "tomorrowPlan", "daySummary", "weatherSummary", "equipmentStatus", "deliveries", "testsMeasurements", "communication", "risks", "contractorSignedBy", "contractorSignedAt", "contractorSignatureImage"],
-  });
-  const dailySummaryOptions = [
-    text("Work proceeded according to plan.", "Werk is volgens planning verlopen."),
-    text("Most planned work was completed; remaining work continues tomorrow.", "Het grootste deel van het geplande werk is uitgevoerd; resterend werk gaat morgen verder."),
-    text("Progress was affected by a recorded delay.", "De voortgang is beïnvloed door een geregistreerde vertraging."),
-    text("Work was paused for quality or safety follow-up.", "Werk is onderbroken voor kwaliteits- of veiligheidsopvolging."),
-  ];
-  const qualityDetailOptions = [
-    text("Finish does not meet the approved requirement.", "Afwerking voldoet niet aan de goedgekeurde eis."),
-    text("Executed dimensions differ from the drawing.", "Uitgevoerde maatvoering wijkt af van de tekening."),
-    text("Work is incomplete and requires repair.", "Werk is onvolledig en vraagt herstel."),
-  ];
-  const hseDetailOptions = [
-    text("Unsafe situation was stopped and the work area was secured.", "Onveilige situatie is gestopt en de werkzone is beveiligd."),
-    text("Near miss recorded; workers were instructed immediately.", "Near miss vastgelegd; medewerkers zijn direct geïnstrueerd."),
-    text("Incident recorded; first response and escalation were started.", "Incident vastgelegd; eerste opvang en escalatie zijn gestart."),
-  ];
-  const equipmentOptions = [
-    text("No equipment issue.", "Geen materieelprobleem."),
-    text("Equipment was operational throughout the shift.", "Materieel was de hele dienst operationeel."),
-    text("Equipment failure was recorded and followed up.", "Materieelstoring is vastgelegd en opgevolgd."),
-  ];
-  const deliveryOptions = [
-    text("No delivery today.", "Vandaag geen levering."),
-    text("Delivery received and checked.", "Levering ontvangen en gecontroleerd."),
-    text("Delivery incomplete or damaged; follow-up recorded.", "Levering onvolledig of beschadigd; opvolging vastgelegd."),
-  ];
-  const testOptions = [
-    text("No test or measurement today.", "Vandaag geen test of meting."),
-    text("Tests and measurements completed and compliant.", "Testen en metingen uitgevoerd en akkoord."),
-    text("A test deviation was recorded for follow-up.", "Een testafwijking is vastgelegd voor opvolging."),
-  ];
-  const communicationOptions = [
-    text("No special agreement today.", "Vandaag geen bijzondere afspraak."),
-    text("Coordination completed; agreements were recorded.", "Afstemming uitgevoerd; afspraken zijn vastgelegd."),
-    text("Site instruction issued and contractor informed.", "Bouwplaatsinstructie gegeven en aannemer geïnformeerd."),
-  ];
-  const openRiskOptions = [
-    text("No new open risks.", "Geen nieuwe open risico’s."),
-    text("Weather risk remains open.", "Weerrisico blijft open."),
-    text("Delivery risk remains open.", "Leveringsrisico blijft open."),
-    text("Safety risk remains open.", "Veiligheidsrisico blijft open."),
-  ];
-  const toggleCloseoutWork = (field: "workOngoing" | "workPerformed" | "tomorrowPlan", label: string) => {
-    const fieldValue = field === "workOngoing" ? workOngoing : field === "workPerformed" ? workPerformed : tomorrowPlan;
-    const current = String(fieldValue).split("; ").filter(Boolean);
-    const next = current.includes(label) ? current.filter((item) => item !== label) : [...current, label];
-    setValue(field, next.join("; "), { shouldDirty: true, shouldValidate: true });
-    if (field === "workPerformed" && !daySummary && next.length) setValue("daySummary", `${text("Work completed", "Werk uitgevoerd")}: ${next.join(", ")}.`, { shouldDirty: true, shouldValidate: true });
-  };
-  const stepFields: Array<Array<keyof DailyCloseoutAnswers>> = [
-    ["daySummary", "weatherSummary", "workOngoing", "workPerformed", "progressPercent"],
-    ["inspectionResult", "qualityIssues", "qualityDetails", "hseEvent", "hseDetails"],
-    ["equipmentStatus", "deliveries", "testsMeasurements", "variationWork", "delayCause", "delayHours", "delayReason", "contractorCompany", "contractorSignedBy", "contractorSignedAt", "contractorSignatureImage"],
-    ["communication", "risks", "tomorrowPlan", "photoCount", "attachmentsConfirmed"],
-  ];
-  const stepTitles = [text("Progress & work", "Verloop & werk"), text("Quality & HSE", "Kwaliteit & HSE"), text("Logistics & delay", "Logistiek & vertraging"), text("Agreements & tomorrow", "Afspraken & morgen")];
-  const nextStep = async () => {
-    const valid = await trigger(stepFields[step]);
-    if (valid) setStep((current) => Math.min(3, current + 1));
-  };
-
-  return (
-    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
-      <section className="modal daily-questions-modal" role="dialog" aria-modal="true" aria-labelledby="daily-questions-title">
-        <header className="modal-header">
-          <div><h2 id="daily-questions-title">{text("Daily questions for the report", "Dagvragen voor het rapport")} · {buildingName}</h2><p>{text("Step", "Stap")} {step + 1} {text("of", "van")} 4</p></div>
-          <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
-        </header>
-        <form className="modal-body daily-questions-body" onSubmit={handleSubmit(save)} noValidate>
-          <BuildingPicker id="daily-questions-building" buildings={buildings} value={buildingId} onChange={onChangeBuilding} allowAll />
-          <div className="question-stepper" aria-label={text("Daily questions progress", "Voortgang dagvragen")}>
-            {stepTitles.map((title, index) => <span className={index === step ? "active" : index < step ? "done" : ""} key={title}><b>{index < step ? <Check size={12} /> : index + 1}</b>{title}</span>)}
-          </div>
-
-          {step === 0 ? (
-            <section className="question-group">
-              <header><span className="question-group-icon"><Gauge size={18} /></span><span><h3>{text("How did the project go today?", "Hoe is het project vandaag gegaan?")}</h3></span></header>
-              <div className="form-grid two-columns">
-                <div className="quick-issue-presets wide" aria-label={text("Choose a daily summary", "Kies een dagsamenvatting")}>{dailySummaryOptions.map((option) => <button className={daySummary === option ? "active" : ""} type="button" onClick={() => setValue("daySummary", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div>
-                {errors.daySummary ? <small className="field-error wide">{errors.daySummary.message}</small> : null}
-                <details className="optional-text-entry wide">
-                  <summary>{text("Different daily summary", "Andere dagsamenvatting")}</summary>
-                  <label className="form-field"><span>{text("Daily summary *", "Samenvatting van de dag *")}</span><textarea rows={4} placeholder={text("Summarize what happened in no more than five lines.", "Vat in maximaal vijf regels samen wat er is gebeurd.")} {...register("daySummary")} /><DictateButton onText={(transcript) => setValue("daySummary", appendDictation(getValues("daySummary") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label>
-                </details>
-                <div className="derived-answer">
-                  <span>{text("Actual weather · automatic", "Werkelijk weer · automatisch")}</span>
-                  <strong><CloudSun size={15} /> {weatherSummary || text("Weather is loaded from the project start.", "Weer wordt overgenomen van de projectstart.")}</strong>
-                  {errors.weatherSummary ? <small className="field-error">{errors.weatherSummary.message}</small> : null}
-                  <details className="optional-text-entry">
-                    <summary>{text("Correct weather", "Weer corrigeren")}</summary>
-                    <label className="form-field"><span>{text("Weather correction", "Weercorrectie")}</span><input type="text" {...register("weatherSummary")} /></label>
-                  </details>
-                </div>
-                <label className="form-field"><span>{text("Project progress", "Voortgang project")}</span><span className="input-with-unit"><input type="number" min="0" max="100" {...register("progressPercent", { valueAsNumber: true })} /><em>%</em></span>{errors.progressPercent ? <small className="field-error">{errors.progressPercent.message}</small> : null}</label>
-                <div className="click-answer-block wide">
-                  <strong>{text("Work ongoing at day end", "Werk lopend aan het einde van de dag")}</strong>
-                  <div className="work-option-grid" aria-label={text("Choose ongoing work", "Kies lopend werk")}>{constructionWorkOptions.map((option) => { const label = language === "en" ? option.en : option.nl; const active = String(workOngoing).split("; ").includes(label); return <button className={active ? "active" : ""} type="button" aria-pressed={active} onClick={() => toggleCloseoutWork("workOngoing", label)} key={option.en}>{active ? <Check size={14} /> : <Plus size={14} />}{label}</button>; })}</div>
-                  <details className="optional-text-entry">
-                    <summary>{text("Other ongoing work", "Ander lopend werk")}</summary>
-                    <label className="form-field"><textarea rows={3} aria-label={text("Work ongoing at day end", "Werk lopend aan het einde van de dag")} {...register("workOngoing")} /><DictateButton onText={(transcript) => setValue("workOngoing", appendDictation(getValues("workOngoing") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label>
-                  </details>
-                </div>
-                <div className="click-answer-block wide">
-                  <strong>{text("Work completed today *", "Werk vandaag afgerond *")}</strong>
-                  <div className="work-option-grid" aria-label={text("Choose completed work", "Kies afgerond werk")}>{constructionWorkOptions.map((option) => { const label = language === "en" ? option.en : option.nl; const active = String(workPerformed).split("; ").includes(label); return <button className={active ? "active" : ""} type="button" aria-pressed={active} onClick={() => toggleCloseoutWork("workPerformed", label)} key={option.en}>{active ? <Check size={14} /> : <Plus size={14} />}{label}</button>; })}</div>
-                </div>
-                {errors.workPerformed ? <small className="field-error wide">{errors.workPerformed.message}</small> : null}
-                <details className="optional-text-entry wide">
-                  <summary>{text("Other completed work", "Andere uitgevoerde werkzaamheden")}</summary>
-                  <label className="form-field"><span>{text("Other work", "Overig werk")}</span><textarea rows={4} {...register("workPerformed")} /><DictateButton onText={(transcript) => setValue("workPerformed", appendDictation(getValues("workPerformed") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label>
-                </details>
-              </div>
-            </section>
-          ) : null}
-
-          {step === 1 ? (
-            <section className="question-group">
-              <header><span className="question-group-icon"><ShieldCheck size={18} /></span><span><h3>{text("What was checked and were there deviations?", "Wat is gecontroleerd en waren er afwijkingen?")}</h3></span></header>
-              <div className="form-grid two-columns">
-                <label className="form-field"><span>{text("Inspections performed", "Inspecties uitgevoerd")}</span><select {...register("inspectionResult")}><option value="none">{text("No inspection", "Geen inspectie")}</option><option value="all_ok">{text("Performed · all passed", "Uitgevoerd · alles akkoord")}</option><option value="issues">{text("Performed · deviation found", "Uitgevoerd · afwijking gevonden")}</option></select></label>
-                <label className="form-field"><span>{text("Quality findings?", "Kwaliteitsbevindingen?")}</span><select {...register("qualityIssues")}><option value="no">{text("No", "Nee")}</option><option value="yes">{text("Yes", "Ja")}</option></select></label>
-                {qualityIssues === "yes" ? <div className="wide"><div className="quick-issue-presets" aria-label={text("Choose a quality finding", "Kies een kwaliteitsbevinding")}>{qualityDetailOptions.map((option) => <button type="button" onClick={() => setValue("qualityDetails", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div>{errors.qualityDetails ? <small className="field-error">{errors.qualityDetails.message}</small> : null}<details className="optional-text-entry"><summary>{text("Different quality finding", "Andere kwaliteitsbevinding")}</summary><label className="form-field"><span>{text("Location, finding and responsible party *", "Locatie, bevinding en verantwoordelijke *")}</span><textarea rows={4} {...register("qualityDetails")} /><DictateButton onText={(transcript) => setValue("qualityDetails", appendDictation(getValues("qualityDetails") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details></div> : null}
-                <label className="form-field"><span>{text("Safety event?", "Veiligheidsgebeurtenis?")}</span><select {...register("hseEvent")}><option value="none">{text("No incident / near miss", "Geen incident / near miss")}</option><option value="near_miss">Near miss</option><option value="incident">Incident</option></select></label>
-                {hseEvent !== "none" ? <div className="wide"><div className="quick-issue-presets" aria-label={text("Choose an HSE description", "Kies een HSE-omschrijving")}>{hseDetailOptions.map((option) => <button type="button" onClick={() => setValue("hseDetails", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div>{errors.hseDetails ? <small className="field-error">{errors.hseDetails.message}</small> : null}<details className="optional-text-entry"><summary>{text("Different HSE event", "Andere HSE-gebeurtenis")}</summary><label className="form-field"><span>{text("Event and immediate measure *", "Gebeurtenis en directe maatregel *")}</span><textarea rows={4} {...register("hseDetails")} /><DictateButton onText={(transcript) => setValue("hseDetails", appendDictation(getValues("hseDetails") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details></div> : null}
-              </div>
-              <div className="question-module-note"><AlertTriangle size={14} /></div>
-            </section>
-          ) : null}
-
-          {step === 2 ? (
-            <section className="question-group">
-              <header><span className="question-group-icon"><PackageCheck size={18} /></span><span><h3>{text("Which logistics, tests or delays affected the day?", "Welke logistiek, testen of vertraging speelden mee?")}</h3></span></header>
-              <div className="form-grid two-columns">
-                <div className="click-answer-block"><strong>{text("Equipment and status", "Materieel en status")}</strong><div className="quick-issue-presets">{equipmentOptions.map((option) => <button className={equipmentStatus === option ? "active" : ""} type="button" onClick={() => setValue("equipmentStatus", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Other equipment status", "Andere materieelstatus")}</summary><label className="form-field"><textarea rows={3} {...register("equipmentStatus")} /><DictateButton onText={(transcript) => setValue("equipmentStatus", appendDictation(getValues("equipmentStatus") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details></div>
-                <div className="click-answer-block"><strong>{text("Materials delivered", "Materialen geleverd")}</strong><div className="quick-issue-presets">{deliveryOptions.map((option) => <button className={deliveries === option ? "active" : ""} type="button" onClick={() => setValue("deliveries", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Other delivery detail", "Andere leveringsinformatie")}</summary><label className="form-field"><textarea rows={3} {...register("deliveries")} /><DictateButton onText={(transcript) => setValue("deliveries", appendDictation(getValues("deliveries") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details></div>
-                <div className="click-answer-block wide"><strong>{text("Tests and measurements", "Testen en meetwaarden")}</strong><div className="quick-issue-presets">{testOptions.map((option) => <button className={testsMeasurements === option ? "active" : ""} type="button" onClick={() => setValue("testsMeasurements", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Add a numeric test result", "Numerieke testwaarde toevoegen")}</summary><label className="form-field"><span>{text("Test name, value and unit", "Testnaam, waarde en eenheid")}</span><textarea rows={3} placeholder={text("Example: slump 90 mm", "Bijvoorbeeld: slump 90 mm")} {...register("testsMeasurements")} /><DictateButton onText={(transcript) => setValue("testsMeasurements", appendDictation(getValues("testsMeasurements") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details></div>
-                <label className="form-field"><span>{text("Variation work", "Meer- of minderwerk")}</span><select {...register("variationWork")}><option value="none">{text("Not applicable", "Niet van toepassing")}</option><option value="pending">{text("Pending", "In behandeling")}</option><option value="approved">{text("Approved", "Goedgekeurd")}</option><option value="rejected">{text("Rejected", "Afgewezen")}</option></select></label>
-                <label className="form-field"><span>{text("Was there a delay?", "Was er vertraging?")}</span><select {...register("delayCause")}><option value="none">{text("No delay", "Geen vertraging")}</option><option value="weather">{text("Weather", "Weer")}</option><option value="delivery">{text("Late delivery", "Levering te laat")}</option><option value="material">{text("Material shortage", "Materiaaltekort")}</option><option value="equipment">{text("Equipment failure", "Materieelstoring")}</option><option value="other">{text("Other cause", "Andere oorzaak")}</option></select></label>
-                {delayCause !== "none" ? <>
-                  <label className="form-field"><span>{text("Time lost", "Tijdverlies")}</span><span className="input-with-unit"><input type="number" min="0" max="24" step="0.25" {...register("delayHours", { valueAsNumber: true })} /><em>{text("hours", "uur")}</em></span>{errors.delayHours ? <small className="field-error">{errors.delayHours.message}</small> : null}</label>
-                  <label className="form-field wide"><span>{text("Reason for delay", "Reden van vertraging")}</span><textarea rows={3} {...register("delayReason")} />{errors.delayReason ? <small className="field-error">{errors.delayReason.message}</small> : null}</label>
-                  <label className="form-field"><span>{text("Responsible contractor company", "Verantwoordelijk aannemersbedrijf")}</span><input {...register("contractorCompany")} />{errors.contractorCompany ? <small className="field-error">{errors.contractorCompany.message}</small> : null}</label>
-                  <div className="wide">
-                    <SignatureField
-                      label={text("Required contractor signature", "Verplichte handtekening aannemer")}
-                      declaration={text("I acknowledge this delay and my responsibility for the affected work.", "Ik erken deze vertraging en mijn verantwoordelijkheid voor het betreffende werk.")}
-                      hint={text("Required because the contractor is responsible for the affected work.", "Verplicht omdat de aannemer verantwoordelijk is voor het betreffende werk.")}
-                      value={signatureFromDetails(contractorSignedBy, contractorSignedAt, contractorSignatureImage) as HandwrittenSignature | null}
-                      onChange={(signature) => {
-                        setValue("contractorSignedBy", signature?.name ?? "", { shouldDirty: true, shouldValidate: true });
-                        setValue("contractorSignedAt", signature?.signedAt ?? "", { shouldDirty: true, shouldValidate: true });
-                        setValue("contractorSignatureImage", signature?.image ?? "", { shouldDirty: true, shouldValidate: true });
-                      }}
-                    />
-                    {errors.contractorSignatureImage ? <small className="field-error">{errors.contractorSignatureImage.message}</small> : null}
-                  </div>
-                </> : null}
-              </div>
-            </section>
-          ) : null}
-
-          {step === 3 ? (
-            <section className="question-group">
-              <header><span className="question-group-icon"><CalendarDays size={18} /></span><span><h3>{text("What was agreed and what is planned for tomorrow?", "Wat is afgesproken en wat staat morgen gepland?")}</h3></span></header>
-              <div className="form-grid two-columns">
-                <div className="click-answer-block"><strong>{text("Communication and agreements", "Communicatie en gemaakte afspraken")}</strong><div className="quick-issue-presets">{communicationOptions.map((option) => <button className={communication === option ? "active" : ""} type="button" onClick={() => setValue("communication", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Other agreement", "Andere afspraak")}</summary><label className="form-field"><textarea rows={4} {...register("communication")} /><DictateButton onText={(transcript) => setValue("communication", appendDictation(getValues("communication") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details></div>
-                <div className="click-answer-block"><strong>{text("Open risks", "Open risico’s")}</strong><div className="quick-issue-presets">{openRiskOptions.map((option) => <button className={risks === option ? "active" : ""} type="button" onClick={() => setValue("risks", option, { shouldDirty: true, shouldValidate: true })} key={option}>{option}</button>)}</div><details className="optional-text-entry"><summary>{text("Other open risk", "Ander open risico")}</summary><label className="form-field"><textarea rows={4} {...register("risks")} /><DictateButton onText={(transcript) => setValue("risks", appendDictation(getValues("risks") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details></div>
-                <div className="work-option-grid wide" aria-label={text("Choose tomorrow's work", "Kies werkzaamheden voor morgen")}>{constructionWorkOptions.map((option) => { const label = language === "en" ? option.en : option.nl; const active = String(tomorrowPlan).split("; ").includes(label); return <button className={active ? "active" : ""} type="button" aria-pressed={active} onClick={() => toggleCloseoutWork("tomorrowPlan", label)} key={option.en}>{active ? <Check size={14} /> : <Plus size={14} />}{label}</button>; })}</div>
-                {errors.tomorrowPlan ? <small className="field-error wide">{errors.tomorrowPlan.message}</small> : null}
-                <details className="optional-text-entry wide"><summary>{text("Other work for tomorrow", "Andere werkzaamheden voor morgen")}</summary><label className="form-field"><textarea rows={4} {...register("tomorrowPlan")} /><DictateButton onText={(transcript) => setValue("tomorrowPlan", appendDictation(getValues("tomorrowPlan") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} /></label></details>
-                <label className="form-field"><span>{text("Number of photos today", "Aantal foto’s vandaag")}</span><input type="number" min="0" {...register("photoCount", { valueAsNumber: true })} /></label>
-                <label className="confirmation-check wide"><input type="checkbox" {...register("attachmentsConfirmed")} /><span><strong>{text("Attachments checked", "Bijlagen gecontroleerd")}</strong><small>{text("Inspection forms, certificates, tickets, drawings, NCRs and measurement reports were checked; missing items remain visible.", "Inspectieformulieren, certificaten, bonnen, tekeningen, NCR’s en meetrapporten zijn bekeken; ontbrekende stukken blijven zichtbaar.")}</small>{errors.attachmentsConfirmed ? <em className="field-error">{errors.attachmentsConfirmed.message}</em> : null}</span></label>
-              </div>
-            </section>
-          ) : null}
-
-          <div className="modal-actions daily-question-actions">
-            <div>
-              {step > 0 ? <button className="ghost-button" type="button" onClick={() => setStep((current) => current - 1)}><ArrowLeft size={14} /> {text("Previous", "Vorige")}</button> : null}
-              {step < 3 ? <button className="primary-button" type="button" onClick={nextStep}>{text("Next questions", "Volgende vragen")} <ArrowRight size={14} /></button> : <button className="primary-button" type="submit">{text("Confirm daily questions", "Dagvragen bevestigen")} <Check size={14} /></button>}
-            </div>
-          </div>
-        </form>
-      </section>
-    </div>
-  );
-}
-
 function ReportModal({
   close,
-  completedTodos,
   entries,
   attendanceTotal,
-  projectName,
   reportNumber,
   reportStatus,
   dailyCloseoutAnswers,
   buildings,
   startChecks,
   closeouts,
+  openDayLog,
+  openProjectStart,
   onDownload,
   onDownloadDocx,
   onSubmit,
 }: {
   close: () => void;
-  completedTodos: number[];
   entries: TimelineEntry[];
   attendanceTotal: number;
-  projectName: string;
   reportNumber: string;
   reportStatus: string;
   dailyCloseoutAnswers: DailyCloseoutAnswers | null;
   buildings: BuildingContext[];
   startChecks: Array<Record<string, unknown>>;
   closeouts: Array<Record<string, unknown>>;
+  /** The one form that completes the day closeout. */
+  openDayLog: () => void;
+  /** The start of the day: weather and working hours, for every building. */
+  openProjectStart: () => void;
   onDownload: () => void | Promise<void>;
   onDownloadDocx: () => void | Promise<void>;
   onSubmit: () => void | Promise<void>;
 }) {
   const { text } = useLanguage();
-  const hseComplete = completedTodos.includes(2) || Boolean(dailyCloseoutAnswers);
-  const tomorrowComplete = completedTodos.includes(3) || Boolean(dailyCloseoutAnswers?.tomorrowPlan);
   const buildingsMissing = buildings.filter((building) => !startChecks.some((row) => row.building_id === building.id) || !closeouts.some((row) => row.building_id === building.id));
+  // What is missing decides where "Complete" leads: the start of the day first, then the day log.
+  const startMissing = buildings.some((building) => !startChecks.some((row) => row.building_id === building.id));
+  // Only what can actually be missing is a check. The HSE check and tomorrow's plan used to
+  // stand here as two more rows for the same day log, and two rows were always green.
   const checks = [
-    { title: text("Project and report details", "Project- en rapportgegevens"), detail: "", complete: true },
-    { title: text("Attendance and activities", "Aanwezigheid en activiteiten"), detail: text(`${attendanceTotal} people and ${entries.length} daily records`, `${attendanceTotal} personen en ${entries.length} dagregistraties`), complete: true },
-    { title: text("Inspections and findings", "Inspecties en bevindingen"), detail: text(`${entries.filter((entry) => entry.kind === "inspection").length} inspections · ${entries.filter((entry) => entry.badgeTone === "red").length} critical record(s)`, `${entries.filter((entry) => entry.kind === "inspection").length} inspecties · ${entries.filter((entry) => entry.badgeTone === "red").length} kritieke registratie(s)`), complete: true },
-    { title: text("Daily questions in the client format", "Dagvragen volgens klantformat"), detail: dailyCloseoutAnswers ? text("Confirmed", "Bevestigd") : text("Not completed yet", "Nog niet ingevuld"), complete: Boolean(dailyCloseoutAnswers) },
-    { title: text("Daily HSE check", "HSE-dagcheck"), detail: hseComplete ? text("Completed", "Ingevuld") : text("3 checkpoints are still missing", "Nog 3 controlepunten ontbreken"), complete: hseComplete },
-    { title: text("Tomorrow's plan", "Planning voor morgen"), detail: tomorrowComplete ? text("Confirmed", "Bevestigd") : text("Not completed yet", "Nog niet ingevuld"), complete: tomorrowComplete },
-    { title: text("Start check and closeout for every building", "Projectstart en dagafsluiting per gebouw"), detail: buildingsMissing.length === 0 ? text("All buildings", "Alle gebouwen") : text(`Still missing for: ${buildingsMissing.map((building) => building.name).join(", ")}`, `Nog niet compleet voor: ${buildingsMissing.map((building) => building.name).join(", ")}`), complete: buildingsMissing.length === 0 },
+    {
+      title: text("Day log", "Daglog"),
+      detail: !dailyCloseoutAnswers
+        ? text("Not completed yet", "Nog niet ingevuld")
+        : dailyCloseoutAnswers.tomorrowPlan
+          ? text("Confirmed", "Bevestigd")
+          : text("Plan for tomorrow missing", "Planning voor morgen ontbreekt"),
+      complete: Boolean(dailyCloseoutAnswers?.tomorrowPlan),
+      open: openDayLog,
+    },
+    {
+      title: text("Start check and closeout for every building", "Projectstart en dagafsluiting per gebouw"),
+      detail: buildingsMissing.length === 0 ? text("All buildings", "Alle gebouwen") : text(`Still missing for: ${buildingsMissing.map((building) => building.name).join(", ")}`, `Nog niet compleet voor: ${buildingsMissing.map((building) => building.name).join(", ")}`),
+      complete: buildingsMissing.length === 0,
+      open: (startMissing ? openProjectStart : openDayLog) as (() => void) | undefined,
+    },
   ];
   const missing = checks.filter((check) => !check.complete).length;
   const submitted = ["ready_for_review", "in_review", "approved"].includes(reportStatus);
@@ -5041,13 +3532,18 @@ function ReportModal({
               <div className="report-check-row" key={check.title}>
                 <span className={`report-check-state ${check.complete ? "complete" : "missing"}`}>{check.complete ? <Check size={15} /> : <AlertTriangle size={15} />}</span>
                 <span className="report-check-copy"><strong>{check.title}</strong><span>{check.detail}</span></span>
-                <span className="report-check-label">{check.complete ? text("Complete", "Compleet") : text("Complete item", "Aanvullen")}</span>
+                {check.complete || !check.open
+                  ? <span className="report-check-label">{check.complete ? text("Complete", "Compleet") : text("Missing", "Ontbreekt")}</span>
+                  : <button className="ghost-button" type="button" onClick={check.open}>{text("Complete", "Aanvullen")}</button>}
               </div>
             ))}
           </div>
+          {/* What the report will say, as recorded. This used to be an editable box whose text
+              was never saved anywhere. */}
           <div className="report-summary-box">
-            <label htmlFor="summary">{text("Proposed daily summary", "Voorgestelde dagsamenvatting")}</label>
-            <textarea id="summary" defaultValue={dailyCloseoutAnswers?.daySummary ?? text(`${attendanceTotal} people were present at project ${projectName}. ${entries.length} central daily records were captured.`, `Er waren ${attendanceTotal} personen aanwezig op project ${projectName}. Er zijn ${entries.length} centrale dagregistraties vastgelegd.`)} />
+            <strong>{text("In this report", "In dit rapport")}</strong>
+            <p>{text(`${attendanceTotal} ${attendanceTotal === 1 ? "person" : "people"} · ${entries.length} daily records · ${entries.filter((entry) => entry.kind === "inspection").length} inspections · ${entries.filter((entry) => entry.badgeTone === "red").length} critical`, `${attendanceTotal} ${attendanceTotal === 1 ? "persoon" : "personen"} · ${entries.length} dagregistraties · ${entries.filter((entry) => entry.kind === "inspection").length} inspecties · ${entries.filter((entry) => entry.badgeTone === "red").length} kritiek`)}</p>
+            {dailyCloseoutAnswers?.daySummary ? <p>{dailyCloseoutAnswers.daySummary}</p> : null}
           </div>
           <div className="modal-actions">
             <span style={{ color: missing ? "var(--yellow)" : "var(--green)", fontSize: 11, fontWeight: 680 }}>{missing ? text(`${missing} item(s) still need completion`, `${missing} onderdeel${missing > 1 ? "en" : ""} nog aanvullen`) : text("All checks passed", "Alle controles geslaagd")}</span>

@@ -187,18 +187,20 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(await readFile(new URL("../app/dialog-manager.tsx", import.meta.url), "utf8"), /inert/);
   assert.match(app, /aria-live=/);
   assert.match(app, /timeZone: "America\/Paramaribo"/);
-  assert.match(app, /greetingForSuriname/);
-  assert.match(app, /Good afternoon|Goedemiddag/);
-  assert.match(app, /setInterval\(\(\) => setClock\(new Date\(\)\), 60_000\)/);
   assert.match(app, /WorkspaceStage/);
   assert.match(app, /Werkdag starten/);
-  assert.match(app, /<WorkforceModal/);
-  assert.match(app, /Hoe is het project vandaag gegaan\?/);
-  assert.match(app, /Actual weather · automatic|Werkelijk weer · automatisch/);
-  assert.match(app, /Triggered by|Geactiveerd door/);
-  assert.match(app, /Dagvragen bevestigen/);
-  assert.match(app, /useForm<DailyCloseoutAnswers>/);
-  assert.match(app, /zodResolver\(localizedDailyCloseoutSchema\)/);
+  // Workforce and the day log are workspace pages now, not pop-ups.
+  assert.match(app, /<WorkforceForm/);
+  assert.doesNotMatch(app, /WorkforceModal|DailyLogModal/);
+  // The overview is the client dashboard. The older greeting dashboard and the secondary
+  // module screens were unreachable from every route and have been removed.
+  assert.match(app, /<ClientDashboard/);
+  assert.doesNotMatch(app, /function TodayView|function SecondaryView/);
+  // The day closeout has one form, the day log. The four-step "daily questions" form wrote
+  // the same record a second time and is gone.
+  assert.match(app, /<DailyLogForm/);
+  assert.doesNotMatch(app, /function DailyQuestionsModal/);
+  assert.doesNotMatch(app, /setModal\("daily_questions"\)/);
   assert.match(app, /setEntries/);
   assert.match(app, /signInWithPassword/);
   assert.doesNotMatch(app, /\.auth\.signUp\(/);
@@ -296,7 +298,9 @@ test("keeps standard photo and validated 360 camera annotation production paths"
   assert.match(workspace, /yaw/);
   assert.match(workspace, /createVisualAnnotationFinding/);
   assert.match(app, /type === "photo"/);
-  assert.match(app, /openWorkspaceModule\("visual"\)/);
+  // The camera button lands in the photo library, the same place as the Photos tile's own
+  // camera, where several photos wait side by side instead of replacing each other.
+  assert.match(app, /openWorkspaceModule\("files"\)/);
   assert.match(operations, /create_visual_annotation_finding/);
   assert.match(migration, /create table public\.visual_captures/);
   assert.match(migration, /create table public\.visual_annotations/);
@@ -349,9 +353,9 @@ test("implements the handwritten client PDF as required workflows without AI or 
   assert.match(app, /project\.openIssues/);
   assert.match(app, /project\.issueCount/);
   assert.match(await readFile(new URL("../lib/forms/disciplines.ts", import.meta.url), "utf8"), /Timmerlieden/);
-  assert.match(app, /Beton en wapening/);
-  assert.match(app, /Werk lopend aan het einde van de dag/);
-  assert.match(app, /Werk vandaag afgerond/);
+  // Work ongoing and work completed are asked in the day log, the one closeout form.
+  assert.match(await readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"), /Beton en wapening/);
+  assert.match(await readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"), /Werk vandaag afgerond/);
   assert.match(dataLayer, /work_ongoing/);
   assert.match(operationalWorkspace, /Upload contract, technische specificatie of bijlage/);
   assert.match(operationalWorkspace, /uploadProjectFile/);
@@ -625,12 +629,14 @@ test("implements the customer video workflows without external accounts", async 
   ]);
 
   // The one-tap workforce counter was replaced by the client's own daily log format.
-  assert.match(app, /DailyLogModal/);
+  assert.match(app, /DailyLogForm/);
   assert.match(dailyLog, /Construction activity & location|Bouwactiviteit & locatie/);
   assert.match(dailyLog, /QC performed & advice|QC uitgevoerd & advies/);
   assert.match(dailyLog, /Health & safety issues|Gezondheid & veiligheid/);
   assert.match(dailyLog, /General advice to the contractor|Algemeen advies aan de aannemer/);
-  assert.match(dailyLog, /<WorkforceRegister/);
+  // The crew is counted in the Workforce register only; the day log shows the count.
+  assert.match(dailyLog, /attendanceTotal/);
+  assert.doesNotMatch(dailyLog, /<WorkforceRegister/);
   assert.match(dailyLog, /DictateButton/);
   assert.match(operations, /Create issue", "Issue registreren/);
   assert.match(operations, /findingGroup/);
@@ -647,7 +653,7 @@ test("implements the customer video workflows without external accounts", async 
   assert.match(storageUploadRoute, /allowOverwrite: repeatedReservation/);
   assert.match(media, /flaky connection must never prevent the local evidence copy/);
   assert.match(media, /Remove this unsynchronized field file/);
-  assert.match(app, /Photo ready\. Save it, then tap the image to place a finding/);
+  assert.match(app, /Photo added\. Describe it and save\./);
   assert.match(app, /syncOfflineUploads/);
   assert.match(sharePage, /ExternalShareActions/);
   assert.match(shareActions, /ready_for_verification/);
@@ -678,7 +684,6 @@ test("minimizes repetitive field typing with controlled quick choices", async ()
   assert.match(app, /Choose a standard action|Kies een standaardactie/);
   assert.match(app, /actionDeadlineFromToday/);
   assert.match(app, /Choose a standard status note|Kies een standaard statusnotitie/);
-  assert.match(app, /Choose a daily summary|Kies een dagsamenvatting/);
   assert.match(operations, /Choose a standard HSE record|Kies een standaard HSE-registratie/);
   assert.match(operations, /Choose a standard register item|Kies een standaard registeritem/);
   assert.match(operations, /Choose the completed measure|Kies de uitgevoerde maatregel/);
@@ -984,22 +989,15 @@ test("processes the five annotated field screens from 31 July", async () => {
   // Only a language picked in the switcher counts; devices that never chose open in Dutch.
   assert.match(i18n, /const chosenLanguageKey = "codeco-language-choice"/);
   assert.match(i18n, /chosen === "en" \|\| chosen === "nl" \? chosen : "nl"/);
-  assert.match(app, /descriptionSuggested/);
-  assert.match(app, /if \(descriptionSuggested\) event\.currentTarget\.select\(\)/);
-  assert.match(app, /field-clear-button/);
-  assert.match(app, /BuildingMultiPicker/);
+  // The loose field-record form these screens described is gone: it filed works and delays
+  // as a registration that never showed up in the works lists. Its parts live on in the day
+  // log (several buildings, the camera inside the form) and in the workspace modules.
+  assert.doesNotMatch(app, /function EntryModal|function QuickAddModal/);
+  assert.match(dailyLog, /BuildingMultiPicker/);
   assert.match(picker, /export function BuildingMultiPicker/);
-  assert.match(app, /workPackageOptions/);
-  assert.match(app, /Piling and foundations/);
-  // The field is named after what it holds — the client's own word is PDF.
-  assert.match(app, /Location on the PDF drawing|Locatie op de PDF-tekening/);
-  assert.match(app, /project-drawings/);
-  assert.match(app, /ref=\{cameraInputRef\}[^>]*capture="environment"/);
-  // A photo in a record still shows up under it, now through the shared photo block that
-  // also carries the photo's own words.
-  assert.match(app, /<PhotoEvidenceList/);
+  assert.match(dailyLog, /capture="environment"/);
+  assert.match(dailyLog, /<PhotoEvidenceList/);
   assert.doesNotMatch(app, /openPhoto=\{\(\) => chooseType\("photo"\)\}/);
-  assert.match(app, /recordType: "registration"/);
   assert.match(queue, /"inspection" \| "hse" \| "registration"/);
   assert.match(queue, /ensureVisualCapture/);
 
@@ -1034,7 +1032,6 @@ test("processes the second batch of annotated screens from 31 July", async () =>
   // fixed counter row for every project party.
   assert.match(dailyLog, /BuildingMultiPicker/);
   assert.match(dailyLog, /buildingIds: string\[\]/);
-  assert.match(dailyLog, /<WorkforceRegister/);
   assert.match(app, /for \(const logBuildingId of targetBuildingIds\)/);
   assert.doesNotMatch(app, /Quick workforce entry or the complete client log/);
   assert.match(picker, /export function BuildingMultiPicker/);
@@ -1172,22 +1169,10 @@ test("fixes what the client saw on the deployed build", async () => {
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
 
-  // Dictation replaces the proposed text once and then keeps adding to what was said.
-  // The decision is read from a ref because speech callbacks keep an older closure.
-  assert.match(app, /const dictateDescription = \(transcript: string\) => \{/);
-  assert.match(app, /descriptionSuggestedRef/);
-  assert.match(app, /setDescription\(\(current\) => appendDictation\(replacing \? "" : current, transcript\)\)/);
-  assert.match(app, /<DictateButton onText=\{dictateDescription\} \/>/);
-
-  // Clear sits in the label row, so it no longer stretches across the field and collides
-  // with the dictate button anchored to the bottom of that field.
-  assert.match(app, /field-label-row/);
-  assert.match(styles, /\.field-label-row \{[\s\S]*?display: flex/);
-  assert.match(styles, /\.field-clear-button \{[\s\S]*?justify-self: start/);
-
-  // Opening a drawing parks the record and offers the way back.
-  assert.match(app, /entryDraftParked/);
-  assert.match(app, /Back to the record|Terug naar de registratie/);
+  // The field-record form and its parked-record bar are gone with the form itself. The
+  // bar now offers back a camera photo that was taken but never saved.
+  assert.doesNotMatch(app, /entryDraftParked/);
+  assert.match(app, /Back to the photo|Terug naar de foto/);
   assert.match(styles, /\.entry-resume-bar/);
 
   // A device that never picked a language opens in Dutch, also after using the app before.
@@ -1196,9 +1181,9 @@ test("fixes what the client saw on the deployed build", async () => {
   // Sketching by hand, saved as a photo along the existing evidence road.
   assert.match(sketch, /export function SketchPad/);
   assert.match(sketch, /image\/png/);
-  // The sketch stays where a sketch is made on site — inside a field record. The client
-  // crossed it off the register form on 5 August.
-  assert.match(app, /Make a sketch|Schets maken/);
+  // The sketch stays where a sketch is made on site — inside the day log, next to the
+  // photos. The client crossed it off the register form on 5 August.
+  assert.match(await readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"), /Make a sketch|Schets maken/);
   assert.doesNotMatch(workspace, /Make a sketch|Schets maken/);
   assert.match(styles, /\.sketch-canvas/);
 });
@@ -1614,10 +1599,12 @@ test("opens and works as an installed app with or without internet", async () =>
   // Every project read has a copy on the device, including the smaller ones that used to
   // leave the app with empty pickers and default settings when opened offline.
   assert.match(queryCache, /export async function loadWithOfflineCache/);
-  for (const key of ["projectConfiguration", "projectLocations", "projectDrawings", "projectNotifications", "internalAccess"]) {
+  for (const key of ["projectConfiguration", "projectLocations", "projectNotifications", "internalAccess"]) {
     assert.match(app, new RegExp(`offlineQueryKeys\\.${key}\\(`), `${key} must fall back to the offline copy`);
     assert.match(fullSync, new RegExp(`offlineQueryKeys\\.${key}\\(`), `${key} must be filled in by the full sync`);
   }
+  // The drawings list is read by the drawing screen itself; the full sync still fills it.
+  assert.match(fullSync, /offlineQueryKeys\.projectDrawings\(/);
 
   // Everything the account can read, on the device on purpose, before leaving.
   assert.match(fullSync, /export async function syncEverythingForOffline/);
@@ -1632,7 +1619,8 @@ test("opens and works as an installed app with or without internet", async () =>
 
   // Evidence is private and travels with a token, so it is stored by the app itself
   // instead of in the service worker cache, and read from there when the network fails.
-  assert.match(idb, /const databaseVersion = 4/);
+  assert.match(idb, /const databaseVersion = 5/);
+  assert.match(idb, /createObjectStore\("drafts"/);
   assert.match(idb, /createObjectStore\("drawingPins"/);
   assert.match(idb, /createObjectStore\("files"/);
   assert.match(fileCache, /export async function cacheProjectFile/);
@@ -1918,19 +1906,22 @@ test("sends the workforce overview tile to its browse screen and keeps quick att
   // is what "Attendance by contractor and trade" had been landing on.
   assert.match(workspaceHome, /id: "workforce"[\s\S]{0,300}action: openWorkforce/);
   assert.doesNotMatch(workspaceHome, /id: "workforce"[\s\S]{0,300}openTask\("daily", false\)/);
-  assert.match(app, /if \(type === "workforce"\) \{[\s\S]{0,320}setModal\("attendance"\)/);
-  assert.doesNotMatch(app, /if \(type === "workforce"\) \{[\s\S]{0,320}setModal\("one_tap_log"\)/);
+  // It is a workspace page with its form, like every other record module — not a pop-up.
+  const workspace = await readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8");
+  assert.match(workspace, /openWorkforce=\{\(\) => switchTab\("workforce"\)\}/);
+  assert.match(workspace, /tab === "workforce" \? \(/);
+  assert.doesNotMatch(app, /setModal\("attendance"\)|setModal\("one_tap_log"\)/);
 
   // Counting the crew is often the first thing done on site, so it starts the day report
   // itself instead of refusing until one exists.
-  const attendanceModal = app.slice(app.indexOf('modal === "attendance"'), app.indexOf('modal === "one_tap_log"'));
+  const attendanceModal = app.slice(app.indexOf("renderWorkforce: ("), app.indexOf("<ProjectPermissionsProvider value"));
   assert.match(attendanceModal, /dayQuery\.data\?\.report \?\? await createOrGetReport/);
   assert.doesNotMatch(attendanceModal, /Start eerst het centrale dagrapport/);
 
-  // Answering the day's questions has the same dead end behind it, and the same fix.
-  const dailyQuestionsModal = app.slice(app.indexOf('modal === "daily_questions"'), app.indexOf('modal === "project_start"'));
-  assert.match(dailyQuestionsModal, /dayQuery\.data\?\.report \?\? await createOrGetReport/);
-  assert.doesNotMatch(dailyQuestionsModal, /Start eerst het centrale dagrapport/);
+  // Writing the day log has the same dead end behind it, and the same fix.
+  const dayLogModal = app.slice(app.indexOf("renderDayLog: ("), app.indexOf("renderWorkforce: ("));
+  assert.match(dayLogModal, /dayQuery\.data\?\.report \?\? await createOrGetReport/);
+  assert.doesNotMatch(dayLogModal, /Start eerst het centrale dagrapport/);
 
   // Every confirmation the supervisor sees speaks the language the app is set to. These were
   // Dutch-only while the client runs the app in English.
@@ -1957,9 +1948,15 @@ test("gives the workforce screen the full register, not a counter per party", as
   assert.match(register, /workforce-headline/);
   assert.match(register, /No project parties configured yet|Nog geen projectpartijen ingericht/);
 
-  // One register for both screens, so the standalone one can never fall behind again.
-  assert.match(app, /<WorkforceModal/);
-  assert.match(dailyLog, /<WorkforceRegister/);
+  // One register, on the Workforce page itself.
+  assert.match(app, /<WorkforceForm/);
+  // One register, one place to write it. The day log used to count the crew again and its
+  // save overwrote the crew, notes and signature written in the Workforce register.
+  assert.doesNotMatch(dailyLog, /<WorkforceRegister/);
+  const dayLogSave = app.slice(app.indexOf("renderDayLog: ("), app.indexOf("renderWorkforce: ("));
+  assert.ok(dayLogSave.length > 500, "the day log renderer must be found");
+  assert.doesNotMatch(dayLogSave, /saveAttendance\(/);
+  assert.match(dayLogSave, /openWorkforce=\{openWorkforce\}/);
   assert.doesNotMatch(app, /function AttendanceModal/);
 
   // "Copy previous workday" was a button that always reported there was nothing.
@@ -2044,14 +2041,13 @@ test("processes the annotated screens of 4 August: ordered photos, a named pin, 
   assert.match(drawings, /drawing-pin-legend/);
   assert.match(drawings, /registration: "amber"/);
   assert.match(styles, /\.drawing-pin-code/);
-  assert.match(app, /linkedRecordType: "registration"/);
   assert.match(operations, /pendingRecord=\{pendingRecordPin\}/);
 
-  // #20: the record screen says which part of the day it belongs to.
-  assert.match(app, /What are you recording\?|Waar ben je mee bezig\?/);
-  assert.match(app, /const chooseActivityKind = \(kind: DailyActivityKind\)/);
-  assert.match(app, /const activityNote = activityKindLabel\(entryActivityKind\)/);
-  assert.match(styles, /\.entry-activity-kind/);
+  // #20 asked the field record to say which part of the day it belonged to. Works ongoing,
+  // works completed and delays now have their own page — the day log, opened on that block —
+  // so the field record that asked it is gone.
+  assert.doesNotMatch(app, /chooseActivityKind|activityKindLabel/);
+  assert.match(operations, /setDayLogFocus\(view === "day" \? undefined : view === "delays" \? "delay" : view\)/);
 
   // #23 and #23A: the issue form is the client's own form. No preset problems, no B1
   // catalog, the type is safety / quality / equipment / materials / schedule /
@@ -2077,8 +2073,8 @@ test("processes the annotated screens of 4 August: ordered photos, a named pin, 
   // The issue form is signed too: the client wrote "signature" beside it.
   assert.match(operations, /Sign as the supervisor who reports this issue|Ondertekenen als supervisor die dit issue meldt/);
 
-  // #21: Workforce counts people per contractor and per trade, on its own screen.
-  assert.match(app, /if \(type === "workforce"\) \{[\s\S]{0,320}setModal\("attendance"\)/);
+  // #21: Workforce counts people per contractor and per trade, on its own page.
+  assert.match(app, /renderWorkforce: \(\{ close \}\) =>/);
 });
 
 test("covers section 4.3 of the product plan on the workforce screen", async () => {
@@ -2186,9 +2182,9 @@ test("processes the annotated screens of 5 August: one building field, a signed 
   assert.doesNotMatch(operations, /sketch-open-button/);
   assert.match(styles, /\.register-line \{/);
 
-  // #22: the client calls it a PDF, so the field does too.
-  assert.match(app, /Location on the PDF drawing|Locatie op de PDF-tekening/);
-  assert.match(app, /No PDF selected|Geen PDF gekozen/);
+  // #22 named the drawing field on the field-record form, which is gone with that form; a
+  // photo still picks its spot on the PDF drawing in the photo workspace.
+  assert.doesNotMatch(app, /function EntryModal/);
 });
 
 test("builds the HSE observation / issue screen the client sent, section by section", async () => {
@@ -2756,8 +2752,8 @@ test("every workspace button opens the record it names", async () => {
 
   // Workforce is the register of §4.3, not the day's work list.
   assert.match(workspaceHome, /action: openWorkforce/);
-  assert.match(workspace, /openWorkforce=\{\(\) => openDailyRecord\("workforce"\)\}/);
-  assert.match(app, /if \(type === "workforce"\)[\s\S]{0,320}setModal\("attendance"\)/);
+  assert.match(workspace, /openWorkforce=\{\(\) => switchTab\("workforce"\)\}/);
+  assert.match(app, /renderWorkforce: \(\{ close \}\) =>/);
 
   // A tile that names a register opens that register, not the last type chosen.
   assert.match(workspace, /if \(preset\?\.registerType\)/);
@@ -2765,12 +2761,11 @@ test("every workspace button opens the record it names", async () => {
   assert.match(workspace, /if \(preset\?\.hseEventType\)/);
   assert.match(workspaceHome, /hseEventType: "incident"/);
 
-  // Works and delays are read from the day closeout, so they are written there too. The
-  // record button used to write an activity registration, which never appeared in the
-  // list it was pressed from.
-  assert.match(app, /setDailyLogFocus\(type === "works_completed" \? "works_completed" : "works_ongoing"\)/);
-  assert.match(app, /setDailyLogFocus\("delay"\)/);
-  assert.doesNotMatch(app, /setEntryActivityKind\(type\)/);
+  // Works and delays are read from the day closeout, so they are written there too: the
+  // tile opens the day log on its own block. Writing an activity registration never
+  // appeared in the list it was pressed from.
+  assert.match(workspace, /setDayLogFocus\(view === "day" \? undefined : view === "delays" \? "delay" : view\)/);
+  assert.doesNotMatch(app, /setEntryActivityKind/);
   assert.match(dailyLog, /focus\?: "delay" \| "works_ongoing" \| "works_completed"/);
 
   // Works ongoing and works completed are two fields of one day closeout, opened on their
@@ -2870,8 +2865,10 @@ test("the photo screen has no folders, and nothing sends the user to a screen th
     assert.doesNotMatch(source, /Foto(?:'|’)s & mappen/, `${name} names a screen that does not exist`);
   }
 
-  // A focused day log belongs to the button that opened it and never outlives it.
-  assert.match(app, /close=\{\(\) => \{ setDailyLogFocus\(undefined\); setModal\(null\); \}\}/);
+  // A focused day log belongs to the tile that opened it and never outlives it: the tile
+  // sets the focus, and a whole-day request clears it.
+  assert.match(workspace, /const openDailyWork = \(view: DailyWorkView \| "day"\)/);
+  assert.match(workspace, /focus: dayLogFocus/);
 });
 
 test("closing an NCR asks for the Quality Control / Verification signature the client's own form requires", async () => {
@@ -3208,7 +3205,8 @@ test("calls each form what the client's own paper calls it, in one place", async
   // workspace tile called it Issues, and punch_list is a register of its own.
   assert.doesNotMatch(app, /label: "Punchlist"/);
   assert.doesNotMatch(app, /<strong>Punchlist<\/strong>/);
-  assert.match(app, /\{ id: "punchlist", label: "Issues", icon: CheckCircle2 \}/);
+  // The bar no longer repeats the Issues module at all: the workspace tile is its way in.
+  assert.doesNotMatch(app, /\{ id: "punchlist", label:/);
   assert.match(app, /punchlist: "Issues",/);
   assert.match(workspace, /punch_list: "Punch list"/);
 });
@@ -3269,12 +3267,10 @@ test("lets a supervisor switch project from anywhere without carrying data acros
   for (const cleared of [
     /setEntries\(\[\]\)/,
     /setAttendance\(\[\]\)/,
-    /setCompletedTodos\(\[\]\)/,
     /setProjectStartAnswers\(null\)/,
     /setDailyCloseoutAnswers\(null\)/,
     /setSelectedAction\(null\)/,
     /setPendingQuickPhotos\(\[\]\)/,
-    /setEntryPhotos\(\[\]\)/,
     /setFocusRecordId\(""\)/,
   ]) {
     assert.match(normalizedApp, cleared);

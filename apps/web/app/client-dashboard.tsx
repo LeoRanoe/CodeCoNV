@@ -456,7 +456,7 @@ export function ClientDashboard({
           {/* The day in its order: start it, answer the day's questions, check the report.
               The built-in guide and the report screen both point here. */}
           {canWriteDay && !dayStarted && openProjectStart ? <button className="overview-icon-button" type="button" aria-label={text("Start today", "Werkdag starten")} title={text("Start today", "Werkdag starten")} onClick={openProjectStart}><CloudSun size={17} /></button> : null}
-          {canWriteDay ? <button className="overview-icon-button" type="button" aria-label={text("Daily questions", "Dagvragen")} title={text("Daily questions", "Dagvragen")} onClick={openDailyQuestions}><CalendarDays size={17} /></button> : null}
+          {canWriteDay ? <button className="overview-icon-button" type="button" aria-label={text("Day log", "Daglog")} title={text("Day log", "Daglog")} onClick={openDailyQuestions}><CalendarDays size={17} /></button> : null}
           {canWriteDay && openReportCheck ? <button className="overview-icon-button" type="button" aria-label={text("Check report", "Rapport controleren")} title={text("Check report", "Rapport controleren")} onClick={openReportCheck}><FileCheck2 size={17} /></button> : null}
           {/* This screen reads the day; it does not write it. Recording a photo or a field
               record has its own button in the bar at the bottom, on every screen. */}

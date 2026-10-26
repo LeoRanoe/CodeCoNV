@@ -5,9 +5,11 @@ const databaseName = "codeco-field-v1";
 // that was made available offline still shows its evidence without a connection.
 // v3 adds "records": field registrations written without a connection, waiting to be sent.
 // v4 adds normalized drawing-pin mutations. They are tiny, ordered and safe to replay.
-const databaseVersion = 4;
+// v5 adds "drafts": half-filled forms and the photos taken in them, so a back press, a reload
+// or a phone that drops the tab while the camera is open does not throw the work away.
+const databaseVersion = 5;
 
-export type OfflineStore = "uploads" | "snapshots" | "settings" | "files" | "records" | "drawingPins";
+export type OfflineStore = "uploads" | "snapshots" | "settings" | "files" | "records" | "drawingPins" | "drafts";
 
 /**
  * Work written on this device that exists nowhere else yet. Each item belongs to the person
@@ -15,7 +17,7 @@ export type OfflineStore = "uploads" | "snapshots" | "settings" | "files" | "rec
  * own identity. Files also carry an owner to reject late downloads. The readable project copy is
  * removed whenever the device changes hands (see account-isolation.ts).
  */
-export const userOwnedStores: readonly OfflineStore[] = ["uploads", "records", "drawingPins"];
+export const userOwnedStores: readonly OfflineStore[] = ["uploads", "records", "drawingPins", "drafts"];
 const ownedStores = new Set<OfflineStore>([...userOwnedStores, "files"]);
 
 let activeUserId: string | null = null;
@@ -57,6 +59,7 @@ function openDatabase() {
       if (!database.objectStoreNames.contains("files")) database.createObjectStore("files", { keyPath: "id" });
       if (!database.objectStoreNames.contains("records")) database.createObjectStore("records", { keyPath: "id" });
       if (!database.objectStoreNames.contains("drawingPins")) database.createObjectStore("drawingPins", { keyPath: "id" });
+      if (!database.objectStoreNames.contains("drafts")) database.createObjectStore("drafts", { keyPath: "id" });
     };
     request.onsuccess = () => {
       clearTimeout(timer);

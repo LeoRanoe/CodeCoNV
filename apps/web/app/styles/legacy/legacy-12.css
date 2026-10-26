@@ -60,8 +60,9 @@
  * back to scrolling, on a phone. Tablet and desktop are untouched.
  */
 /* The daily log opens on the record that was asked for. The closeout holds the works and
-   the delay alike, so both are this one screen; only the order of its blocks changes, and
-   the block in question is marked so it reads as the subject rather than a stop on a list. */
+   the delay alike, so both are this one form; the block in question comes first and is
+   numbered 1, so it needs no colour of its own — it looks like every other form section. */
+.daily-log-body { display: grid; gap: var(--space-4); }
 .daily-log-body.focus-delay,
 .daily-log-body.focus-works { display: flex; flex-direction: column; }
 .daily-log-body.focus-delay > *,
@@ -70,7 +71,6 @@
 .daily-log-body.focus-works > .daily-log-works { order: 1; }
 .daily-log-body.focus-delay > .daily-log-delay,
 .daily-log-body.focus-works > .daily-log-works {
-  border: 1px solid var(--green, var(--green));
   box-shadow: none;
 }
 
@@ -80,7 +80,6 @@
    that was asked for now stands alone and the other folds away below it. */
 .daily-log-body.focus-ongoing .daily-log-field-ongoing textarea,
 .daily-log-body.focus-completed .daily-log-field-completed textarea {
-  border-color: var(--green, var(--green));
   box-shadow: none;
 }
 
@@ -100,7 +99,7 @@
 }
 
 .daily-log-secondary > summary::-webkit-details-marker { display: none; }
-.daily-log-secondary > summary::before { content: "+ "; color: var(--green); font-weight: var(--weight-bold); }
+.daily-log-secondary > summary::before { content: "+ "; color: var(--ink-600); font-weight: var(--weight-bold); }
 .daily-log-secondary[open] > summary::before { content: "− "; }
 .daily-log-secondary[open] { border-style: solid; padding-bottom: var(--space-3); }
 

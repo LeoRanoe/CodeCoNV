@@ -200,12 +200,9 @@ test("desktop workspace exposes every client module through a working destinatio
   await expect(page.getByRole("heading", { name: "Rapid Verify", exact: true })).toBeVisible();
   await openWorkspace();
 
-  await page.locator(".workspace-support-strip").getByRole("button", { name: "Reports", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Client reports", exact: true })).toBeVisible();
-  await openWorkspace();
-
-  await page.locator(".workspace-support-strip").getByRole("button", { name: /Submissions & management/ }).click();
-  await expect(page.getByRole("heading", { name: "Management overview", exact: true })).toBeVisible();
+  // Reports and Management are in the main navigation and are not repeated on the strip.
+  await expect(page.locator(".workspace-support-strip").getByRole("button", { name: "Reports", exact: true })).toHaveCount(0);
+  await expect(page.locator(".workspace-support-strip").getByRole("button", { name: /Submissions & management/ })).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
 });
 

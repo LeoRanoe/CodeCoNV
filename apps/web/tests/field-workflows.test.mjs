@@ -330,13 +330,16 @@ test("gives every attached photo one written field and location without a direct
   assert.match(evidence, /\{text\("Building", "Gebouw"\)\}/);
 
   // One photo block for every module; the client asked for one way of working, not five.
-  for (const [name, source] of [["entry record", entry], ["daily log", dailyLog], ["issues, inspections, HSE and register", operations], ["photo library", media]]) {
+  for (const [name, source] of [["daily log", dailyLog], ["issues, inspections, HSE and register", operations], ["photo library", media]]) {
     assert.match(source, /<PhotoEvidenceList/, `${name} must use the shared photo block`);
     assert.match(source, /toPhotoEvidence\(/, `${name} must wrap a taken photo so it carries its own words`);
   }
   assert.equal(operations.match(/<PhotoEvidenceList/g)?.length, 5);
   // The old one-off stacks are gone rather than left behind next to the shared block.
   assert.doesNotMatch(operations, /FindingPhotoStack/);
+  // The loose field-record form (and its photo strip) is gone: works, delays and photos each
+  // have their own workspace page.
+  assert.doesNotMatch(entry, /function EntryModal/);
   assert.doesNotMatch(entry, /entry-photo-strip/);
   assert.doesNotMatch(dailyLog, /daily-log-photo-list/);
 
@@ -362,7 +365,7 @@ test("gives every attached photo one written field and location without a direct
 });
 
 test("offers marking on the photo everywhere a photo can be attached", async () => {
-  const [markup, evidencePad, entry, dailyLog, operations, media, visual, css] = await Promise.all([
+  const [markup, evidencePad, , dailyLog, operations, media, visual, css] = await Promise.all([
     readFile(new URL("../app/photo-markup.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/photo-evidence.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8"),
@@ -376,7 +379,7 @@ test("offers marking on the photo everywhere a photo can be attached", async () 
   // The client reported that marking existed but was not reachable from the forms. Every
   // screen that can attach a photo reaches the same marking pad — through the shared photo
   // block, or directly where the photo has its own full form already.
-  for (const [name, source] of [["entry record", entry], ["daily log", dailyLog], ["issues, inspections, HSE and register", operations], ["photo library", media]]) {
+  for (const [name, source] of [["daily log", dailyLog], ["issues, inspections, HSE and register", operations], ["photo library", media]]) {
     assert.match(source, /<PhotoEvidenceList/, `${name} must reach the marking pad through the shared photo block`);
     assert.match(source, /markupContext=\{/, `${name} must tell the marking pad about the project`);
   }

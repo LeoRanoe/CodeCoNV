@@ -1,13 +1,14 @@
 "use client";
 
-import { AlertTriangle, Check, Copy, Loader2, Minus, Plus, Sigma, UserCheck, Users, X } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { AlertTriangle, Copy, Loader2, Minus, Plus, Sigma, UserCheck, Users, X } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { type HandwrittenSignature } from "@/app/signature-pad";
-import { RecordFormSection, RecordSignatureField } from "@/app/forms/record-form-shell";
+import { RecordFormSection, RecordFormShell, RecordSignatureField } from "@/app/forms/record-form-shell";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
+import { clearFormDraft, loadFormDraft, saveFormDraft } from "@/lib/offline/form-drafts";
 import {
   workforceByDiscipline,
   workforceByParty,
@@ -227,11 +228,19 @@ function WorkforceSection({ icon, step, title, subtitle, count, action, children
   );
 }
 
+type WorkforceDraft = {
+  rowsByBuilding: Record<string, WorkforceRow[]>;
+  visitorsByBuilding: Record<string, VisitorRow[]>;
+  note: string;
+  signature: HandwrittenSignature | null;
+};
+
 /**
- * The workforce screen the Workforce tile opens: the register, plus the context that says
+ * The workforce form the Workforce tile opens: the register, plus the context that says
  * which building and which day it belongs to, and the way to take over yesterday's crew.
+ * It is a workspace page like every other record form, not a pop-up.
  */
-export function WorkforceModal({
+export function WorkforceForm({
   buildings,
   defaultBuildingId,
   initialRows,
@@ -245,6 +254,7 @@ export function WorkforceModal({
   initialVisitors,
   currentUserName,
   busy,
+  draftKey,
   close,
   copyPreviousWorkday,
   save,
@@ -265,6 +275,8 @@ export function WorkforceModal({
   /** Filled into the signature by default, exactly as every other record form does it. */
   currentUserName?: string;
   busy: boolean;
+  /** Where today's unsaved count is kept on the device. */
+  draftKey: string;
   close: () => void;
   /** Returns the crew of the last workday that had one, or null when there is none yet. */
   copyPreviousWorkday: (buildingId: string) => Promise<{ reportDate: string; rows: WorkforceRow[] } | null>;
@@ -272,7 +284,7 @@ export function WorkforceModal({
     perBuilding: Array<{ buildingId: string; rows: WorkforceRow[]; visitors: VisitorRow[] }>,
     note: string,
     signature: HandwrittenSignature | null,
-  ) => void | Promise<void>;
+  ) => boolean | void | Promise<boolean | void>;
 }) {
   const { text } = useLanguage();
   // Counting the crew is attendance.manage; everyone else may look but not change.
@@ -302,6 +314,43 @@ export function WorkforceModal({
   const [previousDay, setPreviousDay] = useState<{ reportDate: string; rows: WorkforceRow[] } | null | undefined>(undefined);
   const [note, setNote] = useState(initialNote);
   const [visitorDraft, setVisitorDraft] = useState(() => ({ partyId: parties[0]?.id ?? "", visitorName: "" }));
+
+  // A count that is interrupted — a call, the back button, a phone that locks — is kept on the
+  // device and put back the next time the form opens, until it is confirmed.
+  const [draftState, setDraftState] = useState<"loading" | "restored" | "ready">("loading");
+  useEffect(() => {
+    let cancelled = false;
+    void loadFormDraft<WorkforceDraft>(draftKey).then((draft) => {
+      if (cancelled) return;
+      if (draft) {
+        setRowsByBuilding((current) => ({ ...current, ...draft.value.rowsByBuilding }));
+        setVisitorsByBuilding((current) => ({ ...current, ...draft.value.visitorsByBuilding }));
+        setNote(draft.value.note ?? "");
+        setSignature(draft.value.signature ?? null);
+      }
+      setDraftState(draft ? "restored" : "ready");
+    });
+    return () => { cancelled = true; };
+  }, [draftKey]);
+  const [saving, setSaving] = useState(false);
+  // Only a change made on the form starts a draft; opening it and walking away does not.
+  const draftArmed = useRef(false);
+  useEffect(() => {
+    if (draftState === "loading" || saving || readOnly) return;
+    if (!draftArmed.current) { draftArmed.current = true; return; }
+    const timer = window.setTimeout(() => {
+      void saveFormDraft<WorkforceDraft>(draftKey, { rowsByBuilding, visitorsByBuilding, note, signature });
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [draftKey, draftState, note, readOnly, rowsByBuilding, saving, signature, visitorsByBuilding]);
+  const discardDraft = () => {
+    void clearFormDraft(draftKey);
+    setRowsByBuilding({ [firstBuildingId]: initialRows.filter((row) => row.count > 0) });
+    setVisitorsByBuilding({ [firstBuildingId]: initialVisitors });
+    setNote(initialNote);
+    setSignature(null);
+    setDraftState("ready");
+  };
 
   const rows = rowsByBuilding[buildingId] ?? [];
   const visitors = visitorsByBuilding[buildingId] ?? [];
@@ -393,18 +442,46 @@ export function WorkforceModal({
     setCopyNote(text(`Crew of ${previousDay.reportDate} taken over.`, `Bezetting van ${previousDay.reportDate} overgenomen.`));
   };
 
-  return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
-      <section className="modal report-modal workforce-modal" role="dialog" aria-modal="true" aria-labelledby="workforce-title">
-        <header className="modal-header">
-          <div>
-            <span className="record-number">{text("Workforce", "Workforce")}</span>
-            <h2 id="workforce-title">{text("Who is on site today?", "Wie is er vandaag op de bouwplaats?")}</h2>
-          </div>
-          <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
-        </header>
+  const confirm = async () => {
+    setSaving(true);
+    const result = await save(filledBuildings.map((building) => ({
+      buildingId: building.id,
+      rows: rowsByBuilding[building.id] ?? [],
+      visitors: visitorsByBuilding[building.id] ?? [],
+    })), note, signature);
+    if (result !== false) {
+      // Confirmed: the count is the record now, not a draft. The form stays open for a
+      // correction later in the day, which starts a new draft only when something changes.
+      await clearFormDraft(draftKey);
+      draftArmed.current = false;
+      setDraftState("ready");
+    }
+    setSaving(false);
+  };
 
-        <div className="modal-body workforce-body">
+  return (
+    <RecordFormShell
+      code={text("Workforce", "Workforce")}
+      title={text("Who is on site today?", "Wie is er vandaag op de bouwplaats?")}
+      status={readOnly ? text("Read only", "Alleen lezen") : undefined}
+      busy={busy}
+      canSave={!readOnly && filledBuildings.length > 0 && !noteMissing}
+      // Asked for once there is a count to explain, not on an empty form.
+      validation={noteMissing && filledBuildings.length ? [text("Explain the deviation to confirm.", "Licht de afwijking toe om te bevestigen.")] : []}
+      saveLabel={filledBuildings.length > 1
+        ? text(`Confirm attendance · ${filledBuildings.length} buildings`, `Aanwezigheid bevestigen · ${filledBuildings.length} gebouwen`)
+        : text("Confirm attendance", "Aanwezigheid bevestigen")}
+      onSave={readOnly ? undefined : () => void confirm()}
+      onCancel={close}
+      className="wide sectioned-record-form workforce-form"
+      headerAside={draftState === "restored" ? (
+        <span className="daily-log-draft" role="status">
+          {text("Unsaved count restored", "Niet-opgeslagen telling hersteld")}
+          <button className="ghost-button" type="button" onClick={discardDraft}>{text("Discard draft", "Concept weggooien")}</button>
+        </span>
+      ) : null}
+    >
+        <div className="workforce-body">
           <fieldset className="workforce-fieldset" disabled={readOnly}>
           {/* The location and weather tiles that used to stand here were struck through on
               the client's own screenshot. What is left is the number they left standing. */}
@@ -592,25 +669,7 @@ export function WorkforceModal({
           />
           </div>
           </fieldset>
-          {readOnly ? null : <div className="modal-actions">
-            {noteMissing ? <span className="form-note">{text("Explain the deviation to confirm.", "Licht de afwijking toe om te bevestigen.")}</span> : null}
-            <button
-              className="primary-button"
-              type="button"
-              disabled={busy || !filledBuildings.length || noteMissing}
-              onClick={() => void save(filledBuildings.map((building) => ({
-                buildingId: building.id,
-                rows: rowsByBuilding[building.id] ?? [],
-                visitors: visitorsByBuilding[building.id] ?? [],
-              })), note, signature)}
-            >
-              {busy ? <Loader2 className="spin" size={15} /> : <Check size={15} />} {filledBuildings.length > 1
-                ? text(`Confirm attendance · ${filledBuildings.length} buildings`, `Aanwezigheid bevestigen · ${filledBuildings.length} gebouwen`)
-                : text("Confirm attendance", "Aanwezigheid bevestigen")}
-            </button>
-          </div>}
         </div>
-      </section>
-    </div>
+    </RecordFormShell>
   );
 }

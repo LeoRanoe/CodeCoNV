@@ -916,7 +916,7 @@
   border-radius: var(--radius-md);
 }
 
-.report-summary-box label {
+.report-summary-box strong {
   display: block;
   margin-bottom: var(--space-2);
   color: var(--ink-700);
@@ -924,12 +924,8 @@
   font-weight: var(--weight-bold);
 }
 
-.report-summary-box textarea {
-  width: 100%;
-  min-height: 92px;
-  padding: 0;
-  border: 0;
-  resize: vertical;
+.report-summary-box p {
+  margin: 0 0 var(--space-2);
   color: var(--ink-800);
   font-size: var(--text-xs);
   line-height: 1.55;

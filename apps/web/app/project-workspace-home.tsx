@@ -72,8 +72,6 @@ type ProjectWorkspaceHomeProps = {
   openDailyWork: (view: "works_ongoing" | "works_completed" | "delays") => void;
   openActionCenter: (view?: "work" | "deadlines") => void;
   openRapidVerify: () => void;
-  openReports: () => void;
-  openManagement: () => void;
 };
 
 type WorkspaceTile = {
@@ -98,8 +96,6 @@ export function ProjectWorkspaceHome({
   openDailyWork,
   openActionCenter,
   openRapidVerify,
-  openReports,
-  openManagement,
 }: ProjectWorkspaceHomeProps) {
   const { locale, text } = useLanguage();
   const permissions = useProjectPermissions();
@@ -349,8 +345,7 @@ export function ProjectWorkspaceHome({
         {/* Deadlines lost their tile, not their way in: the action centre still opens
             on the deadline view, next to the other supporting tools. */}
         <button type="button" onClick={() => openActionCenter("deadlines")}><CalendarClock size={15} /> {text("Deadlines", "Deadlines")}{counts.deadlines ? <span className="workspace-support-count">{counts.deadlines}</span> : null}</button>
-        <button type="button" onClick={openReports}><FileText size={15} /> {text("Reports", "Rapporten")}</button>
-        <button type="button" onClick={openManagement}><Users size={15} /> {text("Submissions & management", "Indieningen & management")}</button>
+        {/* Reports and Management are in the main navigation; they are not repeated here. */}
       </div>
     </section>
   );

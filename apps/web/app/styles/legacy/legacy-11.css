@@ -659,6 +659,8 @@
 .record-readonly-panel h2,
 .record-readonly-panel p {
   margin: 0.25rem 0;
+  /* A description written over several lines keeps them. */
+  white-space: pre-line;
 }
 
 .record-readonly-panel small {

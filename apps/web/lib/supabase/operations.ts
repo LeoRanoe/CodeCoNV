@@ -306,6 +306,19 @@ export type DailyWorkRecord = {
   created_at: string;
 };
 
+/** One counted line of the Workforce register: a trade of one organisation, or a visitor. */
+export type AttendanceRecord = {
+  id: string;
+  building_id: string;
+  day_report_id: string;
+  party_id: string;
+  discipline: string;
+  headcount: number;
+  entry_type?: "workforce" | "visitor" | null;
+  signed_by?: string | null;
+  created_at: string;
+};
+
 export type RevokeExternalShareResult = {
   share_id: string;
   revoked_at: string;
@@ -536,6 +549,8 @@ export type OperationSnapshot = {
   fileLinks?: FileLink[];
   // Optional only for offline snapshots cached before daily work became browsable.
   dailyWork?: DailyWorkRecord[];
+  // Optional only for offline snapshots cached before the workforce became a workspace page.
+  attendance?: AttendanceRecord[];
   _offlineCached?: boolean;
   _offlineSavedAt?: string;
 };
@@ -609,7 +624,7 @@ export async function loadProjectOperations(
   organizationId: string,
   reportId?: string | null,
 ): Promise<OperationSnapshot> {
-  const [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, registerResult, boqProgressResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult, dayReportResult, fileLinkResult, dailyWorkResult, recordBuildingResult] = await Promise.all([
+  const [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, registerResult, boqProgressResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult, dayReportResult, fileLinkResult, dailyWorkResult, recordBuildingResult, attendanceResult] = await Promise.all([
     client.from("checklist_templates").select("id,project_id,module,code,name,description,version_number,status").or(`project_id.is.null,project_id.eq.${projectId}`).order("name"),
     client.from("checklist_library_templates").select("code,module,category,name,description,prompts,sort_order").eq("active", true).order("sort_order"),
     pageAll((from, to) => client.from("inspections").select("id,building_id,location_node_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at,signed_by,signed_at,signature_image").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 10000),
@@ -633,7 +648,14 @@ export async function loadProjectOperations(
     pageAll((from, to) => client.from("file_links").select("id,file_id,record_type,record_id,relationship,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 50000),
     pageAll((from, to) => client.from("day_closeouts").select("id,building_id,day_report_id,day_summary,work_ongoing,work_performed,progress_percent,delay_cause,delay_hours,delay_reason,contractor_company,contractor_signed_by,contractor_signed_at,contractor_signature_image,signed_by,signed_at,signature_image,tomorrow_plan,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 5000),
     pageAll((from, to) => client.from("record_buildings").select("record_type,record_id,building_id").eq("project_id", projectId).order("id").range(from, to), 50000),
+    pageAll((from, to) => client.from("attendance_entries").select("id,building_id,day_report_id,party_id,discipline,headcount,entry_type,signed_by,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 20000),
   ]);
+  // Visitors and the signature arrived with later migrations; a database behind them still
+  // lists the counted crew, and one without access to the table simply shows no history.
+  const attendanceCoreResult = attendanceResult.error && schemaFeatureMissing(attendanceResult.error, ["entry_type", "signed_by"])
+    ? await pageAll((from, to) => client.from("attendance_entries").select("id,building_id,day_report_id,party_id,discipline,headcount,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 20000)
+    : attendanceResult;
+  const compatibleAttendanceResult = attendanceCoreResult.error ? { data: [], error: null } : attendanceCoreResult;
   const registerWithoutSignatureResult = schemaFeatureMissing(registerResult.error, ["signed_by", "signed_at", "signature_image"])
     ? await client.from("project_register_entries").select("id,building_id,location_node_id,register_type,entry_number,title,status,occurred_at,due_at,details").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(5000)
     : registerResult;
@@ -811,6 +833,7 @@ export async function loadProjectOperations(
     externalShareLinks: (externalShareResult.data ?? []) as ExternalShareLink[],
     fileLinks: (compatibleFileLinkResult.data ?? []) as FileLink[],
     dailyWork: dailyWorkRows.map((record) => ({ ...record, building_ids: buildingsForRecord(recordBuildings, "daily_work", record.id, record.building_id) })),
+    attendance: (compatibleAttendanceResult.data ?? []) as AttendanceRecord[],
   };
 }
 

@@ -52,23 +52,32 @@ async function goTo(page: Page, module: string) {
 
 const modules = (page: Page) => page.locator(".sidebar .nav-button, .mobile-module-grid button");
 
+/** Project Docs and Issues are reached from the workspace, like every other module. */
+async function openWorkspaceModule(page: Page, module: "Project Docs" | "Issues") {
+  await goTo(page, "Workspace");
+  const back = page.locator(".workspace-back-button");
+  if (await back.isVisible().catch(() => false)) await back.click();
+  if (module === "Issues") await page.locator("[data-workspace-destination='issues']").click();
+  else await page.locator(".workspace-support-strip").getByRole("button", { name: "Project Docs", exact: true }).click();
+}
+
 test("a client reads and signs; nothing offers to write", async ({ page }, testInfo) => {
   await signInAs(page, clientEmail!, clientPassword!);
   const desktop = testInfo.project.name === "desktop-office";
 
   // The overview does not offer to start or answer the day, nor to take a photo.
-  await expect(page.getByRole("button", { name: "Daily questions" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Day log" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Check report" })).toHaveCount(0);
   await expect(page.locator(".quick-add-side, .mobile-nav-button.quick")).toHaveCount(0);
 
   await goTo(page, "Actions");
   await expect(page.getByRole("button", { name: /New action/ })).toHaveCount(0);
 
-  await goTo(page, "Project Docs");
+  await openWorkspaceModule(page, "Project Docs");
   await expect(page.getByRole("button", { name: /Upload file|New controlled record/ })).toHaveCount(0);
   await expect(page.getByLabel("Create a folder and upload")).toHaveCount(0);
 
-  await goTo(page, "Issues");
+  await openWorkspaceModule(page, "Issues");
   // The module opens on its list: there is no form to fill in and no "New" button.
   await expect(page.getByRole("button", { name: /^New$/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Submit issue|Save draft/ })).toHaveCount(0);
@@ -93,11 +102,11 @@ test("a contractor only gets the modules it can read", async ({ page }) => {
 
 test("a supervisor keeps every control a supervisor needs", async ({ page }) => {
   await signInAs(page, supervisorEmail!, supervisorPassword!);
-  await expect(page.getByRole("button", { name: "Daily questions" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Day log" })).toBeVisible();
   await goTo(page, "Actions");
   await expect(page.getByRole("button", { name: /New action/ })).toBeVisible();
-  await goTo(page, "Project Docs");
+  await openWorkspaceModule(page, "Project Docs");
   await expect(page.getByRole("button", { name: /New controlled record/ })).toBeVisible();
-  await goTo(page, "Issues");
+  await openWorkspaceModule(page, "Issues");
   await expect(page.getByRole("button", { name: /^New$/ })).toBeVisible();
 });

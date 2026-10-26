@@ -37,6 +37,7 @@ import { currentCompassPoint, startCompassWatch } from "@/lib/images/compass";
 import { readPhotoDirection } from "@/lib/images/exif-direction.mjs";
 import { compassPointFromDegrees, describePanoramaImage, fieldPhotoMimeTypes, looksLikeDualFisheye, normalizedImagePoint, panoramaFileExtensions, panoramaUploadSource, photoMarkupToneColors, photoTitleFromDescription } from "@/lib/images/field-image.mjs";
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, preparePanoramaUpload, queueOfflineUpload } from "@/lib/offline/upload-queue";
+import { clearFormDraft, formDraftKey, saveFormDraft } from "@/lib/offline/form-drafts";
 import { downloadProjectFile, isStorageGatewayConfigured, loadProjectFileObjectUrl, openProjectFile } from "@/lib/storage/gateway";
 import {
   createVisualCapture,
@@ -210,7 +211,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     return captureBuildingName;
   })();
   const existingFinding = data.findings.find((finding) => finding.id === existingFindingId) ?? null;
-  const initialFileHandled = useRef(false);
+  /** The camera hand-off that was staged, so the same photos are never staged twice. */
+  const handledInitialFiles = useRef<File[] | null>(null);
   const [cameraHandoff, setCameraHandoff] = useState(false);
 
   const stagedImageRef = useRef(0);
@@ -231,6 +233,9 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       : chosen;
     setFile(selected);
     if (!selected) return;
+    // Kept on the device until it is saved or discarded; a back press or a dropped tab offers
+    // it again when the project opens.
+    if (type === "photo") void saveFormDraft(formDraftKey("quick-photo", projectId), [selected]);
     if (source && !source.mimeType) {
       setFileError(text(
         "This file type cannot be shown as a 360° image. Export the image as JPEG, PNG or WebP.",
@@ -267,7 +272,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       if (!measured) return;
       setCaptureForm((current) => current.directionAutomatic ? { ...current, direction: measured } : current);
     });
-  }, [text]);
+  }, [projectId, text]);
 
   useEffect(() => {
     return () => {
@@ -278,6 +283,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   const emptyCaptureForm = { type: "photo" as VisualCapture["capture_type"], description: "", locationNodeId: "", direction: "", directionAutomatic: true, tourName: "", tourOrder: "" };
 
   const discardCapture = () => {
+    // Thrown away on purpose, so the camera photo's safety copy goes with it.
+    void clearFormDraft(formDraftKey("quick-photo", projectId));
     stagedImageRef.current += 1;
     setFile(null);
     setFileError("");
@@ -290,16 +297,20 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     setCaptureForm(emptyCaptureForm);
   };
 
+  // The photo from the camera button. It is only marked as handled once it has actually been
+  // staged: marking it first meant that any re-render before the timer ran — the "Photo
+  // ready" message causes one — cancelled the timer and silently dropped the photo. A later
+  // photo is a new hand-off, so it is staged too instead of being ignored.
   useEffect(() => {
-    if (initialFileHandled.current || !initialFiles.length) return;
-    initialFileHandled.current = true;
+    if (!initialFiles.length || handledInitialFiles.current === initialFiles) return;
     const handoff = window.setTimeout(() => {
+      if (handledInitialFiles.current === initialFiles) return;
+      handledInitialFiles.current = initialFiles;
       stageImage(initialFiles[0], "photo");
       setCameraHandoff(true);
       onInitialFilesConsumed?.();
     }, 0);
     return () => window.clearTimeout(handoff);
-    // stageImage intentionally runs once for the camera hand-off.
   }, [initialFiles, onInitialFilesConsumed, stageImage]);
 
   // Tapping "Upload 360° image" in the photo library asked for the 360° form, so the form
@@ -370,12 +381,16 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     const generation = stagedImageRef.current;
     try {
     setFileError("");
+    // The bytes decide what the image is. Some Android cameras label a JPEG "image/jpg" or
+    // leave the type empty; turning those away meant a photo taken on site was never saved.
+    let source: File = file;
     try {
       // The only thing that can stop a 360° image here is an image the browser cannot read at
       // all; how much of the sphere it covers is shown on the form, not enforced.
       const detected = imageContentType(new Uint8Array(await file.slice(0, 16).arrayBuffer()));
-      if (!detected || detected !== file.type) throw new Error("invalid-image-type");
-      const dimensions = await imageDimensions(file);
+      if (!detected) throw new Error("invalid-image-type");
+      if (detected !== file.type) source = new File([file], file.name, { type: detected, lastModified: file.lastModified });
+      const dimensions = await imageDimensions(source);
       if (generation !== stagedImageRef.current) return;
       if (captureForm.type === "panorama" && !describePanoramaImage(dimensions.width, dimensions.height).valid) {
         throw new Error("invalid-image");
@@ -386,8 +401,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     }
     const folderName = captureForm.type === "panorama" ? text("360° tours", "360°-rondgangen") : text("Daily progress", "Dagvoortgang");
     const prepared = captureForm.type === "photo"
-      ? { ...await compressFieldPhoto(file, dataSaverEnabled()), fits: true }
-      : await preparePanoramaUpload(file, maxFileSizeBytes);
+      ? { ...await compressFieldPhoto(source, dataSaverEnabled()), fits: true }
+      : await preparePanoramaUpload(source, maxFileSizeBytes);
     if (generation !== stagedImageRef.current) return;
     if (!prepared.fits) {
       setFileError(text(
@@ -439,13 +454,17 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
         });
         if (targetBuildingId === captureBuildingId) setPendingSelectionFileId(queued.id);
       }
+      // The image is in the device queue from here on. A send that does not go through leaves
+      // it there for Send now; it must not keep the form open, because saving again filed the
+      // same photo a second time.
       if (navigator.onLine) {
         await forceSyncOfflineUploads(client, projectId, {
-          paused: text("Connection lost before the images were confirmed. They are still on this device. Keep this form open, then open Photos and tap Send now.", "Verbinding verbroken vóór bevestiging van de beelden. Ze staan nog op dit apparaat. Houd dit formulier open, open Foto's en tik op Nu verzenden."),
-          failed: (pendingCount) => text(`${pendingCount} image upload(s) not confirmed. They are still on this device. Keep this form open, then open Photos and tap Send now.`, `${pendingCount} beeld-upload(s) niet bevestigd. Ze staan nog op dit apparaat. Houd dit formulier open, open Foto's en tik op Nu verzenden.`),
-        });
+          paused: "",
+          failed: () => "",
+        }).catch(() => undefined);
       }
     }, text("Saved on this device. Sent when you're online.", "Opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent."));
+    if (okay) void clearFormDraft(formDraftKey("quick-photo", projectId));
     if (okay && generation === stagedImageRef.current) {
       setCaptureForm(emptyCaptureForm);
       setDrawingLocation(null);
