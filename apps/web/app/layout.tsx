@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
-import { Geist_Mono, Hind, Jost } from "next/font/google";
+import { Geist_Mono, Hind } from "next/font/google";
 import { siteConfig } from "../lib/site-config";
 import "./globals.css";
-import "./landing.css";
 import { DialogManager } from "./dialog-manager";
 
 const hind = Hind({
@@ -14,12 +13,6 @@ const hind = Hind({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
-});
-
-const jost = Jost({
-  variable: "--font-jost",
-  subsets: ["latin"],
-  weight: ["200", "300", "400", "500", "600"],
 });
 
 export const metadata: Metadata = {
@@ -71,7 +64,7 @@ export default function RootLayout({
   return (
     // The workspace sets lang before hydration (see app/document-language.tsx).
     <html lang="en" className="scroll-smooth" suppressHydrationWarning>
-      <body className={`${hind.variable} ${geistMono.variable} ${jost.variable}`}>
+      <body className={`${hind.variable} ${geistMono.variable}`}>
         {children}
         <DialogManager />
       </body>

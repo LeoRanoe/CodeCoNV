@@ -1,0 +1,105 @@
+/* Shared UI vocabulary. Add ui-button plus one variant and one size to actions.
+   ui-panel wraps one section; ui-stat is a ruled metric; ui-list-row is a
+   record line; ui-page-header holds one page title; ui-tabs are navigation;
+   ui-status-badge communicates a record's state. Legacy button aliases below
+   let existing views migrate screen by screen. */
+
+.ui-button,
+.primary-button,
+.secondary-button,
+.ghost-button,
+.danger-button {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  display: inline-flex;
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  gap: var(--space-2);
+  justify-content: center;
+  min-height: var(--control-h-md);
+  padding: var(--space-2) var(--space-3);
+  text-decoration: none;
+}
+
+.ui-button--primary,
+.primary-button {
+  background: var(--signal);
+  color: var(--paper);
+}
+
+.ui-button--secondary,
+.secondary-button {
+  background: var(--paper);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.ui-button--quiet,
+.ghost-button {
+  background: transparent;
+  color: var(--text);
+}
+
+.ui-button--danger,
+.danger-button {
+  background: var(--paper);
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.ui-button--sm { min-height: var(--control-h-sm); }
+.ui-button--md { min-height: var(--control-h-md); }
+.ui-button--lg { min-height: var(--control-h-lg); font-size: var(--text-md); }
+
+.ui-panel {
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-4);
+}
+
+.ui-panel__heading {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  justify-content: space-between;
+  margin-block-end: var(--space-4);
+}
+
+.ui-panel__heading h2 { font-size: var(--text-lg); font-weight: var(--weight-bold); margin: 0; }
+
+.ui-stat { border-inline-start: 1px solid var(--border); padding-inline: var(--space-4); }
+.ui-stat:first-child { border-inline-start: 0; padding-inline-start: 0; }
+.ui-stat__value { color: var(--text); display: block; font-size: var(--text-xl); font-variant-numeric: tabular-nums; font-weight: var(--weight-bold); }
+.ui-stat__label { color: var(--muted); display: block; font-size: var(--text-sm); }
+
+.ui-list-row {
+  align-items: center;
+  border-block-end: 1px solid var(--border);
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-block: var(--space-3);
+}
+.ui-list-row__code { color: var(--muted); font-family: var(--font-geist-mono), monospace; font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+.ui-list-row__title { color: var(--text); font-size: var(--text-md); font-weight: var(--weight-semibold); }
+.ui-list-row__meta { color: var(--muted); font-size: var(--text-sm); }
+
+.ui-page-header { align-items: center; display: flex; flex-wrap: wrap; gap: var(--space-3); justify-content: space-between; margin-block-end: var(--space-5); }
+.ui-page-header h1 { color: var(--text); font-size: var(--text-2xl); font-weight: var(--weight-bold); margin: 0; }
+.ui-page-header__code { color: var(--muted); font-family: var(--font-geist-mono), monospace; font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+
+.ui-tabs { border-block-end: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: var(--space-4); }
+.ui-tabs > button,
+.ui-tabs > a { background: transparent; border: 0; border-block-end: 2px solid transparent; color: var(--muted); font: inherit; padding: var(--space-3) var(--space-1); text-decoration: none; }
+.ui-tabs > [aria-selected="true"],
+.ui-tabs > [aria-current="page"] { border-block-end-color: var(--signal); color: var(--text); font-weight: var(--weight-semibold); }
+
+.ui-status-badge { border-radius: var(--radius-pill); display: inline-flex; font-size: var(--text-xs); font-weight: var(--weight-semibold); padding: var(--space-1) var(--space-2); }
+.ui-status-badge--red { background: var(--red-soft); color: var(--red); }
+.ui-status-badge--amber { background: var(--yellow-soft); color: var(--yellow); }
+.ui-status-badge--green { background: var(--green-soft); color: var(--green); }
+.ui-status-badge--blue { background: var(--blue-soft); color: var(--blue); }
