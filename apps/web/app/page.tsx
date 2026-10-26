@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import { Jost } from "next/font/google";
 import { siteConfig } from "../lib/site-config";
 import commewijnePort from "../public/landing/commewijne-port-facility.png";
 import consultingDesign from "../public/landing/consulting-design.jpg";
@@ -12,6 +13,13 @@ import samaraApartment from "../public/landing/samara-apartment-complex.jpg";
 import structuralFrame from "../public/landing/structural-frame.jpg";
 import { LandingNavigation } from "./landing-navigation";
 import { LandingMotion } from "./landing-motion";
+import "./landing.css";
+
+const jost = Jost({
+  variable: "--font-jost",
+  subsets: ["latin"],
+  weight: ["200", "300", "400", "500", "600"],
+});
 
 export const metadata: Metadata = {
   title: { absolute: siteConfig.title },
@@ -111,42 +119,42 @@ const localBusinessJsonLd = {
 
 const projects = [
   {
-    number: "01",
+    number: "newmont",
     title: "Newmont Recreation Centre",
     category: "Building · Construction",
     image: newmontRecreation,
     className: "studio-project-wide",
   },
   {
-    number: "02",
+    number: "samara",
     title: "Samara Apartment Complex",
     category: "Building · Construction",
     image: samaraApartment,
     className: "",
   },
   {
-    number: "03",
+    number: "kwattaweg",
     title: "Kwattaweg Residence",
     category: "Structural design",
     image: kwattawegResidence,
     className: "studio-project-technical",
   },
   {
-    number: "04",
+    number: "commewijne",
     title: "Commewijne Port Facility",
     category: "Infrastructure · Engineering",
     image: commewijnePort,
     className: "studio-project-wide studio-project-drawing",
   },
   {
-    number: "05",
+    number: "lalta",
     title: "Residence Building Lalta",
     category: "Building · Design",
     image: residenceLalta,
     className: "",
   },
   {
-    number: "06",
+    number: "residential",
     title: "Residential Structural Design",
     category: "Structural engineering",
     image: residentialStructural,
@@ -156,28 +164,28 @@ const projects = [
 
 const services = [
   {
-    number: "01",
+    number: "engineering",
     title: "Engineering",
     description:
       "Architectural designs, structural analysis, foundations, construction budgets and infrastructure—from roads and drainage to bridges and hydraulic works.",
     detail: "Design · Calculation · Documentation",
   },
   {
-    number: "02",
+    number: "contracting",
     title: "Contracting",
     description:
       "Complete tender guidance, objective technical and financial assessment, and support with contract formats for clients and contractors.",
     detail: "Tendering · Analysis · Contracts",
   },
   {
-    number: "03",
+    number: "project-management",
     title: "Project management",
     description:
       "Permanent on-site supervision, project-specific quality checks, budget and deadline control, and transparent daily and weekly reporting.",
     detail: "Supervision · Quality · Reporting",
   },
   {
-    number: "04",
+    number: "consulting",
     title: "Consulting",
     description:
       "Independent advice across design, engineering and construction, including budget reviews, tender assessments and checks of existing building plans.",
@@ -200,7 +208,7 @@ const clients = [
 
 export default function Home() {
   return (
-    <main className="studio" id="top">
+    <main className={`studio ${jost.variable}`} id="top">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
@@ -213,7 +221,6 @@ export default function Home() {
 
       <div id="main-content">
         <header className="studio-hero" aria-labelledby="hero-title">
-          <div className="studio-hero-aperture" aria-hidden="true"><span /><span /><i /></div>
           <div className="studio-hero-media" aria-hidden="true">
             <Image
               className="studio-hero-frame studio-hero-frame-one"
@@ -225,26 +232,12 @@ export default function Home() {
               quality={82}
               sizes="100vw"
             />
-            <Image
-              className="studio-hero-frame studio-hero-frame-two"
-              src={newmontRecreation}
-              alt=""
-              fill
-              priority
-              placeholder="blur"
-              quality={82}
-              sizes="100vw"
-            />
           </div>
           <div className="studio-hero-scrim" />
-          <div className="studio-grid-lines" aria-hidden="true"><span /><span /><span /></div>
 
           <div className="studio-wrap studio-hero-content">
             <p className="studio-kicker">Architecture · Engineering · Paramaribo, Suriname</p>
-            <h1 id="hero-title">
-              <span className="studio-hero-line"><span>Architecture &amp; engineering</span></span>
-              <span className="studio-hero-line"><span><em>built for Suriname.</em></span></span>
-            </h1>
+            <h1 id="hero-title">Design and engineering for Suriname.</h1>
             <p className="studio-hero-copy">
               CODECO N.V. brings architectural design, civil and structural engineering, project management and technical advice together for work that is clear, buildable and made to last.
             </p>
@@ -258,37 +251,21 @@ export default function Home() {
             <span>Based in</span><strong>Paramaribo, Suriname</strong>
             <span>Established</span><strong>2015</strong>
           </aside>
-          <div className="studio-hero-index" aria-hidden="true">
-            <span>CODECO / SR</span><strong>01</strong><i />
-          </div>
-          <a className="studio-scroll-cue" href="#work"><span>Scroll to explore</span><i aria-hidden="true" /></a>
         </header>
-
-        <div className="studio-marquee" aria-label="CODECO disciplines">
-          <div className="studio-marquee-track">
-            {[0, 1].map((copy) => (
-              <div aria-hidden={copy === 1} key={copy}>
-                <span>Engineering</span><i>—</i><span>Structural design</span><i>—</i>
-                <span>Project management</span><i>—</i><span>Contracting</span><i>—</i>
-                <span>Consulting</span><i>—</i><span>Infrastructure</span><i>—</i>
-              </div>
-            ))}
-          </div>
-        </div>
 
         <section className="studio-section studio-work" id="work" aria-labelledby="work-title">
           <div className="studio-wrap">
-            <div className="studio-section-head" data-reveal="rise">
+            <div className="studio-section-head">
               <div>
                 <p className="studio-label">Selected work</p>
-                <h2 id="work-title">Ideas tested.<br /><strong>Structures resolved.</strong></h2>
+                <h2 id="work-title">Buildings and infrastructure shaped for their sites.</h2>
               </div>
               <p>Architecture, structural systems and infrastructure developed by CODECO in Suriname.</p>
             </div>
 
             <div className="studio-project-grid">
               {projects.map((project) => (
-                <article className={`studio-project ${project.className}`} data-reveal="project" key={project.number}>
+                <article className={`studio-project ${project.className}`} key={project.number}>
                   <div className="studio-project-image">
                     <Image
                       src={project.image}
@@ -298,8 +275,6 @@ export default function Home() {
                       quality={78}
                       sizes={project.className.includes("wide") ? "100vw" : "(max-width: 760px) 86vw, 50vw"}
                     />
-                    <span className="studio-project-number">{project.number} / 06</span>
-                    <div className="studio-project-overlay"><span>CODECO project</span></div>
                   </div>
                   <div className="studio-project-copy">
                     <h3>{project.title}</h3>
@@ -308,14 +283,13 @@ export default function Home() {
                 </article>
               ))}
             </div>
-            <p className="studio-swipe-note">Swipe to explore projects <i className="studio-icon-arrow" aria-hidden="true" /></p>
           </div>
         </section>
 
         <section className="studio-section studio-story" id="about" aria-labelledby="about-title">
           <div className="studio-wrap">
             <div className="studio-story-grid">
-              <div className="studio-story-image" data-reveal="image">
+              <div className="studio-story-image">
                 <Image
                   src={structuralFrame}
                   alt="Structural frame designed and analysed by CODECO"
@@ -326,12 +300,11 @@ export default function Home() {
                   quality={78}
                   sizes="(max-width: 820px) 100vw, 54vw"
                 />
-                <div className="studio-story-stamp" aria-hidden="true"><span>Structural analysis</span><strong>01 / 04</strong></div>
                 <span>Analysis before execution</span>
               </div>
-              <div className="studio-story-copy" data-reveal="rise">
+              <div className="studio-story-copy">
                 <p className="studio-label">About CODECO</p>
-                <h2 id="about-title">One team for the thinking <strong>behind the build.</strong></h2>
+                <h2 id="about-title">Design decisions backed by engineering judgement.</h2>
                 <p>
                   CODECO is an architecture and engineering company in Paramaribo, Suriname, specialising in building design, civil and structural engineering and related services. Our engineers shape efficient solutions around each client’s needs, budget and schedule.
                 </p>
@@ -342,29 +315,22 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="studio-fact-row">
-              <div data-reveal="rise"><strong>2015</strong><span>Established in Suriname</span></div>
-              <div data-reveal="rise"><strong>04</strong><span>Integrated disciplines</span></div>
-              <div data-reveal="rise"><strong>01</strong><span>Accountable project partner</span></div>
-              <div data-reveal="rise"><strong>∞</strong><span>Built around client needs</span></div>
-            </div>
           </div>
         </section>
 
         <section className="studio-section studio-services" id="services" aria-labelledby="services-title">
           <div className="studio-wrap">
-            <div className="studio-section-head studio-services-head" data-reveal="rise">
+            <div className="studio-section-head studio-services-head">
               <div>
                 <p className="studio-label">What we do</p>
-                <h2 id="services-title">From early advice<br /><strong>to on-site control.</strong></h2>
+                <h2 id="services-title">Engineering support from design through construction.</h2>
               </div>
               <p>CODECO supports the full technical journey: design, selection, execution and independent assurance.</p>
             </div>
 
             <div className="studio-service-list">
               {services.map((service) => (
-                <article className="studio-service" data-reveal="service" key={service.number}>
-                  <span>{service.number}</span>
+                <article className="studio-service" key={service.number}>
                   <h3>{service.title}</h3>
                   <p>{service.description}</p>
                   <small>{service.detail}</small>
@@ -379,31 +345,24 @@ export default function Home() {
             <Image src={consultingDesign} alt="Contemporary building design by CODECO" fill placeholder="blur" quality={78} sizes="100vw" />
           </div>
           <div className="studio-values-scrim" />
-          <div className="studio-wrap studio-values-content" data-reveal="rise">
+          <div className="studio-wrap studio-values-content">
             <p className="studio-label">How we work</p>
-            <h2 id="values-title">Quality is the standard.<br /><strong>Transparency is the process.</strong></h2>
-            <div className="studio-value-list">
-              <span>Quality</span><span>Transparency</span><span>Customer satisfaction</span><span>Commitment</span>
-            </div>
+            <h2 id="values-title">Clear records and technical review at every stage.</h2>
           </div>
         </section>
 
         <section className="studio-clients" id="clients" aria-labelledby="clients-title">
-          <div className="studio-wrap" data-reveal="rise"><p className="studio-label" id="clients-title">Selected clients</p></div>
-          <div className="studio-client-track">
-            {[0, 1].map((copy) => (
-              <div aria-hidden={copy === 1} key={copy}>
-                {clients.map((client) => <span key={`${copy}-${client}`}>{client}</span>)}
-              </div>
-            ))}
+          <div className="studio-wrap"><p className="studio-label" id="clients-title">Selected clients</p></div>
+          <div className="studio-wrap studio-client-list">
+            {clients.map((client) => <span key={client}>{client}</span>)}
           </div>
         </section>
 
         <section className="studio-contact" id="contact" aria-labelledby="contact-title">
-          <div className="studio-wrap studio-contact-grid" data-reveal="rise">
+          <div className="studio-wrap studio-contact-grid">
             <div>
               <p className="studio-label">Start a project</p>
-              <h2 id="contact-title">Have a plan in mind?<br /><strong>Let’s make it stand.</strong></h2>
+              <h2 id="contact-title">Discuss your project with CODECO in Paramaribo.</h2>
             </div>
             <div className="studio-contact-actions">
               <a href="mailto:info@codeconv.com">info@codeconv.com <i className="studio-icon-arrow studio-icon-arrow-up" aria-hidden="true" /></a>
@@ -415,7 +374,7 @@ export default function Home() {
 
       <footer className="studio-footer">
         <div className="studio-wrap">
-          <div className="studio-footer-top" data-reveal="rise">
+          <div className="studio-footer-top">
             <div className="studio-footer-brand">
               <Image src="/codeco-logo.png" alt="CODECO Construction Designers & Consultants N.V." width={738} height={291} />
               <p>Architecture and multidisciplinary engineering in Suriname for professional, quality-driven civil, structural and construction projects.</p>
