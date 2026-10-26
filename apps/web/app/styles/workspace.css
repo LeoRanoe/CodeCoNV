@@ -1,1 +1,166 @@
-/* workspace screen refinements. */
+/* Project modules read as a register: icon, name, recorded count, next step. */
+.workspace-launcher-toolbar.ui-page-header {
+  background: transparent;
+  border: 0;
+  border-radius: initial;
+  box-shadow: none;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0 0 var(--space-3);
+}
+
+.workspace-launcher-toolbar.ui-page-header h2 {
+  color: var(--text);
+  flex: 1 1 auto;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  margin: 0;
+}
+
+.workspace-launcher-search {
+  background: var(--paper);
+  min-height: var(--control-h-lg);
+  width: min(100%, 380px);
+}
+
+.workspace-launcher-search input {
+  font-size: var(--text-md);
+  min-width: 0;
+  width: 100%;
+}
+
+.workspace-launcher-grid.client-workspace-grid {
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  gap: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+}
+
+.workspace-launcher-grid .workspace-launcher-tile.ui-list-row {
+  align-items: center;
+  background: var(--paper);
+  border: 0;
+  border-block-end: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
+  border-radius: initial;
+  box-shadow: none;
+  color: var(--text);
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto;
+  min-height: var(--control-h-lg);
+  padding: var(--space-3);
+  transform: none;
+}
+
+.workspace-launcher-grid .workspace-launcher-tile::before { content: none; }
+.workspace-launcher-grid .workspace-launcher-tile:hover { background: var(--ink-50); }
+.workspace-launcher-grid .workspace-launcher-tile:focus-visible {
+  outline: 2px solid var(--ink-900);
+  outline-offset: -2px;
+}
+
+.workspace-launcher-grid .workspace-launcher-icon {
+  background: transparent;
+  border-radius: initial;
+  color: var(--ink-700);
+  grid-column: 1;
+  grid-row: 1;
+  height: auto;
+  width: auto;
+}
+
+.workspace-launcher-grid .workspace-launcher-icon svg { height: var(--text-lg); width: var(--text-lg); }
+
+.workspace-launcher-grid .workspace-launcher-tile > strong {
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0;
+}
+
+.workspace-launcher-grid .workspace-launcher-count {
+  background: transparent;
+  border-radius: initial;
+  color: var(--ink-600);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  grid-column: 3;
+  grid-row: 1;
+  min-width: 0;
+  padding: 0;
+}
+
+.workspace-launcher-grid .workspace-launcher-arrow {
+  color: var(--ink-500);
+  grid-column: 4;
+  grid-row: 1;
+  position: static;
+}
+
+.workspace-support-strip {
+  background: transparent;
+  border: 0;
+  border-block-start: 1px solid var(--border);
+  border-radius: initial;
+  gap: var(--space-2);
+  padding: var(--space-3) 0 0;
+}
+
+.workspace-support-strip > span {
+  color: var(--muted);
+  text-transform: none;
+}
+
+.workspace-support-strip button {
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-control);
+  color: var(--text);
+  font-size: var(--text-sm);
+  min-height: var(--control-h-md);
+  padding: var(--space-2);
+}
+
+.workspace-support-strip button:hover { background: var(--ink-50); }
+.workspace-support-count { background: transparent; color: var(--muted); }
+
+.workspace-code-results { border-radius: var(--radius-card); }
+.workspace-code-results header { color: var(--text); text-transform: none; }
+.workspace-code-chip {
+  background: transparent;
+  border-radius: initial;
+  color: var(--text);
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.workspace-launcher-empty {
+  background: transparent;
+  border: 0;
+  border-block-start: 1px solid var(--border);
+  border-radius: initial;
+  display: flex;
+  justify-content: space-between;
+  min-height: var(--control-h-lg);
+  padding: var(--space-3) 0;
+}
+
+@media (max-width: 1024px) {
+  .workspace-launcher-grid.client-workspace-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .workspace-launcher-toolbar.ui-page-header { align-items: stretch; flex-direction: column; }
+  .workspace-launcher-search { width: 100%; }
+  .workspace-launcher-grid.client-workspace-grid { grid-template-columns: minmax(0, 1fr); }
+  .workspace-launcher-grid .workspace-launcher-tile.ui-list-row { min-height: var(--control-h-lg); }
+  .workspace-launcher-grid.client-workspace-grid > *:last-child:nth-child(odd) { grid-column: auto; }
+  .workspace-support-strip { display: flex; }
+  .workspace-support-strip > span { flex-basis: 100%; }
+  .workspace-launcher-empty { align-items: flex-start; }
+}
