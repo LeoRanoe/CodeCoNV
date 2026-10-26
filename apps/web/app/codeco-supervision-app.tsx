@@ -1770,24 +1770,6 @@ export function CodecoSupervisionApp() {
   return (
     <ProjectPermissionsProvider value={permissions}>
     <div className="app-shell">
-      <FieldGuide
-        canManage={canManageMembers}
-        onOpenDestination={(destination) => {
-          if (destination === "today") {
-            navigate("vandaag");
-            return;
-          }
-          if (destination === "reports") {
-            navigate("rapporten");
-            return;
-          }
-          if (destination === "photo") {
-            openQuickAdd();
-            return;
-          }
-          openWorkspaceModule(destination === "inspection" ? "inspections" : "findings");
-        }}
-      />
       <input
         ref={quickCameraInputRef}
         className="visually-hidden"
@@ -1881,6 +1863,15 @@ export function CodecoSupervisionApp() {
             </button>
           </nav>
           <div className="top-actions">
+            <FieldGuide
+              canManage={canManageMembers}
+              onOpenDestination={(destination) => {
+                if (destination === "today") { navigate("vandaag"); return; }
+                if (destination === "reports") { navigate("rapporten"); return; }
+                if (destination === "photo") { openQuickAdd(); return; }
+                openWorkspaceModule(destination === "inspection" ? "inspections" : "findings");
+              }}
+            />
             <LiveWeatherChip location={selectedProject?.location ?? ""} />
             <LanguageSwitcher compact />
             {/* The connection chip is the way into the offline copy: it is where a
@@ -2804,18 +2795,17 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
       <section className="access-card auth-card">
         <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={text("Construction supervision", "Constructiesupervisie")} /></div><LanguageSwitcher /></div>
         <div className="auth-heading">
-          <p className="eyebrow">{text("Internal CODECO workspace", "Interne CODECO-werkruimte")}</p>
-          <h1>{text("Welcome back", "Welkom terug")}</h1>
+          <h1>{text("Sign in", "Aanmelden")}</h1>
         </div>
         <form className="access-form" onSubmit={handleSubmit(submit)} noValidate>
           <label className="form-field"><span>{text("Email address", "E-mailadres")}</span><input type="email" autoComplete="email" {...register("email")} />{errors.email ? <small className="field-error">{errors.email.message}</small> : null}</label>
           <label className="form-field"><span>{text("Password", "Wachtwoord")}</span><input type="password" autoComplete="current-password" {...register("password")} />{errors.password ? <small className="field-error">{errors.password.message}</small> : null}</label>
           {error ? <p className="access-message error" role="alert">{error}</p> : null}
           {resetSent ? <p className="access-message success" role="status">{text("If the account exists, a recovery link was sent. Check your inbox and spam folder.", "Als het account bestaat, is een herstellink verstuurd. Controleer je inbox en spam.")}</p> : null}
-          <button className="primary-button access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <LogIn size={16} />}{text("Sign in securely", "Veilig aanmelden")}</button>
+          <button className="ui-button ui-button--primary ui-button--lg access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <LogIn size={16} />}{text("Sign in securely", "Veilig aanmelden")}</button>
           <button className="auth-help-button" type="button" disabled={busy} onClick={() => void sendPasswordReset()}>{text("Forgot your password?", "Wachtwoord vergeten?")}</button>
         </form>
-        <p className="security-note"><ShieldCheck size={14} /> {text("No account? Ask your CODECO administrator for a personal invitation.", "Geen account? Vraag je CODECO-beheerder om een persoonlijke uitnodiging.")}</p>
+        <p className="security-note">{text("No account? Ask your CODECO administrator for a personal invitation.", "Geen account? Vraag je CODECO-beheerder om een persoonlijke uitnodiging.")}</p>
       </section>
     </div>
   );
@@ -3097,19 +3087,10 @@ function ContextSelection({
                 <span className="project-code">{project.code}</span>
               </span>
               <span className="selection-copy">
-                <strong><span className="selection-icon"><Building2 size={18} /></span> {project.name}</strong>
+                <strong>{project.name}</strong>
                 <small><MapPin size={12} /> {project.location}</small>
               </span>
-              <span className="selection-meta"><span>{project.buildings.length} {project.buildings.length === 1 ? text("building", "gebouw") : text("buildings", "gebouwen")}</span><span>{project.openIssues} {project.openIssues === 1 ? text("open action", "open actie") : text("open actions", "open acties")}</span></span>
-              <span className="project-register-metrics" aria-label={text("Project register totals", "Totalen projectregisters")}>
-                <span><b>{project.issueCount}</b>{text("Issues", "Issues")}</span>
-                <span><b>{project.ncrCount}</b>NCR</span>
-                <span><b>{project.inspectionCount}</b>{text("Inspections", "Inspecties")}</span>
-                <span><b>{project.technicalInstructionCount}</b>TI</span>
-                <span><b>{project.changeOrderCount}</b>CO</span>
-                <span><b>{project.agreementCount}</b>{text("Agreements", "Afspraken")}</span>
-              </span>
-              <span className="selection-progress"><span style={{ width: `${project.progress}%` }} /><em>{project.progress}% {text("progress", "voortgang")}</em></span>
+              <span className="selection-meta"><span>{project.openIssues} {project.openIssues === 1 ? text("open action", "open actie") : text("open actions", "open acties")}</span><span>{project.issueCount} {text("issues total", "issues totaal")}</span></span>
               <span className="selection-action">{text("Open dashboard", "Dashboard openen")} <ArrowRight size={14} /></span>
             </button>
           ))}
@@ -3579,10 +3560,10 @@ function TodayView({
               <div className="section-heading"><h2>{text("At a glance", "In één oogopslag")}</h2><p>{text("Updated centrally", "Centraal bijgewerkt")}</p></div>
             </header>
             <div className="metrics-grid">
-              <Metric icon={Users} value={String(attendanceTotal)} label={text("people present", "mensen aanwezig")} suffix="" />
-              <Metric icon={Gauge} value={String(progress)} label={text("project progress", "projectvoortgang")} suffix="%" />
-              <Metric icon={ClipboardCheck} value={String(inspectionCount)} label={text("inspections today", "inspecties vandaag")} suffix="" />
-              <Metric icon={CheckCircle2} value={String(actions.length)} label={text("actions", "acties")} suffix="" />
+              <Stat value={String(attendanceTotal)} label={text("people present", "mensen aanwezig")} suffix="" />
+              <Stat value={String(progress)} label={text("project progress", "projectvoortgang")} suffix="%" />
+              <Stat value={String(inspectionCount)} label={text("inspections today", "inspecties vandaag")} suffix="" />
+              <Stat value={String(actions.length)} label={text("actions", "acties")} suffix="" />
             </div>
           </article>
 
@@ -3620,12 +3601,11 @@ function TodayView({
   );
 }
 
-function Metric({ icon: Icon, value, suffix, label }: { icon: LucideIcon; value: string; suffix: string; label: string }) {
+function Stat({ value, suffix, label }: { value: string; suffix: string; label: string }) {
   return (
-    <div className="metric-card">
-      <span className="metric-icon"><Icon size={15} /></span>
-      <span className="metric-value"><strong>{value}</strong><span>{suffix}</span></span>
-      <span>{label}</span>
+    <div className="ui-stat">
+      <span className="ui-stat__value">{value}{suffix}</span>
+      <span className="ui-stat__label">{label}</span>
     </div>
   );
 }
