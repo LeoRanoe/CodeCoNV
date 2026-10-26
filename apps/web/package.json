@@ -13,7 +13,9 @@
     "test": "npm run build && node --test tests/rendered-html.test.mjs tests/field-workflows.test.mjs tests/drawing-viewport.test.mjs tests/observability.test.mjs tests/legacy-redirects.test.mjs tests/user-facing-error.test.mjs tests/report-vocabulary.test.mjs tests/status-labels.test.mjs tests/niche-feature-hardening.test.mjs tests/controlled-document-signatures.test.mjs tests/open-work.test.mjs tests/page-all.test.mjs tests/session-rejection.test.mjs",
     "test:niche": "node --test tests/niche-feature-hardening.test.mjs tests/drawing-viewport.test.mjs tests/field-workflows.test.mjs",
     "test:e2e": "playwright test",
-    "lint": "eslint app lib tests next.config.ts"
+    "lint": "eslint app lib tests next.config.ts && npm run lint:styles",
+    "lint:styles": "stylelint \"app/**/*.css\" --quiet",
+    "test:design": "node --test tests/design-guardrails.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
@@ -45,6 +47,8 @@
     "@types/web-push": "^3.6.4",
     "eslint": "9.39.4",
     "eslint-config-next": "16.3.8",
+    "stylelint": "^17.16.0",
+    "stylelint-declaration-strict-value": "^1.12.1",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3"
   },
