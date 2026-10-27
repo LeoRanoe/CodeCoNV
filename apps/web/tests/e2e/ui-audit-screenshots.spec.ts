@@ -38,6 +38,16 @@ const screenshotDirectory = join(process.cwd(), "test-results", "ui-audit", "aft
 
 async function capture(page: Page, name: string) {
   await mkdir(screenshotDirectory, { recursive: true });
+  // Client-side module changes can retain the previous module's scroll position.
+  // Reset the document and any independently scrolling content before each view.
+  await page.evaluate(() => {
+    for (const element of document.querySelectorAll<HTMLElement>("main, main *")) {
+      element.scrollTop = 0;
+      element.scrollLeft = 0;
+    }
+    window.scrollTo(0, 0);
+  });
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   const png = await page.screenshot({ type: "png", animations: "disabled" });
   await sharp(png)
     .resize({ width: 1000, withoutEnlargement: true })
