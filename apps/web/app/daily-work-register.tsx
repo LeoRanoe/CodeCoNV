@@ -66,7 +66,7 @@ export function DailyWorkRegister({
 
   return (
     <section className="daily-work-register">
-      <header className="daily-work-heading">
+      <header className="daily-work-heading ui-page-header">
         <div>
           <span className="record-number">{text("Daily work record", "Dagwerkregistratie")}</span>
           <h2>{text("Daily work", "Dagwerk")}</h2>
@@ -81,11 +81,11 @@ export function DailyWorkRegister({
               </select>
             </label>
           ) : null}
-          <button className="primary-button" type="button" onClick={() => onRecord(view)}><Plus size={15} /> {text("Record", "Vastleggen")}</button>
+          <button className="primary-button ui-button ui-button--primary ui-button--lg" type="button" onClick={() => onRecord(view)}><Plus size={15} /> {text("Record", "Vastleggen")}</button>
         </div>
       </header>
 
-      <nav className="daily-work-tabs" role="tablist" aria-label={text("Daily work view", "Dagwerkweergave")}>
+      <nav className="daily-work-tabs ui-tabs" role="tablist" aria-label={text("Daily work view", "Dagwerkweergave")}>
         {views.map((item) => {
           const Icon = item.icon;
           return (

@@ -38,14 +38,14 @@ export function RecordFormShell({
   const { text } = useLanguage();
   return (
     <div className={`operation-form record-form-shell ${className}`.trim()} aria-busy={busy || undefined}>
-      <div className="operation-form-heading record-form-heading">
+      <div className="operation-form-heading record-form-heading ui-page-header">
         <div>
           <span className="record-number">{code}</span>
           <h2>{title}</h2>
         </div>
         <div className="record-form-heading-aside">
           {headerAside}
-          {status ? <span className="task-status">{status}</span> : null}
+          {status ? <span className="task-status ui-status-badge">{status}</span> : null}
         </div>
       </div>
       {validation.length ? (
@@ -58,12 +58,12 @@ export function RecordFormShell({
       {onSave || onCancel ? (
         <div className="record-form-footer">
           {onCancel ? (
-            <button className="ghost-button" type="button" disabled={busy} onClick={onCancel}>
+            <button className="ghost-button ui-button ui-button--quiet ui-button--lg" type="button" disabled={busy} onClick={onCancel}>
               <X size={15} /> {cancelLabel ?? text("Cancel", "Annuleren")}
             </button>
           ) : null}
           {onSave ? (
-            <button className="primary-button" type="button" disabled={busy || !canSave} onClick={onSave}>
+            <button className="primary-button ui-button ui-button--primary ui-button--lg" type="button" disabled={busy || !canSave} onClick={onSave}>
               {busy ? <Loader2 className="spin" size={15} /> : <Save size={15} />}
               {saveLabel ?? text("Save record", "Registratie opslaan")}
             </button>

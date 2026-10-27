@@ -217,12 +217,11 @@ export function DailyLogModal({
       <section className="modal daily-log-modal" role="dialog" aria-modal="true" aria-labelledby="daily-log-title">
         <header className="modal-header">
           <div>
-            <p className="eyebrow">{delayOnly ? text("Delay", "Vertraging") : ongoingOnly ? text("Works ongoing", "Werkzaamheden gaande") : completedOnly ? text("Works completed", "Werkzaamheden afgerond") : text("Daily log", "Daglog")}</p>
             <h2 id="daily-log-title">{delayOnly
               ? text("Record a delay", "Vertraging vastleggen")
               : ongoingOnly ? text("Record works ongoing", "Werkzaamheden gaande vastleggen")
                 : completedOnly ? text("Record works completed", "Werkzaamheden afgerond vastleggen")
-                  : text("Today on site", "Vandaag op de bouwplaats")}</h2>
+                  : text("Today on site", "Vandaag op de bouwplaats")}</h2>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
@@ -243,7 +242,7 @@ export function DailyLogModal({
             ) : (
               <div className="daily-log-missing">
                 <span>{text("Weather and hours are not confirmed yet (Project start).", "Weer en uren zijn nog niet bevestigd (Projectstart).")}</span>
-                <button className="secondary-button" type="button" onClick={openProjectStart}>{text("Confirm project start", "Bevestig projectstart")}</button>
+                <button className="secondary-button ui-button ui-button--secondary ui-button--md" type="button" onClick={openProjectStart}>{text("Confirm project start", "Bevestig projectstart")}</button>
               </div>
             )}
           </section>
@@ -447,7 +446,7 @@ export function DailyLogModal({
             </div>
 
             <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple onChange={(event) => { addPhotos(event.target.files); event.target.value = ""; }} />
-            <button className="secondary-button" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={15} /> {text("Add photo", "Foto toevoegen")}</button>
+            <button className="secondary-button ui-button ui-button--secondary ui-button--md" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={15} /> {text("Add photo", "Foto toevoegen")}</button>
             {/* One photo block, the same as everywhere else: the picture, the way into
                 marking, and the words that belong to it. */}
             <PhotoEvidenceList
@@ -488,10 +487,10 @@ export function DailyLogModal({
         </div>
 
         <footer className="modal-actions daily-log-footer">
-          <button className="ghost-button" type="button" onClick={openFullQuestionnaire}>{text("Open the full daily questions", "Open de volledige dagvragen")}</button>
+          <button className="ghost-button ui-button ui-button--quiet ui-button--md" type="button" onClick={openFullQuestionnaire}>{text("Open the full daily questions", "Open de volledige dagvragen")}</button>
           <div className="button-row">
-            <button className="secondary-button" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
-            <button className="primary-button" type="button" disabled={busy || problems.length > 0} onClick={() => void save({ buildingIds, answers, attendance: rows, photos })}>
+            <button className="secondary-button ui-button ui-button--secondary ui-button--lg" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
+            <button className="primary-button ui-button ui-button--primary ui-button--lg" type="button" disabled={busy || problems.length > 0} onClick={() => void save({ buildingIds, answers, attendance: rows, photos })}>
               {busy ? <Loader2 className="spin" size={15} /> : null} {text("Save daily log", "Daglog opslaan")}
             </button>
           </div>

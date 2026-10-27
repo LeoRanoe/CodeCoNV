@@ -154,7 +154,7 @@ export function WorkforceRegister({
             maxLength={100}
           />
         </label>
-        <button className="secondary-button workforce-add-button" type="button" onClick={add}>
+        <button className="secondary-button ui-button ui-button--secondary ui-button--md workforce-add-button" type="button" onClick={add}>
           <Plus size={15} /> {text("Add person", "Persoon toevoegen")}
         </button>
       </div>
@@ -441,7 +441,7 @@ export function WorkforceModal({
             count={workforceTotal(rows)}
             action={(
               <div className="workforce-toolbar">
-                <button className="ghost-button" type="button" disabled={previousDay === undefined} onClick={copyPrevious}>
+                <button className="ghost-button ui-button ui-button--quiet ui-button--md" type="button" disabled={previousDay === undefined} onClick={copyPrevious}>
                   {previousDay === undefined ? <Loader2 className="spin" size={13} /> : <Copy size={13} />} {text("Copy previous workday", "Vorige werkdag overnemen")}
                 </button>
                 {copyNote ? <small aria-live="polite">{copyNote}</small> : null}
@@ -487,7 +487,7 @@ export function WorkforceModal({
                     maxLength={160}
                   />
                 </label>
-                <button className="secondary-button workforce-add-button" type="button" disabled={visitorDraft.visitorName.trim().length < 2} onClick={addVisitor}>
+                <button className="secondary-button ui-button ui-button--secondary ui-button--md workforce-add-button" type="button" disabled={visitorDraft.visitorName.trim().length < 2} onClick={addVisitor}>
                   <Plus size={15} /> {text("Add visitor", "Bezoeker toevoegen")}
                 </button>
               </div>
@@ -595,7 +595,7 @@ export function WorkforceModal({
           {readOnly ? null : <div className="modal-actions">
             {noteMissing ? <span className="form-note">{text("Explain the deviation to confirm.", "Licht de afwijking toe om te bevestigen.")}</span> : null}
             <button
-              className="primary-button"
+              className="primary-button ui-button ui-button--primary ui-button--lg"
               type="button"
               disabled={busy || !filledBuildings.length || noteMissing}
               onClick={() => void save(filledBuildings.map((building) => ({
