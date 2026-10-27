@@ -1,10 +1,10 @@
 .studio {
-  --studio-black: #090a08;
-  --studio-ink: #11120f;
-  --studio-paper: #f3f1ea;
-  --studio-white: #ffffff;
-  --studio-soft: #b7b8b1;
-  --studio-muted: #73756e;
+  --studio-black: var(--ink-950);
+  --studio-ink: var(--ink-950);
+  --studio-paper: var(--ink-50);
+  --studio-white: var(--paper);
+  --studio-soft: var(--ink-400);
+  --studio-muted: var(--ink-600);
   --studio-line: rgba(255, 255, 255, 0.16);
   --studio-dark-line: rgba(17, 18, 15, 0.18);
   min-height: 100vh;
@@ -12,7 +12,7 @@
   background: var(--studio-black);
   color: var(--studio-white);
   font-family: var(--font-jost), var(--font-hind), Arial, sans-serif;
-  font-weight: 300;
+  font-weight: var(--weight-normal);
   letter-spacing: 0.01em;
 }
 
@@ -77,8 +77,8 @@
   padding: 11px 15px;
   background: var(--landing-yellow);
   color: var(--studio-ink) !important;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
   transform: translateY(-160%);
 }
 
@@ -139,9 +139,9 @@
 .studio-desktop-nav a {
   position: relative;
   padding: 10px 0;
-  color: #f2f2ee;
-  font-size: 13px;
-  font-weight: 400;
+  color: var(--ink-50);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-normal);
   letter-spacing: 0.08em;
 }
 
@@ -171,9 +171,9 @@
   gap: 30px;
   padding: 0 18px;
   border: 1px solid rgba(255, 255, 255, 0.56);
-  color: white !important;
-  font-size: 12px;
-  font-weight: 500;
+  color: var(--paper) !important;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.06em;
   transition: background 180ms ease, border-color 180ms ease, color 180ms ease;
 }
@@ -207,7 +207,7 @@
 .studio-hero-media {
   z-index: 0;
   inset: 0;
-  background: #20211e;
+  background: var(--ink-900);
 }
 
 .studio-hero-frame {
@@ -241,8 +241,8 @@
 .studio-label {
   margin: 0 0 22px;
   color: var(--studio-soft);
-  font-size: 11px;
-  font-weight: 500;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.24em;
   text-transform: uppercase;
 }
@@ -263,9 +263,9 @@
 .studio-hero h1 {
   max-width: 16ch;
   margin: 0;
-  color: white;
+  color: var(--paper);
   font-size: clamp(68px, 8.8vw, 142px);
-  font-weight: 500;
+  font-weight: var(--weight-semibold);
   line-height: 0.86;
   letter-spacing: -0.055em;
 }
@@ -273,9 +273,9 @@
 .studio-hero-copy {
   max-width: 620px;
   margin: 34px 0 0;
-  color: #d1d2cc;
+  color: var(--ink-300);
   font-size: clamp(17px, 1.45vw, 22px);
-  font-weight: 300;
+  font-weight: var(--weight-normal);
   line-height: 1.62;
 }
 
@@ -294,8 +294,8 @@
   gap: 34px;
   padding: 0 22px;
   border: 1px solid white;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.04em;
   transition: background 180ms ease, color 180ms ease, transform 180ms ease;
 }
@@ -306,7 +306,7 @@
 }
 
 .studio-btn-ghost {
-  color: white !important;
+  color: var(--paper) !important;
 }
 
 .studio-btn:hover,
@@ -331,16 +331,16 @@
 }
 
 .studio-hero-facts span {
-  color: #aeb0aa;
-  font-size: 10px;
+  color: var(--ink-400);
+  font-size: var(--text-xs);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .studio-hero-facts strong {
-  color: white;
-  font-size: 11px;
-  font-weight: 500;
+  color: var(--paper);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
 }
 
 /* Restrained, editorial scroll reveals */
@@ -366,7 +366,7 @@
 .studio-contact h2 {
   max-width: 14ch;
   margin: 0;
-  color: white;
+  color: var(--paper);
   font-size: clamp(48px, 5.5vw, 86px);
   font-weight: var(--weight-semibold);
   line-height: 0.96;
@@ -377,7 +377,7 @@
   max-width: 450px;
   margin: 0 0 5px;
   color: var(--studio-soft);
-  font-size: 16px;
+  font-size: var(--text-md);
   line-height: 1.65;
 }
 
@@ -400,7 +400,7 @@
   position: relative;
   aspect-ratio: 4 / 3;
   overflow: hidden;
-  background: #e9e9e6;
+  background: var(--ink-100);
 }
 
 .studio-project-wide .studio-project-image {
@@ -433,9 +433,9 @@
 
 .studio-project-copy h3 {
   margin: 0;
-  color: white;
+  color: var(--paper);
   font-size: clamp(20px, 2vw, 30px);
-  font-weight: 400;
+  font-weight: var(--weight-normal);
   letter-spacing: -0.02em;
 }
 
@@ -443,8 +443,8 @@
   flex: 0 0 auto;
   margin: 0;
   color: var(--studio-muted);
-  font-size: 10px;
-  font-weight: 500;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -486,15 +486,15 @@
   right: 24px;
   bottom: 20px;
   z-index: 2;
-  color: white;
-  font-size: 9px;
-  font-weight: 500;
+  color: var(--paper);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.17em;
   text-transform: uppercase;
 }
 
 .studio-story .studio-label {
-  color: #707269;
+  color: var(--ink-600);
 }
 
 .studio-story h2 {
@@ -505,7 +505,7 @@
 .studio-story-copy > p:not(.studio-label) {
   max-width: 600px;
   margin: 30px 0 0;
-  color: #565850;
+  color: var(--ink-700);
   font-size: clamp(16px, 1.35vw, 20px);
   line-height: 1.68;
 }
@@ -522,8 +522,8 @@
   padding: 0 0 8px;
   border-bottom: 1px solid var(--studio-ink);
   color: var(--studio-ink) !important;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.05em;
 }
 
@@ -554,24 +554,24 @@
 
 .studio-service h3 {
   margin: 0;
-  color: white;
+  color: var(--paper);
   font-size: clamp(27px, 2.7vw, 43px);
-  font-weight: 300;
+  font-weight: var(--weight-normal);
   letter-spacing: -0.025em;
 }
 
 .studio-service > p {
   max-width: 650px;
   margin: 0;
-  color: #b5b7b0;
-  font-size: 15px;
+  color: var(--ink-400);
+  font-size: var(--text-md);
   line-height: 1.65;
 }
 
 .studio-service small {
-  color: #777972;
-  font-size: 9px;
-  font-weight: 500;
+  color: var(--ink-600);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.12em;
   line-height: 1.7;
   text-transform: uppercase;
@@ -635,7 +635,7 @@
 }
 
 .studio-contact .studio-label {
-  color: #575300;
+  color: var(--ink-700);
 }
 
 .studio-contact h2 {
@@ -657,7 +657,7 @@
   border-bottom: 1px solid rgba(17, 18, 15, 0.42);
   color: var(--studio-ink) !important;
   font-size: clamp(16px, 1.6vw, 22px);
-  font-weight: 500;
+  font-weight: var(--weight-semibold);
 }
 
 .studio-contact-actions a .studio-icon-arrow {
@@ -672,8 +672,8 @@
 /* Footer */
 .studio-footer {
   padding: 86px 0 34px;
-  background: #070806;
-  color: #a9aaa4;
+  background: var(--ink-950);
+  color: var(--ink-500);
 }
 
 .studio-footer-top {
@@ -692,8 +692,8 @@
 .studio-footer-brand > p {
   max-width: 410px;
   margin: 28px 0 0;
-  color: #8f918a;
-  font-size: 15px;
+  color: var(--ink-500);
+  font-size: var(--text-md);
   line-height: 1.65;
 }
 
@@ -706,19 +706,19 @@
 
 .studio-footer-column > p {
   margin: 0 0 13px;
-  color: white;
-  font-size: 10px;
-  font-weight: 500;
+  color: var(--paper);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.18em;
   text-transform: uppercase;
 }
 
 .studio-footer-column a,
 .studio-footer-column address {
-  color: #9d9f98 !important;
-  font-size: 13px;
+  color: var(--ink-500) !important;
+  font-size: var(--text-sm);
   font-style: normal;
-  font-weight: 300;
+  font-weight: var(--weight-normal);
   line-height: 1.6;
   transition: color 180ms ease;
 }
@@ -745,9 +745,9 @@
 
 .studio-footer-bottom p {
   margin: 0;
-  color: #656760;
-  font-size: 9px;
-  font-weight: 500;
+  color: var(--ink-600);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -815,7 +815,7 @@
     gap: 7px;
     border: 1px solid rgba(255, 255, 255, 0.48);
     background: transparent;
-    color: white;
+    color: var(--paper);
     cursor: pointer;
   }
 
@@ -869,21 +869,21 @@
     align-items: center;
     gap: 12px;
     border-bottom: 1px solid var(--studio-line);
-    color: white;
+    color: var(--paper);
     font-size: clamp(33px, 11vw, 52px);
-    font-weight: 200;
+    font-weight: var(--weight-normal);
     letter-spacing: -0.035em;
   }
 
   .studio-mobile-overlay nav a > span {
     color: var(--landing-yellow);
     font-family: var(--font-geist-mono), monospace;
-    font-size: 9px;
+    font-size: var(--text-xs);
     letter-spacing: 0.05em;
   }
 
   .studio-mobile-overlay nav a i {
-    font-size: 22px;
+    font-size: var(--text-xl);
     font-style: normal;
   }
 
@@ -896,8 +896,8 @@
   .studio-mobile-contact p,
 .studio-mobile-contact a {
     margin: 0;
-    color: #989a93 !important;
-    font-size: 12px;
+    color: var(--ink-500) !important;
+    font-size: var(--text-xs);
   }
 
   .studio-hero-scrim {
@@ -918,7 +918,7 @@
 
   .studio-hero-copy {
     max-width: 560px;
-    font-size: 17px;
+    font-size: var(--text-lg);
   }
 
   .studio-hero-facts {
@@ -1011,7 +1011,7 @@
 
   .studio-kicker {
     margin-bottom: 15px;
-    font-size: 9px;
+    font-size: var(--text-xs);
     letter-spacing: 0.18em;
   }
 
@@ -1030,7 +1030,7 @@
     max-width: 93%;
     margin-top: 22px;
     overflow: hidden;
-    font-size: 15px;
+    font-size: var(--text-md);
     line-height: 1.48;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 3;
@@ -1048,7 +1048,7 @@
     min-height: 50px;
     gap: 10px;
     padding-inline: 14px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     text-align: center;
   }
 
@@ -1069,7 +1069,7 @@
   }
 
   .studio-section-head > p {
-    font-size: 14px;
+    font-size: var(--text-sm);
   }
 
   .studio-work .studio-wrap {
@@ -1123,7 +1123,7 @@
   }
 
   .studio-project-copy h3 {
-    font-size: 21px;
+    font-size: var(--text-xl);
   }
 
   .studio-story {
@@ -1142,7 +1142,7 @@
 
   .studio-story-copy > p:not(.studio-label) {
     margin-top: 24px;
-    font-size: 15px;
+    font-size: var(--text-md);
     line-height: 1.6;
   }
 
@@ -1162,7 +1162,7 @@
   }
 
   .studio-service h3 {
-    font-size: 29px;
+    font-size: var(--text-2xl);
   }
 
   .studio-service > p,
@@ -1172,7 +1172,7 @@
   }
 
   .studio-service > p {
-    font-size: 14px;
+    font-size: var(--text-sm);
     line-height: 1.55;
   }
 
@@ -1207,7 +1207,7 @@
 
   .studio-contact-actions a {
     min-height: 67px;
-    font-size: 16px;
+    font-size: var(--text-md);
   }
 
   .studio-footer {
@@ -1232,7 +1232,7 @@
   .studio-footer-brand > p {
     max-width: 340px;
     margin-top: 22px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
 
   .studio-footer-column:nth-child(2) {
