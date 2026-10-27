@@ -80,6 +80,7 @@ jobs:
       - name: Start local Supabase from an empty database
         run: npx --yes supabase@2.109.1 start
       - name: Seed local fixture accounts and point the app at the local stack
+        id: seed
         run: |
           eval "$(npx --yes supabase@2.109.1 status -o env | grep -E '^(API_URL|PUBLISHABLE_KEY|SECRET_KEY)=')"
           {
@@ -102,9 +103,9 @@ jobs:
         # against a preview deployment, not in this job (see docs/operations/production-readiness.md).
         run: npx playwright test controlled-document two-party-signature inspection-workflow day-report-lifecycle dialogs role-views mobile-forms field-readiness layout-hygiene offline-account-isolation offline-app offline-create-and-sync offline-records responsive-audit responsive-workspace viewport-walk
       - name: Capture UI audit screens
-        if: always()
+        if: always() && steps.seed.outcome == 'success'
         working-directory: apps/web
-        run: npx playwright test ui-audit-screenshots --project=desktop-office
+        run: npx playwright test ui-audit-screenshots --project=desktop-office --output=test-results/ui-audit/artifacts --reporter=list
       - name: Upload Playwright traces, screenshots and videos
         if: always()
         uses: actions/upload-artifact@v4

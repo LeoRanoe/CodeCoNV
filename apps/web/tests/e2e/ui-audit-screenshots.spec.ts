@@ -26,6 +26,14 @@ const modules = [
   { name: "Management", file: "management" },
 ] as const;
 
+// These destinations are reached from Workspace rather than the main navigation. They
+// include the record, media, field-tool and share surfaces changed in the UI pass.
+const workspaceTiles = [
+  "Photos", "Works ongoing", "Works completed", "Workforce", "Project Delay Report", "Issues", "HSE", "Materials delivery",
+  "Inspections", "Technical instructions", "Change order", "NCR", "Lessons Learned", "HSE incident", "Agreements Made",
+  "Rapid Verify", "Project Docs", "Assets & folders", "Drawings & pins", "Deadlines",
+] as const;
+
 const screenshotDirectory = join(process.cwd(), "test-results", "ui-audit", "after");
 
 async function capture(page: Page, name: string) {
@@ -39,7 +47,7 @@ async function capture(page: Page, name: string) {
 
 test("capture signed-in UI audit screens at desktop and phone widths", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-office", "This test sets both audit viewports itself.");
-  test.setTimeout(180_000);
+  test.setTimeout(600_000);
 
   await page.setViewportSize(viewports[0]);
   await page.goto("/supervisie");
@@ -91,5 +99,21 @@ test("capture signed-in UI audit screens at desktop and phone widths", async ({ 
     );
     await page.waitForTimeout(350);
     await capture(page, `${address.file}-phone`);
+  }
+
+  const workspaceAddress = addresses.find(({ file }) => file === "workspace")?.search;
+  expect(workspaceAddress).toBeTruthy();
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    for (const tile of workspaceTiles) {
+      await page.goto(`/supervisie${workspaceAddress}`, { waitUntil: "domcontentloaded" });
+      const entry = page.locator("main").getByRole("button", {
+        name: new RegExp(`^(\\d+\\s*)?${tile.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+      }).first();
+      await expect(entry, `${tile} should be present on Workspace`).toBeVisible();
+      await entry.click();
+      await page.waitForTimeout(900);
+      await capture(page, `workspace-${tile.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${viewport.name}`);
+    }
   }
 });
