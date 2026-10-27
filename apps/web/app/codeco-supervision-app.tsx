@@ -1632,7 +1632,7 @@ export function CodecoSupervisionApp() {
 
         <div className="sidebar-spacer" />
         {canRecord ? (
-          <button className="quick-add-side" type="button" onClick={openQuickAdd}>
+          <button className={`quick-add-side${activeNav === "vandaag" ? "" : " has-page-primary"}`} type="button" onClick={openQuickAdd}>
             <Camera size={18} strokeWidth={2.4} />
             {text("Take photo", "Foto maken")}
           </button>
@@ -1805,7 +1805,7 @@ export function CodecoSupervisionApp() {
           );
         })}
         {canRecord ? (
-          <button className="mobile-nav-button quick" type="button" onClick={openQuickAdd} aria-label={text("Photo (quick add)", "Foto (snel toevoegen)")}>
+          <button className={`mobile-nav-button quick${activeNav === "vandaag" ? "" : " has-page-primary"}`} type="button" onClick={openQuickAdd} aria-label={text("Photo (quick add)", "Foto (snel toevoegen)")}>
             <span className="mobile-plus"><Camera size={23} /></span>
             {text("Photo", "Foto")}
           </button>

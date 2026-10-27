@@ -27,6 +27,14 @@
 
 .metrics-grid .ui-stat { min-width: 0; }
 
+/* Keep the persistent camera shortcut quiet when a module supplies its own action. */
+.quick-add-side.has-page-primary,
+.quick-add-side.has-page-primary:hover {
+  background: var(--paper);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
 @media (max-width: 640px) {
   .topbar { flex-wrap: wrap; padding-block: var(--space-2); }
   .topbar .breadcrumb { flex-basis: 100%; }
@@ -43,4 +51,9 @@
     width: var(--control-h-lg);
   }
   .top-actions .field-guide-trigger span { display: none; }
+  .mobile-nav-button.quick.has-page-primary { color: var(--text); }
+  .mobile-nav-button.quick.has-page-primary .mobile-plus {
+    background: var(--paper);
+    color: var(--text);
+  }
 }

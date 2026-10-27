@@ -275,7 +275,7 @@ export function ProjectActionCenter({
   return (
     <section className="action-center">
       <header className="action-center-hero">
-        <div><span>{projectName}</span><h1>{text("Action center", "Actiecentrum")}</h1></div>
+        <div><h1>{text("Action center", "Actiecentrum")}</h1><p>{projectName}</p></div>
         {canCreateAction ? <button className="primary-button" type="button" onClick={createAction}><Plus size={15} /> {text("New action", "Nieuwe actie")}</button> : null}
       </header>
 
