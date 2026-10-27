@@ -2998,7 +2998,7 @@ function ProjectOperations({
             {/* The "Switch module" dropdown used to sit here. The client wrote next to it: "ik
                 begrijp dit niet, misschien kan het weg". Every module is one tap away on the
                 workspace itself, so there is no second, hidden way in any more. */}
-            {canCreateRecord && !activeInspection ? <button className="ui-button ui-button--primary ui-button--md workspace-module-create" type="button" onClick={() => setShowForm((value) => !value)}><Plus size={15} /> {text("New", "Nieuw")}</button> : null}
+            {canCreateRecord && !activeInspection ? <button className={`ui-button ${showForm ? "ui-button--secondary" : "ui-button--primary"} ui-button--md workspace-module-create`} type="button" onClick={() => setShowForm((value) => !value)}><Plus size={15} /> {text("New", "Nieuw")}</button> : null}
           </div>
         </>
       )}
@@ -3156,7 +3156,7 @@ function ProjectOperations({
             </RecordFormShell>
           ) : null}
           <div className="operation-form inspection-search">
-            <div className="operation-form-heading"><div><span className="record-number">{text("Inspection lookup", "Inspecties terugvinden")}</span><h2>{text("Search by building, exact location and date", "Zoek op gebouw, exacte locatie en datum")}</h2></div><span>{filteredInspections.length}</span></div>
+            <div className="operation-form-heading"><div><h2>{text("Search by building, exact location and date", "Zoek op gebouw, exacte locatie en datum")}</h2></div><span>{filteredInspections.length}</span></div>
             <div className="form-grid-2">
               {/* The same building field as every other form on this screen. */}
               <BuildingPicker id="inspection-filter-building" buildings={buildings} value={inspectionFilterBuildingId || ALL_BUILDINGS} onChange={(next) => { setInspectionFilterBuildingId(next === ALL_BUILDINGS ? "" : next); setInspectionFilterLocationNodeId(""); }} allowAll />
