@@ -738,8 +738,6 @@
   white-space: pre-wrap;
 }
 
-.prompt-library-footnote { color: var(--ink-500); font-size: var(--text-xs); line-height: 1.5; margin: 0; }
-
 .report-prompt-link {
   align-items: center;
   background: var(--paper);

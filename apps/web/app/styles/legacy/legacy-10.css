@@ -448,7 +448,6 @@
 .document-link-panel h4 { font-size: var(--text-xs); margin: 0; }
 
 .delay-responsibility-block { background: var(--ink-025); border: 1px solid var(--ink-300); border-radius: var(--radius-md); display: grid; gap: var(--space-3); margin-top: var(--space-3); padding: 13px; }
-.delay-contractor-proof { color: var(--green) !important; font-weight: var(--weight-bold); }
 
 /* Unified action center */
 .action-center {
@@ -755,7 +754,6 @@
   .unified-action-list > button { grid-template-columns: 34px minmax(0, 1fr) auto; }
   .unified-action-priority,
   .unified-action-list > button > .document-status { display: none; }
-  .action-plan-card { display: block; }
   .action-plan-preview { height: 180px; margin: 10px 0; }
   .secondary-header { align-items: flex-start; flex-direction: column; padding: var(--space-4); }
   .secondary-header > .ui-button--primary { width: 100%; }
@@ -764,37 +762,6 @@
 }
 
 /* Production refinement: reports, management, media and complete mobile access. */
-
-.report-frequency-tabs button > svg {
-  background: var(--ink-50);
-  border-radius: var(--radius-sm);
-  box-sizing: content-box;
-  color: var(--teal);
-  padding: 9px;
-}
-
-.report-frequency-tabs button span,
-.report-frequency-tabs button strong,
-.report-frequency-tabs button small {
-  display: block;
-  min-width: 0;
-}
-
-.report-frequency-tabs button strong {
-  color: var(--ink-900);
-  font-size: var(--text-xs);
-}
-
-.report-frequency-tabs button small {
-  color: var(--ink-500);
-  font-size: var(--text-xs);
-  margin-top: 3px;
-}
-
-.report-frequency-tabs button.active > svg {
-  background: var(--signal);
-  color: var(--paper);
-}
 
 .period-report-card {
   background: var(--paper);
@@ -1031,11 +998,6 @@
 
   .media-actions-panel {
     align-items: stretch;
-    display: grid;
-    grid-template-columns: 1fr;
-  }
-
-  .media-capture-actions {
     display: grid;
     grid-template-columns: 1fr;
   }

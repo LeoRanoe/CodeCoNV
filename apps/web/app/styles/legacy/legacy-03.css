@@ -273,50 +273,6 @@
   gap: 11px;
 }
 
-.quick-tile {
-  min-height: 116px;
-  padding: var(--space-4);
-  border: 1px solid var(--ink-200);
-  border-radius: var(--radius-md);
-  background: var(--paper);
-  text-align: left;
-  cursor: pointer;
-}
-
-.quick-tile:hover {
-  transform: translateY(-1px);
-  border-color: var(--signal);
-  background: var(--ink-025);
-  box-shadow: var(--shadow-sm);
-}
-
-.quick-tile-icon {
-  display: grid;
-  width: 37px;
-  height: 37px;
-  place-items: center;
-  border-radius: var(--radius-sm);
-  background: var(--ink-50);
-  color: var(--ink-800);
-}
-
-.quick-tile strong,
-.quick-tile span {
-  display: block;
-}
-
-.quick-tile strong {
-  margin-top: 13px;
-  font-size: var(--text-xs);
-}
-
-.quick-tile span {
-  margin-top: var(--space-1);
-  color: var(--ink-500);
-  font-size: var(--text-xs);
-  line-height: 1.4;
-}
-
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -436,30 +392,10 @@
   color: var(--ink-300);
 }
 
-.form-note {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-top: var(--space-1);
-  color: var(--green);
-  font-size: var(--text-xs);
-}
-
 /* A proposed text reads as a proposal, and one keystroke replaces it. */
-.form-field textarea.suggested-value {
-  background: var(--ink-025);
-  color: var(--ink-600);
-  font-style: italic;
-}
 
 /* Clear sits in the label row. Placed under the field it stretched across the grid
    column and collided with the dictate button, which is anchored to the field's bottom. */
-.field-label-row {
-  align-items: center;
-  display: flex;
-  gap: 10px;
-  justify-content: space-between;
-}
 
 .field-clear-button {
   /* Intentionally smaller than the standard control scale: a compact inline "clear" chip. */
@@ -581,43 +517,6 @@
 }
 
 /* The direction the app measured itself, shown as a fact rather than as a question. */
-.facing-direction-automatic {
-  align-items: center;
-  background: var(--green-soft);
-  border: 1px solid var(--ink-400);
-  border-radius: var(--radius-sm);
-  color: var(--green);
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  min-height: 44px;
-  padding: var(--space-2) var(--space-3);
-}
-
-.facing-direction-automatic strong {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-bold);
-}
-
-.facing-direction-automatic em {
-  color: var(--ink-600);
-  font-size: var(--text-xs);
-  font-style: normal;
-}
-
-.facing-direction-automatic button {
-  align-items: center;
-  background: none;
-  border: 0;
-  color: var(--teal);
-  cursor: pointer;
-  display: inline-flex;
-  font-size: var(--text-xs);
-  font-weight: var(--weight-bold);
-  gap: var(--space-1);
-  margin-left: auto;
-  padding: var(--space-1);
-}
 
 /* Pointing at the spot on the building drawing, from the capture form. */
 .drawing-location-modal {
@@ -635,31 +534,6 @@
 .drawing-location-body {
   display: grid;
   gap: var(--space-3);
-}
-
-.drawing-location-tabs {
-  display: flex; align-items: center;
-  flex-wrap: wrap;
-  gap: 7px;
-}
-
-.drawing-location-tabs button {
-  background: var(--canvas);
-  border: 1px solid var(--ink-200);
-  border-radius: var(--radius-pill);
-  color: var(--ink-700);
-  cursor: pointer;
-  font-size: var(--text-xs);
-  font-weight: var(--weight-bold);
-  min-height: 38px;
-  padding: 7px 14px;
-}
-
-.drawing-location-tabs button.active {
-  background: var(--signal-soft);
-  border-color: var(--signal);
-  color: var(--signal-dark);
-  font-weight: var(--weight-bold);
 }
 
 .drawing-location-pages {
@@ -981,21 +855,6 @@
   font-weight: var(--weight-bold);
 }
 
-.actions-list,
-.settings-list {
-  display: grid;
-  gap: 10px;
-}
-
-.action-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 14px;
-  padding: var(--space-4) 18px;
-  border-radius: var(--radius-md);
-}
-
 .action-icon {
   display: grid;
   width: 38px;
@@ -1037,43 +896,10 @@
   color: var(--green);
 }
 
-.settings-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 14px;
-  min-height: 68px;
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-}
-
-.settings-row:hover {
-  background: var(--ink-50);
-}
-
-.settings-row strong,
-.settings-row span {
-  display: block;
-}
-
-.settings-row strong {
-  font-size: var(--text-xs);
-}
-
-.settings-row span {
-  margin-top: var(--space-1);
-  color: var(--ink-500);
-  font-size: var(--text-xs);
-}
-
 /* Photo and sketch sit side by side; both are evidence. */
-.evidence-button-row { display: grid; gap: var(--space-2); grid-template-columns: 1fr 1fr; }
-.evidence-button-row .ui-button--quiet { justify-content: center; min-height: 50px; }
 .sketch-open-button { justify-content: center; justify-self: stretch; min-height: 44px; }
 
 @media (max-width: 640px) {
-  .evidence-button-row { grid-template-columns: 1fr; }
 }
 
 /* Sketching by hand: a white sheet, a pen and one way out — as a photo. */

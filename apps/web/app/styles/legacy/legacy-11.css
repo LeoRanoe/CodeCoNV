@@ -151,7 +151,6 @@
 .external-access-summary svg { color: var(--teal); grid-row: 1 / span 2; }
 .external-access-summary strong { color: var(--ink-800); font-size: var(--text-xs); }
 .external-access-summary small { color: var(--ink-500); font-size: var(--text-xs); line-height: 1.4; }
-.external-submission-center .controlled-document-list { margin-top: var(--space-2); }
 
 .company-task-assignment {
   background: var(--ink-025);
@@ -928,17 +927,6 @@
 /* ---------------------------------------------------------------------------
    The record form: what you are busy with, and the spot it gets on the drawing.
    --------------------------------------------------------------------------- */
-.entry-activity-kind { display: grid; gap: 6px; }
-.entry-activity-kind > strong { color: var(--ink-700); font-size: var(--text-xs); }
-
-.entry-pin-set {
-  align-items: center;
-  color: var(--green, var(--green));
-  display: flex;
-  font-size: var(--text-xs);
-  gap: 6px;
-  margin-top: var(--space-1);
-}
 
 /* ---------------------------------------------------------------------------
    A pin carries a colour and its own code.

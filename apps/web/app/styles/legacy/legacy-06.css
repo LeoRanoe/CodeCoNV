@@ -431,14 +431,7 @@
   box-shadow: none;
   transform: translateY(-1px);
 }
-.building-register-metrics { display: grid; gap: 5px; grid-column: 1 / -1; grid-template-columns: repeat(6, 1fr); width: 100%; }
-.building-register-metrics span { background: var(--ink-50); border-radius: var(--radius-sm); color: var(--muted); display: grid; font-size: var(--text-xs); gap: 2px; padding: 7px 5px; text-align: center; }
-.building-register-metrics b { color: var(--text); font-size: var(--text-sm); }
-.building-today-plan { background: var(--yellow-soft); border-radius: var(--radius-xs); display: grid; gap: 3px; grid-column: 1 / -1; padding: 9px; text-align: left; width: 100%; }
-.building-today-plan strong { color: var(--yellow); font-size: var(--text-xs); text-transform: uppercase; }
-.building-today-plan small { color: var(--ink-700); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 640px) {
-  .building-register-metrics { grid-template-columns: repeat(3, 1fr); }
 }
 .push-activation { align-items: center; background: var(--canvas); border: 1px solid var(--border); border-radius: var(--radius-md); display: grid; gap: 10px; grid-template-columns: auto 1fr auto; padding: var(--space-3); }
 .push-activation.active { background: var(--green-soft); border-color: var(--ink-400); color: var(--green); }
