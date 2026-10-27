@@ -10,17 +10,23 @@ local stack with fixture data). Nothing is marked from reading source.
 
 The UI cleanup branch changed the public landing, sign-in, app shell, overview, workspace, project
 selection, Management, Reports, record forms, media tools, and external-share controls. The code was
-integrated with the newer daily report and photo-draft fixes. `npm run lint`, `npm test` (190 tests),
-and the design guardrails passed after integration. Stylelint now runs at error level across app and
-landing CSS with zero findings; the app guardrails pass all nine target checks.
+integrated with the newer daily report and photo-draft fixes. GitHub Actions
+[run 40603265052](https://github.com/LeoRanoe/CodeCoNV/actions/runs/40603265052) passed web lint,
+190 unit tests, stylelint, the nine design guardrails, database migrations and pgTAP, and the
+authenticated Playwright job. CI captured 56 after-images at 1440×900 and 390×844: sign-in,
+project picker, six main modules, and 20 workspace destinations. The images are in
+[after/](ui-slop-audit/after/); examples include [Overview](ui-slop-audit/after/overview-phone.jpg),
+[Issues](ui-slop-audit/after/workspace-issues-desktop.jpg), and
+[Project Docs](ui-slop-audit/after/workspace-project-docs-phone.jpg).
 
-The matrix below records the earlier browser audit. Its marks are **not** a browser verification of
-the new styling. The local Docker Linux engine is unavailable, so fixture seeding, the three-project
-Playwright suite, and authenticated 1440/390 screenshots could not run in this pass. The public site
-was captured at [1440](ui-slop-audit/after/landing-strict-desktop-viewport.jpg) and
+The matrix below records the earlier browser audit; its marks should not be read as a fresh
+per-state inspection of the new styling. The CI fixture walk covers the named surfaces but has no
+uploaded private media, live share recipient, or real phone camera, keyboard, and GPS. The local
+Docker Linux engine remains unavailable. The public site was captured at
+[1440](ui-slop-audit/after/landing-strict-desktop-viewport.jpg) and
 [390](ui-slop-audit/after/landing-strict-phone-viewport.jpg). See the
 [After audit](ui-ai-slop-audit.md#after--27-october-2026) for measured design-token counts and the
-remaining CSS consolidation work.
+remaining semantic CSS consolidation work.
 
 | Mark | Meaning |
 | --- | --- |

@@ -233,9 +233,11 @@ Stop and report if anything fails instead of working around it.
 
 The integrated `ui/deslop` branch has a shared token vocabulary, reusable CSS classes, a flatter
 overview, workspace, project picker, Management, Reports, forms, media tools, and a simpler public
-site. The source checks pass. This is a **source-verified state**, not a completed visual sign-off:
-Docker Desktop's Linux engine is unavailable, so the fixture database and authenticated browser
-walk could not run.
+site. GitHub Actions run [40603265052](https://github.com/LeoRanoe/CodeCoNV/actions/runs/40603265052)
+passed the web, database, and authenticated Playwright jobs. Its 56 after-screenshots cover sign-in,
+project selection, six main modules, and 20 workspace destinations at 1440×900 and 390×844. The
+screenshots were reviewed for the banned patterns, and the final images are in
+[after/](ui-slop-audit/after/). Docker Desktop's Linux engine remains unavailable locally.
 
 | Measure | Before | After | Target / note |
 | --- | ---: | ---: | --- |
@@ -246,34 +248,38 @@ walk could not run.
 | Non-`none` app shadows | 81 | 1 | 1 overlay shadow |
 | App media breakpoints | 15 | 3 | 640, 1024, 1280 px |
 | `globals.css` lines | 15,850 | 30 | Split into imports |
-| All app CSS lines, including imports | 15,850 | 16,851 | Still higher: ordered legacy fragments and area overrides need consolidation |
+| All app CSS lines, including imports | 15,850 | 14,544 | 1,306 lines shorter; ordered legacy fragments still need semantic consolidation |
 
 **Phase 5 remains incomplete.** The token definitions meet the numeric targets, but the full CSS
 has 18 distinct `font-size` declaration forms and 16 distinct radius forms after counting
-`clamp()`, compound corners, and aliases. Total app CSS is 1,001 lines above its initial length.
-The CSS split uses 12 ordered legacy fragments to preserve declaration order; the named area files
-currently hold screen overrides. This preserves the cascade but does not complete the planned
-semantic one-file-per-area cleanup. All four old button aliases remain live (215 TSX references in
-total), so removing them would break screens that have not migrated.
+`clamp()`, compound corners, and aliases. The CSS split still uses 12 ordered legacy fragments to
+preserve declaration order; the named area files currently hold screen overrides. This does not
+complete the planned semantic one-file-per-area cleanup. The four old button aliases have been
+removed from app and test source. A conservative dead-rule pass removed 387 unused legacy rules;
+the surviving selector/declaration stream was unchanged.
 
 `stylelint` is error-level across app and landing CSS, with zero findings after the landing token
 pass. The app guardrail checks are error-level and allow exactly one photo text scrim. The numeric
 token targets pass (26 colours, 6 sizes, 3 weights, 3 radii, 1 shadow, 3 breakpoints).
 
 Screenshots after the public-site changes: [desktop](ui-slop-audit/after/landing-strict-desktop-viewport.jpg)
-and [phone](ui-slop-audit/after/landing-strict-phone-viewport.jpg). Authenticated after-screenshots for
-overview, workspace, projects, Management, Reports, sign-in, forms, and media are still missing.
-The original screenshots remain in [ui-slop-audit](ui-slop-audit/).
+and [phone](ui-slop-audit/after/landing-strict-phone-viewport.jpg). Authenticated examples:
+[Overview phone](ui-slop-audit/after/overview-phone.jpg),
+[Workspace desktop](ui-slop-audit/after/workspace-desktop.jpg),
+[Issues desktop](ui-slop-audit/after/workspace-issues-desktop.jpg),
+[Project Docs phone](ui-slop-audit/after/workspace-project-docs-phone.jpg), and
+[Drawings phone](ui-slop-audit/after/workspace-drawings-pins-phone.jpg). The original screenshots
+remain in [ui-slop-audit](ui-slop-audit/). These fixture screens do not show uploaded private media,
+live share recipients, or a real phone's camera, keyboard, and GPS.
 
-The full Playwright run and the 1440/390 visual walk require a working local fixture stack. On this
-machine `docker info --format '{{.ServerVersion}}'` returns: `failed to connect to the docker API at
-npipe:////./pipe/dockerDesktopLinuxEngine ... The system cannot find the file specified.` No claim
-about a screen being free of remaining banned patterns is made without that walk.
+On this machine `docker info --format '{{.ServerVersion}}'` still returns: `failed to connect to the
+docker API at npipe:////./pipe/dockerDesktopLinuxEngine ... The system cannot find the file
+specified.` The CI fixture stack supplied authenticated browser verification instead.
 
-A targeted source cleanup removed the listed eyebrow headings from the main form and media dialogs,
-neutralized drawing record-type pin colours, and deleted dead tinted overview icon rules. Error and
-offline views and other live icon wrappers still need an authenticated visual walk before the banned
-list can be declared clear.
+A targeted cleanup removed decorative eyebrows from the main forms and captured workspace views,
+made selection orange and record counts neutral, removed tinted empty-state icon boxes, and kept one
+orange primary action while a form is open. Error/offline views and states outside the CI fixture
+screens remain outside this visual sign-off.
 
 ## Sources
 
