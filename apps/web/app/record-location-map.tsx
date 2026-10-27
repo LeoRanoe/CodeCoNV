@@ -136,10 +136,10 @@ export function RecordLocationMap({
           </div>
         </div>
         <div className="record-location-buttons">
-          <button className="ghost-button" type="button" disabled={locating} onClick={onUseMyLocation}>
+          <button className="ui-button ui-button--quiet ui-button--md" type="button" disabled={locating} onClick={onUseMyLocation}>
             {locating ? <Loader2 className="spin" size={14} /> : <LocateFixed size={14} />} {recorded ? text("Change location", "Locatie wijzigen") : text("Use my location", "Gebruik mijn locatie")}
           </button>
-          <button className="ghost-button" type="button" aria-pressed={manualOpen} onClick={onToggleManual}><Pencil size={14} /> {text("Type coordinates", "Coördinaten invullen")}</button>
+          <button className="ui-button ui-button--quiet ui-button--md" type="button" aria-pressed={manualOpen} onClick={onToggleManual}><Pencil size={14} /> {text("Type coordinates", "Coördinaten invullen")}</button>
         </div>
       </div>
       {manualOpen ? (

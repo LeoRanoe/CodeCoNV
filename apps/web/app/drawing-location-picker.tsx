@@ -135,7 +135,7 @@ export function DrawingLocationPicker({
               <div className="drawing-location-chosen">
                 <span><strong>{activeDrawing.original_name.replace(/\.[^.]+$/, "")}</strong><small>{buildingName(activeDrawing)}{activeDrawing.document_code ? ` · ${activeDrawing.document_code}` : ""}</small></span>
                 {drawings.length > 1 ? (
-                  <button className="ui-button ui-button--quiet ui-button--md ghost-button" type="button" onClick={() => { setActiveId(""); setPoint(null); setPageNumber(1); }}>
+                  <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => { setActiveId(""); setPoint(null); setPageNumber(1); }}>
                     <ChevronLeft size={15} /> {text("Choose another drawing", "Andere tekening kiezen")}
                   </button>
                 ) : null}
@@ -163,9 +163,9 @@ export function DrawingLocationPicker({
         </div>
 
         <footer className="modal-actions">
-          <button className="ui-button ui-button--secondary ui-button--md secondary-button" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
+          <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
           <button
-            className="ui-button ui-button--primary ui-button--md primary-button"
+            className="ui-button ui-button--primary ui-button--md"
             type="button"
             disabled={!point || !activeDrawing}
             onClick={() => point && activeDrawing && save({

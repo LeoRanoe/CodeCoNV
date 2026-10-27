@@ -276,7 +276,7 @@ export function ProjectActionCenter({
     <section className="action-center">
       <header className="action-center-hero">
         <div><h1>{text("Action center", "Actiecentrum")}</h1><p>{projectName}</p></div>
-        {canCreateAction ? <button className="primary-button" type="button" onClick={createAction}><Plus size={15} /> {text("New action", "Nieuwe actie")}</button> : null}
+        {canCreateAction ? <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={createAction}><Plus size={15} /> {text("New action", "Nieuwe actie")}</button> : null}
       </header>
 
       {/* One page, three ways of looking at the same worklist. */}
@@ -332,7 +332,7 @@ export function ProjectActionCenter({
                 <span className={`document-status ${isSettledStatus(item.status) ? "approved" : ""}`}>{statusText(item.status, text)}</span>
                 <ArrowRight size={15} />
               </button>
-            )) : <div className="action-center-empty"><Filter size={24} /><div><strong>{view === "mine" ? text("Nothing is waiting for you", "Er wacht niets op jou") : view === "deadlines" && deadlineFilter === "overdue" ? text("Nothing is overdue", "Niets is te laat") : text("No records match this view", "Geen registraties in deze weergave")}</strong></div><button className="secondary-button" type="button" onClick={() => { setTypeFilter("all"); setWorkFilter("all"); setDeadlineFilter("all"); setSearch(""); }}>{text("Clear filters", "Wis filters")}</button></div>}
+            )) : <div className="action-center-empty"><Filter size={24} /><div><strong>{view === "mine" ? text("Nothing is waiting for you", "Er wacht niets op jou") : view === "deadlines" && deadlineFilter === "overdue" ? text("Nothing is overdue", "Niets is te laat") : text("No records match this view", "Geen registraties in deze weergave")}</strong></div><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setTypeFilter("all"); setWorkFilter("all"); setDeadlineFilter("all"); setSearch(""); }}>{text("Clear filters", "Wis filters")}</button></div>}
           </div>
         </div>
 
@@ -357,7 +357,7 @@ export function ProjectActionCenter({
             <div><dt>{text("Waiting for verification", "Wacht op verificatie")}</dt><dd>{scopedItems.filter((item) => item.status === "ready_for_verification").length}</dd></div>
             <div><dt>{text("Due within 7 days", "Binnen 7 dagen")}</dt><dd>{scopedItems.filter(withinWeek).length}</dd></div>
           </dl>
-          <button className="secondary-button" type="button" onClick={() => openProjectArea("drawings")}><MapPin size={14} /> {text("Open coordinated drawing", "Open gecoördineerde tekening")} · {data.drawingPins.length} {text("points", "punten")} <ArrowRight size={14} /></button>
+          <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => openProjectArea("drawings")}><MapPin size={14} /> {text("Open coordinated drawing", "Open gecoördineerde tekening")} · {data.drawingPins.length} {text("points", "punten")} <ArrowRight size={14} /></button>
         </aside>
       </div>
     </section>

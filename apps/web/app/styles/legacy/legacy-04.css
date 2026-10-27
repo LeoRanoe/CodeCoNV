@@ -2,7 +2,7 @@
 .entry-resume-bar > span { display: grid; gap: 2px; min-width: 0; }
 .entry-resume-bar strong { font-size: var(--text-xs); }
 .entry-resume-bar small { color: var(--ink-400); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.entry-resume-bar .primary-button { flex: 0 0 auto; min-height: 38px; padding: 0 14px; }
+.entry-resume-bar .ui-button--primary { flex: 0 0 auto; min-height: 38px; padding: 0 14px; }
 .entry-resume-dismiss {
   align-items: center;
   background: rgba(255, 255, 255, 0.1);
@@ -588,7 +588,7 @@
     flex-direction: column;
   }
 
-  .project-start-bar .primary-button {
+  .project-start-bar .ui-button--primary {
     width: 100%;
   }
 
@@ -616,7 +616,7 @@
   }
 
   .day-questions-button,
-  .project-start-submit .primary-button,
+  .project-start-submit .ui-button--primary,
   .daily-question-actions > div,
   .daily-question-actions button {
     width: 100%;
@@ -711,7 +711,7 @@
     flex-direction: column;
   }
 
-  .report-control-bar .primary-button {
+  .report-control-bar .ui-button--primary {
     width: 100%;
   }
 
@@ -942,8 +942,8 @@
   margin-top: 22px;
 }
 
-.system-actions .primary-button,
-.system-actions .ghost-button {
+.system-actions .ui-button--primary,
+.system-actions .ui-button--quiet {
   margin: 0;
 }
 
@@ -995,7 +995,7 @@
   color: var(--ink-700);
 }
 
-.state-card .primary-button {
+.state-card .ui-button--primary {
   margin: var(--space-5) auto 0;
 }
 

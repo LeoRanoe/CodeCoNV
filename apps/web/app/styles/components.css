@@ -1,14 +1,9 @@
 /* Shared UI vocabulary. Add ui-button plus one variant and one size to actions.
    ui-panel wraps one section; ui-stat is a ruled metric; ui-list-row is a
    record line; ui-page-header holds one page title; ui-tabs are navigation;
-   ui-status-badge communicates a record's state. Legacy button aliases below
-   let existing views migrate screen by screen. */
+   ui-status-badge communicates a record's state. */
 
-.ui-button,
-.primary-button,
-.secondary-button,
-.ghost-button,
-.danger-button {
+.ui-button {
   align-items: center;
   border: 1px solid transparent;
   border-radius: var(--radius-control);
@@ -23,31 +18,44 @@
   text-decoration: none;
 }
 
-.ui-button--primary,
-.primary-button {
+.ui-button--primary {
   background: var(--signal);
   color: var(--paper);
 }
 
-.ui-button--secondary,
-.secondary-button {
+.ui-button--secondary {
   background: var(--paper);
   border-color: var(--border);
   color: var(--text);
 }
 
-.ui-button--quiet,
-.ghost-button {
+.ui-button--quiet {
   background: transparent;
   color: var(--text);
 }
 
-.ui-button--danger,
-.danger-button {
+.ui-button--danger {
   background: var(--paper);
   border-color: var(--red);
   color: var(--red);
 }
+
+.ui-button--secondary:hover,
+.ui-button--quiet:hover { background: var(--ink-50); }
+
+.ui-button--danger:hover { background: var(--red-soft); }
+
+.ui-button:disabled { cursor: not-allowed; }
+.ui-button--primary:disabled {
+  background: var(--ink-50);
+  border-color: var(--ink-200);
+  color: var(--ink-500);
+  opacity: 1;
+}
+
+.ui-button--secondary:disabled,
+.ui-button--quiet:disabled,
+.ui-button--danger:disabled { color: var(--ink-500); opacity: 1; }
 
 .ui-button--sm { min-height: var(--control-h-sm); }
 .ui-button--md { min-height: var(--control-h-md); }

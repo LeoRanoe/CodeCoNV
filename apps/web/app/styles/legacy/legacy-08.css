@@ -471,7 +471,7 @@
   flex-direction: column;
   gap: 7px;
 }
-.recommended-checklist-install .primary-button {
+.recommended-checklist-install .ui-button--primary {
   margin-top: 3px;
 }
 
@@ -832,11 +832,11 @@
   .period-date-presets button,
   .quick-issue-presets button,
   .operation-tabs button,
-  .secondary-button {
+  .ui-button--secondary {
     min-height: 44px;
   }
 
-  .history-version .secondary-button {
+  .history-version .ui-button--secondary {
     min-height: 44px;
   }
 
@@ -859,10 +859,10 @@
     padding: 15px;
   }
 
-  .workflow-card .primary-button,
-  .workflow-card .secondary-button,
+  .workflow-card .ui-button--primary,
+  .workflow-card .ui-button--secondary,
   .backup-actions > button,
-  .backup-actions > .secondary-button {
+  .backup-actions > .ui-button--secondary {
     width: 100%;
   }
 

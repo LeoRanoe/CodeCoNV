@@ -351,7 +351,7 @@
   padding-top: var(--space-4);
 }
 /* Pins the trailing submit action to the right, whatever button class it uses,
-   instead of targeting .primary-button specifically. */
+   instead of targeting .ui-button--primary specifically. */
 .record-form-actions > *:last-child { margin-left: auto; }
 /* The paperclip attaches: it opens the same picker as the strip in section 6. */
 .record-attachment-count {
@@ -425,7 +425,7 @@
   .record-tile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .record-severity-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .record-action-grid { grid-template-columns: 1fr; }
-  .record-form-actions .primary-button { margin-left: 0; width: 100%; }
+  .record-form-actions .ui-button--primary { margin-left: 0; width: 100%; }
 }
 
 /*
@@ -482,7 +482,7 @@
   padding: 10px;
 }
 .workforce-add .form-field { gap: var(--space-1); margin: 0; }
-.workforce-add-button { align-items: center; display: inline-flex; gap: 6px; white-space: nowrap; } /* height inherited from paired .secondary-button */
+.workforce-add-button { align-items: center; display: inline-flex; gap: 6px; white-space: nowrap; } /* height inherited from paired .ui-button--secondary */
 
 .workforce-rows { display: grid; gap: var(--space-2); }
 .workforce-row {

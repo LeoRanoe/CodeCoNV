@@ -91,9 +91,9 @@
 }
 
 @media (max-width: 640px) {
-  .operation-form .primary-button,
-  .operation-form .secondary-button,
-  .operation-form .ghost-button {
+  .operation-form .ui-button--primary,
+  .operation-form .ui-button--secondary,
+  .operation-form .ui-button--quiet {
     min-height: var(--control-h-lg);
   }
 }

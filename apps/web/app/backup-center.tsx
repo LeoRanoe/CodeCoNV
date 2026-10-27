@@ -197,7 +197,7 @@ export function BackupCenter({
         <article className="backup-tool">
           <header><DatabaseBackup size={17} /><div><strong>{text("Take a backup now", "Nu een back-up maken")}</strong><small>{text("Same job as the nightly backup. Skipped if today's copy exists.", "Dezelfde taak als de nachtelijke back-up. Overgeslagen als de kopie van vandaag bestaat.")}</small></div></header>
           <button
-            className="secondary-button"
+            className="ui-button ui-button--secondary ui-button--md"
             type="button"
             disabled={busy || !canManageOrganization}
             onClick={() => void run(
@@ -219,7 +219,7 @@ export function BackupCenter({
             </select>
           </label>
           <button
-            className="primary-button"
+            className="ui-button ui-button--primary ui-button--md"
             type="button"
             disabled={busy || !canManageOrganization}
             onClick={() => void run(async () => {
@@ -234,7 +234,7 @@ export function BackupCenter({
 
         <article className="backup-tool">
           <header><RotateCcw size={17} /><div><strong>{text("Test a backup file", "Een back-upbestand testen")}</strong><small>{text("Check a downloaded backup. Nothing is overwritten.", "Controleer een gedownloade back-up. Er wordt niets overschreven.")}</small></div></header>
-          <button className="secondary-button" type="button" disabled={busy || !canManageOrganization} onClick={() => fileInput.current?.click()}>
+          <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={busy || !canManageOrganization} onClick={() => fileInput.current?.click()}>
             <RotateCcw size={15} /> {text("Choose a backup file", "Kies een back-upbestand")}
           </button>
           <input

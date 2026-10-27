@@ -715,7 +715,7 @@
 .signature-field-copy { display: grid; gap: 3px; }
 .signature-field-copy strong { color: var(--ink-900); font-size: var(--text-xs); }
 .signature-field-copy small { color: var(--ink-500); font-size: var(--text-xs); line-height: 1.45; }
-.signature-open-button { justify-self: start; } /* height inherited from paired .secondary-button */
+.signature-open-button { justify-self: start; } /* height inherited from paired .ui-button--secondary */
 
 .signature-field-proof {
   align-items: center;

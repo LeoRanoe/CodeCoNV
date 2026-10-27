@@ -227,8 +227,8 @@ export function ProjectDocumentsHome({
       <div className="project-documents-summary">
         <div><span>{text("Controlled project information", "Beheerde projectinformatie")}</span><h1>{text("Project document center", "Projectdocumentencentrum")}</h1></div>
         <div className="project-documents-actions">
-          {canManageFiles ? <button className="secondary-button" type="button" onClick={() => document.getElementById("project-document-upload")?.scrollIntoView({ behavior: "smooth", block: "center" })}><Upload size={15} /> {text("Upload file", "Upload bestand")}</button> : null}
-          {canCreateRecords ? <button className="primary-button" type="button" onClick={createDocument}><Plus size={15} /> {text("New controlled record", "Nieuw beheerd record")}</button> : null}
+          {canManageFiles ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => document.getElementById("project-document-upload")?.scrollIntoView({ behavior: "smooth", block: "center" })}><Upload size={15} /> {text("Upload file", "Upload bestand")}</button> : null}
+          {canCreateRecords ? <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={createDocument}><Plus size={15} /> {text("New controlled record", "Nieuw beheerd record")}</button> : null}
         </div>
       </div>
 
@@ -239,7 +239,7 @@ export function ProjectDocumentsHome({
           <div className="project-document-intake-row">
             <label className="form-field"><span>{text("New folder name", "Naam nieuwe map")}</span><input value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} placeholder={text("Example: Approved drawings", "Bijvoorbeeld: Goedgekeurde tekeningen")} /></label>
             <BuildingPicker id="document-folder-building" buildings={buildings} value={folderBuildingId} onChange={setFolderBuildingId} />
-            <button className="secondary-button" type="button" disabled={busy || newFolderName.trim().length < 2 || !folderBuildingId} onClick={() => void createFolderHere()}><FolderPlus size={15} /> {text("Create and link folder", "Map maken en koppelen")}</button>
+            <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={busy || newFolderName.trim().length < 2 || !folderBuildingId} onClick={() => void createFolderHere()}><FolderPlus size={15} /> {text("Create and link folder", "Map maken en koppelen")}</button>
           </div>
         </div>
         <div className="project-document-upload-flow">
@@ -293,21 +293,21 @@ export function ProjectDocumentsHome({
               <ArrowRight size={15} />
             </button>
           )) : (
-            <div className="project-document-empty"><span><FolderOpen size={25} /></span><div><strong>{text("No documents in this category yet", "Nog geen documenten in deze categorie")}</strong></div><button className="secondary-button" type="button" onClick={view === "drawings" || view === "renders" ? openFiles : createDocument}><Plus size={14} /> {text("Add first item", "Voeg eerste item toe")}</button></div>
+            <div className="project-document-empty"><span><FolderOpen size={25} /></span><div><strong>{text("No documents in this category yet", "Nog geen documenten in deze categorie")}</strong></div><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={view === "drawings" || view === "renders" ? openFiles : createDocument}><Plus size={14} /> {text("Add first item", "Voeg eerste item toe")}</button></div>
           )}
         </div>
         {items.length ? <button className="project-document-footer" type="button" onClick={openCurrent}>{text("Open the complete controlled workflow", "Open de volledige gecontroleerde workflow")} <ArrowRight size={14} /></button> : null}
       </div>
       {preview ? <div className="document-preview-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setPreview(null)}>
         <section className="document-preview-modal" role="dialog" aria-modal="true" aria-labelledby="document-preview-title">
-          <header><div><span>{text("Secure project document", "Beveiligd projectdocument")}</span><h3 id="document-preview-title">{preview.title}</h3></div><div><button className="secondary-button" type="button" onClick={() => void downloadProjectFile(client, preview.fileId, preview.title)}><Download size={15} /> {text("Download", "Downloaden")}</button><button className="modal-close" type="button" onClick={() => setPreview(null)} aria-label={text("Close document", "Sluit document")}><X size={18} /></button></div></header>
+          <header><div><span>{text("Secure project document", "Beveiligd projectdocument")}</span><h3 id="document-preview-title">{preview.title}</h3></div><div><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => void downloadProjectFile(client, preview.fileId, preview.title)}><Download size={15} /> {text("Download", "Downloaden")}</button><button className="modal-close" type="button" onClick={() => setPreview(null)} aria-label={text("Close document", "Sluit document")}><X size={18} /></button></div></header>
           <div className="document-preview-body">
             <iframe src={preview.url} title={preview.title} />
             <aside className="document-link-panel">
               <h4>{text("Link without copying", "Koppel zonder te kopiëren")}</h4>
               <label className="form-field"><span>{text("Folder", "Map")}</span><select value={linkFolderId} onChange={(event) => setLinkFolderId(event.target.value)}><option value="">{text("Keep current folder", "Huidige map behouden")}</option>{folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}</select></label>
               <label className="form-field"><span>{text("Controlled record", "Beheerde registratie")}</span><select value={linkRecordId} onChange={(event) => setLinkRecordId(event.target.value)}><option value="">{text("No extra record link", "Geen extra registratiekoppeling")}</option>{controlled.map((record) => <option value={record.id} key={record.id}>{record.entry_number} · {record.title}</option>)}</select></label>
-              <button className="primary-button" type="button" disabled={busy || (!linkFolderId && !linkRecordId)} onClick={() => void connectPreviewFile()}><Link2 size={15} /> {text("Apply links", "Koppelingen toepassen")}</button>
+              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (!linkFolderId && !linkRecordId)} onClick={() => void connectPreviewFile()}><Link2 size={15} /> {text("Apply links", "Koppelingen toepassen")}</button>
             </aside>
           </div>
         </section>

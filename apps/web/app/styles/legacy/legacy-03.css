@@ -150,7 +150,7 @@
 .member-project-permission small { display: block; }
 .member-project-permission strong { color: var(--ink-800); font-size: var(--text-xs); }
 .member-project-permission small { color: var(--ink-500); font-size: var(--text-xs); line-height: 1.4; margin-top: 2px; }
-.member-project-permission .ghost-button { flex: 0 0 auto; min-height: 30px; padding: 5px var(--space-2); }
+.member-project-permission .ui-button--quiet { flex: 0 0 auto; min-height: 30px; padding: 5px var(--space-2); }
 
 
 .member-access-controls,
@@ -169,15 +169,15 @@
   font-size: var(--text-xs);
 }
 
-.member-access-controls .ghost-button,
-.member-status-form .ghost-button,
-.member-status-form .primary-button {
+.member-access-controls .ui-button--quiet,
+.member-status-form .ui-button--quiet,
+.member-status-form .ui-button--primary {
   min-height: 30px;
   padding: 5px var(--space-2);
   font-size: var(--text-xs);
 }
 
-.ghost-button.danger {
+.ui-button--quiet.danger {
   color: var(--red);
 }
 
@@ -565,7 +565,7 @@
 }
 
 .capture-drawing-button {
-  /* Layout only - inherits its height from the paired .secondary-button. */
+  /* Layout only - inherits its height from the paired .ui-button--secondary. */
   align-items: center;
   display: inline-flex;
   flex: 0 1 auto;
@@ -1069,7 +1069,7 @@
 
 /* Photo and sketch sit side by side; both are evidence. */
 .evidence-button-row { display: grid; gap: var(--space-2); grid-template-columns: 1fr 1fr; }
-.evidence-button-row .ghost-button { justify-content: center; min-height: 50px; }
+.evidence-button-row .ui-button--quiet { justify-content: center; min-height: 50px; }
 .sketch-open-button { justify-content: center; justify-self: stretch; min-height: 44px; }
 
 @media (max-width: 640px) {

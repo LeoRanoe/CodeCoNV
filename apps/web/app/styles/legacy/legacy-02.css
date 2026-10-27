@@ -317,7 +317,7 @@
 }
 
 .quick-add-side:hover,
-.primary-button:hover,
+.ui-button--primary:hover,
 .fab:hover {
   background: var(--signal-dark);
 }
@@ -1194,25 +1194,6 @@
   font-size: var(--text-xs);
 }
 
-.ghost-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: var(--control-h-md);
-  padding: 0 14px;
-  border: 1px solid var(--ink-200);
-  border-radius: var(--radius-control);
-  background: var(--paper);
-  color: var(--ink-700);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-bold);
-  cursor: pointer;
-}
-
-.ghost-button:hover {
-  background: var(--ink-50);
-}
-
 .timeline {
   padding: var(--space-1) 22px 14px;
 }
@@ -1516,34 +1497,6 @@
   margin-top: var(--space-1);
   color: var(--ink-500);
   font-size: var(--text-xs);
-}
-
-.primary-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  min-height: var(--control-h-md);
-  padding: 0 var(--space-4);
-  border: 0;
-  border-radius: var(--radius-control);
-  background: var(--signal);
-  box-shadow: none;
-  color: var(--paper);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-bold);
-  cursor: pointer;
-}
-
-/* A half-transparent orange button reads as a broken button. A button that cannot be
-   pressed yet says so by being quiet, the way the secondary button already does. */
-.primary-button:disabled {
-  background: var(--ink-50);
-  border-color: var(--ink-200);
-  box-shadow: none;
-  color: var(--ink-500);
-  cursor: not-allowed;
-  opacity: 1;
 }
 
 .fab {

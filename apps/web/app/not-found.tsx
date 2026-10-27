@@ -19,7 +19,7 @@ export default function NotFound() {
         <p>404 · Page not found / Pagina niet gevonden</p>
         <p>Controleer het webadres of ga terug naar de CODECO-homepage.</p>
         <div className="system-actions">
-          <Link className="primary-button" href="/"><Home size={15} /> Back to CODECO / Terug naar CODECO</Link>
+          <Link className="ui-button ui-button--primary ui-button--md" href="/"><Home size={15} /> Back to CODECO / Terug naar CODECO</Link>
         </div>
       </section>
     </main>

@@ -395,7 +395,7 @@
   gap: 7px;
 }
 
-.history-version .secondary-button {
+.history-version .ui-button--secondary {
   width: fit-content;
   min-height: 32px;
   padding: 6px 9px;
@@ -770,7 +770,7 @@
   align-items: end;
 }
 
-.readiness-item-controls .primary-button {
+.readiness-item-controls .ui-button--primary {
   min-height: 39px;
 }
 
@@ -1079,7 +1079,7 @@
     display: none;
   }
 
-  .workspace-header .primary-button {
+  .workspace-header .ui-button--primary {
     width: 100%;
   }
 

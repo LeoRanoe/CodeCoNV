@@ -11,8 +11,8 @@ export default function GlobalError({ reset }: { error: Error & { digest?: strin
             <h1>Workspace unavailable / Werkruimte niet beschikbaar</h1>
             <p>De toepassing kon niet veilig worden geopend. Probeer opnieuw; niet-bevestigde invoer is niet als opgeslagen gemarkeerd.</p>
             <div className="system-actions">
-              <button className="primary-button" type="button" onClick={reset}>Try again / Opnieuw proberen</button>
-              <Link className="ghost-button" href="/">CODECO home</Link>
+              <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={reset}>Try again / Opnieuw proberen</button>
+              <Link className="ui-button ui-button--quiet ui-button--md" href="/">CODECO home</Link>
             </div>
           </section>
         </main>

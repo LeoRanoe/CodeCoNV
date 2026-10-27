@@ -1320,7 +1320,7 @@ export function CodecoSupervisionApp() {
           <span className="state-icon"><AlertTriangle size={26} /></span>
           <h1>{text("This project has no building yet", "Dit project heeft nog geen gebouw")}</h1>
           <p>{text("Add a first building to continue.", "Voeg een eerste gebouw toe om verder te gaan.")}</p>
-          <button className="primary-button" type="button" onClick={() => setWorkspaceStage("projects")}>{text("Back to projects", "Terug naar projecten")}</button>
+          <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={() => setWorkspaceStage("projects")}>{text("Back to projects", "Terug naar projecten")}</button>
         </section>
       </div>
     );
@@ -2137,7 +2137,7 @@ export function CodecoSupervisionApp() {
       {unsavedPhotos && selectedProject ? (
         <div className="entry-resume-bar" role="status">
           <span><strong>{unsavedPhotos.count === 1 ? text("A photo you took is not saved yet", "Een gemaakte foto is nog niet opgeslagen") : text(`${unsavedPhotos.count} photos you took are not saved yet`, `${unsavedPhotos.count} gemaakte foto's zijn nog niet opgeslagen`)}</strong></span>
-          <button className="primary-button" type="button" onClick={() => {
+          <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={() => {
             // The library puts its own pending photos back; the photo screen is handed its one.
             if (unsavedPhotos.tab === "visual") setPendingQuickPhotos(unsavedPhotos.files);
             openWorkspaceModule(unsavedPhotos.tab);
@@ -2200,7 +2200,7 @@ function AppStateScreen({
               <div className="skeleton-tiles"><span /><span /><span /></div>
             </div>
           ) : null}
-          {action ? <button className="primary-button" type="button" onClick={action}>{text("Try again", "Opnieuw proberen")}</button> : null}
+          {action ? <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={action}>{text("Try again", "Opnieuw proberen")}</button> : null}
         </div>
       </section>
     </div>
@@ -2322,14 +2322,14 @@ function PasswordSetupScreen({
   return (
     <div className="access-shell setup-shell">
       <section className="access-card setup-card">
-        <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={mode === "recovery" ? text("Account recovery", "Accountherstel") : text("Internal invitation", "Interne uitnodiging")} /></div><LanguageSwitcher /><button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button></div>
+        <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={mode === "recovery" ? text("Account recovery", "Accountherstel") : text("Internal invitation", "Interne uitnodiging")} /></div><LanguageSwitcher /><button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button></div>
         <span className="state-icon"><KeyRound size={26} /></span>
         <h1>{mode === "recovery" ? text("Choose a new password", "Kies een nieuw wachtwoord") : text("Set your password", "Stel je wachtwoord in")}</h1><p>{mode === "recovery" ? <>{text("The recovery link for", "De herstellink voor")} <strong>{email}</strong> {text("has been verified. Choose a new personal password of at least 12 characters.", "is geverifieerd. Kies een nieuw persoonlijk wachtwoord van minimaal 12 tekens.")}</> : <>{text("The invitation for", "De uitnodiging voor")} <strong>{email}</strong> {text("has been verified. Choose a personal password of at least 12 characters.", "is geverifieerd. Kies nu een persoonlijk wachtwoord van minimaal 12 tekens.")}</>}</p>
         <form className="access-form setup-form" onSubmit={handleSubmit(submit)} noValidate>
           <label className="form-field"><span>{text("New password", "Nieuw wachtwoord")}</span><input type="password" autoComplete="new-password" {...register("password")} />{errors.password ? <small className="field-error">{errors.password.message}</small> : null}</label>
           <label className="form-field"><span>{text("Repeat password", "Herhaal wachtwoord")}</span><input type="password" autoComplete="new-password" {...register("passwordConfirmation")} />{errors.passwordConfirmation ? <small className="field-error">{errors.passwordConfirmation.message}</small> : null}</label>
           {error ? <p className="access-message error" role="alert">{error}</p> : null}
-          <button className="primary-button access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <Check size={16} />}{text("Save password", "Wachtwoord opslaan")}</button>
+          <button className="ui-button ui-button--primary ui-button--md access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <Check size={16} />}{text("Save password", "Wachtwoord opslaan")}</button>
         </form>
       </section>
     </div>
@@ -2345,7 +2345,7 @@ function AccessPendingScreen({ email, signOut }: { email: string; signOut: () =>
         <span className="state-icon"><ShieldCheck size={26} /></span>
         <h1>{text("No project access yet", "Nog geen projecttoegang")}</h1>
         <p>{text("The signed-in account", "Het account")} <strong>{email}</strong> {text("has no organization or project. Ask an administrator for access.", "heeft geen organisatie of project. Vraag een beheerder om toegang.")}</p>
-        <button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button>
+        <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button>
       </section>
     </div>
   );
@@ -2380,14 +2380,14 @@ function OrganizationSetupScreen({
   return (
     <div className="access-shell setup-shell">
       <section className="access-card setup-card">
-        <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={text("Initial setup", "Eerste inrichting")} /></div><LanguageSwitcher /><button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button></div>
+        <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={text("Initial setup", "Eerste inrichting")} /></div><LanguageSwitcher /><button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button></div>
         <h1>{text("Set up the organization securely", "Organisatie veilig instellen")}</h1><p>{text("Step 1 of 2", "Stap 1 van 2")}</p><p>{text("This creates the central role and permission structure. Your account", "Dit maakt de centrale rollen- en rechtenstructuur. Je account")} <strong>{userEmail}</strong> {text("becomes the first organization administrator.", "wordt de eerste organisatiebeheerder.")}</p>
         <form className="access-form setup-form" onSubmit={handleSubmit(submit)} noValidate>
           <label className="form-field"><span>{text("Your name", "Jouw naam")}</span><input {...register("displayName")} />{errors.displayName ? <small className="field-error">{errors.displayName.message}</small> : null}</label>
           <label className="form-field"><span>{text("Company name", "Bedrijfsnaam")}</span><input {...register("organizationName")} /></label>
           <label className="form-field"><span>{text("Technical organization slug", "Technische organisatieslug")}</span><input {...register("organizationSlug")} />{errors.organizationSlug ? <small className="field-error">{errors.organizationSlug.message}</small> : null}</label>
           {error ? <p className="access-message error" role="alert">{error}</p> : null}
-          <button className="primary-button access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <ArrowRight size={16} />}{text("Set up organization", "Organisatie instellen")}</button>
+          <button className="ui-button ui-button--primary ui-button--md access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <ArrowRight size={16} />}{text("Set up organization", "Organisatie instellen")}</button>
         </form>
       </section>
     </div>
@@ -2454,7 +2454,7 @@ function ProjectSetupScreen({
   return (
     <div className={embedded ? "modal-backdrop" : "access-shell setup-shell"} onMouseDown={(event) => embedded && event.target === event.currentTarget && close?.()}>
       <section className={embedded ? "modal setup-card project-setup-card" : "access-card setup-card project-setup-card"} role={embedded ? "dialog" : undefined} aria-modal={embedded ? true : undefined}>
-        <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={`${organizationName} · ${embedded ? text("New project", "Nieuw project") : text("Initial setup", "Eerste inrichting")}`} /></div><LanguageSwitcher />{embedded ? <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button> : <button className="ghost-button" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button>}</div>
+        <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={`${organizationName} · ${embedded ? text("New project", "Nieuw project") : text("Initial setup", "Eerste inrichting")}`} /></div><LanguageSwitcher />{embedded ? <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button> : <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={signOut}><LogOut size={14} /> {text("Sign out", "Afmelden")}</button>}</div>
         <h1>{embedded ? text("Create configured project", "Maak geconfigureerd project") : text("First project and building", "Eerste project en gebouw")}</h1><p>{embedded ? text("Configure before activation", "Configureer vóór activatie") : text("Step 2 of 2", "Stap 2 van 2")}</p>
         <form className="access-form setup-form two-columns" onSubmit={handleSubmit(submit)} noValidate>
           <label className="form-field"><span>{text("Project code", "Projectcode")}</span><input {...register("code")} />{errors.code ? <small className="field-error">{errors.code.message}</small> : null}</label>
@@ -2499,7 +2499,7 @@ function ProjectSetupScreen({
             {[["enableWorkforce", text("Workforce", "Workforce")], ["enableInspections", text("Inspections", "Inspecties")], ["enableQuality", text("Issues & NCR", "Issues & NCR")], ["enableHse", "HSE"], ["enableDocuments", text("Documents and formal registers", "Documenten en formele registers")], ["enableVisualEvidence", text("Photos, 360° and pointers", "Foto's, 360° en pointers")]].map(([field, label]) => <label className="confirmation-check" key={field}><input type="checkbox" {...register(field as "enableWorkforce" | "enableInspections" | "enableQuality" | "enableHse" | "enableDocuments" | "enableVisualEvidence")} /><span><strong>{label}</strong></span></label>)}
           </fieldset>
           {error ? <p className="access-message error wide" role="alert">{error}</p> : null}
-          <button className="primary-button access-submit wide" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <ArrowRight size={16} />}{text("Validate configuration and create project", "Valideer configuratie en maak project")}</button>
+          <button className="ui-button ui-button--primary ui-button--md access-submit wide" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <ArrowRight size={16} />}{text("Validate configuration and create project", "Valideer configuratie en maak project")}</button>
         </form>
       </section>
     </div>
@@ -2542,7 +2542,7 @@ function ContextSelection({
           <LanguageSwitcher compact />
           <span className="avatar">{initials(currentUserName)}</span>
           <span className="context-user-name"><strong>{currentUserName}</strong><small>{text("CODECO user", "CODECO-gebruiker")}</small></span>
-          <button className="ghost-button" type="button" onClick={signOut} aria-label={text(`Sign out ${currentUserName}`, `${currentUserName} afmelden`)}><LogOut size={14} /> <span className="context-sign-out-label">{text("Sign out", "Afmelden")}</span></button>
+          <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={signOut} aria-label={text(`Sign out ${currentUserName}`, `${currentUserName} afmelden`)}><LogOut size={14} /> <span className="context-sign-out-label">{text("Sign out", "Afmelden")}</span></button>
         </div>
       </header>
 
@@ -2554,7 +2554,7 @@ function ContextSelection({
 
         <section className="context-heading">
           <div><h1>{text("My projects", "Mijn projecten")}</h1></div>
-          <button className="primary-button portfolio-cta" type="button" onClick={() => setShowProjectSetup(true)}><Plus size={15} /> {text("New configured project", "Nieuw geconfigureerd project")}</button>
+          <button className="ui-button ui-button--primary ui-button--md portfolio-cta" type="button" onClick={() => setShowProjectSetup(true)}><Plus size={15} /> {text("New configured project", "Nieuw geconfigureerd project")}</button>
         </section>
         {/* No portfolio counters here: this screen only has to answer "which project am I
             working on today?". The numbers live in the project dashboard, in context. */}
@@ -2765,7 +2765,7 @@ function ProjectStartForm({
 
           <div className="project-start-submit">
             <span><ShieldCheck size={15} /> {text("Saving completes only after central confirmation.", "Opslaan is pas voltooid na centrale bevestiging.")}</span>
-            <button className="primary-button" type="submit">{text("Start daily report centrally", "Dagrapport centraal starten")} <ArrowRight size={15} /></button>
+            <button className="ui-button ui-button--primary ui-button--md" type="submit">{text("Start daily report centrally", "Dagrapport centraal starten")} <ArrowRight size={15} /></button>
           </div>
         </form>
 
@@ -2829,7 +2829,7 @@ function NotificationsModal({ client, notifications, loading, close, markRead }:
                   : ""}
               </small>
             </span>
-            {pushState === "inactive" || pushState === "active" ? <button className={pushState === "active" ? "secondary-button" : "primary-button"} type="button" disabled={pushBusy} onClick={() => void activatePush()}>{pushBusy ? <Loader2 className="spin" size={15} /> : <Bell size={15} />}{pushState === "active" ? text("Test push", "Test push") : text("Activate", "Activeren")}</button> : null}
+            {pushState === "inactive" || pushState === "active" ? <button className={pushState === "active" ? "ui-button ui-button--secondary ui-button--md" : "ui-button ui-button--primary ui-button--md"} type="button" disabled={pushBusy} onClick={() => void activatePush()}>{pushBusy ? <Loader2 className="spin" size={15} /> : <Bell size={15} />}{pushState === "active" ? text("Test push", "Test push") : text("Activate", "Activeren")}</button> : null}
           </div>
           {pushError ? <div className="operation-alert error">{pushError}</div> : null}
           {loading ? <div className="empty-list-state"><Loader2 className="spin" size={22} /><strong>{text("Loading notifications", "Meldingen laden")}</strong></div> : null}
@@ -3009,7 +3009,7 @@ function UserAdminModal({
               {[text("Person", "Persoon"), text("Access", "Toegang"), text("Check", "Controleren")].map((label, index) => <span className={inviteStep >= index + 1 ? "active" : ""} key={label}><i>{inviteStep > index + 1 ? <Check size={12} /> : index + 1}</i>{label}</span>)}
             </div>
             <div className="section-heading"><UserPlus size={18} /><span><h3 id="invite-heading">{text("Invite project user", "Projectgebruiker uitnodigen")}</h3><p>{text("Invite a person", "Persoon uitnodigen")}</p></span></div>
-            {success ? <div className="invite-success" role="status"><span><CheckCircle2 size={24} /></span><div><h3>{text("Invitation is on its way", "Uitnodiging is onderweg")}</h3><p>{text(`${invitedEmail} receives a link to set a password.`, `${invitedEmail} ontvangt een link om een wachtwoord in te stellen.`)}</p><div className="button-row"><button className="primary-button" type="button" onClick={startAnotherInvite}><UserPlus size={15} /> {text("Invite another", "Nog iemand uitnodigen")}</button><button className="ghost-button" type="button" onClick={() => setActivePanel("members")}>{text("View access", "Toegang bekijken")} <ArrowRight size={14} /></button></div></div></div> : <form className={`invite-flow step-${inviteStep}`} onSubmit={handleSubmit(submit)} noValidate>
+            {success ? <div className="invite-success" role="status"><span><CheckCircle2 size={24} /></span><div><h3>{text("Invitation is on its way", "Uitnodiging is onderweg")}</h3><p>{text(`${invitedEmail} receives a link to set a password.`, `${invitedEmail} ontvangt een link om een wachtwoord in te stellen.`)}</p><div className="button-row"><button className="ui-button ui-button--primary ui-button--md" type="button" onClick={startAnotherInvite}><UserPlus size={15} /> {text("Invite another", "Nog iemand uitnodigen")}</button><button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setActivePanel("members")}>{text("View access", "Toegang bekijken")} <ArrowRight size={14} /></button></div></div></div> : <form className={`invite-flow step-${inviteStep}`} onSubmit={handleSubmit(submit)} noValidate>
               <input type="hidden" {...register("organizationId")} />
               {inviteStep === 1 ? <div className="form-grid"><label className="form-field"><span>{text("Full name *", "Volledige naam *")}</span><input autoFocus autoComplete="name" placeholder={text("e.g. Jane Doe", "bijv. Jane Doe")} {...register("displayName")} />{errors.displayName ? <small className="field-error">{errors.displayName.message}</small> : null}</label><label className="form-field"><span>{text("Business email address *", "Zakelijk e-mailadres *")}</span><input type="email" autoComplete="email" placeholder="naam@bedrijf.com" {...register("email")} />{errors.email ? <small className="field-error">{errors.email.message}</small> : null}</label></div> : null}
               <label className="form-field"><span>{text("Role *", "Rol *")}</span><select {...register("roleCode")} disabled={!access?.roles.length}><option value="">{text("Choose a role", "Kies een rol")}</option><optgroup label={text("Project roles · least privilege", "Projectrollen · minimale rechten")}>{projectRoles.map((role) => <option value={role.code} key={role.id}>{role.name}</option>)}</optgroup><optgroup label={text("Organization roles · internal only", "Organisatierollen · alleen intern")}>{access?.roles.filter((role) => role.scope === "organization").map((role) => <option value={role.code} key={role.id}>{role.name}</option>)}</optgroup></select>{errors.roleCode ? <small className="field-error">{errors.roleCode.message}</small> : null}</label>
@@ -3017,12 +3017,12 @@ function UserAdminModal({
               {selectedRole?.scope === "project" ? <label className="form-field"><span>Project *</span><select {...register("projectId")}><option value="">{text("Choose a project", "Kies een project")}</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.code} · {project.name}</option>)}</select>{errors.projectId ? <small className="field-error">{errors.projectId.message}</small> : null}</label> : <div className="scope-note"><ShieldCheck size={16} /><span><strong>{text("Organization-wide access", "Organisatiebrede toegang")}</strong><small>{text("This role applies to all current projects in the organization.", "Deze rol geldt voor alle huidige projecten binnen de organisatie.")}</small></span></div>}
               {inviteStep === 3 ? <><dl className="invite-summary"><div><dt>{text("Project user", "Projectgebruiker")}</dt><dd>{displayName}<small>{email}</small></dd></div><div><dt>{text("Role", "Rol")}</dt><dd>{selectedRole?.name}</dd></div><div><dt>{text("Access", "Toegang")}</dt><dd>{selectedRole?.scope === "organization" ? text("All projects in the organization", "Alle projecten in de organisatie") : selectedInviteProject ? `${selectedInviteProject.code} · ${selectedInviteProject.name}` : text("No project selected", "Geen project geselecteerd")}</dd></div></dl><div className="invitation-explainer"><ShieldCheck size={17} /><span><strong>{text("What happens next?", "Wat gebeurt hierna?")}</strong>{text("Access is limited to the scope above.", "Toegang is beperkt tot het bereik hierboven.")}</span></div></> : null}
               {inviteError ? <p className="access-message error full" role="alert">{inviteError}</p> : null}
-              <div className="invite-actions">{inviteStep > 1 ? <button className="ghost-button" type="button" onClick={() => setInviteStep(inviteStep === 3 ? 2 : 1)}><ArrowLeft size={14} /> {text("Back", "Terug")}</button> : <span />}{inviteStep < 3 ? <button className="primary-button" type="button" disabled={loading || Boolean(loadError)} onClick={() => void continueInvite()}>{text("Continue", "Doorgaan")} <ArrowRight size={15} /></button> : <button className="primary-button" type="submit" disabled={busy || loading || Boolean(loadError)}>{busy ? <Loader2 className="spin" size={15} /> : <UserPlus size={15} />}{text("Send invitation", "Uitnodiging versturen")}</button>}</div>
+              <div className="invite-actions">{inviteStep > 1 ? <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setInviteStep(inviteStep === 3 ? 2 : 1)}><ArrowLeft size={14} /> {text("Back", "Terug")}</button> : <span />}{inviteStep < 3 ? <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={loading || Boolean(loadError)} onClick={() => void continueInvite()}>{text("Continue", "Doorgaan")} <ArrowRight size={15} /></button> : <button className="ui-button ui-button--primary ui-button--md" type="submit" disabled={busy || loading || Boolean(loadError)}>{busy ? <Loader2 className="spin" size={15} /> : <UserPlus size={15} />}{text("Send invitation", "Uitnodiging versturen")}</button>}</div>
             </form>}
           </section> : null}
 
           {activePanel === "members" ? <section className="internal-members" aria-labelledby="members-heading">
-            <div className="member-list-heading"><span><h3 id="members-heading">{text("Project accounts", "Projectaccounts")}</h3><p>{access?.members.length ?? 0} {text("account(s) with organization or project access", "account(s) met organisatie- of projecttoegang")}</p></span>{loadError ? <button className="ghost-button" type="button" onClick={reload}>{text("Reload", "Opnieuw laden")}</button> : null}</div>
+            <div className="member-list-heading"><span><h3 id="members-heading">{text("Project accounts", "Projectaccounts")}</h3><p>{access?.members.length ?? 0} {text("account(s) with organization or project access", "account(s) met organisatie- of projecttoegang")}</p></span>{loadError ? <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={reload}>{text("Reload", "Opnieuw laden")}</button> : null}</div>
             {loading ? <div className="empty-list-state"><Loader2 className="spin" size={22} /><strong>{text("Loading accounts", "Accounts laden")}</strong></div> : null}
             {loadError ? <p className="access-message error" role="alert">{loadError}</p> : null}
             {memberError ? <p className="access-message error" role="alert">{memberError}</p> : null}
@@ -3038,14 +3038,14 @@ function UserAdminModal({
                   <article className="member-row">
                     <span className="avatar">{initials(member.displayName || member.email)}</span>
                     <span className="member-copy"><strong>{member.displayName || member.email}</strong><span>{member.email}</span><small>{roles.join(" · ") || text("No role yet", "Nog geen rol")}</small></span>
-                    <span className="member-access-controls"><span className={`task-status ${member.membershipStatus === "active" && member.accessStatus === "active" ? "green" : ""}`}>{statusLabel}</span>{member.userId === currentUserId ? <small>{text("Own account", "Eigen account")}</small> : member.membershipStatus !== "revoked" ? <span>{member.membershipStatus === "suspended" ? <button className="ghost-button" type="button" disabled={busy} onClick={() => setMemberAction({ userId: member.userId, nextStatus: "active", reason: "" })}>{text("Reactivate", "Heractiveren")}</button> : <button className="ghost-button" type="button" disabled={busy} onClick={() => setMemberAction({ userId: member.userId, nextStatus: "suspended", reason: "" })}>{text("Suspend", "Opschorten")}</button>}<button className="ghost-button danger" type="button" disabled={busy} onClick={() => setMemberAction({ userId: member.userId, nextStatus: "revoked", reason: "" })}>{text("Revoke", "Intrekken")}</button></span> : null}</span>
+                    <span className="member-access-controls"><span className={`task-status ${member.membershipStatus === "active" && member.accessStatus === "active" ? "green" : ""}`}>{statusLabel}</span>{member.userId === currentUserId ? <small>{text("Own account", "Eigen account")}</small> : member.membershipStatus !== "revoked" ? <span>{member.membershipStatus === "suspended" ? <button className="ui-button ui-button--quiet ui-button--md" type="button" disabled={busy} onClick={() => setMemberAction({ userId: member.userId, nextStatus: "active", reason: "" })}>{text("Reactivate", "Heractiveren")}</button> : <button className="ui-button ui-button--quiet ui-button--md" type="button" disabled={busy} onClick={() => setMemberAction({ userId: member.userId, nextStatus: "suspended", reason: "" })}>{text("Suspend", "Opschorten")}</button>}<button className="ui-button ui-button--quiet ui-button--md danger" type="button" disabled={busy} onClick={() => setMemberAction({ userId: member.userId, nextStatus: "revoked", reason: "" })}>{text("Revoke", "Intrekken")}</button></span> : null}</span>
                   </article>
                   {member.projectRoles.map((projectRole) => <div className="member-project-permission" key={`${member.userId}:${projectRole.projectId}:${projectRole.roleCode}`}>
                     <span><KeyRound size={14} /><span><strong>{projectRole.projectName}</strong><small>{projectRole.roleName} · {text(roleAccessCopy[projectRole.roleCode]?.[0] ?? "Controlled project role", roleAccessCopy[projectRole.roleCode]?.[1] ?? "Gecontroleerde projectrol")}</small></span></span>
-                    {member.userId !== currentUserId ? <button className="ghost-button" type="button" onClick={() => setRoleEdit({ userId: member.userId, projectId: projectRole.projectId, roleCode: projectRole.roleCode, reason: "" })}>{text("Edit rights", "Rechten aanpassen")}</button> : null}
+                    {member.userId !== currentUserId ? <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setRoleEdit({ userId: member.userId, projectId: projectRole.projectId, roleCode: projectRole.roleCode, reason: "" })}>{text("Edit rights", "Rechten aanpassen")}</button> : null}
                   </div>)}
-                  {roleEdit?.userId === member.userId ? <div className="member-status-form role-editor"><label className="form-field"><span>{text("New project role", "Nieuwe projectrol")}</span><select value={roleEdit.roleCode} onChange={(event) => setRoleEdit({ ...roleEdit, roleCode: event.target.value })}>{projectRoles.map((role) => <option value={role.code} key={role.id}>{role.name}</option>)}</select></label><label className="form-field"><span>{text("Reason for access change *", "Reden voor rechtenwijziging *")}</span><textarea rows={2} value={roleEdit.reason} onChange={(event) => setRoleEdit({ ...roleEdit, reason: event.target.value })} placeholder={text("Stored permanently in the access audit history", "Wordt blijvend opgeslagen in de toegangs-auditgeschiedenis")} /></label><div className="button-row"><button className="ghost-button" type="button" onClick={() => setRoleEdit(null)}>{text("Cancel", "Annuleren")}</button><button className="primary-button" type="button" disabled={busy || roleEdit.reason.trim().length < 5} onClick={() => void confirmProjectRole()}><ShieldCheck size={14} /> {text("Save least-privilege role", "Sla minimale rol op")}</button></div></div> : null}
-                  {memberAction?.userId === member.userId ? <div className="member-status-form"><label className="form-field"><span>{text("Reason for", "Reden voor")} {memberAction.nextStatus === "active" ? text("reactivation", "heractivering") : memberAction.nextStatus === "suspended" ? text("suspension", "opschorting") : text("permanent revocation", "definitieve intrekking")} *</span><textarea rows={2} value={memberAction.reason} onChange={(event) => setMemberAction({ ...memberAction, reason: event.target.value })} placeholder={text("At least 5 characters; stored in the audit trail", "Minimaal 5 tekens; wordt in de audittrail bewaard")} /></label><div className="button-row"><button className="ghost-button" type="button" onClick={() => setMemberAction(null)}>{text("Cancel", "Annuleren")}</button><button className="primary-button" type="button" disabled={busy || memberAction.reason.trim().length < 5} onClick={() => void confirmMemberAction()}>{busy ? <Loader2 className="spin" size={14} /> : <ShieldCheck size={14} />} {text("Confirm status", "Status bevestigen")}</button></div></div> : null}
+                  {roleEdit?.userId === member.userId ? <div className="member-status-form role-editor"><label className="form-field"><span>{text("New project role", "Nieuwe projectrol")}</span><select value={roleEdit.roleCode} onChange={(event) => setRoleEdit({ ...roleEdit, roleCode: event.target.value })}>{projectRoles.map((role) => <option value={role.code} key={role.id}>{role.name}</option>)}</select></label><label className="form-field"><span>{text("Reason for access change *", "Reden voor rechtenwijziging *")}</span><textarea rows={2} value={roleEdit.reason} onChange={(event) => setRoleEdit({ ...roleEdit, reason: event.target.value })} placeholder={text("Stored permanently in the access audit history", "Wordt blijvend opgeslagen in de toegangs-auditgeschiedenis")} /></label><div className="button-row"><button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setRoleEdit(null)}>{text("Cancel", "Annuleren")}</button><button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || roleEdit.reason.trim().length < 5} onClick={() => void confirmProjectRole()}><ShieldCheck size={14} /> {text("Save least-privilege role", "Sla minimale rol op")}</button></div></div> : null}
+                  {memberAction?.userId === member.userId ? <div className="member-status-form"><label className="form-field"><span>{text("Reason for", "Reden voor")} {memberAction.nextStatus === "active" ? text("reactivation", "heractivering") : memberAction.nextStatus === "suspended" ? text("suspension", "opschorting") : text("permanent revocation", "definitieve intrekking")} *</span><textarea rows={2} value={memberAction.reason} onChange={(event) => setMemberAction({ ...memberAction, reason: event.target.value })} placeholder={text("At least 5 characters; stored in the audit trail", "Minimaal 5 tekens; wordt in de audittrail bewaard")} /></label><div className="button-row"><button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setMemberAction(null)}>{text("Cancel", "Annuleren")}</button><button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || memberAction.reason.trim().length < 5} onClick={() => void confirmMemberAction()}>{busy ? <Loader2 className="spin" size={14} /> : <ShieldCheck size={14} />} {text("Confirm status", "Status bevestigen")}</button></div></div> : null}
                 </div>;
               })}
             </div>
@@ -3162,8 +3162,8 @@ function ActionCreateModal({
           <div className="modal-actions">
             {/* Cancel closes the form. "Back" used to open a hidden sheet of record types that
                 each already have a workspace tile. */}
-            <button className="ghost-button" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
-            <button className="primary-button" type="submit" disabled={busy || parties.length === 0 || employees.length === 0 || (buildingId !== ALL_BUILDINGS && requiredLocationDepth !== "building" && !locationNodeId)}>{busy ? <Loader2 className="spin" size={14} /> : <Check size={14} />} {text("Save and assign", "Opslaan en toewijzen")}</button>
+            <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
+            <button className="ui-button ui-button--primary ui-button--md" type="submit" disabled={busy || parties.length === 0 || employees.length === 0 || (buildingId !== ALL_BUILDINGS && requiredLocationDepth !== "building" && !locationNodeId)}>{busy ? <Loader2 className="spin" size={14} /> : <Check size={14} />} {text("Save and assign", "Opslaan en toewijzen")}</button>
           </div>
         </form>
       </section>
@@ -3244,7 +3244,7 @@ function ActionDetailModal({
                 <summary>{text("Different status note", "Andere statusnotitie")}</summary>
                 <label className="form-field"><span>{nextStatus === "verified" ? text("Verification note *", "Verificatienotitie *") : text("Execution note *", "Uitvoeringsnotitie *")}</span><textarea rows={3} {...register("note")} /><DictateButton onText={(transcript) => setValue("note", appendDictation(getValues("note") ?? "", transcript), { shouldDirty: true, shouldValidate: true })} />{errors.note ? <small className="field-error">{errors.note.message}</small> : null}</label>
               </details>
-              <button className="primary-button" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={14} /> : <ArrowRight size={14} />} {text("Move to", "Naar")} {statusLabels[nextStatus].toLowerCase()}</button>
+              <button className="ui-button ui-button--primary ui-button--md" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={14} /> : <ArrowRight size={14} />} {text("Move to", "Naar")} {statusLabels[nextStatus].toLowerCase()}</button>
             </form>
           ) : <p className="action-complete-note"><CheckCircle2 size={16} /> {action.status === "verified" ? text("This action has been formally verified and closed.", "Deze actie is formeel geverifieerd en gesloten.") : text("This action was cancelled and remains visible in the history.", "Deze actie is geannuleerd en blijft in de historie zichtbaar.")}</p>}
         </div>
@@ -3292,14 +3292,14 @@ function SignOutDialog({
         <footer className="modal-actions">
           {confirmDiscard ? (
             <>
-              <button className="secondary-button" type="button" disabled={busy} onClick={() => setConfirmDiscard(false)}>{text("Back", "Terug")}</button>
-              <button className="danger-button" type="button" disabled={busy} onClick={() => signOut(true)}>{busy ? <Loader2 className="spin" size={15} /> : <Trash2 size={15} />} {text("Delete and sign out", "Verwijderen en afmelden")}</button>
+              <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={busy} onClick={() => setConfirmDiscard(false)}>{text("Back", "Terug")}</button>
+              <button className="ui-button ui-button--danger ui-button--md" type="button" disabled={busy} onClick={() => signOut(true)}>{busy ? <Loader2 className="spin" size={15} /> : <Trash2 size={15} />} {text("Delete and sign out", "Verwijderen en afmelden")}</button>
             </>
           ) : (
             <>
-              <button className="ghost-button" type="button" disabled={busy} onClick={() => setConfirmDiscard(true)}>{text("Discard unsent work…", "Niet-verstuurd werk weggooien…")}</button>
-              <button className="secondary-button" type="button" disabled={busy} onClick={close}>{text("Stay signed in", "Aangemeld blijven")}</button>
-              <button className="primary-button" type="button" disabled={busy} onClick={() => signOut(false)}>{busy ? <Loader2 className="spin" size={15} /> : <LogOut size={15} />} {text("Keep work and sign out", "Werk bewaren en afmelden")}</button>
+              <button className="ui-button ui-button--quiet ui-button--md" type="button" disabled={busy} onClick={() => setConfirmDiscard(true)}>{text("Discard unsent work…", "Niet-verstuurd werk weggooien…")}</button>
+              <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={busy} onClick={close}>{text("Stay signed in", "Aangemeld blijven")}</button>
+              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy} onClick={() => signOut(false)}>{busy ? <Loader2 className="spin" size={15} /> : <LogOut size={15} />} {text("Keep work and sign out", "Werk bewaren en afmelden")}</button>
             </>
           )}
         </footer>
@@ -3392,7 +3392,7 @@ function ProjectSwitcherModal({
               <p className="project-switcher-empty">{text("No project matches your search.", "Geen project komt overeen met je zoekopdracht.")}</p>
             ) : null}
           </div>
-          <button className="secondary-button project-switcher-overview" type="button" onClick={openProjectOverview}>
+          <button className="ui-button ui-button--secondary ui-button--md project-switcher-overview" type="button" onClick={openProjectOverview}>
             <LayoutDashboard size={15} /> {text("Open the project overview", "Projectoverzicht openen")}
           </button>
         </div>
@@ -3452,7 +3452,7 @@ function ManageBuildingsModal({
               <label className="form-field"><span>{text("Building name *", "Gebouwnaam *")}</span><input value={name} onChange={(event) => setName(event.target.value)} /></label>
               <label className="form-field wide"><span>{text("Description", "Omschrijving")}</span><input value={description} onChange={(event) => setDescription(event.target.value)} /></label>
             </div>
-            <button className="primary-button" type="button" disabled={busy || code.trim().length < 1 || name.trim().length < 2} onClick={() => void submit()}>{busy ? <Loader2 className="spin" size={15} /> : <Plus size={15} />} {text("Add building", "Gebouw toevoegen")}</button>
+            <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || code.trim().length < 1 || name.trim().length < 2} onClick={() => void submit()}>{busy ? <Loader2 className="spin" size={15} /> : <Plus size={15} />} {text("Add building", "Gebouw toevoegen")}</button>
           </details>
         </div>
       </section>
@@ -3534,7 +3534,7 @@ function ReportModal({
                 <span className="report-check-copy"><strong>{check.title}</strong><span>{check.detail}</span></span>
                 {check.complete || !check.open
                   ? <span className="report-check-label">{check.complete ? text("Complete", "Compleet") : text("Missing", "Ontbreekt")}</span>
-                  : <button className="ghost-button" type="button" onClick={check.open}>{text("Complete", "Aanvullen")}</button>}
+                  : <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={check.open}>{text("Complete", "Aanvullen")}</button>}
               </div>
             ))}
           </div>
@@ -3549,7 +3549,7 @@ function ReportModal({
             <span className={`report-check-status ${missing ? "is-incomplete" : "is-complete"}`}>{missing ? text(`${missing} item(s) still need completion`, `${missing} onderdeel${missing > 1 ? "en" : ""} nog aanvullen`) : text("All checks passed", "Alle controles geslaagd")}</span>
             <div className="report-action-buttons">
               <ReportDownloadButtons disabled={missing > 0} onDownloadPdf={onDownload} onDownloadWord={onDownloadDocx} />
-              <button className="primary-button" type="button" disabled={missing > 0 || submitted} onClick={onSubmit}>{submitted ? text("Submitted", "Ingediend") : text("Ready for review", "Gereed voor review")} <ArrowRight size={14} /></button>
+              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={missing > 0 || submitted} onClick={onSubmit}>{submitted ? text("Submitted", "Ingediend") : text("Ready for review", "Gereed voor review")} <ArrowRight size={14} /></button>
             </div>
           </div>
         </div>

@@ -231,7 +231,7 @@ test("desktop reports show one calm task area at a time and secondary actions ar
   await expect(page.locator(".workflow-grid")).toBeVisible();
   await expect(page.locator(".workflow-card.current, .workflow-card.locked, .workflow-card.complete")).toHaveCount(3);
 
-  const secondary = page.locator(".workflow-grid .secondary-button").first();
+  const secondary = page.locator(".workflow-grid .ui-button--secondary").first();
   const style = await secondary.evaluate((element) => {
     const computed = getComputedStyle(element);
     return { background: computed.backgroundColor, border: computed.borderTopColor };

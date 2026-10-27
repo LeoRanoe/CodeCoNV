@@ -368,7 +368,7 @@ export function DailyLogForm({
       {rows.length ? (
         <ul>{rows.map((row) => <li key={row.id}><strong>{row.code}</strong> {row.title}</li>)}</ul>
       ) : <p>{empty}</p>}
-      <button className="ghost-button ui-button ui-button--quiet ui-button--md" type="button" onClick={() => openModule(module)}>{label} <ArrowRight size={14} /></button>
+      <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => openModule(module)}>{label} <ArrowRight size={14} /></button>
     </div>
   );
 
@@ -393,7 +393,7 @@ export function DailyLogForm({
           ) : (
             <div className="daily-log-missing">
               <span>{text("Weather and hours are not confirmed yet (Project start).", "Weer en uren zijn nog niet bevestigd (Projectstart).")}</span>
-              <button className="secondary-button ui-button ui-button--secondary ui-button--md" type="button" onClick={openProjectStart}>{text("Confirm project start", "Bevestig projectstart")}</button>
+              <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={openProjectStart}>{text("Confirm project start", "Bevestig projectstart")}</button>
             </div>
           )}
         </>
@@ -489,7 +489,7 @@ export function DailyLogForm({
               count and judges the manning level; it does not count a second time. */}
           <p className="daily-log-readout">
             <strong>{attendanceTotal === 1 ? text("1 person recorded today", "1 persoon vandaag vastgelegd") : text(`${attendanceTotal} people recorded today`, `${attendanceTotal} personen vandaag vastgelegd`)}</strong>
-            <button className="ghost-button ui-button ui-button--quiet ui-button--md" type="button" onClick={openWorkforce}>{text("Open workforce", "Open bezetting")} <ArrowRight size={14} /></button>
+            <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={openWorkforce}>{text("Open workforce", "Open bezetting")} <ArrowRight size={14} /></button>
           </p>
           {/* Counting people is not the same as judging the manning level. These notes are
               the sentences the client wants in the report about the workforce. */}
@@ -570,8 +570,8 @@ export function DailyLogForm({
         <>
           <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple onChange={(event) => { const files = event.target.files; void addPhotos(files).finally(() => { event.target.value = ""; }); }} />
           <div className="button-row">
-            <button className="secondary-button ui-button ui-button--secondary ui-button--md" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={15} /> {text("Add photo", "Foto toevoegen")}</button>
-            <button className="ghost-button ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setSketching(true)}><PenLine size={15} /> {text("Make a sketch", "Schets maken")}</button>
+            <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={15} /> {text("Add photo", "Foto toevoegen")}</button>
+            <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setSketching(true)}><PenLine size={15} /> {text("Make a sketch", "Schets maken")}</button>
           </div>
           {sketching ? <SketchPad close={() => setSketching(false)} save={(file) => { setPhotos((current) => [...current, toPhotoEvidence(file, { category: "overview" })]); setSketching(false); }} /> : null}
           {/* One photo block, the same as everywhere else: the picture, the way into
@@ -654,7 +654,7 @@ export function DailyLogForm({
       headerAside={draftState === "restored" ? (
         <span className="daily-log-draft" role="status">
           {text("Unsaved draft restored", "Niet-opgeslagen concept hersteld")}
-          <button className="ghost-button ui-button ui-button--quiet ui-button--md" type="button" onClick={discardDraft}>{text("Discard draft", "Concept weggooien")}</button>
+          <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={discardDraft}>{text("Discard draft", "Concept weggooien")}</button>
         </span>
       ) : null}
     >

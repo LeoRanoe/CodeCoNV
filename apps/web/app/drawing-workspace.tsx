@@ -595,7 +595,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
           </span>
           <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp,.dwg,.pdf,.jpg,.jpeg,.png,.webp" onChange={(event) => { setUploadFile(event.target.files?.[0] ?? null); setUploadError(uploadRefusal(event.target.files?.[0] ?? null)); }} />
         </label>
-        <button className="ui-button ui-button--primary ui-button--md primary-button" type="button" disabled={busy || !uploadFile || uploadFile.size > maxFileSizeBytes || (!supportedDrawingMimeTypes.includes(uploadFile.type) && !isDwgFile(uploadFile))} onClick={() => void uploadDrawing()}>
+        <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || !uploadFile || uploadFile.size > maxFileSizeBytes || (!supportedDrawingMimeTypes.includes(uploadFile.type) && !isDwgFile(uploadFile))} onClick={() => void uploadDrawing()}>
           {busy ? <Loader2 className="spin" size={15} /> : <FileUp size={15} />} {text("Upload drawing", "Tekening uploaden")}
         </button>
         {uploadError ? <p className="field-error" role="alert">{uploadError}</p> : null}
@@ -699,7 +699,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                       : text("Nothing is saved until you confirm.", "Er wordt niets opgeslagen tot je bevestigt.")}</span>
                   </div>
                 </div>
-                <div className="button-row"><button className="ui-button ui-button--primary ui-button--md primary-button" type="button" disabled={busy} onClick={() => void placePin(point)}><MapPin size={15} /> {text("Confirm pin", "Pin bevestigen")}</button><button className="ui-button ui-button--secondary ui-button--md secondary-button" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button></div>
+                <div className="button-row"><button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy} onClick={() => void placePin(point)}><MapPin size={15} /> {text("Confirm pin", "Pin bevestigen")}</button><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button></div>
               </div>
             ) : point ? (
               /* A spot on the drawing is usable on its own: write the issue here, or hang
@@ -730,8 +730,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                       onChange={setSpotSignature}
                     />
                     <div className="button-row">
-                      <button className="ui-button ui-button--primary ui-button--md primary-button" type="button" disabled={busy || spotIssue.title.trim().length < 3} onClick={() => void createIssueAtPoint(point)}><MapPin size={15} /> {text("Record and pin it", "Vastleggen en pinnen")}</button>
-                      <button className="ui-button ui-button--secondary ui-button--md secondary-button" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button>
+                      <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || spotIssue.title.trim().length < 3} onClick={() => void createIssueAtPoint(point)}><MapPin size={15} /> {text("Record and pin it", "Vastleggen en pinnen")}</button>
+                      <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button>
                     </div>
                   </>
                 ) : (
@@ -744,8 +744,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                       </select>
                     </label>
                     <div className="button-row">
-                      <button className="ui-button ui-button--primary ui-button--md primary-button" type="button" disabled={busy || !spotRecord} onClick={() => void linkRecordToPoint(point)}><MapPin size={15} /> {text("Place pin", "Pin plaatsen")}</button>
-                      <button className="ui-button ui-button--secondary ui-button--md secondary-button" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button>
+                      <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || !spotRecord} onClick={() => void linkRecordToPoint(point)}><MapPin size={15} /> {text("Place pin", "Pin plaatsen")}</button>
+                      <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button>
                     </div>
                   </>
                 )}
@@ -1190,8 +1190,8 @@ function DrawingPinDetails({ pin, onOpen, onDelete }: { pin: DrawingPin; onOpen:
         <div><dt>{text("Drawing page", "Tekeningspagina")}</dt><dd>{pin.page_number}</dd></div>
         <div><dt>{text("Exact position", "Exacte positie")}</dt><dd>X {Math.round(Number(pin.x_ratio) * 100)}% · Y {Math.round(Number(pin.y_ratio) * 100)}%</dd></div>
       </dl>
-      <button className="ui-button ui-button--primary ui-button--md primary-button" type="button" onClick={onOpen}><ArrowUpRight size={15} /> {text("Open linked project record", "Open gekoppeld projectrecord")}</button>
-      <button className="ui-button ui-button--secondary ui-button--md secondary-button danger-button" type="button" disabled={pin.id.startsWith("pending:")} onClick={() => { if (window.confirm(text("Remove this pin from the drawing? The audit trail is retained.", "Deze pin van de tekening verwijderen? Het auditspoor blijft behouden."))) onDelete(); }}><Trash2 size={15} /> {text("Remove pin", "Pin verwijderen")}</button>
+      <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={onOpen}><ArrowUpRight size={15} /> {text("Open linked project record", "Open gekoppeld projectrecord")}</button>
+      <button className="ui-button ui-button--secondary ui-button--md ui-button--danger" type="button" disabled={pin.id.startsWith("pending:")} onClick={() => { if (window.confirm(text("Remove this pin from the drawing? The audit trail is retained.", "Deze pin van de tekening verwijderen? Het auditspoor blijft behouden."))) onDelete(); }}><Trash2 size={15} /> {text("Remove pin", "Pin verwijderen")}</button>
       <div className="operation-alert"><Link2 size={18} /><div><strong>{text("Traceable project link", "Traceerbare projectkoppeling")}</strong></div></div>
     </div>
   );

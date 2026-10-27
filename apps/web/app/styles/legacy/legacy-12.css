@@ -833,9 +833,9 @@ button.prompt-source:hover > svg { color: var(--green); }
     accent-color: var(--green);
   }
 
-  .primary-button,
-  .secondary-button,
-  .ghost-button,
+  .ui-button--primary,
+  .ui-button--secondary,
+  .ui-button--quiet,
   .back-button,
   .check-field,
   .answer-options label,
@@ -848,7 +848,7 @@ button.prompt-source:hover > svg { color: var(--green); }
   }
 
   /* A ten-pixel word on a button is not a label a phone can read. */
-  .ghost-button,
+  .ui-button--quiet,
   .back-button {
     font-size: var(--text-xs);
   }

@@ -30,7 +30,7 @@ const recordForm = `<div class="app-shell"><main class="main-content">
     <div class="operation-form-heading sectioned-record-heading">
       <button class="record-back-button" type="button" aria-label="Terug"></button>
       <div><span class="record-number">ISS-2026-0007</span><h2>Issue melden</h2></div>
-      <button class="secondary-button record-heading-draft" type="button">Concept parkeren</button>
+      <button class="ui-button ui-button--secondary ui-button--md record-heading-draft" type="button">Concept parkeren</button>
     </div>
     <div class="record-form-validation" role="alert"><strong>Controleer voor opslaan</strong><ul><li>Kies minstens één gebouw</li></ul></div>
     <div class="record-form-sections">
@@ -50,12 +50,12 @@ const recordForm = `<div class="app-shell"><main class="main-content">
       </section>
     </div>
     <div class="record-form-actions">
-      <button class="ghost-button" type="button">Annuleren</button>
+      <button class="ui-button ui-button--quiet ui-button--md" type="button">Annuleren</button>
       <label class="record-attachment-count">2 bijlagen<input type="file" /></label>
     </div>
     <div class="record-form-footer">
-      <button class="ghost-button" type="button">Annuleren</button>
-      <button class="primary-button" type="button">Registratie opslaan</button>
+      <button class="ui-button ui-button--quiet ui-button--md" type="button">Annuleren</button>
+      <button class="ui-button ui-button--primary ui-button--md" type="button">Registratie opslaan</button>
     </div>
   </div>
 </main></div>
@@ -69,7 +69,7 @@ const checklistRun = `<div class="app-shell"><main class="main-content">
         <div class="answer-options"><label><input type="radio" name="q${index}" /> Ja</label><label><input type="radio" name="q${index}" /> Nee</label><label><input type="radio" name="q${index}" /> N.v.t.</label></div>
       </fieldset>`).join("")}
     </div>
-    <div class="form-actions checklist-sticky-actions"><button class="secondary-button" type="button">Later afronden</button><button class="primary-button" type="button">Inspectie afronden</button></div>
+    <div class="form-actions checklist-sticky-actions"><button class="ui-button ui-button--secondary ui-button--md" type="button">Later afronden</button><button class="ui-button ui-button--primary ui-button--md" type="button">Inspectie afronden</button></div>
   </div>
 </main></div>
 <nav class="mobile-bottom-nav">${["Vandaag", "Project", "Foto", "Acties", "Meer"].map((label) => `<button class="mobile-nav-button" type="button">${label}</button>`).join("")}</nav>`;

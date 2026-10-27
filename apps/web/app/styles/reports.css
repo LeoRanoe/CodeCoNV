@@ -83,7 +83,7 @@
   color: var(--text);
 }
 
-.workflow-card:not(.current) .primary-button {
+.workflow-card:not(.current) .ui-button--primary {
   background: var(--paper);
   border-color: var(--border);
   color: var(--text);

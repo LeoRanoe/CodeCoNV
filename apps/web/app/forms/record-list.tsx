@@ -54,9 +54,9 @@ export function RecordList({
         <div><strong>{row.title}</strong><span>{row.meta}</span></div>
         {!waiting && (open || row.onEdit || row.onWithdraw) ? (
           <div className="record-row-actions">
-            {open ? <button className="secondary-button ui-button ui-button--secondary ui-button--sm record-row-open" type="button" onClick={(event) => { event.stopPropagation(); open(); }}><Eye size={14} /> {row.open?.label ?? text("View", "Bekijken")}</button> : null}
-            {row.onEdit ? <button className="secondary-button ui-button ui-button--secondary ui-button--sm record-row-edit" type="button" onClick={(event) => { event.stopPropagation(); row.onEdit?.(); }}><Edit3 size={14} /> {row.editLabel ?? text("Edit", "Bewerken")}</button> : null}
-            {row.onWithdraw ? <button className="ghost-button ui-button ui-button--quiet ui-button--sm record-row-withdraw" type="button" onClick={(event) => { event.stopPropagation(); row.onWithdraw?.(); }}><Undo2 size={14} /> {text("Withdraw", "Intrekken")}</button> : null}
+            {open ? <button className="ui-button ui-button--secondary ui-button--sm record-row-open" type="button" onClick={(event) => { event.stopPropagation(); open(); }}><Eye size={14} /> {row.open?.label ?? text("View", "Bekijken")}</button> : null}
+            {row.onEdit ? <button className="ui-button ui-button--secondary ui-button--sm record-row-edit" type="button" onClick={(event) => { event.stopPropagation(); row.onEdit?.(); }}><Edit3 size={14} /> {row.editLabel ?? text("Edit", "Bewerken")}</button> : null}
+            {row.onWithdraw ? <button className="ui-button ui-button--quiet ui-button--sm record-row-withdraw" type="button" onClick={(event) => { event.stopPropagation(); row.onWithdraw?.(); }}><Undo2 size={14} /> {text("Withdraw", "Intrekken")}</button> : null}
           </div>
         ) : null}
         <span className={`task-status ui-status-badge ${waiting ? "waiting" : row.tone} ${row.tone === "red" ? "ui-status-badge--red" : row.tone === "green" ? "ui-status-badge--green" : ""}`}>{row.status === pendingStatus ? text("waiting to be sent", "wacht op verzending") : row.status}</span>

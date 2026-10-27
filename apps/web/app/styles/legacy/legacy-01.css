@@ -36,7 +36,7 @@
 
 @media (max-width: 640px) {
   .drawing-upload-strip { grid-template-columns: minmax(0, 1fr); }
-  .drawing-upload-strip .primary-button { width: 100%; }
+  .drawing-upload-strip .ui-button--primary { width: 100%; }
 }
 
 .drawing-workspace-grid {
@@ -579,44 +579,7 @@ button.drawing-pin {
   padding: 14px;
 }
 
-.secondary-button {
-  align-items: center;
-  background: var(--ink-50);
-  border: 1px solid var(--ink-400);
-  border-radius: var(--radius-control);
-  color: var(--green);
-  cursor: pointer;
-  display: inline-flex;
-  font: inherit;
-  font-size: var(--text-xs);
-  font-weight: var(--weight-bold);
-  gap: 7px;
-  justify-content: center;
-  min-height: var(--control-h-md);
-  padding: var(--space-2) 14px;
-  text-decoration: none;
-}
-
-.secondary-button:hover {
-  background: var(--green-soft);
-  border-color: var(--ink-500);
-  color: var(--ink-800);
-}
-
-.secondary-button:active {
-  background: var(--ink-200);
-  transform: translateY(1px);
-}
-
-.secondary-button:disabled {
-  background: var(--ink-50);
-  border-color: var(--ink-300);
-  color: var(--ink-500);
-  cursor: not-allowed;
-  opacity: 1;
-}
-
-.secondary-button.recording {
+.ui-button--secondary.recording {
   background: var(--red-soft);
   border-color: var(--signal);
   color: var(--red);
@@ -817,7 +780,7 @@ button.drawing-pin {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .period-report-card > .primary-button {
+  .period-report-card > .ui-button--primary {
     grid-column: 2 / -1;
     justify-self: start;
   }
@@ -858,7 +821,7 @@ button.drawing-pin {
   }
 
   .period-report-card .workflow-icon,
-  .period-report-card > .primary-button {
+  .period-report-card > .ui-button--primary {
     grid-column: auto;
   }
 

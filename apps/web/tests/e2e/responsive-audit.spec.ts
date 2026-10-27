@@ -43,9 +43,9 @@ const fixture = `<main style="padding:12px">
       <span class="action-icon"></span>
       <div><strong>Cast-in anchors · installation · Main building</strong><span>INS-2026-000${index} · Main building · 4 aug 2026</span></div>
       <div class="record-row-actions">
-        <button class="secondary-button record-row-open" type="button">Bekijken</button>
-        <button class="secondary-button record-row-edit" type="button">Bewerken</button>
-        <button class="ghost-button record-row-withdraw" type="button">Intrekken</button>
+        <button class="ui-button ui-button--secondary ui-button--md record-row-open" type="button">Bekijken</button>
+        <button class="ui-button ui-button--secondary ui-button--md record-row-edit" type="button">Bewerken</button>
+        <button class="ui-button ui-button--quiet ui-button--md record-row-withdraw" type="button">Intrekken</button>
       </div>
       <span class="task-status">in progress</span>
     </article>`).join("")}

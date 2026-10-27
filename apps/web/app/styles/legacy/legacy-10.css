@@ -656,7 +656,7 @@
 .action-focus-counts > div { align-items: center; border-top: 1px solid var(--ink-50); display: flex; justify-content: space-between; padding-top: 5px; }
 .action-focus-counts dt { color: var(--ink-600); font-size: var(--text-xs); }
 .action-focus-counts dd { color: var(--ink-900); font-size: var(--text-xs); font-weight: var(--weight-bold); margin: 0; }
-.action-focus-card > .secondary-button { justify-content: center; width: 100%; }
+.action-focus-card > .ui-button--secondary { justify-content: center; width: 100%; }
 
 /* A registration that is on the device and still has to be sent. It is deliberately calm,
    not an error: the record is safe, it is only not central yet. */
@@ -766,7 +766,7 @@
   .document-preview-backdrop { padding: var(--space-2); }
   .document-preview-modal { border-radius: var(--radius-md); height: 92vh; width: 100%; }
   .document-preview-modal > header { align-items: flex-start; }
-  .document-preview-modal > header .secondary-button { font-size: 0; min-width: 38px; padding: var(--space-2); }
+  .document-preview-modal > header .ui-button--secondary { font-size: 0; min-width: 38px; padding: var(--space-2); }
   .project-document-list > button { grid-template-columns: 35px minmax(0, 1fr) auto; }
   .project-document-list > button > .document-status { display: none; }
   .action-center-summary > button { align-items: flex-start; flex-direction: column; gap: 2px; }
@@ -778,7 +778,7 @@
   .action-plan-card { display: block; }
   .action-plan-preview { height: 180px; margin: 10px 0; }
   .secondary-header { align-items: flex-start; flex-direction: column; padding: var(--space-4); }
-  .secondary-header > .primary-button { width: 100%; }
+  .secondary-header > .ui-button--primary { width: 100%; }
   .punchlist-cycle-card { grid-template-columns: 38px minmax(0, 1fr); }
   .punchlist-cycle-card > .button-row { grid-column: 1 / -1; width: 100%; }
   .punchlist-cycle-card > .button-row > button { flex: 1 1 auto; justify-content: center; }
