@@ -177,8 +177,8 @@ export function SketchPad({ close, save }: { close: () => void; save: (file: Fil
             <PenLine size={15} />
             <input type="range" min={2} max={10} step={1} value={width} onChange={(event) => setWidth(Number(event.target.value))} aria-label={text("Pen thickness", "Pendikte")} />
           </label>
-          <button className="ghost-button" type="button" onClick={undo} disabled={empty}><Undo2 size={15} /> {text("Undo", "Ongedaan maken")}</button>
-          <button className="ghost-button" type="button" onClick={clear} disabled={empty}><Eraser size={15} /> {text("Clear", "Wissen")}</button>
+          <button className="ui-button ui-button--quiet ui-button--md ghost-button" type="button" onClick={undo} disabled={empty}><Undo2 size={15} /> {text("Undo", "Ongedaan maken")}</button>
+          <button className="ui-button ui-button--quiet ui-button--md ghost-button" type="button" onClick={clear} disabled={empty}><Eraser size={15} /> {text("Clear", "Wissen")}</button>
         </div>
 
         <canvas
@@ -193,8 +193,8 @@ export function SketchPad({ close, save }: { close: () => void; save: (file: Fil
 
         {error ? <p className="field-error" role="alert">{error}</p> : null}
         <footer className="modal-actions">
-          <button className="secondary-button" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
-          <button className="primary-button" type="button" disabled={empty || busy} onClick={useSketch}>{text("Add the sketch", "Voeg de schets toe")}</button>
+          <button className="ui-button ui-button--secondary ui-button--md secondary-button" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
+          <button className="ui-button ui-button--primary ui-button--md primary-button" type="button" disabled={empty || busy} onClick={useSketch}>{text("Add the sketch", "Voeg de schets toe")}</button>
         </footer>
       </section>
     </div>

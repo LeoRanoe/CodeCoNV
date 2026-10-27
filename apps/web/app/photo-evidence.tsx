@@ -476,9 +476,9 @@ export function PhotoDetailSheet({
 
         <footer className="modal-actions">
           {onRemove
-            ? <button className="secondary-button photo-detail-remove" type="button" onClick={onRemove}><Trash2 size={15} /> {text("Remove photo", "Foto verwijderen")}</button>
+            ? <button className="ui-button ui-button--secondary ui-button--md secondary-button photo-detail-remove" type="button" onClick={onRemove}><Trash2 size={15} /> {text("Remove photo", "Foto verwijderen")}</button>
             : <span />}
-          <button className="primary-button" type="button" onClick={close}><Check size={15} /> {text("Done", "Klaar")}</button>
+          <button className="ui-button ui-button--primary ui-button--md primary-button" type="button" onClick={close}><Check size={15} /> {text("Done", "Klaar")}</button>
         </footer>
 
         {allowMarkup && marking ? (

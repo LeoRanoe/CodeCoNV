@@ -225,15 +225,15 @@ export function SignaturePad({
           </div>
 
           <div className="signature-tools">
-            <button className="ghost-button" type="button" onClick={undo} disabled={empty}><Undo2 size={15} /> {text("Undo", "Ongedaan maken")}</button>
-            <button className="ghost-button" type="button" onClick={clear} disabled={empty}><Eraser size={15} /> {text("Clear", "Wissen")}</button>
+            <button className="ui-button ui-button--quiet ui-button--md ghost-button" type="button" onClick={undo} disabled={empty}><Undo2 size={15} /> {text("Undo", "Ongedaan maken")}</button>
+            <button className="ui-button ui-button--quiet ui-button--md ghost-button" type="button" onClick={clear} disabled={empty}><Eraser size={15} /> {text("Clear", "Wissen")}</button>
           </div>
           {error ? <p className="field-error" role="alert">{error}</p> : null}
         </div>
 
         <footer className="modal-actions">
-          <button className="secondary-button" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
-          <button className="primary-button" type="button" disabled={empty || name.trim().length < 2} onClick={confirm}><PenLine size={15} /> {text("Sign the document", "Onderteken het document")}</button>
+          <button className="ui-button ui-button--secondary ui-button--md secondary-button" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
+          <button className="ui-button ui-button--primary ui-button--md primary-button" type="button" disabled={empty || name.trim().length < 2} onClick={confirm}><PenLine size={15} /> {text("Sign the document", "Onderteken het document")}</button>
         </footer>
       </section>
     </div>
@@ -288,12 +288,12 @@ export function SignatureField({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={value!.image} alt={text(`Signature of ${value!.name}`, `Handtekening van ${value!.name}`)} />
           {locked ? null : <div className="signature-field-actions">
-            <button className="ghost-button" type="button" disabled={disabled} onClick={() => setSigning(true)}><PenLine size={14} /> {text("Sign again", "Opnieuw tekenen")}</button>
-            <button className="ghost-button" type="button" disabled={disabled} onClick={() => onChange(null)}><Eraser size={14} /> {text("Remove", "Verwijderen")}</button>
+            <button className="ui-button ui-button--quiet ui-button--md ghost-button" type="button" disabled={disabled} onClick={() => setSigning(true)}><PenLine size={14} /> {text("Sign again", "Opnieuw tekenen")}</button>
+            <button className="ui-button ui-button--quiet ui-button--md ghost-button" type="button" disabled={disabled} onClick={() => onChange(null)}><Eraser size={14} /> {text("Remove", "Verwijderen")}</button>
           </div>}
         </div>
       ) : (
-        <button className="secondary-button signature-open-button" type="button" disabled={disabled} onClick={() => setSigning(true)}>
+        <button className="ui-button ui-button--secondary ui-button--md secondary-button signature-open-button" type="button" disabled={disabled} onClick={() => setSigning(true)}>
           <PenLine size={15} /> {text("Sign now", "Nu ondertekenen")}
         </button>
       )}

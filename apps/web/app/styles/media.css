@@ -1,1 +1,73 @@
-/* media screen refinements. */
+/* Media records use one neutral register language regardless of source module. */
+.media-origin-chip {
+  background: var(--paper);
+  border-color: var(--border);
+  color: var(--muted);
+  font-style: normal;
+}
+
+.media-file-icon {
+  background: var(--paper);
+  color: var(--ink-700);
+}
+
+.media-choice,
+.media-choice.primary,
+.media-choice.media-choice-360 {
+  background: var(--paper);
+  border-color: var(--border);
+}
+
+.media-choice > span:first-child,
+.media-choice.primary > span:first-child,
+.media-choice.media-choice-360 > span:first-child {
+  background: transparent;
+  border-radius: 0;
+  color: var(--text);
+  height: auto;
+  width: auto;
+}
+
+.media-card > div {
+  border-top: 1px solid var(--border);
+}
+
+.media-code-chip {
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-geist-mono), monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.visual-empty,
+.visual-panel-empty {
+  background: var(--paper);
+  border: 0;
+  color: var(--muted);
+}
+
+.visual-empty > svg,
+.visual-panel-empty > svg {
+  display: none;
+}
+
+.rapid-panel-heading > span {
+  background: transparent;
+  border-radius: 0;
+  color: var(--text);
+  height: auto;
+  width: auto;
+}
+
+.rapid-source-list article,
+.rapid-project-library > button {
+  background: var(--paper);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.rapid-source-list article > span,
+.rapid-upload-zone {
+  color: var(--text);
+}

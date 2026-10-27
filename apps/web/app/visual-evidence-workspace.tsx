@@ -568,8 +568,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { stageImage(event.currentTarget.files?.[0] ?? null, "photo"); event.currentTarget.value = ""; }} />
           {/* The compass is started on the tap that opens the camera: it is the gesture a phone
               needs before it hands out its orientation, and it is the moment the reading matters. */}
-          <button className="primary-button camera-primary-action" type="button" disabled={!isStorageGatewayConfigured} onClick={() => { void startCompassWatch(); cameraInputRef.current?.click(); }}><Camera size={17} /> {text("Take photo", "Maak foto")}</button>
-          <button className="secondary-button" type="button" disabled={!isStorageGatewayConfigured} onClick={() => { setCaptureForm({ ...captureForm, type: "panorama" }); setFile(null); setShowUpload(true); }}><ScanLine size={16} /> {text("Upload 360°", "Upload 360°")}</button>
+          <button className="ui-button ui-button--primary ui-button--md primary-button camera-primary-action" type="button" disabled={!isStorageGatewayConfigured} onClick={() => { void startCompassWatch(); cameraInputRef.current?.click(); }}><Camera size={17} /> {text("Take photo", "Maak foto")}</button>
+          <button className="ui-button ui-button--secondary ui-button--md secondary-button" type="button" disabled={!isStorageGatewayConfigured} onClick={() => { setCaptureForm({ ...captureForm, type: "panorama" }); setFile(null); setShowUpload(true); }}><ScanLine size={16} /> {text("Upload 360°", "Upload 360°")}</button>
         </div>
       </div>
 
@@ -618,7 +618,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           ) : null}
           {captureForm.type === "panorama"
             ? <label className="form-field"><span>{text("360° image · every 360° camera export · JPEG, PNG, WebP or Insta360 .insp", "360°-beeld · elke 360°-camera-export · JPEG, PNG, WebP of Insta360 .insp")}</span><input type="file" accept={`image/jpeg,image/png,image/webp,${panoramaFileExtensions.join(",")}`} onChange={(event) => stageImage(event.currentTarget.files?.[0] ?? null, "panorama")} /></label>
-            : <div className="visual-review-actions"><button className="secondary-button visual-retake-button" type="button" onClick={() => { void startCompassWatch(); cameraInputRef.current?.click(); }}><Camera size={16} /> {text("Retake photo", "Foto opnieuw maken")}</button><button className="secondary-button visual-discard-button" type="button" onClick={discardCapture}>{text("Discard photo", "Foto verwijderen")}</button></div>}
+            : <div className="visual-review-actions"><button className="ui-button ui-button--secondary ui-button--md secondary-button visual-retake-button" type="button" onClick={() => { void startCompassWatch(); cameraInputRef.current?.click(); }}><Camera size={16} /> {text("Retake photo", "Foto opnieuw maken")}</button><button className="ui-button ui-button--secondary ui-button--md secondary-button visual-discard-button" type="button" onClick={discardCapture}>{text("Discard photo", "Foto verwijderen")}</button></div>}
 
           {/* One text box, in the supervisor's own words. Everything else on this form is
               either a tap or something the app fills in by itself. */}
@@ -654,7 +654,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
                     </select>
                   ) : null}
                   {captureDrawings.length ? (
-                    <button className="secondary-button capture-drawing-button" type="button" onClick={() => setPickingDrawingLocation(true)}>
+                    <button className="ui-button ui-button--secondary ui-button--md secondary-button capture-drawing-button" type="button" onClick={() => setPickingDrawingLocation(true)}>
                       <MapPin size={15} /> {drawingLocation ? text("Change drawing or spot", "Tekening of plek wijzigen") : text("Choose drawing & point", "Tekening kiezen & aanwijzen")}
                     </button>
                   ) : null}
@@ -681,7 +681,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           {file && captureForm.type === "photo" && file.size > maxFileSizeBytes ? <p className="field-error">{text("This image exceeds the project file limit.", "Deze afbeelding is groter dan de bestandslimiet van het project.")}</p> : null}
           {fileError ? <p className="field-error" role="alert">{fileError}</p> : null}
           {file && captureForm.description.trim().length < 3 ? <p className="form-intro">{text("Write one line about this photo to save it.", "Schrijf één regel over deze foto om hem op te slaan.")}</p> : null}
-          <button className="primary-button" type="button" disabled={busy || !file || (captureForm.type === "photo" && file.size > maxFileSizeBytes) || !fieldPhotoMimeTypes.includes(file.type) || captureForm.description.trim().length < 3 || (captureForm.type === "panorama" && (!panoramaImage || Boolean(fileError) || !validTourPosition(captureForm.tourName, captureForm.tourOrder)))} onClick={() => void uploadCapture()}>{busy ? <Loader2 className="spin" size={15} /> : <Camera size={15} />} {captureForm.type === "panorama" ? text("Secure and sync 360° image", "Beveilig en synchroniseer 360°-beeld") : text("Save photo", "Foto opslaan")}</button>
+          <button className="ui-button ui-button--primary ui-button--md primary-button" type="button" disabled={busy || !file || (captureForm.type === "photo" && file.size > maxFileSizeBytes) || !fieldPhotoMimeTypes.includes(file.type) || captureForm.description.trim().length < 3 || (captureForm.type === "panorama" && (!panoramaImage || Boolean(fileError) || !validTourPosition(captureForm.tourName, captureForm.tourOrder)))} onClick={() => void uploadCapture()}>{busy ? <Loader2 className="spin" size={15} /> : <Camera size={15} />} {captureForm.type === "panorama" ? text("Secure and sync 360° image", "Beveilig en synchroniseer 360°-beeld") : text("Save photo", "Foto opslaan")}</button>
         </div>
       ) : null}
 
@@ -715,7 +715,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
             {point && activeCapture ? <IssueForm point={point} capture={activeCapture} issue={issue} setIssue={setIssue} findings={data.findings} annotations={data.visualAnnotations} existingFindingId={existingFindingId} setExistingFindingId={setExistingFindingId} parties={parties} buildings={buildings} captureBuildingId={captureBuildingId} busy={busy} signature={issueSignature} setSignature={setIssueSignature} save={() => void saveIssue()} cancel={() => { setPoint(null); setIssue(emptyIssue); setIssueSignature(null); setExistingFindingId(""); }} /> : selectedAnnotation && selectedFinding ? <AnnotationDetails annotation={selectedAnnotation} finding={selectedFinding} /> : <div className="visual-panel-empty"><ScanLine size={24} /><strong>{text("Select or place a marker", "Selecteer of plaats een marker")}</strong></div>}
           </aside>
         </div>
-      ) : showUpload ? null : <div className="empty-list-state visual-empty"><Camera size={24} /><strong>{text("No project photos yet", "Nog geen projectfoto's")}</strong><button className="primary-button" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={15} /> {text("Take photo", "Maak foto")}</button></div>}
+      ) : showUpload ? null : <div className="empty-list-state visual-empty"><Camera size={24} /><strong>{text("No project photos yet", "Nog geen projectfoto's")}</strong><button className="ui-button ui-button--primary ui-button--md primary-button" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={15} /> {text("Take photo", "Maak foto")}</button></div>}
     </section>
   );
 }
@@ -1043,8 +1043,8 @@ function CaptureDetails({ capture, file, client }: { capture: VisualCapture; fil
         <small><MapPin size={11} /> {capture.location_label}{capture.tour_name ? ` · ${capture.tour_name}${capture.tour_order ? ` (${capture.tour_order})` : ""}` : ""} · {capturedAt}</small>
       </div>
       <div className="capture-details-actions">
-        <button className="secondary-button" type="button" onClick={() => run(openProjectFile(client, file.id, file.original_name))}><ExternalLink size={14} /> {text("Open original", "Origineel openen")}</button>
-        <button className="secondary-button" type="button" onClick={() => run(downloadProjectFile(client, file.id, file.original_name))}><Download size={14} /> {text("Download", "Downloaden")}</button>
+        <button className="ui-button ui-button--secondary ui-button--md secondary-button" type="button" onClick={() => run(openProjectFile(client, file.id, file.original_name))}><ExternalLink size={14} /> {text("Open original", "Origineel openen")}</button>
+        <button className="ui-button ui-button--secondary ui-button--md secondary-button" type="button" onClick={() => run(downloadProjectFile(client, file.id, file.original_name))}><Download size={14} /> {text("Download", "Downloaden")}</button>
       </div>
       {failed ? <p className="field-error" role="alert">{failed}</p> : null}
     </section>
@@ -1155,7 +1155,7 @@ function IssueForm({ point, capture, issue, setIssue, findings, annotations, exi
           onChange={setSignature}
         />
       )}
-      <div className="button-row"><button className="secondary-button" type="button" onClick={cancel}>{text("Cancel", "Annuleren")}</button><button className="primary-button" type="button" disabled={busy || issue.title.trim().length < 3 || issue.description.trim().length < 3} onClick={save}><AlertTriangle size={15} /> {existingFinding ? text("Link pointer to issue", "Koppel pointer aan issue") : text("Create finding", "Bevinding maken")}</button></div>
+      <div className="button-row"><button className="ui-button ui-button--secondary ui-button--md secondary-button" type="button" onClick={cancel}>{text("Cancel", "Annuleren")}</button><button className="ui-button ui-button--primary ui-button--md primary-button" type="button" disabled={busy || issue.title.trim().length < 3 || issue.description.trim().length < 3} onClick={save}><AlertTriangle size={15} /> {existingFinding ? text("Link pointer to issue", "Koppel pointer aan issue") : text("Create finding", "Bevinding maken")}</button></div>
     </div>
   );
 }
