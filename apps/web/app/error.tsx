@@ -12,7 +12,6 @@ export default function ErrorScreen({ reset }: { error: Error & { digest?: strin
           <Image src="/codeco-logo.png" alt="CODECO Construction Designers & Consultants N.V." width={738} height={291} priority />
         </div>
         <span className="state-icon"><TriangleAlert size={26} /></span>
-        <p className="eyebrow">Safe error recovery / Veilig foutherstel</p>
         <h1 id="error-title">Something went wrong / Er ging iets mis</h1>
         <p>Je gegevens zijn niet als opgeslagen gemarkeerd. Probeer opnieuw of ga terug naar de werkruimte.</p>
         <div className="system-actions">

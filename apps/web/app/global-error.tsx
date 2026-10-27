@@ -8,7 +8,6 @@ export default function GlobalError({ reset }: { error: Error & { digest?: strin
       <body>
         <main className="access-shell">
           <section className="access-card state-card" role="alert">
-            <p className="eyebrow">CODECO Supervisie</p>
             <h1>Workspace unavailable / Werkruimte niet beschikbaar</h1>
             <p>De toepassing kon niet veilig worden geopend. Probeer opnieuw; niet-bevestigde invoer is niet als opgeslagen gemarkeerd.</p>
             <div className="system-actions">

@@ -191,7 +191,6 @@ export function OfflineManagerModal({
       <section className="modal offline-manager-modal" role="dialog" aria-modal="true" aria-labelledby="offline-manager-title">
         <header className="modal-header">
           <div>
-            <p className="eyebrow">{text("Working without a connection", "Werken zonder verbinding")}</p>
             <h2 id="offline-manager-title">{text("Offline availability", "Offline beschikbaarheid")}</h2>
             <p>{text("Download everything this account can read, for offline use.", "Download alles wat dit account kan lezen, voor offline gebruik.")}</p>
           </div>

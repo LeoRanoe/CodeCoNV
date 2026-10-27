@@ -286,7 +286,6 @@ export function PromptLibrary({ shortcuts }: { shortcuts: PromptShortcutTargets 
       {copyError ? <p className="field-error" role="alert">{copyError}</p> : null}
       <header className="prompt-library-intro">
         <div>
-          <p className="eyebrow">{text("Outside this application", "Buiten deze applicatie")}</p>
           <h2>{text("What CODECO deliberately leaves to you", "Wat CODECO bewust aan jou laat")}</h2>
           <p>
             {text(
