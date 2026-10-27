@@ -83,7 +83,7 @@
   width: 38px;
   height: 5px;
   border-radius: var(--radius-sm);
-  background: var(--yellow);
+  background: var(--ink-500);
 }
 
 .visual-severity-line.low { background: var(--green); }
@@ -328,7 +328,7 @@
 .marker-dot { border-radius: var(--radius-pill); display: inline-block; height: 9px; width: 9px; }
 .marker-dot.tone-low { background: var(--green); }
 .marker-dot.tone-medium { background: var(--yellow); }
-.marker-dot.tone-high { background: var(--signal); }
+.marker-dot.tone-high { background: var(--red); }
 .marker-dot.tone-critical { background: var(--red); }
 .media-detail-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
 .media-detail-actions .primary-button { margin-left: auto; }
@@ -351,21 +351,16 @@
 
 .media-origin-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
 .media-origin-chip {
-  border: 1px solid transparent;
+  background: var(--paper);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  color: var(--ink-700);
   font-size: var(--text-xs);
   font-style: normal;
   font-weight: var(--weight-bold);
   letter-spacing: 0.2px;
   padding: 3px 7px;
 }
-.media-origin-chip.tone-finding { background: var(--signal-soft); border-color: var(--ink-300); color: var(--signal-dark); }
-.media-origin-chip.tone-inspection { background: var(--blue-soft); border-color: var(--ink-300); color: var(--blue); }
-.media-origin-chip.tone-hse { background: var(--green-soft); border-color: var(--ink-300); color: var(--green); }
-.media-origin-chip.tone-register { background: var(--ink-50); border-color: var(--ink-200); color: var(--ink-700); }
-.media-origin-chip.tone-visual { background: var(--yellow-soft); border-color: var(--ink-300); color: var(--yellow); }
-.media-origin-chip.tone-action { background: var(--ink-50); border-color: var(--ink-200); color: var(--ink-700); }
-.media-origin-chip.tone-unlinked { background: var(--ink-50); border-color: var(--ink-200); color: var(--ink-500); font-weight: var(--weight-semibold); }
 
 /* Evidence shown from the record side, so a finding is never a photoless text card. */
 .record-photo-strip { border-top: 1px solid var(--border); display: grid; gap: var(--space-2); margin-top: var(--space-3); padding-top: var(--space-3); }

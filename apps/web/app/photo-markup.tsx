@@ -448,7 +448,6 @@ export function PhotoMarkupPad({
       <section className="modal photo-markup-modal" role="dialog" aria-modal="true" aria-labelledby="photo-markup-title">
         <header className="modal-header">
           <div>
-            <p className="eyebrow">{text("Mark on the photo", "Markeren op de foto")}</p>
             <h2 id="photo-markup-title">{text("Tap the photo where the problem is", "Tik op de foto waar het probleem zit")}</h2>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>

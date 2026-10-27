@@ -146,8 +146,6 @@
 
 .workspace-launcher-icon {
   align-items: center;
-  background: var(--ink-50);
-  border-radius: var(--radius-sm);
   color: currentColor;
   display: flex;
   grid-column: 1;
@@ -196,18 +194,6 @@
   position: absolute;
   right: 10px;
 }
-
-.workspace-launcher-tile.tone-orange { color: var(--signal); }
-.workspace-launcher-tile.tone-orange .workspace-launcher-icon { background: var(--red-soft); }
-.workspace-launcher-tile.tone-blue { color: var(--blue); }
-.workspace-launcher-tile.tone-blue .workspace-launcher-icon { background: var(--blue-soft); }
-.workspace-launcher-tile.tone-teal { color: var(--green); }
-.workspace-launcher-tile.tone-teal .workspace-launcher-icon { background: var(--green-soft); }
-.workspace-launcher-tile.tone-green { color: var(--green); }
-.workspace-launcher-tile.tone-green .workspace-launcher-icon { background: var(--green-soft); }
-.workspace-launcher-tile.tone-purple { color: var(--blue); }
-.workspace-launcher-tile.tone-purple .workspace-launcher-icon { background: var(--blue-soft); }
-.workspace-launcher-tile.tone-slate { color: var(--ink-700); }
 
 .workspace-launcher-empty {
   align-items: center;
@@ -748,8 +734,6 @@
   .overview-metrics,
   .action-center-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .overview-metric { grid-template-columns: 38px minmax(0, 1fr); min-height: 86px; padding: 11px; }
-  .overview-metric-icon { height: 38px; width: 38px; }
-  .overview-metric > svg { display: none; }
   .overview-work-list > button { grid-template-columns: 24px minmax(0, 1fr) auto; }
   .overview-work-location { display: none; }
   .overview-purposeful-empty,

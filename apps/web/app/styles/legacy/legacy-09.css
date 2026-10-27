@@ -854,19 +854,6 @@ button {
   transform: translateY(-1px);
 }
 
-.overview-metric-icon {
-  border-radius: var(--radius-md);
-  display: grid;
-  height: 42px;
-  place-items: center;
-  width: 42px;
-}
-
-.overview-metric.teal .overview-metric-icon { background: var(--green-soft); color: var(--green); }
-.overview-metric.orange .overview-metric-icon { background: var(--red-soft); color: var(--signal); }
-.overview-metric.blue .overview-metric-icon { background: var(--blue-soft); color: var(--blue); }
-.overview-metric.violet .overview-metric-icon { background: var(--blue-soft); color: var(--blue); }
-
 .overview-metric-copy small,
 .overview-metric-copy strong,
 .overview-metric-copy em {

@@ -92,7 +92,6 @@ export function DrawingLocationPicker({
       <section className="modal drawing-location-modal" role="dialog" aria-modal="true" aria-labelledby="drawing-location-title">
         <header className="modal-header">
           <div>
-            <p className="eyebrow">{text("Location on the drawing", "Locatie op de tekening")}</p>
             <h2 id="drawing-location-title">{activeDrawing
               ? text("Tap where this photo was taken", "Tik waar deze foto is genomen")
               : text("Choose the drawing first", "Kies eerst de tekening")}</h2>

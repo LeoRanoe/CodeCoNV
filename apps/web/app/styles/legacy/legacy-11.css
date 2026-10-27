@@ -1003,16 +1003,6 @@
   white-space: nowrap;
 }
 
-.drawing-pin-code.red { border-color: var(--red); }
-.drawing-pin-code.orange { border-color: var(--yellow); }
-.drawing-pin-code.blue { border-color: var(--blue); }
-.drawing-pin-code.purple { border-color: var(--blue); }
-.drawing-pin-code.green { border-color: var(--green); }
-.drawing-pin-code.cyan { border-color: var(--green); }
-.drawing-pin-code.amber { border-color: var(--yellow); }
-
-.drawing-pin.amber { background: var(--yellow); }
-
 .drawing-pin-legend {
   display: flex; align-items: center;
   flex-wrap: wrap;
@@ -1032,21 +1022,6 @@
   gap: 5px;
   padding: 3px 9px;
 }
-
-.drawing-pin-legend span::before {
-  border-radius: var(--radius-pill);
-  content: "";
-  height: 9px;
-  width: 9px;
-}
-
-.drawing-pin-legend .red::before { background: var(--red); }
-.drawing-pin-legend .orange::before { background: var(--yellow); }
-.drawing-pin-legend .blue::before { background: var(--blue); }
-.drawing-pin-legend .purple::before { background: var(--blue); }
-.drawing-pin-legend .green::before { background: var(--green); }
-.drawing-pin-legend .cyan::before { background: var(--green); }
-.drawing-pin-legend .amber::before { background: var(--yellow); }
 
 /* ---------------------------------------------------------------------------
    A delivery is several lines under each other, each with its own words.
