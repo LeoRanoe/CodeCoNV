@@ -101,8 +101,11 @@ jobs:
         # media-and-sharing needs sample media files and a private Blob store; it is run
         # against a preview deployment, not in this job (see docs/operations/production-readiness.md).
         run: npx playwright test controlled-document two-party-signature inspection-workflow day-report-lifecycle dialogs role-views mobile-forms field-readiness layout-hygiene offline-account-isolation offline-app offline-create-and-sync offline-records responsive-audit responsive-workspace viewport-walk
+      - name: Capture UI audit screens
+        working-directory: apps/web
+        run: npx playwright test ui-audit-screenshots --project=desktop-office
       - name: Upload Playwright traces, screenshots and videos
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-results
