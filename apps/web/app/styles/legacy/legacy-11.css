@@ -1034,7 +1034,7 @@
 }
 
 .drawing-pin-legend span::before {
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   content: "";
   height: 9px;
   width: 9px;

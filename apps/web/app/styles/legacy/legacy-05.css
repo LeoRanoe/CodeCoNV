@@ -601,7 +601,7 @@
   width: 8px;
   height: 8px;
   flex: 0 0 auto;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--red);
   outline: 4px solid var(--red-soft);
 }
@@ -915,7 +915,7 @@
   width: 7px;
   height: 7px;
   margin-top: 5px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--red);
 }
 
@@ -1591,7 +1591,7 @@
   place-items: center;
   transform: translate(-50%, -50%);
   border: 3px solid var(--paper);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--yellow);
   color: var(--paper);
   font-size: var(--text-xs);
@@ -1632,7 +1632,7 @@
   height: 34px;
   place-items: center;
   border: 3px solid var(--paper);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--yellow);
   color: var(--paper);
   font-size: var(--text-xs);

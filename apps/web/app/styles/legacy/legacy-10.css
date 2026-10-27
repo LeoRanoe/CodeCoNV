@@ -251,7 +251,7 @@
 
 .punchlist-stages > div > span {
   background: var(--ink-50);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   color: var(--ink-600);
   display: grid;
   font-size: var(--text-xs);

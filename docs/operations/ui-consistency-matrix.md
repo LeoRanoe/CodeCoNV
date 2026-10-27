@@ -6,6 +6,22 @@ What was looked at in the running application, module by module, and what it sho
 How to read it. A cell is only marked when the thing was opened in a real browser (Chrome, the
 local stack with fixture data). Nothing is marked from reading source.
 
+## UI cleanup verification — 27 October 2026
+
+The UI cleanup branch changed the public landing, sign-in, app shell, overview, workspace, project
+selection, Management, Reports, record forms, media tools, and external-share controls. The code was
+integrated with the newer daily report and photo-draft fixes. `npm run lint`, `npm test` (190 tests),
+and the design guardrails passed at integration; the final verification branch reruns them after
+strictening the app guardrails.
+
+The matrix below records the earlier browser audit. Its marks are **not** a browser verification of
+the new styling. The local Docker Linux engine is unavailable, so fixture seeding, the three-project
+Playwright suite, and authenticated 1440/390 screenshots could not run in this pass. The public site
+was captured at [1440](ui-slop-audit/after/landing-desktop-viewport.jpg) and
+[390](ui-slop-audit/after/landing-phone-viewport.jpg). See the
+[After audit](ui-ai-slop-audit.md#after--27-october-2026) for measured design-token counts and the
+remaining CSS consolidation work.
+
 | Mark | Meaning |
 | --- | --- |
 | ✔ | Opened and looked at (screenshot read, DOM audited); no defect left |
