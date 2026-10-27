@@ -89,3 +89,11 @@
   letter-spacing: normal;
   text-transform: none;
 }
+
+@media (max-width: 640px) {
+  .operation-form .primary-button,
+  .operation-form .secondary-button,
+  .operation-form .ghost-button {
+    min-height: var(--control-h-lg);
+  }
+}
