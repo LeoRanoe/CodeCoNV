@@ -1,1 +1,75 @@
-/* records screen refinements. */
+/* Records read as a register: one ruled line per entry. */
+.record-stack {
+  gap: 0;
+}
+
+.record-row.ui-list-row {
+  background: transparent;
+  border: 0;
+  border-block-end: 1px solid var(--border);
+  border-radius: 0;
+  padding-inline: 0;
+}
+
+.record-row.ui-list-row:hover,
+.record-row.ui-list-row:focus-within {
+  border-block-end-color: var(--ink-500);
+}
+
+.record-row.ui-list-row .action-icon {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--muted);
+}
+
+.record-row.ui-list-row strong {
+  color: var(--text);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+
+.record-row.ui-list-row div span {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.record-list-empty {
+  background: transparent;
+  border: 0;
+  justify-items: start;
+  padding: var(--space-5) 0;
+  text-align: left;
+}
+
+.daily-work-tabs.ui-tabs {
+  display: flex;
+  gap: var(--space-4);
+  grid-template-columns: none;
+  overflow-x: auto;
+}
+
+.daily-work-tabs.ui-tabs button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-block-end: 2px solid transparent;
+  border-radius: 0;
+  color: var(--muted);
+  flex: 0 0 auto;
+  padding: var(--space-3) var(--space-1);
+}
+
+.daily-work-tabs.ui-tabs button:hover {
+  border-block-end-color: var(--ink-500);
+}
+
+.daily-work-tabs.ui-tabs button.active {
+  background: transparent;
+  border-block-end-color: var(--signal);
+  color: var(--text);
+}
+
+.daily-work-tabs.ui-tabs button.active small {
+  color: var(--muted);
+}
