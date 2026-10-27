@@ -187,12 +187,12 @@ export function RapidVerifyWorkspace({
 
   return (
     <>
-      <header className="secondary-header rapid-verify-header">
+      <header className="secondary-header rapid-verify-header ui-page-header">
         <div>
-          <p className="eyebrow">{projectName}</p>
           <h1>Rapid Verify</h1>
+          <span className="ui-page-header__code">{projectName}</span>
         </div>
-        {canAddSources ? <button className="primary-button" type="button" onClick={() => fileInputRef.current?.click()} disabled={busy}>
+        {canAddSources ? <button className="ui-button ui-button--primary ui-button--md primary-button" type="button" onClick={() => fileInputRef.current?.click()} disabled={busy}>
           {busy ? <Loader2 className="spin" size={16} /> : <Upload size={16} />}
           {text("Add sources", "Bronnen toevoegen")}
         </button> : null}
@@ -256,7 +256,7 @@ export function RapidVerifyWorkspace({
             </label>
           )}
 
-          <button className="primary-button rapid-run-button" type="button" disabled={busy || !documents.length || !(mode === "question" ? question.trim() : comparison.trim())} onClick={verify}>
+          <button className="ui-button ui-button--primary ui-button--md primary-button rapid-run-button" type="button" disabled={busy || !documents.length || !(mode === "question" ? question.trim() : comparison.trim())} onClick={verify}>
             <Search size={16} /> {mode === "question" ? text("Find answer in sources", "Vind antwoord in bronnen") : text("Verify against sources", "Toets aan bronnen")}
           </button>
 

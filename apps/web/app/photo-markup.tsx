@@ -485,8 +485,8 @@ export function PhotoMarkupPad({
               <PenLine size={14} />
               <input type="range" min={2} max={12} step={1} value={penWidth} onChange={(event) => setPenWidth(Number(event.target.value))} aria-label={text("Line thickness", "Lijndikte")} />
             </label>
-            <button className="ghost-button" type="button" onClick={undo} disabled={!history.length}><Undo2 size={15} /> {text("Undo", "Ongedaan maken")}</button>
-            <button className="ghost-button" type="button" onClick={clearAll} disabled={empty}><Trash2 size={15} /> {text("Clear", "Wissen")}</button>
+            <button className="ui-button ui-button--quiet ui-button--md ghost-button" type="button" onClick={undo} disabled={!history.length}><Undo2 size={15} /> {text("Undo", "Ongedaan maken")}</button>
+            <button className="ui-button ui-button--quiet ui-button--md ghost-button" type="button" onClick={clearAll} disabled={empty}><Trash2 size={15} /> {text("Clear", "Wissen")}</button>
           </div>
           </div>
           <div
@@ -685,8 +685,8 @@ export function PhotoMarkupPad({
         </div>
 
         <footer className="modal-actions">
-          <button className="secondary-button" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
-          <button className="primary-button" type="button" disabled={busy || empty} onClick={() => void flatten()}>
+          <button className="ui-button ui-button--secondary ui-button--md secondary-button" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
+          <button className="ui-button ui-button--primary ui-button--md primary-button" type="button" disabled={busy || empty} onClick={() => void flatten()}>
             {busy ? <Loader2 className="spin" size={15} /> : <Check size={15} />}
             {busy ? text("Saving markings…", "Markeringen opslaan…") : text("Save markings on the photo", "Markeringen op de foto opslaan")}
           </button>
