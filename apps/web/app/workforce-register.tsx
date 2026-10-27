@@ -461,7 +461,6 @@ export function WorkforceForm({
 
   return (
     <RecordFormShell
-      code={text("Workforce", "Workforce")}
       title={text("Who is on site today?", "Wie is er vandaag op de bouwplaats?")}
       status={readOnly ? text("Read only", "Alleen lezen") : undefined}
       busy={busy}

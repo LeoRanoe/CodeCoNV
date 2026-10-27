@@ -3132,7 +3132,7 @@ function ProjectOperations({
             </RecordFormShell>
           ) : null}
           {showForm && !activeInspection ? (
-            <RecordFormShell code={text("Inspection report", "Inspectierapport")} title={text("Start inspection", "Inspectie starten")} status={text("New", "Nieuw")} busy={busy} className="wide sectioned-record-form">
+            <RecordFormShell title={text("Start inspection", "Inspectie starten")} status={text("New", "Nieuw")} busy={busy} className="wide sectioned-record-form">
               
               {anchorWorkPlanned && missingAnchorChecklistCodes.length ? (
                 <div className="operation-alert success recommended-checklist-install">
@@ -3437,7 +3437,7 @@ function ProjectOperations({
           ) : null}
           {showForm && findingScope === "ncr" ? (
             <div className="operation-form wide sectioned-record-form snap-assign-form">
-              <div className="operation-form-heading"><div><span className="record-number">{text("Formal non-conformance", "Formele afwijking")}</span><h2>{text("Non-conformance report", "Non-conformance report")}</h2></div>{!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}</div>
+              <div className="operation-form-heading"><div><h2>{text("Non-conformance report", "Non-conformance report")}</h2></div>{!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}</div>
               {/* The head of the client's own NCR form: project, contractor, subject and
                   the reference, with the date and the report number filled by the app. */}
               <section className="controlled-document-context ncr-form-context" aria-label={text("Non-conformance report header", "Kop van het non-conformance report")}>
@@ -3905,7 +3905,7 @@ function ProjectOperations({
         <section className="operation-panel">
           {showForm ? (
             <RecordFormShell
-              code={data.registerEntries.find((item) => item.id === editingRegisterId)?.entry_number ?? (controlledRegister ? text("Client-controlled form", "Klantgestuurd formulier") : text("Project register", "Projectregister"))}
+              code={data.registerEntries.find((item) => item.id === editingRegisterId)?.entry_number}
               title={registerNames[registerForm.type] ?? text("Project register item", "Projectregistratie")}
               status={editingRegisterId ? text("Editing", "Bewerken") : text("Draft", "Concept")}
               busy={busy}

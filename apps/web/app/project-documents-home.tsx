@@ -225,7 +225,7 @@ export function ProjectDocumentsHome({
   return (
     <section className="project-documents">
       <div className="project-documents-summary">
-        <div><span>{text("Controlled project information", "Beheerde projectinformatie")}</span><h1>{text("Project document center", "Projectdocumentencentrum")}</h1></div>
+        <div><h1>{text("Project document center", "Projectdocumentencentrum")}</h1><p>{text("Controlled project information", "Beheerde projectinformatie")}</p></div>
         <div className="project-documents-actions">
           {canManageFiles ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => document.getElementById("project-document-upload")?.scrollIntoView({ behavior: "smooth", block: "center" })}><Upload size={15} /> {text("Upload file", "Upload bestand")}</button> : null}
           {canCreateRecords ? <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={createDocument}><Plus size={15} /> {text("New controlled record", "Nieuw beheerd record")}</button> : null}

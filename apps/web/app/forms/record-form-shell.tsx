@@ -21,7 +21,7 @@ export function RecordFormShell({
   className = "",
   headerAside,
 }: {
-  code: string;
+  code?: string;
   title: string;
   status?: string;
   children: ReactNode;
@@ -40,7 +40,7 @@ export function RecordFormShell({
     <div className={`operation-form record-form-shell ${className}`.trim()} aria-busy={busy || undefined}>
       <div className="operation-form-heading record-form-heading ui-page-header">
         <div>
-          <span className="record-number">{code}</span>
+          {code ? <span className="record-number">{code}</span> : null}
           <h2>{title}</h2>
         </div>
         <div className="record-form-heading-aside">

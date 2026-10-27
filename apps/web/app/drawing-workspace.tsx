@@ -543,8 +543,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
       {queueError ? <p className="operation-alert error" role="alert">{queueError}</p> : null}
       <div className="visual-toolbar">
         <div>
-          <span className="record-number">{text("Drawings workspace", "Tekeningenwerkruimte")}</span>
           <h2>{text("Pins that open the exact project record", "Pins die het juiste projectrecord openen")}</h2>
+          <p>{text("Drawings workspace", "Tekeningenwerkruimte")}</p>
         </div>
       </div>
 
