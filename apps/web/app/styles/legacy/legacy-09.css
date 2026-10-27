@@ -157,9 +157,9 @@
 }
 
 .report-frequency-tabs button.active {
-  background: var(--green-soft);
-  border-color: var(--ink-500);
-  color: var(--green);
+  background: var(--signal-soft);
+  border-color: var(--signal);
+  color: var(--signal-dark);
   font-weight: var(--weight-bold);
 }
 
@@ -973,9 +973,7 @@ button {
 
 .overview-purposeful-empty > span,
 .project-document-empty > span {
-  background: var(--green-soft);
-  border-radius: var(--radius-sm);
-  color: var(--teal);
+  color: var(--ink-700);
   display: grid;
   height: 42px;
   place-items: center;

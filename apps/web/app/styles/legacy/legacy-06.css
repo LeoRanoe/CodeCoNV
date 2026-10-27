@@ -249,12 +249,12 @@
 .connectivity-pill.online { background: var(--green-soft); color: var(--green); }
 .connectivity-pill.offline { background: var(--yellow-soft); color: var(--yellow); }
 .data-saver-toggle { align-items: center; background: var(--canvas); border-radius: var(--radius-md); cursor: pointer; display: flex; gap: 10px; max-width: 330px; padding: var(--space-3); }
-.data-saver-toggle input { accent-color: var(--green); height: 18px; width: 18px; }
+.data-saver-toggle input { accent-color: var(--signal); height: 18px; width: 18px; }
 .data-saver-toggle span { display: grid; gap: 2px; }
 .data-saver-toggle small { color: var(--muted); line-height: 1.35; }
 .media-folder-bar { display: flex; align-items: center; gap: var(--space-2); overflow-x: auto; padding: 2px 0 5px; }
 .media-folder-bar button { align-items: center; background: var(--paper); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--muted); display: inline-flex; flex: 0 0 auto; gap: 7px; padding: 9px var(--space-3); }
-.media-folder-bar button.active { background: var(--green-soft); border-color: var(--ink-400); color: var(--green); }
+.media-folder-bar button.active { background: var(--signal-soft); border-color: var(--signal); color: var(--signal-dark); }
 .media-folder-bar b { background: rgba(0,0,0,.06); border-radius: var(--radius-pill); font-size: var(--text-xs); padding: 2px 6px; }
 .media-actions-panel { align-items: flex-end; display: flex; flex-wrap: wrap; gap: 10px; padding: var(--space-4); }
 .media-kind-toggle { background: var(--ink-50); border-radius: var(--radius-sm); display: flex; align-items: center; padding: 3px; }
@@ -420,7 +420,7 @@
 .period-date-presets button { background: var(--ink-50); border: 1px solid var(--border); border-radius: var(--radius-pill); color: var(--text); cursor: pointer; font-size: var(--text-xs); padding: var(--space-2) 11px; }
 .work-option-grid { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
 .work-option-grid button { align-items: center; background: var(--canvas); border: 1px solid var(--border); border-radius: var(--radius-pill); color: var(--text); display: inline-flex; gap: 6px; padding: var(--space-2) 11px; }
-.work-option-grid button.active { background: var(--green-soft); border-color: var(--ink-400); color: var(--green); font-weight: var(--weight-bold); }
+.work-option-grid button.active { background: var(--signal-soft); border-color: var(--signal); color: var(--signal-dark); font-weight: var(--weight-bold); }
 .ui-button--primary.portfolio-cta {
   border-radius: var(--radius-pill);
   box-shadow: none;
@@ -714,7 +714,7 @@
   font-size: var(--text-xs);
   padding: var(--space-2) 11px;
 }
-.quick-issue-presets button.active { background: var(--green-soft); border-color: var(--ink-400); color: var(--green); font-weight: var(--weight-bold); }
+.quick-issue-presets button.active { background: var(--signal-soft); border-color: var(--signal); color: var(--signal-dark); font-weight: var(--weight-bold); }
 
 /*
  * The HSE observation / issue screen the client drew: twelve numbered sections in two

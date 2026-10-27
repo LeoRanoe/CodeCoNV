@@ -1685,7 +1685,7 @@
   padding: var(--space-2) var(--space-3);
 }
 
-.panorama-controls button.active { background: var(--green); border-color: var(--ink-400); }
+.panorama-controls button.active { background: var(--signal); border-color: var(--signal); }
 
 .panorama-heading {
   align-items: center;

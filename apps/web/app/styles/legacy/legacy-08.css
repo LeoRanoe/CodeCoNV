@@ -654,8 +654,8 @@
 }
 
 .period-date-presets button.active {
-  background: var(--green);
-  border-color: var(--green);
+  background: var(--signal);
+  border-color: var(--signal);
   color: var(--paper);
   font-weight: var(--weight-bold);
 }
@@ -704,13 +704,13 @@
   }
 
   .mobile-nav-button.active {
-    background: var(--green-soft);
-    color: var(--green);
+    background: var(--signal-soft);
+    color: var(--signal-dark);
     font-weight: var(--weight-bold);
   }
 
   .mobile-nav-button.active::before {
-    background: var(--green);
+    background: var(--signal);
     border-radius: 0 0 var(--radius-sm) var(--radius-sm);
     content: "";
     height: 3px;

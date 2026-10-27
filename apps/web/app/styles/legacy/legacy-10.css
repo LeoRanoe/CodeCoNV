@@ -313,8 +313,8 @@
 .project-document-tabs small { display: block; }
 .project-document-tabs strong { font-size: var(--text-xs); }
 .project-document-tabs small { color: var(--ink-600); font-size: var(--text-xs); margin-top: 2px; }
-.project-document-tabs > button.active { background: var(--green-soft); border-color: var(--ink-400); color: var(--teal-dark); }
-.project-document-tabs > button.active > svg { color: var(--teal); }
+.project-document-tabs > button.active { background: var(--signal-soft); border-color: var(--signal); color: var(--signal-dark); }
+.project-document-tabs > button.active > svg { color: var(--signal-dark); }
 
 .project-document-browser {
   background: var(--paper);
@@ -492,9 +492,9 @@
 
 .action-center-summary strong { color: var(--ink-900); font-size: var(--text-xl); }
 .action-center-summary span { color: var(--ink-600); font-size: var(--text-xs); }
-.action-center-summary > button.active { background: var(--green-soft); border-color: var(--ink-400); box-shadow: none; }
+.action-center-summary > button.active { background: var(--signal-soft); border-color: var(--signal); box-shadow: none; }
 .action-center-summary > button.active strong,
-.action-center-summary > button.active span { color: var(--teal-dark); }
+.action-center-summary > button.active span { color: var(--signal-dark); }
 
 .action-center-layout {
   align-items: start;
@@ -544,7 +544,7 @@
 }
 
 .action-type-tabs > button span { background: var(--ink-100); border-radius: var(--radius-pill); font-size: var(--text-xs); padding: 2px 6px; }
-.action-type-tabs > button.active { background: var(--paper); box-shadow: none; color: var(--teal); }
+.action-type-tabs > button.active { background: var(--paper); box-shadow: none; color: var(--signal-dark); }
 .action-center-search { align-items: center; background: var(--paper); border: 1px solid var(--ink-200); border-radius: var(--radius-xs); color: var(--ink-600); display: flex; flex: 0 0 auto; gap: 5px; padding: 0 7px; }
 .action-center-search input { border: 0; font-size: var(--text-xs); min-height: 34px; outline: 0; width: 170px; }
 .unified-action-list { display: grid; min-width: 0; padding: 5px 9px 9px; }
@@ -792,7 +792,7 @@
 }
 
 .report-frequency-tabs button.active > svg {
-  background: var(--green);
+  background: var(--signal);
   color: var(--paper);
 }
 
@@ -818,7 +818,7 @@
 }
 
 .report-source-checklist input {
-  accent-color: var(--green);
+  accent-color: var(--signal);
   height: 16px;
   width: 16px;
 }

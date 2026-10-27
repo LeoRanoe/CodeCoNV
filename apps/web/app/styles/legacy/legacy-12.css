@@ -830,7 +830,7 @@ button.prompt-source:hover > svg { color: var(--green); }
     height: 22px;
     flex: 0 0 auto;
     margin: 0;
-    accent-color: var(--green);
+    accent-color: var(--signal);
   }
 
   .ui-button--primary,
