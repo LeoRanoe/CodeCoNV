@@ -171,11 +171,11 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
       <section className={`modal media-detail-modal${isPanorama ? " media-detail-modal-panorama" : ""}`} role="dialog" aria-modal="true" aria-labelledby="stored-photo-title">
         <header className="modal-header">
           <div>
-            <p className="eyebrow">{stackFiles.length > 1 ? text(`${stackFiles.length} photo stack`, `Fotostapel met ${stackFiles.length} foto's`) : capture?.capture_type === "panorama" ? "360°" : isImage ? text("Photo", "Foto") : text("File", "Bestand")}</p>
             <h2 id="stored-photo-title">{capture?.title?.trim() || readableFileLabel(file, {
               kindLabel: isImage ? text("Photo", "Foto") : text("File", "Bestand"),
               formatDate: (value) => value ? new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "America/Paramaribo" }).format(new Date(value)) : "",
             })}</h2>
+            <p>{stackFiles.length > 1 ? text(`${stackFiles.length} photo stack`, `Fotostapel met ${stackFiles.length} foto's`) : capture?.capture_type === "panorama" ? "360°" : isImage ? text("Photo", "Foto") : text("File", "Bestand")}</p>
             <p>{capture?.description?.trim() || (showFolder ? text(
               "Everything this photo carries: where it was taken, in which folder it sits and which records point at it.",
               "Alles wat deze foto met zich meedraagt: waar hij is gemaakt, in welke map hij staat en welke registraties ernaar verwijzen.",
@@ -212,8 +212,8 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
           <div className="media-detail-links">
             <strong>{text("Linked records", "Gekoppelde registraties")}</strong>
             <span className="media-origin-chips">{origins.length
-              ? origins.map((origin) => <em className={`media-origin-chip tone-${origin.kind}`} title={origin.title} key={`${origin.kind}:${origin.recordId}`}>{origin.number || origin.kind}</em>)
-              : <em className="media-origin-chip tone-unlinked">{text("Not linked to a record yet", "Nog niet aan een record gekoppeld")}</em>}</span>
+              ? origins.map((origin) => <em className="media-origin-chip" title={origin.title} key={`${origin.kind}:${origin.recordId}`}>{origin.number || origin.kind}</em>)
+              : <em className="media-origin-chip">{text("Not linked to a record yet", "Nog niet aan een record gekoppeld")}</em>}</span>
           </div>
         </div>
 

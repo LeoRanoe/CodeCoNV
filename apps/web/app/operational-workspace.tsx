@@ -2944,8 +2944,8 @@ function ProjectOperations({
     <>
       {tab === "home" ? <header className="secondary-header workspace-header home">
         <div>
-          <p className="eyebrow">{projectName}</p>
           <h1>{text("Workspace", "Werkruimte")}</h1>
+          <p>{projectName}</p>
         </div>
       </header> : null}
 

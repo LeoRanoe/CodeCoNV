@@ -154,7 +154,6 @@ export function SketchPad({ close, save }: { close: () => void; save: (file: Fil
       <section className="modal sketch-modal" role="dialog" aria-modal="true" aria-labelledby="sketch-title">
         <header className="modal-header">
           <div>
-            <p className="eyebrow">{text("Sketch", "Schets")}</p>
             <h2 id="sketch-title">{text("Draw the situation", "Teken de situatie")}</h2>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>

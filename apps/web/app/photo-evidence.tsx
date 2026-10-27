@@ -420,8 +420,8 @@ export function PhotoDetailSheet({
       <section className="modal photo-detail-modal" role="dialog" aria-modal="true" aria-labelledby="photo-detail-title">
         <header className="modal-header">
           <div>
-            <p className="eyebrow">{text(`Photo ${index + 1}`, `Foto ${index + 1}`)}</p>
             <h2 id="photo-detail-title">{text("Photo details", "Fotodetails")}</h2>
+            <p>{text(`Photo ${index + 1}`, `Foto ${index + 1}`)}</p>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>

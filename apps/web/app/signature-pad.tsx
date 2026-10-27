@@ -195,7 +195,6 @@ export function SignaturePad({
       <section className="modal signature-modal" role="dialog" aria-modal="true" aria-labelledby="signature-title">
         <header className="modal-header">
           <div>
-            <p className="eyebrow">{text("Signature", "Handtekening")}</p>
             <h2 id="signature-title">{title}</h2>
             <p>{declaration}</p>
           </div>

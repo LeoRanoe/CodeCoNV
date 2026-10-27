@@ -889,9 +889,7 @@
   width: 33px;
   height: 33px;
   place-items: center;
-  border-radius: var(--radius-xs);
-  background: var(--green-soft);
-  color: var(--teal);
+  color: var(--ink-700);
 }
 
 .notification-row > span:nth-child(2) {

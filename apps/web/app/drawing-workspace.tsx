@@ -116,16 +116,6 @@ const linkTypeLabels: Record<DrawingPin["linked_record_type"], { en: string; nl:
   registration: { en: "Daily works", nl: "Dagwerk" },
 };
 
-const pinTypeClass: Record<DrawingPin["linked_record_type"], string> = {
-  rfi: "red",
-  submittal: "orange",
-  document: "blue",
-  observation: "purple",
-  inspection: "green",
-  visual: "cyan",
-  registration: "amber",
-};
-
 export function DrawingWorkspace({ data, projectId, buildingId, buildings, client, busy, run, initialFindingId = "", initialInspectionId = "", pendingRecord = null, onPlaceRecordPin, onOpenLinkedRecord }: DrawingWorkspaceProps) {
   const { language, locale, text } = useLanguage();
   const maxFileSizeBytes = (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024;
@@ -662,10 +652,9 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
               <label className="drawing-stroke-control"><span>{text("Line", "Lijn")}</span><select value={strokeWidth} onChange={(event) => setStrokeWidth(Number(event.target.value))}><option value={2}>2 px</option><option value={3}>3 px</option><option value={5}>5 px</option><option value={8}>8 px</option></select></label>
               {tool === "text" ? <label className="drawing-text-control"><span>{text("Text to place", "Te plaatsen tekst")}</span><input maxLength={500} value={markupText} onChange={(event) => setMarkupText(event.target.value)} placeholder={text("Type the drawing note", "Typ de tekeningnotitie")} /></label> : null}
             </div>
-            {/* A pin has a colour and carries its code; the legend says what a colour means. */}
-            <div className="drawing-pin-legend" aria-label={text("Pin colours", "Pinkleuren")}>
+            <div className="drawing-pin-legend" aria-label={text("Pin record types", "Pintypen registraties")}>
               {(Object.keys(linkTypeLabels) as Array<DrawingPin["linked_record_type"]>).map((type) => (
-                <span className={pinTypeClass[type]} key={type}>{linkTypeLabels[type][language]}</span>
+                <span key={type}>{linkTypeLabels[type][language]}</span>
               ))}
             </div>
             <DrawingCanvas
@@ -770,7 +759,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                   <header><FileQuestion size={15} /> <strong>{text("Not on a drawing yet", "Nog niet op een tekening")}</strong> <b>{unplacedRecords.length}</b></header>
                   {unplacedRecords.map((record) => (
                     <button type="button" onClick={() => { setTool("pin"); setSpotMode("link"); setSpotRecord(record.value); }} key={record.value}>
-                      <span className={`drawing-unplaced-dot tone-${pinTypeClass[record.type]}`}><MapPin size={12} /></span>
+                      <span className="drawing-unplaced-dot"><MapPin size={12} /></span>
                       <span><strong>{record.code}</strong><small>{record.title}</small></span>
                       <ArrowUpRight size={14} />
                     </button>
@@ -1115,8 +1104,8 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
             const shownPoint = draggedPin?.id === pin.id ? draggedPin.point : { xRatio: Number(pin.x_ratio), yRatio: Number(pin.y_ratio) };
             return (
             <span className="drawing-pin-anchor" style={{ left: `${shownPoint.xRatio * 100}%`, top: `${shownPoint.yRatio * 100}%`, transform: `scale(${1 / viewport.scale})`, transformOrigin: "0 0" }} key={pin.id}>
-              <button className={`drawing-pin ${pinTypeClass[pin.linked_record_type]}`} type="button" aria-label={`${pin.linked_record_number} · ${pin.linked_record_title}`} onPointerDown={(event) => beginPinDrag(event, pin)} onPointerMove={(event) => movePinDrag(event, pin)} onPointerUp={(event) => finishPinDrag(event, pin)} onPointerCancel={(event) => { event.stopPropagation(); setDraggedPin(null); }}><span>{index + 1}</span></button>
-              <em className={`drawing-pin-code ${pinTypeClass[pin.linked_record_type]}`}>{pin.linked_record_number}</em>
+              <button className="drawing-pin" type="button" aria-label={`${pin.linked_record_number} · ${pin.linked_record_title}`} onPointerDown={(event) => beginPinDrag(event, pin)} onPointerMove={(event) => movePinDrag(event, pin)} onPointerUp={(event) => finishPinDrag(event, pin)} onPointerCancel={(event) => { event.stopPropagation(); setDraggedPin(null); }}><span>{index + 1}</span></button>
+              <em className="drawing-pin-code">{pin.linked_record_number}</em>
             </span>
             );
           })}
@@ -1193,7 +1182,7 @@ function DrawingPinDetails({ pin, onOpen, onDelete }: { pin: DrawingPin; onOpen:
   const { text } = useLanguage();
   return (
     <div className="visual-annotation-details">
-      <span className={`visual-severity-line ${pinTypeClass[pin.linked_record_type]}`} />
+      <span className="visual-severity-line" />
       <span className="record-number">{pin.linked_record_number} · {typeText(pin.linked_record_type, text)}</span>
       <h2>{pin.linked_record_title}</h2>
       {pin.note ? <p>{pin.note}</p> : null}

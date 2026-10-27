@@ -106,9 +106,7 @@
   height: 38px;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: var(--radius-md);
-  background: var(--ink-950);
-  color: var(--paper);
+  color: var(--ink-700);
 }
 
 .automation-intro {
@@ -206,8 +204,6 @@
   width: 34px;
   height: 34px;
   place-items: center;
-  border-radius: var(--radius-control);
-  background: rgba(255, 255, 255, 0.11);
   color: var(--ink-400);
 }
 

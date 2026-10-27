@@ -992,9 +992,7 @@
   height: 54px;
   place-items: center;
   margin: 0 auto 18px;
-  border-radius: var(--radius-md);
-  background: var(--green-soft);
-  color: var(--green);
+  color: var(--ink-700);
 }
 
 .state-card .primary-button {

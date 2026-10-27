@@ -253,7 +253,7 @@
 
 .drawing-pin {
   align-items: center;
-  background: var(--red);
+  background: var(--ink-700);
   border: 3px solid var(--paper);
   border-radius: var(--radius-pill) var(--radius-pill) var(--radius-pill) 0;
   box-shadow: none;
@@ -278,12 +278,6 @@ button.drawing-pin {
   transform: rotate(45deg);
 }
 
-.drawing-pin.red { background: var(--red); }
-.drawing-pin.orange { background: var(--yellow); }
-.drawing-pin.blue { background: var(--blue); }
-.drawing-pin.purple { background: var(--blue); }
-.drawing-pin.green { background: var(--green); }
-.drawing-pin.cyan { background: var(--green); }
 .drawing-pin.pending { background: var(--ink-900); pointer-events: none; }
 .drawing-pin.pending.drawing-pin-scaled { transform: translate(-50%, -100%) rotate(-45deg) scale(var(--pin-inverse-scale, 1)); }
 
@@ -378,10 +372,10 @@ button.drawing-pin {
 .drawing-unplaced-list > button:first-of-type { border-top: 0; }
 
 /* A dot in a list, not the map marker: .drawing-pin is absolutely positioned and would
-   escape its row. It carries the same colour so the kind is still readable at a glance. */
+   escape its row. The record code and title identify the type. */
 .drawing-unplaced-dot {
   align-items: center;
-  background: var(--blue);
+  background: var(--ink-700);
   border-radius: var(--radius-pill);
   color: var(--paper);
   display: inline-flex;
@@ -392,13 +386,6 @@ button.drawing-pin {
   width: 22px;
 }
 
-.drawing-unplaced-dot.tone-red { background: var(--red); }
-.drawing-unplaced-dot.tone-orange { background: var(--yellow); }
-.drawing-unplaced-dot.tone-blue { background: var(--blue); }
-.drawing-unplaced-dot.tone-purple { background: var(--blue); }
-.drawing-unplaced-dot.tone-green { background: var(--green); }
-.drawing-unplaced-dot.tone-cyan { background: var(--green); }
-.drawing-unplaced-dot.tone-amber { background: var(--yellow); }
 .drawing-unplaced-list > button:hover { background: var(--canvas); }
 .drawing-unplaced-list > button strong { display: block; font-size: var(--text-xs); }
 .drawing-unplaced-list > button small { color: var(--muted); display: block; font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -796,13 +783,6 @@ button.drawing-pin {
   border-radius: 0;
   border-top: 1px solid var(--border);
 }
-
-.visual-severity-line.blue { background: var(--blue); }
-.visual-severity-line.purple { background: var(--blue); }
-.visual-severity-line.orange { background: var(--yellow); }
-.visual-severity-line.green { background: var(--green); }
-.visual-severity-line.cyan { background: var(--green); }
-.visual-severity-line.red { background: var(--red); }
 
 @media (max-width: 1280px) {
   .drawing-workspace-grid {
@@ -1421,14 +1401,11 @@ textarea:focus-visible {
   width: 40px;
   height: 40px;
   place-items: center;
-  border-radius: var(--radius-md);
-  background: var(--ink-100);
   color: var(--ink-700);
 }
 
 .project-switcher-row.active .project-switcher-icon {
-  background: var(--paper);
-  color: var(--green);
+  color: var(--signal);
 }
 
 .project-switcher-copy {
