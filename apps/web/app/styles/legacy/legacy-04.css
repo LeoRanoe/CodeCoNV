@@ -1126,9 +1126,9 @@
 
 .workspace-current-module > b {
   align-self: center;
-  background: var(--green-soft);
+  background: var(--ink-50);
   border-radius: var(--radius-pill);
-  color: var(--teal);
+  color: var(--ink-600);
   font-size: var(--text-xs);
   grid-column: 2;
   grid-row: 1 / span 2;
