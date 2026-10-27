@@ -107,8 +107,15 @@ test("mobile navigation exposes reports, management and uncluttered report steps
   await expect(moduleMenu.getByRole("button", { name: /Sign out/ })).toBeVisible();
   await moduleMenu.getByRole("button", { name: /Reports/ }).click();
   await expect(page.getByRole("heading", { name: "Client reports" })).toBeVisible();
-  // Create, review & sign, versions & history, and the prompt library.
-  await expect(page.locator(".report-section-tabs [role='tab']")).toHaveCount(4);
+  await expect(page.locator(".report-section-tabs [role='tab']")).toHaveText([
+    "Daily report",
+    "Weekly report",
+    "Monthly report",
+    "Create report",
+    "Review & sign",
+    "Versions & history",
+    "Beyond this app",
+  ]);
   await expect(page.locator(".period-report-card")).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
