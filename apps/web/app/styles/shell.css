@@ -18,6 +18,13 @@
   transform: none;
 }
 
+/* Keep the notification control at its full touch width when the phone header is busy. */
+.top-actions > .icon-button {
+  flex-shrink: 0;
+  min-height: var(--control-h-lg);
+  min-width: var(--control-h-lg);
+}
+
 .metrics-grid .ui-stat { min-width: 0; }
 
 @media (max-width: 640px) {

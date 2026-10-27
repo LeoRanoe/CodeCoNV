@@ -56,20 +56,24 @@ test.beforeEach(async ({ page }, testInfo) => {
   await openAuthenticatedWorkspace(page);
 });
 
-test("responsive workspace keeps a multi-column tile grid without horizontal overflow", async ({ page }, testInfo) => {
+test("responsive workspace keeps readable register rows without horizontal overflow", async ({ page }, testInfo) => {
   if (testInfo.project.name === "desktop-office") await page.locator(".sidebar").getByRole("button", { name: "Workspace", exact: true }).click();
   else await page.locator(".mobile-bottom-nav").getByRole("button", { name: "Workspace", exact: true }).click();
-  const grid = page.locator(".client-workspace-grid");
+  const grid = page.locator(".workspace-launcher-grid.client-workspace-grid");
   await expect(grid).toBeVisible();
+  const rows = grid.locator(".workspace-launcher-tile.ui-list-row[data-workspace-destination]");
+  await expect(rows.first()).toBeVisible();
   const columns = await grid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").filter(Boolean).length);
-  if (testInfo.project.name === "mobile-field") expect(columns).toBe(2);
-  else if (testInfo.project.name === "tablet-field") expect(columns).toBeGreaterThanOrEqual(2);
-  else expect(columns).toBeGreaterThanOrEqual(4);
-  await expectMinimumTarget(page, ".client-workspace-grid [data-workspace-destination]");
+  if (testInfo.project.name === "mobile-field") expect(columns).toBe(1);
+  else if (testInfo.project.name === "tablet-field") expect(columns).toBe(2);
+  else expect(columns).toBe(3);
+  await expectMinimumTarget(page, ".workspace-launcher-grid [data-workspace-destination]");
+  await expect(rows.first().locator("strong")).toBeVisible();
   await expectNoHorizontalOverflow(page);
   if (testInfo.project.name === "mobile-field") {
     await page.setViewportSize({ width: 320, height: 844 });
-    await expect(grid).toHaveCSS("grid-template-columns", /\S+px \S+px/);
+    await expect.poll(() => grid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").filter(Boolean).length)).toBe(1);
+    expect(await rows.first().locator("strong").evaluate((label) => label.scrollWidth <= label.clientWidth + 1)).toBe(true);
     await expectNoHorizontalOverflow(page);
   }
 });
