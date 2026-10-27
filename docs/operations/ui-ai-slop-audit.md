@@ -246,24 +246,22 @@ walk could not run.
 | Non-`none` app shadows | 81 | 1 | 1 overlay shadow |
 | App media breakpoints | 15 | 3 | 640, 1024, 1280 px |
 | `globals.css` lines | 15,850 | 30 | Split into imports |
-| All app CSS lines, including imports | 15,850 | 16,943 | Still higher: ordered legacy fragments and area overrides need consolidation |
+| All app CSS lines, including imports | 15,850 | 16,851 | Still higher: ordered legacy fragments and area overrides need consolidation |
 
 **Phase 5 remains incomplete.** The token definitions meet the numeric targets, but the full CSS
 has 18 distinct `font-size` declaration forms and 16 distinct radius forms after counting
-`clamp()`, compound corners, and aliases. Total app CSS is 1,093 lines above its initial length.
+`clamp()`, compound corners, and aliases. Total app CSS is 1,001 lines above its initial length.
 The CSS split uses 12 ordered legacy fragments to preserve declaration order; the named area files
 currently hold screen overrides. This preserves the cascade but does not complete the planned
 semantic one-file-per-area cleanup. All four old button aliases remain live (215 TSX references in
 total), so removing them would break screens that have not migrated.
 
-`stylelint` is error-level for the app styles. The public landing stylesheet still has 97 warning-level
-declarations (22 `color-no-hex` and 75 `scale-unlimited/declaration-strict-value`) and needs a
-separate token pass before stylelint can be error-level globally. The app guardrail checks are
-error-level and allow exactly one photo text scrim. This landing exemption is the remaining
-strict-mode gap, not a completed Phase 5 gate.
+`stylelint` is error-level across app and landing CSS, with zero findings after the landing token
+pass. The app guardrail checks are error-level and allow exactly one photo text scrim. The numeric
+token targets pass (26 colours, 6 sizes, 3 weights, 3 radii, 1 shadow, 3 breakpoints).
 
-Screenshots after the public-site changes: [desktop](ui-slop-audit/after/landing-desktop-viewport.jpg)
-and [phone](ui-slop-audit/after/landing-phone-viewport.jpg). Authenticated after-screenshots for
+Screenshots after the public-site changes: [desktop](ui-slop-audit/after/landing-strict-desktop-viewport.jpg)
+and [phone](ui-slop-audit/after/landing-strict-phone-viewport.jpg). Authenticated after-screenshots for
 overview, workspace, projects, Management, Reports, sign-in, forms, and media are still missing.
 The original screenshots remain in [ui-slop-audit](ui-slop-audit/).
 
@@ -272,11 +270,10 @@ machine `docker info --format '{{.ServerVersion}}'` returns: `failed to connect 
 npipe:////./pipe/dockerDesktopLinuxEngine ... The system cannot find the file specified.` No claim
 about a screen being free of remaining banned patterns is made without that walk.
 
-A source-only sweep still finds live eyebrow headings in `codeco-supervision-app.tsx` (password,
-organization setup, user admin, and action detail), several media dialogs, and
-`operational-workspace.tsx`. Drawing unplaced pins still render `tone-*` classes, and old tinted
-overview/workspace icon rules remain in the legacy CSS. These are follow-up targets, not visually
-verified fixes.
+A targeted source cleanup removed the listed eyebrow headings from the main form and media dialogs,
+neutralized drawing record-type pin colours, and deleted dead tinted overview icon rules. Error and
+offline views and other live icon wrappers still need an authenticated visual walk before the banned
+list can be declared clear.
 
 ## Sources
 
