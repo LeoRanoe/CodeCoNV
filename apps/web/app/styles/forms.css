@@ -36,6 +36,39 @@
   text-transform: none;
 }
 
+/* Issue, HSE and NCR details share the outer document surface. Their inner
+   groups need a rule, not another card boundary. */
+.sectioned-record-form .controlled-document-context,
+.sectioned-record-form .record-derived-block {
+  background: transparent;
+  border: 0;
+  border-block-end: 1px solid var(--border);
+  border-radius: 0;
+  padding: var(--space-3) 0;
+}
+
+.sectioned-record-form .record-section {
+  background: transparent;
+  border: 0;
+  border-block-start: 1px solid var(--border);
+  border-radius: 0;
+  padding: var(--space-4) 0 0;
+}
+
+.sectioned-record-form .record-section > h3 {
+  color: var(--text);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.sectioned-record-form .record-section-number {
+  background: transparent;
+  border-radius: 0;
+  color: var(--muted);
+}
+
 .workforce-section-icon {
   background: transparent;
   color: var(--muted);

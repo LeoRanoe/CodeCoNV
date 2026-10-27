@@ -73,3 +73,36 @@
 .daily-work-tabs.ui-tabs button.active small {
   color: var(--muted);
 }
+
+/* Project documents use ruled sections and tabs instead of adjacent cards. */
+.project-document-intake,
+.project-document-browser {
+  background: transparent;
+  border: 0;
+  border-block-start: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.project-document-intake {
+  padding: var(--space-4) 0;
+}
+
+.project-document-browser > header,
+.project-document-filters {
+  background: transparent;
+  border-color: var(--border);
+}
+
+.project-document-tabs > button {
+  background: transparent;
+  border: 0;
+  border-block-end: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.project-document-tabs > button.active {
+  background: transparent;
+  border-block-end-color: var(--signal);
+  color: var(--text);
+}
