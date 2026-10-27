@@ -72,7 +72,7 @@ export function DailyWorkRegister({
   return (
     <section className="daily-work-register">
       <div className="daily-work-header-actions">
-        <nav className="daily-work-tabs" role="tablist" aria-label={text("Daily work view", "Dagwerkweergave")}>
+        <nav className="daily-work-tabs ui-tabs" role="tablist" aria-label={text("Daily work view", "Dagwerkweergave")}>
           {views.map((item) => (
             <button className={view === item.id ? "active" : ""} type="button" role="tab" aria-selected={view === item.id} onClick={() => onViewChange(item.id)} key={item.id}>
               <span><strong>{item.label}</strong><small>{item.count}</small></span>

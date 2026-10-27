@@ -2996,11 +2996,11 @@ function UserAdminModal({
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal user-admin-modal" role="dialog" aria-modal="true" aria-labelledby="user-admin-title">
         <header className="modal-header">
-          <div><p className="eyebrow">{text("Access management", "Toegangsbeheer")}</p><h2 id="user-admin-title">{text("Users and access", "Gebruikers en toegang")}</h2></div>
+          <div><h2 id="user-admin-title">{text("Users and access", "Gebruikers en toegang")}</h2></div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <div className="modal-body user-admin-body">
-          <div className="user-admin-tabs" role="tablist" aria-label={text("User management", "Gebruikersbeheer")}>
+          <div className="user-admin-tabs ui-tabs" role="tablist" aria-label={text("User management", "Gebruikersbeheer")}>
             <button role="tab" aria-selected={activePanel === "invite"} className={activePanel === "invite" ? "active" : ""} type="button" onClick={() => setActivePanel("invite")}><UserPlus size={16} /> {text("Invite someone", "Iemand uitnodigen")}</button>
             <button role="tab" aria-selected={activePanel === "members"} className={activePanel === "members" ? "active" : ""} type="button" onClick={() => setActivePanel("members")}><Users size={16} /> {text("Current access", "Huidige toegang")} <span>{access?.members.length ?? 0}</span></button>
           </div>
@@ -3008,7 +3008,7 @@ function UserAdminModal({
             <div className="invite-progress" aria-label={text(`Step ${inviteStep} of 3`, `Stap ${inviteStep} van 3`)}>
               {[text("Person", "Persoon"), text("Access", "Toegang"), text("Check", "Controleren")].map((label, index) => <span className={inviteStep >= index + 1 ? "active" : ""} key={label}><i>{inviteStep > index + 1 ? <Check size={12} /> : index + 1}</i>{label}</span>)}
             </div>
-            <div className="section-heading"><span className="module-card-icon"><UserPlus size={18} /></span><span><h3 id="invite-heading">{text("Invite project user", "Projectgebruiker uitnodigen")}</h3><p>{text("Invite a person", "Persoon uitnodigen")}</p></span></div>
+            <div className="section-heading"><UserPlus size={18} /><span><h3 id="invite-heading">{text("Invite project user", "Projectgebruiker uitnodigen")}</h3><p>{text("Invite a person", "Persoon uitnodigen")}</p></span></div>
             {success ? <div className="invite-success" role="status"><span><CheckCircle2 size={24} /></span><div><h3>{text("Invitation is on its way", "Uitnodiging is onderweg")}</h3><p>{text(`${invitedEmail} receives a link to set a password.`, `${invitedEmail} ontvangt een link om een wachtwoord in te stellen.`)}</p><div className="button-row"><button className="primary-button" type="button" onClick={startAnotherInvite}><UserPlus size={15} /> {text("Invite another", "Nog iemand uitnodigen")}</button><button className="ghost-button" type="button" onClick={() => setActivePanel("members")}>{text("View access", "Toegang bekijken")} <ArrowRight size={14} /></button></div></div></div> : <form className={`invite-flow step-${inviteStep}`} onSubmit={handleSubmit(submit)} noValidate>
               <input type="hidden" {...register("organizationId")} />
               {inviteStep === 1 ? <div className="form-grid"><label className="form-field"><span>{text("Full name *", "Volledige naam *")}</span><input autoFocus autoComplete="name" placeholder={text("e.g. Jane Doe", "bijv. Jane Doe")} {...register("displayName")} />{errors.displayName ? <small className="field-error">{errors.displayName.message}</small> : null}</label><label className="form-field"><span>{text("Business email address *", "Zakelijk e-mailadres *")}</span><input type="email" autoComplete="email" placeholder="naam@bedrijf.com" {...register("email")} />{errors.email ? <small className="field-error">{errors.email.message}</small> : null}</label></div> : null}
@@ -3214,7 +3214,7 @@ function ActionDetailModal({
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal action-detail-modal" role="dialog" aria-modal="true" aria-labelledby="action-detail-title">
         <header className="modal-header">
-          <div><p className="eyebrow">{action.action_number}</p><h2 id="action-detail-title">{action.title}</h2><p>{partyName}{action.location_node_id ? ` · ${locationBreadcrumb(locationNodes, action.location_node_id)}` : ""} · {text("deadline", "deadline")} {dueAt}</p></div>
+          <div><p className="record-number">{action.action_number}</p><h2 id="action-detail-title">{action.title}</h2><p>{partyName}{action.location_node_id ? ` · ${locationBreadcrumb(locationNodes, action.location_node_id)}` : ""} · {text("deadline", "deadline")} {dueAt}</p></div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <div className="modal-body action-detail-body">
