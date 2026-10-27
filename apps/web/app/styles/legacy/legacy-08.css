@@ -936,7 +936,7 @@
 .client-dashboard-tools > button i {
   background: var(--red);
   border: 2px solid var(--paper);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   height: 9px;
   position: absolute;
   right: 5px;
@@ -1130,7 +1130,7 @@
 }
 
 .client-donut {
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   display: grid;
   height: 108px;
   place-items: center;
@@ -1140,7 +1140,7 @@
 
 .client-donut::after {
   background: var(--paper);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   content: "";
   height: 62px;
   position: absolute;
@@ -1172,7 +1172,7 @@
 }
 
 .client-donut-legend i {
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   height: 7px;
   width: 7px;
 }

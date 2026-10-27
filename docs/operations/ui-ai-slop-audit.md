@@ -229,6 +229,49 @@ screenshots at 1440x900 and 390x844 of every screen you changed, and list what y
 Stop and report if anything fails instead of working around it.
 ```
 
+## After — 27 October 2026
+
+The integrated `ui/deslop` branch has a shared token vocabulary, reusable CSS classes, a flatter
+overview, workspace, project picker, Management, Reports, forms, media tools, and a simpler public
+site. The source checks pass. This is a **source-verified state**, not a completed visual sign-off:
+Docker Desktop's Linux engine is unavailable, so the fixture database and authenticated browser
+walk could not run.
+
+| Measure | Before | After | Target / note |
+| --- | ---: | ---: | --- |
+| Distinct app CSS hex values | 718 | 26 | ≤ 40; values now live in `tokens.css` |
+| Defined app type sizes | 73 | 6 | 6; raw `font-size` declarations still have 18 syntax forms due to `clamp()` and `!important` |
+| Defined app weights | 18 | 3 | 3: 400, 600, 700 |
+| Defined app radii | ~20 | 3 | 3: 6 px, 10 px, pill; raw declarations have compound forms |
+| Non-`none` app shadows | 81 | 1 | 1 overlay shadow |
+| App media breakpoints | 15 | 3 | 640, 1024, 1280 px |
+| `globals.css` lines | 15,850 | 30 | Split into imports |
+| All app CSS lines, including imports | 15,850 | 16,943 | Still higher: ordered legacy fragments and area overrides need consolidation |
+
+**Phase 5 remains incomplete.** The token definitions meet the numeric targets, but the full CSS
+has 18 distinct `font-size` declaration forms and 16 distinct radius forms after counting
+`clamp()`, compound corners, and aliases. Total app CSS is 1,093 lines above its initial length.
+The CSS split uses 12 ordered legacy fragments to preserve declaration order; the named area files
+currently hold screen overrides. This preserves the cascade but does not complete the planned
+semantic one-file-per-area cleanup. All four old button aliases remain live (215 TSX references in
+total), so removing them would break screens that have not migrated.
+
+`stylelint` is error-level for the app styles. The public landing stylesheet still has 97 warning-level
+declarations (22 `color-no-hex` and 75 `scale-unlimited/declaration-strict-value`) and needs a
+separate token pass before stylelint can be error-level globally. The app guardrail checks are
+error-level and allow exactly one photo text scrim. This landing exemption is the remaining
+strict-mode gap, not a completed Phase 5 gate.
+
+Screenshots after the public-site changes: [desktop](ui-slop-audit/after/landing-desktop-viewport.jpg)
+and [phone](ui-slop-audit/after/landing-phone-viewport.jpg). Authenticated after-screenshots for
+overview, workspace, projects, Management, Reports, sign-in, forms, and media are still missing.
+The original screenshots remain in [ui-slop-audit](ui-slop-audit/).
+
+The full Playwright run and the 1440/390 visual walk require a working local fixture stack. On this
+machine `docker info --format '{{.ServerVersion}}'` returns: `failed to connect to the docker API at
+npipe:////./pipe/dockerDesktopLinuxEngine ... The system cannot find the file specified.` No claim
+about a screen being free of remaining banned patterns is made without that walk.
+
 ## Sources
 
 - [How to detect AI slop in your design — ux-skill wiki][wiki]

@@ -20,7 +20,7 @@
 .visual-marker-list strong { color: var(--ink-900); display: block; font-size: var(--text-xs); }
 .visual-marker-list small { color: var(--ink-600); display: block; font-size: var(--text-xs); }
 .visual-marker-number {
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   color: var(--paper);
   display: grid;
   font-size: var(--text-xs);

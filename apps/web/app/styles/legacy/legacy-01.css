@@ -255,7 +255,7 @@
   align-items: center;
   background: var(--red);
   border: 3px solid var(--paper);
-  border-radius: 50% 50% 50% 0;
+  border-radius: var(--radius-pill) var(--radius-pill) var(--radius-pill) 0;
   box-shadow: none;
   color: var(--paper);
   display: flex;
@@ -382,7 +382,7 @@ button.drawing-pin {
 .drawing-unplaced-dot {
   align-items: center;
   background: var(--blue);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   color: var(--paper);
   display: inline-flex;
   height: 22px;
@@ -1126,7 +1126,7 @@ textarea:focus-visible {
   height: 23px;
   place-items: center;
   border: 1px solid var(--ink-200);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--paper);
   color: var(--ink-500);
   font-size: var(--text-xs);

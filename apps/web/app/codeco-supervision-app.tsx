@@ -3546,7 +3546,7 @@ function ReportModal({
             {dailyCloseoutAnswers?.daySummary ? <p>{dailyCloseoutAnswers.daySummary}</p> : null}
           </div>
           <div className="modal-actions">
-            <span style={{ color: missing ? "var(--yellow)" : "var(--green)", fontSize: 11, fontWeight: 680 }}>{missing ? text(`${missing} item(s) still need completion`, `${missing} onderdeel${missing > 1 ? "en" : ""} nog aanvullen`) : text("All checks passed", "Alle controles geslaagd")}</span>
+            <span className={`report-check-status ${missing ? "is-incomplete" : "is-complete"}`}>{missing ? text(`${missing} item(s) still need completion`, `${missing} onderdeel${missing > 1 ? "en" : ""} nog aanvullen`) : text("All checks passed", "Alle controles geslaagd")}</span>
             <div className="report-action-buttons">
               <ReportDownloadButtons disabled={missing > 0} onDownloadPdf={onDownload} onDownloadWord={onDownloadDocx} />
               <button className="primary-button" type="button" disabled={missing > 0 || submitted} onClick={onSubmit}>{submitted ? text("Submitted", "Ingediend") : text("Ready for review", "Gereed voor review")} <ArrowRight size={14} /></button>

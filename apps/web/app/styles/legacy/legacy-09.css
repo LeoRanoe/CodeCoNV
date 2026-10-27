@@ -816,7 +816,7 @@ button {
 .overview-icon-button i {
   background: var(--red);
   border: 2px solid var(--paper);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   height: 9px;
   position: absolute;
   right: 5px;
