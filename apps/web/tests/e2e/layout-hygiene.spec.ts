@@ -28,7 +28,7 @@ const nameCarryingRows: Record<string, string> = {
   "project-switcher-list": `<div class="project-switcher-list"><button class="project-switcher-row" type="button"><span class="project-switcher-icon">${ICON}</span><span class="project-switcher-copy"><strong>${LONG}</strong><small>${ICON} ${LONG}</small><small class="project-switcher-meta">${LONG}</small></span><span class="project-switcher-state">${ICON}</span></button></div>`,
   "overview-search-list": `<div class="overview-search-list"><button type="button"><span><strong>${LONG}</strong><small>${LONG}</small></span>${ICON}</button></div>`,
   "rapid-source-list": `<div class="rapid-source-list"><article><span>${ICON}</span><div><strong>${LONG}</strong><small>4 pagina's</small></div><button type="button">x</button></article></div>`,
-  "unified-action-list": `<div class="unified-action-list"><button type="button"><span class="unified-action-copy"><strong>${LONG}</strong><small>${LONG}</small></span></button></div>`,
+  "unified-action-list": `<div class="unified-action-list"><button type="button"><span class="unified-action-icon">${ICON}</span><span class="unified-action-copy"><span><b>Issue</b><em>${LONG}</em></span><strong>${LONG}</strong><span class="unified-action-next">${ICON} Inspect</span><small>${LONG}</small></span><span class="unified-action-priority">Open</span><span class="document-status">Open</span>${ICON}</button></div>`,
 };
 
 /** Strips that fold to two columns, with the width at which they do it. */
