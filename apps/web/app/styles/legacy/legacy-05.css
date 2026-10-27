@@ -248,7 +248,6 @@
 }
 
 .report-header-state {
-  align-items: flex-end;
   display: grid;
   gap: 7px;
   justify-items: end;
@@ -510,7 +509,6 @@
 .management-kpis {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
 }
 
 .management-kpis button {
@@ -529,7 +527,6 @@
 
 .management-kpis button:hover {
   border-color: var(--ink-400);
-  transform: translateY(-1px);
 }
 
 .management-kpis button.attention {
@@ -590,10 +587,10 @@
   text-align: left;
   cursor: pointer;
 }
-.management-control-list button:hover { border-color: var(--ink-400); background: var(--teal-soft); }
-.management-control-list button > svg { flex: 0 0 auto; color: var(--teal); }
+.management-control-list button:hover { border-color: var(--ink-400); }
+.management-control-list button > svg { flex: 0 0 auto; }
 .management-attention-list strong,
-.management-control-list strong { display: block; font-size: var(--text-xs); }
+.management-control-list strong { display: block; }
 .management-attention-list small,
 .management-control-list small { display: block; margin-top: 3px; color: var(--ink-500); font-size: var(--text-xs); }
 
@@ -612,10 +609,8 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
   background: var(--paper);
   overflow: hidden;
-  box-shadow: none;
 }
 
 .management-context > div {
@@ -975,13 +970,6 @@
 }
 
 @media (max-width: 1024px) {
-  .management-kpis {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .management-columns {
-    grid-template-columns: 1fr;
-  }
 
   .workflow-grid,
   .storage-status-grid,
@@ -1157,7 +1145,6 @@
 
   .workspace-section-controls {
     align-items: stretch;
-    grid-template-columns: auto minmax(0, 1fr);
     margin-top: -4px;
   }
 
@@ -1193,7 +1180,6 @@
   .access-card.setup-card,
   .access-card.project-setup-card {
     width: 100%;
-    min-height: 100vh;
     min-height: 100dvh;
     padding: var(--space-7) var(--space-5);
     border: 0;

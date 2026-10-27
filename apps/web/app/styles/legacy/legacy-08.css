@@ -280,7 +280,6 @@
   background: var(--paper);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-overlay);
-  max-height: calc(100vh - 32px);
   max-height: calc(100dvh - 32px);
   max-width: 860px;
   overflow: auto;
@@ -486,7 +485,6 @@
   .field-guide-task-picker { display: flex; overflow-x: auto; padding-bottom: 3px; scrollbar-width: thin; }
   .field-guide-task-picker button { flex: 0 0 132px; grid-template-columns: 31px 1fr; min-height: 44px; }
   .field-guide-task-picker button > span { height: 31px; width: 31px; }
-  .field-guide-task-detail { min-height: 250px; }
 }
 @media (max-width: 1024px) {
   .field-guide-trigger {
@@ -761,10 +759,6 @@
 
   .period-report-card > .workflow-icon {
     display: none;
-  }
-
-  .period-report-types {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .drawing-markup-toolbar > button,

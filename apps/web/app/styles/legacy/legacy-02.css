@@ -1533,7 +1533,6 @@
 
 .modal {
   width: min(680px, 100%);
-  max-height: min(780px, calc(100vh - 36px));
   max-height: min(780px, calc(100dvh - 36px));
   overflow: auto;
   border-radius: var(--radius-lg);
@@ -1552,7 +1551,6 @@
 
 .modal.project-start-modal {
   width: min(1040px, calc(100% - 32px));
-  max-height: min(880px, calc(100vh - 36px));
   max-height: min(880px, calc(100dvh - 36px));
 }
 

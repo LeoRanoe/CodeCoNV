@@ -332,12 +332,7 @@
     position: static;
   }
 
-  .questionnaire-strip {
-    grid-template-columns: minmax(300px, 1fr) minmax(220px, 0.7fr) auto;
-  }
-
   .questionnaire-strip > button {
-    grid-column: 1 / -1;
     justify-self: end;
   }
 }
@@ -485,17 +480,8 @@
     cursor: pointer;
   }
 
-  .mobile-nav-button.active {
-    color: var(--ink-950);
-  }
-
-  .mobile-nav-button.quick {
-    color: transparent;
-  }
-
   .mobile-nav-button.quick .mobile-plus {
     position: absolute;
-    top: -24px;
     display: grid;
     width: 55px;
     height: 55px;
@@ -729,7 +715,6 @@
   .modal.user-admin-modal,
   .modal.project-start-modal {
     width: 100%;
-    max-height: calc(100vh - 42px);
     max-height: calc(100dvh - 42px);
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   }
@@ -812,22 +797,16 @@
 }
 
 .access-shell {
-  min-height: 100vh;
   min-height: 100dvh;
   display: grid;
   place-items: center;
   padding: var(--space-8) var(--space-5);
-  background:
-    var(--paper);
 }
 
 .access-card {
   width: min(460px, 100%);
   padding: 34px;
-  border: 1px solid var(--ink-200);
   border-radius: var(--radius-md);
-  background: var(--paper);
-  box-shadow: none;
 }
 
 .access-card.setup-card {
@@ -900,8 +879,6 @@
 
 .auth-tabs button.active {
   background: var(--paper);
-  color: var(--green);
-  box-shadow: var(--shadow-sm);
 }
 
 .access-form {

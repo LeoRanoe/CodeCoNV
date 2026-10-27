@@ -74,13 +74,11 @@
 
 .workspace-launcher-search {
   align-items: center;
-  background: var(--ink-025);
   border: 1px solid var(--ink-200);
   border-radius: var(--radius-control);
   color: var(--ink-600);
   display: flex;
   gap: 6px;
-  min-height: 38px;
   padding: 0 9px;
 }
 
@@ -94,10 +92,7 @@
   background: transparent;
   border: 0;
   color: var(--ink-900);
-  font-size: var(--text-xs);
-  min-width: 120px;
   outline: 0;
-  width: 145px;
 }
 
 .workspace-launcher-grid {
@@ -197,15 +192,9 @@
 
 .workspace-launcher-empty {
   align-items: center;
-  background: var(--paper);
-  border: 1px dashed var(--ink-300);
-  border-radius: var(--radius-md);
   color: var(--ink-600);
-  display: grid;
   gap: 10px;
   grid-template-columns: 34px minmax(0, 1fr) auto;
-  min-height: 88px;
-  padding: 15px;
 }
 
 .workspace-launcher-empty strong { color: var(--ink-900); font-size: var(--text-xs); }
@@ -724,10 +713,10 @@
      below it. The search used to span the full width, which pushed the two icon buttons
      into the tracks meant for them and left a dead 40px column at the right. */
   .overview-hero-actions { display: grid; grid-template-columns: minmax(0, 1fr) 40px 40px; }
-  .overview-create-button { grid-column: 1 / -1; justify-content: center; width: 100%; }
+  .overview-create-button { grid-column: 1 / -1; justify-content: center; }
   .overview-metrics,
   .action-center-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .overview-metric { grid-template-columns: 38px minmax(0, 1fr); min-height: 86px; padding: 11px; }
+  .overview-metric { grid-template-columns: 38px minmax(0, 1fr); }
   .overview-work-list > button { grid-template-columns: 24px minmax(0, 1fr) auto; }
   .overview-work-location { display: none; }
   .overview-purposeful-empty,
@@ -743,16 +732,15 @@
   .workspace-launcher-search { grid-column: 1 / -1; min-height: 44px; }
   .workspace-launcher-actions > button { justify-content: center; min-height: 44px; }
   .workspace-launcher-grid { gap: var(--space-2); grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .workspace-launcher-tile { min-height: 120px; padding: var(--space-3); }
+  .workspace-launcher-tile { min-height: 120px; }
   .workspace-launcher-tile > strong { font-size: var(--text-xs); }
   .workspace-launcher-tile > small { font-size: var(--text-xs); }
   .workspace-launcher-empty { grid-template-columns: 32px minmax(0, 1fr); }
   .workspace-launcher-empty > button { grid-column: 1 / -1; justify-content: center; width: 100%; }
   .project-documents-actions { display: grid; grid-template-columns: 1fr; }
-  .project-document-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; padding-bottom: 0; }
+  .project-document-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }
   .project-document-intake-row { grid-template-columns: 1fr; }
   .project-document-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .daily-work-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .project-document-browser > header { align-items: stretch; flex-direction: column; gap: var(--space-2); }
   .project-document-browser header input { min-width: 0; width: 100%; }
   .document-preview-backdrop { padding: var(--space-2); }
@@ -772,8 +760,7 @@
   .secondary-header { align-items: flex-start; flex-direction: column; padding: var(--space-4); }
   .secondary-header > .ui-button--primary { width: 100%; }
   .punchlist-cycle-card { grid-template-columns: 38px minmax(0, 1fr); }
-  .punchlist-cycle-card > .button-row { grid-column: 1 / -1; width: 100%; }
-  .punchlist-cycle-card > .button-row > button { flex: 1 1 auto; justify-content: center; }
+  .punchlist-cycle-card > .button-row { width: 100%; }
 }
 
 /* Production refinement: reports, management, media and complete mobile access. */
@@ -897,7 +884,6 @@
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     box-shadow: var(--shadow-overlay);
     display: block;
-    max-height: min(660px, calc(100vh - 104px));
     max-height: min(660px, calc(100dvh - 104px));
     overflow: auto;
     padding: 17px 14px var(--space-5);
@@ -1061,9 +1047,6 @@
 }
 
 @media (max-width: 640px) {
-  .management-kpis {
-    grid-template-columns: 1fr;
-  }
 
   .management-kpis button {
     min-height: 104px;
