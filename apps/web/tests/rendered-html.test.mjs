@@ -2039,7 +2039,9 @@ test("processes the annotated screens of 4 August: ordered photos, a named pin, 
   assert.doesNotMatch(drawings, /const linkOptions = useMemo/);
   assert.match(drawings, /drawing-pin-code/);
   assert.match(drawings, /drawing-pin-legend/);
-  assert.match(drawings, /registration: "amber"/);
+  assert.match(drawings, /registration: \{ en: "Daily works", nl: "Dagwerk" \}/);
+  assert.match(drawings, /className="drawing-pin"/);
+  assert.doesNotMatch(drawings, /className=\{`drawing-pin \$\{tone/);
   assert.match(styles, /\.drawing-pin-code/);
   assert.match(operations, /pendingRecord=\{pendingRecordPin\}/);
 
