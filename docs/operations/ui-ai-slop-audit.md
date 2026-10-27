@@ -272,6 +272,12 @@ machine `docker info --format '{{.ServerVersion}}'` returns: `failed to connect 
 npipe:////./pipe/dockerDesktopLinuxEngine ... The system cannot find the file specified.` No claim
 about a screen being free of remaining banned patterns is made without that walk.
 
+A source-only sweep still finds live eyebrow headings in `codeco-supervision-app.tsx` (password,
+organization setup, user admin, and action detail), several media dialogs, and
+`operational-workspace.tsx`. Drawing unplaced pins still render `tone-*` classes, and old tinted
+overview/workspace icon rules remain in the legacy CSS. These are follow-up targets, not visually
+verified fixes.
+
 ## Sources
 
 - [How to detect AI slop in your design — ux-skill wiki][wiki]
