@@ -1,0 +1,193 @@
+/* Section navigation (app/section-nav.tsx): a segmented control for two or three sections,
+   an underlined bar on a wide screen, and on a phone one bar that names where you are and
+   opens the list of every section. Nothing scrolls sideways. */
+.section-nav { min-width: 0; }
+.section-nav button { font: inherit; }
+.section-nav__count {
+  color: var(--ink-700);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-semibold);
+}
+
+/* Segmented: one track, the current section is raised on it. */
+.section-nav--segmented {
+  background: var(--ink-100);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: var(--space-1);
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  padding: var(--space-1);
+}
+.section-nav--segmented > button {
+  align-items: center;
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--ink-800);
+  cursor: pointer;
+  display: inline-flex;
+  gap: var(--space-2);
+  justify-content: center;
+  min-height: var(--control-h-lg);
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  text-align: center;
+}
+.section-nav--segmented > button .section-nav__label { overflow-wrap: anywhere; }
+.section-nav--segmented > button.active {
+  background: var(--paper);
+  border-color: var(--border);
+  color: var(--text);
+  font-weight: var(--weight-bold);
+}
+
+/* Bar: text on a rule, the current section carries a heavy orange underline. */
+.section-nav--bar {
+  border-bottom: 2px solid var(--line);
+  display: flex;
+  gap: var(--space-1);
+}
+.section-nav--bar > button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-bottom: 4px solid transparent;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  color: var(--ink-800);
+  cursor: pointer;
+  display: inline-flex;
+  gap: var(--space-2);
+  margin-bottom: -2px;
+  min-height: var(--control-h-lg);
+  padding: 0 var(--space-4);
+}
+.section-nav--bar > button:hover { background: var(--ink-50); }
+.section-nav--bar > button.active {
+  border-bottom-color: var(--signal);
+  color: var(--text);
+  font-weight: var(--weight-bold);
+}
+
+/* Menu: one bar for the current section; the list opens under it, or from the bottom on a phone. */
+.section-nav--menu { position: relative; }
+.section-nav__trigger {
+  align-items: center;
+  background: var(--paper);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  gap: var(--space-3);
+  min-height: 56px;
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  width: 100%;
+}
+.section-nav__trigger:hover { background: var(--ink-50); }
+.section-nav--menu.is-open .section-nav__trigger { border-color: var(--signal-dark); }
+.section-nav__current { display: grid; flex: 1 1 auto; min-width: 0; }
+.section-nav__current small { color: var(--muted); font-size: var(--text-sm); line-height: 1.2; }
+.section-nav__current strong { font-size: var(--text-md); line-height: 1.25; overflow-wrap: anywhere; }
+.section-nav__position { color: var(--muted); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.section-nav__chevron { color: var(--ink-700); flex: none; transition: transform 160ms ease; }
+.section-nav--menu.is-open .section-nav__chevron { transform: rotate(180deg); }
+.section-nav__icon { color: var(--ink-800); display: inline-flex; flex: none; }
+
+.section-nav__scrim { background: rgb(20 21 26 / 40%); inset: 0; position: fixed; z-index: 60; }
+.section-nav__panel {
+  background: var(--paper);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-overlay);
+  left: 0;
+  margin-top: var(--space-2);
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  position: absolute;
+  right: 0;
+  z-index: 61;
+}
+.section-nav__panel[hidden] { display: none; }
+.section-nav__panel-head { align-items: center; display: none; justify-content: space-between; padding: var(--space-3) var(--space-4) var(--space-1); }
+.section-nav__panel-head strong { font-size: var(--text-lg); }
+.section-nav__close {
+  align-items: center;
+  background: transparent;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  height: var(--control-h-lg);
+  justify-content: center;
+  width: var(--control-h-lg);
+}
+.section-nav__list { display: grid; padding: var(--space-2); }
+.section-nav__list > button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  gap: var(--space-3);
+  min-height: var(--control-h-xl);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+}
+.section-nav__list > button:hover { background: var(--ink-50); }
+.section-nav__list > button .section-nav__label { flex: 1 1 auto; font-size: var(--text-md); overflow-wrap: anywhere; }
+.section-nav__list > button.active { background: var(--signal-soft); font-weight: var(--weight-bold); }
+.section-nav__check { color: var(--signal-dark); flex: none; height: 18px; width: 18px; }
+
+@media (max-width: 1023px) {
+  .section-nav__panel {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    border-width: 2px 0 0;
+    bottom: 0;
+    left: 0;
+    margin: 0;
+    max-height: 80vh;
+    position: fixed;
+    right: 0;
+    top: auto;
+    z-index: 61;
+  }
+  .section-nav__panel-head { display: flex; }
+  .section-nav__list > button { min-height: 56px; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .section-nav__scrim { animation: view-in 140ms ease-out backwards; }
+  .section-nav__panel:not([hidden]) { animation: sheet-in 180ms ease-out backwards; }
+  .section-nav--bar > button,
+  .section-nav--segmented > button,
+  .section-nav__list > button { transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease; }
+}
+
+/* Autosave line: quiet, one row, never competes with the form's own action. */
+.draft-notice {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: var(--text-sm);
+  gap: var(--space-2);
+  margin: 0;
+  min-height: var(--control-h-md);
+}
+.draft-notice svg { color: var(--green); flex: none; }
+.draft-notice--restored {
+  background: var(--paper);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-3);
+}
+.draft-notice--restored svg { color: var(--ink-700); }
+.draft-notice .text-link { margin-inline-start: auto; min-height: var(--control-h-md); }

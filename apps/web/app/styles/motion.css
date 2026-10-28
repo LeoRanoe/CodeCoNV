@@ -1,0 +1,42 @@
+/* Motion: short, small, and only in answer to something the person did. Nothing loops and
+   nothing moves on its own; a device that asks for less motion gets none. */
+@media (prefers-reduced-motion: no-preference) {
+  .main-content > * { animation: view-in 160ms ease-out backwards; }
+  .modal, .mobile-module-sheet { animation: sheet-in 200ms ease-out backwards; }
+  .draft-notice { animation: view-in 160ms ease-out backwards; }
+
+  .ui-button,
+  .nav-button,
+  .mobile-nav-button,
+  .workspace-launcher-tile,
+  .overview-metric,
+  .ui-tabs > button,
+  .admin-tabs > button,
+  .daily-work-tabs > button,
+  .report-section-tabs > button,
+  .operation-tabs > button,
+  .action-type-tabs > button,
+  .project-document-tabs > button {
+    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, transform 100ms ease;
+  }
+  .ui-button:active,
+  .mobile-nav-button:active,
+  .workspace-launcher-tile:active,
+  .overview-metric:active,
+  .ui-tabs > button:active,
+  .admin-tabs > button:active,
+  .daily-work-tabs > button:active,
+  .report-section-tabs > button:active,
+  .operation-tabs > button:active,
+  .action-type-tabs > button:active,
+  .project-document-tabs > button:active { transform: scale(0.97); }
+}
+
+@keyframes view-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; }
+}
+@keyframes sheet-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; }
+}

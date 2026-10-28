@@ -160,8 +160,8 @@ for (const size of widths) {
     // The tab strip keeps its reading order: it scrolls on a phone instead of wrapping.
     expect(seen.documentTabsDisplay, `document tabs at ${size.width}px`).toBe(size.phone ? "flex" : "grid");
 
-    // Module rows remain readable; a phone gets one full-width row per destination.
-    expect(seen.moduleColumns, `module columns at ${size.width}px`).toBe(size.phone ? 1 : size.width <= 1024 ? 2 : 3);
+    // Module rows remain readable; a phone gets two tiles per row.
+    expect(seen.moduleColumns, `module columns at ${size.width}px`).toBe(size.width <= 1024 ? 2 : 3);
     expect(seen.clippedModuleLabels, `module names clipped at ${size.width}px`).toBe(0);
 
     // The three row actions share one line rather than becoming three stacked buttons.

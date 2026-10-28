@@ -1,5 +1,6 @@
 "use client";
 
+import { SectionNav } from "@/app/section-nav";
 import { locateCoordinates } from "@/lib/browser/geolocation";
 
 import {
@@ -122,6 +123,8 @@ import {
 import { externalShareUrl } from "@/lib/external-share/token.mjs";
 import type { ProjectStartAnswers } from "@/lib/forms/daily-report";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
+import { DraftNotice } from "@/app/forms/draft-notice";
+import { useFormAutosave } from "@/lib/offline/use-form-autosave";
 import { useLanguage } from "@/lib/i18n";
 import { cacheProjectSnapshot, getCachedProjectSnapshot } from "@/lib/offline/project-cache";
 import { useLiveProjectWeather } from "@/lib/weather-client";
@@ -1204,6 +1207,23 @@ function ProjectOperations({
     gpsRequests.current.issue?.abort();
     gpsRequests.current.hse?.abort();
   }, [showForm, tab, projectId]);
+  const discardRegisterDraft = () => {
+    registerAutosave.clear();
+    setRegisterForm({ ...emptyControlledDocumentDraft, type: registerForm.type });
+    setAgreementForm({ ...emptyAgreementSignature });
+    setAgreementRecord({ ...emptyAgreementRecord });
+    setChangeOrder({ ...emptyChangeOrder });
+    setDelayForm({ ...emptyDelayReport });
+    setLessonForm({ ...emptyLessonLearned });
+    setRegisterFiles([]);
+    setRegisterSignature(null);
+    setRegisterOutcome("");
+    setRegisterLines([{ quantity: "", unit: "", description: "" }]);
+    setRegisterPhotos([]);
+    setRegisterNamedPhotos({});
+    setRegisterDrawingId("");
+    setRegisterLocationNodeId("");
+  };
   /**
    * A parked draft is offered, never pushed back in silently: the person who reopens the
    * screen decides whether the old words are still the ones they want to send.
@@ -1303,6 +1323,76 @@ function ProjectOperations({
   /** A lesson learned: the issue, its cause, the fix, the expected result and the
    * follow-up — captured once, so the same mistake is not repeated on the next building. */
   const [lessonForm, setLessonForm] = useState({ ...emptyLessonLearned });
+  /*
+   * Autosave. Every form of this workspace keeps what was typed on the device, per project, and
+   * puts it back when the person returns from another tab, a reload or a call. Opening a form
+   * and leaving it writes nothing; sending the record or choosing "Start over" removes it.
+   */
+  const openForNew = showForm && !activeInspection;
+  const findingAutosave = useFormAutosave({
+    id: `form:${findingScope}:${projectId}`,
+    enabled: openForNew && (tab === "findings" || tab === "ncr") && !editingFindingId,
+    value: { findingForm, findingPhotos, findingBuildingId, findingBuildingIds, findingLocationNodeId },
+    restore: (draft) => {
+      setFindingForm((current) => ({ ...current, ...draft.findingForm }));
+      setFindingPhotos(Array.isArray(draft.findingPhotos) ? draft.findingPhotos : []);
+      if (draft.findingBuildingId) setFindingBuildingId(draft.findingBuildingId);
+      if (draft.findingBuildingIds?.length) setFindingBuildingIds(draft.findingBuildingIds);
+      setFindingLocationNodeId(draft.findingLocationNodeId ?? "");
+    },
+  });
+  const hseAutosave = useFormAutosave({
+    id: `form:hse:${projectId}`,
+    enabled: openForNew && tab === "hse" && !editingHseId,
+    value: { hseForm, hsePhotos, hseSignature, hseBuildingId, hseBuildingIds, hseLocationNodeId },
+    restore: (draft) => {
+      setHseForm((current) => ({ ...current, ...draft.hseForm }));
+      setHsePhotos(Array.isArray(draft.hsePhotos) ? draft.hsePhotos : []);
+      setHseSignature(draft.hseSignature ?? null);
+      if (draft.hseBuildingId) setHseBuildingId(draft.hseBuildingId);
+      if (draft.hseBuildingIds?.length) setHseBuildingIds(draft.hseBuildingIds);
+      setHseLocationNodeId(draft.hseLocationNodeId ?? "");
+    },
+  });
+  const registerAutosave = useFormAutosave({
+    id: `form:register:${projectId}`,
+    enabled: openForNew && tab === "registers" && !editingRegisterId,
+    value: {
+      registerForm, registerSignature, registerFiles, registerLines, registerPhotos, registerNamedPhotos, registerOutcome,
+      registerDrawingId, registerLocationNodeId, registerBuildingId, registerBuildingIds,
+      agreementForm, agreementRecord, changeOrder, delayForm, lessonForm,
+    },
+    restore: (draft) => {
+      setRegisterForm((current) => ({ ...current, ...draft.registerForm }));
+      setRegisterSignature(draft.registerSignature ?? null);
+      setRegisterFiles(Array.isArray(draft.registerFiles) ? draft.registerFiles : []);
+      if (Array.isArray(draft.registerLines) && draft.registerLines.length) setRegisterLines(draft.registerLines);
+      setRegisterPhotos(Array.isArray(draft.registerPhotos) ? draft.registerPhotos : []);
+      setRegisterNamedPhotos(draft.registerNamedPhotos ?? {});
+      setRegisterOutcome(draft.registerOutcome ?? "");
+      setRegisterDrawingId(draft.registerDrawingId ?? "");
+      setRegisterLocationNodeId(draft.registerLocationNodeId ?? "");
+      if (draft.registerBuildingId) setRegisterBuildingId(draft.registerBuildingId);
+      if (draft.registerBuildingIds?.length) setRegisterBuildingIds(draft.registerBuildingIds);
+      setAgreementForm((current) => ({ ...current, ...draft.agreementForm }));
+      setAgreementRecord((current) => ({ ...current, ...draft.agreementRecord }));
+      setChangeOrder((current) => ({ ...current, ...draft.changeOrder }));
+      setDelayForm((current) => ({ ...current, ...draft.delayForm }));
+      setLessonForm((current) => ({ ...current, ...draft.lessonForm }));
+    },
+  });
+  const inspectionAutosave = useFormAutosave({
+    id: `form:inspection-start:${projectId}`,
+    enabled: showForm && !activeInspection && tab === "inspections",
+    value: { inspectionTitle, inspectionTemplateId, inspectionBuildingId, inspectionBuildingIds, inspectionLocationNodeId },
+    restore: (draft) => {
+      setInspectionTitle(draft.inspectionTitle ?? "");
+      setInspectionTemplateId(draft.inspectionTemplateId ?? "");
+      if (draft.inspectionBuildingId) setInspectionBuildingId(draft.inspectionBuildingId);
+      if (draft.inspectionBuildingIds?.length) setInspectionBuildingIds(draft.inspectionBuildingIds);
+      setInspectionLocationNodeId(draft.inspectionLocationNodeId ?? "");
+    },
+  });
   /**
    * Every numbered record in this project, so the workspace search can find a document
    * back from the unique code that stands on it — on paper, in an e-mail or on a photo.
@@ -1987,6 +2077,7 @@ function ProjectOperations({
       created = await startInspection(client, { projectId, buildingId: inspectionBuildingId, buildingIds: inspectionBuildingIds, locationNodeId: inspectionLocationNodeId, reportId, templateId, title: resolvedTitle });
     }, text("Inspection started; complete every required checkpoint.", "Inspectie gestart; vul nu ieder verplicht controlepunt in."));
     if (okay && created) {
+      inspectionAutosave.clear();
       setActiveInspection(created);
       const automaticWeatherResult = projectStartAnswers
         ? projectStartAnswers.weatherCondition === "rain"
@@ -2440,6 +2531,7 @@ function ProjectOperations({
     if (okay) {
       // The issue is filed, so the parked draft of it has nothing left to protect.
       clearRecordDraft("issue", projectId);
+      findingAutosave.clear();
       resetFindingForm();
       setEditingFindingId("");
       setShowForm(false);
@@ -2585,6 +2677,7 @@ function ProjectOperations({
     if (okay) {
       // The issue is filed, so the parked draft of it has nothing left to protect.
       clearRecordDraft("hse", projectId);
+      hseAutosave.clear();
       resetHseForm();
       setEditingHseId("");
       setShowForm(false);
@@ -2820,6 +2913,7 @@ function ProjectOperations({
       text(`${registerNames[registerForm.type] ?? "Record"} saved.`, `${registerNames[registerForm.type] ?? "Registratie"} opgeslagen.`),
     );
     if (okay) {
+      registerAutosave.clear();
       setRegisterForm({ ...emptyControlledDocumentDraft, type: registerForm.type });
       setEditingRegisterId("");
       setAgreementForm({ ...emptyAgreementSignature });
@@ -3133,6 +3227,7 @@ function ProjectOperations({
           ) : null}
           {showForm && !activeInspection ? (
             <RecordFormShell title={text("Start inspection", "Inspectie starten")} status={text("New", "Nieuw")} busy={busy} className="wide sectioned-record-form">
+              <DraftNotice status={inspectionAutosave.status} savedAt={inspectionAutosave.savedAt} onDiscard={() => { inspectionAutosave.clear(); setInspectionTitle(""); setInspectionTemplateId(""); setInspectionLocationNodeId(""); }} />
               
               {anchorWorkPlanned && missingAnchorChecklistCodes.length ? (
                 <div className="operation-alert success recommended-checklist-install">
@@ -3217,6 +3312,7 @@ function ProjectOperations({
                 <div><small>{text("Department", "Afdeling")}</small><strong>{reporterDepartment}</strong><span>{text("Of the reporter", "Van de melder")}</span></div>
                 <div><small>{text("Status", "Status")}</small><strong className="record-status-preview">{issueStatusLabel}</strong><span>{text("On submit", "Bij indienen")}</span></div>
               </section>
+              <DraftNotice status={findingAutosave.status} savedAt={findingAutosave.savedAt} onDiscard={() => { findingAutosave.clear(); resetFindingForm(); }} />
               {issueParkedDraft ? (
                 <p className="form-helper record-draft-notice">
                   <Save size={13} /> {text("A saved draft of this screen is waiting on this device.", "Op dit apparaat staat een opgeslagen concept van dit scherm.")}
@@ -3674,6 +3770,7 @@ function ProjectOperations({
                 <div><small>{text("Status", "Status")}</small><strong className="record-status-preview">{hseStatusLabel}</strong><span>{text("On submit", "Bij indienen")}</span></div>
               </section>
               {/* "Ik vermoed dat dag, datum & tijd zelf komen" — the form says so out loud. */}
+              <DraftNotice status={hseAutosave.status} savedAt={hseAutosave.savedAt} onDiscard={() => { hseAutosave.clear(); resetHseForm(); }} />
               {hseParkedDraft ? (
                 <p className="form-helper record-draft-notice">
                   <Save size={13} /> {text("A saved draft of this screen is waiting on this device.", "Op dit apparaat staat een opgeslagen concept van dit scherm.")}
@@ -3912,6 +4009,7 @@ function ProjectOperations({
               className={registerFormClassName}
               headerAside={controlledRegister ? <span className="controlled-document-badge">{projectCode} · {registerContextLabel}</span> : null}
             >
+              <DraftNotice status={registerAutosave.status} savedAt={registerAutosave.savedAt} onDiscard={discardRegisterDraft} />
               {controlledRegister ? (
                 <div className="form-grid controlled-document-primary">
                   <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction title / reference", "Titel / referentie instructie") : text("Title / reference", "Titel / referentie")}</span><input value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} /></label>
@@ -5603,12 +5701,15 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
   return (
     <>
       <header className="secondary-header report-page-header ui-page-header"><div><h1>{text("Client reports", "Klantrapporten")}</h1></div><div className="report-header-state"><span className="record-number ui-page-header__code">{reportNumber}</span><span className={`report-state-pill ui-status-badge ${reportStatus}`}>{statusLabels[reportStatus] ?? reportStatus}</span></div></header>
-      <nav className="report-section-tabs ui-tabs" role="tablist" aria-label={text("Report workspace", "Rapportwerkruimte")}>
-        <button type="button" role="tab" aria-selected={reportView === "create" && periodPreset === "day"} onClick={() => { setReportView("create"); applyDatePreset(1, text("Daily supervision report", "Dagelijks supervisierapport"), "day"); }}>{text("Daily report", "Dagrapport")}</button>
-        <button type="button" role="tab" aria-selected={reportView === "create" && periodPreset === "week"} onClick={() => { setReportView("create"); applyDatePreset(7, text("Weekly supervision report", "Wekelijks supervisierapport"), "week"); }}>{text("Weekly report", "Weekrapport")}</button>
-        <button type="button" role="tab" aria-selected={reportView === "create" && periodPreset === "month"} onClick={() => { setReportView("create"); setPeriod({ start: `${today.slice(0, 8)}01`, end: today }); setPeriodLabel(text("Monthly supervision report", "Maandelijks supervisierapport")); setPeriodPreset("month"); }}>{text("Monthly report", "Maandrapport")}</button>
-        {reportViews.map((view) => <button type="button" role="tab" aria-selected={reportView === view.id && (view.id !== "create" || periodPreset === "custom")} onClick={() => { setReportView(view.id); if (view.id === "create") setPeriodPreset("custom"); }} key={view.id}>{view.title}</button>)}
-      </nav>
+      <SectionNav
+        label={text("Report workspace", "Rapportwerkruimte")}
+        items={[
+          { id: "day", label: text("Daily report", "Dagrapport"), selected: reportView === "create" && periodPreset === "day", onSelect: () => { setReportView("create"); applyDatePreset(1, text("Daily supervision report", "Dagelijks supervisierapport"), "day"); } },
+          { id: "week", label: text("Weekly report", "Weekrapport"), selected: reportView === "create" && periodPreset === "week", onSelect: () => { setReportView("create"); applyDatePreset(7, text("Weekly supervision report", "Wekelijks supervisierapport"), "week"); } },
+          { id: "month", label: text("Monthly report", "Maandrapport"), selected: reportView === "create" && periodPreset === "month", onSelect: () => { setReportView("create"); setPeriod({ start: `${today.slice(0, 8)}01`, end: today }); setPeriodLabel(text("Monthly supervision report", "Maandelijks supervisierapport")); setPeriodPreset("month"); } },
+          ...reportViews.map((view) => ({ id: view.id, label: view.title, selected: reportView === view.id && (view.id !== "create" || periodPreset === "custom"), onSelect: () => { setReportView(view.id); if (view.id === "create") setPeriodPreset("custom"); } })),
+        ]}
+      />
       {reportView === "prompts" ? (
         <PromptLibrary
           shortcuts={{
@@ -5748,7 +5849,10 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
   return (
     <>
       <header className="secondary-header ui-page-header"><div><h1>{section === "overview" ? text("Management overview", "Managementoverzicht") : text("Administration and control", "Beheer en controle")}</h1><span className="ui-page-header__code">{projectName}</span></div><div className="management-header-actions">{canManageOrganization ? <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={openUserAdmin}><Users size={15} /> {text("Manage team", "Team beheren")}</button> : null}</div></header>
-      <div className="operation-tabs admin-tabs ui-tabs" role="tablist" aria-label={text("Management sections", "Beheeronderdelen")}>{[["overview", text("Overview", "Overzicht")], ["settings", text("Team & rules", "Team & regels")], ["structure", text("Project setup", "Projectinrichting")], ["templates", text("Quality standards", "Kwaliteitsstandaarden")], ["backup", text("Backup & continuity", "Back-up & continuïteit")]].map(([id, label]) => <button className={section === id ? "active" : ""} type="button" role="tab" aria-selected={section === id} onClick={() => setSection(id as typeof section)} key={id}>{label}</button>)}</div>
+      <SectionNav
+        label={text("Management sections", "Beheeronderdelen")}
+        items={([["overview", text("Overview", "Overzicht")], ["settings", text("Team & rules", "Team & regels")], ["structure", text("Project setup", "Projectinrichting")], ["templates", text("Quality standards", "Kwaliteitsstandaarden")], ["backup", text("Backup & continuity", "Back-up & continuïteit")]] as const).map(([id, label]) => ({ id, label, selected: section === id, onSelect: () => setSection(id) }))}
+      />
       {section === "overview" ? <section className="management-overview">
         <div className="management-kpis">
           <button className={data.settings ? "healthy" : "attention"} type="button" onClick={() => setSection("settings")}><span>{text("Project configuration", "Projectconfiguratie")}</span><strong>{data.settings ? text("Active", "Actief") : text("Missing", "Ontbreekt")}</strong>{data.settings ? null : <small>{text("Project rules require configuration", "Projectregels moeten worden ingesteld")}</small>}</button>

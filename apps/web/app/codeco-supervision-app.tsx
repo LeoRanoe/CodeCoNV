@@ -64,6 +64,8 @@ import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import { currentPushState, enablePushNotifications, type PushState } from "@/lib/notifications/push-client";
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
 import { clearFormDraft, formDraftKey, loadFormDraft } from "@/lib/offline/form-drafts";
+import { useFormAutosave } from "@/lib/offline/use-form-autosave";
+import { DraftNotice } from "@/app/forms/draft-notice";
 import { cacheProjectDay, cacheWorkspace, getCachedProjectDay, getCachedWorkspace } from "@/lib/offline/workspace-cache";
 import { loadWithOfflineCache } from "@/lib/offline/query-cache";
 import { isPendingRecordId, listOfflineRecords, saveRecordOnlineOrQueue, syncOfflineRecords } from "@/lib/offline/record-queue";
@@ -1885,6 +1887,7 @@ export function CodecoSupervisionApp() {
                   </button>
                 );
               })}
+              <div className="mobile-module-language"><LanguageSwitcher /></div>
               {/* On a phone the sidebar with the account card is hidden; signing out has
                   to stay reachable on a shared field device. */}
               <button
@@ -1906,6 +1909,7 @@ export function CodecoSupervisionApp() {
 
       {modal === "action_create" && selectedProject && selectedBuilding ? (
         <ActionCreateModal
+          projectId={selectedProject.id}
           parties={dayQuery.data?.parties ?? []}
           employees={companyEmployees}
           projectName={projectName}
@@ -3077,6 +3081,7 @@ function notificationTitle(stored: string, text: (english: string, dutch: string
 }
 
 function ActionCreateModal({
+  projectId,
   parties,
   employees,
   projectName,
@@ -3088,6 +3093,7 @@ function ActionCreateModal({
   close,
   save,
 }: {
+  projectId: string;
   parties: ProjectParty[];
   employees: InternalMember[];
   projectName: string;
@@ -3105,7 +3111,7 @@ function ActionCreateModal({
   const [locationNodeId, setLocationNodeId] = useState("");
   const defaultParty = parties.find((party) => party.type === "contractor")?.id ?? parties[0]?.id ?? "";
   const defaultEmployee = employees[0]?.userId ?? "";
-  const { register, handleSubmit, setValue, getValues, control, formState: { errors } } = useForm<ProjectActionAnswers>({
+  const { register, handleSubmit, setValue, getValues, reset, control, formState: { errors } } = useForm<ProjectActionAnswers>({
     resolver: zodResolver(projectActionSchema),
     defaultValues: {
       title: "",
@@ -3124,6 +3130,16 @@ function ActionCreateModal({
     { title: text("Finish and clean work area", "Werkzone afwerken en schoonmaken"), description: text("Finish the work and leave the work area clean and ready for inspection.", "Werk het onderdeel af en laat de werkzone schoon en gereed voor inspectie achter."), priority: "low" },
   ];
   const selectedActionTitle = useWatch({ control, name: "title" });
+  const watchedAnswers = useWatch({ control });
+  const autosave = useFormAutosave({
+    id: `form:action:${projectId}`,
+    value: { answers: watchedAnswers, buildingId, locationNodeId },
+    restore: (draft) => {
+      reset({ ...getValues(), ...draft.answers } as ProjectActionAnswers);
+      if (draft.buildingId) setBuildingId(draft.buildingId);
+      setLocationNodeId(draft.locationNodeId ?? "");
+    },
+  });
   const applyTemplate = (template: Pick<ProjectActionAnswers, "title" | "description" | "priority">) => {
     setValue("title", template.title, { shouldDirty: true, shouldValidate: true });
     setValue("description", template.description, { shouldDirty: true, shouldValidate: true });
@@ -3131,7 +3147,8 @@ function ActionCreateModal({
   };
   const submit = async (answers: ProjectActionAnswers) => {
     setBusy(true);
-    await save(answers, buildingId, locationNodeId || undefined);
+    const saved = await save(answers, buildingId, locationNodeId || undefined);
+    if (saved) autosave.clear();
     setBusy(false);
   };
   return (
@@ -3142,6 +3159,7 @@ function ActionCreateModal({
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
         <form className="modal-body" onSubmit={handleSubmit(submit)} noValidate>
+          <DraftNotice status={autosave.status} savedAt={autosave.savedAt} onDiscard={() => { autosave.clear(); reset(); setLocationNodeId(""); }} />
           <div className="form-grid two-columns">
             <div className="quick-issue-presets full" aria-label={text("Choose a standard action", "Kies een standaardactie")}>{actionTemplates.map((template) => <button className={selectedActionTitle === template.title ? "active" : ""} type="button" aria-pressed={selectedActionTitle === template.title} onClick={() => applyTemplate(template)} key={template.title}>{template.title}</button>)}</div>
             

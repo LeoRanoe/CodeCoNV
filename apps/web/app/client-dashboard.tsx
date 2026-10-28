@@ -7,7 +7,10 @@ import {
   Camera,
   CheckCircle2,
   CloudSun,
+  Activity,
   ClipboardCheck,
+  ListChecks,
+  ShieldAlert,
   FileCheck2,
   FileText,
   Loader2,
@@ -184,7 +187,9 @@ function MetricCard({
   value,
   detail,
   onClick,
+  icon,
 }: {
+  icon: React.ReactNode;
   label: string;
   /** null while the project's own count is still on its way: a dash, never a false zero. */
   value: number | null;
@@ -193,6 +198,7 @@ function MetricCard({
 }) {
   return (
     <button className="overview-metric ui-stat" type="button" onClick={onClick}>
+      <span className="ui-stat__icon" aria-hidden="true">{icon}</span>
       <strong className="ui-stat__value">{value ?? "–"}</strong>
       <span className="ui-stat__label">{label}</span>
       <small>{detail}</small>
@@ -477,16 +483,16 @@ export function ClientDashboard({
         <>
 
         <div className="overview-metrics">
-          <MetricCard label={text("Open follow-up", "Open opvolging")} value={projectCounts.data ? openWork.open : null} detail={`${openWork.urgent} ${text("high priority", "hoge prioriteit")}`} onClick={openActions} />
-          <MetricCard label={text("Quality issues", "Kwaliteitspunten")} value={projectCounts.data ? qualityOpen : null} detail={qualityNcr ? `${qualityNcr} NCR` : text("Open", "Open")} onClick={openActions} />
-          <MetricCard label={text("Inspections", "Inspecties")} value={projectCounts.data ? inspectionTotal : null} detail={text("In project", "In project")} onClick={openWorkspace} />
-          <MetricCard label={text("Pictures", "Foto's")} value={projectCounts.data ? photoTotal : null} detail={text("In project", "In project")} onClick={() => openRecord("files", "")} />
+          <MetricCard icon={<ListChecks size={22} />} label={text("Open follow-up", "Open opvolging")} value={projectCounts.data ? openWork.open : null} detail={`${openWork.urgent} ${text("high priority", "hoge prioriteit")}`} onClick={openActions} />
+          <MetricCard icon={<ShieldAlert size={22} />} label={text("Quality issues", "Kwaliteitspunten")} value={projectCounts.data ? qualityOpen : null} detail={qualityNcr ? `${qualityNcr} NCR` : text("Open", "Open")} onClick={openActions} />
+          <MetricCard icon={<ClipboardCheck size={22} />} label={text("Inspections", "Inspecties")} value={projectCounts.data ? inspectionTotal : null} detail={text("In project", "In project")} onClick={openWorkspace} />
+          <MetricCard icon={<Camera size={22} />} label={text("Pictures", "Foto's")} value={projectCounts.data ? photoTotal : null} detail={text("In project", "In project")} onClick={() => openRecord("files", "")} />
         </div>
 
         <div className="overview-primary-grid">
           <article className="overview-panel overview-work-panel">
             <header className="overview-panel-heading">
-              <div><h2>{text("Latest recorded work", "Laatst vastgelegde werkzaamheden")}</h2></div>
+              <div className="overview-panel-title"><Wrench size={18} aria-hidden="true" /><h2>{text("Latest recorded work", "Laatst vastgelegde werkzaamheden")}</h2></div>
             </header>
             <div className="overview-work-list">
               {visibleEntries.length ? visibleEntries.map((entry, index) => (
@@ -506,7 +512,7 @@ export function ClientDashboard({
 
           <article className="overview-panel overview-priority-panel">
             <header className="overview-panel-heading">
-              <div><h2>{text("Priority queue", "Prioriteitenlijst")}</h2></div>
+              <div className="overview-panel-title"><ListChecks size={18} aria-hidden="true" /><h2>{text("Priority queue", "Prioriteitenlijst")}</h2></div>
               {projectCounts.data ? <span className={`overview-health ${openWork.escalated ? "attention" : "stable"}`}>{openWork.escalated ? text("Action needed", "Actie nodig") : text("Under control", "Onder controle")}</span> : null}
             </header>
             <div className="overview-progress">
@@ -530,7 +536,7 @@ export function ClientDashboard({
         <div className="overview-secondary-grid">
           <article className="overview-panel overview-activity-panel">
             <header className="overview-panel-heading">
-              <div><h2>{text("Recent activity", "Recente activiteit")}</h2></div>
+              <div className="overview-panel-title"><Activity size={18} aria-hidden="true" /><h2>{text("Recent activity", "Recente activiteit")}</h2></div>
             </header>
             {/* A line in this list is something that already happened. Tapping it opens the
                 record, whatever it is; a photo line used to hand the user to the camera. */}
@@ -547,7 +553,7 @@ export function ClientDashboard({
 
           <article className="overview-panel overview-evidence-panel">
             <header className="overview-panel-heading">
-              <div><h2>{text("Latest photo records", "Laatste fotoregistraties")}</h2></div>
+              <div className="overview-panel-title"><Camera size={18} aria-hidden="true" /><h2>{text("Latest photo records", "Laatste fotoregistraties")}</h2></div>
               <button type="button" onClick={() => openRecord("files", "")}>{text("View all", "Alles bekijken")} <ArrowRight size={14} /></button>
             </header>
             {/* Straight to the photo library, and to this exact picture in it, rather than
@@ -566,7 +572,7 @@ export function ClientDashboard({
 
           <article className="overview-panel overview-site-panel">
             <header className="overview-panel-heading">
-              <div><h2>{text("Conditions & location", "Condities & locatie")}</h2></div>
+              <div className="overview-panel-title"><CloudSun size={18} aria-hidden="true" /><h2>{text("Conditions & location", "Condities & locatie")}</h2></div>
               <button className="overview-weather-icon" type="button" onClick={loadLiveWeather} disabled={weatherLoading} aria-label={text("Refresh live weather", "Ververs actueel weer")}><RefreshCw className={weatherLoading ? "spin" : ""} size={18} /></button>
             </header>
             <div className="overview-weather">

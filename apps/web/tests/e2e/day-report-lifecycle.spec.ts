@@ -1,3 +1,4 @@
+import { openSection } from "./section-nav";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 
@@ -111,7 +112,7 @@ test("a two-building day is started, closed, submitted, approved, frozen, signed
 
   // 5. Approve (freezes the snapshot) and sign.
   await page.locator(".sidebar").getByRole("button", { name: "Reports", exact: true }).click();
-  await page.getByRole("tab", { name: /Review & sign/ }).click();
+  await openSection(page, /Review & sign/);
   await page.getByLabel("Review comment").fill("Workforce, day log and the start of both buildings match the site.");
   await page.getByRole("button", { name: /Approve and freeze/ }).click();
   await expect(page.getByText(/approved and frozen/i)).toBeVisible();
@@ -121,7 +122,7 @@ test("a two-building day is started, closed, submitted, approved, frozen, signed
   await expect(page.getByText(/Signing declaration immutably linked/i)).toBeVisible();
 
   // 6. Formal PDF and Word straight from the immutable version.
-  await page.getByRole("tab", { name: /Versions & history/ }).click();
+  await openSection(page, /Versions & history/);
   const fixedVersion = page.locator(".history-version").first();
   await expect(fixedVersion).toContainText("SHA");
   await mkdir(testInfo.outputPath("documents"), { recursive: true });

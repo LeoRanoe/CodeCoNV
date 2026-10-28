@@ -23,7 +23,7 @@ test("workspace register rows stay readable at phone, tablet and desktop widths"
 
   const grid = page.locator(".client-workspace-grid");
   const columnCount = await grid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").filter(Boolean).length);
-  if (testInfo.project.name === "mobile-field") expect(columnCount).toBe(1);
+  if (testInfo.project.name === "mobile-field") expect(columnCount).toBe(2);
   else if (testInfo.project.name === "tablet-field") expect(columnCount).toBe(2);
   else expect(columnCount).toBe(3);
 
@@ -39,7 +39,7 @@ test("workspace register rows stay readable at phone, tablet and desktop widths"
   if (testInfo.project.name === "mobile-field") {
     expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
     await page.setViewportSize({ width: 320, height: 844 });
-    await expect.poll(() => grid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").filter(Boolean).length)).toBe(1);
+    await expect.poll(() => grid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").filter(Boolean).length)).toBe(2);
     expect(await firstTile.locator("strong").evaluate((label) => label.scrollWidth <= label.clientWidth + 1)).toBe(true);
     await expectNoHorizontalOverflow(page);
   }

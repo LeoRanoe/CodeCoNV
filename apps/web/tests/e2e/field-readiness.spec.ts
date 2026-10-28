@@ -1,3 +1,4 @@
+import { openSection } from "./section-nav";
 import { expect, type Page, test } from "@playwright/test";
 
 const email = process.env.CODECO_E2E_EMAIL;
@@ -64,7 +65,7 @@ test("responsive workspace keeps readable register rows without horizontal overf
   const rows = grid.locator(".workspace-launcher-tile.ui-list-row[data-workspace-destination]");
   await expect(rows.first()).toBeVisible();
   const columns = await grid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").filter(Boolean).length);
-  if (testInfo.project.name === "mobile-field") expect(columns).toBe(1);
+  if (testInfo.project.name === "mobile-field") expect(columns).toBe(2);
   else if (testInfo.project.name === "tablet-field") expect(columns).toBe(2);
   else expect(columns).toBe(3);
   await expectMinimumTarget(page, ".workspace-launcher-grid [data-workspace-destination]");
@@ -72,7 +73,7 @@ test("responsive workspace keeps readable register rows without horizontal overf
   await expectNoHorizontalOverflow(page);
   if (testInfo.project.name === "mobile-field") {
     await page.setViewportSize({ width: 320, height: 844 });
-    await expect.poll(() => grid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").filter(Boolean).length)).toBe(1);
+    await expect.poll(() => grid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").filter(Boolean).length)).toBe(2);
     expect(await rows.first().locator("strong").evaluate((label) => label.scrollWidth <= label.clientWidth + 1)).toBe(true);
     await expectNoHorizontalOverflow(page);
   }
@@ -107,7 +108,7 @@ test("mobile navigation exposes reports, management and uncluttered report steps
   await expect(moduleMenu.getByRole("button", { name: /Sign out/ })).toBeVisible();
   await moduleMenu.getByRole("button", { name: /Reports/ }).click();
   await expect(page.getByRole("heading", { name: "Client reports" })).toBeVisible();
-  await expect(page.locator(".report-section-tabs [role='tab']")).toHaveText([
+  await expect(page.getByRole("tablist", { name: "Report workspace", includeHidden: true }).getByRole("tab", { includeHidden: true })).toHaveText([
     "Daily report",
     "Weekly report",
     "Monthly report",
@@ -119,12 +120,12 @@ test("mobile navigation exposes reports, management and uncluttered report steps
   await expect(page.locator(".period-report-card")).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
-  await page.getByRole("tab", { name: /Review & sign/ }).click();
+  await openSection(page, /Review & sign/);
   await expect(page.locator(".report-next-step")).toContainText(/Current next step|Next:/);
   await expect(page.locator(".workflow-grid")).toBeVisible();
   await expect(page.locator(".period-report-card")).toBeHidden();
 
-  await page.getByRole("tab", { name: /Versions & history/ }).click();
+  await openSection(page, /Versions & history/);
   await expect(page.locator(".report-history-grid")).toBeVisible();
   await expect(page.locator(".workflow-grid")).toBeHidden();
   await expectNoHorizontalOverflow(page);
@@ -226,7 +227,7 @@ test("desktop reports show one calm task area at a time and secondary actions ar
   await expect(page.locator(".period-report-card")).toBeVisible();
   await expect(page.locator(".workflow-grid")).toHaveCount(0);
 
-  await page.getByRole("tab", { name: /Review & sign/ }).click();
+  await openSection(page, /Review & sign/);
   await expect(page.locator(".period-report-card")).toHaveCount(0);
   await expect(page.locator(".workflow-grid")).toBeVisible();
   await expect(page.locator(".workflow-card.current, .workflow-card.locked, .workflow-card.complete")).toHaveCount(3);
@@ -239,7 +240,7 @@ test("desktop reports show one calm task area at a time and secondary actions ar
   expect(style.background).not.toBe("rgba(0, 0, 0, 0)");
   expect(style.border).not.toBe("rgba(0, 0, 0, 0)");
 
-  await page.getByRole("tab", { name: /Versions & history/ }).click();
+  await openSection(page, /Versions & history/);
   await expect(page.locator(".report-history-grid")).toBeVisible();
   await expectNoHorizontalOverflow(page);
 });
