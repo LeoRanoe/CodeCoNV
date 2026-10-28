@@ -5,7 +5,7 @@
 
 .ui-button {
   align-items: center;
-  border: 1px solid transparent;
+  border: 2px solid transparent;
   border-radius: var(--radius-control);
   display: inline-flex;
   font-family: inherit;
@@ -171,7 +171,7 @@ textarea { border-color: var(--ink-600); }
   outline: 3px solid var(--ink-950);
   outline-offset: 2px;
 }
-.ui-button--primary { border: 1px solid var(--signal-dark); font-weight: var(--weight-bold); }
+.ui-button--primary { border: 2px solid var(--signal-dark); font-weight: var(--weight-bold); }
 .ui-button--secondary { border-width: 2px; border-color: var(--ink-700); }
 .ui-status-badge { border: 1px solid currentColor; font-weight: var(--weight-bold); }
 @media (prefers-contrast: more) {

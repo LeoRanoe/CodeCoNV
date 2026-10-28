@@ -2487,7 +2487,7 @@ test("gives a file a name a person can read, and a phone controls it can reach",
 
   // A half-transparent orange button reads as broken instead of as not-yet.
   assert.doesNotMatch(styles, /\.ui-button--primary:disabled \{\s*cursor: not-allowed;\s*opacity: 0\.48;/);
-  assert.match(styles, /\.ui-button--primary:disabled \{[^}]*color: var\(--ink-500\);/);
+  assert.match(styles, /\.ui-button--primary:disabled \{[^}]*color: var\(--ink-700\);/);
 });
 
 test("opens a stored photo on its own screen everywhere it is shown", async () => {

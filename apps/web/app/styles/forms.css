@@ -148,3 +148,7 @@
 .access-form .form-field input { font-size: var(--text-md); min-height: var(--control-h-lg); }
 .access-form .form-field > span { color: var(--text); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
 .access-submit { min-height: var(--control-h-xl); width: 100%; }
+
+/* The save bar is opaque so nothing reads through it, and it has a firm top edge. */
+.record-form-footer,
+.checklist-sticky-actions { background: var(--paper); border-top: 2px solid var(--border); }

@@ -300,12 +300,34 @@ and fixed them:
   labels are removed from headings, legends and record facts; status badges keep them.
 - **Project picker and sign-in** use the same light header and larger rows and fields as the workspace.
 
-Verified on this commit: `npm run lint`, `npm test` (190 passing), `npm run test:design` (9 passing) and
-the authenticated Playwright suite against the local Supabase stack (90 passed, 57 skipped by project
-configuration, 0 failed). The 56 screenshots in [after/](ui-slop-audit/after/) were recaptured.
+### Sunlight legibility
 
-Still open: the 12 ordered legacy CSS fragments are not yet consolidated into per-area files, and
-private-media, external-share and real-device states are unverified.
+The app is used outdoors, so contrast was raised everywhere rather than in a separate mode:
+
+- Control and panel outlines use `--ink-500` (about 2.8:1 on white) instead of `--ink-200`; row hairlines use `--ink-300`.
+- Secondary text uses `--ink-700` (about 7:1); no text is lighter than that. Status amber is darker (`#8a5700`).
+- Primary actions are dark text on signal orange instead of white on orange (white on `#f07400` is 2.9:1).
+  Buttons share one 2 px border so rows of mixed buttons align. Status badges carry an outline.
+- Focus rings are 3 px dark with a 2 px offset. `prefers-contrast: more` darkens outlines and text again.
+- The save bar on forms is opaque with a firm top edge.
+
+### CSS consolidation
+
+The 12 ordered legacy fragments are replaced by 18 named, ordered sections in
+`apps/web/app/styles/sections/`, each named for its dominant area. They keep the original rule stream
+exactly (whitespace-insensitive comparison is identical). A first attempt to give each area a single
+file by moving rules between areas changed computed styles on 42 of 56 screens (form padding and gaps,
+a card's display, a position), so it was discarded. This legacy stream is interleaved, so one file per
+area needs rule-by-rule rewrites rather than a move. Computed styles of every element on all 56 audit
+screens match the pre-consolidation build (0 differences); the one-time migration scripts were removed.
+
+### Verification
+
+On the final commit: `npm run lint`, `npm test` (190 passing), `npm run test:design` (9 passing) and the
+authenticated Playwright suite against the local Supabase stack (90 passed, 57 skipped by project
+configuration, 0 failed). The 56 screenshots in [after/](ui-slop-audit/after/) were recaptured.
+Not covered by this environment: uploaded private media, live external-share recipients, and a real
+phone's camera, keyboard and GPS.
 
 ## Sources
 

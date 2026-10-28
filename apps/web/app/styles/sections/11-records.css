@@ -1,20 +1,31 @@
-.sectioned-record-form { gap: var(--space-4); }.sectioned-record-context { grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); }.record-status-preview { color: var(--green); }.record-draft-notice { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; }/*
+.sectioned-record-form { gap: var(--space-4); }
+.sectioned-record-context { grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); }
+.record-status-preview { color: var(--green); }
+.record-draft-notice { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; }
+
+/*
  * Two columns when the form itself is wide enough for them — not when the window is. The
  * workspace has a module switcher beside it, so a wide tablet can still leave this form
  * with the width of a phone.
- */.sectioned-record-form { container-type: inline-size; }.sectioned-record-columns {
+ */
+.sectioned-record-form { container-type: inline-size; }
+.sectioned-record-columns {
   align-items: start;
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-}.sectioned-record-column { display: grid; gap: 14px; }.record-section {
+}
+.sectioned-record-column { display: grid; gap: 14px; }
+
+.record-section {
   background: var(--ink-025);
   border: 1px solid var(--ink-200);
   border-radius: var(--radius-md);
   display: grid;
   gap: 11px;
   padding: 14px;
-}.record-section > h3 {
+}
+.record-section > h3 {
   align-items: center;
   color: var(--ink-700);
   display: flex;
@@ -24,7 +35,8 @@
   letter-spacing: .04em;
   margin: 0;
   text-transform: uppercase;
-}.record-section-number {
+}
+.record-section-number {
   background: var(--ink-100);
   border-radius: var(--radius-sm);
   color: var(--ink-700);
@@ -34,11 +46,17 @@
   justify-content: center;
   min-width: 21px;
   padding: 3px 5px;
-}.record-section-required { color: var(--red); font-style: normal; }.record-section-optional { color: var(--ink-700); font-style: normal; font-weight: var(--weight-semibold); text-transform: none; }/* Section 1: one tile per kind of issue, so the choice is made with a thumb. */.record-tile-grid {
+}
+.record-section-required { color: var(--red); font-style: normal; }
+.record-section-optional { color: var(--ink-700); font-style: normal; font-weight: var(--weight-semibold); text-transform: none; }
+
+/* Section 1: one tile per kind of issue, so the choice is made with a thumb. */
+.record-tile-grid {
   display: grid;
   gap: var(--space-2);
   grid-template-columns: repeat(3, minmax(0, 1fr));
-}.record-tile {
+}
+.record-tile {
   align-items: center;
   background: var(--paper);
   border: 1px solid var(--ink-200);
@@ -51,12 +69,19 @@
   min-height: 74px;
   padding: 11px 7px;
   text-align: center;
-}.record-tile span { font-size: var(--text-xs); font-weight: var(--weight-bold); line-height: 1.25; }.record-tile:hover { border-color: var(--ink-500); }.record-tile.active {
+}
+.record-tile span { font-size: var(--text-xs); font-weight: var(--weight-bold); line-height: 1.25; }
+.record-tile:hover { border-color: var(--ink-500); }
+.record-tile.active {
   background: var(--signal-soft);
   border-color: var(--signal);
   color: var(--signal-dark);
   font-weight: var(--weight-bold);
-}/* Section 3: the four steps of severity, side by side and never hidden in a dropdown. */.record-severity-choices { display: grid; gap: var(--space-2); grid-template-columns: repeat(4, minmax(0, 1fr)); }.record-severity-choice {
+}
+
+/* Section 3: the four steps of severity, side by side and never hidden in a dropdown. */
+.record-severity-choices { display: grid; gap: var(--space-2); grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.record-severity-choice {
   align-items: center;
   background: var(--paper);
   border: 1px solid var(--ink-200);
@@ -69,10 +94,32 @@
   justify-content: center;
   min-height: 40px;
   padding: var(--space-2) 6px;
-}.record-severity-choice-low svg { color: var(--green); }.record-severity-choice-medium svg { color: var(--yellow); }.record-severity-choice-high svg { color: var(--signal); }.record-severity-choice-critical svg { color: var(--red); }.record-severity-choice.active { font-weight: var(--weight-bold); }.record-severity-choice-low.active { background: var(--green-soft); border-color: var(--ink-600); color: var(--green); }.record-severity-choice-medium.active { background: var(--yellow-soft); border-color: var(--ink-600); color: var(--yellow); }.record-severity-choice-high.active { background: var(--signal-soft); border-color: var(--signal); color: var(--signal-dark); }.record-severity-choice-critical.active { background: var(--red-soft); border-color: var(--red); color: var(--red); }.record-field-foot { align-items: center; display: flex; justify-content: space-between; gap: 9px; }.record-counter { color: var(--ink-700); font-size: var(--text-xs); }.record-description-field textarea { min-height: 108px; }.record-responsible-field,
-.record-due-field { align-items: center; display: flex; flex-wrap: wrap; gap: 9px; }.record-responsible-field svg,
-.record-due-field svg { color: var(--ink-700); flex: 0 0 auto; }/* A date and time field has a wide minimum of its own; on a phone the rest of the row
-   moves under it instead of pushing the whole form off the screen. */.record-responsible-field select { flex: 1 1 140px; min-width: 0; }.record-due-field input { flex: 1 1 150px; min-width: 0; }/* Section 9: what the deadline, the priority and the owner become once it is submitted. */.record-derived-block {
+}
+.record-severity-choice-low svg { color: var(--green); }
+.record-severity-choice-medium svg { color: var(--yellow); }
+.record-severity-choice-high svg { color: var(--signal); }
+.record-severity-choice-critical svg { color: var(--red); }
+.record-severity-choice.active { font-weight: var(--weight-bold); }
+.record-severity-choice-low.active { background: var(--green-soft); border-color: var(--ink-600); color: var(--green); }
+.record-severity-choice-medium.active { background: var(--yellow-soft); border-color: var(--ink-600); color: var(--yellow); }
+.record-severity-choice-high.active { background: var(--signal-soft); border-color: var(--signal); color: var(--signal-dark); }
+.record-severity-choice-critical.active { background: var(--red-soft); border-color: var(--red); color: var(--red); }
+
+.record-field-foot { align-items: center; display: flex; justify-content: space-between; gap: 9px; }
+.record-counter { color: var(--ink-700); font-size: var(--text-xs); }
+.record-description-field textarea { min-height: 108px; }
+
+.record-responsible-field,
+.record-due-field { align-items: center; display: flex; flex-wrap: wrap; gap: 9px; }
+.record-responsible-field svg,
+.record-due-field svg { color: var(--ink-700); flex: 0 0 auto; }
+/* A date and time field has a wide minimum of its own; on a phone the rest of the row
+   moves under it instead of pushing the whole form off the screen. */
+.record-responsible-field select { flex: 1 1 140px; min-width: 0; }
+.record-due-field input { flex: 1 1 150px; min-width: 0; }
+
+/* Section 9: what the deadline, the priority and the owner become once it is submitted. */
+.record-derived-block {
   background: var(--paper);
   border: 1px solid var(--ink-200);
   border-radius: var(--radius-md);
@@ -80,7 +127,12 @@
   gap: 10px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 11px var(--space-3);
-}.record-derived-block > div { display: grid; gap: var(--space-1); justify-items: start; min-width: 0; }.record-derived-block small { color: var(--ink-700); font-size: var(--text-xs); font-weight: var(--weight-bold); letter-spacing: .05em; text-transform: uppercase; }.record-derived-block strong { color: var(--ink-900); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; }.record-derived-assignee { grid-column: 1 / -1; }.record-priority-badge,
+}
+.record-derived-block > div { display: grid; gap: var(--space-1); justify-items: start; min-width: 0; }
+.record-derived-block small { color: var(--ink-700); font-size: var(--text-xs); font-weight: var(--weight-bold); letter-spacing: .05em; text-transform: uppercase; }
+.record-derived-block strong { color: var(--ink-900); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; }
+.record-derived-assignee { grid-column: 1 / -1; }
+.record-priority-badge,
 .record-status-badge {
   border-radius: var(--radius-sm);
   font-size: var(--text-xs);
@@ -88,20 +140,32 @@
   letter-spacing: .04em;
   padding: var(--space-1) var(--space-2);
   text-transform: uppercase;
-}.record-status-badge { background: var(--blue-soft); color: var(--blue); }.record-priority-low { background: var(--ink-100); color: var(--ink-700); }.record-priority-normal { background: var(--green-soft); color: var(--green); }.record-priority-high { background: var(--signal-soft); color: var(--signal-dark); }.record-priority-critical { background: var(--red); color: var(--paper); }/* Section 5: the satellite view of the spot, from this application's own map endpoint. */.record-location-block { display: grid; gap: 9px; }.record-location-map { position: relative; }.record-location-map img {
+}
+.record-status-badge { background: var(--blue-soft); color: var(--blue); }
+.record-priority-low { background: var(--ink-100); color: var(--ink-700); }
+.record-priority-normal { background: var(--green-soft); color: var(--green); }
+.record-priority-high { background: var(--signal-soft); color: var(--signal-dark); }
+.record-priority-critical { background: var(--red); color: var(--paper); }
+
+/* Section 5: the satellite view of the spot, from this application's own map endpoint. */
+.record-location-block { display: grid; gap: 9px; }
+.record-location-map { position: relative; }
+.record-location-map img {
   border: 1px solid var(--ink-200);
   border-radius: var(--radius-md);
   cursor: crosshair;
   display: block;
   height: auto;
   width: 100%;
-}.record-location-zoom {
+}
+.record-location-zoom {
   display: grid;
   gap: 5px;
   position: absolute;
   right: 8px;
   top: 8px;
-}.record-location-zoom button {
+}
+.record-location-zoom button {
   align-items: center;
   background: var(--paper);
   border: 1px solid var(--ink-200);
@@ -112,7 +176,8 @@
   height: 28px;
   justify-content: center;
   width: 28px;
-}.record-location-tip {
+}
+.record-location-tip {
   align-items: center;
   background: rgba(20, 21, 26, .68);
   border-radius: var(--radius-xs);
@@ -125,7 +190,10 @@
   margin: 0;
   padding: var(--space-1) var(--space-2);
   position: absolute;
-}/* Section 5: where in the works, and where on earth. */.record-location-card {
+}
+
+/* Section 5: where in the works, and where on earth. */
+.record-location-card {
   align-items: center;
   background: var(--paper);
   border: 1px solid var(--ink-200);
@@ -135,7 +203,17 @@
   gap: 10px;
   justify-content: space-between;
   padding: 11px var(--space-3);
-}.record-location-readout { align-items: center; display: flex; gap: 9px; min-width: 0; }.record-location-readout svg { color: var(--signal); flex: 0 0 auto; }.record-location-readout > div { display: grid; gap: 2px; min-width: 0; }.record-location-readout strong { color: var(--ink-900); font-size: var(--text-xs); }.record-location-readout span { color: var(--ink-600); font-size: var(--text-xs); }.record-location-buttons { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }/* Section 7: the measures that were already taken, ticked instead of typed. */.record-action-grid { display: grid; gap: var(--space-2); grid-template-columns: repeat(2, minmax(0, 1fr)); }.record-action-check {
+}
+.record-location-readout { align-items: center; display: flex; gap: 9px; min-width: 0; }
+.record-location-readout svg { color: var(--signal); flex: 0 0 auto; }
+.record-location-readout > div { display: grid; gap: 2px; min-width: 0; }
+.record-location-readout strong { color: var(--ink-900); font-size: var(--text-xs); }
+.record-location-readout span { color: var(--ink-600); font-size: var(--text-xs); }
+.record-location-buttons { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+
+/* Section 7: the measures that were already taken, ticked instead of typed. */
+.record-action-grid { display: grid; gap: var(--space-2); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.record-action-check {
   align-items: center;
   background: var(--paper);
   border: 1px solid var(--ink-200);
@@ -151,17 +229,25 @@
   /* The label is the rest of the row, and a long one wraps inside the tile. */
   overflow-wrap: anywhere;
   padding: var(--space-2) 10px;
-}.record-action-check.active { background: var(--signal-soft); border-color: var(--signal); color: var(--signal-dark); font-weight: var(--weight-bold); }/* Sized here rather than left to the browser, so the tick is the same size on every form
-   that uses this grid and cannot be resized by a rule that meant the fields around it. */.record-action-check input[type="checkbox"] {
+}
+.record-action-check.active { background: var(--signal-soft); border-color: var(--signal); color: var(--signal-dark); font-weight: var(--weight-bold); }
+/* Sized here rather than left to the browser, so the tick is the same size on every form
+   that uses this grid and cannot be resized by a rule that meant the fields around it. */
+.record-action-check input[type="checkbox"] {
   accent-color: var(--signal);
   flex: 0 0 auto;
   margin: 0;
-}/* On touch and on phone widths the tick box takes the size of the thumb guard at the end of this file. */@media (min-width: 1024px) and (pointer: fine) {
+}
+/* On touch and on phone widths the tick box takes the size of the thumb guard at the end of this file. */
+@media (min-width: 1024px) and (pointer: fine) {
   .record-action-check input[type="checkbox"] {
     height: 17px;
     width: 17px;
   }
-}.record-action-other { grid-column: 1 / -1; }.record-action-other svg { color: var(--ink-700); flex: 0 0 auto; }.record-action-other input[type="text"] {
+}
+.record-action-other { grid-column: 1 / -1; }
+.record-action-other svg { color: var(--ink-700); flex: 0 0 auto; }
+.record-action-other input[type="text"] {
   background: transparent;
   border: 0;
   color: var(--ink-900);
@@ -169,13 +255,20 @@
   font-size: var(--text-xs);
   min-width: 0;
   outline: none;
-}/* The head of the record screens the client drew: back, what it is, whether it will sync,
-   and the button that parks it. */.sectioned-record-heading {
+}
+
+/* The head of the record screens the client drew: back, what it is, whether it will sync,
+   and the button that parks it. */
+.sectioned-record-heading {
   align-items: center;
   flex-wrap: wrap;
   gap: 11px;
-}/* On a phone the title keeps its line and the chip and the draft button move under it,
-   instead of squeezing the heading to two pixels of text. */.sectioned-record-heading > div { flex: 1 1 210px; min-width: 0; }.sectioned-record-heading .form-intro { margin: 3px 0 0; }.record-back-button {
+}
+/* On a phone the title keeps its line and the chip and the draft button move under it,
+   instead of squeezing the heading to two pixels of text. */
+.sectioned-record-heading > div { flex: 1 1 210px; min-width: 0; }
+.sectioned-record-heading .form-intro { margin: 3px 0 0; }
+.record-back-button {
   align-items: center;
   background: var(--paper);
   border: 1px solid var(--ink-200);
@@ -187,7 +280,9 @@
   height: var(--control-h-sm);
   justify-content: center;
   width: var(--control-h-sm);
-}.record-back-button:hover { border-color: var(--ink-500); }.record-sync-chip {
+}
+.record-back-button:hover { border-color: var(--ink-500); }
+.record-sync-chip {
   align-items: center;
   border: 0;
   cursor: pointer;
@@ -198,8 +293,20 @@
   flex: 0 0 auto;
   gap: var(--space-2);
   padding: 7px 11px;
-}.record-sync-chip.offline { background: var(--yellow-soft); color: var(--yellow); }.record-sync-chip > span { display: grid; }.record-sync-chip strong { font-size: var(--text-xs); }.record-sync-chip small { font-size: var(--text-xs); opacity: .85; }.record-heading-draft { flex: 0 0 auto; }/* Section 6: the pictures themselves, with the tile that adds one beside them. *//* Not .record-photo-strip: that name already belongs to the strip of photos under a
-   saved record, whose own button and image rules would resize these tiles. */.record-evidence-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }.photo-evidence-gallery { display: contents; }.photo-evidence-tile { position: relative; }.photo-evidence-tile-open {
+}
+.record-sync-chip.offline { background: var(--yellow-soft); color: var(--yellow); }
+.record-sync-chip > span { display: grid; }
+.record-sync-chip strong { font-size: var(--text-xs); }
+.record-sync-chip small { font-size: var(--text-xs); opacity: .85; }
+.record-heading-draft { flex: 0 0 auto; }
+
+/* Section 6: the pictures themselves, with the tile that adds one beside them. */
+/* Not .record-photo-strip: that name already belongs to the strip of photos under a
+   saved record, whose own button and image rules would resize these tiles. */
+.record-evidence-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
+.photo-evidence-gallery { display: contents; }
+.photo-evidence-tile { position: relative; }
+.photo-evidence-tile-open {
   background: var(--ink-50);
   border: 1px solid var(--ink-200);
   border-radius: var(--radius-md);
@@ -210,7 +317,10 @@
   padding: 0;
   position: relative;
   width: 108px;
-}/* The thumbnail fills the tile here, instead of the small square it is in a list row. */.photo-evidence-tile-open .photo-evidence-thumb { border: 0; border-radius: 0; height: 100%; width: 100%; }.photo-evidence-tile-open .photo-evidence-tile-todo {
+}
+/* The thumbnail fills the tile here, instead of the small square it is in a list row. */
+.photo-evidence-tile-open .photo-evidence-thumb { border: 0; border-radius: 0; height: 100%; width: 100%; }
+.photo-evidence-tile-open .photo-evidence-tile-todo {
   background: rgba(20, 21, 26, .72);
   bottom: 0;
   color: var(--paper);
@@ -220,7 +330,8 @@
   padding: 3px 0;
   position: absolute;
   right: 0;
-}.photo-evidence-tile-open em {
+}
+.photo-evidence-tile-open em {
   align-items: center;
   background: rgba(20, 21, 26, .72);
   border-radius: var(--radius-sm);
@@ -233,7 +344,8 @@
   padding: 2px 5px;
   position: absolute;
   top: 5px;
-}.photo-evidence-tile-remove {
+}
+.photo-evidence-tile-remove {
   align-items: center;
   background: var(--ink-950);
   border: 0;
@@ -247,7 +359,8 @@
   right: -6px;
   top: -6px;
   width: 24px;
-}.record-add-photo {
+}
+.record-add-photo {
   align-items: center;
   border: 1px dashed var(--ink-500);
   border-radius: var(--radius-md);
@@ -258,7 +371,17 @@
   height: 92px;
   justify-items: center;
   width: 108px;
-}.record-add-photo strong { font-size: var(--text-xs); }.record-add-photo:hover { background: var(--signal-soft); border-color: var(--signal); }.record-add-photo input { height: 1px; opacity: 0; position: absolute; width: 1px; }.record-photo-hint { color: var(--ink-700); font-size: var(--text-xs); }.confirm-needs { color: var(--ink-600); display: block; font-size: var(--text-xs); margin-bottom: var(--space-2); }/* The deadline says what it means, and the cross clears a choice that was made by mistake. */.record-due-distance { color: var(--ink-600); flex: 0 0 auto; font-size: var(--text-xs); }.record-due-info { color: var(--ink-700); flex: 0 0 auto; }.record-field-clear {
+}
+.record-add-photo strong { font-size: var(--text-xs); }
+.record-add-photo:hover { background: var(--signal-soft); border-color: var(--signal); }
+.record-add-photo input { height: 1px; opacity: 0; position: absolute; width: 1px; }
+.record-photo-hint { color: var(--ink-700); font-size: var(--text-xs); }
+.confirm-needs { color: var(--ink-600); display: block; font-size: var(--text-xs); margin-bottom: var(--space-2); }
+
+/* The deadline says what it means, and the cross clears a choice that was made by mistake. */
+.record-due-distance { color: var(--ink-600); flex: 0 0 auto; font-size: var(--text-xs); }
+.record-due-info { color: var(--ink-700); flex: 0 0 auto; }
+.record-field-clear {
   align-items: center;
   background: transparent;
   border: 0;
@@ -267,28 +390,42 @@
   display: flex;
   flex: 0 0 auto;
   padding: 2px;
-}.record-field-clear:hover { color: var(--red); }/* The boxes of the client's own issue register that their newer screen does not draw:
-   they stay one tap away instead of disappearing from the record. */.record-extra-details {
+}
+.record-field-clear:hover { color: var(--red); }
+
+/* The boxes of the client's own issue register that their newer screen does not draw:
+   they stay one tap away instead of disappearing from the record. */
+.record-extra-details {
   border: 1px solid var(--ink-200);
   border-radius: var(--radius-md);
   background: var(--ink-025);
   padding: var(--space-3) 14px;
-}.record-extra-details > summary {
+}
+.record-extra-details > summary {
   color: var(--ink-700);
   cursor: pointer;
   font-size: var(--text-xs);
   font-weight: var(--weight-bold);
   letter-spacing: .04em;
   text-transform: uppercase;
-}.record-extra-details[open] > summary { margin-bottom: 13px; }.record-extra-body { display: grid; gap: 13px; }/* The bar the client drew under the form: leave, park, count, submit. */.record-form-actions {
+}
+.record-extra-details[open] > summary { margin-bottom: 13px; }
+.record-extra-body { display: grid; gap: 13px; }
+
+/* The bar the client drew under the form: leave, park, count, submit. */
+.record-form-actions {
   align-items: center;
   border-top: 1px solid var(--ink-100);
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
   padding-top: var(--space-4);
-}/* Pins the trailing submit action to the right, whatever button class it uses,
-   instead of targeting .ui-button--primary specifically. */.record-form-actions > *:last-child { margin-left: auto; }/* The paperclip attaches: it opens the same picker as the strip in section 6. */.record-attachment-count {
+}
+/* Pins the trailing submit action to the right, whatever button class it uses,
+   instead of targeting .ui-button--primary specifically. */
+.record-form-actions > *:last-child { margin-left: auto; }
+/* The paperclip attaches: it opens the same picker as the strip in section 6. */
+.record-attachment-count {
   align-items: center;
   background: var(--paper);
   border: 1px solid var(--ink-200);
@@ -300,15 +437,21 @@
   gap: 6px;
   min-height: 36px;
   padding: 7px 11px;
-}.record-attachment-count:hover { border-color: var(--ink-500); color: var(--ink-700); }.record-attachment-count input { height: 1px; opacity: 0; position: absolute; width: 1px; }/*
+}
+.record-attachment-count:hover { border-color: var(--ink-500); color: var(--ink-700); }
+.record-attachment-count input { height: 1px; opacity: 0; position: absolute; width: 1px; }
+
+/*
  * In one column the sections read in the client's own numbering — 1 to 12 — instead of
  * down the left column and back up the right one. The two columns exist for the desktop
  * screen; the numbers exist for the person reading the form out loud on site.
- *//*
+ */
+/*
  * In one column the sections read in the client's own numbering — 1 to 12 — instead of
  * down the left column and back up the right one. The numbers are how the form is read
  * out loud on site.
- */@container (max-width: 780px) {
+ */
+@container (max-width: 780px) {
   /* A column of flex items keeps align-items: start from the two-column rule, which sizes
      every section to its own text: a page of ragged boxes. In one column they stretch. */
   .sectioned-record-columns { align-items: stretch; display: flex; flex-direction: column; }
@@ -325,7 +468,9 @@
   .record-order-10 { order: 10; }
   .record-order-11 { order: 11; }
   .record-order-12 { order: 12; }
-}@media (max-width: 1024px) {
+}
+
+@media (max-width: 1024px) {
   /* A column of flex items keeps align-items: start from the two-column rule, which sizes
      every section to its own text: a page of ragged boxes. In one column they stretch. */
   .sectioned-record-columns { align-items: stretch; display: flex; flex-direction: column; }
@@ -342,7 +487,9 @@
   .record-order-10 { order: 10; }
   .record-order-11 { order: 11; }
   .record-order-12 { order: 12; }
-}@media (max-width: 640px) {
+}
+
+@media (max-width: 640px) {
   /* The chip and the draft button share the row under the title instead of taking one
      line each; on a phone the head of the form was half the first screen. */
   .record-sync-chip, .record-heading-draft { flex: 1 1 auto; justify-content: center; }
@@ -350,12 +497,17 @@
   .record-severity-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .record-action-grid { grid-template-columns: 1fr; }
   .record-form-actions .ui-button--primary { margin-left: 0; width: 100%; }
-}/*
+}
+
+/*
  * The workforce screen: who is on site, per contractor and per trade. It reuses the shape the
  * old workforce log had — a context strip, an add row and a counted list — because that is the
  * layout the client already knows from the screen this one replaces.
- */.workforce-body { display: grid; gap: 15px; }/* The location and weather tiles were struck through on the client's screenshot; the count
-   they left standing became the one line at the top. */.workforce-headline {
+ */
+.workforce-body { display: grid; gap: 15px; }
+/* The location and weather tiles were struck through on the client's screenshot; the count
+   they left standing became the one line at the top. */
+.workforce-headline {
   align-items: center;
   background: var(--canvas);
   border-radius: var(--radius-md);
@@ -363,7 +515,14 @@
   gap: var(--space-3);
   justify-content: space-between;
   padding: 11px 14px;
-}.workforce-headline > span { align-items: center; color: var(--ink-600); display: inline-flex; font-size: var(--text-xs); font-weight: var(--weight-bold); gap: var(--space-2); }.workforce-headline svg { color: var(--green); }.workforce-headline > strong { color: var(--green); font-size: var(--text-xl); }/* One tab per building, each carrying its own crew and its own count. */.workforce-buildings { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }.workforce-buildings button {
+}
+.workforce-headline > span { align-items: center; color: var(--ink-600); display: inline-flex; font-size: var(--text-xs); font-weight: var(--weight-bold); gap: var(--space-2); }
+.workforce-headline svg { color: var(--green); }
+.workforce-headline > strong { color: var(--green); font-size: var(--text-xl); }
+
+/* One tab per building, each carrying its own crew and its own count. */
+.workforce-buildings { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.workforce-buildings button {
   align-items: center;
   background: var(--canvas);
   border: 1px solid var(--ink-200);
@@ -376,27 +535,48 @@
   gap: var(--space-2);
   min-height: 44px;
   padding: var(--space-2) 14px;
-}/* The building being counted is the current selection, marked the way every selection is. */.workforce-buildings button.active { background: var(--signal-soft); border-color: var(--signal); color: var(--ink-900); font-weight: var(--weight-bold); }.workforce-buildings button > b { background: var(--paper); border-radius: var(--radius-pill); font-size: var(--text-xs); min-width: 24px; padding: 3px 7px; text-align: center; }.workforce-toolbar { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; }.workforce-toolbar small { color: var(--muted); font-size: var(--text-xs); }.workforce-add {
+}
+/* The building being counted is the current selection, marked the way every selection is. */
+.workforce-buildings button.active { background: var(--signal-soft); border-color: var(--signal); color: var(--ink-900); font-weight: var(--weight-bold); }
+.workforce-buildings button > b { background: var(--paper); border-radius: var(--radius-pill); font-size: var(--text-xs); min-width: 24px; padding: 3px 7px; text-align: center; }
+
+.workforce-toolbar { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; }
+.workforce-toolbar small { color: var(--muted); font-size: var(--text-xs); }
+
+.workforce-add {
   align-items: end;
   border-radius: var(--radius-sm);
   display: grid;
   gap: var(--space-2);
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   padding: 10px;
-}.workforce-add .form-field { gap: var(--space-1); margin: 0; }.workforce-add-button { align-items: center; display: inline-flex; gap: 6px; white-space: nowrap; }/* height inherited from paired .ui-button--secondary */.workforce-rows { display: grid; gap: var(--space-2); }.workforce-row {
+}
+.workforce-add .form-field { gap: var(--space-1); margin: 0; }
+.workforce-add-button { align-items: center; display: inline-flex; gap: 6px; white-space: nowrap; } /* height inherited from paired .ui-button--secondary */
+
+.workforce-rows { display: grid; gap: var(--space-2); }
+.workforce-row {
   align-items: center;
   display: grid;
   gap: var(--space-3);
   grid-template-columns: minmax(0, 1fr) auto auto auto;
   padding: 9px 11px;
-}.workforce-row-name { display: grid; min-width: 0; }.workforce-row-name strong { color: var(--ink-900); font-size: var(--text-xs); }.workforce-row-name small { color: var(--muted); font-size: var(--text-xs); }.workforce-shift { align-items: center; display: flex; gap: var(--space-1); }.workforce-shift input {
+}
+.workforce-row-name { display: grid; min-width: 0; }
+.workforce-row-name strong { color: var(--ink-900); font-size: var(--text-xs); }
+.workforce-row-name small { color: var(--muted); font-size: var(--text-xs); }
+.workforce-shift { align-items: center; display: flex; gap: var(--space-1); }
+.workforce-shift input {
   background: var(--paper);
   border: 1px solid var(--ink-200);
   border-radius: var(--radius-xs);
   color: var(--ink-700);
   min-height: 38px;
   padding: var(--space-1) 7px;
-}.workforce-shift em { color: var(--ink-700); font-style: normal; }.workforce-shift-static { color: var(--muted); font-size: var(--text-xs); }.workforce-row-remove {
+}
+.workforce-shift em { color: var(--ink-700); font-style: normal; }
+.workforce-shift-static { color: var(--muted); font-size: var(--text-xs); }
+.workforce-row-remove {
   align-items: center;
   background: none;
   border: 1px solid var(--ink-200);
@@ -407,12 +587,22 @@
   height: 38px;
   justify-content: center;
   width: 38px;
-}.workforce-row-remove:hover { border-color: var(--red); color: var(--red); }.workforce-empty { margin: var(--space-1) 0; }/*
+}
+.workforce-row-remove:hover { border-color: var(--red); color: var(--red); }
+.workforce-empty { margin: var(--space-1) 0; }
+
+/*
  * One titled card per block — the shape the client already knew from the screen this one
  * replaced. Every card says what it is for and carries its own count, so no number on the
  * screen is left wondering which question it answers.
- *//* The card itself is the shared .record-form-section every other form uses; only the icon
-   and the running count are workforce's own. */.workforce-sections { gap: 0.85rem; }.workforce-section .record-form-section-body { gap: 0.75rem; }.workforce-section-count { align-items: center; display: inline-flex; gap: 9px; }.workforce-section-count > strong { font-size: var(--text-lg); line-height: 1; }.workforce-section-icon {
+ */
+/* The card itself is the shared .record-form-section every other form uses; only the icon
+   and the running count are workforce's own. */
+.workforce-sections { gap: 0.85rem; }
+.workforce-section .record-form-section-body { gap: 0.75rem; }
+.workforce-section-count { align-items: center; display: inline-flex; gap: 9px; }
+.workforce-section-count > strong { font-size: var(--text-lg); line-height: 1; }
+.workforce-section-icon {
   align-items: center;
   border-radius: var(--radius-control);
   display: flex;
@@ -420,13 +610,30 @@
   height: 34px;
   justify-content: center;
   width: 34px;
-}/* §4.3: the totals the report is read by — per organisation and per trade. */.workforce-totals { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }.workforce-totals > div { padding: 11px 13px; }.workforce-totals h4 { font-size: var(--text-xs); font-weight: var(--weight-bold); margin: 0 0 7px; }.workforce-totals dl { display: grid; gap: 5px; margin: 0; }.workforce-totals dl > div { display: flex; align-items: center; gap: 10px; justify-content: space-between; }.workforce-totals dt { color: var(--ink-700); font-size: var(--text-xs); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.workforce-totals dd { color: var(--ink-900); font-size: var(--text-xs); font-weight: var(--weight-bold); margin: 0; }/* The deviation and the sentence that explains it stand in one card, never apart. */.workforce-deviation-list { display: grid; gap: 7px; list-style: none; margin: 0; padding: 0; }.workforce-deviation-list li {
+}
+
+/* §4.3: the totals the report is read by — per organisation and per trade. */
+.workforce-totals { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.workforce-totals > div { padding: 11px 13px; }
+.workforce-totals h4 { font-size: var(--text-xs); font-weight: var(--weight-bold); margin: 0 0 7px; }
+.workforce-totals dl { display: grid; gap: 5px; margin: 0; }
+.workforce-totals dl > div { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.workforce-totals dt { color: var(--ink-700); font-size: var(--text-xs); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workforce-totals dd { color: var(--ink-900); font-size: var(--text-xs); font-weight: var(--weight-bold); margin: 0; }
+
+/* The deviation and the sentence that explains it stand in one card, never apart. */
+.workforce-deviation-list { display: grid; gap: 7px; list-style: none; margin: 0; padding: 0; }
+.workforce-deviation-list li {
   background: var(--signal-soft);
   border-radius: var(--radius-sm);
   display: grid;
   gap: 2px;
   padding: 9px var(--space-3);
-}.workforce-deviation-list strong { color: var(--signal-dark); font-size: var(--text-xs); }.workforce-deviation-list span { color: var(--ink-600); font-size: var(--text-xs); }@media (max-width: 640px) {
+}
+.workforce-deviation-list strong { color: var(--signal-dark); font-size: var(--text-xs); }
+.workforce-deviation-list span { color: var(--ink-600); font-size: var(--text-xs); }
+
+@media (max-width: 640px) {
   /* One field per phone line, like every other form row in the app. Side by side, the
      party select cut its own contractor's name off halfway. */
   .workforce-add { grid-template-columns: minmax(0, 1fr); }
@@ -437,7 +644,13 @@
   /* Without this the counter stretches across the row it shares with the remove button
      and reads as an empty input box. */
   .workforce-row .counter-control { justify-self: start; }
-}.external-source-image { background: var(--ink-50); border-radius: var(--radius-md); max-height: 360px; object-fit: cover; width: 100%; }.external-response-panel { border-top: 1px solid var(--ink-200); display: grid; gap: 13px; padding-top: var(--space-4); }/* Two tabs for a work point, three when an NCR also asks for the correction. */.external-response-tabs { display: grid; gap: var(--space-1); grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; }.external-response-tabs button {
+}
+
+.external-source-image { background: var(--ink-50); border-radius: var(--radius-md); max-height: 360px; object-fit: cover; width: 100%; }
+.external-response-panel { border-top: 1px solid var(--ink-200); display: grid; gap: 13px; padding-top: var(--space-4); }
+/* Two tabs for a work point, three when an NCR also asks for the correction. */
+.external-response-tabs { display: grid; gap: var(--space-1); grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; }
+.external-response-tabs button {
   align-items: center;
   background: transparent;
   border: 0;
@@ -448,7 +661,12 @@
   gap: 7px;
   justify-content: center;
   padding: 10px;
-}.external-response-tabs button.active { background: var(--paper); box-shadow: none; color: var(--signal-dark); }.external-response-tabs button.active.issue { color: var(--red); }.external-response-tabs button:disabled { cursor: not-allowed; opacity: .45; }.external-choice-grid { display: grid; gap: 7px; grid-template-columns: repeat(2, minmax(0, 1fr)); }.external-choice-grid button {
+}
+.external-response-tabs button.active { background: var(--paper); box-shadow: none; color: var(--signal-dark); }
+.external-response-tabs button.active.issue { color: var(--red); }
+.external-response-tabs button:disabled { cursor: not-allowed; opacity: .45; }
+.external-choice-grid { display: grid; gap: 7px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.external-choice-grid button {
   border: 1px solid var(--ink-200);
   color: var(--ink-700);
   cursor: pointer;
@@ -456,7 +674,8 @@
   line-height: 1.35;
   padding: 10px;
   text-align: left;
-}.external-submit {
+}
+.external-submit {
   align-items: center;
   background: var(--green);
   border: 0;
@@ -468,30 +687,47 @@
   justify-content: center;
   min-height: 44px;
   padding: 11px 14px;
-}.external-submit.issue { background: var(--red); }.external-submit:disabled { cursor: not-allowed; opacity: .5; }.external-response-note { background: var(--yellow-soft); border-radius: var(--radius-xs); color: var(--ink-700); font-size: var(--text-xs); margin: 0; padding: 10px; }.external-response-success { align-items: center; background: var(--ink-50); border-radius: var(--radius-md); color: var(--green); display: grid; gap: 6px; justify-items: center; padding: var(--space-6); text-align: center; }.external-response-success h2, .external-response-success p { margin: 0; }.external-response-success p { color: var(--ink-700); font-size: var(--text-xs); line-height: 1.5; }.controlled-document-form {
+}
+.external-submit.issue { background: var(--red); }
+.external-submit:disabled { cursor: not-allowed; opacity: .5; }
+.external-response-note { background: var(--yellow-soft); border-radius: var(--radius-xs); color: var(--ink-700); font-size: var(--text-xs); margin: 0; padding: 10px; }
+.external-response-success { align-items: center; background: var(--ink-50); border-radius: var(--radius-md); color: var(--green); display: grid; gap: 6px; justify-items: center; padding: var(--space-6); text-align: center; }
+.external-response-success h2, .external-response-success p { margin: 0; }
+.external-response-success p { color: var(--ink-700); font-size: var(--text-xs); line-height: 1.5; }
+
+.controlled-document-form {
   border-top: 5px solid var(--signal);
   max-width: 100%;
-}/* Primary document content precedes the compact metadata; one readable column on all sizes. */.controlled-document-primary {
+}
+
+/* Primary document content precedes the compact metadata; one readable column on all sizes. */
+.controlled-document-primary {
   grid-template-columns: minmax(0, 1fr);
-}.controlled-document-author-edit {
+}
+.controlled-document-author-edit {
   min-width: 0;
-}.controlled-document-author-edit summary,
+}
+.controlled-document-author-edit summary,
 .controlled-document-optional-impact summary,
 .controlled-document-optional-attachments summary {
   cursor: pointer;
   color: var(--ink-600);
   font-size: var(--text-sm);
-}.controlled-document-author-edit .form-field {
+}
+.controlled-document-author-edit .form-field {
   margin-top: var(--space-2);
-}.controlled-document-optional-impact,
+}
+.controlled-document-optional-impact,
 .controlled-document-optional-attachments {
   border: 1px solid var(--ink-200);
   border-radius: var(--radius-md);
   padding: var(--space-3);
-}.controlled-document-optional-impact .form-grid-2,
+}
+.controlled-document-optional-impact .form-grid-2,
 .controlled-document-optional-attachments .form-field {
   margin-top: var(--space-3);
-}.controlled-document-badge {
+}
+.controlled-document-badge {
   background: var(--yellow-soft);
   border: 1px solid var(--ink-600);
   border-radius: var(--radius-pill);
@@ -499,20 +735,35 @@
   font-size: var(--text-xs);
   font-weight: var(--weight-bold);
   padding: 7px 10px;
-}/* A delivery is judged and counted next to each other. */.register-outcome { align-items: start; }.register-outcome > .form-field > label { color: var(--ink-700); font-size: var(--text-xs); font-weight: var(--weight-bold); }.register-outcome .quick-issue-presets { margin-top: 6px; }/* The bill of quantities is its own subject; it waits behind one tap instead of sitting
-   open under whatever register item is being filled in. */.boq-import-section {
+}
+
+/* A delivery is judged and counted next to each other. */
+.register-outcome { align-items: start; }
+.register-outcome > .form-field > label { color: var(--ink-700); font-size: var(--text-xs); font-weight: var(--weight-bold); }
+.register-outcome .quick-issue-presets { margin-top: 6px; }
+
+/* The bill of quantities is its own subject; it waits behind one tap instead of sitting
+   open under whatever register item is being filled in. */
+.boq-import-section {
   background: var(--paper);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 13px var(--space-4);
-}.boq-import-section > summary {
+}
+.boq-import-section > summary {
   cursor: pointer;
   display: flex; align-items: center;
   font-size: var(--text-xs);
   font-weight: var(--weight-bold);
   gap: 10px;
   justify-content: space-between;
-}.boq-import-section > summary span { color: var(--muted); font-weight: var(--weight-semibold); }.boq-import-section[open] > summary { margin-bottom: 13px; }.boq-import-section .boq-import-card { border: 0; box-shadow: none; padding: 0; }/* The head of the controlled paper form: project, scope, issue moment and author. */.controlled-document-context {
+}
+.boq-import-section > summary span { color: var(--muted); font-weight: var(--weight-semibold); }
+.boq-import-section[open] > summary { margin-bottom: 13px; }
+.boq-import-section .boq-import-card { border: 0; box-shadow: none; padding: 0; }
+
+/* The head of the controlled paper form: project, scope, issue moment and author. */
+.controlled-document-context {
   background: var(--ink-025);
   border: 1px solid var(--ink-200);
   border-radius: var(--radius-md);
@@ -520,38 +771,55 @@
   gap: var(--space-3);
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   padding: 13px 15px;
-}.controlled-document-context > div { display: grid; gap: 2px; min-width: 0; }.controlled-document-context small { color: var(--ink-700); font-size: var(--text-xs); font-weight: var(--weight-bold); letter-spacing: .05em; text-transform: uppercase; }.controlled-document-context strong { color: var(--ink-900); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; }.controlled-document-context span { color: var(--ink-600); font-size: var(--text-xs); }.controlled-document-dates {
+}
+.controlled-document-context > div { display: grid; gap: 2px; min-width: 0; }
+.controlled-document-context small { color: var(--ink-700); font-size: var(--text-xs); font-weight: var(--weight-bold); letter-spacing: .05em; text-transform: uppercase; }
+.controlled-document-context strong { color: var(--ink-900); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; }
+.controlled-document-context span { color: var(--ink-600); font-size: var(--text-xs); }
+
+.controlled-document-dates {
   background: var(--ink-025);
   border: 1px solid var(--ink-500);
   border-radius: var(--radius-md);
   display: grid;
   gap: var(--space-3);
   padding: 14px;
-}.controlled-document-dates > header {
+}
+.controlled-document-dates > header {
   align-items: center;
   display: flex;
   gap: 9px;
-}.controlled-document-dates > header svg { color: var(--green); flex: 0 0 auto; }.controlled-document-dates > header div { display: grid; gap: 2px; }.controlled-document-dates > header strong { color: var(--ink-900); font-size: var(--text-xs); }.controlled-document-dates > header small { color: var(--ink-700); font-size: var(--text-xs); line-height: 1.4; }.controlled-document-dates > .form-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }.controlled-document-register {
+}
+.controlled-document-dates > header svg { color: var(--green); flex: 0 0 auto; }
+.controlled-document-dates > header div { display: grid; gap: 2px; }
+.controlled-document-dates > header strong { color: var(--ink-900); font-size: var(--text-xs); }
+.controlled-document-dates > header small { color: var(--ink-700); font-size: var(--text-xs); line-height: 1.4; }
+.controlled-document-dates > .form-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.controlled-document-register {
   border-top: 1px solid var(--ink-200);
   display: grid;
   gap: var(--space-3);
   margin-top: 22px;
   padding-top: 18px;
-}.controlled-document-register-heading,
+}
+.controlled-document-register-heading,
 .controlled-document-card-main {
   align-items: flex-start;
   display: flex;
   gap: 14px;
   justify-content: space-between;
-}.controlled-document-register-heading h2,
+}
+.controlled-document-register-heading h2,
 .controlled-document-card h3,
-.controlled-document-card p { margin: 0; }.controlled-document-register-heading > span {
+.controlled-document-card p { margin: 0; }
+.controlled-document-register-heading > span {
   background: var(--canvas);
   border-radius: var(--radius-pill);
   color: var(--ink-600);
   font-size: var(--text-xs);
   padding: 7px 10px;
-}.controlled-document-card {
+}
+.controlled-document-card {
   background: var(--paper);
   border: 1px solid var(--ink-200);
   border-left: 5px solid var(--signal);
@@ -559,7 +827,12 @@
   display: grid;
   gap: var(--space-3);
   padding: 15px;
-}.controlled-document-card-main > div { display: grid; flex: 1; gap: 5px; min-width: 0; }.controlled-document-card-main p { color: var(--ink-600); line-height: 1.5; white-space: pre-wrap; }.controlled-document-card-main small { color: var(--ink-700); }.controlled-response-form { background: var(--ink-025); border-color: var(--ink-600); }.controlled-document-history {
+}
+.controlled-document-card-main > div { display: grid; flex: 1; gap: 5px; min-width: 0; }
+.controlled-document-card-main p { color: var(--ink-600); line-height: 1.5; white-space: pre-wrap; }
+.controlled-document-card-main small { color: var(--ink-700); }
+.controlled-response-form { background: var(--ink-025); border-color: var(--ink-600); }
+.controlled-document-history {
   background: var(--ink-025);
   border: 1px solid var(--ink-200);
   border-radius: var(--radius-sm);
@@ -567,29 +840,58 @@
   gap: var(--space-2);
   grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 11px;
-}.controlled-document-history > div {
+}
+.controlled-document-history > div {
   background: var(--paper);
   border: 1px solid var(--ink-100);
   border-radius: var(--radius-xs);
   display: grid;
   gap: 3px;
   padding: 9px;
-}.controlled-document-history span { color: var(--ink-700); font-size: var(--text-xs); font-weight: var(--weight-bold); text-transform: uppercase; }.controlled-document-history strong { color: var(--ink-800); font-size: var(--text-xs); }.controlled-document-history small,
-.controlled-document-history p { color: var(--ink-600); font-size: var(--text-xs); line-height: 1.45; margin: 0; }.controlled-history-description,
+}
+.controlled-document-history span { color: var(--ink-700); font-size: var(--text-xs); font-weight: var(--weight-bold); text-transform: uppercase; }
+.controlled-document-history strong { color: var(--ink-800); font-size: var(--text-xs); }
+.controlled-document-history small,
+.controlled-document-history p { color: var(--ink-600); font-size: var(--text-xs); line-height: 1.45; margin: 0; }
+.controlled-history-description,
 .controlled-history-attachments,
-.controlled-history-response { grid-column: 1 / -1; }.controlled-history-attachments { align-items: center; display: flex !important; flex-wrap: wrap; }.controlled-history-attachments > span { flex: 0 0 100%; }.controlled-history-attachments.empty { display: grid !important; }/* Append-only decision log: every response stays visible, oldest first. */.controlled-history-timeline { grid-column: 1 / -1; }.controlled-history-timeline ol { display: grid; gap: 9px; list-style: none; margin: 7px 0 0; padding: 0; }.controlled-history-timeline li { align-items: start; display: grid; gap: 9px; grid-template-columns: auto 1fr; }.controlled-history-timeline li > div { display: grid; gap: 2px; }.controlled-history-timeline .decision-dot {
+.controlled-history-response { grid-column: 1 / -1; }
+.controlled-history-attachments { align-items: center; display: flex !important; flex-wrap: wrap; }
+.controlled-history-attachments > span { flex: 0 0 100%; }
+.controlled-history-attachments.empty { display: grid !important; }
+
+/* Append-only decision log: every response stays visible, oldest first. */
+.controlled-history-timeline { grid-column: 1 / -1; }
+.controlled-history-timeline ol { display: grid; gap: 9px; list-style: none; margin: 7px 0 0; padding: 0; }
+.controlled-history-timeline li { align-items: start; display: grid; gap: 9px; grid-template-columns: auto 1fr; }
+.controlled-history-timeline li > div { display: grid; gap: 2px; }
+.controlled-history-timeline .decision-dot {
   background: var(--ink-300);
   border-radius: var(--radius-pill);
   height: 9px;
   margin-top: var(--space-1);
   width: 9px;
-}.controlled-history-timeline .decision-dot.approved,
+}
+.controlled-history-timeline .decision-dot.approved,
 .controlled-history-timeline .decision-dot.conditionally_approved,
 .controlled-history-timeline .decision-dot.approved_with_comments,
 .controlled-history-timeline .decision-dot.completed,
-.controlled-history-timeline .decision-dot.closed { background: var(--green); }.controlled-history-timeline .decision-dot.rejected,
-.controlled-history-timeline .decision-dot.correct_and_resubmit { background: var(--red); }.controlled-history-timeline .decision-dot.clarification_needed { background: var(--signal); }/* Daily work: the owner browses what runs, what is done and where time was lost. */.daily-work-register { display: grid; gap: 14px; }.daily-work-header-actions { align-items: end; display: flex; flex-wrap: wrap; gap: 10px; }/* The view tabs take the row; the building filter sits beside them when there is room. */.daily-work-header-actions .daily-work-tabs { flex: 1 1 32rem; min-width: 0; }.daily-work-tabs { display: grid; gap: 9px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }/* The label wraps in a narrow tile, and an icon centred against two lines of title plus a
-   count reads as misaligned. It stays level with the first line of the label instead. */.daily-work-tabs button > svg { flex-shrink: 0; margin-top: 1px; }.daily-work-tabs button {
+.controlled-history-timeline .decision-dot.closed { background: var(--green); }
+.controlled-history-timeline .decision-dot.rejected,
+.controlled-history-timeline .decision-dot.correct_and_resubmit { background: var(--red); }
+.controlled-history-timeline .decision-dot.clarification_needed { background: var(--signal); }
+
+/* Daily work: the owner browses what runs, what is done and where time was lost. */
+.daily-work-register { display: grid; gap: 14px; }
+.daily-work-header-actions { align-items: end; display: flex; flex-wrap: wrap; gap: 10px; }
+/* The view tabs take the row; the building filter sits beside them when there is room. */
+.daily-work-header-actions .daily-work-tabs { flex: 1 1 32rem; min-width: 0; }
+
+.daily-work-tabs { display: grid; gap: 9px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+/* The label wraps in a narrow tile, and an icon centred against two lines of title plus a
+   count reads as misaligned. It stays level with the first line of the label instead. */
+.daily-work-tabs button > svg { flex-shrink: 0; margin-top: 1px; }
+.daily-work-tabs button {
   align-items: flex-start;
   background: var(--paper);
   border: 1px solid var(--border);
@@ -600,9 +902,39 @@
   gap: 10px;
   padding: var(--space-3) 14px;
   text-align: left;
-}.daily-work-tabs button span { display: grid; gap: 1px; min-width: 0; }.daily-work-tabs button small { color: var(--muted); font-size: var(--text-xs); }/* The current view is a selection, so it is marked the way every selection is: orange.
-   Green is kept for a record that is done. */.daily-work-tabs button:hover { border-color: var(--signal); }.daily-work-tabs button.active { background: var(--signal-soft); border-color: var(--signal); color: var(--ink-900); }.daily-work-tabs button.active small { color: var(--ink-700); }.management-header-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; }/* Daily log in the client's own report format: one numbered section per report heading,
-   inside the same record form shell every other module uses. */.daily-log-readout { align-items: baseline; display: flex; gap: 10px; margin: 0; }.daily-log-readout strong { color: var(--ink-900); font-size: var(--text-md); }.daily-log-readout span { color: var(--muted); font-size: var(--text-xs); }.daily-log-missing { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; }.daily-log-missing span { color: var(--ink-700); font-size: var(--text-xs); max-width: 46ch; }/* A draft put back from the device says so once, with the way to throw it away. */.daily-log-draft { align-items: center; color: var(--ink-700); display: inline-flex; flex-wrap: wrap; font-size: var(--text-xs); gap: var(--space-2); }/* What the other modules recorded today, read back in the day log instead of asked again. */.daily-log-today { display: grid; gap: var(--space-2); justify-items: start; }.daily-log-today ul { display: grid; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }.daily-log-today li { color: var(--ink-800); font-size: var(--text-sm); }.daily-log-today li strong { color: var(--ink-900); margin-right: var(--space-1); }.daily-log-today p { color: var(--muted); font-size: var(--text-sm); margin: 0; }.daily-log-workforce .daily-log-readout { align-items: center; flex-wrap: wrap; justify-content: space-between; }/* Every photo of the day gets a thumbnail and a name; the report needs both. */.daily-log-photo-list { display: grid; gap: 9px; margin-top: var(--space-3); }.daily-log-photo-list > div {
+}
+.daily-work-tabs button span { display: grid; gap: 1px; min-width: 0; }
+.daily-work-tabs button small { color: var(--muted); font-size: var(--text-xs); }
+/* The current view is a selection, so it is marked the way every selection is: orange.
+   Green is kept for a record that is done. */
+.daily-work-tabs button:hover { border-color: var(--signal); }
+.daily-work-tabs button.active { background: var(--signal-soft); border-color: var(--signal); color: var(--ink-900); }
+.daily-work-tabs button.active small { color: var(--ink-700); }
+
+.management-header-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; }
+
+/* Daily log in the client's own report format: one numbered section per report heading,
+   inside the same record form shell every other module uses. */
+.daily-log-readout { align-items: baseline; display: flex; gap: 10px; margin: 0; }
+.daily-log-readout strong { color: var(--ink-900); font-size: var(--text-md); }
+.daily-log-readout span { color: var(--muted); font-size: var(--text-xs); }
+.daily-log-missing { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; }
+.daily-log-missing span { color: var(--ink-700); font-size: var(--text-xs); max-width: 46ch; }
+
+/* A draft put back from the device says so once, with the way to throw it away. */
+.daily-log-draft { align-items: center; color: var(--ink-700); display: inline-flex; flex-wrap: wrap; font-size: var(--text-xs); gap: var(--space-2); }
+
+/* What the other modules recorded today, read back in the day log instead of asked again. */
+.daily-log-today { display: grid; gap: var(--space-2); justify-items: start; }
+.daily-log-today ul { display: grid; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.daily-log-today li { color: var(--ink-800); font-size: var(--text-sm); }
+.daily-log-today li strong { color: var(--ink-900); margin-right: var(--space-1); }
+.daily-log-today p { color: var(--muted); font-size: var(--text-sm); margin: 0; }
+.daily-log-workforce .daily-log-readout { align-items: center; flex-wrap: wrap; justify-content: space-between; }
+
+/* Every photo of the day gets a thumbnail and a name; the report needs both. */
+.daily-log-photo-list { display: grid; gap: 9px; margin-top: var(--space-3); }
+.daily-log-photo-list > div {
   align-items: center;
   background: var(--canvas);
   border: 1px solid var(--border);
@@ -611,27 +943,44 @@
   gap: 11px;
   grid-template-columns: 62px 1fr auto auto;
   padding: 9px;
-}.daily-log-photo-list img { border-radius: var(--radius-xs); cursor: pointer; height: 62px; object-fit: cover; width: 62px; }.daily-log-photo-list .form-field { gap: var(--space-1); margin: 0; }.daily-log-photo-list .form-field span { font-size: var(--text-xs); }@media (max-width: 640px) {
+}
+.daily-log-photo-list img { border-radius: var(--radius-xs); cursor: pointer; height: 62px; object-fit: cover; width: 62px; }
+.daily-log-photo-list .form-field { gap: var(--space-1); margin: 0; }
+.daily-log-photo-list .form-field span { font-size: var(--text-xs); }
+
+@media (max-width: 640px) {
   .daily-log-photo-list > div { grid-template-columns: 52px 1fr auto; }
   .daily-log-photo-list img { height: 52px; width: 52px; }
   /* On a phone the marking button takes the full row under the photo name. */
   .daily-log-photo-list .mark-photo-button { grid-column: 1 / -1; justify-content: center; }
-}.external-submission-notice { align-items: center; }.external-submission-notice button { margin-left: auto; white-space: nowrap; }.finding-required-action {
+}
+
+.external-submission-notice { align-items: center; }
+.external-submission-notice button { margin-left: auto; white-space: nowrap; }
+.finding-required-action {
   background: var(--canvas);
   border-left: 3px solid var(--green);
   color: var(--ink-700) !important;
   margin-top: 7px !important;
   padding: 7px 9px;
-}.finding-immediate-action { color: var(--ink-600); font-size: var(--text-xs); margin: 3px 0 0; }.issue-progress-form { background: var(--canvas); }.issue-escalation {
+}
+.finding-immediate-action { color: var(--ink-600); font-size: var(--text-xs); margin: 3px 0 0; }
+.issue-progress-form { background: var(--canvas); }
+.issue-escalation {
   align-self: end;
   min-height: 42px;
-}@media (max-width: 640px) {
+}
+
+@media (max-width: 640px) {
   .external-choice-grid { grid-template-columns: 1fr; }
   .controlled-document-dates > .form-grid { grid-template-columns: 1fr; }
   .controlled-document-history { grid-template-columns: 1fr; }
   .controlled-document-history > div { grid-column: 1; }
   .controlled-document-register-heading, .controlled-document-card-main { align-items: stretch; flex-direction: column; }
-}/* 2026-07-26 field-efficiency refinement */.automatic-weather-status {
+}
+
+/* 2026-07-26 field-efficiency refinement */
+.automatic-weather-status {
   align-items: center;
   display: grid;
   gap: 10px;
@@ -641,14 +990,21 @@
   border: 1px solid var(--ink-500);
   border-radius: var(--radius-md);
   background: var(--paper);
-}.automatic-weather-status.failed { border-color: var(--ink-500); background: var(--ink-025); }.automatic-weather-status.ready { border-color: var(--ink-600); background: var(--paper); }.automatic-weather-icon {
+}
+.automatic-weather-status.failed { border-color: var(--ink-500); background: var(--ink-025); }
+.automatic-weather-status.ready { border-color: var(--ink-600); background: var(--paper); }
+.automatic-weather-icon {
   align-items: center;
   color: var(--ink-700);
   display: flex;
   height: 34px;
   justify-content: center;
   width: 34px;
-}.automatic-weather-status > span:nth-child(2) { display: grid; gap: 2px; min-width: 0; }.automatic-weather-status strong { color: var(--ink-800); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.automatic-weather-status small { color: var(--ink-700); font-size: var(--text-xs); }.automatic-weather-status button {
+}
+.automatic-weather-status > span:nth-child(2) { display: grid; gap: 2px; min-width: 0; }
+.automatic-weather-status strong { color: var(--ink-800); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.automatic-weather-status small { color: var(--ink-700); font-size: var(--text-xs); }
+.automatic-weather-status button {
   align-items: center;
   background: var(--paper);
   border: 1px solid var(--ink-200);
@@ -660,26 +1016,37 @@
   font-weight: var(--weight-bold);
   gap: 5px;
   padding: var(--space-2) 9px;
-}.checklist-progress {
+}
+
+.checklist-progress {
   align-items: center;
   display: grid;
   gap: 7px;
   grid-template-columns: auto minmax(120px, 1fr);
   color: var(--ink-600);
   font-size: var(--text-xs);
-}.checklist-progress b { color: var(--green); font-size: var(--text-xs); }.checklist-progress-track { background: var(--ink-100); border-radius: var(--radius-pill); height: 8px; overflow: hidden; }.checklist-progress-track i { background: var(--paper); border-radius: inherit; display: block; height: 100%; transition: width .2s ease; }.checklist-section {
+}
+.checklist-progress b { color: var(--green); font-size: var(--text-xs); }
+.checklist-progress-track { background: var(--ink-100); border-radius: var(--radius-pill); height: 8px; overflow: hidden; }
+.checklist-progress-track i { background: var(--paper); border-radius: inherit; display: block; height: 100%; transition: width .2s ease; }
+.checklist-section {
   border: 1px solid var(--ink-200);
   border-radius: var(--radius-md);
   background: var(--ink-025);
   overflow: hidden;
-}.checklist-section > header {
+}
+.checklist-section > header {
   align-items: center;
   background: var(--green-soft);
   display: flex;
   justify-content: space-between;
   gap: var(--space-3);
   padding: 11px 13px;
-}.checklist-section > header > span { align-items: center; display: flex; gap: var(--space-2); }.checklist-section > header strong { color: var(--ink-800); font-size: var(--text-xs); }.checklist-section > header small { background: var(--paper); border-radius: var(--radius-pill); color: var(--ink-600); font-size: var(--text-xs); padding: 3px 7px; }.checklist-section > header button {
+}
+.checklist-section > header > span { align-items: center; display: flex; gap: var(--space-2); }
+.checklist-section > header strong { color: var(--ink-800); font-size: var(--text-xs); }
+.checklist-section > header small { background: var(--paper); border-radius: var(--radius-pill); color: var(--ink-600); font-size: var(--text-xs); padding: 3px 7px; }
+.checklist-section > header button {
   align-items: center;
   background: var(--paper);
   border: 1px solid var(--ink-600);
@@ -691,7 +1058,10 @@
   font-weight: var(--weight-bold);
   gap: 5px;
   padding: 7px 9px;
-}.checklist-section .checklist-question { border: 0; border-radius: 0; border-top: 1px solid var(--ink-100); background: var(--paper); margin: 0; }.checklist-question.automatic { background: var(--paper); }.checklist-auto-chip {
+}
+.checklist-section .checklist-question { border: 0; border-radius: 0; border-top: 1px solid var(--ink-100); background: var(--paper); margin: 0; }
+.checklist-question.automatic { background: var(--paper); }
+.checklist-auto-chip {
   align-items: center;
   background: var(--green-soft);
   border-radius: var(--radius-pill);
@@ -702,19 +1072,38 @@
   gap: 5px;
   justify-self: start;
   padding: 5px var(--space-2);
-}.answer-options label:has(input:checked) { background: var(--green-soft); border-color: var(--ink-500); box-shadow: none; color: var(--green); font-weight: var(--weight-bold); }.answer-options label:has(input[value="no"]:checked),
-.answer-options label:has(input[value="fail"]:checked) { background: var(--red-soft); border-color: var(--ink-500); color: var(--red); }.checklist-value-input { align-items: center; display: flex; gap: 7px; }.checklist-value-input input { border: 1px solid var(--ink-200); border-radius: var(--radius-xs); max-width: 180px; padding: 9px 10px; }.checklist-value-input em { color: var(--ink-700); font-size: var(--text-xs); font-style: normal; }.checklist-remark { border-color: var(--ink-600) !important; background: var(--ink-025) !important; }/* Like the record footer: above the fixed mobile navigation, not behind it. */.checklist-sticky-actions { background: rgba(255,255,255,.94); border-top: 1px solid var(--ink-100); bottom: var(--mobile-nav-height); margin: 0 -15px -15px; padding: 11px 15px calc(11px + max(0px, env(safe-area-inset-bottom) - var(--mobile-nav-height))); position: sticky; z-index: 3; }.inspection-subject-details { border-top: 1px solid var(--ink-100); color: var(--ink-600); padding-top: var(--space-2); }.inspection-subject-details summary { cursor: pointer; font-size: var(--text-xs); font-weight: var(--weight-bold); }.inspection-subject-details .form-field { margin-top: 10px; }.start-checklist-button { justify-content: center; min-height: var(--control-h-xl); }/* same hero-CTA tier as .day-questions-button */.finding-photo-stack {
+}
+.answer-options label:has(input:checked) { background: var(--green-soft); border-color: var(--ink-500); box-shadow: none; color: var(--green); font-weight: var(--weight-bold); }
+.answer-options label:has(input[value="no"]:checked),
+.answer-options label:has(input[value="fail"]:checked) { background: var(--red-soft); border-color: var(--ink-500); color: var(--red); }
+.checklist-value-input { align-items: center; display: flex; gap: 7px; }
+.checklist-value-input input { border: 1px solid var(--ink-200); border-radius: var(--radius-xs); max-width: 180px; padding: 9px 10px; }
+.checklist-value-input em { color: var(--ink-700); font-size: var(--text-xs); font-style: normal; }
+.checklist-remark { border-color: var(--ink-600) !important; background: var(--ink-025) !important; }
+/* Like the record footer: above the fixed mobile navigation, not behind it. */
+.checklist-sticky-actions { background: rgba(255,255,255,.94); border-top: 1px solid var(--ink-100); bottom: var(--mobile-nav-height); margin: 0 -15px -15px; padding: 11px 15px calc(11px + max(0px, env(safe-area-inset-bottom) - var(--mobile-nav-height))); position: sticky; z-index: 3; }
+.inspection-subject-details { border-top: 1px solid var(--ink-100); color: var(--ink-600); padding-top: var(--space-2); }
+.inspection-subject-details summary { cursor: pointer; font-size: var(--text-xs); font-weight: var(--weight-bold); }
+.inspection-subject-details .form-field { margin-top: 10px; }
+.start-checklist-button { justify-content: center; min-height: var(--control-h-xl); } /* same hero-CTA tier as .day-questions-button */
+
+.finding-photo-stack {
   display: grid;
   gap: var(--space-2);
   grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
-}.finding-photo-stack article {
+}
+.finding-photo-stack article {
   background: var(--paper);
   border: 1px solid var(--ink-200);
   border-radius: var(--radius-sm);
   min-height: 92px;
   overflow: hidden;
   position: relative;
-}.finding-photo-stack img { display: block; height: 92px; object-fit: cover; width: 100%; }/* The picture and the name printed over it; the marking button lives underneath it. */.finding-photo-frame { display: block; position: relative; }.finding-photo-frame > span {
+}
+.finding-photo-stack img { display: block; height: 92px; object-fit: cover; width: 100%; }
+/* The picture and the name printed over it; the marking button lives underneath it. */
+.finding-photo-frame { display: block; position: relative; }
+.finding-photo-frame > span {
   align-items: center;
   background: linear-gradient(transparent, rgba(16,36,42,.86));
   bottom: 0;
@@ -725,6 +1114,10 @@
   padding: 22px 7px 7px;
   position: absolute;
   right: 0;
-}.finding-photo-stack .mark-photo-button { justify-content: center; margin: 7px; width: calc(100% - 14px); }/* With a caption the photo needs room for the text, so the tile grows and the field
-   sits under the image instead of over it. *//* Above the bottom bar, not on it: this button was covering the actions of the last card
+}
+.finding-photo-stack .mark-photo-button { justify-content: center; margin: 7px; width: calc(100% - 14px); }
+/* With a caption the photo needs room for the text, so the tile grows and the field
+   sits under the image instead of over it. */
+
+/* Above the bottom bar, not on it: this button was covering the actions of the last card
    in every list on a phone. */

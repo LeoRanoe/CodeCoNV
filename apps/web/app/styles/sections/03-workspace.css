@@ -2,20 +2,31 @@
   display: grid;
   grid-template-columns: minmax(240px, 0.85fr) minmax(420px, 1.15fr);
   min-height: 286px;
-}.project-selection-grid.single-project .selection-card-top,
+}
+
+.project-selection-grid.single-project .selection-card-top,
 .project-selection-grid.single-project .selection-progress,
 .project-selection-grid.single-project .selection-action {
   grid-column: 1 / -1;
-}.project-selection-grid.single-project .selection-copy {
+}
+
+.project-selection-grid.single-project .selection-copy {
   align-self: end;
   margin: var(--space-6) var(--space-7) var(--space-3) 0;
-}.project-selection-grid.single-project .selection-meta {
+}
+
+.project-selection-grid.single-project .selection-meta {
   align-self: start;
   margin-right: var(--space-7);
-}.project-selection-grid.single-project .selection-action { margin-top: var(--space-4); }.project-switcher-modal .modal-body {
+}
+.project-selection-grid.single-project .selection-action { margin-top: var(--space-4); }
+
+.project-switcher-modal .modal-body {
   display: grid;
   gap: 14px;
-}.project-switcher-search {
+}
+
+.project-switcher-search {
   display: flex;
   align-items: center;
   gap: 9px;
@@ -24,7 +35,9 @@
   border-radius: var(--radius-md);
   background: var(--paper);
   color: var(--ink-700);
-}.project-switcher-search input {
+}
+
+.project-switcher-search input {
   width: 100%;
   padding: 13px 0;
   border: 0;
@@ -32,10 +45,14 @@
   font: inherit;
   color: var(--ink-950);
   outline: none;
-}.project-switcher-list {
+}
+
+.project-switcher-list {
   display: grid;
   gap: 10px;
-}.project-switcher-row {
+}
+
+.project-switcher-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -49,50 +66,72 @@
   text-align: left;
   cursor: pointer;
   box-shadow: var(--shadow-sm);
-}.project-switcher-row:hover,
+}
+
+.project-switcher-row:hover,
 .project-switcher-row:focus-visible {
   border-color: var(--green);
-}.project-switcher-row.active {
+}
+
+.project-switcher-row.active {
   border-color: var(--green);
   background: var(--green-soft);
   cursor: default;
-}.project-switcher-icon {
+}
+
+.project-switcher-icon {
   display: grid;
   width: 40px;
   height: 40px;
   place-items: center;
   color: var(--ink-700);
-}.project-switcher-row.active .project-switcher-icon {
+}
+
+.project-switcher-row.active .project-switcher-icon {
   color: var(--signal);
-}.project-switcher-copy {
+}
+
+.project-switcher-copy {
   display: grid;
   gap: var(--space-1);
   min-width: 0;
   /* min-width alone does not free a grid: the implicit column is still sized to the widest
      line in it, and a long project name pushed the whole dialog wider than the phone. */
   grid-template-columns: minmax(0, 1fr);
-}.project-switcher-copy strong {
+}
+
+.project-switcher-copy strong {
   overflow: hidden;
   color: var(--ink-950);
   font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
-}/* Not a flex row: a flex container never draws an ellipsis, and the location line has to
-   shorten the same way the project name above it does. */.project-switcher-copy small {
+}
+
+/* Not a flex row: a flex container never draws an ellipsis, and the location line has to
+   shorten the same way the project name above it does. */
+.project-switcher-copy small {
   display: block;
   overflow: hidden;
   color: var(--ink-700);
   font-size: var(--text-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
-}/* The pin travels with the words on one line: an icon that stays a block would sit on a
-   line of its own above the location, whatever the shortening does. */.project-switcher-copy small > svg {
+}
+
+/* The pin travels with the words on one line: an icon that stays a block would sit on a
+   line of its own above the location, whatever the shortening does. */
+.project-switcher-copy small > svg {
   display: inline-block;
   margin-right: var(--space-1);
   vertical-align: -2px;
-}.project-switcher-meta {
+}
+
+.project-switcher-meta {
   font-size: var(--text-xs);
-}.project-switcher-state {
+}
+
+.project-switcher-state {
   display: flex;
   align-items: center;
   color: var(--ink-700);
@@ -100,20 +139,30 @@
   font-weight: var(--weight-bold);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-}.project-switcher-row.active .project-switcher-state {
+}
+
+.project-switcher-row.active .project-switcher-state {
   color: var(--green);
-}.project-switcher-empty {
+}
+
+.project-switcher-empty {
   margin: 0;
   padding: 18px var(--space-1);
   color: var(--ink-700);
   font-size: var(--text-xs);
-}.project-switcher-overview {
+}
+
+.project-switcher-overview {
   justify-content: center;
   width: 100%;
-}.building-selection-grid {
+}
+
+.building-selection-grid {
   display: grid;
   gap: 11px;
-}.building-selection-card {
+}
+
+.building-selection-card {
   display: grid;
   align-items: center;
   gap: 15px;
@@ -124,45 +173,67 @@
   background: var(--paper);
   text-align: left;
   box-shadow: var(--shadow-sm);
-}.building-selection-copy strong,
+}
+
+.building-selection-copy strong,
 .building-selection-copy small {
   display: block;
-}.building-selection-copy strong {
+}
+
+.building-selection-copy strong {
   font-size: var(--text-sm);
-}.building-selection-copy small {
+}
+
+.building-selection-copy small {
   margin-top: 5px;
   color: var(--ink-700);
   font-size: var(--text-xs);
-}.project-start-layout {
+}
+
+.project-start-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 370px;
   align-items: start;
   gap: 22px;
-}.project-start-form {
+}
+
+.project-start-form {
   display: grid;
   gap: var(--space-4);
-}.form-section-card {
+}
+
+.form-section-card {
   padding: 21px;
   border: 1px solid var(--ink-200);
   border-radius: var(--radius-md);
   background: var(--paper);
   box-shadow: var(--shadow-sm);
-}.form-section-card > header {
+}
+
+.form-section-card > header {
   display: flex;
   align-items: center;
   gap: 11px;
   margin-bottom: 18px;
-}.form-section-card > header span:last-child,
+}
+
+.form-section-card > header span:last-child,
 .form-section-card > header strong,
 .form-section-card > header small {
   display: block;
-}.form-section-card > header strong {
+}
+
+.form-section-card > header strong {
   font-size: var(--text-xs);
-}.form-section-card > header small {
+}
+
+.form-section-card > header small {
   margin-top: 3px;
   color: var(--ink-700);
   font-size: var(--text-xs);
-}.form-section-number {
+}
+
+.form-section-number {
   display: grid;
   width: 30px;
   height: 30px;
@@ -173,30 +244,47 @@
   color: var(--signal-dark);
   font-size: var(--text-xs);
   font-weight: var(--weight-bold);
-}.form-grid.three-columns {
+}
+
+.form-grid.three-columns {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-}.form-grid.two-columns {
+}
+
+.form-grid.two-columns {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-}.form-field.wide,
+}
+
+.form-field.wide,
 .confirmation-check.wide {
   grid-column: 1 / -1;
-}.form-field > span:first-child {
+}
+
+.form-field > span:first-child {
   color: var(--ink-700);
   font-size: var(--text-xs);
   font-weight: var(--weight-bold);
-}/* The sentence under a field label that says what to write there. It reads as help,
+}
+
+/* The sentence under a field label that says what to write there. It reads as help,
    not as a second label, wherever it stands: above the input on the forms that ask a
-   question, below it where it explains what was just filled in. */.form-field > small {
+   question, below it where it explains what was just filled in. */
+.form-field > small {
   color: var(--muted);
   font-size: var(--text-xs);
   line-height: 1.45;
   margin-top: -3px;
-}.input-with-unit {
+}
+
+.input-with-unit {
   position: relative;
   display: block;
-}.input-with-unit input {
+}
+
+.input-with-unit input {
   padding-right: 66px;
-}.input-with-unit em {
+}
+
+.input-with-unit em {
   position: absolute;
   top: 50%;
   right: 12px;
@@ -204,12 +292,16 @@
   font-size: var(--text-xs);
   font-style: normal;
   transform: translateY(-50%);
-}.field-error {
+}
+
+.field-error {
   color: var(--red) !important;
   font-size: var(--text-xs) !important;
   font-style: normal;
   font-weight: var(--weight-bold);
-}.confirmation-check {
+}
+
+.confirmation-check {
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -218,26 +310,38 @@
   border-radius: var(--radius-md);
   background: var(--ink-025);
   cursor: pointer;
-}.confirmation-check input {
+}
+
+.confirmation-check input {
   width: 17px;
   height: 17px;
   margin: 1px 0 0;
   accent-color: var(--signal);
-}.confirmation-check span,
+}
+
+.confirmation-check span,
 .confirmation-check strong,
 .confirmation-check small,
 .confirmation-check em {
   display: block;
-}.confirmation-check strong {
+}
+
+.confirmation-check strong {
   font-size: var(--text-xs);
-}.confirmation-check small {
+}
+
+.confirmation-check small {
   margin-top: 3px;
   color: var(--ink-600);
   font-size: var(--text-xs);
   line-height: 1.4;
-}.confirmation-check em {
+}
+
+.confirmation-check em {
   margin-top: 5px;
-}.project-start-submit {
+}
+
+.project-start-submit {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -246,13 +350,17 @@
   border-radius: var(--radius-md);
   background: var(--ink-950);
   color: var(--paper);
-}.project-start-submit > span {
+}
+
+.project-start-submit > span {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   color: var(--ink-700);
   font-size: var(--text-xs);
-}.automation-panel {
+}
+
+.automation-panel {
   position: sticky;
   top: 22px;
   overflow: hidden;
@@ -260,41 +368,59 @@
   border-radius: var(--radius-md);
   background: var(--paper);
   box-shadow: var(--shadow-sm);
-}.automation-panel > header {
+}
+
+.automation-panel > header {
   display: flex;
   align-items: center;
   gap: 11px;
   padding: 18px;
   border-bottom: 1px solid var(--ink-100);
-}.automation-panel > header span:last-child,
+}
+
+.automation-panel > header span:last-child,
 .automation-panel > header strong,
 .automation-panel > header small {
   display: block;
-}.automation-panel > header strong {
+}
+
+.automation-panel > header strong {
   font-size: var(--text-xs);
-}.automation-panel > header small {
+}
+
+.automation-panel > header small {
   margin-top: 3px;
   color: var(--ink-700);
   font-size: var(--text-xs);
-}.automation-panel-icon {
+}
+
+.automation-panel-icon {
   display: grid;
   width: 38px;
   height: 38px;
   flex: 0 0 auto;
   place-items: center;
   color: var(--ink-700);
-}.automation-rule-list {
+}
+
+.automation-rule-list {
   display: grid;
   gap: 0;
-}.automation-rule {
+}
+
+.automation-rule {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 10px;
   padding: 14px 17px;
   border-bottom: 1px solid var(--ink-100);
-}.automation-rule:last-child {
+}
+
+.automation-rule:last-child {
   border-bottom: 0;
-}.automation-rule-state {
+}
+
+.automation-rule-state {
   display: grid;
   width: 27px;
   height: 27px;
@@ -302,28 +428,42 @@
   border-radius: var(--radius-xs);
   background: var(--green-soft);
   color: var(--green);
-}.automation-rule.warning .automation-rule-state {
+}
+
+.automation-rule.warning .automation-rule-state {
   background: var(--yellow-soft);
   color: var(--yellow);
-}.automation-rule.critical .automation-rule-state {
+}
+
+.automation-rule.critical .automation-rule-state {
   background: var(--red-soft);
   color: var(--red);
-}.automation-rule strong,
+}
+
+.automation-rule strong,
 .automation-rule p,
 .automation-rule small {
   display: block;
-}.automation-rule strong {
+}
+
+.automation-rule strong {
   font-size: var(--text-xs);
-}.automation-rule p {
+}
+
+.automation-rule p {
   margin: var(--space-1) 0 0;
   color: var(--ink-600);
   font-size: var(--text-xs);
   line-height: 1.45;
-}.automation-rule small {
+}
+
+.automation-rule small {
   margin-top: 6px;
   color: var(--ink-700);
   font-size: var(--text-xs);
-}.project-context-card {
+}
+
+.project-context-card {
   width: 100%;
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -336,42 +476,60 @@
   color: var(--paper);
   text-align: left;
   cursor: pointer;
-}.project-context-card:hover {
+}
+
+.project-context-card:hover {
   background: rgba(255, 255, 255, 0.09);
   border-color: rgba(255, 255, 255, 0.16);
-}.project-context-icon {
+}
+
+.project-context-icon {
   display: grid;
   width: 34px;
   height: 34px;
   place-items: center;
   color: var(--ink-700);
-}.project-context-copy {
+}
+
+.project-context-copy {
   min-width: 0;
-}.project-context-copy strong,
+}
+
+.project-context-copy strong,
 .project-context-copy small {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}.project-context-copy strong {
+}
+
+.project-context-copy strong {
   font-size: var(--text-xs);
   font-weight: var(--weight-bold);
-}.project-context-copy small {
+}
+
+.project-context-copy small {
   margin-top: 2px;
   color: var(--ink-700);
   font-size: var(--text-xs);
-}.side-nav {
+}
+
+.side-nav {
   display: grid;
   gap: 3px;
   margin-top: 18px;
-}.nav-label {
+}
+
+.nav-label {
   padding: 0 11px 7px;
   color: var(--ink-700);
   font-size: var(--text-xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.12em;
   text-transform: uppercase;
-}.nav-button {
+}
+
+.nav-button {
   position: relative;
   display: flex;
   align-items: center;
@@ -386,14 +544,20 @@
   font-weight: var(--weight-semibold);
   text-align: left;
   cursor: pointer;
-}.nav-button:hover {
+}
+
+.nav-button:hover {
   background: rgba(255, 255, 255, 0.06);
   color: var(--paper);
-}.nav-button.active {
+}
+
+.nav-button.active {
   background: var(--paper);
   box-shadow: none;
   color: var(--paper);
-}.nav-button.active::before {
+}
+
+.nav-button.active::before {
   content: "";
   position: absolute;
   left: -10px;
@@ -401,7 +565,9 @@
   height: 20px;
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   background: var(--signal);
-}.nav-badge {
+}
+
+.nav-badge {
   min-width: 23px;
   margin-left: auto;
   padding: 3px 7px;
@@ -411,9 +577,13 @@
   font-size: var(--text-xs);
   font-weight: var(--weight-bold);
   text-align: center;
-}.sidebar-spacer {
+}
+
+.sidebar-spacer {
   flex: 1;
-}.quick-add-side {
+}
+
+.quick-add-side {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -428,11 +598,15 @@
   font-weight: var(--weight-bold);
   box-shadow: none;
   cursor: pointer;
-}.quick-add-side:hover,
+}
+
+.quick-add-side:hover,
 .ui-button--primary:hover,
 .fab:hover {
   background: var(--signal-dark);
-}.user-card {
+}
+
+.user-card {
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
@@ -446,9 +620,13 @@
   color: inherit;
   text-align: left;
   cursor: pointer;
-}.user-card:hover {
+}
+
+.user-card:hover {
   background: rgba(255, 255, 255, 0.05);
-}.avatar {
+}
+
+.avatar {
   display: grid;
   width: 35px;
   height: 35px;
@@ -458,20 +636,30 @@
   color: var(--ink-900);
   font-size: var(--text-xs);
   font-weight: var(--weight-bold);
-}.user-copy strong,
+}
+
+.user-copy strong,
 .user-copy small {
   display: block;
-}.user-copy strong {
+}
+
+.user-copy strong {
   font-size: var(--text-xs);
   font-weight: var(--weight-bold);
-}.user-copy small {
+}
+
+.user-copy small {
   margin-top: 2px;
   color: var(--ink-700);
   font-size: var(--text-xs);
-}.main-shell {
+}
+
+.main-shell {
   grid-column: 2;
   min-width: 0;
-}.topbar {
+}
+
+.topbar {
   position: sticky;
   top: 0;
   z-index: 15;
@@ -484,14 +672,18 @@
   border-bottom: 1px solid var(--ink-100);
   background: rgba(255, 255, 255, .94);
   box-shadow: none;
-}.breadcrumb {
+}
+
+.breadcrumb {
   display: flex;
   align-items: center;
   gap: 2px;
   min-width: 0;
   color: var(--ink-600);
   font-size: var(--text-xs);
-}.breadcrumb-step {
+}
+
+.breadcrumb-step {
   appearance: none;
   background: transparent;
   border: 0;
@@ -505,23 +697,35 @@
   min-width: 0;
   padding: var(--space-2);
   text-align: left;
-}.breadcrumb-step:hover,
+}
+
+.breadcrumb-step:hover,
 .breadcrumb-step:focus-visible {
   background: var(--ink-100);
-}.breadcrumb strong {
+}
+
+.breadcrumb strong {
   color: var(--ink-950);
   font-weight: var(--weight-bold);
-}.breadcrumb-arrow,
+}
+
+.breadcrumb-arrow,
 .breadcrumb-divider,
 .breadcrumb-caret {
   flex-shrink: 0;
-}.breadcrumb-caret {
+}
+
+.breadcrumb-caret {
   color: var(--ink-700);
-}.top-actions {
+}
+
+.top-actions {
   display: flex;
   align-items: center;
   gap: 10px;
-}.icon-button {
+}
+
+.icon-button {
   position: relative;
   display: grid;
   width: var(--control-h-lg);
@@ -532,9 +736,13 @@
   background: var(--paper);
   color: var(--ink-700);
   cursor: pointer;
-}.icon-button:hover {
+}
+
+.icon-button:hover {
   background: var(--ink-50);
-}.management-button.active {
+}
+
+.management-button.active {
   background: var(--green-soft);
   border-color: var(--ink-600);
   color: var(--green);
