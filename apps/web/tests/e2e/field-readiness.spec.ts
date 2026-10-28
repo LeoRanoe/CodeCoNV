@@ -56,20 +56,24 @@ test.beforeEach(async ({ page }, testInfo) => {
   await openAuthenticatedWorkspace(page);
 });
 
-test("responsive workspace keeps a multi-column tile grid without horizontal overflow", async ({ page }, testInfo) => {
+test("responsive workspace keeps readable register rows without horizontal overflow", async ({ page }, testInfo) => {
   if (testInfo.project.name === "desktop-office") await page.locator(".sidebar").getByRole("button", { name: "Workspace", exact: true }).click();
   else await page.locator(".mobile-bottom-nav").getByRole("button", { name: "Workspace", exact: true }).click();
-  const grid = page.locator(".client-workspace-grid");
+  const grid = page.locator(".workspace-launcher-grid.client-workspace-grid");
   await expect(grid).toBeVisible();
+  const rows = grid.locator(".workspace-launcher-tile.ui-list-row[data-workspace-destination]");
+  await expect(rows.first()).toBeVisible();
   const columns = await grid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").filter(Boolean).length);
-  if (testInfo.project.name === "mobile-field") expect(columns).toBe(2);
-  else if (testInfo.project.name === "tablet-field") expect(columns).toBeGreaterThanOrEqual(2);
-  else expect(columns).toBeGreaterThanOrEqual(4);
-  await expectMinimumTarget(page, ".client-workspace-grid [data-workspace-destination]");
+  if (testInfo.project.name === "mobile-field") expect(columns).toBe(1);
+  else if (testInfo.project.name === "tablet-field") expect(columns).toBe(2);
+  else expect(columns).toBe(3);
+  await expectMinimumTarget(page, ".workspace-launcher-grid [data-workspace-destination]");
+  await expect(rows.first().locator("strong")).toBeVisible();
   await expectNoHorizontalOverflow(page);
   if (testInfo.project.name === "mobile-field") {
     await page.setViewportSize({ width: 320, height: 844 });
-    await expect(grid).toHaveCSS("grid-template-columns", /\S+px \S+px/);
+    await expect.poll(() => grid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").filter(Boolean).length)).toBe(1);
+    expect(await rows.first().locator("strong").evaluate((label) => label.scrollWidth <= label.clientWidth + 1)).toBe(true);
     await expectNoHorizontalOverflow(page);
   }
 });
@@ -103,8 +107,15 @@ test("mobile navigation exposes reports, management and uncluttered report steps
   await expect(moduleMenu.getByRole("button", { name: /Sign out/ })).toBeVisible();
   await moduleMenu.getByRole("button", { name: /Reports/ }).click();
   await expect(page.getByRole("heading", { name: "Client reports" })).toBeVisible();
-  // Create, review & sign, versions & history, and the prompt library.
-  await expect(page.locator(".report-section-tabs [role='tab']")).toHaveCount(4);
+  await expect(page.locator(".report-section-tabs [role='tab']")).toHaveText([
+    "Daily report",
+    "Weekly report",
+    "Monthly report",
+    "Create report",
+    "Review & sign",
+    "Versions & history",
+    "Beyond this app",
+  ]);
   await expect(page.locator(".period-report-card")).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
@@ -220,7 +231,7 @@ test("desktop reports show one calm task area at a time and secondary actions ar
   await expect(page.locator(".workflow-grid")).toBeVisible();
   await expect(page.locator(".workflow-card.current, .workflow-card.locked, .workflow-card.complete")).toHaveCount(3);
 
-  const secondary = page.locator(".workflow-grid .secondary-button").first();
+  const secondary = page.locator(".workflow-grid .ui-button--secondary").first();
   const style = await secondary.evaluate((element) => {
     const computed = getComputedStyle(element);
     return { background: computed.backgroundColor, border: computed.borderTopColor };

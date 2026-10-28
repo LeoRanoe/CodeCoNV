@@ -1,16 +1,11 @@
 /* Shared UI vocabulary. Add ui-button plus one variant and one size to actions.
    ui-panel wraps one section; ui-stat is a ruled metric; ui-list-row is a
    record line; ui-page-header holds one page title; ui-tabs are navigation;
-   ui-status-badge communicates a record's state. Legacy button aliases below
-   let existing views migrate screen by screen. */
+   ui-status-badge communicates a record's state. */
 
-.ui-button,
-.primary-button,
-.secondary-button,
-.ghost-button,
-.danger-button {
+.ui-button {
   align-items: center;
-  border: 1px solid transparent;
+  border: 2px solid transparent;
   border-radius: var(--radius-control);
   display: inline-flex;
   font-family: inherit;
@@ -23,31 +18,44 @@
   text-decoration: none;
 }
 
-.ui-button--primary,
-.primary-button {
+.ui-button--primary {
   background: var(--signal);
-  color: var(--paper);
+  color: var(--ink-950);
 }
 
-.ui-button--secondary,
-.secondary-button {
+.ui-button--secondary {
   background: var(--paper);
   border-color: var(--border);
   color: var(--text);
 }
 
-.ui-button--quiet,
-.ghost-button {
+.ui-button--quiet {
   background: transparent;
   color: var(--text);
 }
 
-.ui-button--danger,
-.danger-button {
+.ui-button--danger {
   background: var(--paper);
   border-color: var(--red);
   color: var(--red);
 }
+
+.ui-button--secondary:hover,
+.ui-button--quiet:hover { background: var(--ink-50); }
+
+.ui-button--danger:hover { background: var(--red-soft); }
+
+.ui-button:disabled { cursor: not-allowed; }
+.ui-button--primary:disabled {
+  background: var(--ink-50);
+  border-color: var(--ink-200);
+  color: var(--ink-700);
+  opacity: 1;
+}
+
+.ui-button--secondary:disabled,
+.ui-button--quiet:disabled,
+.ui-button--danger:disabled { color: var(--ink-700); opacity: 1; }
 
 .ui-button--sm { min-height: var(--control-h-sm); }
 .ui-button--md { min-height: var(--control-h-md); }
@@ -103,3 +111,69 @@
 .ui-status-badge--amber { background: var(--yellow-soft); color: var(--yellow); }
 .ui-status-badge--green { background: var(--green-soft); color: var(--green); }
 .ui-status-badge--blue { background: var(--blue-soft); color: var(--blue); }
+
+/* Labels above headings read as plain text, not tracked capitals. */
+.eyebrow,
+.record-number,
+.company-logo-context,
+.overview-panel-heading span:first-child,
+.workspace-command-intro > div:first-child > span,
+.workspace-current-module > span,
+.workspace-launcher-toolbar > div:first-child > span,
+.prompt-library-group > h3,
+.workspace-code-group h3,
+.rapid-project-library > span,
+.readiness-summary-copy > span {
+  letter-spacing: 0;
+  text-transform: none;
+}
+.company-logo-context { color: var(--ink-700); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+
+/* Checkboxes and radios are sized for a gloved thumb, and their labels are the tap target. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--signal);
+  flex: none;
+  height: 22px;
+  width: 22px;
+}
+label:has(> input[type="checkbox"]),
+label:has(> input[type="radio"]) {
+  align-items: center;
+  cursor: pointer;
+  gap: var(--space-3);
+  min-height: var(--control-h-lg);
+}
+.report-source-checklist label { background: var(--paper); border: 1px solid var(--border); border-radius: var(--radius-control); padding: var(--space-2) var(--space-3); font-size: var(--text-sm); }
+.report-source-checklist label:hover { background: var(--ink-50); }
+
+/* Page headers align left; the secondary line is plain text unless it is a record code. */
+.ui-page-header { text-align: left; }
+.secondary-header .ui-page-header__code { font-family: inherit; font-size: var(--text-sm); }
+@media (max-width: 640px) {
+  .ui-page-header { align-items: stretch; flex-direction: column; }
+  .ui-page-header > div { text-align: left; }
+}
+
+/* No tracked capitals on labels, legends or headings; only status badges keep them. */
+body :is(small, span, legend, h2, h3, h4, label, summary, dt, th, p, strong, b, em):not([class*="badge"]):not([class*="pill"]):not([class*="chip"]):not([class*="status"]) {
+  letter-spacing: 0;
+  text-transform: none;
+}
+.ui-page-header__code { font-family: inherit; }
+
+/* Sunlight legibility: strong outlines on every control, a heavy focus ring, and
+   text that never drops below the muted ink. */
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea { border-color: var(--ink-600); }
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--ink-950);
+  outline-offset: 2px;
+}
+.ui-button--primary { border: 2px solid var(--signal-dark); font-weight: var(--weight-bold); }
+.ui-button--secondary { border-width: 2px; border-color: var(--ink-700); }
+.ui-status-badge { border: 1px solid currentColor; font-weight: var(--weight-bold); }
+@media (prefers-contrast: more) {
+  :root { --border: var(--ink-700); --muted: var(--ink-900); --line: var(--ink-500); }
+}

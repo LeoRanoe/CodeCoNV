@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Edit3, Eye, Undo2 } from "lucide-react";
+import { Edit3, Eye, Undo2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { recordAnchorId, useRecordFocus } from "@/lib/navigation/record-focus";
 import { isPendingRecordId } from "@/lib/offline/record-queue";
@@ -36,7 +36,7 @@ export function RecordList({
   useRecordFocus(focusRecordId, rows.some((row) => row.id === focusRecordId));
 
   if (!rows.length) {
-    return <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No records", "Geen registraties")}</strong><span>{empty}</span></div>;
+    return <div className="empty-list-state record-list-empty"><strong>{text("No records", "Geen registraties")}</strong><span>{empty}</span></div>;
   }
 
   return <div className="record-stack">{rows.map((row) => {
@@ -45,7 +45,7 @@ export function RecordList({
     const open = row.onOpen ?? row.open?.onOpen;
     return (
       <article
-        className={`record-row ${waiting ? "record-waiting" : ""} ${focusRecordId === row.id ? "record-focused" : ""} ${open ? "record-row-clickable" : ""}`}
+        className={`record-row ui-list-row ${waiting ? "record-waiting" : ""} ${focusRecordId === row.id ? "record-focused" : ""} ${open ? "record-row-clickable" : ""}`}
         id={recordAnchorId(row.id)}
         key={row.id}
         onClick={waiting ? undefined : open}
@@ -54,12 +54,12 @@ export function RecordList({
         <div><strong>{row.title}</strong><span>{row.meta}</span></div>
         {!waiting && (open || row.onEdit || row.onWithdraw) ? (
           <div className="record-row-actions">
-            {open ? <button className="secondary-button record-row-open" type="button" onClick={(event) => { event.stopPropagation(); open(); }}><Eye size={14} /> {row.open?.label ?? text("View", "Bekijken")}</button> : null}
-            {row.onEdit ? <button className="secondary-button record-row-edit" type="button" onClick={(event) => { event.stopPropagation(); row.onEdit?.(); }}><Edit3 size={14} /> {row.editLabel ?? text("Edit", "Bewerken")}</button> : null}
-            {row.onWithdraw ? <button className="ghost-button record-row-withdraw" type="button" onClick={(event) => { event.stopPropagation(); row.onWithdraw?.(); }}><Undo2 size={14} /> {text("Withdraw", "Intrekken")}</button> : null}
+            {open ? <button className="ui-button ui-button--secondary ui-button--sm record-row-open" type="button" onClick={(event) => { event.stopPropagation(); open(); }}><Eye size={14} /> {row.open?.label ?? text("View", "Bekijken")}</button> : null}
+            {row.onEdit ? <button className="ui-button ui-button--secondary ui-button--sm record-row-edit" type="button" onClick={(event) => { event.stopPropagation(); row.onEdit?.(); }}><Edit3 size={14} /> {row.editLabel ?? text("Edit", "Bewerken")}</button> : null}
+            {row.onWithdraw ? <button className="ui-button ui-button--quiet ui-button--sm record-row-withdraw" type="button" onClick={(event) => { event.stopPropagation(); row.onWithdraw?.(); }}><Undo2 size={14} /> {text("Withdraw", "Intrekken")}</button> : null}
           </div>
         ) : null}
-        <span className={`task-status ${waiting ? "waiting" : row.tone}`}>{row.status === pendingStatus ? text("waiting to be sent", "wacht op verzending") : row.status}</span>
+        <span className={`task-status ui-status-badge ${waiting ? "waiting" : row.tone} ${row.tone === "red" ? "ui-status-badge--red" : row.tone === "green" ? "ui-status-badge--green" : ""}`}>{row.status === pendingStatus ? text("waiting to be sent", "wacht op verzending") : row.status}</span>
       </article>
     );
   })}</div>;

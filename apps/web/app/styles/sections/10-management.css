@@ -1,0 +1,275 @@
+.external-share-shell { background: var(--ink-50); display: grid; min-height: 100dvh; padding: var(--space-6); place-items: center; }
+.external-share-card { background: var(--paper); border: 1px solid var(--ink-200); border-radius: var(--radius-md); box-shadow: none; display: grid; gap: var(--space-4); max-width: 680px; padding: var(--space-7); width: 100%; }
+.external-share-card header { align-items: center; display: flex; justify-content: space-between; }
+.external-share-brand { color: var(--red); font-size: var(--text-xs); font-weight: var(--weight-bold); letter-spacing: .12em; }
+.external-share-status { border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: var(--weight-bold); padding: 6px 9px; }
+.external-share-status.high, .external-share-status.critical { background: var(--red-soft); color: var(--red); }
+.external-share-context { align-items: center; display: flex; gap: 10px; padding: var(--space-3); }
+.external-share-context span { display: grid; gap: 2px; }
+.external-share-context small { color: var(--ink-600); }
+.external-share-card h1 { color: var(--ink-900); font-size: clamp(var(--text-xl), 5vw, var(--text-2xl)); line-height: 1.15; margin: 0; }
+.external-share-card > p { color: var(--ink-700); font-size: var(--text-md); line-height: 1.6; margin: 0; white-space: pre-wrap; }
+.external-share-meta { display: grid; gap: var(--space-2); grid-template-columns: 1fr 1fr; }
+.external-share-meta span { align-items: center; display: grid; gap: var(--space-1); grid-template-columns: auto 1fr; padding: var(--space-3); }
+.external-share-meta span b { font-size: var(--text-xs); }
+.external-share-meta span:not(b) { color: var(--ink-600); }
+.external-share-card footer { align-items: flex-start; border-top: 1px solid var(--ink-200); color: var(--ink-600); display: flex; font-size: var(--text-xs); gap: var(--space-2); padding-top: 14px; }
+.external-share-unavailable { justify-items: start; }
+.external-share-unavailable > svg { color: var(--red); }
+.external-source-image-error { align-items: center; background: var(--yellow-soft); border: 1px solid var(--ink-500); border-radius: var(--radius-md); color: var(--ink-700); display: flex; gap: 11px; padding: var(--space-4); }
+.external-source-image-error span { display: grid; gap: 3px; }
+.external-source-image-error small { color: var(--ink-600); line-height: 1.4; }
+.whatsapp-button { align-items: center; background: var(--green-soft); border: 1px solid var(--ink-600); border-radius: var(--radius-control); color: var(--green); cursor: pointer; display: inline-flex; font-weight: var(--weight-bold); gap: 6px; justify-content: center; min-height: var(--control-h-md); padding: var(--space-2) 11px; }
+.external-party-button {
+  align-items: center;
+  background: var(--paper);
+  border: 1px solid var(--green);
+  border-radius: var(--radius-control);
+  color: var(--paper);
+  cursor: pointer;
+  display: inline-flex;
+  gap: 9px;
+  min-height: var(--control-h-lg);
+  padding: var(--space-2) 13px;
+  text-align: left;
+}
+.external-party-button > span { display: grid; gap: 2px; }
+.external-party-button strong { font-size: var(--text-xs); }
+.external-party-button small { color: var(--green-soft); font-size: var(--text-xs); }
+.external-party-button:disabled { cursor: wait; opacity: .62; }
+.external-share-preflight {
+  background: var(--paper);
+  border-top: 1px solid var(--ink-200);
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+.external-share-preflight-heading { align-items: center; display: grid; gap: 10px; grid-template-columns: auto minmax(0, 1fr) auto; }
+.external-share-preflight-heading > span { background: var(--green-soft); border-radius: var(--radius-control); color: var(--green); display: grid; height: 38px; place-items: center; width: 38px; }
+.external-share-preflight-heading > div { display: grid; gap: 2px; }
+.external-share-preflight-heading strong { color: var(--ink-800); font-size: var(--text-xs); }
+.external-share-preflight-heading small { color: var(--ink-600); font-size: var(--text-xs); }
+.external-share-preflight-heading > button { background: var(--paper); border: 1px solid var(--ink-200); border-radius: var(--radius-xs); color: var(--ink-600); cursor: pointer; display: grid; height: 36px; place-items: center; width: 36px; }
+.external-share-preflight ul { color: var(--ink-700); display: grid; font-size: var(--text-xs); gap: 5px; line-height: 1.45; margin: 0; padding-left: var(--space-5); }
+.external-share-preflight > label { display: grid; gap: 5px; }
+.external-share-preflight > label span { color: var(--ink-600); font-size: var(--text-xs); font-weight: var(--weight-bold); }
+.external-share-preflight > label input { background: var(--paper); border: 1px solid var(--ink-500); border-radius: var(--radius-xs); color: var(--ink-800); font-family: var(--font-geist-mono), monospace; font-size: var(--text-xs); min-height: 42px; padding: 9px 10px; width: 100%; }
+.external-share-preflight-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.external-share-feedback { color: var(--green); font-size: var(--text-xs); font-weight: var(--weight-bold); margin: 0; }
+.active-external-shares {
+  background: var(--ink-025);
+  border-top: 1px solid var(--ink-200);
+  display: grid;
+  gap: 9px;
+  padding: var(--space-3) var(--space-4);
+}
+.active-external-shares > header { align-items: center; color: var(--ink-800); display: flex; gap: var(--space-2); }
+.active-external-shares > header > span,
+.active-external-share-row > span { display: grid; gap: 2px; }
+.active-external-shares strong { font-size: var(--text-xs); }
+.active-external-shares small { color: var(--ink-600); font-size: var(--text-xs); line-height: 1.4; }
+.active-external-share-row {
+  align-items: center;
+  background: var(--paper);
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-control);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 9px 10px;
+}
+.revoke-share-button {
+  align-items: center;
+  background: var(--canvas);
+  border: 1px solid var(--ink-600);
+  border-radius: var(--radius-control);
+  color: var(--red);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  gap: 7px;
+  justify-content: center;
+  min-height: var(--control-h-md);
+  padding: var(--space-2) 14px;
+}
+.revoke-share-button:hover { background: var(--red-soft); border-color: var(--yellow); }
+.revoke-share-confirm { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
+.revoke-share-confirm > small { flex-basis: 100%; text-align: right; }
+
+@media (max-width: 640px) {
+  .finding-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-content: stretch;
+    padding: 0 13px 13px;
+  }
+
+  .finding-actions > button,
+  .external-share-preflight-actions > button {
+    justify-content: center;
+    min-height: 48px;
+    width: 100%;
+  }
+
+  .external-party-button strong { font-size: var(--text-xs); }
+  .external-party-button small { font-size: var(--text-xs); }
+  .external-share-preflight { padding: 14px 13px; }
+  .external-share-preflight-actions { display: grid; grid-template-columns: 1fr; }
+  .active-external-shares { padding: var(--space-3) 13px; }
+  .active-external-share-row { align-items: stretch; flex-direction: column; }
+  .active-external-share-row > button,
+  .revoke-share-confirm > button { min-height: 44px; width: 100%; }
+  .revoke-share-confirm > small { text-align: left; }
+}
+
+@media (max-width: 640px) {
+  .external-share-shell { padding: 10px; }
+  .external-share-card { padding: var(--space-5); }
+  .external-share-meta { grid-template-columns: 1fr; }
+}
+
+.snap-assign-form { gap: 14px; }
+.finding-photo-capture, .external-photo-input {
+  align-items: center;
+  background: var(--ink-50);
+  border: 1px dashed var(--ink-600);
+  border-radius: var(--radius-md);
+  color: var(--ink-700);
+  cursor: pointer;
+  display: flex;
+  gap: 11px;
+  padding: 14px;
+}
+.finding-photo-capture > span, .external-photo-input > span { display: grid; flex: 1; gap: 3px; min-width: 0; }
+.finding-photo-capture strong, .external-photo-input strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.external-photo-input strong { white-space: normal; }
+.finding-photo-capture small, .external-photo-input small { color: var(--ink-700); font-size: var(--text-xs); }
+.finding-photo-capture input, .external-photo-input input { height: 1px; opacity: 0; position: absolute; width: 1px; }
+/* A photo the form asks for by name: its own labelled box, next to the field it proves.
+   The empty state is the dashed capture tile the client drew; the filled state is the
+   picture itself, which is also the way into everything written about it. */
+.named-photo-slot { display: grid; gap: 6px; min-width: 0; position: relative; }
+.named-photo-slot-label {
+  color: var(--ink-700);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+}
+.named-photo-slot-label em { color: var(--danger, var(--red)); font-style: normal; }
+.named-photo-slot-capture {
+  align-items: center;
+  background: var(--ink-50);
+  border: 1px dashed var(--ink-600);
+  border-radius: var(--radius-md);
+  color: var(--ink-700);
+  cursor: pointer;
+  display: flex;
+  gap: 11px;
+  min-height: 96px;
+  padding: 14px;
+}
+.named-photo-slot-capture > span { display: grid; flex: 1; gap: 3px; min-width: 0; }
+.named-photo-slot-capture strong { font-size: var(--text-xs); }
+.named-photo-slot-capture small { color: var(--ink-700); font-size: var(--text-xs); }
+.named-photo-slot-capture input { height: 1px; opacity: 0; position: absolute; width: 1px; }
+.named-photo-slot-filled {
+  align-items: center;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: var(--space-2);
+}
+.named-photo-slot-preview {
+  align-items: center;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+.named-photo-slot-text { display: grid; gap: 2px; min-width: 0; }
+.named-photo-slot-text strong { font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.named-photo-slot-text em {
+  align-items: center;
+  color: var(--ink-700);
+  display: inline-flex;
+  font-size: var(--text-xs);
+  font-style: normal;
+  gap: 3px;
+}
+.named-photo-slot-remove {
+  background: var(--paper);
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-control);
+  color: var(--ink-600, var(--ink-500));
+  cursor: pointer;
+  min-height: 32px;
+  min-width: 32px;
+}
+
+/* The numbered sections of the client's own paper forms, inside a record form that also
+   carries the shared document header above and below them. */
+.agreement-sections,
+.change-order-sections,
+.delay-report-sections { align-items: start; margin: var(--space-1) 0; }
+
+/* Category, type and impact stand next to each other on the client's own delay report,
+   because they are three answers about one delay, not three questions in a row. */
+.delay-choice-columns { align-items: start; }
+.delay-other-input {
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-control);
+  margin-top: 6px;
+  min-height: 34px;
+  padding: 6px 9px;
+  width: 100%;
+}
+@media (max-width: 640px) {
+  .delay-choice-columns { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Two named photos side by side — the problem and the result, the baseline and the
+   completion. On a phone they stack, because a thumbnail half a screen wide is not a
+   photo you can judge. */
+.named-photo-pair { align-items: start; }
+@media (max-width: 640px) {
+  .named-photo-pair { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* The Quality Control / Verification box of the client's own NCR form, kept together as
+   one box while it is filled in — it is one statement, signed once. */
+.ncr-verification-box {
+  background: var(--ink-025);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 9px;
+  padding: 11px;
+}
+.ncr-signature-position { max-width: 320px; }
+
+.quick-issue-presets { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.quick-issue-presets button {
+  background: var(--canvas);
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-pill);
+  color: var(--ink-700);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  padding: var(--space-2) 11px;
+}
+.quick-issue-presets button.active { background: var(--signal-soft); border-color: var(--signal); color: var(--signal-dark); font-weight: var(--weight-bold); }
+
+/*
+ * The HSE observation / issue screen the client drew: twelve numbered sections in two
+ * columns, with the head of the form on top and the action bar underneath. The numbers
+ * are the client's own — they are how the form is read out loud on site — so they are
+ * part of the heading instead of decoration.
+ */

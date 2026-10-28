@@ -92,7 +92,6 @@ export function DrawingLocationPicker({
       <section className="modal drawing-location-modal" role="dialog" aria-modal="true" aria-labelledby="drawing-location-title">
         <header className="modal-header">
           <div>
-            <p className="eyebrow">{text("Location on the drawing", "Locatie op de tekening")}</p>
             <h2 id="drawing-location-title">{activeDrawing
               ? text("Tap where this photo was taken", "Tik waar deze foto is genomen")
               : text("Choose the drawing first", "Kies eerst de tekening")}</h2>
@@ -136,7 +135,7 @@ export function DrawingLocationPicker({
               <div className="drawing-location-chosen">
                 <span><strong>{activeDrawing.original_name.replace(/\.[^.]+$/, "")}</strong><small>{buildingName(activeDrawing)}{activeDrawing.document_code ? ` · ${activeDrawing.document_code}` : ""}</small></span>
                 {drawings.length > 1 ? (
-                  <button className="ghost-button" type="button" onClick={() => { setActiveId(""); setPoint(null); setPageNumber(1); }}>
+                  <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => { setActiveId(""); setPoint(null); setPageNumber(1); }}>
                     <ChevronLeft size={15} /> {text("Choose another drawing", "Andere tekening kiezen")}
                   </button>
                 ) : null}
@@ -164,9 +163,9 @@ export function DrawingLocationPicker({
         </div>
 
         <footer className="modal-actions">
-          <button className="secondary-button" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
+          <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
           <button
-            className="primary-button"
+            className="ui-button ui-button--primary ui-button--md"
             type="button"
             disabled={!point || !activeDrawing}
             onClick={() => point && activeDrawing && save({

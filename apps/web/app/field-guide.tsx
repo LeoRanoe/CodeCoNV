@@ -484,7 +484,7 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
                     <li key={step}><span>{index + 1}</span><p>{step}</p></li>
                   ))}
                 </ol>
-                <button className="primary-button" type="button" onClick={() => openTask(selectedTask.destination)}>
+                <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={() => openTask(selectedTask.destination)}>
                   {selectedTask.action}
                 </button>
               </article>
@@ -526,7 +526,7 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
             <footer>
               <span className="field-guide-automation"><ShieldCheck size={17} /> {text("Automatic: weather, local photo safety, synchronization and daily backup.", "Automatisch: weer, lokale fotobeveiliging, synchronisatie en dagelijkse back-up.")}</span>
               <span className="field-guide-no-typing">{text("Typing is optional except for real numbers and unique document details.", "Typen is optioneel, behalve voor echte getallen en unieke documentgegevens.")}</span>
-              <button className="secondary-button" type="button" onClick={close}><CheckCircle2 size={16} /> {text("I understand", "Ik begrijp het")}</button>
+              <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={close}><CheckCircle2 size={16} /> {text("I understand", "Ik begrijp het")}</button>
             </footer>
           </section>
         </div>

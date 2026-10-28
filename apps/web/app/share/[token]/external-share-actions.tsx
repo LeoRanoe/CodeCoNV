@@ -164,7 +164,7 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
 
   return (
     <section className="external-response-panel">
-      <div className="external-response-tabs" role="tablist" aria-label="Reactie op werkpunt">
+      <div className="external-response-tabs ui-tabs" role="tablist" aria-label="Reactie op werkpunt">
         {correctionAllowed ? <button className={responseType === "proposed_correction" ? "active" : ""} type="button" onClick={() => chooseType("proposed_correction")}><PenLine size={16} /> Correctie invullen</button> : null}
         {completionAllowed ? <button className={responseType === "ready_for_verification" ? "active" : ""} type="button" onClick={() => chooseType("ready_for_verification")}><CheckCircle2 size={16} /> Gereedmelden</button> : null}
         <button className={responseType === "issue" ? "active issue" : ""} type="button" onClick={() => chooseType("issue")}><AlertTriangle size={16} /> Probleem melden</button>

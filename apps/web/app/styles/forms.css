@@ -1,1 +1,154 @@
-/* forms screen refinements. */
+/* Numbered form sections read as one ruled document instead of stacked cards. */
+.record-form-sections,
+.workforce-sections {
+  gap: 0;
+}
+
+.record-form-section {
+  background: transparent;
+  border: 0;
+  border-block-start: 1px solid var(--border);
+  border-radius: 0;
+  overflow: visible;
+}
+
+.record-form-section-heading {
+  border: 0;
+  padding: var(--space-4) 0 var(--space-2);
+}
+
+.record-form-section-number {
+  background: transparent;
+  border-radius: 0;
+  color: var(--muted);
+  font-family: var(--font-geist-mono), monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.record-form-section-body {
+  padding: 0 0 var(--space-5);
+}
+
+.record-form-section-heading h3 {
+  color: var(--text);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  text-transform: none;
+}
+
+/* Issue, HSE and NCR details share the outer document surface. Their inner
+   groups need a rule, not another card boundary. */
+.sectioned-record-form .controlled-document-context,
+.sectioned-record-form .record-derived-block {
+  background: transparent;
+  border: 0;
+  border-block-end: 1px solid var(--border);
+  border-radius: 0;
+  padding: var(--space-3) 0;
+}
+
+.sectioned-record-form .record-section {
+  background: transparent;
+  border: 0;
+  border-block-start: 1px solid var(--border);
+  border-radius: 0;
+  padding: var(--space-4) 0 0;
+}
+
+.sectioned-record-form .record-section > h3 {
+  color: var(--text);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.sectioned-record-form .record-section-number {
+  background: transparent;
+  border-radius: 0;
+  color: var(--muted);
+}
+
+.workforce-section-icon {
+  background: transparent;
+  color: var(--muted);
+}
+
+.workforce-section-count > strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.workforce-add {
+  background: transparent;
+  border: 1px solid var(--border);
+}
+
+.workforce-row {
+  border: 0;
+  border-block-end: 1px solid var(--border);
+  border-radius: 0;
+  padding-inline: 0;
+}
+
+.workforce-totals > div {
+  background: transparent;
+  border-block-start: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.workforce-totals h4 {
+  color: var(--text);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.daily-log-block {
+  border: 0;
+  border-block-start: 1px solid var(--border);
+  border-radius: 0;
+  padding: var(--space-4) 0;
+}
+
+.daily-log-block.weather {
+  background: transparent;
+  border-color: var(--border);
+}
+
+.daily-log-block h3 {
+  color: var(--text);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+@media (max-width: 640px) {
+  .operation-form .ui-button--primary,
+  .operation-form .ui-button--secondary,
+  .operation-form .ui-button--quiet {
+    min-height: var(--control-h-lg);
+  }
+}
+
+/* Record header facts read as label over value, in plain sentence case. */
+.record-derived-block small {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.record-derived-block strong { font-size: var(--text-sm); }
+
+/* Sign-in: a calm card with a clear title, roomy fields and one primary action. */
+.access-card.auth-card { padding: var(--space-8); width: min(440px, 100%); }
+.auth-card .setup-top { align-items: flex-start; display: flex; flex-wrap: wrap; gap: var(--space-3); justify-content: space-between; }
+.auth-heading h1 { color: var(--text); font-size: var(--text-xl); font-weight: var(--weight-bold); margin: var(--space-5) 0 var(--space-4); }
+.access-form .form-field input { font-size: var(--text-md); min-height: var(--control-h-lg); }
+.access-form .form-field > span { color: var(--text); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.access-submit { min-height: var(--control-h-xl); width: 100%; }
+
+/* The save bar is opaque so nothing reads through it, and it has a firm top edge. */
+.record-form-footer,
+.checklist-sticky-actions { background: var(--paper); border-top: 2px solid var(--border); }

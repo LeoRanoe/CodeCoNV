@@ -2039,7 +2039,9 @@ test("processes the annotated screens of 4 August: ordered photos, a named pin, 
   assert.doesNotMatch(drawings, /const linkOptions = useMemo/);
   assert.match(drawings, /drawing-pin-code/);
   assert.match(drawings, /drawing-pin-legend/);
-  assert.match(drawings, /registration: "amber"/);
+  assert.match(drawings, /registration: \{ en: "Daily works", nl: "Dagwerk" \}/);
+  assert.match(drawings, /className="drawing-pin"/);
+  assert.doesNotMatch(drawings, /className=\{`drawing-pin \$\{tone/);
   assert.match(styles, /\.drawing-pin-code/);
   assert.match(operations, /pendingRecord=\{pendingRecordPin\}/);
 
@@ -2280,7 +2282,7 @@ test("builds the HSE observation / issue screen the client sent, section by sect
   // sync, and the button that parks it — and a provisional number while it is written.
   assert.match(operations, /className="record-back-button"/);
   assert.match(operations, /record-sync-chip\$\{online \? "" : " offline"\}/);
-  assert.match(operations, /className="secondary-button record-heading-draft"/);
+  assert.match(operations, /className="ui-button ui-button--secondary ui-button--md record-heading-draft"/);
   assert.match(operations, /function nextRecordNumber\(existing: string\[\], prefix: string, year: string\)/);
   assert.match(operations, /Provisional · fixed on submit|Voorlopig · vast bij indienen/);
 
@@ -2484,8 +2486,8 @@ test("gives a file a name a person can read, and a phone controls it can reach",
   assert.match(styles, /\.field-guide-trigger \{ bottom: calc\(84px \+ env\(safe-area-inset-bottom\)\); \}/);
 
   // A half-transparent orange button reads as broken instead of as not-yet.
-  assert.doesNotMatch(styles, /\.primary-button:disabled \{\s*cursor: not-allowed;\s*opacity: 0\.48;/);
-  assert.match(styles, /\.primary-button:disabled \{[^}]*color: var\(--ink-500\);/);
+  assert.doesNotMatch(styles, /\.ui-button--primary:disabled \{\s*cursor: not-allowed;\s*opacity: 0\.48;/);
+  assert.match(styles, /\.ui-button--primary:disabled \{[^}]*color: var\(--ink-700\);/);
 });
 
 test("opens a stored photo on its own screen everywhere it is shown", async () => {

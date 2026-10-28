@@ -1,1 +1,41 @@
-/* field-tools screen refinements. */
+/* Field tools read as forms and ruled results rather than nested tiles. */
+.field-tool-heading .module-card-icon {
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  height: auto;
+  width: auto;
+}
+
+.agreement-fields {
+  background: transparent;
+  border: 0;
+  border-block: 1px solid var(--border);
+  border-radius: 0;
+  padding-inline: 0;
+}
+
+.calculator-results {
+  border-block: 1px solid var(--border);
+  gap: 0;
+}
+
+.calculator-results > div {
+  background: transparent;
+  border: 0;
+  border-inline-end: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.calculator-results > div:last-child {
+  border-inline-end: 0;
+}
+
+.calculator-results strong,
+.saved-notes-card article strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.saved-notes-card > .empty-list-state > svg {
+  display: none;
+}

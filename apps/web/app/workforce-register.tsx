@@ -155,7 +155,7 @@ export function WorkforceRegister({
             maxLength={100}
           />
         </label>
-        <button className="secondary-button workforce-add-button" type="button" onClick={add}>
+        <button className="ui-button ui-button--secondary ui-button--md workforce-add-button" type="button" onClick={add}>
           <Plus size={15} /> {text("Add person", "Persoon toevoegen")}
         </button>
       </div>
@@ -461,7 +461,6 @@ export function WorkforceForm({
 
   return (
     <RecordFormShell
-      code={text("Workforce", "Workforce")}
       title={text("Who is on site today?", "Wie is er vandaag op de bouwplaats?")}
       status={readOnly ? text("Read only", "Alleen lezen") : undefined}
       busy={busy}
@@ -477,7 +476,7 @@ export function WorkforceForm({
       headerAside={draftState === "restored" ? (
         <span className="daily-log-draft" role="status">
           {text("Unsaved count restored", "Niet-opgeslagen telling hersteld")}
-          <button className="ghost-button" type="button" onClick={discardDraft}>{text("Discard draft", "Concept weggooien")}</button>
+          <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={discardDraft}>{text("Discard draft", "Concept weggooien")}</button>
         </span>
       ) : null}
     >
@@ -518,7 +517,7 @@ export function WorkforceForm({
             count={workforceTotal(rows)}
             action={(
               <div className="workforce-toolbar">
-                <button className="ghost-button" type="button" disabled={previousDay === undefined} onClick={copyPrevious}>
+                <button className="ui-button ui-button--quiet ui-button--md" type="button" disabled={previousDay === undefined} onClick={copyPrevious}>
                   {previousDay === undefined ? <Loader2 className="spin" size={13} /> : <Copy size={13} />} {text("Copy previous workday", "Vorige werkdag overnemen")}
                 </button>
                 {copyNote ? <small aria-live="polite">{copyNote}</small> : null}
@@ -564,7 +563,7 @@ export function WorkforceForm({
                     maxLength={160}
                   />
                 </label>
-                <button className="secondary-button workforce-add-button" type="button" disabled={visitorDraft.visitorName.trim().length < 2} onClick={addVisitor}>
+                <button className="ui-button ui-button--secondary ui-button--md workforce-add-button" type="button" disabled={visitorDraft.visitorName.trim().length < 2} onClick={addVisitor}>
                   <Plus size={15} /> {text("Add visitor", "Bezoeker toevoegen")}
                 </button>
               </div>

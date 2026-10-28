@@ -191,7 +191,6 @@ export function OfflineManagerModal({
       <section className="modal offline-manager-modal" role="dialog" aria-modal="true" aria-labelledby="offline-manager-title">
         <header className="modal-header">
           <div>
-            <p className="eyebrow">{text("Working without a connection", "Werken zonder verbinding")}</p>
             <h2 id="offline-manager-title">{text("Offline availability", "Offline beschikbaarheid")}</h2>
             <p>{text("Download everything this account can read, for offline use.", "Download alles wat dit account kan lezen, voor offline gebruik.")}</p>
           </div>
@@ -240,7 +239,7 @@ export function OfflineManagerModal({
                 )}</strong>
                 <small>{text("Saved on this device. Sent when you're online.", "Opgeslagen op dit apparaat. Verstuurd zodra je online bent.")}</small>
               </div>
-              <button className="secondary-button" type="button" disabled={!isOnline || sendingQueue} onClick={() => void sendQueue()}>
+              <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={!isOnline || sendingQueue} onClick={() => void sendQueue()}>
                 {sendingQueue ? <Loader2 className="spin" size={15} /> : <CloudUpload size={15} />} {text("Send now", "Nu versturen")}
               </button>
               <ul>
@@ -296,15 +295,15 @@ export function OfflineManagerModal({
           {confirmingClear ? (
             <>
               <span className="offline-clear-warning">{text("Remove every downloaded project, file and unsent form draft from this device? Records, photos and drawing pins that are still waiting to be sent are kept and still sent.", "Alle opgehaalde projecten, bestanden en niet-verstuurde conceptformulieren van dit apparaat verwijderen? Registraties, foto’s en tekeningpinnen die nog wachten blijven staan en worden nog verstuurd.")}</span>
-              <button className="secondary-button" type="button" onClick={() => setConfirmingClear(false)}>{text("Cancel", "Annuleren")}</button>
-              <button className="danger-button" type="button" disabled={clearing} onClick={() => void removeOfflineCopy()}>{clearing ? <Loader2 className="spin" size={15} /> : <Trash2 size={15} />} {text("Remove", "Verwijderen")}</button>
+              <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setConfirmingClear(false)}>{text("Cancel", "Annuleren")}</button>
+              <button className="ui-button ui-button--danger ui-button--md" type="button" disabled={clearing} onClick={() => void removeOfflineCopy()}>{clearing ? <Loader2 className="spin" size={15} /> : <Trash2 size={15} />} {text("Remove", "Verwijderen")}</button>
             </>
           ) : (
             <>
-              <button className="secondary-button" type="button" disabled={busy || (!usage.files && !usage.snapshots && !summary)} onClick={() => setConfirmingClear(true)}><Trash2 size={15} /> {text("Remove offline copy", "Offline kopie verwijderen")}</button>
+              <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={busy || (!usage.files && !usage.snapshots && !summary)} onClick={() => setConfirmingClear(true)}><Trash2 size={15} /> {text("Remove offline copy", "Offline kopie verwijderen")}</button>
               {busy
-                ? <button className="secondary-button" type="button" onClick={() => abortRef.current?.abort()}>{text("Stop", "Stoppen")}</button>
-                : <button className="primary-button" type="button" disabled={!isOnline} onClick={() => void start()}><CloudDownload size={15} /> {summary ? text("Update offline copy", "Offline kopie bijwerken") : text("Make everything available offline", "Alles offline beschikbaar maken")}</button>}
+                ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => abortRef.current?.abort()}>{text("Stop", "Stoppen")}</button>
+                : <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={!isOnline} onClick={() => void start()}><CloudDownload size={15} /> {summary ? text("Update offline copy", "Offline kopie bijwerken") : text("Make everything available offline", "Alles offline beschikbaar maken")}</button>}
             </>
           )}
         </footer>

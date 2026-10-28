@@ -116,16 +116,6 @@ const linkTypeLabels: Record<DrawingPin["linked_record_type"], { en: string; nl:
   registration: { en: "Daily works", nl: "Dagwerk" },
 };
 
-const pinTypeClass: Record<DrawingPin["linked_record_type"], string> = {
-  rfi: "red",
-  submittal: "orange",
-  document: "blue",
-  observation: "purple",
-  inspection: "green",
-  visual: "cyan",
-  registration: "amber",
-};
-
 export function DrawingWorkspace({ data, projectId, buildingId, buildings, client, busy, run, initialFindingId = "", initialInspectionId = "", pendingRecord = null, onPlaceRecordPin, onOpenLinkedRecord }: DrawingWorkspaceProps) {
   const { language, locale, text } = useLanguage();
   const maxFileSizeBytes = (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024;
@@ -553,8 +543,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
       {queueError ? <p className="operation-alert error" role="alert">{queueError}</p> : null}
       <div className="visual-toolbar">
         <div>
-          <span className="record-number">{text("Drawings workspace", "Tekeningenwerkruimte")}</span>
           <h2>{text("Pins that open the exact project record", "Pins die het juiste projectrecord openen")}</h2>
+          <p>{text("Drawings workspace", "Tekeningenwerkruimte")}</p>
         </div>
       </div>
 
@@ -605,7 +595,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
           </span>
           <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp,.dwg,.pdf,.jpg,.jpeg,.png,.webp" onChange={(event) => { setUploadFile(event.target.files?.[0] ?? null); setUploadError(uploadRefusal(event.target.files?.[0] ?? null)); }} />
         </label>
-        <button className="primary-button" type="button" disabled={busy || !uploadFile || uploadFile.size > maxFileSizeBytes || (!supportedDrawingMimeTypes.includes(uploadFile.type) && !isDwgFile(uploadFile))} onClick={() => void uploadDrawing()}>
+        <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || !uploadFile || uploadFile.size > maxFileSizeBytes || (!supportedDrawingMimeTypes.includes(uploadFile.type) && !isDwgFile(uploadFile))} onClick={() => void uploadDrawing()}>
           {busy ? <Loader2 className="spin" size={15} /> : <FileUp size={15} />} {text("Upload drawing", "Tekening uploaden")}
         </button>
         {uploadError ? <p className="field-error" role="alert">{uploadError}</p> : null}
@@ -662,10 +652,9 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
               <label className="drawing-stroke-control"><span>{text("Line", "Lijn")}</span><select value={strokeWidth} onChange={(event) => setStrokeWidth(Number(event.target.value))}><option value={2}>2 px</option><option value={3}>3 px</option><option value={5}>5 px</option><option value={8}>8 px</option></select></label>
               {tool === "text" ? <label className="drawing-text-control"><span>{text("Text to place", "Te plaatsen tekst")}</span><input maxLength={500} value={markupText} onChange={(event) => setMarkupText(event.target.value)} placeholder={text("Type the drawing note", "Typ de tekeningnotitie")} /></label> : null}
             </div>
-            {/* A pin has a colour and carries its code; the legend says what a colour means. */}
-            <div className="drawing-pin-legend" aria-label={text("Pin colours", "Pinkleuren")}>
+            <div className="drawing-pin-legend" aria-label={text("Pin record types", "Pintypen registraties")}>
               {(Object.keys(linkTypeLabels) as Array<DrawingPin["linked_record_type"]>).map((type) => (
-                <span className={pinTypeClass[type]} key={type}>{linkTypeLabels[type][language]}</span>
+                <span key={type}>{linkTypeLabels[type][language]}</span>
               ))}
             </div>
             <DrawingCanvas
@@ -710,7 +699,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                       : text("Nothing is saved until you confirm.", "Er wordt niets opgeslagen tot je bevestigt.")}</span>
                   </div>
                 </div>
-                <div className="button-row"><button className="primary-button" type="button" disabled={busy} onClick={() => void placePin(point)}><MapPin size={15} /> {text("Confirm pin", "Pin bevestigen")}</button><button className="secondary-button" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button></div>
+                <div className="button-row"><button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy} onClick={() => void placePin(point)}><MapPin size={15} /> {text("Confirm pin", "Pin bevestigen")}</button><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button></div>
               </div>
             ) : point ? (
               /* A spot on the drawing is usable on its own: write the issue here, or hang
@@ -741,8 +730,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                       onChange={setSpotSignature}
                     />
                     <div className="button-row">
-                      <button className="primary-button" type="button" disabled={busy || spotIssue.title.trim().length < 3} onClick={() => void createIssueAtPoint(point)}><MapPin size={15} /> {text("Record and pin it", "Vastleggen en pinnen")}</button>
-                      <button className="secondary-button" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button>
+                      <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || spotIssue.title.trim().length < 3} onClick={() => void createIssueAtPoint(point)}><MapPin size={15} /> {text("Record and pin it", "Vastleggen en pinnen")}</button>
+                      <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button>
                     </div>
                   </>
                 ) : (
@@ -755,8 +744,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                       </select>
                     </label>
                     <div className="button-row">
-                      <button className="primary-button" type="button" disabled={busy || !spotRecord} onClick={() => void linkRecordToPoint(point)}><MapPin size={15} /> {text("Place pin", "Pin plaatsen")}</button>
-                      <button className="secondary-button" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button>
+                      <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || !spotRecord} onClick={() => void linkRecordToPoint(point)}><MapPin size={15} /> {text("Place pin", "Pin plaatsen")}</button>
+                      <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setPoint(null)}>{text("Cancel", "Annuleren")}</button>
                     </div>
                   </>
                 )}
@@ -770,7 +759,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                   <header><FileQuestion size={15} /> <strong>{text("Not on a drawing yet", "Nog niet op een tekening")}</strong> <b>{unplacedRecords.length}</b></header>
                   {unplacedRecords.map((record) => (
                     <button type="button" onClick={() => { setTool("pin"); setSpotMode("link"); setSpotRecord(record.value); }} key={record.value}>
-                      <span className={`drawing-unplaced-dot tone-${pinTypeClass[record.type]}`}><MapPin size={12} /></span>
+                      <span className="drawing-unplaced-dot"><MapPin size={12} /></span>
                       <span><strong>{record.code}</strong><small>{record.title}</small></span>
                       <ArrowUpRight size={14} />
                     </button>
@@ -1115,8 +1104,8 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
             const shownPoint = draggedPin?.id === pin.id ? draggedPin.point : { xRatio: Number(pin.x_ratio), yRatio: Number(pin.y_ratio) };
             return (
             <span className="drawing-pin-anchor" style={{ left: `${shownPoint.xRatio * 100}%`, top: `${shownPoint.yRatio * 100}%`, transform: `scale(${1 / viewport.scale})`, transformOrigin: "0 0" }} key={pin.id}>
-              <button className={`drawing-pin ${pinTypeClass[pin.linked_record_type]}`} type="button" aria-label={`${pin.linked_record_number} · ${pin.linked_record_title}`} onPointerDown={(event) => beginPinDrag(event, pin)} onPointerMove={(event) => movePinDrag(event, pin)} onPointerUp={(event) => finishPinDrag(event, pin)} onPointerCancel={(event) => { event.stopPropagation(); setDraggedPin(null); }}><span>{index + 1}</span></button>
-              <em className={`drawing-pin-code ${pinTypeClass[pin.linked_record_type]}`}>{pin.linked_record_number}</em>
+              <button className="drawing-pin" type="button" aria-label={`${pin.linked_record_number} · ${pin.linked_record_title}`} onPointerDown={(event) => beginPinDrag(event, pin)} onPointerMove={(event) => movePinDrag(event, pin)} onPointerUp={(event) => finishPinDrag(event, pin)} onPointerCancel={(event) => { event.stopPropagation(); setDraggedPin(null); }}><span>{index + 1}</span></button>
+              <em className="drawing-pin-code">{pin.linked_record_number}</em>
             </span>
             );
           })}
@@ -1193,7 +1182,7 @@ function DrawingPinDetails({ pin, onOpen, onDelete }: { pin: DrawingPin; onOpen:
   const { text } = useLanguage();
   return (
     <div className="visual-annotation-details">
-      <span className={`visual-severity-line ${pinTypeClass[pin.linked_record_type]}`} />
+      <span className="visual-severity-line" />
       <span className="record-number">{pin.linked_record_number} · {typeText(pin.linked_record_type, text)}</span>
       <h2>{pin.linked_record_title}</h2>
       {pin.note ? <p>{pin.note}</p> : null}
@@ -1201,8 +1190,8 @@ function DrawingPinDetails({ pin, onOpen, onDelete }: { pin: DrawingPin; onOpen:
         <div><dt>{text("Drawing page", "Tekeningspagina")}</dt><dd>{pin.page_number}</dd></div>
         <div><dt>{text("Exact position", "Exacte positie")}</dt><dd>X {Math.round(Number(pin.x_ratio) * 100)}% · Y {Math.round(Number(pin.y_ratio) * 100)}%</dd></div>
       </dl>
-      <button className="primary-button" type="button" onClick={onOpen}><ArrowUpRight size={15} /> {text("Open linked project record", "Open gekoppeld projectrecord")}</button>
-      <button className="secondary-button danger-button" type="button" disabled={pin.id.startsWith("pending:")} onClick={() => { if (window.confirm(text("Remove this pin from the drawing? The audit trail is retained.", "Deze pin van de tekening verwijderen? Het auditspoor blijft behouden."))) onDelete(); }}><Trash2 size={15} /> {text("Remove pin", "Pin verwijderen")}</button>
+      <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={onOpen}><ArrowUpRight size={15} /> {text("Open linked project record", "Open gekoppeld projectrecord")}</button>
+      <button className="ui-button ui-button--secondary ui-button--md ui-button--danger" type="button" disabled={pin.id.startsWith("pending:")} onClick={() => { if (window.confirm(text("Remove this pin from the drawing? The audit trail is retained.", "Deze pin van de tekening verwijderen? Het auditspoor blijft behouden."))) onDelete(); }}><Trash2 size={15} /> {text("Remove pin", "Pin verwijderen")}</button>
       <div className="operation-alert"><Link2 size={18} /><div><strong>{text("Traceable project link", "Traceerbare projectkoppeling")}</strong></div></div>
     </div>
   );

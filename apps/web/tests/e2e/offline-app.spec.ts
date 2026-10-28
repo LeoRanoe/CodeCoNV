@@ -46,7 +46,7 @@ test.describe("offline field app", () => {
     const languageSelect = coldPage.locator(".language-switcher select").first();
     await expect(languageSelect).toBeVisible();
     await languageSelect.selectOption("en");
-    await expect(coldPage.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+    await expect(coldPage.getByRole("heading", { name: "Sign in", exact: true })).toBeVisible();
 
     await context.setOffline(false);
   });

@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 
 /**
- * The grid round made tiles and cards multi-column on phone and tablet, and caught a few
+ * The workspace now uses register rows, with one column on phones and compact columns
+ * above them. The earlier grid round caught a few
  * rows it should have left alone. This walks the real stylesheet at the widths the client
  * actually holds: a filter row must never squeeze two fields onto a phone line, a tab strip
  * must keep its reading order, a list row's actions belong on one line, and nothing may
@@ -35,16 +36,16 @@ const fixture = `<main style="padding:12px">
     ${[1, 2, 3].map((index) => `<div class="workspace-module-group"><h3>Group ${index}</h3><p>A list of modules that belongs in one column on a phone.</p></div>`).join("")}
   </div>
   <section class="workspace-launcher-grid client-workspace-grid">
-    ${Array.from({ length: 10 }, (_, index) => `<button class="workspace-launcher-tile" data-workspace-destination="fixture-${index}"><strong>Long workspace destination ${index + 1}</strong><small>Field module</small></button>`).join("")}
+    ${Array.from({ length: 10 }, (_, index) => `<button class="workspace-launcher-tile ui-list-row" data-workspace-destination="fixture-${index}"><strong>Long workspace destination ${index + 1}</strong><span class="workspace-launcher-count">3</span></button>`).join("")}
   </section>
   <div class="record-stack">
     ${[1, 2].map((index) => `<article class="record-row record-row-clickable">
       <span class="action-icon"></span>
       <div><strong>Cast-in anchors · installation · Main building</strong><span>INS-2026-000${index} · Main building · 4 aug 2026</span></div>
       <div class="record-row-actions">
-        <button class="secondary-button record-row-open" type="button">Bekijken</button>
-        <button class="secondary-button record-row-edit" type="button">Bewerken</button>
-        <button class="ghost-button record-row-withdraw" type="button">Intrekken</button>
+        <button class="ui-button ui-button--secondary ui-button--md record-row-open" type="button">Bekijken</button>
+        <button class="ui-button ui-button--secondary ui-button--md record-row-edit" type="button">Bewerken</button>
+        <button class="ui-button ui-button--quiet ui-button--md record-row-withdraw" type="button">Intrekken</button>
       </div>
       <span class="task-status">in progress</span>
     </article>`).join("")}
@@ -75,7 +76,8 @@ type Measurements = {
   documentFilterColumns: number;
   documentTabsDisplay: string;
   moduleGroupColumns: number;
-  tileColumns: number;
+  moduleColumns: number;
+  clippedModuleLabels: number;
   actionRowCount: number;
   actionsHeight: number;
   dotEscapesRow: boolean;
@@ -115,7 +117,9 @@ async function measure(page: import("@playwright/test").Page, html: string): Pro
       documentFilterColumns: columns(".project-document-filters"),
       documentTabsDisplay: getComputedStyle(document.querySelector(".project-document-tabs")!).display,
       moduleGroupColumns: columns(".workspace-module-groups"),
-      tileColumns: columns(".client-workspace-grid"),
+      moduleColumns: columns(".client-workspace-grid"),
+      clippedModuleLabels: [...document.querySelectorAll(".workspace-launcher-grid .workspace-launcher-tile > strong")]
+        .filter((label) => label.scrollWidth > label.clientWidth + 1).length,
       actionRowCount: new Set(actionButtons.map((button) => Math.round(button.getBoundingClientRect().y))).size,
       actionsHeight: actions?.getBoundingClientRect().height ?? 0,
       dotEscapesRow: !dotBox || !rowBox ? true : dotBox.top < rowBox.top - 1 || dotBox.bottom > rowBox.bottom + 1,
@@ -156,8 +160,9 @@ for (const size of widths) {
     // The tab strip keeps its reading order: it scrolls on a phone instead of wrapping.
     expect(seen.documentTabsDisplay, `document tabs at ${size.width}px`).toBe(size.phone ? "flex" : "grid");
 
-    // Tiles keep the grid the round was for.
-    expect(seen.tileColumns, `tiles at ${size.width}px`).toBeGreaterThanOrEqual(2);
+    // Module rows remain readable; a phone gets one full-width row per destination.
+    expect(seen.moduleColumns, `module columns at ${size.width}px`).toBe(size.phone ? 1 : size.width <= 1024 ? 2 : 3);
+    expect(seen.clippedModuleLabels, `module names clipped at ${size.width}px`).toBe(0);
 
     // The three row actions share one line rather than becoming three stacked buttons.
     expect(seen.actionRowCount, `action rows at ${size.width}px`).toBe(1);

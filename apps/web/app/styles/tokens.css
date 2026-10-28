@@ -19,7 +19,7 @@
   --signal-soft: #fff0e4;
   --red: #bf3d32;
   --red-soft: #fff0ee;
-  --yellow: #b87500;
+  --yellow: #8a5700;
   --yellow-soft: #fff7df;
   --green: #177960;
   --green-soft: #e4f5ef;
@@ -27,10 +27,10 @@
   --blue-soft: #e9f3fb;
   --landing-yellow: #ebdf4a;
 
-  --border: var(--ink-200);
-  --line: var(--ink-200);
+  --border: var(--ink-500);
+  --line: var(--ink-300);
   --text: var(--ink-900);
-  --muted: var(--ink-600);
+  --muted: var(--ink-700);
   --surface: var(--paper);
   --primary-dark: var(--ink-900);
   --accent-soft: var(--signal-soft);
@@ -38,7 +38,7 @@
   --brand-700: var(--ink-700);
   --danger: var(--red);
 
-  --text-xs: 12px;
+  --text-xs: 14px;
   --text-sm: 14px;
   --text-md: 16px;
   --text-lg: 18px;

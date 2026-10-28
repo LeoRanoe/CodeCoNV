@@ -1,1 +1,49 @@
-/* share screen refinements. */
+/* The external response is one paper document with ruled facts and choices. */
+.external-share-context {
+  background: transparent;
+  border-block: 1px solid var(--border);
+  border-radius: 0;
+  padding-inline: 0;
+}
+
+.external-share-meta span {
+  border: 0;
+  border-block-end: 1px solid var(--border);
+  border-radius: 0;
+  padding-inline: 0;
+}
+
+.external-share-meta span b {
+  color: var(--muted);
+  text-transform: none;
+}
+
+.external-share-status {
+  background: var(--ink-50);
+  color: var(--text);
+  text-transform: none;
+}
+
+.external-response-tabs {
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+}
+
+.external-response-tabs button.active,
+.external-response-tabs button.active.issue {
+  background: transparent;
+  border-block-end-color: var(--signal);
+  color: var(--text);
+}
+
+.external-choice-grid button {
+  background: var(--paper);
+  border-radius: var(--radius-control);
+}
+
+.external-choice-grid button.active {
+  background: var(--paper);
+  border-color: var(--signal);
+  color: var(--text);
+}

@@ -448,7 +448,6 @@ export function PhotoMarkupPad({
       <section className="modal photo-markup-modal" role="dialog" aria-modal="true" aria-labelledby="photo-markup-title">
         <header className="modal-header">
           <div>
-            <p className="eyebrow">{text("Mark on the photo", "Markeren op de foto")}</p>
             <h2 id="photo-markup-title">{text("Tap the photo where the problem is", "Tik op de foto waar het probleem zit")}</h2>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
@@ -485,8 +484,8 @@ export function PhotoMarkupPad({
               <PenLine size={14} />
               <input type="range" min={2} max={12} step={1} value={penWidth} onChange={(event) => setPenWidth(Number(event.target.value))} aria-label={text("Line thickness", "Lijndikte")} />
             </label>
-            <button className="ghost-button" type="button" onClick={undo} disabled={!history.length}><Undo2 size={15} /> {text("Undo", "Ongedaan maken")}</button>
-            <button className="ghost-button" type="button" onClick={clearAll} disabled={empty}><Trash2 size={15} /> {text("Clear", "Wissen")}</button>
+            <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={undo} disabled={!history.length}><Undo2 size={15} /> {text("Undo", "Ongedaan maken")}</button>
+            <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={clearAll} disabled={empty}><Trash2 size={15} /> {text("Clear", "Wissen")}</button>
           </div>
           </div>
           <div
@@ -685,8 +684,8 @@ export function PhotoMarkupPad({
         </div>
 
         <footer className="modal-actions">
-          <button className="secondary-button" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
-          <button className="primary-button" type="button" disabled={busy || empty} onClick={() => void flatten()}>
+          <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
+          <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || empty} onClick={() => void flatten()}>
             {busy ? <Loader2 className="spin" size={15} /> : <Check size={15} />}
             {busy ? text("Saving markings…", "Markeringen opslaan…") : text("Save markings on the photo", "Markeringen op de foto opslaan")}
           </button>

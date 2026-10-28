@@ -229,6 +229,106 @@ screenshots at 1440x900 and 390x844 of every screen you changed, and list what y
 Stop and report if anything fails instead of working around it.
 ```
 
+## After — 27 October 2026
+
+The integrated `ui/deslop` branch has a shared token vocabulary, reusable CSS classes, a flatter
+overview, workspace, project picker, Management, Reports, forms, media tools, and a simpler public
+site. GitHub Actions run [40603265052](https://github.com/LeoRanoe/CodeCoNV/actions/runs/40603265052)
+passed the web, database, and authenticated Playwright jobs. Its 56 after-screenshots cover sign-in,
+project selection, six main modules, and 20 workspace destinations at 1440×900 and 390×844. The
+screenshots were reviewed for the banned patterns, and the final images are in
+[after/](ui-slop-audit/after/). Docker Desktop's Linux engine remains unavailable locally.
+
+| Measure | Before | After | Target / note |
+| --- | ---: | ---: | --- |
+| Distinct app CSS hex values | 718 | 26 | ≤ 40; values now live in `tokens.css` |
+| Defined app type sizes | 73 | 6 | 6; raw `font-size` declarations still have 18 syntax forms due to `clamp()` and `!important` |
+| Defined app weights | 18 | 3 | 3: 400, 600, 700 |
+| Defined app radii | ~20 | 3 | 3: 6 px, 10 px, pill; raw declarations have compound forms |
+| Non-`none` app shadows | 81 | 1 | 1 overlay shadow |
+| App media breakpoints | 15 | 3 | 640, 1024, 1280 px |
+| `globals.css` lines | 15,850 | 30 | Split into imports |
+| All app CSS lines, including imports | 15,850 | 14,544 | 1,306 lines shorter; ordered legacy fragments still need semantic consolidation |
+
+**Phase 5 remains incomplete.** The token definitions meet the numeric targets, but the full CSS
+has 18 distinct `font-size` declaration forms and 16 distinct radius forms after counting
+`clamp()`, compound corners, and aliases. The CSS split still uses 12 ordered legacy fragments to
+preserve declaration order; the named area files currently hold screen overrides. This does not
+complete the planned semantic one-file-per-area cleanup. The four old button aliases have been
+removed from app and test source. A conservative dead-rule pass removed 387 unused legacy rules;
+the surviving selector/declaration stream was unchanged.
+
+`stylelint` is error-level across app and landing CSS, with zero findings after the landing token
+pass. The app guardrail checks are error-level and allow exactly one photo text scrim. The numeric
+token targets pass (26 colours, 6 sizes, 3 weights, 3 radii, 1 shadow, 3 breakpoints).
+
+Screenshots after the public-site changes: [desktop](ui-slop-audit/after/landing-strict-desktop-viewport.jpg)
+and [phone](ui-slop-audit/after/landing-strict-phone-viewport.jpg). Authenticated examples:
+[Overview phone](ui-slop-audit/after/overview-phone.jpg),
+[Workspace desktop](ui-slop-audit/after/workspace-desktop.jpg),
+[Issues desktop](ui-slop-audit/after/workspace-issues-desktop.jpg),
+[Project Docs phone](ui-slop-audit/after/workspace-project-docs-phone.jpg), and
+[Drawings phone](ui-slop-audit/after/workspace-drawings-pins-phone.jpg). The original screenshots
+remain in [ui-slop-audit](ui-slop-audit/). These fixture screens do not show uploaded private media,
+live share recipients, or a real phone's camera, keyboard, and GPS.
+
+On this machine `docker info --format '{{.ServerVersion}}'` still returns: `failed to connect to the
+docker API at npipe:////./pipe/dockerDesktopLinuxEngine ... The system cannot find the file
+specified.` The CI fixture stack supplied authenticated browser verification instead.
+
+A targeted cleanup removed decorative eyebrows from the main forms and captured workspace views,
+made selection orange and record counts neutral, removed tinted empty-state icon boxes, and kept one
+orange primary action while a form is open. Error/offline views and states outside the CI fixture
+screens remain outside this visual sign-off.
+
+## Readability and navigation pass � 27 October 2026
+
+A review of the signed-in app on the local stack found regressions from the mechanical token pass,
+and fixed them:
+
+- **Invisible sidebar navigation.** The sidebar background had been mapped to white while its text
+  stayed white, so every nav label was unreadable. It is now a light surface with dark ink; orange marks
+  only the current page.
+- **Text size.** The smallest type token went from 12 px to 14 px (the scale is now 14, 16, 18, 22,
+  28 px). Most of the app was set at 12 px.
+- **Tap targets.** Workspace modules are cards of at least 84 px (72 px on phones); sidebar items are
+  48 px; action rows are at least 80 px; checkboxes and radios are 22 px with 48 px labels.
+- **Header.** One row of equal controls. The connection chip is an icon and shows text only when saving,
+  offline or in error. The weather chip is neutral. The settings gear is removed because Management is
+  in the sidebar and the phone navigation.
+- **Phone overview** counts form a two-by-two ruled block. Page headers align left. Tracked uppercase
+  labels are removed from headings, legends and record facts; status badges keep them.
+- **Project picker and sign-in** use the same light header and larger rows and fields as the workspace.
+
+### Sunlight legibility
+
+The app is used outdoors, so contrast was raised everywhere rather than in a separate mode:
+
+- Control and panel outlines use `--ink-500` (about 2.8:1 on white) instead of `--ink-200`; row hairlines use `--ink-300`.
+- Secondary text uses `--ink-700` (about 7:1); no text is lighter than that. Status amber is darker (`#8a5700`).
+- Primary actions are dark text on signal orange instead of white on orange (white on `#f07400` is 2.9:1).
+  Buttons share one 2 px border so rows of mixed buttons align. Status badges carry an outline.
+- Focus rings are 3 px dark with a 2 px offset. `prefers-contrast: more` darkens outlines and text again.
+- The save bar on forms is opaque with a firm top edge.
+
+### CSS consolidation
+
+The 12 ordered legacy fragments are replaced by 18 named, ordered sections in
+`apps/web/app/styles/sections/`, each named for its dominant area. They keep the original rule stream
+exactly (whitespace-insensitive comparison is identical). A first attempt to give each area a single
+file by moving rules between areas changed computed styles on 42 of 56 screens (form padding and gaps,
+a card's display, a position), so it was discarded. This legacy stream is interleaved, so one file per
+area needs rule-by-rule rewrites rather than a move. Computed styles of every element on all 56 audit
+screens match the pre-consolidation build (0 differences); the one-time migration scripts were removed.
+
+### Verification
+
+On the final commit: `npm run lint`, `npm test` (190 passing), `npm run test:design` (9 passing) and the
+authenticated Playwright suite against the local Supabase stack (90 passed, 57 skipped by project
+configuration, 0 failed). The 56 screenshots in [after/](ui-slop-audit/after/) were recaptured.
+Not covered by this environment: uploaded private media, live external-share recipients, and a real
+phone's camera, keyboard and GPS.
+
 ## Sources
 
 - [How to detect AI slop in your design — ux-skill wiki][wiki]

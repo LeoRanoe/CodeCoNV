@@ -171,11 +171,11 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
       <section className={`modal media-detail-modal${isPanorama ? " media-detail-modal-panorama" : ""}`} role="dialog" aria-modal="true" aria-labelledby="stored-photo-title">
         <header className="modal-header">
           <div>
-            <p className="eyebrow">{stackFiles.length > 1 ? text(`${stackFiles.length} photo stack`, `Fotostapel met ${stackFiles.length} foto's`) : capture?.capture_type === "panorama" ? "360°" : isImage ? text("Photo", "Foto") : text("File", "Bestand")}</p>
             <h2 id="stored-photo-title">{capture?.title?.trim() || readableFileLabel(file, {
               kindLabel: isImage ? text("Photo", "Foto") : text("File", "Bestand"),
               formatDate: (value) => value ? new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "America/Paramaribo" }).format(new Date(value)) : "",
             })}</h2>
+            <p>{stackFiles.length > 1 ? text(`${stackFiles.length} photo stack`, `Fotostapel met ${stackFiles.length} foto's`) : capture?.capture_type === "panorama" ? "360°" : isImage ? text("Photo", "Foto") : text("File", "Bestand")}</p>
             <p>{capture?.description?.trim() || (showFolder ? text(
               "Everything this photo carries: where it was taken, in which folder it sits and which records point at it.",
               "Alles wat deze foto met zich meedraagt: waar hij is gemaakt, in welke map hij staat en welke registraties ernaar verwijzen.",
@@ -212,18 +212,18 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
           <div className="media-detail-links">
             <strong>{text("Linked records", "Gekoppelde registraties")}</strong>
             <span className="media-origin-chips">{origins.length
-              ? origins.map((origin) => <em className={`media-origin-chip tone-${origin.kind}`} title={origin.title} key={`${origin.kind}:${origin.recordId}`}>{origin.number || origin.kind}</em>)
-              : <em className="media-origin-chip tone-unlinked">{text("Not linked to a record yet", "Nog niet aan een record gekoppeld")}</em>}</span>
+              ? origins.map((origin) => <em className="media-origin-chip" title={origin.title} key={`${origin.kind}:${origin.recordId}`}>{origin.number || origin.kind}</em>)
+              : <em className="media-origin-chip">{text("Not linked to a record yet", "Nog niet aan een record gekoppeld")}</em>}</span>
           </div>
         </div>
 
         <footer className="modal-actions media-detail-actions">
-          <button className="ghost-button" type="button" onClick={() => void downloadProjectFile(client, file.id, file.original_name)}><Download size={15} /> {text("Download", "Downloaden")}</button>
-          <button className="ghost-button" type="button" onClick={() => void openProjectFile(client, file.id, file.original_name)}><ExternalLink size={15} /> {text("Open the file", "Bestand openen")}</button>
-          {onDescribe && isImage ? <button className="ghost-button" type="button" onClick={() => onDescribe(stackFiles)}><ScanLine size={15} /> {text(stackFiles.length > 1 ? "Describe stack" : "Describe photo", stackFiles.length > 1 ? "Stapel omschrijven" : "Foto omschrijven")}</button> : null}
-          {onDelete ? <button className="ghost-button" type="button" onClick={() => onDelete(stackFiles)}><X size={15} /> {text(stackFiles.length > 1 ? "Delete stack" : "Delete", stackFiles.length > 1 ? "Stapel verwijderen" : "Verwijderen")}</button> : null}
+          <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => void downloadProjectFile(client, file.id, file.original_name)}><Download size={15} /> {text("Download", "Downloaden")}</button>
+          <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => void openProjectFile(client, file.id, file.original_name)}><ExternalLink size={15} /> {text("Open the file", "Bestand openen")}</button>
+          {onDescribe && isImage ? <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => onDescribe(stackFiles)}><ScanLine size={15} /> {text(stackFiles.length > 1 ? "Describe stack" : "Describe photo", stackFiles.length > 1 ? "Stapel omschrijven" : "Foto omschrijven")}</button> : null}
+          {onDelete ? <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => onDelete(stackFiles)}><X size={15} /> {text(stackFiles.length > 1 ? "Delete stack" : "Delete", stackFiles.length > 1 ? "Stapel verwijderen" : "Verwijderen")}</button> : null}
           {isImage && openMarking ? (
-            <button className="primary-button" type="button" disabled={busy} onClick={() => void markProblem()}>
+            <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy} onClick={() => void markProblem()}>
               <ScanLine size={15} /> {markers.length ? text("Mark another problem", "Nog een probleem markeren") : text("Mark a problem on this photo", "Probleem op deze foto markeren")}
             </button>
           ) : null}

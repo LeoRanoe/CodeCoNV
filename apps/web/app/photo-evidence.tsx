@@ -420,8 +420,8 @@ export function PhotoDetailSheet({
       <section className="modal photo-detail-modal" role="dialog" aria-modal="true" aria-labelledby="photo-detail-title">
         <header className="modal-header">
           <div>
-            <p className="eyebrow">{text(`Photo ${index + 1}`, `Foto ${index + 1}`)}</p>
             <h2 id="photo-detail-title">{text("Photo details", "Fotodetails")}</h2>
+            <p>{text(`Photo ${index + 1}`, `Foto ${index + 1}`)}</p>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
@@ -476,9 +476,9 @@ export function PhotoDetailSheet({
 
         <footer className="modal-actions">
           {onRemove
-            ? <button className="secondary-button photo-detail-remove" type="button" onClick={onRemove}><Trash2 size={15} /> {text("Remove photo", "Foto verwijderen")}</button>
+            ? <button className="ui-button ui-button--secondary ui-button--md photo-detail-remove" type="button" onClick={onRemove}><Trash2 size={15} /> {text("Remove photo", "Foto verwijderen")}</button>
             : <span />}
-          <button className="primary-button" type="button" onClick={close}><Check size={15} /> {text("Done", "Klaar")}</button>
+          <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={close}><Check size={15} /> {text("Done", "Klaar")}</button>
         </footer>
 
         {allowMarkup && marking ? (

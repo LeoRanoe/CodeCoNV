@@ -83,7 +83,7 @@
   color: var(--text);
 }
 
-.workflow-card:not(.current) .primary-button {
+.workflow-card:not(.current) .ui-button--primary {
   background: var(--paper);
   border-color: var(--border);
   color: var(--text);
@@ -115,3 +115,6 @@
     grid-column: 1 / -1;
   }
 }
+.report-check-status { font-size: var(--text-xs); font-weight: var(--weight-semibold); }
+.report-check-status.is-incomplete { color: var(--yellow); }
+.report-check-status.is-complete { color: var(--green); }
