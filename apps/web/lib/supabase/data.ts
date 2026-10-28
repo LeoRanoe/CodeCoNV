@@ -14,7 +14,7 @@ export type WorkspaceBuilding = {
   id: string;
   name: string;
   description: string;
-  progress: number;
+  progress: number | null;
   openIssues: number;
   issueCount: number;
   ncrCount: number;
@@ -33,8 +33,10 @@ export type WorkspaceProject = {
   code: string;
   location: string;
   client: string;
-  progress: number;
+  progress: number | null;
   openIssues: number;
+  /** Undefined in a workspace copy saved by an older version of the app. */
+  openCriticalFindings?: number;
   issueCount: number;
   ncrCount: number;
   inspectionCount: number;
@@ -312,12 +314,13 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
         paged((from, to) => client
           .from("day_closeouts")
           .select("project_id,building_id,progress_percent,created_at")
+          .not("progress_percent", "is", null)
           .in("project_id", projectIds)
           .order("created_at", { ascending: false })
           .order("id").range(from, to)),
         paged((from, to) => client
           .from("findings")
-          .select("project_id,building_id,finding_type,status")
+          .select("project_id,building_id,finding_type,status,severity")
           .in("project_id", projectIds)
           .in("status", ["draft", "open", "assigned", "in_progress", "ready_for_verification", "rejected", "reopened"])
           .order("id").range(from, to)),
@@ -385,7 +388,7 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
 
   const projects: WorkspaceProject[] = projectRows.map((project) => {
     const projectId = project.id as string;
-    const progress = progressByProject.get(projectId) ?? 0;
+    const progress = progressByProject.get(projectId) ?? null;
     const findings = (findingResult.data ?? []).filter((row) => row.project_id === projectId);
     // "Open actions" is what the action centre lists for the project: its actions, its open
     // findings/NCRs and the registers waiting on somebody, not only the actions table.
@@ -402,6 +405,7 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
       client: String(project.client_name ?? "Niet ingesteld"),
       progress,
       openIssues,
+      openCriticalFindings: findings.filter((row) => row.severity === "critical" && !isSettledStatus(row.status)).length,
       issueCount: findings.filter((row) => row.finding_type !== "ncr").length,
       ncrCount: findings.filter((row) => row.finding_type === "ncr").length,
       inspectionCount: (inspectionResult.data ?? []).filter((row) => row.project_id === projectId).length,
@@ -419,7 +423,8 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
             id: buildingId,
             name: String(building.name),
             description: String(building.description ?? "Projectgebouw"),
-            progress: latestProgress ? Number(latestProgress.progress_percent) : progress,
+            // A building without an entered progress has none; it does not borrow the project's.
+            progress: latestProgress ? Number(latestProgress.progress_percent) : null,
             openIssues: (actionResult.data ?? []).filter((row) => row.building_id === buildingId).length
               + buildingFindings.filter((row) => !isSettledStatus(row.status)).length
               + (worklistRegisterResult.data ?? []).filter((row) => row.building_id === buildingId).length,

@@ -266,8 +266,9 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(storageFileRoute, /access: "private"/);
   assert.match(storageFileRoute, /authenticateStorageRequest/);
   assert.match(pdfReport, /CONSTRUCTIESUPERVISIE/);
-  // Item 19 has its own signature block now, so 17–18 are the photos and attachments.
-  assert.match(pdfReport, /17–18\. Foto's en bijlagen/);
+  // Items 1–18 are tables built from the report model (tests/daily-report-model.test.mjs);
+  // item 19 has its own signature block.
+  assert.match(pdfReport, /model\.sections\.map/);
   assert.match(pdfReport, /19\. Controle, naam\/functie en ondertekening/);
   assert.match(providers, /QueryClientProvider/);
 });
@@ -820,7 +821,7 @@ test("treats every project as a multi-building workspace", async () => {
   assert.match(data, /client\.rpc\("create_building"/);
   assert.match(migration, /create or replace function public\.create_building/);
   assert.match(migration, /unique \(day_report_id, building_id\)/);
-  assert.match(dailyPdf, /snapshot\.buildings/);
+  assert.match(dailyPdf, /normalizeRecords/);
   assert.match(periodPdf, /buildingById/);
 });
 
@@ -2570,7 +2571,7 @@ test("records accountable delays and keeps project documents in one short flow",
   const [delayForm, operations, dailyPdf, periodPdf, periodDocx, projectDocuments, migration, styles] = await Promise.all([
     readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
-    readFile(new URL("../lib/reports/daily-report-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/daily-report-model.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/reports/period-report-pdf.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/reports/period-report-docx.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/project-documents-home.tsx", import.meta.url), "utf8"),

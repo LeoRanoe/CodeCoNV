@@ -1,6 +1,6 @@
 import { openSection } from "./section-nav";
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 
 /**
  * One multi-building day, end to end, through the screens a supervisor uses: start the day
@@ -49,6 +49,18 @@ async function drawSignature(page: Page) {
   await expect(page.locator(".signature-modal")).toHaveCount(0);
 }
 
+/** The text of every page of a PDF, as a reader would see it. */
+async function pdfText(path: string) {
+  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const document = await getDocument({ data: new Uint8Array(await readFile(path)), useSystemFonts: true }).promise;
+  const pages: string[] = [];
+  for (let number = 1; number <= document.numPages; number += 1) {
+    const content = await (await document.getPage(number)).getTextContent();
+    pages.push(content.items.map((item) => ("str" in item ? item.str : "")).join(" "));
+  }
+  return pages.join(" ").replace(/\s+/g, " ");
+}
+
 function dialog(page: Page): Locator {
   return page.getByRole("dialog").last();
 }
@@ -62,6 +74,9 @@ test("a two-building day is started, closed, submitted, approved, frozen, signed
   await page.getByRole("button", { name: "Start today" }).click();
   await expect(dialog(page).getByRole("heading", { name: /Start the workday/ })).toBeVisible();
   await dialog(page).getByRole("button", { name: "Install formwork" }).first().click();
+  // Nothing is filled in for the supervisor: the expected crew is entered, not assumed.
+  await expect(dialog(page).getByLabel("Expected workforce")).toHaveValue("");
+  await dialog(page).getByLabel("Expected workforce").fill("12");
   await dialog(page).getByRole("button", { name: "Start daily report centrally" }).click();
   await expect(page.getByRole("button", { name: "Start today" })).toHaveCount(0);
 
@@ -132,4 +147,19 @@ test("a two-building day is started, closed, submitted, approved, frozen, signed
   await docx.saveAs(testInfo.outputPath("documents", "formal-day-report.docx"));
   expect(pdf.suggestedFilename()).toMatch(/\.pdf$/);
   expect(docx.suggestedFilename()).toMatch(/\.docx$/);
+
+  // The PDF follows the client's 19-point form, with tables and a KPI block, from recorded data only.
+  const text = await pdfText(testInfo.outputPath("documents", "formal-day-report.pdf"));
+  for (const heading of ["1. Projectgegevens, weer en werktijden", "3. Aanwezigheid per organisatie en discipline", "4. Werkzaamheden", "6. Kwaliteitsbevindingen", "7. HSE", "12. Vertragingen", "14. Openstaande acties", "17. Foto's", "18. Bijlagen", "19. Controle, naam/functie en ondertekening"]) {
+    expect(text, heading).toContain(heading);
+  }
+  for (const kpi of ["Voortgang", "Inspecties", "Afwijkingen", "Kritiek", "Incidenten", "Open acties", "Weervertraging", "Arbeiders", "Machines"]) expect(text, kpi).toContain(kpi);
+  expect(text).toContain("Hoofdgebouw");
+  expect(text).toContain("Nieuwbouw Oost");
+  expect(text).toContain("7 personen");
+  expect(text).toContain("24 personen"); // 12 expected per building
+  // Progress was never entered for either building, so the report says so instead of showing a number.
+  expect(text).toContain("Niet geregistreerd");
+  expect(text).not.toMatch(/\b42 personen|Readi- ?ness|[a-z]+_[a-z]+/);
+  expect(text).not.toMatch(/\b1 personen/);
 });

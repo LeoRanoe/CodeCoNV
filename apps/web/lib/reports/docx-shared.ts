@@ -107,6 +107,22 @@ export function metadataTable(pairs: Array<[string, string]>, columns = 2): Tabl
   return new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE }, borders: standardTableBorders() });
 }
 
+/** A header row and body rows with column widths in percent; used for the report tables. */
+export function dataTable(columns: string[], body: string[][], widths?: number[]): Table {
+  const share = widths && widths.length === columns.length ? widths : columns.map(() => 100 / columns.length);
+  const head = new TableRow({
+    tableHeader: true,
+    children: columns.map((column, index) => gridCell([
+      new Paragraph({ children: [new TextRun({ text: column, bold: true, color: brandMuted, size: 15 })] }),
+    ], share[index], brandSectionFill)),
+  });
+  const lines = body.map((row) => new TableRow({
+    cantSplit: true,
+    children: row.map((cell, index) => gridCell([new Paragraph({ children: [new TextRun({ text: cell || "—", size: 16 })] })], share[index])),
+  }));
+  return new Table({ rows: [head, ...lines], width: { size: 100, type: WidthType.PERCENTAGE }, borders: standardTableBorders() });
+}
+
 /**
  * A row of signature fields, each with the written signature — or a blank line to sign —
  * above the printed name; mirrors the PDF signature blocks.

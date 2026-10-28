@@ -1,8 +1,10 @@
-import { Document, Paragraph } from "docx";
-import { reportDay, reportDelayCause, reportInspection, reportMoment, reportRole, reportVariation, reportWeather, reportWind } from "@/lib/reports/report-vocabulary";
+import { Document, Paragraph, type Table } from "docx";
+import { buildDailyReportModel } from "@/lib/reports/daily-report-model";
+import { reportMoment, reportRole } from "@/lib/reports/report-vocabulary";
 import {
   bodyText,
   brandHeader,
+  dataTable,
   documentFooter,
   downloadDocxBlob,
   labelValue,
@@ -12,10 +14,6 @@ import {
   signatureBlock,
 } from "@/lib/reports/docx-shared";
 import { immutableDailySnapshot, type DailyReportPdfSnapshot, type FormalReportSnapshot, type ReportSignatureLine } from "@/lib/reports/daily-report-pdf";
-
-function section(title: string, ...body: Paragraph[]): Paragraph[] {
-  return [sectionHeading(title), ...body];
-}
 
 /** Three signature columns; a role that has not signed keeps an empty line. */
 function signatureFields(signatures: ReportSignatureLine[]): Array<[string, string, (string | null)?]> {
@@ -35,34 +33,21 @@ function signatureFields(signatures: ReportSignatureLine[]): Array<[string, stri
 }
 
 export function buildDailyReportDocxDocument(snapshot: DailyReportPdfSnapshot, logoBytes: ArrayBuffer): Document {
-  const { projectStart: start, closeout } = snapshot;
-  const metadata: Array<[string, string]> = [
-    ["Rapport", snapshot.reportNumber],
-    ["Datum", reportDay(snapshot.reportDate)],
-    ["Project", `${snapshot.projectCode} · ${snapshot.projectName}`],
-    ["Gebouw", snapshot.buildingName],
-    ["Locatie", snapshot.location],
-    ["Supervisor", snapshot.supervisorName],
-  ];
-  if (snapshot.formal) metadata.push(["Snapshot SHA-256", `${snapshot.formal.sha256.slice(0, 16)}…`]);
-
-  const buildingSections = snapshot.buildings?.length
-    ? [
-        sectionHeading("Dagrapport · per gebouw"),
-        ...snapshot.buildings.flatMap((building) => [
-          sectionHeading(building.name),
-          labelValue("Weer", `${reportWeather(building.projectStart.weatherCondition)}; ${building.projectStart.temperatureC} °C`),
-          labelValue("Werk lopend", building.closeout.workOngoing || "Niet geregistreerd"),
-          labelValue("Werk afgerond", building.closeout.workPerformed),
-          labelValue("Voortgang", `${building.closeout.progressPercent}%`),
-          labelValue("Kwaliteit", building.closeout.qualityIssues === "yes" ? building.closeout.qualityDetails : "Geen afwijking gemeld"),
-          labelValue("HSE", building.closeout.hseEvent === "none" ? "Geen incident of near miss gemeld" : building.closeout.hseDetails),
-          labelValue("Vertraging", building.closeout.delayCause === "none" ? "Geen vertraging" : `${reportDelayCause(building.closeout.delayCause)}; ${building.closeout.delayHours} uur · ${building.closeout.delayReason || "geen reden"}`),
-          ...(building.closeout.contractorSignedBy ? [signatureBlock([["Aannemer", `${building.closeout.contractorSignedBy} · ${building.closeout.contractorCompany || ""} · ${reportMoment(building.closeout.contractorSignedAt)}`, building.closeout.contractorSignatureImage ?? null]])] : []),
-          labelValue("Planning morgen", building.closeout.tomorrowPlan),
-        ]),
-      ]
-    : [];
+  const model = buildDailyReportModel(snapshot.records);
+  const body: Array<Paragraph | Table> = [];
+  for (const section of model.sections) {
+    body.push(sectionHeading(`${section.number}. ${section.title}`));
+    for (const [label, value] of section.facts ?? []) body.push(labelValue(label, value));
+    for (const paragraph of section.paragraphs ?? []) body.push(bodyText(paragraph));
+    for (const { caption, table } of section.tables ?? []) {
+      if (caption) body.push(bodyText(caption));
+      body.push(dataTable(table.columns, table.rows, table.widths));
+    }
+    if (section.signatures?.length) {
+      body.push(signatureBlock(section.signatures.map((signature): [string, string, (string | null)?] => [signature.label, `${signature.name}${signature.signedAt ? ` · ${reportMoment(signature.signedAt)}` : ""}`, signature.image])));
+    }
+    if (section.empty && !section.tables?.length) body.push(bodyText(section.empty));
+  }
 
   return new Document({
     title: `${snapshot.reportNumber} - ${snapshot.projectName}`,
@@ -71,55 +56,18 @@ export function buildDailyReportDocxDocument(snapshot: DailyReportPdfSnapshot, l
       {
         footers: { default: documentFooter("CODECO Supervisie · gegenereerd uit de centrale projectadministratie") },
         children: [
-          ...brandHeader(logoBytes, "Dagrapport", snapshot.formal ? `Formele, onveranderbare revisie ${snapshot.formal.revision}` : "Vaste, controleerbare samenvatting uit bevestigde projectregistraties"),
-          metadataTable(metadata, 3),
-          ...section("1. Projectinformatie, weer en werkuren",
-            labelValue("Weer", `${reportWeather(start.weatherCondition)}; ${start.temperatureC} °C; wind ${reportWind(start.windCondition)}`),
-            labelValue("Werkuren", `${start.shiftStart}–${start.shiftEnd}`),
-            labelValue("Verwachte bezetting", start.expectedWorkers),
-          ),
-          ...section("2. Samenvatting van de dag", bodyText(closeout.daySummary)),
-          ...section("3–4. Aanwezigheid, werkzaamheden en voortgang",
-            labelValue("Aanwezig", `${snapshot.attendanceTotal} personen`),
-            labelValue("Werk lopend", closeout.workOngoing || "Niet geregistreerd"),
-            labelValue("Werk afgerond", closeout.workPerformed),
-            labelValue("Voortgang", `${closeout.progressPercent}%`),
-          ),
-          ...section("5–7. Inspecties, kwaliteit en HSE",
-            labelValue("Inspecties", reportInspection(closeout.inspectionResult)),
-            labelValue("Kwaliteit", closeout.qualityIssues === "yes" ? closeout.qualityDetails : "Geen afwijking gemeld"),
-            labelValue("HSE", closeout.hseEvent === "none" ? "Geen incident of near miss gemeld" : closeout.hseDetails),
-          ),
-          ...section("8–12. Materieel, leveringen, testen, wijzigingen en vertraging",
-            labelValue("Materieel", closeout.equipmentStatus),
-            labelValue("Leveringen", closeout.deliveries),
-            labelValue("Testen/meten", closeout.testsMeasurements),
-            labelValue("Wijzigingswerk", reportVariation(closeout.variationWork)),
-            labelValue("Vertraging", closeout.delayCause === "none" ? "Geen vertraging" : `${reportDelayCause(closeout.delayCause)}; ${closeout.delayHours} uur`),
-            ...(closeout.delayCause !== "none" ? [
-              labelValue("Reden vertraging", closeout.delayReason),
-              labelValue("Aannemersbedrijf", closeout.contractorCompany),
-            ] : []),
-          ),
-          ...(closeout.delayCause !== "none" ? [signatureBlock([["Handtekening aannemer", `${closeout.contractorSignedBy || ""} · ${reportMoment(closeout.contractorSignedAt)}`, closeout.contractorSignatureImage ?? null]])] : []),
-          ...section("13–16. Communicatie, acties, risico's en morgen",
-            labelValue("Communicatie", closeout.communication),
-            labelValue("Registraties", `${snapshot.registrationCount} dagregistraties`),
-            labelValue("Risico's", closeout.risks),
-            labelValue("Planning morgen", closeout.tomorrowPlan),
-          ),
-          ...section("17–18. Foto's en bijlagen",
-            labelValue("Foto's", closeout.photoCount),
-            labelValue("Bijlagen", closeout.attachmentsConfirmed ? "Door supervisor gecontroleerd" : "Nog niet bevestigd"),
-            bodyText(snapshot.formal
-              ? `Dit Word-document is uitsluitend opgebouwd uit de onveranderbare momentopname van ${reportMoment(snapshot.formal.frozenAt)}. Volledige SHA-256: ${snapshot.formal.sha256}`
-              : "Werkversie uit bevestigde dagregistraties. Formele status staat in de rapporthistorie."),
-          ),
+          ...brandHeader(logoBytes, "Dagrapport", snapshot.formal ? `Formele, onveranderbare revisie ${snapshot.formal.revision}` : "Conceptversie uit de actuele projectregistraties · nog niet vastgezet"),
+          metadataTable(model.head, 3),
+          sectionHeading("Kerncijfers"),
+          metadataTable(model.kpis.map((kpi): [string, string] => [kpi.label, kpi.value]), 5),
+          ...body,
           // Item 19 of the client's day report: control, name/position and signature.
           sectionHeading("19. Controle, naam/functie en ondertekening"),
           signatureBlock(signatureFields(snapshot.signatures ?? [])),
           ...(snapshot.signatures ?? []).map((signature) => bodyText(`${signature.name} · ${reportRole(signature.role)}: “${signature.declaration}”`)),
-          ...buildingSections,
+          bodyText(snapshot.formal
+            ? `Dit Word-document is uitsluitend opgebouwd uit de onveranderbare momentopname van ${reportMoment(snapshot.formal.frozenAt)}. Volledige SHA-256: ${snapshot.formal.sha256}`
+            : "Werkversie uit de actuele dagregistraties. De formele status staat in de rapporthistorie."),
         ],
       },
     ],
@@ -129,7 +77,7 @@ export function buildDailyReportDocxDocument(snapshot: DailyReportPdfSnapshot, l
 export async function downloadDailyReportDocx(snapshot: DailyReportPdfSnapshot): Promise<void> {
   const logoBytes = await loadLogoImageBytes();
   const doc = buildDailyReportDocxDocument(snapshot, logoBytes);
-  await downloadDocxBlob(doc, `${snapshot.reportNumber}.docx`);
+  await downloadDocxBlob(doc, `${snapshot.reportNumber}${snapshot.draft ? "-concept" : ""}.docx`);
 }
 
 export async function downloadFormalReportDocx(snapshot: FormalReportSnapshot, revision: number, sha256: string, signatures: ReportSignatureLine[] = []): Promise<void> {

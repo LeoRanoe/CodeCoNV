@@ -12,7 +12,8 @@ export function createProjectStartSchema(language: "en" | "nl" = "en") {
     shiftStart: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, text("Use hh:mm", "Gebruik uu:mm")),
     shiftEnd: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, text("Use hh:mm", "Gebruik uu:mm")),
     plannedWork: z.string().trim().min(3, text("Choose the planned work", "Kies de geplande werkzaamheden")),
-    expectedWorkers: z.number().int().min(0).max(10000),
+    // Empty until the supervisor fills it in: an invented default is not a plan.
+    expectedWorkers: z.number().int().min(0).max(10000).nullable(),
     inspectionPlanned: yesNoSchema,
     highRiskWork: yesNoSchema,
     concreteWork: yesNoSchema,
@@ -51,7 +52,8 @@ export function createDailyCloseoutSchema(language: "en" | "nl" = "en") {
     weatherSummary: z.string().trim().min(5, text("Describe the actual weather", "Beschrijf het werkelijke weer")).max(180),
     workOngoing: z.string().trim().max(1200).optional(),
     workPerformed: z.string().trim().min(10, text("Describe the work performed", "Beschrijf de uitgevoerde werkzaamheden")).max(1200),
-    progressPercent: z.number().min(0).max(100),
+    // Empty until entered for this building; nothing is carried over from another one.
+    progressPercent: z.number().min(0).max(100).nullable(),
     inspectionResult: z.enum(["none", "all_ok", "issues"]),
     qualityIssues: yesNoSchema,
     qualityDetails: z.string().trim().max(1000).optional(),

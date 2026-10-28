@@ -69,6 +69,7 @@ import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { VisualEvidenceWorkspace } from "@/app/visual-evidence-workspace";
 import { DailyWorkRegister, type DailyWorkView } from "@/app/daily-work-register";
 import type { DayLogFocus, DayLogToday } from "@/app/daily-log-modal";
+import { recordInBuilding } from "@/lib/forms/closeout-from-today";
 import { reportDateInSuriname } from "@/lib/supabase/data";
 import { DrawingWorkspace } from "@/app/drawing-workspace";
 import { FieldTools } from "@/app/field-tools";
@@ -2968,15 +2969,17 @@ function ProjectOperations({
   /** What the other modules recorded today, for the quality and safety blocks of the day log. */
   const todayInSuriname = reportDateInSuriname();
   const isToday = (...values: Array<string | null | undefined>) => values.some((value) => Boolean(value) && reportDateInSuriname(new Date(value!)) === todayInSuriname);
+  /** A record belongs to the building being reported, also when it is filed under several. */
+  const inBuilding = (record: { building_ids?: string[]; building_id?: string | null }) => recordInBuilding(record, buildingId, ALL_BUILDINGS);
   const dayLogToday: DayLogToday = {
     inspections: data.inspections
-      .filter((inspection) => isToday(inspection.started_at, inspection.completed_at, inspection.planned_at))
+      .filter((inspection) => inBuilding(inspection) && isToday(inspection.started_at, inspection.completed_at, inspection.planned_at))
       .map((inspection) => ({ id: inspection.id, code: inspection.inspection_number, title: inspection.title, status: inspection.status })),
     findings: data.findings
-      .filter((finding) => finding.status !== "cancelled" && isToday(finding.created_at))
+      .filter((finding) => inBuilding(finding) && finding.status !== "cancelled" && isToday(finding.created_at))
       .map((finding) => ({ id: finding.id, code: finding.finding_number, title: finding.title, type: finding.finding_type === "ncr" ? "ncr" as const : "issue" as const })),
     hse: data.hseEvents
-      .filter((event) => event.status !== "cancelled" && isToday(event.occurred_at))
+      .filter((event) => inBuilding(event) && event.status !== "cancelled" && isToday(event.occurred_at))
       .map((event) => ({ id: event.id, code: event.event_number, title: event.title, eventType: event.event_type })),
   };
   /** The counted days of the Workforce register: one line per day and building. */

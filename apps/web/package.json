@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "start:e2e": "next build && next start",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs tests/field-workflows.test.mjs tests/drawing-viewport.test.mjs tests/observability.test.mjs tests/legacy-redirects.test.mjs tests/user-facing-error.test.mjs tests/report-vocabulary.test.mjs tests/status-labels.test.mjs tests/niche-feature-hardening.test.mjs tests/controlled-document-signatures.test.mjs tests/open-work.test.mjs tests/page-all.test.mjs tests/session-rejection.test.mjs",
+    "test": "npm run build && node --test tests/rendered-html.test.mjs tests/field-workflows.test.mjs tests/drawing-viewport.test.mjs tests/observability.test.mjs tests/legacy-redirects.test.mjs tests/user-facing-error.test.mjs tests/report-vocabulary.test.mjs tests/status-labels.test.mjs tests/niche-feature-hardening.test.mjs tests/controlled-document-signatures.test.mjs tests/open-work.test.mjs tests/daily-report-model.test.mjs tests/page-all.test.mjs tests/session-rejection.test.mjs",
     "test:niche": "node --test tests/niche-feature-hardening.test.mjs tests/drawing-viewport.test.mjs tests/field-workflows.test.mjs",
     "test:e2e": "playwright test",
     "lint": "eslint app lib tests next.config.ts && npm run lint:styles",

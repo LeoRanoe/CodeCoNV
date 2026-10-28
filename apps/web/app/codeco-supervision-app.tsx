@@ -144,7 +144,7 @@ import {
   type WorkspaceBuilding,
   type WorkspaceProject,
 } from "@/lib/supabase/data";
-import type { DailyReportPdfSnapshot } from "@/lib/reports/daily-report-pdf";
+import type { DailyReportPdfSnapshot, FormalReportSnapshot } from "@/lib/reports/daily-report-pdf";
 import type { CurrentProjectWeather } from "@/lib/weather";
 
 function CompanyLogo({ subtitle }: { subtitle?: string }) {
@@ -291,7 +291,7 @@ function projectStartFromRow(row: Record<string, unknown> | null): ProjectStartA
     shiftStart: String(row.shift_start).slice(0, 5),
     shiftEnd: String(row.shift_end).slice(0, 5),
     plannedWork: String(row.planned_work),
-    expectedWorkers: Number(row.expected_workers),
+    expectedWorkers: row.expected_workers === null || row.expected_workers === undefined ? null : Number(row.expected_workers),
     inspectionPlanned: row.inspection_planned ? "yes" : "no",
     highRiskWork: row.high_risk_work ? "yes" : "no",
     concreteWork: row.concrete_work ? "yes" : "no",
@@ -309,7 +309,7 @@ function closeoutFromRow(row: Record<string, unknown> | null): DailyCloseoutAnsw
     weatherSummary: String(row.weather_summary),
     workOngoing: String(row.work_ongoing ?? ""),
     workPerformed: String(row.work_performed),
-    progressPercent: Number(row.progress_percent),
+    progressPercent: row.progress_percent === null || row.progress_percent === undefined ? null : Number(row.progress_percent),
     inspectionResult: row.inspection_result as DailyCloseoutAnswers["inspectionResult"],
     qualityIssues: row.quality_issues ? "yes" : "no",
     qualityDetails: String(row.quality_details ?? ""),
@@ -848,10 +848,6 @@ export function CodecoSupervisionApp() {
     };
   }, [queryClient, reportDate, selectedProject, session, supabase]);
 
-  const attendanceTotal = useMemo(
-    () => attendance.reduce((total, row) => total + row.count, 0),
-    [attendance],
-  );
   const projectAttendanceTotal = useMemo(
     () => (dayQuery.data?.attendance ?? []).reduce((total, row) => total + Number(row.headcount ?? 0), 0),
     [dayQuery.data],
@@ -1348,31 +1344,17 @@ export function CodecoSupervisionApp() {
       ? projectStartAnswers
       : projectStartFromRow(dayQuery.data?.startChecks.find((row) => row.building_id === contextBuilding?.id) ?? null);
 
-  const buildDraftReportSnapshot = (): DailyReportPdfSnapshot | null => {
-    if (!selectedProject || !selectedBuilding || !projectStartAnswers || !dailyCloseoutAnswers) return null;
-    const buildingsBreakdown = selectedProject.buildings.length > 1
-      ? selectedProject.buildings
-          .map((building) => {
-            const start = projectStartFromRow(dayQuery.data?.startChecks.find((row) => row.building_id === building.id) ?? null);
-            const closeout = closeoutFromRow(dayQuery.data?.closeouts.find((row) => row.building_id === building.id) ?? null);
-            return start && closeout ? { name: building.name, projectStart: start, closeout } : null;
-          })
-          .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
-      : undefined;
-    return {
-      reportNumber: String(dayQuery.data?.report?.report_number ?? `DR-${reportDate.replaceAll("-", "")}`),
-      reportDate,
-      projectName,
-      projectCode: selectedProject.code,
-      buildingName,
-      location: selectedProject.location,
-      supervisorName: currentUserName,
-      attendanceTotal,
-      registrationCount: entries.length,
-      projectStart: projectStartAnswers,
-      closeout: dailyCloseoutAnswers,
-      buildings: buildingsBreakdown,
-    };
+  /**
+   * The working report is built by the server from the rows as they are now, the same way the
+   * frozen version is, so the draft and the final document have the same tables.
+   */
+  const buildDraftReportSnapshot = async (): Promise<DailyReportPdfSnapshot | null> => {
+    const reportId = dayQuery.data?.report?.id;
+    if (!supabase || !reportId) return null;
+    const result = await supabase.rpc("build_day_report_snapshot", { p_day_report_id: String(reportId) });
+    if (result.error || !result.data) throw result.error ?? new Error("The report could not be prepared.");
+    const { draftDailySnapshot } = await import("@/lib/reports/daily-report-pdf");
+    return draftDailySnapshot(result.data as FormalReportSnapshot);
   };
 
   /**
@@ -2003,6 +1985,7 @@ export function CodecoSupervisionApp() {
           close={() => setModal(null)}
           entries={entries}
           attendanceTotal={projectAttendanceTotal}
+          criticalFindings={selectedProject?.openCriticalFindings}
           reportNumber={reportNumber}
           reportStatus={String(dayQuery.data?.report?.status ?? "draft")}
           dailyCloseoutAnswers={dailyCloseoutAnswers}
@@ -2012,14 +1995,14 @@ export function CodecoSupervisionApp() {
           openDayLog={openDayLog}
           openProjectStart={() => { setModal(null); openProjectStartForAllBuildings(); }}
           onDownload={async () => {
-            const snapshot = buildDraftReportSnapshot();
+            const snapshot = await buildDraftReportSnapshot().catch((caught) => { setToast(userFacingError(caught, text)); return null; });
             if (!snapshot) return;
             const { downloadDailyReportPdf } = await import("@/lib/reports/daily-report-pdf");
             await downloadDailyReportPdf(snapshot);
             setToast(text("Draft PDF generated.", "Concept-PDF gemaakt."));
           }}
           onDownloadDocx={async () => {
-            const snapshot = buildDraftReportSnapshot();
+            const snapshot = await buildDraftReportSnapshot().catch((caught) => { setToast(userFacingError(caught, text)); return null; });
             if (!snapshot) return;
             const { downloadDailyReportDocx } = await import("@/lib/reports/daily-report-docx");
             await downloadDailyReportDocx(snapshot);
@@ -2629,7 +2612,7 @@ function ProjectStartForm({
       shiftStart: defaultShiftStart,
       shiftEnd: defaultShiftEnd,
       plannedWork: "",
-      expectedWorkers: 42,
+      expectedWorkers: null,
       inspectionPlanned: "yes",
       highRiskWork: "no",
       concreteWork: "yes",
@@ -2732,7 +2715,7 @@ function ProjectStartForm({
               <label className="form-field"><span>{text("Wind", "Wind")}</span><select {...register("windCondition")}><option value="calm">{text("Calm", "Kalm")}</option><option value="moderate">{text("Moderate", "Matig")}</option><option value="strong">{text("Strong", "Sterk")}</option></select></label>
               <label className="form-field"><span>{text("Shift start", "Start werktijd")}</span><input type="time" {...register("shiftStart")} />{errors.shiftStart ? <small className="field-error">{errors.shiftStart.message}</small> : null}</label>
               <label className="form-field"><span>{text("Shift end", "Einde werktijd")}</span><input type="time" {...register("shiftEnd")} />{errors.shiftEnd ? <small className="field-error">{errors.shiftEnd.message}</small> : null}</label>
-              <div className="form-field"><label htmlFor="expected-workers">{text("Expected workforce", "Verwachte bezetting")}</label><span className="input-with-unit"><input id="expected-workers" type="number" {...register("expectedWorkers", { valueAsNumber: true })} /><em>{text("people", "personen")}</em></span><span className="period-date-presets">{[10, 20, 30, 40, 50].map((count) => <button type="button" onClick={() => setValue("expectedWorkers", count, { shouldDirty: true, shouldValidate: true })} key={count}>{count}</button>)}</span></div>
+              <div className="form-field"><label htmlFor="expected-workers">{text("Expected workforce", "Verwachte bezetting")}</label><span className="input-with-unit"><input id="expected-workers" type="number" min={0} inputMode="numeric" {...register("expectedWorkers", { setValueAs: (value) => value === "" || value === null || value === undefined ? null : Number(value) })} /><em>{text("people", "personen")}</em></span><span className="period-date-presets">{[10, 20, 30, 40, 50].map((count) => <button type="button" onClick={() => setValue("expectedWorkers", count, { shouldDirty: true, shouldValidate: true })} key={count}>{count}</button>)}</span></div>
             </div>
           </section>
 
@@ -3482,6 +3465,7 @@ function ReportModal({
   close,
   entries,
   attendanceTotal,
+  criticalFindings,
   reportNumber,
   reportStatus,
   dailyCloseoutAnswers,
@@ -3497,6 +3481,8 @@ function ReportModal({
   close: () => void;
   entries: TimelineEntry[];
   attendanceTotal: number;
+  /** Open critical findings of the project, from the records; undefined when it is not known. */
+  criticalFindings?: number;
   reportNumber: string;
   reportStatus: string;
   dailyCloseoutAnswers: DailyCloseoutAnswers | null;
@@ -3560,7 +3546,12 @@ function ReportModal({
               was never saved anywhere. */}
           <div className="report-summary-box">
             <strong>{text("In this report", "In dit rapport")}</strong>
-            <p>{text(`${attendanceTotal} ${attendanceTotal === 1 ? "person" : "people"} · ${entries.length} daily records · ${entries.filter((entry) => entry.kind === "inspection").length} inspections · ${entries.filter((entry) => entry.badgeTone === "red").length} critical`, `${attendanceTotal} ${attendanceTotal === 1 ? "persoon" : "personen"} · ${entries.length} dagregistraties · ${entries.filter((entry) => entry.kind === "inspection").length} inspecties · ${entries.filter((entry) => entry.badgeTone === "red").length} kritiek`)}</p>
+            <p>{[
+              `${attendanceTotal} ${attendanceTotal === 1 ? text("person", "persoon") : text("people", "personen")}`,
+              `${entries.length} ${text("daily records", "dagregistraties")}`,
+              `${entries.filter((entry) => entry.kind === "inspection").length} ${text("inspections", "inspecties")}`,
+              ...(criticalFindings === undefined ? [] : [`${criticalFindings} ${text("open critical", "open kritiek")}`]),
+            ].join(" · ")}</p>
             {dailyCloseoutAnswers?.daySummary ? <p>{dailyCloseoutAnswers.daySummary}</p> : null}
           </div>
           <div className="modal-actions">
