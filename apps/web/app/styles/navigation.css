@@ -44,6 +44,19 @@
   font-weight: var(--weight-bold);
 }
 
+/* Three equal tabs on a phone: the name wraps at its spaces under the count; the icon steps aside
+   so the words keep the width. (The Action center used to be split across three conflicting rules.) */
+@media (max-width: 640px) {
+  .section-nav--segmented > button {
+    flex-direction: column;
+    gap: 0;
+    line-height: 1.2;
+    padding: var(--space-1);
+  }
+  .section-nav--segmented > button svg { display: none; }
+  .section-nav--segmented > button .section-nav__label { overflow-wrap: break-word; }
+}
+
 /* Bar: text on a rule, the current section carries a heavy orange underline. */
 .section-nav--bar {
   border-bottom: 2px solid var(--line);

@@ -1009,8 +1009,8 @@ export function PanoramaViewer({ imageUrl, annotations, pendingPoint, focusAnnot
           <button type="button" onClick={() => viewerRef.current?.zoomOut(10)} aria-label={text("Zoom out", "Uitzoomen")}><ZoomOut size={15} /></button>
           <button type="button" onClick={() => viewerRef.current?.zoomIn(10)} aria-label={text("Zoom in", "Inzoomen")}><ZoomIn size={15} /></button>
           <button type="button" onClick={resetView}><RotateCcw size={14} /> {text("Reset view", "Beginstand")}</button>
-          <button className={autorotating ? "active" : ""} type="button" onClick={toggleAutorotate}>{autorotating ? <Pause size={14} /> : <Play size={14} />} {text("Auto turn", "Vanzelf draaien")}</button>
-          {gyroscope !== "unavailable" ? <button className={gyroscope === "on" ? "active" : ""} type="button" onClick={toggleGyroscope}><Move3d size={14} /> {text("Move phone to look", "Kijken met de telefoon")}</button> : null}
+          <button className={autorotating ? "active" : ""} type="button" aria-pressed={autorotating} onClick={toggleAutorotate}>{autorotating ? <Pause size={14} /> : <Play size={14} />} {text("Auto turn", "Vanzelf draaien")}</button>
+          {gyroscope !== "unavailable" ? <button className={gyroscope === "on" ? "active" : ""} type="button" aria-pressed={gyroscope === "on"} onClick={toggleGyroscope}><Move3d size={14} /> {text("Move phone to look", "Kijken met de telefoon")}</button> : null}
           <button type="button" onClick={() => viewerRef.current?.toggleFullscreen()}><Maximize2 size={14} /> {text("Fullscreen", "Volledig scherm")}</button>
         </div>
       </>

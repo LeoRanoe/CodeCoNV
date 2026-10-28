@@ -945,10 +945,6 @@
   .ncr-form-boxes,
   .agreement-signatures { grid-template-columns: 1fr; }
   .deadline-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  /* Three views do not fit side by side on a phone; they wrap instead of shrinking
-     the words away. */
-  .action-center-views { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .action-center-views button { min-height: 46px; }
 }
 
 @media (max-width: 640px) {

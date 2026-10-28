@@ -28,9 +28,17 @@ export async function loadFormDraft<Value>(id: string) {
   }
 }
 
+/** Tells the screens that show "not saved yet" that a draft appeared or went away. */
+export const FORM_DRAFTS_CHANGED = "codeco-form-drafts-changed";
+
+function announceDraftChange() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(FORM_DRAFTS_CHANGED));
+}
+
 export async function saveFormDraft<Value>(id: string, value: Value) {
   try {
     await idbPut<FormDraft<Value>>("drafts", { id, value, savedAt: new Date().toISOString() });
+    announceDraftChange();
     return true;
   } catch {
     return false;
@@ -40,6 +48,7 @@ export async function saveFormDraft<Value>(id: string, value: Value) {
 export async function clearFormDraft(id: string) {
   try {
     await idbDelete("drafts", id);
+    announceDraftChange();
   } catch {
     // Nothing to do: the draft is a convenience, never the record.
   }

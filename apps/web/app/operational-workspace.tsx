@@ -3420,7 +3420,7 @@ function ProjectOperations({
                     <div className="record-action-grid">
                       {immediateActionsTaken.map((action) => (
                         <label className={`record-action-check${findingForm.immediateActions.includes(action.id) ? " active" : ""}`} key={action.id}>
-                          <input type="checkbox" checked={findingForm.immediateActions.includes(action.id)} onChange={() => toggleIssueAction(action.id)} />
+                          <input type="checkbox" aria-label={text(action.en, action.nl)} checked={findingForm.immediateActions.includes(action.id)} onChange={() => toggleIssueAction(action.id)} />
                           {text(action.en, action.nl)}
                         </label>
                       ))}
@@ -3915,7 +3915,7 @@ function ProjectOperations({
                     <div className="record-action-grid">
                       {immediateActionsTaken.map((action) => (
                         <label className={`record-action-check${hseForm.immediateActions.includes(action.id) ? " active" : ""}`} key={action.id}>
-                          <input type="checkbox" checked={hseForm.immediateActions.includes(action.id)} onChange={() => toggleHseAction(action.id)} />
+                          <input type="checkbox" aria-label={text(action.en, action.nl)} checked={hseForm.immediateActions.includes(action.id)} onChange={() => toggleHseAction(action.id)} />
                           {text(action.en, action.nl)}
                         </label>
                       ))}

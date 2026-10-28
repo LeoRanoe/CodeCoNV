@@ -63,7 +63,7 @@ import { WorkforceForm } from "@/app/workforce-register";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import { currentPushState, enablePushNotifications, type PushState } from "@/lib/notifications/push-client";
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
-import { clearFormDraft, formDraftKey, loadFormDraft } from "@/lib/offline/form-drafts";
+import { clearFormDraft, FORM_DRAFTS_CHANGED, formDraftKey, loadFormDraft } from "@/lib/offline/form-drafts";
 import { useFormAutosave } from "@/lib/offline/use-form-autosave";
 import { DraftNotice } from "@/app/forms/draft-notice";
 import { cacheProjectDay, cacheWorkspace, getCachedProjectDay, getCachedWorkspace } from "@/lib/offline/workspace-cache";
@@ -1028,18 +1028,27 @@ export function CodecoSupervisionApp() {
     const projectId = selectedProject?.id;
     if (!projectId) return;
     let cancelled = false;
-    void Promise.all([
-      loadFormDraft<Array<{ file?: Blob }>>(formDraftKey("library-photos", projectId)),
-      loadFormDraft<File[]>(formDraftKey("quick-photo", projectId)),
-    ]).then(([library, staged]) => {
-      if (cancelled) return;
-      const libraryCount = Array.isArray(library?.value) ? library.value.filter((photo) => photo?.file instanceof Blob).length : 0;
-      const stagedFiles = Array.isArray(staged?.value) ? staged.value.filter((file) => file instanceof Blob) : [];
-      setUnsavedPhotos(libraryCount
-        ? { count: libraryCount, tab: "files", files: [] }
-        : stagedFiles.length ? { count: stagedFiles.length, tab: "visual", files: stagedFiles } : null);
-    });
-    return () => { cancelled = true; };
+    const refresh = (raise: boolean) => {
+      void Promise.all([
+        loadFormDraft<Array<{ file?: Blob }>>(formDraftKey("library-photos", projectId)),
+        loadFormDraft<File[]>(formDraftKey("quick-photo", projectId)),
+      ]).then(([library, staged]) => {
+        if (cancelled) return;
+        const libraryCount = Array.isArray(library?.value) ? library.value.filter((photo) => photo?.file instanceof Blob).length : 0;
+        const stagedFiles = Array.isArray(staged?.value) ? staged.value.filter((file) => file instanceof Blob) : [];
+        const next = libraryCount
+          ? { count: libraryCount, tab: "files" as const, files: [] }
+          : stagedFiles.length ? { count: stagedFiles.length, tab: "visual" as const, files: stagedFiles } : null;
+        // The bar is raised for photos left behind at start-up; later it only goes away, so it
+        // does not appear over the very form the photos are being added in.
+        setUnsavedPhotos((current) => raise || !next ? next : current);
+      });
+    };
+    refresh(true);
+    // Saving or discarding the photos clears the draft; the bar goes with it, without a reload.
+    const onChange = () => refresh(false);
+    window.addEventListener(FORM_DRAFTS_CHANGED, onChange);
+    return () => { cancelled = true; window.removeEventListener(FORM_DRAFTS_CHANGED, onChange); };
   }, [selectedProject?.id]);
 
   /**
@@ -1685,7 +1694,7 @@ export function CodecoSupervisionApp() {
 
         {/* Keyed on the project: a module that switches to another project starts over
             instead of carrying the previous project's selection, filters and drafts. */}
-        <main className="main-content" key={selectedProject?.id ?? "no-project"}>
+        <main className={`main-content${unsavedPhotos ? " has-resume-bar" : ""}`} key={selectedProject?.id ?? "no-project"}>
           {activeNav === "vandaag" ? (
             <ClientDashboard
               entries={entries}

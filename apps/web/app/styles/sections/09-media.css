@@ -395,6 +395,9 @@
 
 .panorama-controls button.active { background: var(--signal); border-color: var(--signal); }
 
+/* The "mark the centre" bar is the last row of the stage; the controls sit above it, not on it. */
+.panorama-stage:has(> .viewer-center-action) > .panorama-controls { bottom: 60px; }
+
 .panorama-heading {
   align-items: center;
   background: rgba(12, 28, 38, .86);
