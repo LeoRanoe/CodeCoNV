@@ -130,3 +130,21 @@
     min-height: var(--control-h-lg);
   }
 }
+
+/* Record header facts read as label over value, in plain sentence case. */
+.record-derived-block small {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.record-derived-block strong { font-size: var(--text-sm); }
+
+/* Sign-in: a calm card with a clear title, roomy fields and one primary action. */
+.access-card.auth-card { padding: var(--space-8); width: min(440px, 100%); }
+.auth-card .setup-top { align-items: flex-start; display: flex; flex-wrap: wrap; gap: var(--space-3); justify-content: space-between; }
+.auth-heading h1 { color: var(--text); font-size: var(--text-xl); font-weight: var(--weight-bold); margin: var(--space-5) 0 var(--space-4); }
+.access-form .form-field input { font-size: var(--text-md); min-height: var(--control-h-lg); }
+.access-form .form-field > span { color: var(--text); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.access-submit { min-height: var(--control-h-xl); width: 100%; }

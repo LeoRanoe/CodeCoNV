@@ -73,3 +73,14 @@
   .project-selection-card .selection-meta { flex-wrap: wrap; grid-column: 1; }
   .project-selection-card .selection-action { grid-column: 2; }
 }
+
+/* The project picker uses the same light header as the workspace, with larger rows. */
+.context-topbar { background: var(--paper); border-bottom: 1px solid var(--border); color: var(--text); }
+.context-user > .context-user-name strong { font-size: var(--text-sm); }
+.context-user > .context-user-name small { color: var(--muted); font-size: var(--text-xs); }
+.context-topbar .ui-button--quiet { color: var(--text); }
+.context-topbar .ui-button--quiet:hover { background: var(--ink-50); }
+.project-selection-grid .project-selection-card,
+.project-selection-grid.single-project .project-selection-card { min-height: 88px; }
+.project-selection-card .selection-copy strong { font-size: var(--text-lg); }
+.project-selection-card .selection-action { font-size: var(--text-md); }

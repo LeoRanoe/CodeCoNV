@@ -281,6 +281,32 @@ made selection orange and record counts neutral, removed tinted empty-state icon
 orange primary action while a form is open. Error/offline views and states outside the CI fixture
 screens remain outside this visual sign-off.
 
+## Readability and navigation pass — 27 October 2026
+
+A review of the signed-in app on the local stack found regressions from the mechanical token pass,
+and fixed them:
+
+- **Invisible sidebar navigation.** The sidebar background had been mapped to white while its text
+  stayed white, so every nav label was unreadable. It is now a light surface with dark ink; orange marks
+  only the current page.
+- **Text size.** The smallest type token went from 12 px to 14 px (the scale is now 14, 16, 18, 22,
+  28 px). Most of the app was set at 12 px.
+- **Tap targets.** Workspace modules are cards of at least 84 px (72 px on phones); sidebar items are
+  48 px; action rows are at least 80 px; checkboxes and radios are 22 px with 48 px labels.
+- **Header.** One row of equal controls. The connection chip is an icon and shows text only when saving,
+  offline or in error. The weather chip is neutral. The settings gear is removed because Management is
+  in the sidebar and the phone navigation.
+- **Phone overview** counts form a two-by-two ruled block. Page headers align left. Tracked uppercase
+  labels are removed from headings, legends and record facts; status badges keep them.
+- **Project picker and sign-in** use the same light header and larger rows and fields as the workspace.
+
+Verified on this commit: `npm run lint`, `npm test` (190 passing), `npm run test:design` (9 passing) and
+the authenticated Playwright suite against the local Supabase stack (90 passed, 57 skipped by project
+configuration, 0 failed). The 56 screenshots in [after/](ui-slop-audit/after/) were recaptured.
+
+Still open: the 12 ordered legacy CSS fragments are not yet consolidated into per-area files, and
+private-media, external-share and real-device states are unverified.
+
 ## Sources
 
 - [How to detect AI slop in your design â€” ux-skill wiki][wiki]

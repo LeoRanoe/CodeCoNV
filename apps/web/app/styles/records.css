@@ -106,3 +106,10 @@
   border-block-end-color: var(--signal);
   color: var(--text);
 }
+
+/* Action register rows are large enough to read at arm's length and tap. */
+.unified-action-list > button { min-height: 80px; padding: var(--space-4) var(--space-5); gap: var(--space-4); }
+.unified-action-list > button:hover { background: var(--ink-50); }
+.unified-action-copy strong { font-size: var(--text-md); line-height: 1.35; }
+.unified-action-copy { gap: var(--space-1); }
+.action-center-toolbar button { min-height: var(--control-h-md); padding-inline: var(--space-3); font-size: var(--text-sm); }

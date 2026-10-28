@@ -111,3 +111,53 @@
 .ui-status-badge--amber { background: var(--yellow-soft); color: var(--yellow); }
 .ui-status-badge--green { background: var(--green-soft); color: var(--green); }
 .ui-status-badge--blue { background: var(--blue-soft); color: var(--blue); }
+
+/* Labels above headings read as plain text, not tracked capitals. */
+.eyebrow,
+.record-number,
+.company-logo-context,
+.overview-panel-heading span:first-child,
+.workspace-command-intro > div:first-child > span,
+.workspace-current-module > span,
+.workspace-launcher-toolbar > div:first-child > span,
+.prompt-library-group > h3,
+.workspace-code-group h3,
+.rapid-project-library > span,
+.readiness-summary-copy > span {
+  letter-spacing: 0;
+  text-transform: none;
+}
+.company-logo-context { color: var(--ink-700); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+
+/* Checkboxes and radios are sized for a gloved thumb, and their labels are the tap target. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--signal);
+  flex: none;
+  height: 22px;
+  width: 22px;
+}
+label:has(> input[type="checkbox"]),
+label:has(> input[type="radio"]) {
+  align-items: center;
+  cursor: pointer;
+  gap: var(--space-3);
+  min-height: var(--control-h-lg);
+}
+.report-source-checklist label { background: var(--paper); border: 1px solid var(--border); border-radius: var(--radius-control); padding: var(--space-2) var(--space-3); font-size: var(--text-sm); }
+.report-source-checklist label:hover { background: var(--ink-50); }
+
+/* Page headers align left; the secondary line is plain text unless it is a record code. */
+.ui-page-header { text-align: left; }
+.secondary-header .ui-page-header__code { font-family: inherit; font-size: var(--text-sm); }
+@media (max-width: 640px) {
+  .ui-page-header { align-items: stretch; flex-direction: column; }
+  .ui-page-header > div { text-align: left; }
+}
+
+/* No tracked capitals on labels, legends or headings; only status badges keep them. */
+body :is(small, span, legend, h2, h3, h4, label, summary, dt, th, p, strong):not([class*="badge"]):not([class*="pill"]):not([class*="chip"]):not([class*="status"]) {
+  letter-spacing: 0;
+  text-transform: none;
+}
+.ui-page-header__code { font-family: inherit; }
