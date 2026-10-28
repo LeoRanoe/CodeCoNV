@@ -144,7 +144,7 @@
 .section-nav__list > button.active { background: var(--signal-soft); font-weight: var(--weight-bold); }
 .section-nav__check { color: var(--signal-dark); flex: none; height: 18px; width: 18px; }
 
-@media (max-width: 1023px) {
+@media not all and (min-width: 1024px) {
   .section-nav__panel {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
