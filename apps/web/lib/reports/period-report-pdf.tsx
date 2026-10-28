@@ -10,6 +10,8 @@ import {
   pdf,
 } from "@react-pdf/renderer";
 import type { PeriodReportSnapshot } from "@/lib/supabase/operations";
+import { periodDetailKeys, periodDetailsLine, periodHours, periodProjectHead, periodSignatureRoles, periodToken } from "@/lib/reports/period-report-text";
+import { reportDelayCause, reportWeather, reportWind } from "@/lib/reports/report-vocabulary";
 
 export type PeriodReportSection = "management" | "workforce" | "work" | "quality" | "hse" | "actions" | "logistics" | "instructions" | "commercial" | "communications" | "requests" | "boq" | "visual" | "documents" | "environment" | "buildings";
 export const allPeriodReportSections: PeriodReportSection[] = ["management", "workforce", "work", "quality", "hse", "actions", "logistics", "instructions", "commercial", "communications", "requests", "boq", "visual", "documents", "environment", "buildings"];
@@ -76,9 +78,7 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat("nl-SR", { dateStyle: "medium", timeZone: "America/Paramaribo" }).format(date);
 }
 
-function humanizeToken(result: string) {
-  return result.replaceAll("_", " ");
-}
+const humanizeToken = periodToken;
 
 /** Section 7 of the client's screens: the measures that were ticked, as one sentence. */
 export function immediateActionText(issue: Record<string, unknown>) {
@@ -88,51 +88,7 @@ export function immediateActionText(issue: Record<string, unknown>) {
 }
 
 function detailsText(record: Record<string, unknown>) {
-  const details = record.details;
-  if (!details || typeof details !== "object" || Array.isArray(details)) return "";
-  const values = details as Record<string, unknown>;
-  const preferredKeys = [
-    "building_name",
-    "location_path",
-    "requested_to",
-    "due_date",
-    "revision",
-    "related_reference",
-    "reference_documents",
-    "attachments",
-    "discipline",
-    "priority",
-    "schedule_impact",
-    "cost_impact",
-    "period_start",
-    "period_end",
-    "description",
-    // The boxes of the client's own HSE and issue screens.
-    "hse_category",
-    "issue_category",
-    "responsible_person",
-    "immediate_measure",
-    "root_cause",
-    "corrective_action",
-    "disposition",
-    "progress_percent",
-    "inspected_at",
-    "status",
-  ];
-  return preferredKeys
-    .filter((key) => {
-      const item = values[key];
-      return item !== "" && item !== null && item !== undefined && (typeof item === "string" || typeof item === "number" || typeof item === "boolean");
-    })
-    .slice(0, 7)
-    .map((key) => {
-      const item = String(values[key]);
-      const display = key.endsWith("_at") || key.endsWith("_date") || key === "period_start" || key === "period_end"
-        ? formatDate(item)
-        : ["disposition", "status"].includes(key) ? humanizeToken(item) : item;
-      return `${humanizeToken(key)}: ${display}`;
-    })
-    .join(" | ");
+  return periodDetailsLine(record, periodDetailKeys, formatDate);
 }
 
 function nested(record: Record<string, unknown>, key: string) {
@@ -284,6 +240,7 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
           <Text style={styles.metaLabel}>Project</Text><Text style={styles.metaValue}>{projectName}</Text>
           <Text style={styles.metaLabel}>Periode</Text><Text style={styles.metaValue}>{formatDate(snapshot.period.start_date)} t/m {formatDate(snapshot.period.end_date)}</Text>
           <Text style={styles.metaLabel}>Gegenereerd</Text><Text style={styles.metaValue}>{formatDate(snapshot.generated_at)}</Text>
+          {periodProjectHead(snapshot).map(([label, text]) => <View key={label}><Text style={styles.metaLabel}>{label}</Text><Text style={styles.metaValue}>{text}</Text></View>)}
         </View>
 
         {sections.has("management") ? <><Text style={styles.heading}>Projectachtergrond en rapportbasis</Text>
@@ -326,11 +283,11 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
           return <View style={styles.dailyCard} wrap={false} key={value(report, "id", String(index))}>
             <Text style={styles.dailyDate}>{formatDate(value(report, "report_date"))} | {value(report, "report_number")} | {humanizeToken(value(report, "status"))}</Text>
             <Text style={styles.dailySummary}>{closeout ? value(closeout, "day_summary", "Geen dagsamenvatting") : "Dagafsluiting nog niet bevestigd"}</Text>
-            {start ? <Text style={styles.dailyDetail}>Weer: {value(start, "weather_condition")} · {value(start, "temperature_c")} °C · wind {value(start, "wind_condition")} | Werkuren: {value(start, "shift_start")}–{value(start, "shift_end")} | Gepland: {value(start, "planned_work")}</Text> : null}
+            {start ? <Text style={styles.dailyDetail}>Weer: {reportWeather(value(start, "weather_condition"))} · {value(start, "temperature_c")} °C · wind {reportWind(value(start, "wind_condition"))} | Werkuren: {periodHours(value(start, "shift_start"), value(start, "shift_end"))} | Gepland: {value(start, "planned_work")}</Text> : null}
             {closeout && topics.has("works_ongoing") ? <Text style={styles.dailyDetail}>Lopend: {value(closeout, "work_ongoing", "-")} | Morgen: {value(closeout, "tomorrow_plan", "-")}</Text> : null}
-            {closeout && topics.has("works_completed") ? <Text style={styles.dailyDetail}>Afgerond: {value(closeout, "work_performed", "-")} | Voortgang: {value(closeout, "progress_percent", "0")}%</Text> : null}
+            {closeout && topics.has("works_completed") ? <Text style={styles.dailyDetail}>Afgerond: {value(closeout, "work_performed", "-")} | Voortgang: {value(closeout, "progress_percent") ? `${value(closeout, "progress_percent")}%` : "niet geregistreerd"}</Text> : null}
             {closeout && value(closeout, "delay_cause", "none") !== "none" ? <>
-              <Text style={styles.dailyDetail}>Vertraging: {value(closeout, "delay_cause")} · {value(closeout, "delay_hours", "0")} uur | Reden: {value(closeout, "delay_reason", "niet geregistreerd")}</Text>
+              <Text style={styles.dailyDetail}>Vertraging: {reportDelayCause(value(closeout, "delay_cause"))} · {value(closeout, "delay_hours", "0")} uur | Reden: {value(closeout, "delay_reason", "niet geregistreerd")}</Text>
               <Text style={styles.dailyDetail}>Aannemer: {value(closeout, "contractor_signed_by", "oude registratie zonder handtekening")} · {value(closeout, "contractor_company")} · {formatDate(value(closeout, "contractor_signed_at"))}</Text>
               {value(closeout, "contractor_signature_image") ? <Image src={value(closeout, "contractor_signature_image")} style={styles.recordSignature} /> : null}
             </> : null}
@@ -398,6 +355,15 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
           <Text style={styles.footer} fixed>CODECO Supervisie | gebouwstatus</Text>
         </Page>;
       }) : null}
+
+      <Page size="A4" style={styles.page}>
+        <ReportBrand label="ONDERTEKENING" logoSource={logoSource} />
+        <Text style={styles.heading}>Ondertekening</Text>
+        <View style={styles.statGrid}>
+          {periodSignatureRoles.map((role) => <View style={styles.stat} key={role}><Text style={styles.statLabel}>{role}</Text><Text style={styles.rowTitle}> </Text><Text style={styles.empty}>Nog niet ondertekend</Text></View>)}
+        </View>
+        <Text style={styles.footer} fixed>{options.footerText || "CODECO Supervisie | bron: centraal, rechten-gefilterd periodsnapshot"}</Text>
+      </Page>
     </Document>
   );
 }
