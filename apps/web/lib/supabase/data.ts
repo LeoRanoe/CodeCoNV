@@ -219,6 +219,25 @@ export function surinameLocalDateTimeToIso(value: string) {
   return parsed.toISOString();
 }
 
+/**
+ * The permission checks do not change between two saves. Every save refreshes the workspace,
+ * and each refresh used to repeat them (2 + 4 calls per save in the QA sweep).
+ */
+const PERMISSION_CACHE_MS = 60_000;
+const permissionChecks = new Map<string, { at: number; value: Promise<unknown> }>();
+
+function cachedPermissionCheck<T>(key: string, load: () => PromiseLike<{ data: T; error: { message: string; code?: string; status?: number; name?: string } | null }>) {
+  const hit = permissionChecks.get(key);
+  if (hit && Date.now() - hit.at < PERMISSION_CACHE_MS) return hit.value as Promise<{ data: T; error: null }>;
+  const value = Promise.resolve(load()).then((result) => {
+    // A failed check is never kept, so the next refresh asks again.
+    if (result.error) permissionChecks.delete(key);
+    return result;
+  });
+  permissionChecks.set(key, { at: Date.now(), value });
+  return value as Promise<{ data: T; error: null }>;
+}
+
 export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSnapshot> {
   const user = await currentUser(client);
   const [membershipResult, bootstrapResult] = await Promise.all([
@@ -227,7 +246,7 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
       .select("organization_id")
       .eq("user_id", user.id)
       .eq("status", "active"),
-    client.rpc("can_bootstrap_organization"),
+    cachedPermissionCheck(`bootstrap:${user.id}`, () => client.rpc("can_bootstrap_organization")),
   ]);
   fail(membershipResult.error);
   fail(bootstrapResult.error);
@@ -260,7 +279,7 @@ export async function loadWorkspace(client: SupabaseClient): Promise<WorkspaceSn
 
   const manageResults = await Promise.all(
     organizationIds.map(async (organizationId) => {
-      const result = await client.rpc("can_manage_organization_members", { p_organization_id: organizationId });
+      const result = await cachedPermissionCheck(`manage:${user.id}:${organizationId}`, () => client.rpc("can_manage_organization_members", { p_organization_id: organizationId }));
       fail(result.error);
       return result.data ? organizationId : null;
     }),

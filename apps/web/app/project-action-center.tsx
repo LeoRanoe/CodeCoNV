@@ -116,7 +116,10 @@ export function ProjectActionCenter({
   openProjectArea: (tab: ActionCenterTarget, recordId?: string) => void;
 }) {
   const { locale, text } = useLanguage();
-  const canCreateAction = useProjectPermissions().can("actions.create");
+  const permissions = useProjectPermissions();
+  // Saving an action assigns it to a company employee, which the database allows only with
+  // actions.manage. A button for someone who only holds actions.create always ended in a refusal.
+  const canCreateAction = permissions.can("actions.create") && permissions.can("actions.manage");
   const [typeFilter, setTypeFilter] = useState<ActionType>("all");
   const [workFilter, setWorkFilter] = useState<WorkFilter>("open");
   const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>("overdue");

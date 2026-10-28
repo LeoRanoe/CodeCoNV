@@ -31,7 +31,12 @@ export async function POST(request: Request) {
     const admin = createStorageAdminClient();
     const push = await sendPendingPushNotifications(admin, input.data.projectId);
     const email = isNotificationEmailConfigured() ? await sendPendingNotificationEmails(admin) : null;
-    if (!push.configured) return storageJson({ error: "De pushsleutels zijn nog niet geconfigureerd.", push, email }, 503);
+    if (!push.configured) {
+      // Push is simply not switched on for this deployment. That is not an error for the person
+      // who saved a record, so it answers 200; the operator finds it in the log.
+      console.warn("[notifications] Push is niet actief: de pushsleutels zijn niet geconfigureerd.");
+      return storageJson({ ok: true, pushActive: false, created: Number(refresh.data ?? 0), push, email });
+    }
     const failed = push.failed > 0 || Boolean(email?.failed);
     return storageJson({ ok: !failed, created: Number(refresh.data ?? 0), push, email }, failed ? 502 : 200);
   } catch (error) {

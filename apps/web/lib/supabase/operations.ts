@@ -595,6 +595,34 @@ function buildingsForRecord(
   ]));
 }
 
+/** Calls that ask for the same report at the same moment share one request. */
+const dayReportRequests = new Map<string, Promise<string>>();
+
+async function requestProjectDayReport(client: SupabaseClient, projectId: string, reportDate: string) {
+  const idempotencyKey = `report:${projectId}:${reportDate}`;
+  // Every member who may write a record can ensure the report of the day; the report itself
+  // stays closed to roles without reports.read (migration 202610280001).
+  const ensured = await client.rpc("ensure_day_report_for_record", {
+    p_project_id: projectId,
+    p_report_date: reportDate,
+    p_idempotency_key: idempotencyKey,
+  });
+  if (!ensured.error) {
+    if (typeof ensured.data !== "string" || !ensured.data) throw new Error("The daily report could not be prepared.");
+    return ensured.data;
+  }
+  if (!rpcSignatureMissing(ensured.error, "ensure_day_report_for_record")) fail(ensured.error);
+  const result = await client.rpc("create_day_report", {
+    p_project_id: projectId,
+    p_report_date: reportDate,
+    p_idempotency_key: idempotencyKey,
+  });
+  fail(result.error);
+  const createdId = (result.data as { id?: string } | null)?.id;
+  if (!createdId) throw new Error("The daily report could not be prepared.");
+  return createdId;
+}
+
 export async function ensureProjectDayReport(
   client: SupabaseClient,
   projectId: string,
@@ -607,15 +635,14 @@ export async function ensureProjectDayReport(
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
-  const result = await client.rpc("create_day_report", {
-    p_project_id: projectId,
-    p_report_date: reportDate,
-    p_idempotency_key: `report:${projectId}:${reportDate}`,
+  const key = `${projectId}:${reportDate}`;
+  const pending = dayReportRequests.get(key);
+  if (pending) return pending;
+  const request = requestProjectDayReport(client, projectId, reportDate).finally(() => {
+    dayReportRequests.delete(key);
   });
-  fail(result.error);
-  const createdId = (result.data as { id?: string } | null)?.id;
-  if (!createdId) throw new Error("The daily report could not be prepared.");
-  return createdId;
+  dayReportRequests.set(key, request);
+  return request;
 }
 
 export async function loadProjectOperations(
