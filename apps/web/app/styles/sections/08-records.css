@@ -1,0 +1,1036 @@
+.operation-tabs button {
+  display: inline-flex;
+  min-width: max-content;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 9px 13px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--ink-600);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+}.operation-tabs button span {
+  display: grid;
+  min-width: 21px;
+  height: 21px;
+  place-items: center;
+  padding: 0 5px;
+  border-radius: var(--radius-md);
+  background: var(--ink-200);
+  font-size: var(--text-xs);
+}.operation-tabs button.active {
+  background: var(--paper);
+  color: var(--teal);
+  box-shadow: none;
+}.operation-panel {
+  display: grid;
+  gap: var(--space-4);
+}.operation-form {
+  display: grid;
+  width: min(100%, 720px);
+  gap: 14px;
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  box-shadow: none;
+}.operation-form.wide {
+  width: 100%;
+}.operation-form h2,
+.workflow-card h2,
+.template-card h3,
+.finding-card h3 {
+  margin: 0;
+}.operation-form-heading,
+.finding-card-main,
+.revision-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-top: 14px;
+}.form-intro {
+  margin: -3px 0 3px;
+  color: var(--ink-600);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+}.form-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}.check-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  color: var(--ink-700);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}.check-field input {
+  margin-top: 2px;
+}.checklist-run,
+.record-stack,
+.template-grid {
+  display: grid;
+  gap: 10px;
+}/* The rows and cards in a stack break on their own width, not the window's. A record list
+   sits in whatever column the screen gives it, so on a wide desktop a card can still be
+   narrower than a phone — and the status chip, which takes its whole text, was squeezing
+   the title and the description into a ribbon a few words wide. */.record-stack { container-type: inline-size; }.checklist-question {
+  display: grid;
+  gap: 10px;
+  padding: 15px;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-sm);
+  background: var(--ink-025);
+}.checklist-question legend {
+  padding: 0 5px;
+  color: var(--ink-800);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+}.checklist-question legend span {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--teal);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}.checklist-question small {
+  color: var(--ink-700);
+  font-size: var(--text-xs);
+}.checklist-question > input,
+.revision-bar > input {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--ink-500);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  font: inherit;
+  font-size: var(--text-xs);
+}.answer-options,
+.button-row,
+.backup-actions,
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}.answer-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 10px;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--ink-700);
+  font-size: var(--text-xs);
+}.form-actions {
+  justify-content: flex-end;
+}.record-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 13px 15px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+}/* An unfinished record can be opened straight from the list, so a started checklist
+   can actually be filled in. */.record-row:has(> .record-row-open) { grid-template-columns: auto minmax(0, 1fr) auto auto; }.record-row-open { font-size: var(--text-xs); min-height: 36px; padding: 0 var(--space-3); white-space: nowrap; }/* Both, deliberately: the container query covers a row in a narrow column on a wide
+   window, and the media query still covers a row that is not inside a record stack. */@media (max-width: 640px) {
+  .record-row:has(> .record-row-open) { grid-template-columns: auto minmax(0, 1fr) auto; }
+  /* Only when the open button is a direct child of the row. Inside the actions group it
+     is one of three equal cells, and this rule pushed the other two onto a second line. */
+  .record-row > .record-row-open { grid-column: 2 / -1; justify-self: start; }
+}/* The container half of it stands after the rules it has to beat — .finding-card-main and
+   .finding-actions are declared below — because a container query carries no extra weight
+   of its own; it wins on source order or not at all. *//* The text block of a row. The actions group is also a direct div child, and this rule
+   used to win on specificity and turn it into a one-column grid — which is what stacked
+   View / Edit / Withdraw into three full-width buttons on every record, at every width. */.record-row > div:not(.record-row-actions) {
+  display: grid;
+  gap: var(--space-1);
+}.record-row strong {
+  color: var(--ink-800);
+  font-size: var(--text-xs);
+}.record-row div span {
+  color: var(--ink-600);
+  font-size: var(--text-xs);
+}.finding-card {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+}.finding-card-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: var(--space-4);
+}.finding-card-main > div {
+  display: grid;
+  gap: 5px;
+}.finding-card p {
+  margin: 0;
+  color: var(--ink-600);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}.finding-card small {
+  color: var(--ink-700);
+  font-size: var(--text-xs);
+}.record-number {
+  color: var(--ink-600);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}.record-severity {
+  display: grid;
+  width: 8px;
+  height: 38px;
+  overflow: hidden;
+  border-radius: var(--radius-control);
+  background: var(--ink-500);
+  color: transparent;
+}.record-severity.high { background: var(--signal); }.record-severity.critical { background: var(--red); }.record-severity.low { background: var(--ink-500); }.finding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: 0 var(--space-4) var(--space-3);
+}/* A record list sits in whatever column the screen gives it, so a card on a wide desktop
+   can still be narrower than a phone. These break on the width of the stack the rows are
+   in, which is what the window-width copies of them further down cannot see. */@container (max-width: 620px) {
+  .record-row:has(> .record-row-open) { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .record-row > .record-row-open { grid-column: 2 / -1; justify-self: start; }
+
+  /* The status chip is a column of its own text — "ready for verification" is 157px of it,
+     and it was taking that out of the title and the description. It stands on a line under
+     them instead, which is what leaves the record number room to be read. */
+  .finding-card-main,
+  .record-row { grid-template-columns: auto minmax(0, 1fr); }
+  .finding-card-main > .task-status,
+  .record-row > .task-status { grid-column: 2; justify-self: start; }
+
+  /* Right-aligned actions read as one row on a wide card. Once they wrap onto three or
+     four rows every row ends somewhere else, so they line up on the left instead. */
+  .finding-actions { justify-content: flex-start; }
+}.download-group {
+  display: inline-flex;
+  align-items: stretch;
+}.download-group.compact {
+  width: fit-content;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  background: var(--paper);
+}.download-group.compact button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: var(--control-h-sm);
+  padding: 0 11px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-700);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+  cursor: pointer;
+}.download-group.compact button:not(:first-child) {
+  border-left: 1px solid var(--ink-200);
+}.download-group.compact button:hover:not(:disabled) {
+  background: var(--ink-50);
+}.download-group.compact button:disabled {
+  color: var(--ink-300);
+  cursor: not-allowed;
+}.download-group.prominent {
+  width: 100%;
+  gap: var(--space-2);
+}.download-group.prominent button {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: var(--control-h-lg);
+  padding: 0 14px;
+  border-radius: var(--radius-control);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+}.download-group.prominent button:first-child {
+  border: 0;
+  background: var(--signal);
+  color: var(--ink-950);
+}.download-group.prominent button:first-child:hover:not(:disabled) {
+  background: var(--signal-dark);
+}.download-group.prominent button:last-child {
+  border: 1px solid var(--ink-600);
+  background: var(--ink-50);
+  color: var(--green);
+}.download-group.prominent button:last-child:hover:not(:disabled) {
+  background: var(--green-soft);
+  border-color: var(--ink-500);
+}.download-group.prominent button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}@media (max-width: 640px) {
+  .finding-actions > .download-group.compact {
+    width: 100%;
+  }
+
+  .finding-actions > .download-group.compact button {
+    flex: 1;
+    justify-content: center;
+    min-height: 48px;
+  }
+}.inline-transition {
+  display: grid;
+  gap: 10px;
+  padding: 14px var(--space-4);
+  border-top: 1px solid var(--ink-100);
+  background: var(--ink-025);
+}.register-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}.register-summary {
+  display: grid;
+  gap: 3px;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+}.register-summary strong {
+  color: var(--teal);
+  font-size: var(--text-lg);
+}.register-summary span {
+  color: var(--ink-600);
+  font-size: var(--text-xs);
+}.report-state-pill {
+  padding: var(--space-2) 11px;
+  border-radius: var(--radius-md);
+  background: var(--green-soft);
+  color: var(--ink-700);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+}.report-state-pill.approved,
+.report-state-pill.signed,
+.report-state-pill.sent {
+  background: var(--green-soft);
+  color: var(--green);
+}.report-page-header {
+  margin-bottom: var(--space-4);
+}.report-header-state {
+  display: grid;
+  gap: 7px;
+  justify-items: end;
+}.report-section-tabs {
+  display: grid;
+  gap: 9px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0 0 18px;
+}.report-section-tabs > button {
+  align-items: center;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--ink-600);
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 38px minmax(0, 1fr);
+  min-height: 64px;
+  padding: 10px 13px;
+  text-align: left;
+}.report-section-tabs > button > svg {
+  background: var(--ink-50);
+  border-radius: var(--radius-control);
+  box-sizing: content-box;
+  padding: 9px;
+}.report-section-tabs > button span,
+.report-section-tabs > button strong,
+.report-section-tabs > button small {
+  display: block;
+  min-width: 0;
+}.report-section-tabs > button strong {
+  color: var(--ink-900);
+  font-size: var(--text-xs);
+}.report-section-tabs > button small {
+  color: var(--ink-700);
+  font-size: var(--text-xs);
+  margin-top: 3px;
+}.report-section-tabs > button:hover {
+  border-color: var(--ink-600);
+  box-shadow: none;
+}.report-section-tabs > button.active {
+  background: var(--green-soft);
+  border-color: var(--ink-500);
+  color: var(--green);
+}.report-section-tabs > button.active > svg {
+  background: var(--green);
+  color: var(--paper);
+}.workflow-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}.workflow-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+}.workflow-card > p {
+  min-height: 0;
+  margin: 0;
+  color: var(--ink-600);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}.workflow-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: var(--radius-control);
+  background: var(--teal-soft);
+  color: var(--teal);
+}.report-history-grid,
+.storage-status-grid,
+.admin-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}.history-column,
+.storage-status-card,
+.template-card,
+.revision-bar {
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+}.history-column h3 {
+  margin: 0 0 10px;
+  font-size: var(--text-sm);
+}.history-column p,
+.history-column ul {
+  margin: 0;
+  color: var(--ink-600);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}.history-column ul {
+  display: grid;
+  gap: 7px;
+  padding-left: var(--space-4);
+}.history-version {
+  display: grid;
+  gap: 7px;
+}.history-version .ui-button--secondary {
+  width: fit-content;
+  min-height: 32px;
+  padding: 6px 9px;
+  font-size: var(--text-xs);
+}.workflow-card.current {
+  border-color: rgba(5, 107, 70, 0.42);
+  box-shadow: none;
+}.workflow-card.complete {
+  background: var(--ink-025);
+}.workflow-card.locked {
+  background: var(--ink-025);
+}.report-next-step {
+  margin-bottom: 14px;
+}.revision-bar > div {
+  display: grid;
+  min-width: 220px;
+  gap: 3px;
+}.revision-bar span {
+  color: var(--ink-600);
+  font-size: var(--text-xs);
+}.template-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}.template-card span,
+.template-card p {
+  color: var(--ink-600);
+  font-size: var(--text-xs);
+}.template-card h3 {
+  margin: 7px 0;
+  font-size: var(--text-xs);
+}.admin-card-grid {
+  align-items: start;
+  margin: 0;
+}.admin-card-grid .operation-form {
+  width: 100%;
+}.management-overview {
+  display: grid;
+  gap: var(--space-4);
+}.management-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}.management-kpis button {
+  display: grid;
+  gap: 5px;
+  min-height: 124px;
+  padding: 17px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  color: var(--ink-900);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: none;
+}.management-kpis button:hover {
+  border-color: var(--ink-600);
+}.management-kpis button.attention {
+  border-color: var(--ink-500);
+  background: var(--ink-025);
+}.management-kpis button.healthy {
+  border-color: var(--ink-500);
+  background: var(--ink-025);
+}.management-kpis span { color: var(--ink-600); font-size: var(--text-xs); font-weight: var(--weight-bold); letter-spacing: .01em; }.management-kpis strong { align-self: end; color: var(--ink-900); font-size: var(--text-xl); letter-spacing: -0.04em; }.management-kpis small { overflow: hidden; color: var(--ink-700); font-size: var(--text-xs); line-height: 1.4; text-overflow: ellipsis; white-space: normal; }.management-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
+  gap: var(--space-3);
+}.management-card {
+  padding: 19px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--paper);
+  box-shadow: none;
+}.management-card > header > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}.management-card h2 { margin: 0; font-size: var(--text-sm); }.management-card header p { margin: var(--space-1) 0 0; color: var(--ink-700); font-size: var(--text-xs); }.management-attention-list,
+.management-control-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 15px;
+}.management-attention-list > div,
+.management-control-list button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 11px var(--space-3);
+  border: 1px solid var(--ink-100);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink-900);
+  text-align: left;
+  cursor: pointer;
+}.management-control-list button:hover { border-color: var(--ink-600); }.management-control-list button > svg { flex: 0 0 auto; }.management-attention-list strong,
+.management-control-list strong { display: block; }.management-attention-list small,
+.management-control-list small { display: block; margin-top: 3px; color: var(--ink-700); font-size: var(--text-xs); }.management-clear > svg { color: var(--green); }.management-context {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--border);
+  background: var(--paper);
+  overflow: hidden;
+}.management-context > div {
+  display: grid;
+  gap: 5px;
+  padding: 13px 15px;
+  border-right: 1px solid var(--border);
+}.management-context > div:last-child { border-right: 0; }.management-context span { color: var(--ink-700); font-size: var(--text-xs); font-weight: var(--weight-bold); }.management-context strong { color: var(--ink-900); font-size: var(--text-xs); }.readiness-panel {
+  gap: 14px;
+}.readiness-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(160px, 260px);
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--ink-500);
+  border-radius: var(--radius-md);
+  background: var(--yellow-soft);
+  color: var(--ink-700);
+}.readiness-summary.ready {
+  border-color: var(--ink-200);
+  background: var(--ink-50);
+  color: var(--green);
+}.readiness-summary-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.72);
+}.readiness-summary-copy {
+  display: grid;
+  gap: 3px;
+}.readiness-summary-copy > span {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}.readiness-summary-copy strong {
+  font-size: var(--text-sm);
+}.readiness-summary-copy p {
+  margin: 0;
+  font-size: var(--text-xs);
+}.readiness-progress {
+  height: 9px;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: rgba(118, 85, 26, 0.14);
+}.readiness-summary.ready .readiness-progress {
+  background: rgba(23, 109, 103, 0.14);
+}.readiness-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: currentColor;
+  transition: width 180ms ease-out;
+}.readiness-list {
+  display: grid;
+  gap: 10px;
+}.readiness-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr);
+  gap: 18px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--signal);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+}.readiness-item.complete {
+  border-left-color: var(--ink-600);
+  background: var(--ink-025);
+}.readiness-item-main,
+.readiness-item-controls {
+  display: grid;
+  align-content: start;
+  gap: 11px;
+}.readiness-item-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}.readiness-item-heading h2 {
+  margin: var(--space-1) 0 0;
+  color: var(--ink-800);
+  font-size: var(--text-sm);
+}.readiness-item-main p {
+  margin: 0;
+  color: var(--ink-600);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+}.readiness-owner {
+  color: var(--ink-600);
+  font-size: var(--text-xs);
+}.readiness-blocker,
+.readiness-optional {
+  min-width: max-content;
+  padding: 5px 7px;
+  border-radius: var(--radius-md);
+  background: var(--ink-50);
+  color: var(--ink-600);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+}.readiness-item-controls {
+  grid-template-columns: minmax(130px, 0.55fr) minmax(190px, 1fr) auto;
+  align-items: end;
+}.readiness-item-controls .ui-button--primary {
+  min-height: 39px;
+}.readiness-evidence textarea {
+  min-height: 64px;
+}.mfa-card {
+  display: grid;
+  gap: var(--space-3);
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+}.mfa-card h2,
+.mfa-card p {
+  margin: 0;
+}.mfa-card p {
+  margin-top: 5px;
+  color: var(--ink-600);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}.inline-success {
+  color: var(--green);
+  font-size: var(--text-xs);
+}/* Its counterpart was never written, so a failed sign-in step came out as plain body text
+   next to a green success line. An error has to read as one. */.inline-error {
+  color: var(--red);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+}/* The sentence under a field that explains what the app does by itself. It was used in four
+   forms without ever being styled, so it competed with the labels around it. */.form-helper {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  margin: 2px 0 0;
+}.mfa-enroll {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 14px;
+  padding-top: var(--space-1);
+}.mfa-enroll img {
+  display: block;
+  width: 150px;
+  height: 150px;
+  border: 8px solid var(--paper);
+  border-radius: var(--radius-xs);
+  box-shadow: none;
+}.mfa-enroll > div {
+  display: grid;
+  gap: 9px;
+}.mfa-enroll span {
+  color: var(--ink-600);
+  font-size: var(--text-xs);
+}.mfa-enroll code {
+  overflow-wrap: anywhere;
+  color: var(--ink-800);
+  font-size: var(--text-xs);
+}.notifications-modal {
+  width: min(560px, calc(100vw - 24px));
+}.notification-list {
+  display: grid;
+  gap: var(--space-2);
+  max-height: min(68vh, 620px);
+  overflow-y: auto;
+}.notification-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 11px;
+  width: 100%;
+  padding: 13px;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-control);
+  background: var(--ink-025);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}.notification-row.read {
+  opacity: 0.68;
+  background: var(--paper);
+}.notification-row-icon {
+  display: grid;
+  width: 33px;
+  height: 33px;
+  place-items: center;
+  color: var(--ink-700);
+}.notification-row > span:nth-child(2) {
+  display: grid;
+  gap: var(--space-1);
+}.notification-row strong {
+  color: var(--ink-800);
+  font-size: var(--text-xs);
+}.notification-row span span,
+.notification-row small {
+  color: var(--ink-600);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}.notification-row i {
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--red);
+}.upload-progress {
+  position: relative;
+  height: 20px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--ink-100);
+}.upload-progress > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--paper);
+  transition: width 160ms ease;
+}.upload-progress small {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  height: 100%;
+  place-items: center;
+  color: var(--ink-800);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+}.compact-register {
+  display: flex; align-items: center;
+  max-height: 140px;
+  flex-wrap: wrap;
+  gap: 6px;
+  overflow-y: auto;
+}.compact-register span {
+  padding: 6px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--ink-50);
+  color: var(--ink-600);
+  font-size: var(--text-xs);
+}.compact-register strong {
+  color: var(--ink-800);
+}@media (max-width: 1024px) {
+
+  .workflow-grid,
+  .storage-status-grid,
+  .template-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .readiness-item {
+    grid-template-columns: 1fr;
+  }
+
+  .register-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}@media (max-width: 640px) {
+  .management-kpis,
+  .management-context {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .management-context > div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .management-context > div:nth-child(-n+2) {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .form-grid-2,
+  .report-history-grid,
+  .admin-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Also under @container further down, for a card in a narrow column on a wide window. */
+  .finding-card-main,
+  .record-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .finding-card-main > .task-status,
+  .record-row > .task-status {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .revision-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .revision-bar > div {
+    min-width: 0;
+  }
+
+  .operation-form {
+    padding: 15px;
+  }
+
+  .mfa-enroll {
+    grid-template-columns: 1fr;
+  }
+
+  .readiness-summary,
+  .readiness-item-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .readiness-summary-icon {
+    display: none;
+  }
+
+  .operation-tabs {
+    margin-right: -20px;
+    border-radius: var(--radius-control) 0 0 var(--radius-control);
+  }
+
+  .workspace-header {
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+  }
+
+  .workspace-header h1 {
+    font-size: var(--text-xl);
+  }
+
+  .workspace-header > div > p:last-child {
+    max-width: 34rem;
+    font-size: var(--text-xs);
+  }
+
+  .workspace-header:not(.home) > div > p:last-child {
+    display: none;
+  }
+
+  .workspace-header .ui-button--primary {
+    width: 100%;
+  }
+
+  .workspace-task-hub {
+    gap: 10px;
+    margin: 0;
+    padding: 13px;
+    border-radius: var(--radius-md);
+    box-shadow: none;
+  }
+
+  .workspace-task-heading > span {
+    width: 40px;
+    height: 40px;
+  }
+
+  .workspace-task-heading h2 {
+    font-size: var(--text-md);
+  }
+
+  .workspace-camera-action {
+    min-height: 76px;
+    padding: var(--space-3);
+  }
+
+  .workspace-camera-action strong {
+    font-size: var(--text-sm);
+  }
+
+  .workspace-camera-action small {
+    font-size: var(--text-xs);
+  }
+
+  .workspace-primary-actions {
+    gap: var(--space-2);
+  }
+
+  .workspace-task-action {
+    min-height: 108px;
+    padding: 13px;
+  }
+
+  .workspace-drawing-action {
+    min-height: 60px;
+  }
+
+  .workspace-more-actions summary {
+    min-height: 52px;
+  }
+
+  .workspace-more-actions summary span {
+    display: none;
+  }
+
+  .workspace-more-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workspace-more-grid button:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .workspace-automation-strip {
+    gap: 5px;
+  }
+
+  .workspace-automation-strip > span {
+    align-items: flex-start;
+    padding: var(--space-2) 6px;
+  }
+
+  .workspace-automation-strip svg {
+    flex: 0 0 auto;
+  }
+
+  .workspace-section-controls {
+    align-items: stretch;
+    margin-top: -4px;
+  }
+
+  .workspace-back-button {
+    width: max-content;
+  }
+
+  /* On a phone the create button gets a row of its own: a thumb-wide target instead of a
+     sliver squeezed next to the module name. */
+  .workspace-module-create {
+    grid-column: 1 / -1;
+    min-height: 46px;
+  }
+
+}.spin {
+  animation: spin 0.9s linear infinite;
+}@keyframes spin {
+  to { transform: rotate(360deg); }
+}@media (max-width: 640px) {
+  .access-shell {
+    place-items: stretch;
+    padding: 0;
+    background: var(--ink-025);
+  }
+
+  .access-card,
+  .access-card.setup-card,
+  .access-card.project-setup-card {
+    width: 100%;
+    min-height: 100dvh;
+    padding: var(--space-7) var(--space-5);
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .setup-form.two-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .setup-form .wide {
+    grid-column: auto;
+  }
+
+  .setup-top {
+    align-items: flex-start;
+  }
+
+  .report-action-buttons {
+    width: 100%;
+    flex-direction: column-reverse;
+  }
+
+  .report-action-buttons button {
+    width: 100%;
+  }
+
+  .report-action-buttons .download-group.compact {
+    width: 100%;
+  }
+
+  .report-action-buttons .download-group.compact button {
+    flex: 1;
+    justify-content: center;
+  }
+}.language-switcher {
+  display: inline-flex;
+  min-width: max-content;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink-600);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+}.language-switcher select {
+  min-height: 34px;
+  padding: 5px var(--space-7) 5px 9px;
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius-xs);
+  background: var(--paper);
+  color: var(--ink-800);
+  font: inherit;
+}.language-switcher.compact > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}

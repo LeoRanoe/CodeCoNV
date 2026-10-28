@@ -20,7 +20,7 @@
 
 .ui-button--primary {
   background: var(--signal);
-  color: var(--paper);
+  color: var(--ink-950);
 }
 
 .ui-button--secondary {
@@ -49,13 +49,13 @@
 .ui-button--primary:disabled {
   background: var(--ink-50);
   border-color: var(--ink-200);
-  color: var(--ink-500);
+  color: var(--ink-700);
   opacity: 1;
 }
 
 .ui-button--secondary:disabled,
 .ui-button--quiet:disabled,
-.ui-button--danger:disabled { color: var(--ink-500); opacity: 1; }
+.ui-button--danger:disabled { color: var(--ink-700); opacity: 1; }
 
 .ui-button--sm { min-height: var(--control-h-sm); }
 .ui-button--md { min-height: var(--control-h-md); }
@@ -156,8 +156,24 @@ label:has(> input[type="radio"]) {
 }
 
 /* No tracked capitals on labels, legends or headings; only status badges keep them. */
-body :is(small, span, legend, h2, h3, h4, label, summary, dt, th, p, strong):not([class*="badge"]):not([class*="pill"]):not([class*="chip"]):not([class*="status"]) {
+body :is(small, span, legend, h2, h3, h4, label, summary, dt, th, p, strong, b, em):not([class*="badge"]):not([class*="pill"]):not([class*="chip"]):not([class*="status"]) {
   letter-spacing: 0;
   text-transform: none;
 }
 .ui-page-header__code { font-family: inherit; }
+
+/* Sunlight legibility: strong outlines on every control, a heavy focus ring, and
+   text that never drops below the muted ink. */
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea { border-color: var(--ink-600); }
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--ink-950);
+  outline-offset: 2px;
+}
+.ui-button--primary { border: 1px solid var(--signal-dark); font-weight: var(--weight-bold); }
+.ui-button--secondary { border-width: 2px; border-color: var(--ink-700); }
+.ui-status-badge { border: 1px solid currentColor; font-weight: var(--weight-bold); }
+@media (prefers-contrast: more) {
+  :root { --border: var(--ink-700); --muted: var(--ink-900); --line: var(--ink-500); }
+}

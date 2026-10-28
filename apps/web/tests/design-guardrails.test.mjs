@@ -14,7 +14,7 @@ function files(dir, extension) {
 }
 
 // The public landing route has its own Jost type system. Supervisie rules
-// cover globals.css and the imported app styles, including legacy fragments.
+// cover globals.css and the imported app styles,.
 const cssFiles = [join(app, "globals.css"), ...files(join(app, "styles"), ".css")];
 const css = cssFiles.map((file) => readFileSync(file, "utf8")).join("\n");
 const tsx = files(app, ".tsx").map((file) => readFileSync(file, "utf8")).join("\n");

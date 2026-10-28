@@ -97,7 +97,7 @@
 }
 
 .workspace-launcher-grid .workspace-launcher-arrow {
-  color: var(--ink-500);
+  color: var(--ink-700);
   grid-column: 4;
   grid-row: 1;
   position: static;
@@ -181,7 +181,7 @@
   min-height: 84px;
   padding: var(--space-4) var(--space-5);
 }
-.workspace-launcher-grid .workspace-launcher-tile:hover { background: var(--ink-50); border-color: var(--ink-400); }
+.workspace-launcher-grid .workspace-launcher-tile:hover { background: var(--ink-50); border-color: var(--ink-600); }
 .workspace-launcher-grid .workspace-launcher-tile:focus-visible { outline-offset: 2px; }
 .workspace-launcher-grid .workspace-launcher-icon { color: var(--ink-800); }
 .workspace-launcher-grid .workspace-launcher-icon svg { height: 28px; width: 28px; }
