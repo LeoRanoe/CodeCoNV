@@ -1,5 +1,6 @@
 "use client";
 
+import { SectionNav } from "@/app/section-nav";
 import {
   Archive,
   ArrowRight,
@@ -263,9 +264,11 @@ export function ProjectDocumentsHome({
         </div>
       </section> : null}
 
-      <div className="project-document-tabs" role="tablist" aria-label={text("Document category", "Documentcategorie")}>
-        {tabs.map((tab) => <button className={view === tab.id ? "active" : ""} type="button" role="tab" aria-selected={view === tab.id} onClick={() => setView(tab.id)} key={tab.id}>{tab.icon}<span><strong>{tab.label}</strong><small>{tab.count} {text("items", "items")}</small></span></button>)}
-      </div>
+      <SectionNav
+        className="project-document-tabs"
+        label={text("Document category", "Documentcategorie")}
+        items={tabs.map((tab) => ({ id: tab.id, label: tab.label, count: tab.count, icon: tab.icon, selected: view === tab.id, onSelect: () => setView(tab.id) }))}
+      />
 
       <div className="project-document-browser">
         {openError ? <div className="operation-alert error" role="alert">{openError}</div> : null}

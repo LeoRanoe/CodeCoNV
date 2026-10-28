@@ -1,5 +1,6 @@
 "use client";
 
+import { SectionNav } from "@/app/section-nav";
 import {
   AlertTriangle,
   ArrowRight,
@@ -280,11 +281,15 @@ export function ProjectActionCenter({
       </header>
 
       {/* One page, three ways of looking at the same worklist. */}
-      <div className="action-center-views" role="tablist" aria-label={text("Action center view", "Weergave actiecentrum")}>
-        <button className={view === "mine" ? "active" : ""} type="button" role="tab" aria-selected={view === "mine"} onClick={() => setView("mine")}><UserRound size={15} /> {text("My work", "Mijn werk")}<span>{mine.filter(isOpen).length}</span></button>
-        <button className={view === "work" ? "active" : ""} type="button" role="tab" aria-selected={view === "work"} onClick={() => setView("work")}><ClipboardCheck size={15} /> {text("All project work", "Al het projectwerk")}</button>
-        <button className={view === "deadlines" ? "active" : ""} type="button" role="tab" aria-selected={view === "deadlines"} onClick={() => setView("deadlines")}><CalendarClock size={15} /> {text("Deadlines", "Deadlines")}<span>{items.filter(overdue).length}</span></button>
-      </div>
+      <SectionNav
+        className="action-center-views"
+        label={text("Action center view", "Weergave actiecentrum")}
+        items={[
+          { id: "mine", label: text("My work", "Mijn werk"), count: mine.filter(isOpen).length, icon: <UserRound size={18} />, selected: view === "mine", onSelect: () => setView("mine") },
+          { id: "work", label: text("All project work", "Al het projectwerk"), icon: <ClipboardCheck size={18} />, selected: view === "work", onSelect: () => setView("work") },
+          { id: "deadlines", label: text("Deadlines", "Deadlines"), count: items.filter(overdue).length, icon: <CalendarClock size={18} />, selected: view === "deadlines", onSelect: () => setView("deadlines") },
+        ]}
+      />
 
       {view === "deadlines" ? (
         <div className="action-center-summary deadline-summary">
@@ -310,9 +315,11 @@ export function ProjectActionCenter({
       <div className="action-center-layout">
         <div className="action-center-worklist">
           <div className="action-center-toolbar">
-            <div className="action-type-tabs" role="tablist" aria-label={text("Action type", "Actietype")}>
-              {typeTabs.map((tab) => <button className={typeFilter === tab.id ? "active" : ""} type="button" role="tab" aria-selected={typeFilter === tab.id} onClick={() => setTypeFilter(tab.id)} key={tab.id}>{tab.label}<span>{tab.id === "all" ? scopedItems.length : scopedItems.filter((item) => item.type === tab.id).length}</span></button>)}
-            </div>
+            <SectionNav
+              className="action-type-tabs"
+              label={text("Action type", "Actietype")}
+              items={typeTabs.map((tab) => ({ id: tab.id, label: tab.label, count: tab.id === "all" ? scopedItems.length : scopedItems.filter((item) => item.type === tab.id).length, selected: typeFilter === tab.id, onSelect: () => setTypeFilter(tab.id) }))}
+            />
             <label className="action-center-search"><Search size={15} /><span className="sr-only">{text("Search action center", "Doorzoek actiecentrum")}</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text("Search reference, title or person", "Zoek referentie, titel of persoon")} /></label>
           </div>
 

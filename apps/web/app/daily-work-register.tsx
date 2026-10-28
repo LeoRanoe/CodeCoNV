@@ -1,5 +1,6 @@
 "use client";
 
+import { SectionNav } from "@/app/section-nav";
 import { CheckCircle2, HardHat, TimerOff } from "lucide-react";
 import { useState } from "react";
 import type { BuildingOption } from "@/app/building-picker";
@@ -72,13 +73,10 @@ export function DailyWorkRegister({
   return (
     <section className="daily-work-register">
       <div className="daily-work-header-actions">
-        <nav className="daily-work-tabs ui-tabs" role="tablist" aria-label={text("Daily work view", "Dagwerkweergave")}>
-          {views.map((item) => (
-            <button className={view === item.id ? "active" : ""} type="button" role="tab" aria-selected={view === item.id} onClick={() => onViewChange(item.id)} key={item.id}>
-              <span><strong>{item.label}</strong><small>{item.count}</small></span>
-            </button>
-          ))}
-        </nav>
+        <SectionNav
+          label={text("Daily work view", "Dagwerkweergave")}
+          items={views.map((item) => ({ id: item.id, label: item.label, count: item.count, selected: view === item.id, onSelect: () => onViewChange(item.id) }))}
+        />
         {buildings.length > 1 ? (
           <label className="form-field">
             <span>{text("Building", "Gebouw")}</span>

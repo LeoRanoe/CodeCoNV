@@ -1,5 +1,6 @@
 "use client";
 
+import { SectionNav } from "@/app/section-nav";
 import {
   AlertTriangle,
   BookOpenCheck,
@@ -237,10 +238,14 @@ export function RapidVerifyWorkspace({
         </aside>
 
         <div className="rapid-query-panel">
-          <div className="rapid-mode-tabs" role="tablist" aria-label={text("Verification mode", "Verificatiemodus")}>
-            <button className={mode === "question" ? "active" : ""} type="button" role="tab" aria-selected={mode === "question"} onClick={() => { setMode("question"); setResults([]); setVerifiedInput(null); }}><ShieldQuestion size={17} /> {text("Ask project documents", "Vraag projectdocumenten")}</button>
-            <button className={mode === "compare" ? "active" : ""} type="button" role="tab" aria-selected={mode === "compare"} onClick={() => { setMode("compare"); setResults([]); setVerifiedInput(null); }}><FileSearch size={17} /> {text("Compare specification", "Vergelijk specificatie")}</button>
-          </div>
+          <SectionNav
+            className="rapid-mode-tabs"
+            label={text("Verification mode", "Verificatiemodus")}
+            items={[
+              { id: "question", label: text("Ask project documents", "Vraag projectdocumenten"), icon: <ShieldQuestion size={18} />, selected: mode === "question", onSelect: () => { setMode("question"); setResults([]); setVerifiedInput(null); } },
+              { id: "compare", label: text("Compare specification", "Vergelijk specificatie"), icon: <FileSearch size={18} />, selected: mode === "compare", onSelect: () => { setMode("compare"); setResults([]); setVerifiedInput(null); } },
+            ]}
+          />
 
           {mode === "question" ? (
             <label className="rapid-query-field">
