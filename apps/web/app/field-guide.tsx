@@ -173,7 +173,7 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
   const navigationItems = [
     { icon: House, label: text("Overview", "Overzicht"), copy: text("Today", "Vandaag") },
     { icon: Wrench, label: text("Workspace", "Werkruimte"), copy: text("Do work", "Werk uitvoeren") },
-    { icon: Camera, label: text("Photo", "Foto"), copy: text("Direct camera", "Direct camera"), featured: true },
+    { icon: Camera, label: text("Photo", "Foto"), copy: text("Direct camera", "Directe camera"), featured: true },
     { icon: ListChecks, label: text("Actions", "Acties"), copy: text("Follow up", "Opvolgen") },
     { icon: FileText, label: text("Reports", "Rapporten"), copy: text("Create PDF", "Maak PDF") },
   ];
@@ -378,7 +378,7 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
         : text("Why some controls are visible only to administrators.", "Waarom sommige bediening alleen voor beheerders zichtbaar is."),
       items: [
         {
-          title: text("Open Management", "Open Management"),
+          title: text("Open Management", "Open Beheer"),
           copy: text("Use the gear in the top-right. Management is kept out of the mobile bottom bar so the five daily field actions remain directly reachable without a crowded menu.", "Gebruik het tandwiel rechtsboven. Management staat buiten de mobiele onderbalk zodat de vijf dagelijkse veldacties direct bereikbaar blijven zonder een druk menu."),
         },
         {

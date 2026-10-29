@@ -3670,3 +3670,13 @@ test("QA L24: a failed daily backup check waits ten minutes before it is tried a
   assert.match(app, /dailyBackupFailedAtRef\.current = Date\.now\(\)/);
   assert.match(app, /Date\.now\(\) - dailyBackupFailedAtRef\.current < 10 \* 60 \* 1000/);
 });
+
+test("QA L9/L26: the technical instruction answers follow the language; the policy is written down", async () => {
+  const workspace = await readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8");
+  assert.match(workspace, /<option value="none">\{text\("None", "Geen"\)\}<\/option>/);
+  assert.match(workspace, /<option value="confirmed">\{text\("Confirmed", "Bevestigd"\)\}<\/option>/);
+  assert.match(workspace, /<option value="structural">\{text\("Structural", "Constructief"\)\}<\/option>/);
+  assert.doesNotMatch(workspace, /<option value="possible">Possible<\/option>/);
+  const policy = await readFile(new URL("../../../docs/product/taalbeleid.md", import.meta.url), "utf8");
+  assert.match(policy, /Workforce, Issues, Punchlist, Project Docs/);
+});
