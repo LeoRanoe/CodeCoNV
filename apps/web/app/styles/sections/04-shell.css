@@ -917,8 +917,8 @@
 
 .modal-close {
   display: grid;
-  width: var(--control-h-sm);
-  height: var(--control-h-sm);
+  width: var(--control-h-lg);
+  height: var(--control-h-lg);
   flex: 0 0 auto;
   place-items: center;
   border: 1px solid var(--ink-200);
@@ -972,6 +972,11 @@
 .dictate-button svg {
   width: 18px;
   height: 18px;
+}
+
+/* A thumb finds a 44 px button; the desktop pointer keeps the compact one. */
+@media (max-width: 1024px), (pointer: coarse) {
+  .dictate-button { width: 44px; height: 44px; }
 }
 
 .dictate-button:hover,

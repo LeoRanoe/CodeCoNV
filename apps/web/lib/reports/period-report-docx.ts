@@ -1,4 +1,6 @@
 import { Document, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } from "docx";
+import { periodDetailKeys, periodDetailsLine, periodHours, periodProjectHead, periodSignatureRoles, periodToken } from "@/lib/reports/period-report-text";
+import { reportDelayCause, reportWeather, reportWind } from "@/lib/reports/report-vocabulary";
 import {
   brandHeader,
   documentFooter,
@@ -24,9 +26,7 @@ function formatDate(dateValue: string) {
   return new Intl.DateTimeFormat("nl-SR", { dateStyle: "medium", timeZone: "America/Paramaribo" }).format(date);
 }
 
-function humanizeToken(result: string) {
-  return result.replaceAll("_", " ");
-}
+const humanizeToken = periodToken;
 
 function nested(record: Record<string, unknown>, key: string) {
   const result = record[key];
@@ -34,29 +34,7 @@ function nested(record: Record<string, unknown>, key: string) {
 }
 
 function detailsText(record: Record<string, unknown>) {
-  const details = record.details;
-  if (!details || typeof details !== "object" || Array.isArray(details)) return "";
-  const values = details as Record<string, unknown>;
-  const preferredKeys = [
-    "building_name", "requested_to", "due_date", "revision", "related_reference", "reference_documents",
-    "attachments", "discipline", "priority", "schedule_impact", "cost_impact", "period_start", "period_end",
-    "description", "hse_category", "issue_category", "responsible_person", "immediate_measure",
-    "root_cause", "corrective_action", "disposition", "progress_percent", "inspected_at", "status",
-  ];
-  return preferredKeys
-    .filter((key) => {
-      const item = values[key];
-      return item !== "" && item !== null && item !== undefined && (typeof item === "string" || typeof item === "number" || typeof item === "boolean");
-    })
-    .slice(0, 7)
-    .map((key) => {
-      const item = String(values[key]);
-      const display = key.endsWith("_at") || key.endsWith("_date") || key === "period_start" || key === "period_end"
-        ? formatDate(item)
-        : ["disposition", "status"].includes(key) ? humanizeToken(item) : item;
-      return `${humanizeToken(key)}: ${display}`;
-    })
-    .join(" | ");
+  return periodDetailsLine(record, periodDetailKeys, formatDate);
 }
 
 function heading(title: string): Paragraph {
@@ -170,6 +148,7 @@ export function buildPeriodReportDocxDocument(snapshot: PeriodReportSnapshot, op
       ["Project", projectName],
       ["Periode", `${formatDate(snapshot.period.start_date)} t/m ${formatDate(snapshot.period.end_date)}`],
       ["Gegenereerd", formatDate(snapshot.generated_at)],
+      ...periodProjectHead(snapshot),
     ], 3),
   ];
 
@@ -216,11 +195,11 @@ export function buildPeriodReportDocxDocument(snapshot: PeriodReportSnapshot, op
           spacing: { before: 100 },
         }));
         children.push(new Paragraph({ children: [new TextRun({ text: closeout ? value(closeout, "day_summary", "Geen dagsamenvatting") : "Dagafsluiting nog niet bevestigd", size: 16 })] }));
-        if (start) children.push(new Paragraph({ children: [new TextRun({ text: `Weer: ${value(start, "weather_condition")} · ${value(start, "temperature_c")} °C · wind ${value(start, "wind_condition")} | Werkuren: ${value(start, "shift_start")}–${value(start, "shift_end")} | Gepland: ${value(start, "planned_work")}`, color: "5E707B", size: 14 })] }));
+        if (start) children.push(new Paragraph({ children: [new TextRun({ text: `Weer: ${reportWeather(value(start, "weather_condition"))} · ${value(start, "temperature_c")} °C · wind ${reportWind(value(start, "wind_condition"))} | Werkuren: ${periodHours(value(start, "shift_start"), value(start, "shift_end"))} | Gepland: ${value(start, "planned_work")}`, color: "5E707B", size: 14 })] }));
         if (closeout && topics.has("works_ongoing")) children.push(new Paragraph({ children: [new TextRun({ text: `Lopend: ${value(closeout, "work_ongoing", "-")} | Morgen: ${value(closeout, "tomorrow_plan", "-")}`, color: "5E707B", size: 14 })] }));
-        if (closeout && topics.has("works_completed")) children.push(new Paragraph({ children: [new TextRun({ text: `Afgerond: ${value(closeout, "work_performed", "-")} | Voortgang: ${value(closeout, "progress_percent", "0")}%`, color: "5E707B", size: 14 })], spacing: { after: 100 } }));
+        if (closeout && topics.has("works_completed")) children.push(new Paragraph({ children: [new TextRun({ text: `Afgerond: ${value(closeout, "work_performed", "-")} | Voortgang: ${value(closeout, "progress_percent") ? `${value(closeout, "progress_percent")}%` : "niet geregistreerd"}`, color: "5E707B", size: 14 })], spacing: { after: 100 } }));
         if (closeout && value(closeout, "delay_cause", "none") !== "none") {
-          children.push(new Paragraph({ children: [new TextRun({ text: `Vertraging: ${value(closeout, "delay_cause")} · ${value(closeout, "delay_hours", "0")} uur | Reden: ${value(closeout, "delay_reason", "niet geregistreerd")}`, color: "A52B24", size: 14 })] }));
+          children.push(new Paragraph({ children: [new TextRun({ text: `Vertraging: ${reportDelayCause(value(closeout, "delay_cause"))} · ${value(closeout, "delay_hours", "0")} uur | Reden: ${value(closeout, "delay_reason", "niet geregistreerd")}`, color: "A52B24", size: 14 })] }));
           children.push(signatureBlock([["Aannemer", `${value(closeout, "contractor_signed_by", "oude registratie zonder handtekening")} · ${value(closeout, "contractor_company")} · ${formatDate(value(closeout, "contractor_signed_at"))}`, value(closeout, "contractor_signature_image") || null]]));
         }
       });
@@ -276,6 +255,11 @@ export function buildPeriodReportDocxDocument(snapshot: PeriodReportSnapshot, op
       );
     });
   }
+
+  children.push(
+    heading("Ondertekening"),
+    signatureBlock(periodSignatureRoles.map((role): [string, string, (string | null)?] => [role, "Nog niet ondertekend", null])),
+  );
 
   return new Document({
     title: `${options.reportTitle ?? "Perioderapport"} ${projectName}`,

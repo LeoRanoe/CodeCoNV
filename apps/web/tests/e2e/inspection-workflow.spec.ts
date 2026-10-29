@@ -102,8 +102,15 @@ test("inspection: failed point, approve section, NCR detour, resume, sign and co
   await expect(page.locator(".signature-modal input").first()).toHaveAttribute("readonly", "");
   await drawSignature(page);
   await expect(complete).toBeEnabled();
+  // QA L25: completing sends the answers in one request, not one per checklist point.
+  const answerRequests: string[] = [];
+  page.on("request", (request) => {
+    const match = request.url().match(/\/rpc\/(save_inspection_responses?)$/);
+    if (match) answerRequests.push(match[1]);
+  });
   await complete.click();
   await expect(page.getByText("Inspection completed and signed.")).toBeVisible({ timeout: 30_000 });
+  expect(answerRequests).toEqual(["save_inspection_responses"]);
 
   // After a reload the inspection is completed and carries the signature.
   await page.reload();

@@ -523,7 +523,6 @@
 @media (max-width: 1024px) {
   :is(
     .action-center-summary,
-    .action-center-views,
     .action-overview,
     .client-kpi-grid,
     .overview-metrics,

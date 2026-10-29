@@ -395,6 +395,9 @@
 
 .panorama-controls button.active { background: var(--signal); border-color: var(--signal); }
 
+/* The "mark the centre" bar is the last row of the stage; the controls sit above it, not on it. */
+.panorama-stage:has(> .viewer-center-action) > .panorama-controls { bottom: 60px; }
+
 .panorama-heading {
   align-items: center;
   background: rgba(12, 28, 38, .86);
@@ -498,6 +501,9 @@
   font-size: var(--text-xs);
   line-height: 1.5;
 }
+
+/* Beside a drawing the empty hint is a line of help, not a 250 px block of nothing. */
+.drawing-unplaced-panel .visual-panel-empty { min-height: 0; padding: var(--space-4) 0; }
 
 .visual-issue-form > div:first-child p {
   margin: 5px 0 0;
@@ -667,7 +673,7 @@
     transition-duration: 0.01ms !important;
   }
 }
-.media-library { display: grid; gap: var(--space-4); }
+.media-library { display: grid; gap: var(--space-4); grid-template-columns: minmax(0, 1fr); }
 .media-library-toolbar, .media-actions-panel, .offline-queue { background: var(--paper); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px; }
 .media-library-toolbar { align-items: center; display: flex; justify-content: space-between; gap: var(--space-5); }
 .media-library-toolbar h2 { color: var(--text); font-size: var(--text-lg); margin: var(--space-2) 0 var(--space-1); }
@@ -687,6 +693,8 @@
 .media-kind-toggle { background: var(--ink-50); border-radius: var(--radius-sm); display: flex; align-items: center; padding: 3px; }
 .media-kind-toggle button { align-items: center; background: transparent; border: 0; border-radius: var(--radius-xs); color: var(--muted); display: flex; gap: 6px; padding: var(--space-2) 11px; }
 .media-kind-toggle button.active { background: var(--paper); box-shadow: none; color: var(--text); }
+.media-kind-toggle { max-width: 100%; }
+.media-kind-toggle button { flex: 1 1 0; justify-content: center; min-width: 0; }
 .media-folder-presets { flex: 1 1 100%; order: 3; }
 .media-folder-presets button { align-items: center; display: inline-flex; gap: 5px; }
 .media-folder-create { align-items: center; display: flex; gap: 7px; margin-left: auto; }
@@ -826,7 +834,9 @@
 .media-file-actions button { align-items: center; background: transparent; border: 0; color: var(--green); cursor: pointer; display: flex; justify-content: center; min-height: 42px; min-width: 42px; padding: var(--space-2); }
 .media-file-actions button:hover { background: var(--green-soft); border-radius: var(--radius-sm); }
 @media (max-width: 640px) {
-  .media-library-toolbar { align-items: stretch; flex-direction: column; }
+  .media-library-toolbar { align-items: stretch; flex-direction: column; min-width: 0; }
+  .media-library-toolbar > *, .data-saver-toggle { max-width: 100%; min-width: 0; }
+  .media-library-toolbar h2, .media-library-toolbar strong, .data-saver-toggle span { overflow-wrap: anywhere; }
   .media-folder-create { margin-left: 0; width: 100%; }
   .media-folder-create input { flex: 1; min-width: 0; }
   .media-actions-panel > .ui-button--primary { flex: 1; }
@@ -867,3 +877,18 @@
 .push-activation.not-configured { background: var(--yellow-soft); border-color: var(--ink-500); color: var(--yellow); }
 .push-activation span { display: grid; gap: 2px; }
 .push-activation small { color: var(--muted); }
+
+/* A file field inside a form wears the same button as the rest of the form instead of the browser's grey one. */
+.form-field input[type="file"] { font: inherit; max-width: 100%; }
+.form-field input[type="file"]::file-selector-button {
+  background: var(--paper);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-control);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-weight: var(--weight-bold);
+  margin-right: var(--space-3);
+  min-height: var(--control-h-lg);
+  padding: 0 var(--space-4);
+}

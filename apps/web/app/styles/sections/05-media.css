@@ -341,7 +341,11 @@
   width: 32px;
 }
 
+/* The bar floats over the page, so the page leaves the room it covers: nothing is hidden under it. */
+.main-content.has-resume-bar { padding-bottom: calc(var(--space-8) * 3 + 72px); }
+
 @media (max-width: 640px) {
+  .main-content.has-resume-bar { padding-bottom: calc(var(--space-8) * 3 + 168px); }
   /* Above the bottom navigation, never under it. */
   .entry-resume-bar { bottom: calc(78px + env(safe-area-inset-bottom)); flex-wrap: wrap; }
   .entry-resume-bar > span { flex: 1 1 100%; }

@@ -102,7 +102,7 @@ export function DailyWorkRegister({
             day,
             where,
             view === "works_ongoing" && record.tomorrow_plan ? `${text("Plan for tomorrow", "Planning morgen")}: ${record.tomorrow_plan}` : "",
-            view === "works_completed" ? `${text("Progress", "Voortgang")} ${Number(record.progress_percent)}%` : "",
+            view === "works_completed" && record.progress_percent !== null && record.progress_percent !== undefined ? `${text("Progress", "Voortgang")} ${Number(record.progress_percent)}%` : "",
             view === "delays" ? record.delay_reason || record.day_summary : "",
             view === "delays"
               ? record.contractor_signed_by

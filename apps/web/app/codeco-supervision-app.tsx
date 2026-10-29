@@ -63,7 +63,7 @@ import { WorkforceForm } from "@/app/workforce-register";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import { currentPushState, enablePushNotifications, type PushState } from "@/lib/notifications/push-client";
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
-import { clearFormDraft, formDraftKey, loadFormDraft } from "@/lib/offline/form-drafts";
+import { clearFormDraft, FORM_DRAFTS_CHANGED, formDraftKey, loadFormDraft } from "@/lib/offline/form-drafts";
 import { useFormAutosave } from "@/lib/offline/use-form-autosave";
 import { DraftNotice } from "@/app/forms/draft-notice";
 import { cacheProjectDay, cacheWorkspace, getCachedProjectDay, getCachedWorkspace } from "@/lib/offline/workspace-cache";
@@ -144,7 +144,7 @@ import {
   type WorkspaceBuilding,
   type WorkspaceProject,
 } from "@/lib/supabase/data";
-import type { DailyReportPdfSnapshot } from "@/lib/reports/daily-report-pdf";
+import type { DailyReportPdfSnapshot, FormalReportSnapshot } from "@/lib/reports/daily-report-pdf";
 import type { CurrentProjectWeather } from "@/lib/weather";
 
 function CompanyLogo({ subtitle }: { subtitle?: string }) {
@@ -231,7 +231,7 @@ const navigation: { id: NavKey; label: string; icon: LucideIcon; badge?: string 
      stay known, so an older address or back press still lands on the module. */
   { id: "verify", label: "Rapid Verify", icon: Search },
   { id: "rapporten", label: "Rapporten", icon: FileText },
-  { id: "meer", label: "Instellingen", icon: Settings },
+  { id: "meer", label: "Beheer", icon: Settings },
 ];
 
 const entryTitles: Record<string, string> = {
@@ -291,7 +291,7 @@ function projectStartFromRow(row: Record<string, unknown> | null): ProjectStartA
     shiftStart: String(row.shift_start).slice(0, 5),
     shiftEnd: String(row.shift_end).slice(0, 5),
     plannedWork: String(row.planned_work),
-    expectedWorkers: Number(row.expected_workers),
+    expectedWorkers: row.expected_workers === null || row.expected_workers === undefined ? null : Number(row.expected_workers),
     inspectionPlanned: row.inspection_planned ? "yes" : "no",
     highRiskWork: row.high_risk_work ? "yes" : "no",
     concreteWork: row.concrete_work ? "yes" : "no",
@@ -309,7 +309,7 @@ function closeoutFromRow(row: Record<string, unknown> | null): DailyCloseoutAnsw
     weatherSummary: String(row.weather_summary),
     workOngoing: String(row.work_ongoing ?? ""),
     workPerformed: String(row.work_performed),
-    progressPercent: Number(row.progress_percent),
+    progressPercent: row.progress_percent === null || row.progress_percent === undefined ? null : Number(row.progress_percent),
     inspectionResult: row.inspection_result as DailyCloseoutAnswers["inspectionResult"],
     qualityIssues: row.quality_issues ? "yes" : "no",
     qualityDetails: String(row.quality_details ?? ""),
@@ -397,6 +397,8 @@ export function CodecoSupervisionApp() {
   const supabase = getSupabaseBrowserClient();
   const queryClient = useQueryClient();
   const [session, setSession] = useState<Session | null>(null);
+  /** Said once on the project list after a password was changed. */
+  const [accountNotice, setAccountNotice] = useState("");
   const [passwordRecovery, setPasswordRecovery] = useState(
     () => typeof window !== "undefined" && window.location.hash.includes("type=recovery"),
   );
@@ -643,7 +645,7 @@ export function CodecoSupervisionApp() {
   const onlineStorageStatus = syncState === "saving"
     ? text("Saving centrally…", "Centraal opslaan…")
     : syncState === "error"
-      ? text("Save failed · try again", "Opslaan mislukt · probeer opnieuw")
+      ? text("Not saved", "Niet opgeslagen")
       : syncState === "saved"
         ? text("Saved centrally", "Centraal opgeslagen")
         : text("Live workspace · synchronized", "Live werkruimte · gesynchroniseerd");
@@ -663,9 +665,22 @@ export function CodecoSupervisionApp() {
       punchlist: "Issues",
       verify: "Rapid Verify",
       rapporten: text("Reports", "Rapporten"),
-      meer: canManageMembers ? text("Management", "Management") : text("Settings", "Instellingen"),
+      // One name for the screen, whoever opens it; what is on it follows the role.
+      meer: text("Management", "Beheer"),
     } satisfies Record<NavKey, string>)[item.id],
   }));
+
+  // A screen the role has no right to open (a typed address, an old link) is not shown empty: it
+  // leads back to the overview and says why.
+  useEffect(() => {
+    if (!permissions.known || navAllowed(activeNav)) return;
+    const timer = window.setTimeout(() => {
+      setToast(text("Your role has no access to that screen.", "Je rol heeft geen toegang tot dat scherm."));
+      setActiveNav("vandaag");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [permissions.known, activeNav]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -848,10 +863,6 @@ export function CodecoSupervisionApp() {
     };
   }, [queryClient, reportDate, selectedProject, session, supabase]);
 
-  const attendanceTotal = useMemo(
-    () => attendance.reduce((total, row) => total + row.count, 0),
-    [attendance],
-  );
   const projectAttendanceTotal = useMemo(
     () => (dayQuery.data?.attendance ?? []).reduce((total, row) => total + Number(row.headcount ?? 0), 0),
     [dayQuery.data],
@@ -883,6 +894,9 @@ export function CodecoSupervisionApp() {
         `Geen verbinding · ${waitingOnDevice} ${waitingOnDevice === 1 ? "registratie wacht" : "registraties wachten"} op dit apparaat`,
       )
       : text("No connection · working from this device", "Geen verbinding · je werkt vanaf dit apparaat");
+
+  /** The words of the last refused save, for forms that show the reason next to the field. */
+  const lastSaveErrorRef = useRef("");
 
   const runSynced = async <T,>(
     operation: () => Promise<T>,
@@ -917,10 +931,18 @@ export function CodecoSupervisionApp() {
       return (result === undefined ? true : result) as T;
     } catch (error) {
       setSyncState("error");
-      setToast(userFacingError(error, text));
+      lastSaveErrorRef.current = userFacingError(error, text);
+      setToast(lastSaveErrorRef.current);
       return null;
     }
   };
+
+  // A refused save is explained by the message; the chip does not stay red for the rest of the visit.
+  useEffect(() => {
+    if (syncState !== "error") return;
+    const timer = window.setTimeout(() => setSyncState("idle"), 8000);
+    return () => window.clearTimeout(timer);
+  }, [syncState]);
 
   const openQuickAdd = () => {
     // The tap that opens the camera is also the moment a phone will hand out its compass, so
@@ -1032,18 +1054,27 @@ export function CodecoSupervisionApp() {
     const projectId = selectedProject?.id;
     if (!projectId) return;
     let cancelled = false;
-    void Promise.all([
-      loadFormDraft<Array<{ file?: Blob }>>(formDraftKey("library-photos", projectId)),
-      loadFormDraft<File[]>(formDraftKey("quick-photo", projectId)),
-    ]).then(([library, staged]) => {
-      if (cancelled) return;
-      const libraryCount = Array.isArray(library?.value) ? library.value.filter((photo) => photo?.file instanceof Blob).length : 0;
-      const stagedFiles = Array.isArray(staged?.value) ? staged.value.filter((file) => file instanceof Blob) : [];
-      setUnsavedPhotos(libraryCount
-        ? { count: libraryCount, tab: "files", files: [] }
-        : stagedFiles.length ? { count: stagedFiles.length, tab: "visual", files: stagedFiles } : null);
-    });
-    return () => { cancelled = true; };
+    const refresh = (raise: boolean) => {
+      void Promise.all([
+        loadFormDraft<Array<{ file?: Blob }>>(formDraftKey("library-photos", projectId)),
+        loadFormDraft<File[]>(formDraftKey("quick-photo", projectId)),
+      ]).then(([library, staged]) => {
+        if (cancelled) return;
+        const libraryCount = Array.isArray(library?.value) ? library.value.filter((photo) => photo?.file instanceof Blob).length : 0;
+        const stagedFiles = Array.isArray(staged?.value) ? staged.value.filter((file) => file instanceof Blob) : [];
+        const next = libraryCount
+          ? { count: libraryCount, tab: "files" as const, files: [] }
+          : stagedFiles.length ? { count: stagedFiles.length, tab: "visual" as const, files: stagedFiles } : null;
+        // The bar is raised for photos left behind at start-up; later it only goes away, so it
+        // does not appear over the very form the photos are being added in.
+        setUnsavedPhotos((current) => raise || !next ? next : current);
+      });
+    };
+    refresh(true);
+    // Saving or discarding the photos clears the draft; the bar goes with it, without a reload.
+    const onChange = () => refresh(false);
+    window.addEventListener(FORM_DRAFTS_CHANGED, onChange);
+    return () => { cancelled = true; window.removeEventListener(FORM_DRAFTS_CHANGED, onChange); };
   }, [selectedProject?.id]);
 
   /**
@@ -1108,10 +1139,15 @@ export function CodecoSupervisionApp() {
     const fromUrl = screenFromSearch(initialSearch);
     if (!fromUrl.project) return;
     const project = projects.find((candidate) => candidate.id === fromUrl.project);
-    if (!project) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- restoring a screen from the address bar can only happen once the projects have loaded
+    if (!project) {
+      // A link to a project this account cannot open (or that no longer exists) says so,
+      // instead of landing on the project list as if nothing had been asked.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the address bar can only be checked once the projects have loaded
+      setAccountNotice(text("That project is not available to this account. Choose one from the list.", "Dat project is niet beschikbaar voor dit account. Kies een project uit de lijst."));
+      return;
+    }
     applyScreen(fromUrl);
-  }, [applyScreen, initialSearch, workspaceQuery.data?.projects]);
+  }, [applyScreen, initialSearch, text, workspaceQuery.data?.projects]);
 
   const openProjectStartForAllBuildings = () => {
     setContextBuildingId(ALL_BUILDINGS);
@@ -1203,6 +1239,7 @@ export function CodecoSupervisionApp() {
           });
           if (result.error) throw result.error;
           setPasswordRecovery(false);
+          setAccountNotice(text("Password changed.", "Wachtwoord gewijzigd."));
           window.history.replaceState(null, "", window.location.pathname);
           setSession((current) => current ? { ...current, user: result.data.user } : current);
         }}
@@ -1295,8 +1332,10 @@ export function CodecoSupervisionApp() {
             text("Configured project workspace created.", "Geconfigureerde projectwerkruimte aangemaakt."),
           );
           if (saved) await queryClient.invalidateQueries({ queryKey: ["workspace", session.user.id] });
-          return Boolean(saved);
+          return saved ? true : (lastSaveErrorRef.current || false);
         }}
+        notice={accountNotice}
+        canCreateProject={Boolean(workspaceQuery.data.manageableOrganizationIds.includes(workspaceQuery.data.organizations[0].id))}
         currentUserName={currentUserName}
         storageStatus={storageStatus}
         isOnline={isOnline}
@@ -1348,31 +1387,17 @@ export function CodecoSupervisionApp() {
       ? projectStartAnswers
       : projectStartFromRow(dayQuery.data?.startChecks.find((row) => row.building_id === contextBuilding?.id) ?? null);
 
-  const buildDraftReportSnapshot = (): DailyReportPdfSnapshot | null => {
-    if (!selectedProject || !selectedBuilding || !projectStartAnswers || !dailyCloseoutAnswers) return null;
-    const buildingsBreakdown = selectedProject.buildings.length > 1
-      ? selectedProject.buildings
-          .map((building) => {
-            const start = projectStartFromRow(dayQuery.data?.startChecks.find((row) => row.building_id === building.id) ?? null);
-            const closeout = closeoutFromRow(dayQuery.data?.closeouts.find((row) => row.building_id === building.id) ?? null);
-            return start && closeout ? { name: building.name, projectStart: start, closeout } : null;
-          })
-          .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
-      : undefined;
-    return {
-      reportNumber: String(dayQuery.data?.report?.report_number ?? `DR-${reportDate.replaceAll("-", "")}`),
-      reportDate,
-      projectName,
-      projectCode: selectedProject.code,
-      buildingName,
-      location: selectedProject.location,
-      supervisorName: currentUserName,
-      attendanceTotal,
-      registrationCount: entries.length,
-      projectStart: projectStartAnswers,
-      closeout: dailyCloseoutAnswers,
-      buildings: buildingsBreakdown,
-    };
+  /**
+   * The working report is built by the server from the rows as they are now, the same way the
+   * frozen version is, so the draft and the final document have the same tables.
+   */
+  const buildDraftReportSnapshot = async (): Promise<DailyReportPdfSnapshot | null> => {
+    const reportId = dayQuery.data?.report?.id;
+    if (!supabase || !reportId) return null;
+    const result = await supabase.rpc("build_day_report_snapshot", { p_day_report_id: String(reportId) });
+    if (result.error || !result.data) throw result.error ?? new Error("The report could not be prepared.");
+    const { draftDailySnapshot } = await import("@/lib/reports/daily-report-pdf");
+    return draftDailySnapshot(result.data as FormalReportSnapshot);
   };
 
   /**
@@ -1599,12 +1624,13 @@ export function CodecoSupervisionApp() {
           event.currentTarget.value = "";
         }}
       />
+      <a className="skip-link" href="#main-content">{text("Skip to the content", "Naar de inhoud")}</a>
       <aside className="sidebar" aria-label={text("Main navigation", "Hoofdnavigatie")}>
         <div className="brand">
           <CompanyLogo subtitle={text("Supervision", "Supervisie")} />
         </div>
 
-        <button className="project-context-card" type="button" aria-haspopup="dialog" onClick={() => setModal("switch_project")}>
+        <button className="project-context-card" type="button" aria-haspopup="dialog" title={`${projectName} · ${buildingContextLabel} · ${selectedProject?.location ?? ""}`} onClick={() => setModal("switch_project")}>
           <span className="project-context-icon"><Building2 size={17} /></span>
           <span className="project-context-copy">
             <span className="sr-only">{text("Switch project: ", "Van project wisselen: ")}</span>
@@ -1703,7 +1729,7 @@ export function CodecoSupervisionApp() {
 
         {/* Keyed on the project: a module that switches to another project starts over
             instead of carrying the previous project's selection, filters and drafts. */}
-        <main className="main-content" key={selectedProject?.id ?? "no-project"}>
+        <main id="main-content" tabIndex={-1} className={`main-content${unsavedPhotos ? " has-resume-bar" : ""}`} key={selectedProject?.id ?? "no-project"}>
           {activeNav === "vandaag" ? (
             <ClientDashboard
               entries={entries}
@@ -2003,6 +2029,7 @@ export function CodecoSupervisionApp() {
           close={() => setModal(null)}
           entries={entries}
           attendanceTotal={projectAttendanceTotal}
+          criticalFindings={selectedProject?.openCriticalFindings}
           reportNumber={reportNumber}
           reportStatus={String(dayQuery.data?.report?.status ?? "draft")}
           dailyCloseoutAnswers={dailyCloseoutAnswers}
@@ -2012,14 +2039,14 @@ export function CodecoSupervisionApp() {
           openDayLog={openDayLog}
           openProjectStart={() => { setModal(null); openProjectStartForAllBuildings(); }}
           onDownload={async () => {
-            const snapshot = buildDraftReportSnapshot();
+            const snapshot = await buildDraftReportSnapshot().catch((caught) => { setToast(userFacingError(caught, text)); return null; });
             if (!snapshot) return;
             const { downloadDailyReportPdf } = await import("@/lib/reports/daily-report-pdf");
             await downloadDailyReportPdf(snapshot);
             setToast(text("Draft PDF generated.", "Concept-PDF gemaakt."));
           }}
           onDownloadDocx={async () => {
-            const snapshot = buildDraftReportSnapshot();
+            const snapshot = await buildDraftReportSnapshot().catch((caught) => { setToast(userFacingError(caught, text)); return null; });
             if (!snapshot) return;
             const { downloadDailyReportDocx } = await import("@/lib/reports/daily-report-docx");
             await downloadDailyReportDocx(snapshot);
@@ -2211,11 +2238,21 @@ function AppStateScreen({
   );
 }
 
+/**
+ * The address as it was when the page loaded. The auth client removes the #error=… part of a used
+ * recovery link while it starts, so the screen reads it from here.
+ */
+const addressHashAtLoad = typeof window !== "undefined" ? window.location.hash : "";
+
 function AuthScreen({ client }: { client: SupabaseClient }) {
   const { language, text } = useLanguage();
   const localizedAuthSchema = useMemo(() => createAuthSchema(language), [language]);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  // A recovery link that was used or has expired comes back as #error_code=otp_expired; say so,
+  // and the "Forgot your password?" button below asks for a new one.
+  const [error, setError] = useState(() => /error_code=otp_expired|error=access_denied/.test(addressHashAtLoad)
+    ? text("This link has expired or was already used. Ask for a new one with “Forgot your password?”.", "Deze link is verlopen of al gebruikt. Vraag een nieuwe aan met “Wachtwoord vergeten?”.")
+    : "");
   const [resetSent, setResetSent] = useState(false);
   const { register, handleSubmit, getValues, formState: { errors } } = useForm<AuthAnswers>({
     resolver: zodResolver(localizedAuthSchema),
@@ -2273,15 +2310,15 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
   };
 
   return (
-    <div className="access-shell">
+    <main className="access-shell">
       <section className="access-card auth-card">
         <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={text("Construction supervision", "Constructiesupervisie")} /></div><LanguageSwitcher /></div>
         <div className="auth-heading">
           <h1>{text("Sign in", "Aanmelden")}</h1>
         </div>
         <form className="access-form" onSubmit={handleSubmit(submit)} noValidate>
-          <label className="form-field"><span>{text("Email address", "E-mailadres")}</span><input type="email" autoComplete="email" {...register("email")} />{errors.email ? <small className="field-error">{errors.email.message}</small> : null}</label>
-          <label className="form-field"><span>{text("Password", "Wachtwoord")}</span><input type="password" autoComplete="current-password" {...register("password")} />{errors.password ? <small className="field-error">{errors.password.message}</small> : null}</label>
+          <label className="form-field"><span>{text("Email address", "E-mailadres")}</span><input type="email" autoComplete="email" aria-invalid={Boolean(errors.email)} aria-describedby={errors.email ? "login-email-error" : undefined} {...register("email")} />{errors.email ? <small className="field-error" id="login-email-error" role="alert">{errors.email.message}</small> : null}</label>
+          <label className="form-field"><span>{text("Password", "Wachtwoord")}</span><input type="password" autoComplete="current-password" aria-invalid={Boolean(errors.password)} aria-describedby={errors.password ? "login-password-error" : undefined} {...register("password")} />{errors.password ? <small className="field-error" id="login-password-error" role="alert">{errors.password.message}</small> : null}</label>
           {error ? <p className="access-message error" role="alert">{error}</p> : null}
           {resetSent ? <p className="access-message success" role="status">{text("If the account exists, a recovery link was sent. Check your inbox and spam folder.", "Als het account bestaat, is een herstellink verstuurd. Controleer je inbox en spam.")}</p> : null}
           <button className="ui-button ui-button--primary ui-button--lg access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <LogIn size={16} />}{text("Sign in securely", "Veilig aanmelden")}</button>
@@ -2289,7 +2326,7 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
         </form>
         <p className="security-note">{text("No account? Ask your CODECO administrator for a personal invitation.", "Geen account? Vraag je CODECO-beheerder om een persoonlijke uitnodiging.")}</p>
       </section>
-    </div>
+    </main>
   );
 }
 
@@ -2330,8 +2367,8 @@ function PasswordSetupScreen({
         <span className="state-icon"><KeyRound size={26} /></span>
         <h1>{mode === "recovery" ? text("Choose a new password", "Kies een nieuw wachtwoord") : text("Set your password", "Stel je wachtwoord in")}</h1><p>{mode === "recovery" ? <>{text("The recovery link for", "De herstellink voor")} <strong>{email}</strong> {text("has been verified. Choose a new personal password of at least 12 characters.", "is geverifieerd. Kies een nieuw persoonlijk wachtwoord van minimaal 12 tekens.")}</> : <>{text("The invitation for", "De uitnodiging voor")} <strong>{email}</strong> {text("has been verified. Choose a personal password of at least 12 characters.", "is geverifieerd. Kies nu een persoonlijk wachtwoord van minimaal 12 tekens.")}</>}</p>
         <form className="access-form setup-form" onSubmit={handleSubmit(submit)} noValidate>
-          <label className="form-field"><span>{text("New password", "Nieuw wachtwoord")}</span><input type="password" autoComplete="new-password" {...register("password")} />{errors.password ? <small className="field-error">{errors.password.message}</small> : null}</label>
-          <label className="form-field"><span>{text("Repeat password", "Herhaal wachtwoord")}</span><input type="password" autoComplete="new-password" {...register("passwordConfirmation")} />{errors.passwordConfirmation ? <small className="field-error">{errors.passwordConfirmation.message}</small> : null}</label>
+          <label className="form-field"><span>{text("New password", "Nieuw wachtwoord")}</span><input type="password" autoComplete="new-password" aria-invalid={Boolean(errors.password)} aria-describedby={errors.password ? "new-password-error" : undefined} {...register("password")} />{errors.password ? <small className="field-error" id="new-password-error" role="alert">{errors.password.message}</small> : null}</label>
+          <label className="form-field"><span>{text("Repeat password", "Herhaal wachtwoord")}</span><input type="password" autoComplete="new-password" aria-invalid={Boolean(errors.passwordConfirmation)} aria-describedby={errors.passwordConfirmation ? "new-password-confirmation-error" : undefined} {...register("passwordConfirmation")} />{errors.passwordConfirmation ? <small className="field-error" id="new-password-confirmation-error" role="alert">{errors.passwordConfirmation.message}</small> : null}</label>
           {error ? <p className="access-message error" role="alert">{error}</p> : null}
           <button className="ui-button ui-button--primary ui-button--md access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <Check size={16} />}{text("Save password", "Wachtwoord opslaan")}</button>
         </form>
@@ -2406,7 +2443,7 @@ function ProjectSetupScreen({
   close,
 }: {
   organizationName: string;
-  save: (answers: ProjectSetupAnswers) => Promise<boolean>;
+  save: (answers: ProjectSetupAnswers) => Promise<boolean | string>;
   signOut: () => void;
   embedded?: boolean;
   close?: () => void;
@@ -2418,15 +2455,16 @@ function ProjectSetupScreen({
   const { register, handleSubmit, formState: { errors } } = useForm<ProjectSetupAnswers>({
     resolver: zodResolver(localizedProjectSetupSchema),
     defaultValues: {
-      code: "COD-2026-001",
-      name: "First construction project",
-      location: "Paramaribo, Suriname",
-      clientName: "Client",
-      buildingCode: "HOOFD",
-      buildingName: "Main building",
+      // Nothing here is a real project: a name, code or building that is not typed is not saved.
+      code: "",
+      name: "",
+      location: "",
+      clientName: "",
+      buildingCode: "",
+      buildingName: "",
       additionalBuildings: "",
       locationLevels: "floor|GF|Ground floor\nfloor|L1|First floor\nfloor|L2|Second floor",
-      contractorName: "Main contractor",
+      contractorName: "",
       defaultLanguage: "en",
       shiftStart: "07:00",
       shiftEnd: "16:00",
@@ -2452,7 +2490,8 @@ function ProjectSetupScreen({
     setBusy(true);
     setError("");
     const ok = await save(answers);
-    if (!ok) setError(text("The project could not be created. Check the project code and try again.", "Het project kon niet worden aangemaakt. Controleer de projectcode en probeer opnieuw."));
+    // The reason comes from the save itself: a refused right is not a mistyped project code.
+    if (ok !== true) setError(typeof ok === "string" ? ok : text("The project could not be created.", "Het project kon niet worden aangemaakt."));
     setBusy(false);
   };
   return (
@@ -2515,6 +2554,8 @@ function ContextSelection({
   chooseProject,
   organizationName,
   createProject,
+  canCreateProject,
+  notice,
   currentUserName,
   storageStatus,
   isOnline,
@@ -2525,7 +2566,11 @@ function ContextSelection({
   projects: ProjectContext[];
   chooseProject: (project: ProjectContext) => void;
   organizationName: string;
-  createProject: (answers: ProjectSetupAnswers) => Promise<boolean>;
+  createProject: (answers: ProjectSetupAnswers) => Promise<boolean | string>;
+  /** Only a user who holds projects.create is offered the button; the database refuses anyone else. */
+  canCreateProject: boolean;
+  /** A one-time confirmation above the list, such as "Password changed." */
+  notice?: string;
   currentUserName: string;
   storageStatus: string;
   isOnline: boolean;
@@ -2557,8 +2602,8 @@ function ContextSelection({
         </div>
 
         <section className="context-heading">
-          <div><h1>{text("My projects", "Mijn projecten")}</h1></div>
-          <button className="ui-button ui-button--primary ui-button--md portfolio-cta" type="button" onClick={() => setShowProjectSetup(true)}><Plus size={15} /> {text("New configured project", "Nieuw geconfigureerd project")}</button>
+          <div><h1>{text("My projects", "Mijn projecten")}</h1>{notice ? <p className="access-message success" role="status">{notice}</p> : null}</div>
+          {canCreateProject ? <button className="ui-button ui-button--primary ui-button--md portfolio-cta" type="button" onClick={() => setShowProjectSetup(true)}><Plus size={15} /> {text("New configured project", "Nieuw geconfigureerd project")}</button> : null}
         </section>
         {/* No portfolio counters here: this screen only has to answer "which project am I
             working on today?". The numbers live in the project dashboard, in context. */}
@@ -2580,7 +2625,7 @@ function ContextSelection({
       </main>
       {showProjectSetup ? <ProjectSetupScreen organizationName={organizationName} save={async (answers) => {
         const okay = await createProject(answers);
-        if (okay) setShowProjectSetup(false);
+        if (okay === true) setShowProjectSetup(false);
         return okay;
       }} signOut={() => undefined} embedded close={() => setShowProjectSetup(false)} /> : null}
     </div>
@@ -2629,7 +2674,7 @@ function ProjectStartForm({
       shiftStart: defaultShiftStart,
       shiftEnd: defaultShiftEnd,
       plannedWork: "",
-      expectedWorkers: 42,
+      expectedWorkers: null,
       inspectionPlanned: "yes",
       highRiskWork: "no",
       concreteWork: "yes",
@@ -2706,7 +2751,11 @@ function ProjectStartForm({
         </header>
 
       <div className="modal-body project-start-layout">
-        <form className="project-start-form" onSubmit={handleSubmit(save)} noValidate>
+        <form className="project-start-form" onSubmit={handleSubmit(save, () => {
+          // The first refused field can be a screen above the button that was pressed; a press
+          // that seems to do nothing is the worst answer, so bring the reason into view.
+          window.requestAnimationFrame(() => document.querySelector<HTMLElement>(".project-start-form .field-error")?.scrollIntoView({ block: "center" }));
+        })} noValidate>
           <BuildingPicker id="project-start-building" buildings={buildings} value={buildingId} onChange={onChangeBuilding} allowAll />
           <section className="form-section-card">
             <header><span className="form-section-number">1</span><span><strong>{text("Weather and working hours", "Weer en werktijden")}</strong></span></header>
@@ -2732,7 +2781,7 @@ function ProjectStartForm({
               <label className="form-field"><span>{text("Wind", "Wind")}</span><select {...register("windCondition")}><option value="calm">{text("Calm", "Kalm")}</option><option value="moderate">{text("Moderate", "Matig")}</option><option value="strong">{text("Strong", "Sterk")}</option></select></label>
               <label className="form-field"><span>{text("Shift start", "Start werktijd")}</span><input type="time" {...register("shiftStart")} />{errors.shiftStart ? <small className="field-error">{errors.shiftStart.message}</small> : null}</label>
               <label className="form-field"><span>{text("Shift end", "Einde werktijd")}</span><input type="time" {...register("shiftEnd")} />{errors.shiftEnd ? <small className="field-error">{errors.shiftEnd.message}</small> : null}</label>
-              <div className="form-field"><label htmlFor="expected-workers">{text("Expected workforce", "Verwachte bezetting")}</label><span className="input-with-unit"><input id="expected-workers" type="number" {...register("expectedWorkers", { valueAsNumber: true })} /><em>{text("people", "personen")}</em></span><span className="period-date-presets">{[10, 20, 30, 40, 50].map((count) => <button type="button" onClick={() => setValue("expectedWorkers", count, { shouldDirty: true, shouldValidate: true })} key={count}>{count}</button>)}</span></div>
+              <div className="form-field"><label htmlFor="expected-workers">{text("Expected workforce", "Verwachte bezetting")}</label><span className="input-with-unit"><input id="expected-workers" type="number" min={0} inputMode="numeric" {...register("expectedWorkers", { setValueAs: (value) => value === "" || value === null || value === undefined ? null : Number(value) })} /><em>{text("people", "personen")}</em></span><span className="period-date-presets">{[10, 20, 30, 40, 50].map((count) => <button type="button" onClick={() => setValue("expectedWorkers", count, { shouldDirty: true, shouldValidate: true })} key={count}>{count}</button>)}</span></div>
             </div>
           </section>
 
@@ -2768,12 +2817,13 @@ function ProjectStartForm({
           </section>
 
           <div className="project-start-submit">
+            {Object.values(errors).some((error) => error?.message) ? <p className="field-error" role="alert">{text("Not complete yet", "Nog niet compleet")}: {Object.values(errors).map((error) => error?.message).filter(Boolean).join(" · ")}</p> : null}
             <span><ShieldCheck size={15} /> {text("Saving completes only after central confirmation.", "Opslaan is pas voltooid na centrale bevestiging.")}</span>
             <button className="ui-button ui-button--primary ui-button--md" type="submit">{text("Start daily report centrally", "Dagrapport centraal starten")} <ArrowRight size={15} /></button>
           </div>
         </form>
 
-        {automation.length ? <aside className="automation-panel">
+        {automation.length ? <div className="automation-panel">
           <header><span className="automation-panel-icon"><Settings size={19} /></span><span><strong>{text("Checks", "Controles")}</strong></span></header>
           <div className="automation-rule-list">
             {automation.map((rule) => (
@@ -2783,7 +2833,7 @@ function ProjectStartForm({
               </article>
             ))}
           </div>
-        </aside> : null}
+        </div> : null}
       </div>
       </section>
     </div>
@@ -3173,7 +3223,7 @@ function ActionCreateModal({
             <BuildingPicker id="action-building" buildings={buildings} value={buildingId} onChange={(next) => { setBuildingId(next); setLocationNodeId(""); }} allowAll />
             {buildingId !== ALL_BUILDINGS ? <LocationPicker id="action-location" nodes={locationNodes} buildingId={buildingId} value={locationNodeId} onChange={setLocationNodeId} requiredDepth={requiredLocationDepth} /> : null}
             <label className="form-field"><span>{text("Responsible party *", "Verantwoordelijke partij *")}</span><select {...register("ownerPartyId")} disabled={parties.length === 0}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select>{errors.ownerPartyId ? <small className="field-error">{errors.ownerPartyId.message}</small> : null}</label>
-            <label className="form-field"><span>{text("Assigned company employee *", "Toegewezen bedrijfsmedewerker *")}</span><select {...register("ownerUserId")} disabled={employees.length === 0}><option value="">{text("Choose employee", "Kies medewerker")}</option>{employees.map((employee) => <option value={employee.userId} key={employee.userId}>{employee.displayName || employee.email} · {[...employee.organizationRoles.map((role) => role.name), ...employee.projectRoles.filter((role) => role.projectId).map((role) => role.roleName)][0] ?? text("Employee", "Medewerker")}</option>)}</select>{errors.ownerUserId ? <small className="field-error">{errors.ownerUserId.message}</small> : null}{employees.length === 0 ? <small className="field-error">{text("No active employees. Add one under Management → Team and access.", "Geen actieve medewerkers. Voeg er een toe onder Management → Team en toegang.")}</small> : null}</label>
+            <label className="form-field"><span>{text("Assigned company employee *", "Toegewezen bedrijfsmedewerker *")}</span><select {...register("ownerUserId")} disabled={employees.length === 0}><option value="">{text("Choose employee", "Kies medewerker")}</option>{employees.map((employee) => <option value={employee.userId} key={employee.userId}>{employee.displayName || employee.email} · {[...employee.organizationRoles.map((role) => role.name), ...employee.projectRoles.filter((role) => role.projectId).map((role) => role.roleName)][0] ?? text("Employee", "Medewerker")}</option>)}</select>{errors.ownerUserId ? <small className="field-error">{errors.ownerUserId.message}</small> : null}{employees.length === 0 ? <small className="field-error">{text("No active employees in this project. Ask an administrator to add one; an action is assigned to an employee.", "Geen actieve medewerkers in dit project. Vraag een beheerder er een toe te voegen; een actie wordt aan een medewerker toegewezen.")}</small> : null}</label>
             <div className="form-field"><label htmlFor="action-deadline">Deadline *</label><input id="action-deadline" type="datetime-local" {...register("dueAt")} />{errors.dueAt ? <small className="field-error">{errors.dueAt.message}</small> : null}<span className="period-date-presets">{[[0, text("Today", "Vandaag")], [1, text("Tomorrow", "Morgen")], [3, text("3 days", "3 dagen")], [7, text("7 days", "7 dagen")]].map(([days, label]) => <button type="button" onClick={() => setValue("dueAt", actionDeadlineFromToday(Number(days)), { shouldDirty: true, shouldValidate: true })} key={String(label)}>{label}</button>)}</span></div>
             <label className="form-field"><span>{text("Priority", "Prioriteit")}</span><select {...register("priority")}><option value="low">{text("Low", "Laag")}</option><option value="normal">{text("Normal", "Normaal")}</option><option value="high">{text("High", "Hoog")}</option><option value="critical">{text("Critical", "Kritiek")}</option></select></label>
           </div>
@@ -3482,6 +3532,7 @@ function ReportModal({
   close,
   entries,
   attendanceTotal,
+  criticalFindings,
   reportNumber,
   reportStatus,
   dailyCloseoutAnswers,
@@ -3497,6 +3548,8 @@ function ReportModal({
   close: () => void;
   entries: TimelineEntry[];
   attendanceTotal: number;
+  /** Open critical findings of the project, from the records; undefined when it is not known. */
+  criticalFindings?: number;
   reportNumber: string;
   reportStatus: string;
   dailyCloseoutAnswers: DailyCloseoutAnswers | null;
@@ -3560,7 +3613,12 @@ function ReportModal({
               was never saved anywhere. */}
           <div className="report-summary-box">
             <strong>{text("In this report", "In dit rapport")}</strong>
-            <p>{text(`${attendanceTotal} ${attendanceTotal === 1 ? "person" : "people"} · ${entries.length} daily records · ${entries.filter((entry) => entry.kind === "inspection").length} inspections · ${entries.filter((entry) => entry.badgeTone === "red").length} critical`, `${attendanceTotal} ${attendanceTotal === 1 ? "persoon" : "personen"} · ${entries.length} dagregistraties · ${entries.filter((entry) => entry.kind === "inspection").length} inspecties · ${entries.filter((entry) => entry.badgeTone === "red").length} kritiek`)}</p>
+            <p>{[
+              `${attendanceTotal} ${attendanceTotal === 1 ? text("person", "persoon") : text("people", "personen")}`,
+              `${entries.length} ${text("daily records", "dagregistraties")}`,
+              `${entries.filter((entry) => entry.kind === "inspection").length} ${text("inspections", "inspecties")}`,
+              ...(criticalFindings === undefined ? [] : [`${criticalFindings} ${text("open critical", "open kritiek")}`]),
+            ].join(" · ")}</p>
             {dailyCloseoutAnswers?.daySummary ? <p>{dailyCloseoutAnswers.daySummary}</p> : null}
           </div>
           <div className="modal-actions">

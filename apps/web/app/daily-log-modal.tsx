@@ -11,7 +11,10 @@ import { SketchPad } from "@/app/sketch-pad";
 import { useLanguage } from "@/lib/i18n";
 import type { DailyCloseoutAnswers, ProjectStartAnswers } from "@/lib/forms/daily-report";
 import { normalizeImageFile } from "@/lib/images/normalize-image";
+import { closeoutFromToday, type DayLogToday } from "@/lib/forms/closeout-from-today";
 import { clearFormDraft, loadFormDraft, saveFormDraft } from "@/lib/offline/form-drafts";
+
+export type { DayLogToday };
 import { signatureFromDetails } from "@/lib/signatures/handwritten-signature.mjs";
 
 /** Everything typed, signed and photographed in the day log, as it is kept on the device. */
@@ -26,7 +29,7 @@ type DailyLogDraft = {
 type DailyLogFields = {
   constructionActivity: string;
   workPerformed: string;
-  progressPercent: number;
+  progressPercent: number | null;
   adviceToContractor: string;
   delayCause: DailyCloseoutAnswers["delayCause"];
   delayHours: number;
@@ -38,16 +41,6 @@ type DailyLogFields = {
   risks: string;
 };
 
-/**
- * What the other workspace modules recorded today. The day log reads these for its quality
- * and safety blocks instead of asking for them a second time.
- */
-export type DayLogToday = {
-  inspections: Array<{ id: string; code: string; title: string; status: string }>;
-  findings: Array<{ id: string; code: string; title: string; type: "issue" | "ncr" }>;
-  hse: Array<{ id: string; code: string; title: string; eventType: string }>;
-};
-
 export type DayLogFocus = "delay" | "works_ongoing" | "works_completed";
 
 /**
@@ -55,28 +48,6 @@ export type DayLogFocus = "delay" | "works_ongoing" | "works_completed";
  * photos ends up in the report as eight numbered files nobody can place afterwards.
  */
 export type DailyLogPhoto = PhotoEvidence;
-
-/** The quality and safety lines of the day report, taken from the records of today. */
-export function closeoutFromToday(today: DayLogToday) {
-  const qualityLines = [
-    ...today.inspections.map((inspection) => `${inspection.code} ${inspection.title}`.trim()),
-    ...today.findings.map((finding) => `${finding.code} ${finding.title}`.trim()),
-  ];
-  const hseLines = today.hse.map((event) => `${event.code} ${event.title}`.trim());
-  const inspectionResult: DailyCloseoutAnswers["inspectionResult"] = today.findings.length
-    ? "issues"
-    : today.inspections.length ? "all_ok" : "none";
-  const hseEvent: DailyCloseoutAnswers["hseEvent"] = today.hse.some((event) => event.eventType === "incident")
-    ? "incident"
-    : today.hse.some((event) => event.eventType === "near_miss") ? "near_miss" : "none";
-  return {
-    inspectionResult,
-    qualityIssues: (today.findings.length ? "yes" : "no") as DailyCloseoutAnswers["qualityIssues"],
-    qualityDetails: qualityLines.join("; ").slice(0, 1000),
-    hseEvent,
-    hseDetails: hseLines.join("; ").slice(0, 1000),
-  };
-}
 
 /**
  * The client's own daily log, taken from their weekly report (TELESUR CSC).
@@ -155,7 +126,7 @@ export function DailyLogForm({
   const emptyLog = (): DailyLogFields => ({
     constructionActivity: initialCloseout?.workOngoing ?? "",
     workPerformed: initialCloseout?.workPerformed ?? "",
-    progressPercent: initialCloseout?.progressPercent ?? 0,
+    progressPercent: initialCloseout?.progressPercent ?? null,
     adviceToContractor: initialCloseout?.communication ?? "",
     delayCause: initialCloseout?.delayCause ?? "none",
     delayHours: initialCloseout?.delayHours ?? 0,
@@ -358,8 +329,8 @@ export function DailyLogForm({
   );
   const progressField = (
     <label className="form-field" key="progress">
-      <span>{text("Progress", "Voortgang")} · {log.progressPercent}%</span>
-      <input type="range" min={0} max={100} step={5} value={log.progressPercent} onChange={(event) => setLog({ ...log, progressPercent: Number(event.target.value) })} />
+      <span>{text("Progress", "Voortgang")} · {log.progressPercent === null ? text("not entered", "niet ingevuld") : `${log.progressPercent}%`}</span>
+      <input type="range" min={0} max={100} step={5} value={log.progressPercent ?? 0} onChange={(event) => setLog({ ...log, progressPercent: Number(event.target.value) })} />
     </label>
   );
 

@@ -207,7 +207,8 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.doesNotMatch(app, />Account maken</);
   assert.match(app, /Gebruikers en toegang/);
   assert.match(app, /UserAdminModal/);
-  assert.match(operationalWorkspace, /Managementoverzicht/);
+  // One name for the management screen, whoever opens it (QA sweep M2).
+  assert.match(operationalWorkspace, /Beheeroverzicht/);
   assert.match(operationalWorkspace, /Bewijsreferenties, nooit geheimen/);
   assert.match(operationalWorkspace, /updateProductionReadiness/);
   assert.match(app, /must_set_password/);
@@ -266,8 +267,9 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.match(storageFileRoute, /access: "private"/);
   assert.match(storageFileRoute, /authenticateStorageRequest/);
   assert.match(pdfReport, /CONSTRUCTIESUPERVISIE/);
-  // Item 19 has its own signature block now, so 17–18 are the photos and attachments.
-  assert.match(pdfReport, /17–18\. Foto's en bijlagen/);
+  // Items 1–18 are tables built from the report model (tests/daily-report-model.test.mjs);
+  // item 19 has its own signature block.
+  assert.match(pdfReport, /model\.sections\.map/);
   assert.match(pdfReport, /19\. Controle, naam\/functie en ondertekening/);
   assert.match(providers, /QueryClientProvider/);
 });
@@ -820,7 +822,7 @@ test("treats every project as a multi-building workspace", async () => {
   assert.match(data, /client\.rpc\("create_building"/);
   assert.match(migration, /create or replace function public\.create_building/);
   assert.match(migration, /unique \(day_report_id, building_id\)/);
-  assert.match(dailyPdf, /snapshot\.buildings/);
+  assert.match(dailyPdf, /normalizeRecords/);
   assert.match(periodPdf, /buildingById/);
 });
 
@@ -1126,9 +1128,9 @@ test("processes the third batch of annotated screens from 31 July", async () => 
   assert.match(workspace, /expectedResolutionDate: event\.target\.value/);
   assert.match(workspace, /Contractor · owner of the correction|Aannemer · eigenaar van de correctie/);
   // The NCR module keeps the client's own paper form, with its own columns.
-  assert.match(workspace, /text\("Date identified", "Date Identified"\)/);
-  assert.match(workspace, /text\("Expected resolution date", "Expected Resolution Date"\)/);
-  assert.match(workspace, /Escalation Required \(Y\/N\)/);
+  assert.match(workspace, /text\("Date identified", "Datum vastgesteld"\)/);
+  assert.match(workspace, /text\("Expected resolution date", "Verwachte oplossingsdatum"\)/);
+  assert.match(workspace, /text\("Escalation required", "Escalatie nodig"\)/);
   assert.match(workspace, /Final Resolution & Rationale/);
   // The issue type list became the client's own vocabulary on 4 August; the columns of
   // their Issues_Tracking_Log around it stayed.
@@ -1149,7 +1151,7 @@ test("processes the third batch of annotated screens from 31 July", async () => 
   assert.doesNotMatch(workspace, /Requested to \/ recipient name/);
   assert.doesNotMatch(workspace, /Related RFI \/ NCR \/ drawing/);
   assert.doesNotMatch(workspace, /Reason for instruction|Reden voor instructie/);
-  assert.match(workspace, /text\("To:", "Aan:"\)/);
+  assert.match(workspace, /text\("To", "Aan"\)/);
   assert.match(controlledDocuments, /reason: draft\.reason\.trim\(\) \|\| draft\.details\.trim\(\)/);
   assert.match(controlledDocuments, /required_action: draft\.requiredAction \|\| "proceed"/);
   assert.match(controlledDocuments, /signedBy: string/);
@@ -2570,7 +2572,7 @@ test("records accountable delays and keeps project documents in one short flow",
   const [delayForm, operations, dailyPdf, periodPdf, periodDocx, projectDocuments, migration, styles] = await Promise.all([
     readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8"),
-    readFile(new URL("../lib/reports/daily-report-pdf.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/reports/daily-report-model.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/reports/period-report-pdf.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/reports/period-report-docx.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/project-documents-home.tsx", import.meta.url), "utf8"),
@@ -3279,7 +3281,7 @@ test("lets a supervisor switch project from anywhere without carrying data acros
   }
   assert.match(normalizedApp, /if \(project\.id !== selectedProject\?\.id\) resetProjectScopedState\(\);/);
   assert.match(normalizedApp, /hydratedProjectRef\.current = projectId;\n\s+resetProjectScopedState\(\);/);
-  assert.match(normalizedApp, /<main className="main-content" key=\{selectedProject\?\.id \?\? "no-project"\}>/);
+  assert.match(normalizedApp, /<main id="main-content" tabIndex=\{-1\} className=\{`main-content\$\{unsavedPhotos \? " has-resume-bar" : ""\}`\} key=\{selectedProject\?\.id \?\? "no-project"\}>/);
 });
 
 test("never names the database vendor in anything a user can see", async () => {
@@ -3607,4 +3609,46 @@ test("retains historical client form-feedback fixes without losing underlying wo
   assert.match(workspace, /className="controlled-document-author-edit"/);
   // Impact metadata remains available, but is not forced into every technical instruction.
   assert.match(workspace, /className="controlled-document-optional-impact"/);
+});
+
+test("QA M6/L3/L4: save buttons say what they wait for; pin removal is confirmed inline", async () => {
+  const [workspace, drawings] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/drawing-workspace.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.equal((workspace.match(/<StillNeeded items=/g) ?? []).length, 3);
+  assert.doesNotMatch(workspace, /Nog niemand van dit project staat in de app/);
+  assert.doesNotMatch(drawings, /window\.confirm/);
+  assert.match(drawings, /role="alertdialog"/);
+  assert.match(drawings, /\{activeDrawing \? <div className="operation-alert"><ShieldCheck/);
+});
+
+test("QA L18: a refused work-day start says why next to the button and scrolls to the reason", async () => {
+  const app = await readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8");
+  assert.match(app, /handleSubmit\(save, \(\) => \{/);
+  assert.match(app, /Nog niet compleet/);
+});
+
+test("QA L23/L8: tile and tab counts follow the other filter; the building code input is labelled", async () => {
+  const actionCenter = await readFile(new URL("../app/project-action-center.tsx", import.meta.url), "utf8");
+  // A tile counts within the chosen type, a tab within the chosen state, so the number
+  // on a button is the number of rows it leaves in the list.
+  assert.match(actionCenter, /const typeScopedItems = scopedItems\.filter/);
+  assert.match(actionCenter, /const stateScopedItems = scopedItems\.filter/);
+  assert.match(actionCenter, /typeScopedItems\.filter\(isOpen\)\.length/);
+  assert.match(actionCenter, /stateScopedItems\.filter\(\(item\) => item\.type === tab\.id\)\.length/);
+  const app = await readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8");
+  assert.match(app, /<label className="form-field"><span>\{text\("Building code \*", "Gebouwcode \*"\)\}<\/span><input value=\{code\}/);
+});
+
+test("QA L19: the local auth stack slows down repeated sign-in attempts", async () => {
+  const config = await readFile(new URL("../../../supabase/config.toml", import.meta.url), "utf8");
+  const limit = Number(/^sign_in_sign_ups\s*=\s*(\d+)/m.exec(config)?.[1]);
+  assert.ok(limit > 0 && limit <= 30, "sign-in attempts per five minutes must be limited");
+});
+
+test("QA L24: the root layout does not preload fonts the first screen does not use", async () => {
+  const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
+  assert.match(layout, /Geist_Mono\(\{[^}]*preload: false/s);
+  assert.doesNotMatch(layout, /weight: \["400", "500"/);
 });

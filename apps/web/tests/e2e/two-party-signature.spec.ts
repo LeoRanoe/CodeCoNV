@@ -61,7 +61,7 @@ test("technical instruction: the issuer signs as themself, the recipient signs t
   await form.locator(".controlled-document-primary textarea").fill("Torque every cast-in anchor to the value on the approved drawing before the base plate is grouted.");
   const deadline = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
   await form.locator(".controlled-document-deadline input[type=date]").fill(deadline);
-  await form.locator("label.form-field").filter({ hasText: "To:" }).locator("select").selectOption({ label: "Hoofdaannemer E2E · Contractor" });
+  await form.locator("label.form-field").filter({ has: page.locator("span", { hasText: /^To$/ }) }).locator("select").selectOption({ label: "Hoofdaannemer E2E · Contractor" });
 
   // The issuer's name on the signature is the account's own name; it cannot be typed over.
   await form.getByRole("button", { name: "Sign now" }).click();
@@ -143,7 +143,7 @@ test("change order: title and description once, one issuer signature, contractor
   await form.locator("label.form-field").filter({ hasText: "Reason for change" }).locator("select").selectOption("design_development");
   await form.getByText("Work scope", { exact: true }).click();
   await form.locator("label.form-field").filter({ hasText: "Details / what will change?" }).locator("textarea").fill("Eight additional anchors, 16 mm, at 400 mm centres.");
-  await form.locator("label.form-field").filter({ hasText: "To:" }).locator("select").selectOption({ label: "Hoofdaannemer E2E · Contractor" });
+  await form.locator("label.form-field").filter({ has: page.locator("span", { hasText: /^To$/ }) }).locator("select").selectOption({ label: "Hoofdaannemer E2E · Contractor" });
 
   // Issuer: the account's own name. Contractor: a different person, signing on this device.
   await form.locator(".signature-field").filter({ hasText: "Signature · supervision (issuer)" }).getByRole("button", { name: "Sign now" }).click();

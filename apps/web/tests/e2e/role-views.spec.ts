@@ -83,7 +83,7 @@ test("a client reads and signs; nothing offers to write", async ({ page }, testI
   await expect(page.getByRole("button", { name: /Submit issue|Save draft/ })).toHaveCount(0);
 
   if (desktop) {
-    await expect(modules(page).filter({ hasText: "Settings" })).toHaveCount(1);
+    await expect(modules(page).filter({ hasText: "Management" })).toHaveCount(1);
   }
 });
 
@@ -109,4 +109,47 @@ test("a supervisor keeps every control a supervisor needs", async ({ page }) => 
   await expect(page.getByRole("button", { name: /New controlled record/ })).toBeVisible();
   await openWorkspaceModule(page, "Issues");
   await expect(page.getByRole("button", { name: /^New$/ })).toBeVisible();
+});
+
+/** The project's own address, for a role that types or follows a link into a screen. */
+function addressOf(page: Page, nav: string) {
+  const project = new URL(page.url()).searchParams.get("project");
+  return `/supervisie?project=${project}&nav=${nav}`;
+}
+
+test("a contractor who types the Reports address lands back on the overview, with the reason", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-office", "The address check does not depend on the viewport.");
+  await signInAs(page, contractorEmail!, contractorPassword!);
+  await page.goto(addressOf(page, "rapporten"));
+  await expect(page.getByText("Your role has no access to that screen.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Client reports" })).toHaveCount(0);
+  await expect(page.locator(".period-report-card")).toHaveCount(0);
+});
+
+test("Management offers a contractor and a client only what their role may do", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-office", "The address check does not depend on the viewport.");
+  const admin = ["Team and access", "Project rules", "Structure and parties", "Continuity controls", "Manage tasks", "Assign follow-up", "Manage employees"];
+
+  await signInAs(page, contractorEmail!, contractorPassword!);
+  await page.goto(addressOf(page, "meer"));
+  await expect(page.getByRole("heading", { name: "Management overview" })).toBeVisible();
+  for (const name of admin) await expect(page.getByRole("button", { name: new RegExp(name) }), `contractor: ${name}`).toHaveCount(0);
+  // The contractor's own way to submit a document stays.
+  await expect(page.getByRole("button", { name: "Record external submission" })).toBeVisible();
+  // Counters of modules the role may not read are a dash, never a zero that reads like a fact.
+  await expect(page.locator(".management-kpis button", { hasText: "High-risk findings" }).locator("strong")).toHaveText("–");
+
+  await page.context().clearCookies();
+  await page.evaluate(() => localStorage.clear());
+  await signInAs(page, clientEmail!, clientPassword!);
+  await page.goto(addressOf(page, "meer"));
+  await expect(page.getByRole("heading", { name: "Management overview" })).toBeVisible();
+  for (const name of [...admin, "Record external submission"]) await expect(page.getByRole("button", { name: new RegExp(name) }), `client: ${name}`).toHaveCount(0);
+});
+
+test("a link to a project the account cannot open says so", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-office", "The address check does not depend on the viewport.");
+  await signInAs(page, supervisorEmail!, supervisorPassword!);
+  await page.goto("/supervisie?project=00000000-0000-4000-8000-000000000000&nav=project");
+  await expect(page.getByText("That project is not available to this account.")).toBeVisible();
 });

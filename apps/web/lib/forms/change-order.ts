@@ -174,9 +174,16 @@ export function changeOrderDetails(state: ChangeOrderState) {
  * draft hostage to a signature is how people keep them in their heads instead.
  */
 export function changeOrderReady(state: ChangeOrderState) {
-  return Boolean(state.changeOrderType)
-    && Boolean(state.reason)
-    && state.scopeAreas.length > 0
-    && state.scopeDetails.trim().length >= 3
-    && (!state.affectsSchedule || Boolean(state.originalFinishDate));
+  return changeOrderMissing(state).length === 0;
+}
+
+/** The same rule as `changeOrderReady`, as the names of what is still empty. */
+export function changeOrderMissing(state: ChangeOrderState): Array<{ en: string; nl: string }> {
+  const missing: Array<{ en: string; nl: string }> = [];
+  if (!state.changeOrderType) missing.push({ en: "type of change order", nl: "soort wijzigingsopdracht" });
+  if (!state.reason) missing.push({ en: "reason", nl: "reden" });
+  if (!state.scopeAreas.length) missing.push({ en: "affected scope area", nl: "scope-gebied" });
+  if (state.scopeDetails.trim().length < 3) missing.push({ en: "scope description", nl: "omschrijving van de scope" });
+  if (state.affectsSchedule && !state.originalFinishDate) missing.push({ en: "original finish date", nl: "oorspronkelijke einddatum" });
+  return missing;
 }

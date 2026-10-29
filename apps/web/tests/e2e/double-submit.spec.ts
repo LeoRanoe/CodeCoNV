@@ -44,7 +44,7 @@ test("two taps on 'Create controlled document' create one document", async ({ pa
   await form.getByLabel("Instruction title / reference").fill(title);
   await form.getByLabel("Instruction description").fill("One tap, one record.");
   await form.getByLabel(/deadline/i).fill("2026-12-31");
-  await form.getByLabel(/^To:/).selectOption({ index: 2 });
+  await form.getByRole("combobox", { name: "To", exact: true }).selectOption({ index: 2 });
 
   const create = page.getByRole("button", { name: "Create controlled document" });
   await expect(create).toBeEnabled();

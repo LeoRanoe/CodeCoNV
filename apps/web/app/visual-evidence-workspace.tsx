@@ -463,7 +463,12 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           failed: () => "",
         }).catch(() => undefined);
       }
-    }, text("Saved on this device. Sent when you're online.", "Opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent."));
+    }, typeof navigator !== "undefined" && !navigator.onLine
+      // Only a capture that really waits on the device says so; online it was sent while saving.
+      ? text("Saved on this device. Sent when you're online.", "Opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent.")
+      : captureForm.type === "panorama"
+        ? text("360° image uploaded.", "360°-beeld geüpload.")
+        : text("Photo uploaded.", "Foto geüpload."));
     if (okay) void clearFormDraft(formDraftKey("quick-photo", projectId));
     if (okay && generation === stagedImageRef.current) {
       setCaptureForm(emptyCaptureForm);
@@ -690,12 +695,12 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           this form: on site they are three more things to read past before saving. */}
       {captures.length && !showUpload ? (
         <div className="visual-workspace-grid">
-          <aside className="visual-capture-list" aria-label={text("Visual evidence list", "Lijst visueel bewijs")}>
+          <section className="visual-capture-list" aria-label={text("Visual evidence list", "Lijst visueel bewijs")}>
             {captures.map((capture) => {
               const count = data.visualAnnotations.filter((annotation) => annotation.capture_id === capture.id && annotation.status === "active").length;
               return <button type="button" className={activeCapture?.id === capture.id ? "active" : ""} onClick={() => { setPendingSelectionFileId(""); setActiveCaptureId(capture.id); setPoint(null); setSelectedAnnotationId(null); }} key={capture.id}><span className="visual-list-icon">{capture.capture_type === "panorama" ? <ScanLine size={17} /> : <ImageIcon size={17} />}</span><span><strong>{capture.title}</strong><small>{capture.location_label} · {count} {text(count === 1 ? "issue" : "issues", count === 1 ? "probleem" : "problemen")}</small></span>{capture.capture_type === "panorama" ? <em>360°</em> : null}</button>;
             })}
-          </aside>
+          </section>
           <div className="visual-stage-column">
             {activeCapture && activeFile ? (
               <>
@@ -711,9 +716,9 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
               </>
             ) : null}
           </div>
-          <aside className="visual-issue-panel">
+          <div className="visual-issue-panel">
             {point && activeCapture ? <IssueForm point={point} capture={activeCapture} issue={issue} setIssue={setIssue} findings={data.findings} annotations={data.visualAnnotations} existingFindingId={existingFindingId} setExistingFindingId={setExistingFindingId} parties={parties} buildings={buildings} captureBuildingId={captureBuildingId} busy={busy} signature={issueSignature} setSignature={setIssueSignature} save={() => void saveIssue()} cancel={() => { setPoint(null); setIssue(emptyIssue); setIssueSignature(null); setExistingFindingId(""); }} /> : selectedAnnotation && selectedFinding ? <AnnotationDetails annotation={selectedAnnotation} finding={selectedFinding} /> : <div className="visual-panel-empty"><ScanLine size={24} /><strong>{text("Select or place a marker", "Selecteer of plaats een marker")}</strong></div>}
-          </aside>
+          </div>
         </div>
       ) : showUpload ? null : <div className="empty-list-state visual-empty"><Camera size={24} /><strong>{text("No project photos yet", "Nog geen projectfoto's")}</strong><button className="ui-button ui-button--primary ui-button--md" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={15} /> {text("Take photo", "Maak foto")}</button></div>}
     </section>
@@ -1009,8 +1014,8 @@ export function PanoramaViewer({ imageUrl, annotations, pendingPoint, focusAnnot
           <button type="button" onClick={() => viewerRef.current?.zoomOut(10)} aria-label={text("Zoom out", "Uitzoomen")}><ZoomOut size={15} /></button>
           <button type="button" onClick={() => viewerRef.current?.zoomIn(10)} aria-label={text("Zoom in", "Inzoomen")}><ZoomIn size={15} /></button>
           <button type="button" onClick={resetView}><RotateCcw size={14} /> {text("Reset view", "Beginstand")}</button>
-          <button className={autorotating ? "active" : ""} type="button" onClick={toggleAutorotate}>{autorotating ? <Pause size={14} /> : <Play size={14} />} {text("Auto turn", "Vanzelf draaien")}</button>
-          {gyroscope !== "unavailable" ? <button className={gyroscope === "on" ? "active" : ""} type="button" onClick={toggleGyroscope}><Move3d size={14} /> {text("Move phone to look", "Kijken met de telefoon")}</button> : null}
+          <button className={autorotating ? "active" : ""} type="button" aria-pressed={autorotating} onClick={toggleAutorotate}>{autorotating ? <Pause size={14} /> : <Play size={14} />} {text("Auto turn", "Vanzelf draaien")}</button>
+          {gyroscope !== "unavailable" ? <button className={gyroscope === "on" ? "active" : ""} type="button" aria-pressed={gyroscope === "on"} onClick={toggleGyroscope}><Move3d size={14} /> {text("Move phone to look", "Kijken met de telefoon")}</button> : null}
           <button type="button" onClick={() => viewerRef.current?.toggleFullscreen()}><Maximize2 size={14} /> {text("Fullscreen", "Volledig scherm")}</button>
         </div>
       </>

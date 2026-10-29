@@ -69,6 +69,7 @@ import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { VisualEvidenceWorkspace } from "@/app/visual-evidence-workspace";
 import { DailyWorkRegister, type DailyWorkView } from "@/app/daily-work-register";
 import type { DayLogFocus, DayLogToday } from "@/app/daily-log-modal";
+import { recordInBuilding } from "@/lib/forms/closeout-from-today";
 import { reportDateInSuriname } from "@/lib/supabase/data";
 import { DrawingWorkspace } from "@/app/drawing-workspace";
 import { FieldTools } from "@/app/field-tools";
@@ -102,6 +103,7 @@ import {
 import {
   changeOrderDetails,
   changeOrderFinishDate,
+  changeOrderMissing,
   changeOrderReady,
   changeOrderReasons,
   changeOrderScopeAreas,
@@ -114,6 +116,7 @@ import {
   delayCompletionStatuses,
   delayImpacts,
   delayReportDetails,
+  delayReportMissing,
   delayReportReady,
   delayRevisedFinishDate,
   delayStatusOnFinishDate,
@@ -134,6 +137,8 @@ import type { FormalReportSnapshot } from "@/lib/reports/daily-report-pdf";
 import type { PeriodReportSection, PeriodReportTopic } from "@/lib/reports/period-report-pdf";
 import { assignProjectAction, type InternalMember, type ProjectParty } from "@/lib/supabase/data";
 import { isStorageGatewayConfigured, loadProjectFileObjectUrl, openProjectFile, uploadProjectFile } from "@/lib/storage/gateway";
+import { isPhotoFile } from "@/lib/media/photo-library.mjs";
+import { countOpenFindings } from "@/lib/records/finding-counts.mjs";
 import { createFileOriginResolver, filesForRecord, type FileOriginKind, type FileOriginResolver } from "@/lib/supabase/file-origins";
 import {
   buildPeriodReportSnapshot,
@@ -844,6 +849,9 @@ export function OperationalWorkspace({
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["project-operations", projectId, reportId],
+    // The day report arrives after the first render and changes the key. The records of the same
+    // project stay on screen while the second load runs, instead of a spinner replacing them.
+    placeholderData: (previous, previousQuery) => previousQuery?.queryKey[1] === projectId ? previous : undefined,
     queryFn: async () => {
       try {
         const snapshot = await loadProjectOperations(client, projectId, organizationId, reportId);
@@ -857,6 +865,14 @@ export function OperationalWorkspace({
     },
   });
   const [notice, setNotice] = useState("");
+  // A confirmation belongs to the screen where the save happened and fades after a few seconds,
+  // so "Pin saved" does not follow you to the next module.
+  const [noticeMode, setNoticeMode] = useState(mode);
+  useEffect(() => {
+    if (!notice) return undefined;
+    const timer = window.setTimeout(() => setNotice(""), 8000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   // `busy` only reaches a button after the next render. Two taps that land before it does (a
@@ -905,6 +921,7 @@ export function OperationalWorkspace({
       await requestProjectNotificationDispatch(client, projectId).catch(() => false);
       // A registration that had to wait says so, instead of claiming it is central.
       const waiting = await listOfflineRecords(projectId).catch(() => []);
+      setNoticeMode(mode);
       setNotice(waiting.length > queuedBefore
         ? text("Saved on this device. Sent when you're online.", "Opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent.")
         : success);
@@ -938,7 +955,7 @@ export function OperationalWorkspace({
     <>
       {snapshot._offlineCached ? <div className="operation-alert warning"><HardDrive size={17} /><div><strong>{text("Offline project copy", "Offline projectkopie")}</strong><span>{text("Offline. Last synced data is available; formal changes wait for a connection.", "Offline. Laatst gesynchroniseerde gegevens zijn beschikbaar; formele wijzigingen wachten op verbinding.")} {snapshot._offlineSavedAt ? `${text("Saved", "Opgeslagen")} ${formatDate(snapshot._offlineSavedAt)}.` : ""}</span></div></div> : null}
       {error ? <div className="operation-alert error"><AlertTriangle size={17} /> {error}</div> : null}
-      {notice ? <div className="operation-alert success"><CheckCircle2 size={17} /> {notice}</div> : null}
+      {notice && noticeMode === mode ? <div className="operation-alert success"><CheckCircle2 size={17} /> {notice}</div> : null}
       {mode === "project" ? (
         <ProjectOperations
           key={`${projectId}:${externalSubmissionIntent}`}
@@ -1885,13 +1902,10 @@ function ProjectOperations({
       { title: text("Delivery delay", "Vertraging door levering"), details: text("Planned work was delayed because materials arrived late or incomplete.", "Gepland werk is vertraagd doordat materiaal te laat of onvolledig aankwam.") },
     ],
     rfi: [
-      { title: "Detailed specifications for the server room of B1 second floor", details: "According to change CO-11 for the B1 second-floor PAHO server room, provide the detailed specifications after the change of location.", relatedReference: "CO-11 B1 SF PAHO SERVER ROOM EXCHANGE", revision: "0" },
       { title: text("Clarification required", "Verduidelijking vereist"), details: text("The approved documents do not provide sufficient information for execution.", "De goedgekeurde documenten geven onvoldoende informatie voor uitvoering.") },
       { title: text("Drawing conflict", "Tegenstrijdigheid in tekening"), details: text("A conflict was found between drawing, specification or site condition.", "Er is een tegenstrijdigheid vastgesteld tussen tekening, specificatie of situatie op locatie.") },
     ],
-    rfa: [
-      { title: "Lighting switch layout of Building B1", details: "Request approval of the lighting switch layout of Building B1.", relatedReference: "RFA.SU-L1054.519.4", revision: "4", attachments: "Lighting switch layout of Building B1.zip · 1 page" },
-    ],
+    rfa: [],
     inspection_request: [
       { title: "Acceptance of reinforcement for shear wall of Ground Floor, Building B2", details: "Inspect and confirm the reinforcement for the ground-floor shear wall before subsequent work proceeds.", inspectionCategory: "structural", readyTime: "07:30" },
       { title: text("Work ready for inspection", "Werk gereed voor inspectie"), details: text("The work is completed and available for the requested inspection.", "Het werk is uitgevoerd en beschikbaar voor de aangevraagde inspectie.") },
@@ -2672,7 +2686,10 @@ function ProjectOperations({
           if (navigator.onLine) await syncQueuedEvidenceNow();
         }
       },
-      text("Saved on this device. Photos are sent when you're online.", "Opgeslagen op dit apparaat. Foto's worden verzonden zodra je online bent."),
+      // Only a save that really waits on the device says so; online the server has it already.
+      typeof navigator !== "undefined" && !navigator.onLine
+        ? text("Saved on this device. Photos are sent when you're online.", "Opgeslagen op dit apparaat. Foto's worden verzonden zodra je online bent.")
+        : text("HSE saved.", "HSE opgeslagen."),
     );
     if (okay) {
       // The issue is filed, so the parked draft of it has nothing left to protect.
@@ -2968,15 +2985,17 @@ function ProjectOperations({
   /** What the other modules recorded today, for the quality and safety blocks of the day log. */
   const todayInSuriname = reportDateInSuriname();
   const isToday = (...values: Array<string | null | undefined>) => values.some((value) => Boolean(value) && reportDateInSuriname(new Date(value!)) === todayInSuriname);
+  /** A record belongs to the building being reported, also when it is filed under several. */
+  const inBuilding = (record: { building_ids?: string[]; building_id?: string | null }) => recordInBuilding(record, buildingId, ALL_BUILDINGS);
   const dayLogToday: DayLogToday = {
     inspections: data.inspections
-      .filter((inspection) => isToday(inspection.started_at, inspection.completed_at, inspection.planned_at))
+      .filter((inspection) => inBuilding(inspection) && isToday(inspection.started_at, inspection.completed_at, inspection.planned_at))
       .map((inspection) => ({ id: inspection.id, code: inspection.inspection_number, title: inspection.title, status: inspection.status })),
     findings: data.findings
-      .filter((finding) => finding.status !== "cancelled" && isToday(finding.created_at))
+      .filter((finding) => inBuilding(finding) && finding.status !== "cancelled" && isToday(finding.created_at))
       .map((finding) => ({ id: finding.id, code: finding.finding_number, title: finding.title, type: finding.finding_type === "ncr" ? "ncr" as const : "issue" as const })),
     hse: data.hseEvents
-      .filter((event) => event.status !== "cancelled" && isToday(event.occurred_at))
+      .filter((event) => inBuilding(event) && event.status !== "cancelled" && isToday(event.occurred_at))
       .map((event) => ({ id: event.id, code: event.event_number, title: event.title, eventType: event.event_type })),
   };
   /** The counted days of the Workforce register: one line per day and building. */
@@ -3002,8 +3021,8 @@ function ProjectOperations({
 
   const projectSections: Array<[Exclude<ProjectTab, "home">, string, number]> = ([
     ["inspections", text("Inspections", "Inspecties"), data.inspections.length],
-    ["findings", text("Issues", "Issues"), data.findings.filter((item) => item.finding_type !== "ncr" && item.status !== "closed").length],
-    ["ncr", "NCR", data.findings.filter((item) => item.finding_type === "ncr" && item.status !== "closed").length],
+    ["findings", text("Issues", "Issues"), countOpenFindings(data.findings, "issue")],
+    ["ncr", "NCR", countOpenFindings(data.findings, "ncr")],
     ["hse", "HSE", data.hseEvents.length],
     // The page is named after what was asked for: one block of the day, or the whole day log.
     ["daily", !dayLogFocus ? text("Day log", "Daglog") : dailyWorkView === "works_completed" ? text("Works completed", "Werkzaamheden afgerond") : dailyWorkView === "delays" ? text("Delays", "Vertragingen") : text("Works ongoing", "Werkzaamheden gaande"), (data.dailyWork ?? []).length],
@@ -3013,7 +3032,7 @@ function ProjectOperations({
     ["visual", text("Visual evidence", "Visueel bewijs"), data.visualCaptures.length],
     ["drawings", text("Drawings", "Tekeningen"), data.files.filter((file) => file.category === "drawing" && file.status === "available").length],
     ["tools", text("Field tools", "Veldtools"), data.registerEntries.filter((entry) => ["notepad", "agreement", "technical_instruction"].includes(entry.register_type)).length],
-    ["files", text("Photos", "Foto's"), data.files.filter((file) => file.mime_type.startsWith("image/")).length],
+    ["files", text("Photos", "Foto's"), data.files.filter(isPhotoFile).length],
     ["assets", text("Assets", "Middelen"), data.files.length + data.inspections.length + data.findings.length + data.hseEvents.length + data.registerEntries.length + (data.dayReports ?? []).length],
   ] as Array<[Exclude<ProjectTab, "home">, string, number]>).filter(([sectionId]) => ({
     inspections: moduleEnabled("inspections"),
@@ -3048,10 +3067,11 @@ function ProjectOperations({
           <ProjectWorkspaceHome
             counts={{
               inspections: data.inspections.length,
-              issues: data.findings.filter((item) => item.finding_type !== "ncr" && !["closed", "cancelled"].includes(item.status)).length,
-              ncr: data.findings.filter((item) => item.finding_type === "ncr" && !["closed", "cancelled"].includes(item.status)).length,
+              issues: countOpenFindings(data.findings, "issue"),
+              ncr: countOpenFindings(data.findings, "ncr"),
               hse: data.hseEvents.length,
-              photos: data.visualCaptures.filter((capture) => capture.capture_type === "photo" && capture.status === "active").length,
+              // The tile opens the photo library, which lists photos and 360° images together.
+              photos: data.visualCaptures.filter((capture) => capture.status === "active").length,
               deliveries: data.registerEntries.filter((entry) => entry.register_type === "delivery").length,
               agreements: data.registerEntries.filter((entry) => entry.register_type === "agreement").length,
               deadlines: data.findings.filter((item) => item.due_at && !["closed", "cancelled"].includes(item.status)).length
@@ -3340,7 +3360,7 @@ function ProjectOperations({
 
                   <section className="record-section record-order-2" aria-label={text("Category", "Categorie")}>
                     <h3><span className="record-section-number">2</span> {text("Category", "Categorie")} <em className="record-section-required">*</em></h3>
-                    <label className="form-field"><select value={findingForm.issueCategory} onChange={(event) => setFindingForm({ ...findingForm, issueCategory: event.target.value })}>
+                    <label className="form-field"><select aria-label={text("Category", "Categorie")} value={findingForm.issueCategory} onChange={(event) => setFindingForm({ ...findingForm, issueCategory: event.target.value })}>
                       <option value="">{text("Choose a category", "Kies een categorie")}</option>
                       {issueCategories.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}
                     </select></label>
@@ -3417,7 +3437,7 @@ function ProjectOperations({
                     <div className="record-action-grid">
                       {immediateActionsTaken.map((action) => (
                         <label className={`record-action-check${findingForm.immediateActions.includes(action.id) ? " active" : ""}`} key={action.id}>
-                          <input type="checkbox" checked={findingForm.immediateActions.includes(action.id)} onChange={() => toggleIssueAction(action.id)} />
+                          <input type="checkbox" aria-label={text(action.en, action.nl)} checked={findingForm.immediateActions.includes(action.id)} onChange={() => toggleIssueAction(action.id)} />
                           {text(action.en, action.nl)}
                         </label>
                       ))}
@@ -3432,7 +3452,7 @@ function ProjectOperations({
                     <h3><span className="record-section-number">8</span> {text("Responsible person", "Verantwoordelijke")} <em className="record-section-required">*</em></h3>
                     <label className="form-field record-responsible-field">
                       <UserCheck size={15} />
-                      <select value={findingForm.responsibleUserId} onChange={(event) => {
+                      <select aria-label={text("Responsible person", "Verantwoordelijke")} value={findingForm.responsibleUserId} onChange={(event) => {
                         const chosen = responsiblePeople.find((option) => option.id === event.target.value);
                         setFindingForm({ ...findingForm, responsibleUserId: chosen?.id ?? "", responsiblePerson: chosen ? `${chosen.name}${chosen.role ? ` (${chosen.role})` : ""}` : "" });
                       }}>
@@ -3442,7 +3462,7 @@ function ProjectOperations({
                       {findingForm.responsibleUserId ? <button className="record-field-clear" type="button" onClick={() => setFindingForm({ ...findingForm, responsibleUserId: "", responsiblePerson: "" })} aria-label={text("Clear the responsible person", "Verantwoordelijke wissen")}><X size={14} /></button> : null}
                     </label>
                     {!responsiblePeople.length ? (
-                      <label className="form-field"><span>{text("Name of the responsible person", "Naam van de verantwoordelijke")}</span><input value={findingForm.responsiblePerson} onChange={(event) => setFindingForm({ ...findingForm, responsiblePerson: event.target.value })} placeholder={text("Nobody from this project is in the app yet", "Nog niemand van dit project staat in de app")} /></label>
+                      <label className="form-field"><span>{text("Name of the responsible person", "Naam van de verantwoordelijke")}</span><input value={findingForm.responsiblePerson} onChange={(event) => setFindingForm({ ...findingForm, responsiblePerson: event.target.value })} placeholder={text("First and last name", "Voor- en achternaam")} /></label>
                     ) : null}
                     {/* The contractor that has to correct it is a party, not a colleague:
                         the client's issue log carries both. */}
@@ -3467,7 +3487,7 @@ function ProjectOperations({
 
                   <section className="record-section record-order-10" aria-label={text("Root cause", "Oorzaak")}>
                     <h3><span className="record-section-number">10</span> {text("Root cause", "Oorzaak")} <em className="record-section-optional">({text("optional", "optioneel")})</em></h3>
-                    <label className="form-field"><select value={findingForm.rootCause} onChange={(event) => setFindingForm({ ...findingForm, rootCause: event.target.value })}>
+                    <label className="form-field"><select aria-label={text("Root cause", "Oorzaak")} value={findingForm.rootCause} onChange={(event) => setFindingForm({ ...findingForm, rootCause: event.target.value })}>
                       <option value="">{text("Select root cause", "Kies een oorzaak")}</option>
                       {recordRootCauses.map((cause) => <option value={cause.id} key={cause.id}>{text(cause.en, cause.nl)}</option>)}
                     </select></label>
@@ -3527,6 +3547,13 @@ function ProjectOperations({
                   <Paperclip size={14} /> {text(`Attachments (${findingPhotos.length})`, `Bijlagen (${findingPhotos.length})`)}
                   <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
                 </label>
+                <StillNeeded items={[
+                  exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId ? text("exact location", "exacte locatie") : "",
+                  !online && !findingPhotos.length ? text("a photo (you are offline)", "een foto (je bent offline)") : "",
+                  !findingForm.issueCategory ? text("category", "categorie") : "",
+                  findingForm.responsiblePerson.trim().length < 2 ? text("responsible person", "verantwoordelijke") : "",
+                  findingForm.description.trim().length < 3 ? text("description", "omschrijving") : "",
+                ]} />
                 <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || !findingForm.issueCategory || findingForm.responsiblePerson.trim().length < 2 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><Send size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Issue indienen")}</button>
               </div>
             </div>
@@ -3593,10 +3620,10 @@ function ProjectOperations({
                 <label className="form-field"><span>{text("Reference checklist / earlier report", "Referentiechecklist / eerder rapport")}</span><input value={findingForm.referenceChecklist} onChange={(event) => setFindingForm({ ...findingForm, referenceChecklist: event.target.value })} placeholder="NCR - 51" /></label>
                 {/* Priority is High, Medium or Low, in the client's own words. The deadline
                     that follows from it stays visible, because it is rule-driven. */}
-                <label className="form-field"><span>{text("Priority", "Priority")}</span><select value={findingForm.severity} onChange={(event) => setFindingForm({ ...findingForm, severity: event.target.value })}><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="low">{text("Low · 14 days", "Laag · 14 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label>
+                <label className="form-field"><span>{text("Priority", "Prioriteit")}</span><select value={findingForm.severity} onChange={(event) => setFindingForm({ ...findingForm, severity: event.target.value })}><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="low">{text("Low · 14 days", "Laag · 14 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label>
               </div>
               <div className="form-grid-2">
-                <label className="form-field"><span>{text("Issue type", "Issue Type")}</span><select value={findingForm.issueType} onChange={(event) => setFindingForm({ ...findingForm, issueType: event.target.value })}>{issueTypeOptions.map((option) => <option value={option.id} key={option.id}>{option.label}</option>)}</select></label>
+                <label className="form-field"><span>{text("Issue type", "Soort melding")}</span><select value={findingForm.issueType} onChange={(event) => setFindingForm({ ...findingForm, issueType: event.target.value })}>{issueTypeOptions.map((option) => <option value={option.id} key={option.id}>{option.label}</option>)}</select></label>
                 <label className="form-field"><span>{text("Disposition", "Beoordeling")}</span><select value={findingForm.disposition} onChange={(event) => setFindingForm({ ...findingForm, disposition: event.target.value as typeof findingForm.disposition })}><option value="validated">{text("Validated", "Gevalideerd")}</option><option value="to_be_corrected">{text("To be corrected", "Te corrigeren")}</option><option value="alternative_solution">{text("Alternative solution required", "Alternatieve oplossing nodig")}</option></select></label>
               </div>
               <div className="form-grid">
@@ -3628,10 +3655,10 @@ function ProjectOperations({
                   proposal below. A third box in between only invited three answers to one
                   question. It stays on the issue screen, which has no such pair. */}
               <div className="form-grid-2">
-                <label className="form-field"><span>{text("Date identified", "Date Identified")}</span><input type="date" value={findingForm.dateIdentified} onChange={(event) => setFindingForm({ ...findingForm, dateIdentified: event.target.value })} /></label>
-                <label className="form-field"><span>{text("Expected resolution date", "Expected Resolution Date")}</span><input type="date" value={findingForm.expectedResolutionDate} onChange={(event) => setFindingForm({ ...findingForm, expectedResolutionDate: event.target.value })} /></label>
+                <label className="form-field"><span>{text("Date identified", "Datum vastgesteld")}</span><input type="date" value={findingForm.dateIdentified} onChange={(event) => setFindingForm({ ...findingForm, dateIdentified: event.target.value })} /></label>
+                <label className="form-field"><span>{text("Expected resolution date", "Verwachte oplossingsdatum")}</span><input type="date" value={findingForm.expectedResolutionDate} onChange={(event) => setFindingForm({ ...findingForm, expectedResolutionDate: event.target.value })} /></label>
               </div>
-              <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required (Y/N)", "Escalation Required (Y/N)")}</label>
+              <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required", "Escalatie nodig")}</label>
               <p className="form-helper">{text(`Entered by ${currentUserName}`, `Ingevoerd door ${currentUserName}`)}</p>
               <div className="form-grid-2">
                 <BuildingMultiPicker id="ncr-buildings" buildings={buildings} value={findingBuildingIds} onChange={chooseFindingBuildings} />
@@ -3666,6 +3693,12 @@ function ProjectOperations({
                   job the signer holds is the one thing the app cannot know. */}
               <label className="form-field ncr-signature-position"><span>{text("Position", "Functie")}</span><input value={findingForm.signedPosition} onChange={(event) => setFindingForm({ ...findingForm, signedPosition: event.target.value })} placeholder={text("Quality Engineer", "Quality Engineer")} /></label>
                 <div className="operation-alert warning"><RotateCcw size={17} /><div><strong>{text("The contractor fills in the correction", "De aannemer vult de correctie in")}</strong><span>{text("Submit, then send the NCR to the contractor. The contractor proposes the corrective action; CODECO verifies and closes.", "Dien in en stuur de NCR naar de aannemer. De aannemer stelt de corrigerende maatregel voor; CODECO verifieert en sluit.")}</span></div></div>
+              <StillNeeded items={[
+                exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId ? text("exact location", "exacte locatie") : "",
+                !online && !findingPhotos.length ? text("a photo (you are offline)", "een foto (je bent offline)") : "",
+                findingForm.title.trim().length < 3 ? text("title", "titel") : "",
+                findingForm.description.trim().length < 3 ? text("description", "omschrijving") : "",
+              ]} />
               <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit NCR", "NCR indienen")}</button>
             </div>
           ) : null}
@@ -3693,9 +3726,10 @@ function ProjectOperations({
                 [text("Verified", "Geverifieerd"), scopedFindings.filter((item) => item.status === "closed").length],
               ].map(([label, count], index) => <div className={index === 2 ? "attention" : index === 3 ? "complete" : ""} key={String(label)}><span>{index + 1}</span><strong>{count}</strong><small>{label}</small></div>)}
             </div>
-            <div className="punchlist-cycle-card">
-              <div className="button-row">{!permissions.can("files.manage") ? null : <><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setTab("visual")}><Camera size={14} /> {text("Open normal photo", "Open normale foto")}</button><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setTab("visual")}><RotateCcw size={14} /> {text("Open 360° image", "Open 360°-beeld")}</button></>}</div>
-            </div>
+            {permissions.can("files.manage") ? <div className="punchlist-cycle-card">
+              <div><strong>{text("Mark an issue on an image", "Een issue op een beeld markeren")}</strong><p>{text("Choose a photo or a 360° image and place the issue on it.", "Kies een foto of 360°-beeld en plaats het issue erop.")}</p></div>
+              <div className="button-row"><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setTab("visual")}><Camera size={14} /> {text("Open photo", "Foto openen")}</button><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setTab("visual")}><RotateCcw size={14} /> {text("Open 360° image", "360°-beeld openen")}</button></div>
+            </div> : null}
           </div>
           <FindingList
             data={data}
@@ -3798,7 +3832,7 @@ function ProjectOperations({
 
                   <section className="record-section record-order-2" aria-label={text("Category", "Categorie")}>
                     <h3><span className="record-section-number">2</span> {text("Category", "Categorie")} <em className="record-section-required">*</em></h3>
-                    <label className="form-field"><select value={hseForm.issueCategory} onChange={(event) => setHseForm({ ...hseForm, issueCategory: event.target.value })}>
+                    <label className="form-field"><select aria-label={text("Category", "Categorie")} value={hseForm.issueCategory} onChange={(event) => setHseForm({ ...hseForm, issueCategory: event.target.value })}>
                       <option value="">{text("Choose a category", "Kies een categorie")}</option>
                       {hseIssueCategories.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}
                     </select></label>
@@ -3833,7 +3867,7 @@ function ProjectOperations({
                     <h3><span className="record-section-number">8</span> {text("Responsible person", "Verantwoordelijke")} <em className="record-section-required">*</em></h3>
                     <label className="form-field record-responsible-field">
                       <UserCheck size={15} />
-                      <select value={hseForm.responsibleUserId} onChange={(event) => {
+                      <select aria-label={text("Responsible person", "Verantwoordelijke")} value={hseForm.responsibleUserId} onChange={(event) => {
                         const chosen = responsiblePeople.find((option) => option.id === event.target.value);
                         setHseForm({ ...hseForm, responsibleUserId: chosen?.id ?? "", responsiblePerson: chosen ? `${chosen.name}${chosen.role ? ` (${chosen.role})` : ""}` : "" });
                       }}>
@@ -3845,7 +3879,7 @@ function ProjectOperations({
                     {/* A project without colleagues in the app still has to be able to file
                         the issue: then the name is written instead of chosen. */}
                     {!responsiblePeople.length ? (
-                      <label className="form-field"><span>{text("Name of the responsible person", "Naam van de verantwoordelijke")}</span><input value={hseForm.responsiblePerson} onChange={(event) => setHseForm({ ...hseForm, responsiblePerson: event.target.value })} placeholder={text("Nobody from this project is in the app yet", "Nog niemand van dit project staat in de app")} /></label>
+                      <label className="form-field"><span>{text("Name of the responsible person", "Naam van de verantwoordelijke")}</span><input value={hseForm.responsiblePerson} onChange={(event) => setHseForm({ ...hseForm, responsiblePerson: event.target.value })} placeholder={text("First and last name", "Voor- en achternaam")} /></label>
                     ) : null}
                   </section>
 
@@ -3912,7 +3946,7 @@ function ProjectOperations({
                     <div className="record-action-grid">
                       {immediateActionsTaken.map((action) => (
                         <label className={`record-action-check${hseForm.immediateActions.includes(action.id) ? " active" : ""}`} key={action.id}>
-                          <input type="checkbox" checked={hseForm.immediateActions.includes(action.id)} onChange={() => toggleHseAction(action.id)} />
+                          <input type="checkbox" aria-label={text(action.en, action.nl)} checked={hseForm.immediateActions.includes(action.id)} onChange={() => toggleHseAction(action.id)} />
                           {text(action.en, action.nl)}
                         </label>
                       ))}
@@ -3925,7 +3959,7 @@ function ProjectOperations({
 
                   <section className="record-section record-order-10" aria-label={text("Root cause", "Oorzaak")}>
                     <h3><span className="record-section-number">10</span> {text("Root cause", "Oorzaak")} <em className="record-section-optional">({text("optional", "optioneel")})</em></h3>
-                    <label className="form-field"><select value={hseForm.rootCause} onChange={(event) => setHseForm({ ...hseForm, rootCause: event.target.value })}>
+                    <label className="form-field"><select aria-label={text("Root cause", "Oorzaak")} value={hseForm.rootCause} onChange={(event) => setHseForm({ ...hseForm, rootCause: event.target.value })}>
                       <option value="">{text("Select root cause", "Kies een oorzaak")}</option>
                       {recordRootCauses.map((cause) => <option value={cause.id} key={cause.id}>{text(cause.en, cause.nl)}</option>)}
                     </select></label>
@@ -3967,6 +4001,12 @@ function ProjectOperations({
                   <Paperclip size={14} /> {text(`Attachments (${hsePhotos.length})`, `Bijlagen (${hsePhotos.length})`)}
                   <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setHsePhotos, setHsePhotoError); event.currentTarget.value = ""; }} />
                 </label>
+                <StillNeeded items={[
+                  exactLocationRequired && !hseLocationNodeId ? text("exact location", "exacte locatie") : "",
+                  !hseForm.issueCategory ? text("category", "categorie") : "",
+                  hseForm.responsiblePerson.trim().length < 2 ? text("responsible person", "verantwoordelijke") : "",
+                  hseForm.description.trim().length < 3 ? text("description", "omschrijving") : "",
+                ]} />
                 <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !hseLocationNodeId) || !hseForm.issueCategory || hseForm.responsiblePerson.trim().length < 2 || hseForm.description.trim().length < 3} onClick={() => void addHse()}><Send size={15} /> {text("Submit issue", "Issue indienen")}</button>
               </div>
             </RecordFormShell>
@@ -4483,7 +4523,7 @@ function ProjectOperations({
                 ) : null}
                 {/* The party you address it to is the recipient; a second free-text name
                     next to it, plus reference fields nobody filled, are gone. */}
-                <label className="form-field"><span>{text("To:", "Aan:")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => { const party = parties.find((item) => item.id === event.target.value); setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value, requestedTo: party?.name ?? "" }); }}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name} · {partyTypeText(party.type, text)}</option>)}</select></label>
+                <label className="form-field"><span>{text("To", "Aan")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => { const party = parties.find((item) => item.id === event.target.value); setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value, requestedTo: party?.name ?? "" }); }}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name} · {partyTypeText(party.type, text)}</option>)}</select></label>
                 <details className="controlled-document-optional-attachments">
                   <summary>{text("Additional attachment notes", "Extra bijlageninformatie")}</summary>
                   <label className="form-field"><span>{text("Page count or reference (if applicable)", "Aantal pagina's of referentie (indien van toepassing)")}</span><input value={registerForm.attachments} onChange={(event) => setRegisterForm({ ...registerForm, attachments: event.target.value })} /></label>
@@ -4655,9 +4695,13 @@ function ProjectOperations({
       : controlledRegister && registerForm.requestedTo.trim().length < 2 ? text("recipient", "ontvanger") : "",
     controlledRegister && registerForm.type === "inspection_request" && !registerForm.readyDate ? text("ready date", "gereeddatum") : "",
     controlledRegister && registerForm.type === "technical_instruction" && !registerForm.dueDate ? text("deadline", "deadline") : "",
-    controlledRegister && registerForm.type === "change_order" && !changeOrderReady(changeOrder) ? text("change order details", "gegevens wijzigingsopdracht") : "",
+    ...(controlledRegister && registerForm.type === "change_order" ? changeOrderMissing(changeOrder).map((item) => text(item.en, item.nl)) : []),
     !lessonFormReady ? text("lesson fields and both photos", "velden en beide foto's van de les") : "",
-    !delayReportFormReady ? text("delay report fields and status photo", "velden en statusfoto van het vertragingsrapport") : "",
+    ...(delayReportRegister ? [
+      ...delayReportMissing(delayForm).map((item) => text(item.en, item.nl)),
+      !registerNamedPhotos.delay_status ? text("photo on the original finish date", "foto op de oorspronkelijke einddatum") : "",
+      delayCompletionStarted(delayForm) && !registerNamedPhotos.delay_completion ? text("completion photo", "foto van de afronding") : "",
+    ] : []),
                 ].filter(Boolean);
                 return registerMissing.length ? <small className="confirm-needs">{text("Still needed", "Nog nodig")}: {registerMissing.join(" · ")}</small> : null;
               })()}
@@ -4801,7 +4845,11 @@ function ProjectOperations({
 
       {tab === "documents" ? <ProjectDocumentsHome data={data} client={client} organizationId={organizationId} projectId={projectId} reportId={reportId} buildingId={buildingId} buildings={buildings} busy={busy} run={run} openDrawings={() => switchTab("drawings")} openFiles={() => switchTab("assets")} openRegisters={() => switchTab("registers")} createDocument={() => openTask("registers", true)} /> : null}
 
-      {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} client={client} busy={busy} run={run} initialFindingId={drawingFindingId} initialInspectionId={drawingInspectionId} pendingRecord={pendingRecordPin} onPlaceRecordPin={onPlaceRecordPin} onOpenLinkedRecord={(recordType) => switchTab(recordType === "observation" ? "findings" : recordType === "inspection" ? "inspections" : recordType === "visual" ? "visual" : recordType === "registration" ? "daily" : "registers")} /> : null}
+      {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} client={client} busy={busy} run={run} initialFindingId={drawingFindingId} initialInspectionId={drawingInspectionId} pendingRecord={pendingRecordPin} onPlaceRecordPin={onPlaceRecordPin} onOpenLinkedRecord={(recordType, recordId) => {
+        // The pin points at one record, so the module opens on that record, not on its list.
+        if (recordType === "registration") { switchTab("daily"); return; }
+        openProjectArea(recordType === "observation" ? "findings" : recordType === "inspection" ? "inspections" : recordType === "visual" ? "visual" : "registers", recordId);
+      }} /> : null}
 
       {tab === "tools" ? <FieldTools data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} parties={parties} reportId={reportId} currentUserName={currentUserName} client={client} busy={busy} run={run} /> : null}
 
@@ -4890,6 +4938,13 @@ function BoqProgressRegister({
       </div>
     </section>
   );
+}
+
+/** What a disabled save button is waiting for, in words; nothing when the form is complete. */
+function StillNeeded({ items }: { items: string[] }) {
+  const { text } = useLanguage();
+  const missing = items.filter(Boolean);
+  return missing.length ? <small className="confirm-needs">{text("Still needed", "Nog nodig")}: {missing.join(" · ")}</small> : null;
 }
 
 function ControlledDocumentList({ entries, buildings, locationNodes, busy, currentUserName, focusRecordId = "", client, run }: {
@@ -5799,6 +5854,10 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
 
 function AdminOperations({ data, client, organizationId, projectId, projectName, reportStatus, buildingId, buildingName, buildings, companyEmployees, projectActions, parties, canManageOrganization, openUserAdmin, openProjectArea, openActionCenter, createProjectAction, busy, run }: { data: OperationSnapshot; client: SupabaseClient; organizationId: string; projectId: string; projectName: string; reportStatus: string; buildingId: string; buildingName: string; buildings: BuildingOption[]; companyEmployees: InternalMember[]; projectActions: Array<{ id: string; title: string; action_number: string; status: string; priority: string; due_at: string | null; owner_user_id?: string | null }>; parties: ProjectParty[]; canManageOrganization: boolean; openUserAdmin: () => void; openProjectArea: (tab: "inspections" | "findings" | "registers" | "visual" | "submissions") => void; openActionCenter: () => void; createProjectAction: () => void; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean> }) {
   const { text } = useLanguage();
+  const permissions = useProjectPermissions();
+  // A role that may not read a module sees a dash, not a zero that reads like a fact.
+  const readsFindings = permissions.can("findings.read");
+  const readsInspections = permissions.can("inspections.read");
   const [section, setSection] = useState<"overview" | "settings" | "structure" | "templates" | "backup">("overview");
   const [structureBuildingId, setStructureBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [template, setTemplate] = useState({ module: "inspection", code: "", name: "", prompts: "" });
@@ -5848,7 +5907,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
   };
   return (
     <>
-      <header className="secondary-header ui-page-header"><div><h1>{section === "overview" ? text("Management overview", "Managementoverzicht") : text("Administration and control", "Beheer en controle")}</h1><span className="ui-page-header__code">{projectName}</span></div><div className="management-header-actions">{canManageOrganization ? <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={openUserAdmin}><Users size={15} /> {text("Manage team", "Team beheren")}</button> : null}</div></header>
+      <header className="secondary-header ui-page-header"><div><h1>{section === "overview" ? text("Management overview", "Beheeroverzicht") : text("Administration and control", "Beheer en controle")}</h1><span className="ui-page-header__code">{projectName}</span></div><div className="management-header-actions">{canManageOrganization ? <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={openUserAdmin}><Users size={15} /> {text("Manage team", "Team beheren")}</button> : null}</div></header>
       <SectionNav
         label={text("Management sections", "Beheeronderdelen")}
         items={([["overview", text("Overview", "Overzicht")], ["settings", text("Team & rules", "Team & regels")], ["structure", text("Project setup", "Projectinrichting")], ["templates", text("Quality standards", "Kwaliteitsstandaarden")], ["backup", text("Backup & continuity", "Back-up & continuïteit")]] as const).map(([id, label]) => ({ id, label, selected: section === id, onSelect: () => setSection(id) }))}
@@ -5856,16 +5915,16 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
       {section === "overview" ? <section className="management-overview">
         <div className="management-kpis">
           <button className={data.settings ? "healthy" : "attention"} type="button" onClick={() => setSection("settings")}><span>{text("Project configuration", "Projectconfiguratie")}</span><strong>{data.settings ? text("Active", "Actief") : text("Missing", "Ontbreekt")}</strong>{data.settings ? null : <small>{text("Project rules require configuration", "Projectregels moeten worden ingesteld")}</small>}</button>
-          <button className={criticalFindings.length ? "attention" : ""} type="button" onClick={() => openProjectArea("findings")}><span>{text("High-risk findings", "Hoog-risico bevindingen")}</span><strong>{criticalFindings.length}</strong><small>{openFindings.length} {text("findings still open", "bevindingen nog open")}</small></button>
-          <button type="button" onClick={() => openProjectArea("inspections")}><span>{text("Active control work", "Actief controlewerk")}</span><strong>{activeInspections.length}</strong><small>{data.inspections.length} {text("inspections recorded", "inspecties geregistreerd")}</small></button>
+          <button className={criticalFindings.length ? "attention" : ""} type="button" onClick={() => openProjectArea("findings")}><span>{text("High-risk findings", "Hoog-risico bevindingen")}</span><strong>{readsFindings ? criticalFindings.length : "–"}</strong><small>{readsFindings ? openFindings.length : "–"} {text("findings still open", "bevindingen nog open")}</small></button>
+          <button type="button" onClick={() => openProjectArea("inspections")}><span>{text("Active control work", "Actief controlewerk")}</span><strong>{readsInspections ? activeInspections.length : "–"}</strong><small>{readsInspections ? data.inspections.length : "–"} {text("inspections recorded", "inspecties geregistreerd")}</small></button>
           <button className={latestScheduledBackup ? "healthy" : "attention"} type="button" onClick={() => setSection("backup")}><span>{text("Continuity", "Continuïteit")}</span><strong>{latestScheduledBackup ? text("Verified", "Geverifieerd") : text("Pending", "Openstaand")}</strong><small>{latestScheduledBackup ? formatDate(latestScheduledBackup.verified_at) : text("Verified backup required", "Geverifieerde back-up vereist")}</small></button>
         </div>
         <div className="management-columns">
           <article className="management-card ui-panel"><header className="ui-panel__heading"><h2>{text("Management attention", "Managementaandacht")}</h2></header><div className="management-attention-list">{criticalFindings.length ? criticalFindings.slice(0, 4).map((item) => <div className="ui-list-row" key={item.id}><span><strong>{item.title}</strong><small>{item.finding_number} · {statusText(item.status, text)}</small></span></div>) : <div className="management-clear"><CheckCircle2 size={18} /><span><strong>{text("No high-risk findings", "Geen hoog-risico bevindingen")}</strong></span></div>}</div></article>
-          <article className="management-card ui-panel"><header className="ui-panel__heading"><h2>{text("Management controls", "Managementbediening")}</h2></header><div className="management-control-list"><button type="button" onClick={openUserAdmin}><Users size={16} /><span><strong>{text("Team and access", "Team en toegang")}</strong></span></button><button type="button" onClick={() => setSection("settings")}><Settings size={16} /><span><strong>{text("Project rules", "Projectregels")}</strong></span></button><button type="button" onClick={() => setSection("structure")}><Wrench size={16} /><span><strong>{text("Structure and parties", "Structuur en partijen")}</strong></span></button><button type="button" onClick={() => setSection("backup")}><DatabaseBackup size={16} /><span><strong>{text("Continuity controls", "Continuïteitscontrole")}</strong></span></button></div></article>
+          <article className="management-card ui-panel"><header className="ui-panel__heading"><h2>{text("Management controls", "Managementbediening")}</h2></header><div className="management-control-list">{canManageOrganization ? <button type="button" onClick={openUserAdmin}><Users size={16} /><span><strong>{text("Team and access", "Team en toegang")}</strong></span></button> : null}{permissions.can("project.configure") ? <button type="button" onClick={() => setSection("settings")}><Settings size={16} /><span><strong>{text("Project rules", "Projectregels")}</strong></span></button> : null}{permissions.can("project.configure") ? <button type="button" onClick={() => setSection("structure")}><Wrench size={16} /><span><strong>{text("Structure and parties", "Structuur en partijen")}</strong></span></button> : null}{permissions.can("backup.manage") ? <button type="button" onClick={() => setSection("backup")}><DatabaseBackup size={16} /><span><strong>{text("Continuity controls", "Continuïteitscontrole")}</strong></span></button> : null}</div></article>
         </div>
         <section className="external-submission-center">
-          <header><div><span className="record-number">{text("External parties", "Externe partijen")}</span><h2>{text("Submissions, decisions and task ownership", "Indieningen, besluiten en taakverdeling")}</h2></div><div className="button-row"><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => openProjectArea("submissions")}><FileText size={15} /> {text("Record external submission", "Externe indiening registreren")}</button><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={openActionCenter}><ClipboardCheck size={15} /> {text("Manage tasks", "Taken beheren")}</button><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={createProjectAction}><Plus size={15} /> {text("Assign follow-up", "Opvolging toewijzen")}</button></div></header>
+          <header><div><span className="record-number">{text("External parties", "Externe partijen")}</span><h2>{text("Submissions, decisions and task ownership", "Indieningen, besluiten en taakverdeling")}</h2></div><div className="button-row">{permissions.can("records.create") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => openProjectArea("submissions")}><FileText size={15} /> {text("Record external submission", "Externe indiening registreren")}</button> : null}{permissions.can("actions.manage") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={openActionCenter}><ClipboardCheck size={15} /> {text("Manage tasks", "Taken beheren")}</button> : null}{permissions.can("actions.manage") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={createProjectAction}><Plus size={15} /> {text("Assign follow-up", "Opvolging toewijzen")}</button> : null}</div></header>
           <div className="external-access-summary">
             <span><KeyRound size={17} /><strong>{text("With account", "Met account")}</strong></span>
             <span><Link2 size={17} /><strong>{text("Without account", "Zonder account")}</strong></span>
@@ -5875,7 +5934,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
           <section className="company-task-assignment ui-panel">
             <header>
               <div><span className="record-number">{text("Company employees", "Eigen medewerkers")}</span><h3>{text("Assign and redistribute project tasks", "Projecttaken toewijzen en herverdelen")}</h3></div>
-              <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={openUserAdmin}><Users size={15} /> {text("Manage employees", "Medewerkers beheren")}</button>
+              {canManageOrganization ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={openUserAdmin}><Users size={15} /> {text("Manage employees", "Medewerkers beheren")}</button> : null}
             </header>
             {companyEmployees.length ? (
               <>
@@ -5902,7 +5961,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
             ) : <div className="operation-alert warning"><Users size={18} /><div><strong>{text("No assignable company employees", "Geen toewijsbare eigen medewerkers")}</strong><span>{text("Add an active employee first.", "Voeg eerst een actieve medewerker toe.")}</span></div></div>}
           </section>
           <ControlledDocumentList entries={externalSubmissions} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={text("Company / owner reviewer", "Reviewer bedrijf / eigenaar")} client={client} run={run} />
-        <div className="management-context"><div><span>{text("Current report", "Huidig rapport")}</span><strong>{statusText(reportStatus, text)}</strong></div><div><span>{text("Project locations", "Projectlocaties")}</span><strong>{data.locationNodes.length}</strong></div><div><span>{text("Published checklists", "Gepubliceerde checklists")}</span><strong>{data.templates.filter((item) => item.status === "published").length}</strong></div><div><span>{text("Controlled files", "Beheerde bestanden")}</span><strong>{data.files.length}</strong></div></div>
+        <div className="management-context"><div><span>{text("Current report", "Huidig rapport")}</span><strong>{statusText(reportStatus, text)}</strong></div><div><span>{text("Rooms and areas", "Ruimtes en zones")}</span><strong>{data.locationNodes.length}</strong></div><div><span>{text("Published checklists", "Gepubliceerde checklists")}</span><strong>{data.templates.filter((item) => item.status === "published").length}</strong></div><div><span>{text("Controlled files", "Beheerde bestanden")}</span><strong>{data.files.length}</strong></div></div>
       </section> : null}
       {section === "settings" ? (
         <section className="operation-panel">

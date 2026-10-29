@@ -306,12 +306,12 @@ export function ProjectDocumentsHome({
           <header><div><span>{text("Secure project document", "Beveiligd projectdocument")}</span><h3 id="document-preview-title">{preview.title}</h3></div><div><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => void downloadProjectFile(client, preview.fileId, preview.title)}><Download size={15} /> {text("Download", "Downloaden")}</button><button className="modal-close" type="button" onClick={() => setPreview(null)} aria-label={text("Close document", "Sluit document")}><X size={18} /></button></div></header>
           <div className="document-preview-body">
             <iframe src={preview.url} title={preview.title} />
-            <aside className="document-link-panel">
+            <div className="document-link-panel">
               <h4>{text("Link without copying", "Koppel zonder te kopiëren")}</h4>
               <label className="form-field"><span>{text("Folder", "Map")}</span><select value={linkFolderId} onChange={(event) => setLinkFolderId(event.target.value)}><option value="">{text("Keep current folder", "Huidige map behouden")}</option>{folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}</select></label>
               <label className="form-field"><span>{text("Controlled record", "Beheerde registratie")}</span><select value={linkRecordId} onChange={(event) => setLinkRecordId(event.target.value)}><option value="">{text("No extra record link", "Geen extra registratiekoppeling")}</option>{controlled.map((record) => <option value={record.id} key={record.id}>{record.entry_number} · {record.title}</option>)}</select></label>
               <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (!linkFolderId && !linkRecordId)} onClick={() => void connectPreviewFile()}><Link2 size={15} /> {text("Apply links", "Koppelingen toepassen")}</button>
-            </aside>
+            </div>
           </div>
         </section>
       </div> : null}

@@ -56,11 +56,13 @@ import {
   groupFilesByDay,
   folderMoveTargets,
   groupPhotoStacks,
+  isPhotoFile,
   libraryDayKey,
   nestMediaFolders,
   orderMediaFolders,
   visibleLibraryFiles,
 } from "../lib/media/photo-library.mjs";
+import { countOpenFindings } from "../lib/records/finding-counts.mjs";
 import {
   buildRecordDirectory,
   filterRecordDirectory,
@@ -997,4 +999,30 @@ test("folders read as a tree, and a folder cannot be moved inside itself", () =>
   // Moving "Drawings" may not offer itself, its child or its grandchild as a destination.
   assert.deepEqual(folderMoveTargets(folders, "a").map((folder) => folder.id), ["d", "e"]);
   assert.deepEqual(folderMoveTargets(folders, "d").map((folder) => folder.id), ["a", "b", "c", "e"]);
+});
+
+test("QA M5/M26: a drawing saved as an image is not counted as a photo", () => {
+  const files = [
+    { id: "1", mime_type: "image/jpeg", category: "photo" },
+    { id: "2", mime_type: "image/png", category: "evidence" },
+    { id: "3", mime_type: "image/png", category: "drawing" },
+    { id: "4", mime_type: "application/pdf", category: "drawing" },
+    { id: "5", mime_type: "image/png", category: "report" },
+  ];
+  assert.deepEqual(files.filter(isPhotoFile).map((file) => file.id), ["1", "2"]);
+  assert.equal(isPhotoFile(null), false);
+});
+
+test("QA M7: the issue and NCR counters leave out verified and withdrawn records alike", () => {
+  const findings = [
+    { finding_type: "issue", status: "open" },
+    { finding_type: "issue", status: "ready_for_verification" },
+    { finding_type: "issue", status: "closed" },
+    { finding_type: "issue", status: "cancelled" },
+    { finding_type: "ncr", status: "open" },
+    { finding_type: "ncr", status: "cancelled" },
+  ];
+  assert.equal(countOpenFindings(findings, "issue"), 2);
+  assert.equal(countOpenFindings(findings, "ncr"), 1);
+  assert.equal(countOpenFindings(undefined, "issue"), 0);
 });

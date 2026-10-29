@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle, Camera, CheckCircle2, ImageOff, Loader2, PenLine, Send, Upload } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
 import { LanguageProvider } from "@/lib/i18n";
@@ -80,6 +81,7 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
+  const router = useRouter();
   const submittingRef = useRef(false);
   const attemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const uploadedRef = useRef<{ photo: File; fileId: string } | null>(null);
@@ -147,6 +149,8 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
         : "Probleem ontvangen. De verantwoordelijke CODECO-gebruiker krijgt direct een melding.");
       setPhoto(null);
       setSignature(null);
+      // The status badge above reads the record again, so it shows the new state without a reload.
+      router.refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "De reactie kon niet worden verzonden.");
     } finally {

@@ -595,6 +595,34 @@ function buildingsForRecord(
   ]));
 }
 
+/** Calls that ask for the same report at the same moment share one request. */
+const dayReportRequests = new Map<string, Promise<string>>();
+
+async function requestProjectDayReport(client: SupabaseClient, projectId: string, reportDate: string) {
+  const idempotencyKey = `report:${projectId}:${reportDate}`;
+  // Every member who may write a record can ensure the report of the day; the report itself
+  // stays closed to roles without reports.read (migration 202610280001).
+  const ensured = await client.rpc("ensure_day_report_for_record", {
+    p_project_id: projectId,
+    p_report_date: reportDate,
+    p_idempotency_key: idempotencyKey,
+  });
+  if (!ensured.error) {
+    if (typeof ensured.data !== "string" || !ensured.data) throw new Error("The daily report could not be prepared.");
+    return ensured.data;
+  }
+  if (!rpcSignatureMissing(ensured.error, "ensure_day_report_for_record")) fail(ensured.error);
+  const result = await client.rpc("create_day_report", {
+    p_project_id: projectId,
+    p_report_date: reportDate,
+    p_idempotency_key: idempotencyKey,
+  });
+  fail(result.error);
+  const createdId = (result.data as { id?: string } | null)?.id;
+  if (!createdId) throw new Error("The daily report could not be prepared.");
+  return createdId;
+}
+
 export async function ensureProjectDayReport(
   client: SupabaseClient,
   projectId: string,
@@ -607,15 +635,14 @@ export async function ensureProjectDayReport(
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
-  const result = await client.rpc("create_day_report", {
-    p_project_id: projectId,
-    p_report_date: reportDate,
-    p_idempotency_key: `report:${projectId}:${reportDate}`,
+  const key = `${projectId}:${reportDate}`;
+  const pending = dayReportRequests.get(key);
+  if (pending) return pending;
+  const request = requestProjectDayReport(client, projectId, reportDate).finally(() => {
+    dayReportRequests.delete(key);
   });
-  fail(result.error);
-  const createdId = (result.data as { id?: string } | null)?.id;
-  if (!createdId) throw new Error("The daily report could not be prepared.");
-  return createdId;
+  dayReportRequests.set(key, request);
+  return request;
 }
 
 export async function loadProjectOperations(
@@ -855,6 +882,25 @@ export async function createMediaFolder(client: SupabaseClient, input: {
   return result.data as MediaFolder;
 }
 
+/**
+ * The folder an upload files itself in: the one that already carries the name, or a new one.
+ * Looked up on the server because the folder list on screen can be a moment behind, and every
+ * upload used to add one more folder with the same name.
+ */
+export async function ensureMediaFolder(client: SupabaseClient, input: {
+  projectId: string;
+  buildingId?: string | null;
+  name: string;
+  folderType?: MediaFolder["folder_type"];
+}) {
+  let query = client.from("media_folders").select("id,name").eq("project_id", input.projectId).eq("status", "active").is("parent_id", null).ilike("name", input.name.replace(/[\\%_]/g, "\\$&")).limit(5);
+  query = input.buildingId ? query.eq("building_id", input.buildingId) : query.is("building_id", null);
+  const found = await query;
+  const existing = found.error ? null : found.data?.[0];
+  if (existing) return existing as Pick<MediaFolder, "id" | "name">;
+  return createMediaFolder(client, input);
+}
+
 /** Asset-library mutations stay on the existing project-scoped tables and their RLS. */
 export async function updateMediaFolder(client: SupabaseClient, folderId: string, patch: {
   name?: string;
@@ -1017,10 +1063,25 @@ export async function loadInspectionResponses(client: SupabaseClient, inspection
 
 type InspectionAnswers = Record<string, { result: string; notes: string; numericValue?: number; textValue?: string }>;
 
-/** Stores the answers given so far without completing the inspection, so a checklist can be left and resumed. */
-export async function saveInspectionAnswers(client: SupabaseClient, inspection: Pick<Inspection, "id">, answers: InspectionAnswers) {
-  for (const [itemId, answer] of Object.entries(answers)) {
-    if (!answer.result) continue;
+/**
+ * Stores a set of checklist answers in one request, in one transaction. An environment that does
+ * not have the batch function yet (PGRST202) falls back to one request per answer.
+ */
+async function storeInspectionAnswers(client: SupabaseClient, inspection: Pick<Inspection, "id">, entries: Array<[string, InspectionAnswers[string]]>) {
+  if (!entries.length) return;
+  const batch = await client.rpc("save_inspection_responses", {
+    p_inspection_id: inspection.id,
+    p_responses: entries.map(([itemId, answer]) => ({
+      checklist_item_id: itemId,
+      result: answer.result,
+      numeric_value: answer.result === "value" ? answer.numericValue ?? null : null,
+      text_value: answer.result === "text" ? answer.textValue?.trim() || null : null,
+      notes: answer.notes,
+    })),
+  });
+  if (!batch.error) return;
+  if (batch.error.code !== "PGRST202") fail(batch.error);
+  for (const [itemId, answer] of entries) {
     const saved = await client.rpc("save_inspection_response", {
       p_inspection_id: inspection.id,
       p_checklist_item_id: itemId,
@@ -1034,23 +1095,17 @@ export async function saveInspectionAnswers(client: SupabaseClient, inspection: 
   }
 }
 
+/** Stores the answers given so far without completing the inspection, so a checklist can be left and resumed. */
+export async function saveInspectionAnswers(client: SupabaseClient, inspection: Pick<Inspection, "id">, answers: InspectionAnswers) {
+  await storeInspectionAnswers(client, inspection, Object.entries(answers).filter(([, answer]) => answer.result));
+}
+
 export async function finishInspection(
   client: SupabaseClient,
   inspection: Inspection,
   answers: InspectionAnswers,
 ) {
-  for (const [itemId, answer] of Object.entries(answers)) {
-    const saved = await client.rpc("save_inspection_response", {
-      p_inspection_id: inspection.id,
-      p_checklist_item_id: itemId,
-      p_result: answer.result,
-      p_numeric_value: answer.result === "value" ? answer.numericValue ?? null : null,
-      p_text_value: answer.result === "text" ? answer.textValue?.trim() || null : null,
-      p_notes: answer.notes,
-      p_idempotency_key: `inspection-response:${inspection.id}:${itemId}`,
-    });
-    fail(saved.error);
-  }
+  await storeInspectionAnswers(client, inspection, Object.entries(answers));
   const completed = await client.rpc("complete_project_inspection", { p_inspection_id: inspection.id });
   fail(completed.error);
   return completed.data as Inspection;

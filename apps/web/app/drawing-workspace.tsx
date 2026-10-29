@@ -210,6 +210,15 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
     setPoint(null);
   }, [incomingPin]);
 
+  // On a narrow screen the form sits far below the drawing; bring it into view when a spot or a
+  // pin is chosen, moving no further than needed so a form that is already visible stays put.
+  const linkPanelRef = useRef<HTMLDivElement>(null);
+  const panelKey = point ? `spot:${point.xRatio}:${point.yRatio}` : selectedPinId ? `pin:${selectedPinId}` : "";
+  useEffect(() => {
+    if (!panelKey) return;
+    linkPanelRef.current?.scrollIntoView({ block: "nearest" });
+  }, [panelKey]);
+
   const changePage = useCallback((page: number) => {
     setViewport(resetDrawingViewport(page));
     setPoint(null);
@@ -576,7 +585,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
           <div>
             <strong>{incomingPin
               ? text(`${incomingFinding.finding_number} is already on a drawing`, `${incomingFinding.finding_number} staat al op een tekening`)
-              : text(`Place ${incomingFinding.finding_number} on a drawing`, `Plaats ${incomingFinding.finding_number} op een tekening`)}</strong>
+              : text(`Place ${incomingFinding.finding_number} on a drawing`, `Plaats ${incomingFinding.finding_number} op een tekening`)}</strong>
           </div>
         </div>
       ) : null}
@@ -606,7 +615,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
 
       {drawings.length && activeDrawing ? (
         <div className="drawing-workspace-grid">
-          <aside className="drawing-file-list" aria-label={text("Drawing list", "Tekeningenlijst") }>
+          <section className="drawing-file-list" aria-label={text("Drawing list", "Tekeningenlijst") }>
             {drawings.map((drawing) => {
               const pinCount = data.drawingPins.filter((pin) => pin.drawing_file_id === drawing.id && pin.status === "active").length;
               return (
@@ -616,7 +625,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                 </button>
               );
             })}
-          </aside>
+          </section>
 
           <div className="drawing-stage-column">
             <div className="drawing-stage-header">
@@ -680,7 +689,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
             <div className="visual-stage-help">{tool === "pin" ? <MapPin size={15} /> : <MousePointer2 size={15} />}<span>{tool === "pin" ? text("Click the exact location, then choose the record to link.", "Klik op de exacte locatie en kies de registratie om te koppelen.") : text("Draw over the drawing. The original is not changed.", "Teken over de tekening. Het origineel blijft ongewijzigd.")}</span></div>
           </div>
 
-          <aside className="drawing-link-panel">
+          <div className="drawing-link-panel" ref={linkPanelRef}>
             {point && (pendingRecord || incomingFinding || incomingInspection) ? (
               <div className="drawing-link-form">
                 <div>
@@ -767,13 +776,13 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                 </section> : null}
               </div>
             )}
-          </aside>
+          </div>
         </div>
       ) : (
         <div className="empty-list-state visual-empty"><FileUp size={24} /><strong>{text("No previewable drawing yet", "Nog geen bekijkbare tekening")}</strong></div>
       )}
 
-      <div className="operation-alert"><ShieldCheck size={18} /><div><strong>{text("Original drawing remains unchanged", "Originele tekening blijft ongewijzigd")}</strong></div></div>
+      {activeDrawing ? <div className="operation-alert"><ShieldCheck size={18} /><div><strong>{text("Original drawing remains unchanged", "Originele tekening blijft ongewijzigd")}</strong></div></div> : null}
     </section>
   );
 }
@@ -1180,6 +1189,7 @@ function DraftShape({ points, tool, color, strokeWidth, size }: {
 
 function DrawingPinDetails({ pin, onOpen, onDelete }: { pin: DrawingPin; onOpen: () => void; onDelete: () => void }) {
   const { text } = useLanguage();
+  const [confirmingRemoval, setConfirmingRemoval] = useState(false);
   return (
     <div className="visual-annotation-details">
       <span className="visual-severity-line" />
@@ -1191,7 +1201,21 @@ function DrawingPinDetails({ pin, onOpen, onDelete }: { pin: DrawingPin; onOpen:
         <div><dt>{text("Exact position", "Exacte positie")}</dt><dd>X {Math.round(Number(pin.x_ratio) * 100)}% · Y {Math.round(Number(pin.y_ratio) * 100)}%</dd></div>
       </dl>
       <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={onOpen}><ArrowUpRight size={15} /> {text("Open linked project record", "Open gekoppeld projectrecord")}</button>
-      <button className="ui-button ui-button--secondary ui-button--md ui-button--danger" type="button" disabled={pin.id.startsWith("pending:")} onClick={() => { if (window.confirm(text("Remove this pin from the drawing? The audit trail is retained.", "Deze pin van de tekening verwijderen? Het auditspoor blijft behouden."))) onDelete(); }}><Trash2 size={15} /> {text("Remove pin", "Pin verwijderen")}</button>
+      {confirmingRemoval ? (
+        <div className="operation-alert" role="alertdialog" aria-label={text("Remove this pin?", "Deze pin verwijderen?")}>
+          <Trash2 size={18} />
+          <div>
+            <strong>{text("Remove this pin from the drawing?", "Deze pin van de tekening verwijderen?")}</strong>
+            <span>{text("The audit trail is retained.", "Het auditspoor blijft behouden.")}</span>
+            <div className="button-row">
+              <button className="ui-button ui-button--secondary ui-button--md ui-button--danger" type="button" onClick={() => { setConfirmingRemoval(false); onDelete(); }}>{text("Remove pin", "Pin verwijderen")}</button>
+              <button className="ui-button ui-button--secondary ui-button--md" type="button" autoFocus onClick={() => setConfirmingRemoval(false)}>{text("Keep pin", "Pin behouden")}</button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <button className="ui-button ui-button--secondary ui-button--md ui-button--danger" type="button" disabled={pin.id.startsWith("pending:")} onClick={() => setConfirmingRemoval(true)}><Trash2 size={15} /> {text("Remove pin", "Pin verwijderen")}</button>
+      )}
       <div className="operation-alert"><Link2 size={18} /><div><strong>{text("Traceable project link", "Traceerbare projectkoppeling")}</strong></div></div>
     </div>
   );

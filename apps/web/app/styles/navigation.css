@@ -44,6 +44,19 @@
   font-weight: var(--weight-bold);
 }
 
+/* Three equal tabs on a phone: the name wraps at its spaces under the count; the icon steps aside
+   so the words keep the width. (The Action center used to be split across three conflicting rules.) */
+@media (max-width: 640px) {
+  .section-nav--segmented > button {
+    flex-direction: column;
+    gap: 0;
+    line-height: 1.2;
+    padding: var(--space-1);
+  }
+  .section-nav--segmented > button svg { display: none; }
+  .section-nav--segmented > button .section-nav__label { overflow-wrap: break-word; }
+}
+
 /* Bar: text on a rule, the current section carries a heavy orange underline. */
 .section-nav--bar {
   border-bottom: 2px solid var(--line);
@@ -92,7 +105,6 @@
 .section-nav__current { display: grid; flex: 1 1 auto; min-width: 0; }
 .section-nav__current small { color: var(--muted); font-size: var(--text-sm); line-height: 1.2; }
 .section-nav__current strong { font-size: var(--text-md); line-height: 1.25; overflow-wrap: anywhere; }
-.section-nav__position { color: var(--muted); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 .section-nav__chevron { color: var(--ink-700); flex: none; transition: transform 160ms ease; }
 .section-nav--menu.is-open .section-nav__chevron { transform: rotate(180deg); }
 .section-nav__icon { color: var(--ink-800); display: inline-flex; flex: none; }
@@ -144,7 +156,7 @@
 .section-nav__list > button.active { background: var(--signal-soft); font-weight: var(--weight-bold); }
 .section-nav__check { color: var(--signal-dark); flex: none; height: 18px; width: 18px; }
 
-@media (max-width: 1023px) {
+@media not all and (min-width: 1024px) {
   .section-nav__panel {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
@@ -191,3 +203,20 @@
 }
 .draft-notice--restored svg { color: var(--ink-700); }
 .draft-notice .text-link { margin-inline-start: auto; min-height: var(--control-h-md); }
+
+/* Keyboard users jump past the sidebar to the content; the link shows only while it has focus. */
+.skip-link {
+  background: var(--paper);
+  border: 2px solid var(--signal);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-weight: var(--weight-bold);
+  left: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  position: fixed;
+  top: var(--space-3);
+  transform: translateY(-200%);
+  z-index: 100;
+}
+.skip-link:focus { transform: none; }
+.main-content:focus { outline: none; }

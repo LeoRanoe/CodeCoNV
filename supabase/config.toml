@@ -160,7 +160,8 @@ site_url = "https://code-co-nv.vercel.app"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://code-co-nv.vercel.app"]
+# Local development: the password-recovery link returns to the app on this machine.
+additional_redirect_urls = ["https://code-co-nv.vercel.app", "http://localhost:3000", "http://127.0.0.1:3000"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -204,7 +205,10 @@ anonymous_users = 30
 # Number of sessions that can be refreshed in a 5 minute interval per IP address.
 token_refresh = 150
 # Number of sign up and sign-in requests that can be made in a 5 minute interval per IP address (excludes anonymous users).
-sign_in_sign_ups = 30
+# Wrong passwords are slowed down by this limit: after 20 attempts in five minutes the address waits.
+# The hosted project has its own value (Dashboard -> Authentication -> Rate limits); see
+# docs/operations/auth-recovery-and-rate-limits.md.
+sign_in_sign_ups = 20
 # Number of OTP / Magic link verifications that can be made in a 5 minute interval per IP address.
 token_verifications = 30
 # Number of Web3 logins that can be made in a 5 minute interval per IP address.
@@ -244,6 +248,11 @@ otp_expiry = 3600
 # pass = "env(SENDGRID_API_KEY)"
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
+
+# The recovery mail is Dutch. The hosted project needs the same subject and content set by hand.
+[auth.email.template.recovery]
+subject = "Wachtwoord herstellen · CODECO Supervisie"
+content_path = "./supabase/templates/recovery.html"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]

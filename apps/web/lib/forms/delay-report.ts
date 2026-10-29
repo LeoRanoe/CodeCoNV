@@ -179,13 +179,23 @@ export function delayReportDetails(state: DelayReportState) {
  * screen, which is what holds them; everything else is checked here.
  */
 export function delayReportReady(state: DelayReportState) {
-  return Boolean(state.activity)
-    && state.description.trim().length >= 3
-    && state.categories.length > 0
-    && state.types.length > 0
-    && state.impacts.length > 0
-    && Boolean(state.originalFinishDate)
-    && Boolean(state.statusOnFinishDate)
-    && state.recoveryPlan.trim().length >= 3
-    && state.contractorRepresentative.trim().length >= 2;
+  return delayReportMissing(state).length === 0;
+}
+
+/**
+ * The same rule as `delayReportReady`, as the names of the fields that are still empty, so the
+ * form can say what it is waiting for instead of a button that stays grey.
+ */
+export function delayReportMissing(state: DelayReportState): Array<{ en: string; nl: string }> {
+  const missing: Array<{ en: string; nl: string }> = [];
+  if (!state.activity) missing.push({ en: "planned work", nl: "geplande werkzaamheid" });
+  if (state.description.trim().length < 3) missing.push({ en: "description", nl: "omschrijving" });
+  if (!state.categories.length) missing.push({ en: "category", nl: "categorie" });
+  if (!state.types.length) missing.push({ en: "type", nl: "soort" });
+  if (!state.impacts.length) missing.push({ en: "impact", nl: "impact" });
+  if (!state.originalFinishDate) missing.push({ en: "original finish date", nl: "oorspronkelijke einddatum" });
+  if (!state.statusOnFinishDate) missing.push({ en: "status on that date", nl: "status op die datum" });
+  if (state.recoveryPlan.trim().length < 3) missing.push({ en: "recovery plan", nl: "inloopplan" });
+  if (state.contractorRepresentative.trim().length < 2) missing.push({ en: "contractor representative", nl: "vertegenwoordiger aannemer" });
+  return missing;
 }
