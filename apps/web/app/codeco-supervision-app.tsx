@@ -231,7 +231,7 @@ const navigation: { id: NavKey; label: string; icon: LucideIcon; badge?: string 
      stay known, so an older address or back press still lands on the module. */
   { id: "verify", label: "Rapid Verify", icon: Search },
   { id: "rapporten", label: "Rapporten", icon: FileText },
-  { id: "meer", label: "Instellingen", icon: Settings },
+  { id: "meer", label: "Beheer", icon: Settings },
 ];
 
 const entryTitles: Record<string, string> = {
@@ -643,7 +643,7 @@ export function CodecoSupervisionApp() {
   const onlineStorageStatus = syncState === "saving"
     ? text("Saving centrally…", "Centraal opslaan…")
     : syncState === "error"
-      ? text("Save failed · try again", "Opslaan mislukt · probeer opnieuw")
+      ? text("Not saved", "Niet opgeslagen")
       : syncState === "saved"
         ? text("Saved centrally", "Centraal opgeslagen")
         : text("Live workspace · synchronized", "Live werkruimte · gesynchroniseerd");
@@ -663,9 +663,19 @@ export function CodecoSupervisionApp() {
       punchlist: "Issues",
       verify: "Rapid Verify",
       rapporten: text("Reports", "Rapporten"),
-      meer: canManageMembers ? text("Management", "Management") : text("Settings", "Instellingen"),
+      // One name for the screen, whoever opens it; what is on it follows the role.
+      meer: text("Management", "Beheer"),
     } satisfies Record<NavKey, string>)[item.id],
   }));
+
+  // A screen the role has no right to open (a typed address, an old link) is not shown empty: it
+  // leads back to the overview and says why.
+  useEffect(() => {
+    if (!permissions.known || navAllowed(activeNav)) return;
+    setToast(text("Your role has no access to that screen.", "Je rol heeft geen toegang tot dat scherm."));
+    setActiveNav("vandaag");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [permissions.known, activeNav]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -880,6 +890,9 @@ export function CodecoSupervisionApp() {
       )
       : text("No connection · working from this device", "Geen verbinding · je werkt vanaf dit apparaat");
 
+  /** The words of the last refused save, for forms that show the reason next to the field. */
+  const lastSaveErrorRef = useRef("");
+
   const runSynced = async <T,>(
     operation: () => Promise<T>,
     successMessage: string,
@@ -913,10 +926,18 @@ export function CodecoSupervisionApp() {
       return (result === undefined ? true : result) as T;
     } catch (error) {
       setSyncState("error");
-      setToast(userFacingError(error, text));
+      lastSaveErrorRef.current = userFacingError(error, text);
+      setToast(lastSaveErrorRef.current);
       return null;
     }
   };
+
+  // A refused save is explained by the message; the chip does not stay red for the rest of the visit.
+  useEffect(() => {
+    if (syncState !== "error") return;
+    const timer = window.setTimeout(() => setSyncState("idle"), 8000);
+    return () => window.clearTimeout(timer);
+  }, [syncState]);
 
   const openQuickAdd = () => {
     // The tap that opens the camera is also the moment a phone will hand out its compass, so
@@ -1300,8 +1321,9 @@ export function CodecoSupervisionApp() {
             text("Configured project workspace created.", "Geconfigureerde projectwerkruimte aangemaakt."),
           );
           if (saved) await queryClient.invalidateQueries({ queryKey: ["workspace", session.user.id] });
-          return Boolean(saved);
+          return saved ? true : (lastSaveErrorRef.current || false);
         }}
+        canCreateProject={Boolean(workspaceQuery.data.manageableOrganizationIds.includes(workspaceQuery.data.organizations[0].id))}
         currentUserName={currentUserName}
         storageStatus={storageStatus}
         isOnline={isOnline}
@@ -2398,7 +2420,7 @@ function ProjectSetupScreen({
   close,
 }: {
   organizationName: string;
-  save: (answers: ProjectSetupAnswers) => Promise<boolean>;
+  save: (answers: ProjectSetupAnswers) => Promise<boolean | string>;
   signOut: () => void;
   embedded?: boolean;
   close?: () => void;
@@ -2410,15 +2432,16 @@ function ProjectSetupScreen({
   const { register, handleSubmit, formState: { errors } } = useForm<ProjectSetupAnswers>({
     resolver: zodResolver(localizedProjectSetupSchema),
     defaultValues: {
-      code: "COD-2026-001",
-      name: "First construction project",
-      location: "Paramaribo, Suriname",
-      clientName: "Client",
-      buildingCode: "HOOFD",
-      buildingName: "Main building",
+      // Nothing here is a real project: a name, code or building that is not typed is not saved.
+      code: "",
+      name: "",
+      location: "",
+      clientName: "",
+      buildingCode: "",
+      buildingName: "",
       additionalBuildings: "",
       locationLevels: "floor|GF|Ground floor\nfloor|L1|First floor\nfloor|L2|Second floor",
-      contractorName: "Main contractor",
+      contractorName: "",
       defaultLanguage: "en",
       shiftStart: "07:00",
       shiftEnd: "16:00",
@@ -2444,7 +2467,8 @@ function ProjectSetupScreen({
     setBusy(true);
     setError("");
     const ok = await save(answers);
-    if (!ok) setError(text("The project could not be created. Check the project code and try again.", "Het project kon niet worden aangemaakt. Controleer de projectcode en probeer opnieuw."));
+    // The reason comes from the save itself: a refused right is not a mistyped project code.
+    if (ok !== true) setError(typeof ok === "string" ? ok : text("The project could not be created.", "Het project kon niet worden aangemaakt."));
     setBusy(false);
   };
   return (
@@ -2507,6 +2531,7 @@ function ContextSelection({
   chooseProject,
   organizationName,
   createProject,
+  canCreateProject,
   currentUserName,
   storageStatus,
   isOnline,
@@ -2517,7 +2542,9 @@ function ContextSelection({
   projects: ProjectContext[];
   chooseProject: (project: ProjectContext) => void;
   organizationName: string;
-  createProject: (answers: ProjectSetupAnswers) => Promise<boolean>;
+  createProject: (answers: ProjectSetupAnswers) => Promise<boolean | string>;
+  /** Only a user who holds projects.create is offered the button; the database refuses anyone else. */
+  canCreateProject: boolean;
   currentUserName: string;
   storageStatus: string;
   isOnline: boolean;
@@ -2550,7 +2577,7 @@ function ContextSelection({
 
         <section className="context-heading">
           <div><h1>{text("My projects", "Mijn projecten")}</h1></div>
-          <button className="ui-button ui-button--primary ui-button--md portfolio-cta" type="button" onClick={() => setShowProjectSetup(true)}><Plus size={15} /> {text("New configured project", "Nieuw geconfigureerd project")}</button>
+          {canCreateProject ? <button className="ui-button ui-button--primary ui-button--md portfolio-cta" type="button" onClick={() => setShowProjectSetup(true)}><Plus size={15} /> {text("New configured project", "Nieuw geconfigureerd project")}</button> : null}
         </section>
         {/* No portfolio counters here: this screen only has to answer "which project am I
             working on today?". The numbers live in the project dashboard, in context. */}
@@ -2572,7 +2599,7 @@ function ContextSelection({
       </main>
       {showProjectSetup ? <ProjectSetupScreen organizationName={organizationName} save={async (answers) => {
         const okay = await createProject(answers);
-        if (okay) setShowProjectSetup(false);
+        if (okay === true) setShowProjectSetup(false);
         return okay;
       }} signOut={() => undefined} embedded close={() => setShowProjectSetup(false)} /> : null}
     </div>
