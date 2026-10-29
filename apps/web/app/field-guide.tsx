@@ -22,6 +22,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useLanguage } from "@/lib/i18n";
 
 const guideStorageKey = "codeco-field-guide-seen-v3";
@@ -444,7 +445,9 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
         <HelpCircle size={18} />
         <span>{text("Help", "Help")}</span>
       </button>
-      {open ? (
+      {/* Drawn on the page itself, not inside the header: the header's own layer used to put the
+          left edge of the dialog under the sidebar. */}
+      {open ? createPortal(
         <div className="field-guide-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
           <section className="field-guide-dialog" role="dialog" aria-modal="true" aria-labelledby="field-guide-title">
             <header>
@@ -529,7 +532,8 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
               <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={close}><CheckCircle2 size={16} /> {text("I understand", "Ik begrijp het")}</button>
             </footer>
           </section>
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </>
   );

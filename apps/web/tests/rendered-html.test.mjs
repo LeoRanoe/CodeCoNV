@@ -207,7 +207,8 @@ test("keeps the central post-MVP interaction and accessibility hooks in source",
   assert.doesNotMatch(app, />Account maken</);
   assert.match(app, /Gebruikers en toegang/);
   assert.match(app, /UserAdminModal/);
-  assert.match(operationalWorkspace, /Managementoverzicht/);
+  // One name for the management screen, whoever opens it (QA sweep M2).
+  assert.match(operationalWorkspace, /Beheeroverzicht/);
   assert.match(operationalWorkspace, /Bewijsreferenties, nooit geheimen/);
   assert.match(operationalWorkspace, /updateProductionReadiness/);
   assert.match(app, /must_set_password/);
@@ -1127,9 +1128,9 @@ test("processes the third batch of annotated screens from 31 July", async () => 
   assert.match(workspace, /expectedResolutionDate: event\.target\.value/);
   assert.match(workspace, /Contractor · owner of the correction|Aannemer · eigenaar van de correctie/);
   // The NCR module keeps the client's own paper form, with its own columns.
-  assert.match(workspace, /text\("Date identified", "Date Identified"\)/);
-  assert.match(workspace, /text\("Expected resolution date", "Expected Resolution Date"\)/);
-  assert.match(workspace, /Escalation Required \(Y\/N\)/);
+  assert.match(workspace, /text\("Date identified", "Datum vastgesteld"\)/);
+  assert.match(workspace, /text\("Expected resolution date", "Verwachte oplossingsdatum"\)/);
+  assert.match(workspace, /text\("Escalation required", "Escalatie nodig"\)/);
   assert.match(workspace, /Final Resolution & Rationale/);
   // The issue type list became the client's own vocabulary on 4 August; the columns of
   // their Issues_Tracking_Log around it stayed.
@@ -3280,7 +3281,7 @@ test("lets a supervisor switch project from anywhere without carrying data acros
   }
   assert.match(normalizedApp, /if \(project\.id !== selectedProject\?\.id\) resetProjectScopedState\(\);/);
   assert.match(normalizedApp, /hydratedProjectRef\.current = projectId;\n\s+resetProjectScopedState\(\);/);
-  assert.match(normalizedApp, /<main className="main-content" key=\{selectedProject\?\.id \?\? "no-project"\}>/);
+  assert.match(normalizedApp, /<main id="main-content" tabIndex=\{-1\} className=\{`main-content\$\{unsavedPhotos \? " has-resume-bar" : ""\}`\} key=\{selectedProject\?\.id \?\? "no-project"\}>/);
 });
 
 test("never names the database vendor in anything a user can see", async () => {
