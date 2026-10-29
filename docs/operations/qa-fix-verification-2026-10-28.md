@@ -5,27 +5,27 @@ Branch `fix/qa-sweep-2026-10-28` (from `fix/breakpoint-guardrail`). Everything b
 
 ## Result in one paragraph
 
-The report has 64 findings. **47 are fixed, 13 are partly fixed and 4 are still open.** All five high findings
+The report has 64 findings. **51 are fixed, 10 are partly fixed and 3 are still open.** All five high findings
 (H1–H5) are fixed and measured. The first pass (commits up to e122a95) fixed 29; this second pass (2222abb, 889d19f, 074d82e)
-took WP7, WP9, the rest of WP8, WP14 and most of WP15. The four open ones are either a product decision (M20) or manual work on
-production or on seeded content (L12, L24, L26). The table at the end names every ID with its status.
+took WP7, WP9, the rest of WP8, WP14 and most of WP15; a third pass (e145229, 4e81ac6) closed L2, L8, L20 and L23, and found three more
+defects in the walkthrough (W1–W3). The open ones are either a product decision (M20) or manual work on production or on seeded
+content (L12, L26). The table at the end names every ID with its status.
 
 ## Commands and their output
 
 ```text
 == npm run lint  (eslint + stylelint): 0 errors, 0 warnings
 == npx tsc --noEmit: 0 errors
-== node --test tests/*.test.mjs: tests 222, pass 222, fail 0
-== npm test (the release script's list of node test files, after a production build): tests 213, pass 213, fail 0
-   (the first run of this gate failed one rendered-html assertion, the 'Aan:' label I renamed on purpose; the assertion follows the label now)
+== node --test tests/*.test.mjs: tests 225, pass 225, fail 0
+== npm test (the release script's list of node test files): tests 216, pass 216, fail 0
 == npm run test:design: tests 9, pass 9, fail 0
+   (the full gate showed 8/9 once: a new media query in overview.css made a fourth breakpoint; it reuses the 1024 px one now and the
+   guardrail passes. tests/design-baseline.json was not touched.)
 == supabase test db (fresh database): Files=23, Tests=592, Result: PASS
-== Playwright on a production build, 25 spec files, three projects: 127 passed, 84 skipped, 2 failed
-   The 2 failures were contractor-submission and double-submit: they still selected the 'To:' label I renamed. Both now select
-   the field by role and name; re-run on the same build: 2 passed (desktop), the phone and tablet projects skip them by design.
-== day-report-lifecycle (own run on the same database, after the others): 1 passed, 2 skipped (phone and tablet by design)
-== specs added or changed in this pass that ran green: role-views (invalid project link), inspection-workflow (one answers request),
-   reflow-320 (14 screens at 320 px), records-no-flicker, a11y-audit (heading-order, NCR screen)
+== Playwright on a production build, 26 spec files, three projects: 132 passed, 90 skipped, 0 failed (8.6 min)
+== day-report-lifecycle: failed once in the gate only because no server was running for the reused-server run; re-run against the dev server: 1 passed
+== specs added or changed in the third pass that ran green: action-center-tabs (3 tests), overview-metrics-tablet; each fails on the old code
+   (tab count 11 versus 9 rows; label colour rgb(191, 61, 50); left cells at 18 and 34 px)
 ```
 
 ### Lint, tests, pgTAP and Playwright (production build, fresh database, local seed)
@@ -138,9 +138,9 @@ Blob store and test photos). The drawing-pin flow (M8, L3 in the browser) and up
 
 ## Manual walk-through
 
-Not done. The brief asked for a manual walk-through as contractor, client and supervisor at 375, 768, 1024 and 1440 px with
-screenshots. What exists instead: Playwright measurements and axe scans on 7 screens at desktop and phone width, the PDF text
-read back in two tests, and the typed-address and Management checks for contractor and client. No screenshots were made.
+Partly done: see the section Walkthrough below. Overview and Action center were walked as supervisor, contractor and client at
+375, 768, 1024 and 1440 px (24 screenshots, no sideways scroll). Not walked by hand: the other workspaces (they are covered by
+the Playwright measurements, the axe scans on 8 screens and the 320 px reflow test), and every flow that needs a Blob store.
 
 ## What was changed on the way that you should know about
 
@@ -162,16 +162,30 @@ read back in two tests, and the typed-address and Management checks for contract
 - Labels: 'Wacht op jouw controle' became 'Wacht op verificatie', 'Projectlocaties' became 'Ruimtes en zones', 'Aan:' lost its colon
   (two e2e specs select it now by exact label). Success notices fade after 8 seconds and belong to their screen.
 - `supabase/config.toml` allows local redirect addresses, has a Dutch recovery template and a sign-in limit of 20 per 5 minutes.
+  The running local stack has to be restarted (`supabase stop`, `supabase start`) before it sends the Dutch mail; checked in Mailpit.
+- Action center: a tile counts within the chosen type and a tab within the chosen state; the 'n/9' position chip next to a count is gone.
   The Playwright runs did not hit that limit.
 
 ## Not done
 
-Open: M20, L12, L24, L26. M20 is a product decision (the mandatory photos of a PDR go through the offline queue after the entry is saved; blocking the save until they are confirmed changes that design). L12 is a manual clean-up on production. L24 (console preload warnings, one 401, one slow first load) was not investigated. L26 is content in the seeded checklists and findings, which follows the language policy.
+Open: M20, L12, L26. M20 is a product decision (the mandatory photos of a PDR go through the offline queue after the entry is saved; blocking the save until they are confirmed changes that design). L12 is a manual clean-up on production. L26 is content in the seeded checklists and findings, which follows the language policy.
 
-Partly fixed, with what is missing: M4 (Button only for actions.manage, hint reworded; assigning to the party itself needs a database change and a product decision); M8 (The pin panel scrolls into view and 'Open linked project record' opens that record; neither was exercised in a browser); M15 (Local redirects and Dutch template done; Mailpit end-to-end not run; the hosted project is a manual step); M26 (A drawing saved as an image is no photo; uploads reuse a folder by name on the server (ensureMediaFolder), not tested against Blob); L1 (Draft notice fixed; native time inputs unchanged); L2 (English chip and preset function gone, 'Aan' has no colon; chip spacing not done); L8 (Skip link exists but has no test; the code input of 'Add building' still has no label); L9 (NCR labels only; HSE types, 'Issues', 'Workforce', 'Project Docs' unchanged (language policy is a product decision)); L13 (The headings at 768 px were not found or measured); L19 (Local limit 20 per 5 minutes, no test; the production value is a manual step); L20 (PDF done; the 'Add person' behaviour is unchanged); L23 (One term for the verification wait; the 7/8 versus 1/9 filter counts were not touched); L28 (Isolation from seed data not done).
+Partly fixed, with what is missing: M4 (Button only for actions.manage, hint reworded; assigning to the party itself needs a database change and a product decision); M8 (The pin panel scrolls into view and 'Open linked project record' opens that record; neither was exercised in a browser); M15 (Verified locally; the running stack must be restarted for the template to load; the hosted project is a manual step); M26 (A drawing saved as an image is no photo; uploads reuse a folder by name on the server (ensureMediaFolder), not tested against Blob); L1 (Draft notice fixed; native time inputs unchanged); L9 (NCR labels only; HSE types, 'Issues', 'Workforce', 'Project Docs' unchanged (language policy is a product decision)); L13 (The headings at 768 px were not found or measured); L19 (Local limit 20 per 5 minutes is asserted; the production value is a manual step); L24 (Geist Mono is no longer preloaded and the unused Hind weight 500 is gone; the 401 and the slow first load were not reproduced); L28 (Isolation from seed data not done).
+
+L24 is partly fixed: the console preload warnings were addressed in the layout; the 401 on the first load of Werkruimte and the slow first load were not reproduced.
 
 Never tested: a real screen reader, a real operating-system file picker, the hosted recovery mail, uploads against a Blob store,
 `media-and-sharing.spec.ts`, the drawing-pin flow in a browser.
+
+## Walkthrough
+
+Walked as supervisor, contractor and client at 375, 768, 1024 and 1440 px on the local stack (overview and Action center, 24 screenshots in
+`tmp/walkthrough/`, not committed; the script is `tmp/walkthrough.spec.ts.txt`). No sideways scroll on any of the 24 screens. It showed three defects that are
+not in the report (table below, W1–W3) and these points that need a decision, not a fix:
+
+- The contractor sidebar offers Rapid Verify and Beheer; the contractor-rights decision (M4) decides whether that is right.
+- The client's Action center says 'Wijs toe wie dit moet doen' on a record nobody owns; a client cannot assign.
+- The supervisor session logged one 503 from a weather request (Open-Meteo); the contractor and client sessions logged no console errors.
 
 ## Every ID
 
@@ -196,7 +210,7 @@ Never tested: a real screen reader, a real operating-system file picker, the hos
 | M12 | LQA-032 | P2 | Period PDF shows raw values | fixed | node period-report-text (6); e2e period-report reads the PDF | e2db9f5 | PDF and Word |
 | M13 | LQA-033 | P2 | Expected workforce 42 prefilled | fixed | node daily-report-model; e2e day-report-lifecycle | cb0d0ec | Migration 202610280004 |
 | M14 | LQA-034 | P2 | Login errors not announced | fixed | e2e login-a11y | 3657afb |  |
-| M15 | LQA-035 | P2 | Recovery mail English, redirect to production | partly fixed | - | 3657afb | Local redirects and Dutch template done; Mailpit end-to-end not run; the hosted project is a manual step |
+| M15 | LQA-035 | P2 | Recovery mail English, redirect to production | partly fixed | manual: local Mailpit after a stack restart (Dutch subject and body, redirect_to 127.0.0.1) | 3657afb | Verified locally; the running stack must be restarted for the template to load; the hosted project is a manual step |
 | M16 | LQA-036 | P2 | Misleading message after an online HSE save | fixed | no dedicated test | 2bdae55 |  |
 | M17 | LQA-037 | P2 | Day report lacks the client's form | fixed | node daily-report-model; e2e day-report-lifecycle | cb0d0ec | Sections 1-18 as tables plus KPI block; GPS, cloud cover, rain, HSE checklist, machines and measurements are 'Niet geregistreerd' because they are not captured |
 | M18 | LQA-038 | P2 | Expired recovery link not explained | fixed | e2e login-a11y | 3657afb |  |
@@ -210,13 +224,13 @@ Never tested: a real screen reader, a real operating-system file picker, the hos
 | M26 | LQA-046 | P2 | Drawing counted as photo; a folder per upload | partly fixed | node field-workflows (isPhotoFile) | 2222abb | A drawing saved as an image is no photo; uploads reuse a folder by name on the server (ensureMediaFolder), not tested against Blob |
 | M27 | LQA-047 | P2 | 'Not saved' bar stays after saving | fixed | no dedicated test | 892f2b6 | The bar listens to draft changes |
 | L1 | LQA-048 | P3 | 12-hour time in the draft notice | partly fixed | - | 21f49f7 | Draft notice fixed; native time inputs unchanged |
-| L2 | LQA-049 | P3 | RFI form: English chip, preset function | partly fixed | - | 21f49f7, 889d19f | English chip and preset function gone, 'Aan' has no colon; chip spacing not done |
+| L2 | LQA-049 | P3 | RFI form: English chip, preset function | fixed | node rendered-html (labels) | 21f49f7, 889d19f | English chip, preset function and the colon in 'Aan' are gone; the form has no chips any more |
 | L3 | LQA-050 | P3 | window.confirm() for pin removal | fixed | source assertion in rendered-html | 2222abb | Inline confirmation with role=alertdialog |
 | L4 | LQA-051 | P3 | Empty drawing panel, permanent green bar | fixed | visual (CSS and render condition), source assertion | 2222abb, 889d19f | Not started |
 | L5 | LQA-052 | P3 | Sidebar project picker truncates | fixed | visual (CSS) | 889d19f | Two lines and a title before the name is cut |
 | L6 | LQA-053 | P3 | Loose 'Open normal photo' buttons | fixed | visual | 2222abb | The two buttons got a one-line label and only show with files.manage |
 | L7 | LQA-054 | P3 | 'Author' filter only has 'All authors' | fixed | - | 2222abb | The filter is hidden when no record has an author; filling it from created_by was not done |
-| L8 | LQA-055 | P3 | Checkbox names, code label, skip link | partly fixed | e2e tap-targets (checkbox names) | 892f2b6, 3657afb | Skip link exists but has no test; the code input of 'Add building' still has no label |
+| L8 | LQA-055 | P3 | Checkbox names, code label, skip link | fixed | e2e tap-targets (checkbox names); node rendered-html (building code label) | 892f2b6, 3657afb, e145229 | The code input of 'Add building' sits in a label in the code; no unlabelled input was found. The skip link has no test of its own |
 | L9 | LQA-056 | P3 | NL/EN mix | partly fixed | node rendered-html (labels) | 21f49f7 | NCR labels only; HSE types, 'Issues', 'Workforce', 'Project Docs' unchanged (language policy is a product decision) |
 | L10 | LQA-057 | P3 | Invalid ?project=<id> falls back silently | fixed | e2e role-views | 2222abb | Not started |
 | L11 | LQA-058 | P3 | Share page: green primary, red eyebrow, labels, badge | fixed | manual; router.refresh after a reply | 1fb083e, 2972ae8 |  |
@@ -227,12 +241,12 @@ Never tested: a real screen reader, a real operating-system file picker, the hos
 | L16 | LQA-063 | P3 | Permission RPCs and duplicate day report call | fixed | e2e contractor-submission (one request per save) | 2f2d9e1 | 60 s cache for the two permission checks |
 | L17 | LQA-064 | P3 | Silent 503 on notification dispatch | fixed | - | 2f2d9e1 | Answers 200 with pushActive:false and logs a warning |
 | L18 | LQA-065 | P3 | 'Choose the planned work' error out of view | fixed | source assertion in rendered-html | 889d19f | The reason shows next to the button and the page scrolls to it |
-| L19 | LQA-066 | P3 | No delay after repeated failed logins | partly fixed | - | 3657afb | Local limit 20 per 5 minutes, no test; the production value is a manual step |
-| L20 | LQA-067 | P3 | PDF details; 'Add person' three times | partly fixed | e2e day-report-lifecycle (plural, no hyphenation) | cb0d0ec | PDF done; the 'Add person' behaviour is unchanged |
+| L19 | LQA-066 | P3 | No delay after repeated failed logins | partly fixed | node rendered-html (config.toml limit) | 3657afb, e145229 | Local limit 20 per 5 minutes is asserted; the production value is a manual step |
+| L20 | LQA-067 | P3 | PDF details; 'Add person' three times | fixed | e2e day-report-lifecycle (plural, no hyphenation; 4 clicks give 4 people) | cb0d0ec | Clicking 'Add person' for the same party and trade raises the count; the e2e adds 4 and 3 and expects 7 |
 | L21 | LQA-068 | P3 | Overview says nothing happened | fixed | - | 2222abb | Both lines say 'today' |
 | L22 | LQA-069 | P3 | 'Project locations 0' | fixed | - | 2222abb | 'Ruimtes en zones' |
-| L23 | LQA-070 | P3 | Two terms for the same wait; '1/9' | partly fixed | - | 2222abb | One term for the verification wait; the 7/8 versus 1/9 filter counts were not touched |
-| L24 | LQA-071 | P3 | Console warnings, load time, a 401 | open | - | - | Not started |
+| L23 | LQA-070 | P3 | Two terms for the same wait; '1/9' | fixed | e2e action-center-tabs (fails on the old code: 11 versus 9) | 2222abb, e145229 | One term for the verification wait; a tile counts within the chosen type, a tab within the chosen state |
+| L24 | LQA-071 | P3 | Console warnings, load time, a 401 | partly fixed | node rendered-html (layout fonts) | e145229 | Geist Mono is no longer preloaded and the unused Hind weight 500 is gone; the 401 and the slow first load were not reproduced |
 | L25 | LQA-072 | P3 | Inspection completion sends 16 requests | fixed | pgTAP 023 (6); e2e inspection-workflow counts the requests | 889d19f | One save_inspection_responses call; migration 202610280006 |
 | L26 | LQA-073 | P3 | More NL/EN mix in content | open | - | - | Not started |
 | L27 | LQA-074 | P3 | Bare file input on 'Visueel bewijs' | fixed | CSS, no test | 2bdae55 | ::file-selector-button |
@@ -241,3 +255,6 @@ Never tested: a real screen reader, a real operating-system file picker, the hos
 | L30 | LQA-077 | P3 | No confirmation after a password change | fixed | manual | 3657afb | 'Wachtwoord gewijzigd' on the project list |
 | L31 | LQA-078 | P3 | Recovery screen errors not announced | fixed | e2e login-a11y (sign-in); same markup on the recovery screen | 3657afb |  |
 | L32 | LQA-079 | P3 | Records load twice, flicker, double-submit test fails | fixed | e2e records-no-flicker (shows loading-content-loading without the fix) | 074d82e | Flicker not investigated. double-submit.spec.ts passed on a production build in this pass (1 passed), so the failing test of the report did not reproduce |
+| W1 | - | P3 | Action center tab labels and counts painted red; a type menu showed "1/9" beside the count | fixed | e2e action-center-tabs (label colour, no position chip; fails on the old CSS) | 4e81ac6 | A stale rule coloured every span in the tabs like a late record |
+| W2 | - | P3 | Second row of the overview counts indented 16 px at 768 px | fixed | e2e overview-metrics-tablet (fails on the old CSS) | 4e81ac6, bac9083 |  |
+| W3 | - | P3 | Weather labels touch their values at 1440 px | fixed | visual (live weather needs the Open-Meteo service) | 4e81ac6 | Labels wrap above the value |

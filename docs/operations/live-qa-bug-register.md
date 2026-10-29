@@ -204,7 +204,7 @@ was not done are in `qa-fix-verification-2026-10-28.md`.
 | LQA-032 | M12 | P2 | Period PDF shows raw values — PDF and Word | fixed | node period-report-text (6); e2e period-report reads the PDF | e2db9f5 |
 | LQA-033 | M13 | P2 | Expected workforce 42 prefilled — Migration 202610280004 | fixed | node daily-report-model; e2e day-report-lifecycle | cb0d0ec |
 | LQA-034 | M14 | P2 | Login errors not announced | fixed | e2e login-a11y | 3657afb |
-| LQA-035 | M15 | P2 | Recovery mail English, redirect to production — Local redirects and Dutch template done; Mailpit end-to-end not run; the hosted project is a manual step | partly fixed | - | 3657afb |
+| LQA-035 | M15 | P2 | Recovery mail English, redirect to production — Verified locally; the running stack must be restarted for the template to load; the hosted project is a manual step | partly fixed | manual: local Mailpit after a stack restart (Dutch subject and body, redirect_to 127.0.0.1) | 3657afb |
 | LQA-036 | M16 | P2 | Misleading message after an online HSE save | fixed | no dedicated test | 2bdae55 |
 | LQA-037 | M17 | P2 | Day report lacks the client's form — Sections 1-18 as tables plus KPI block; GPS, cloud cover, rain, HSE checklist, machines and measurements are 'Niet geregistreerd' because they are not captured | fixed | node daily-report-model; e2e day-report-lifecycle | cb0d0ec |
 | LQA-038 | M18 | P2 | Expired recovery link not explained | fixed | e2e login-a11y | 3657afb |
@@ -218,13 +218,13 @@ was not done are in `qa-fix-verification-2026-10-28.md`.
 | LQA-046 | M26 | P2 | Drawing counted as photo; a folder per upload — A drawing saved as an image is no photo; uploads reuse a folder by name on the server (ensureMediaFolder), not tested against Blob | partly fixed | node field-workflows (isPhotoFile) | 2222abb |
 | LQA-047 | M27 | P2 | 'Not saved' bar stays after saving — The bar listens to draft changes | fixed | no dedicated test | 892f2b6 |
 | LQA-048 | L1 | P3 | 12-hour time in the draft notice — Draft notice fixed; native time inputs unchanged | partly fixed | - | 21f49f7 |
-| LQA-049 | L2 | P3 | RFI form: English chip, preset function — English chip and preset function gone, 'Aan' has no colon; chip spacing not done | partly fixed | - | 21f49f7, 889d19f |
+| LQA-049 | L2 | P3 | RFI form: English chip, preset function — English chip, preset function and the colon in 'Aan' are gone; the form has no chips any more | fixed | node rendered-html (labels) | 21f49f7, 889d19f |
 | LQA-050 | L3 | P3 | window.confirm() for pin removal — Inline confirmation with role=alertdialog | fixed | source assertion in rendered-html | 2222abb |
 | LQA-051 | L4 | P3 | Empty drawing panel, permanent green bar — Not started | fixed | visual (CSS and render condition), source assertion | 2222abb, 889d19f |
 | LQA-052 | L5 | P3 | Sidebar project picker truncates — Two lines and a title before the name is cut | fixed | visual (CSS) | 889d19f |
 | LQA-053 | L6 | P3 | Loose 'Open normal photo' buttons — The two buttons got a one-line label and only show with files.manage | fixed | visual | 2222abb |
 | LQA-054 | L7 | P3 | 'Author' filter only has 'All authors' — The filter is hidden when no record has an author; filling it from created_by was not done | fixed | - | 2222abb |
-| LQA-055 | L8 | P3 | Checkbox names, code label, skip link — Skip link exists but has no test; the code input of 'Add building' still has no label | partly fixed | e2e tap-targets (checkbox names) | 892f2b6, 3657afb |
+| LQA-055 | L8 | P3 | Checkbox names, code label, skip link — The code input of 'Add building' sits in a label in the code; no unlabelled input was found. The skip link has no test of its own | fixed | e2e tap-targets (checkbox names); node rendered-html (building code label) | 892f2b6, 3657afb, e145229 |
 | LQA-056 | L9 | P3 | NL/EN mix — NCR labels only; HSE types, 'Issues', 'Workforce', 'Project Docs' unchanged (language policy is a product decision) | partly fixed | node rendered-html (labels) | 21f49f7 |
 | LQA-057 | L10 | P3 | Invalid ?project=<id> falls back silently — Not started | fixed | e2e role-views | 2222abb |
 | LQA-058 | L11 | P3 | Share page: green primary, red eyebrow, labels, badge | fixed | manual; router.refresh after a reply | 1fb083e, 2972ae8 |
@@ -235,12 +235,12 @@ was not done are in `qa-fix-verification-2026-10-28.md`.
 | LQA-063 | L16 | P3 | Permission RPCs and duplicate day report call — 60 s cache for the two permission checks | fixed | e2e contractor-submission (one request per save) | 2f2d9e1 |
 | LQA-064 | L17 | P3 | Silent 503 on notification dispatch — Answers 200 with pushActive:false and logs a warning | fixed | - | 2f2d9e1 |
 | LQA-065 | L18 | P3 | 'Choose the planned work' error out of view — The reason shows next to the button and the page scrolls to it | fixed | source assertion in rendered-html | 889d19f |
-| LQA-066 | L19 | P3 | No delay after repeated failed logins — Local limit 20 per 5 minutes, no test; the production value is a manual step | partly fixed | - | 3657afb |
-| LQA-067 | L20 | P3 | PDF details; 'Add person' three times — PDF done; the 'Add person' behaviour is unchanged | partly fixed | e2e day-report-lifecycle (plural, no hyphenation) | cb0d0ec |
+| LQA-066 | L19 | P3 | No delay after repeated failed logins — Local limit 20 per 5 minutes is asserted; the production value is a manual step | partly fixed | node rendered-html (config.toml limit) | 3657afb, e145229 |
+| LQA-067 | L20 | P3 | PDF details; 'Add person' three times — Clicking 'Add person' for the same party and trade raises the count; the e2e adds 4 and 3 and expects 7 | fixed | e2e day-report-lifecycle (plural, no hyphenation; 4 clicks give 4 people) | cb0d0ec |
 | LQA-068 | L21 | P3 | Overview says nothing happened — Both lines say 'today' | fixed | - | 2222abb |
 | LQA-069 | L22 | P3 | 'Project locations 0' — 'Ruimtes en zones' | fixed | - | 2222abb |
-| LQA-070 | L23 | P3 | Two terms for the same wait; '1/9' — One term for the verification wait; the 7/8 versus 1/9 filter counts were not touched | partly fixed | - | 2222abb |
-| LQA-071 | L24 | P3 | Console warnings, load time, a 401 — Not started | open | - | - |
+| LQA-070 | L23 | P3 | Two terms for the same wait; '1/9' — One term for the verification wait; a tile counts within the chosen type, a tab within the chosen state | fixed | e2e action-center-tabs (fails on the old code: 11 versus 9) | 2222abb, e145229 |
+| LQA-071 | L24 | P3 | Console warnings, load time, a 401 — Geist Mono is no longer preloaded and the unused Hind weight 500 is gone; the 401 and the slow first load were not reproduced | partly fixed | node rendered-html (layout fonts) | e145229 |
 | LQA-072 | L25 | P3 | Inspection completion sends 16 requests — One save_inspection_responses call; migration 202610280006 | fixed | pgTAP 023 (6); e2e inspection-workflow counts the requests | 889d19f |
 | LQA-073 | L26 | P3 | More NL/EN mix in content — Not started | open | - | - |
 | LQA-074 | L27 | P3 | Bare file input on 'Visueel bewijs' — ::file-selector-button | fixed | CSS, no test | 2bdae55 |
@@ -249,4 +249,7 @@ was not done are in `qa-fix-verification-2026-10-28.md`.
 | LQA-077 | L30 | P3 | No confirmation after a password change — 'Wachtwoord gewijzigd' on the project list | fixed | manual | 3657afb |
 | LQA-078 | L31 | P3 | Recovery screen errors not announced | fixed | e2e login-a11y (sign-in); same markup on the recovery screen | 3657afb |
 | LQA-079 | L32 | P3 | Records load twice, flicker, double-submit test fails — Flicker not investigated. double-submit.spec.ts passed on a production build in this pass (1 passed), so the failing test of the report did not reproduce | fixed | e2e records-no-flicker (shows loading-content-loading without the fix) | 074d82e |
+| LQA-080 | walkthrough | P3 | Action center tab labels and counts painted red; a type menu showed "1/9" beside the count — A stale rule coloured every span in the tabs like a late record | fixed | e2e action-center-tabs (label colour, no position chip; fails on the old CSS) | 4e81ac6 |
+| LQA-081 | walkthrough | P3 | Second row of the overview counts indented 16 px at 768 px | fixed | e2e overview-metrics-tablet (fails on the old CSS) | 4e81ac6, bac9083 |
+| LQA-082 | walkthrough | P3 | Weather labels touch their values at 1440 px — Labels wrap above the value | fixed | visual (live weather needs the Open-Meteo service) | 4e81ac6 |
 
