@@ -7,12 +7,14 @@ import { DialogManager } from "./dialog-manager";
 const hind = Hind({
   variable: "--font-hind",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "600", "700"],
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  // Only codes and references use it; preloading it on every route is what the console warned about.
+  preload: false,
 });
 
 export const metadata: Metadata = {

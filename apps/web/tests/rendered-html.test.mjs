@@ -3628,3 +3628,27 @@ test("QA L18: a refused work-day start says why next to the button and scrolls t
   assert.match(app, /handleSubmit\(save, \(\) => \{/);
   assert.match(app, /Nog niet compleet/);
 });
+
+test("QA L23/L8: tile and tab counts follow the other filter; the building code input is labelled", async () => {
+  const actionCenter = await readFile(new URL("../app/project-action-center.tsx", import.meta.url), "utf8");
+  // A tile counts within the chosen type, a tab within the chosen state, so the number
+  // on a button is the number of rows it leaves in the list.
+  assert.match(actionCenter, /const typeScopedItems = scopedItems\.filter/);
+  assert.match(actionCenter, /const stateScopedItems = scopedItems\.filter/);
+  assert.match(actionCenter, /typeScopedItems\.filter\(isOpen\)\.length/);
+  assert.match(actionCenter, /stateScopedItems\.filter\(\(item\) => item\.type === tab\.id\)\.length/);
+  const app = await readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8");
+  assert.match(app, /<label className="form-field"><span>\{text\("Building code \*", "Gebouwcode \*"\)\}<\/span><input value=\{code\}/);
+});
+
+test("QA L19: the local auth stack slows down repeated sign-in attempts", async () => {
+  const config = await readFile(new URL("../../../supabase/config.toml", import.meta.url), "utf8");
+  const limit = Number(/^sign_in_sign_ups\s*=\s*(\d+)/m.exec(config)?.[1]);
+  assert.ok(limit > 0 && limit <= 30, "sign-in attempts per five minutes must be limited");
+});
+
+test("QA L24: the root layout does not preload fonts the first screen does not use", async () => {
+  const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
+  assert.match(layout, /Geist_Mono\(\{[^}]*preload: false/s);
+  assert.doesNotMatch(layout, /weight: \["400", "500"/);
+});

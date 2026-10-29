@@ -215,6 +215,10 @@ export function ProjectActionCenter({
     || deadlineFilter === "later" && later(item)
     || deadlineFilter === "none" && withoutDeadline(item);
   const scopedItems = view === "mine" ? mine : items;
+  // A number on a tile or a tab is what the list shows after pressing it: tiles count within
+  // the chosen type, tabs within the chosen state.
+  const typeScopedItems = scopedItems.filter((item) => typeFilter === "all" || item.type === typeFilter);
+  const stateScopedItems = scopedItems.filter((item) => view === "deadlines" ? matchesDeadlineFilter(item) : matchesWorkFilter(item));
   const visibleItems = scopedItems.filter((item) => {
     const matchesType = typeFilter === "all" || item.type === typeFilter;
     const matchesState = view === "deadlines" ? matchesDeadlineFilter(item) : matchesWorkFilter(item);
@@ -297,20 +301,20 @@ export function ProjectActionCenter({
       {view === "deadlines" ? (
         <div className="action-center-summary deadline-summary">
           {([
-            ["overdue", text("Overdue", "Te laat"), items.filter(overdue).length],
-            ["week", text("Within 7 days", "Binnen 7 dagen"), items.filter(withinWeek).length],
-            ["later", text("Later", "Later"), items.filter(later).length],
-            ["none", text("No deadline", "Geen deadline"), items.filter(withoutDeadline).length],
-            ["all", text("All records", "Alle registraties"), items.length],
+            ["overdue", text("Overdue", "Te laat"), typeScopedItems.filter(overdue).length],
+            ["week", text("Within 7 days", "Binnen 7 dagen"), typeScopedItems.filter(withinWeek).length],
+            ["later", text("Later", "Later"), typeScopedItems.filter(later).length],
+            ["none", text("No deadline", "Geen deadline"), typeScopedItems.filter(withoutDeadline).length],
+            ["all", text("All records", "Alle registraties"), typeScopedItems.length],
           ] as Array<[DeadlineFilter, string, number]>).map(([id, label, count]) => <button className={`${deadlineFilter === id ? "active" : ""}${id === "overdue" && count ? " overdue" : ""}`} type="button" onClick={() => setDeadlineFilter(id)} key={id}><strong>{count}</strong><span>{label}</span></button>)}
         </div>
       ) : (
         <div className="action-center-summary">
           {([
-            ["open", text("Still open", "Nog open"), scopedItems.filter(isOpen).length],
-            ["escalated", text("Escalations · late or urgent", "Escalaties · te laat of urgent"), scopedItems.filter(isEscalated).length],
-            ["verification", text("Waiting for verification", "Wacht op verificatie"), scopedItems.filter((item) => item.status === "ready_for_verification").length],
-            ["all", text("All records", "Alle registraties"), scopedItems.length],
+            ["open", text("Still open", "Nog open"), typeScopedItems.filter(isOpen).length],
+            ["escalated", text("Escalations · late or urgent", "Escalaties · te laat of urgent"), typeScopedItems.filter(isEscalated).length],
+            ["verification", text("Waiting for verification", "Wacht op verificatie"), typeScopedItems.filter((item) => item.status === "ready_for_verification").length],
+            ["all", text("All records", "Alle registraties"), typeScopedItems.length],
           ] as Array<[WorkFilter, string, number]>).map(([id, label, count]) => <button className={`${workFilter === id ? "active" : ""}${id === "escalated" && count ? " overdue" : ""}`} type="button" onClick={() => setWorkFilter(id)} key={id}><strong>{count}</strong><span>{label}</span></button>)}
         </div>
       )}
@@ -321,7 +325,7 @@ export function ProjectActionCenter({
             <SectionNav
               className="action-type-tabs"
               label={text("Action type", "Actietype")}
-              items={typeTabs.map((tab) => ({ id: tab.id, label: tab.label, count: tab.id === "all" ? scopedItems.length : scopedItems.filter((item) => item.type === tab.id).length, selected: typeFilter === tab.id, onSelect: () => setTypeFilter(tab.id) }))}
+              items={typeTabs.map((tab) => ({ id: tab.id, label: tab.label, count: tab.id === "all" ? stateScopedItems.length : stateScopedItems.filter((item) => item.type === tab.id).length, selected: typeFilter === tab.id, onSelect: () => setTypeFilter(tab.id) }))}
             />
             <label className="action-center-search"><Search size={15} /><span className="sr-only">{text("Search action center", "Doorzoek actiecentrum")}</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text("Search reference, title or person", "Zoek referentie, titel of persoon")} /></label>
           </div>

@@ -67,3 +67,32 @@ test("the Action center tabs are three equal, tall, horizontal tabs on every wid
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `no sideways scroll ${where}`).toBe(true);
   }
 });
+
+/**
+ * QA L23. "Still open 7" next to "All work 9" read as a disagreement. A tile counts within the
+ * chosen type and a tab within the chosen state, so each number is the number of rows its
+ * button leaves in the list.
+ */
+test("a number on a tile or a tab is the number of rows it leaves", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-office", "Layout is not under test.");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await signIn(page);
+  await openActions(page);
+  await page.getByRole("tab", { name: /All project work/ }).click();
+  const rows = page.locator(".unified-action-list > button");
+  const countOf = async (locator: ReturnType<Page["locator"]>) => Number((await locator.innerText()).match(/(\d+)\s*$/m)?.[1] ?? "NaN");
+  const allWorkTab = page.locator(".action-type-tabs [role='tab']").first();
+  const tile = (name: string) => page.locator(".action-center-summary button", { hasText: name }).locator("strong");
+
+  // The default state is "Still open": tile, tab and list agree.
+  const open = Number(await tile("Still open").innerText());
+  await expect(rows).toHaveCount(open);
+  expect(await countOf(allWorkTab), "tab 'All work' within the state 'Still open'").toBe(open);
+
+  // Every record: the tab follows the state, the tile counts the whole type.
+  await page.locator(".action-center-summary button", { hasText: "All records" }).click();
+  const all = Number(await tile("All records").innerText());
+  await expect(rows).toHaveCount(all);
+  expect(await countOf(allWorkTab), "tab 'All work' within the state 'All records'").toBe(all);
+  expect(all).toBeGreaterThanOrEqual(open);
+});
