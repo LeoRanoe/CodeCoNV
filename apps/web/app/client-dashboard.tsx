@@ -504,7 +504,7 @@ export function ClientDashboard({
                 </button>
               )) : (
                 <div className="overview-purposeful-empty">
-                  <div><strong>{text("No work recorded", "Geen werk vastgelegd")}</strong></div>
+                  <div><strong>{text("No work recorded today", "Vandaag geen werk vastgelegd")}</strong></div>
                 </div>
               )}
             </div>
@@ -547,7 +547,7 @@ export function ClientDashboard({
                   <span><strong>{entry.title}</strong><small>{entry.person} · {entry.location || buildingName}</small></span>
                   <time>{entry.time}</time>
                 </button>
-              )) : <p className="overview-inline-empty">{text("No activity yet.", "Nog geen activiteit.")}</p>}
+              )) : <p className="overview-inline-empty">{text("No activity today.", "Vandaag geen activiteit.")}</p>}
             </div>
           </article>
 

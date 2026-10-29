@@ -103,6 +103,7 @@ import {
 import {
   changeOrderDetails,
   changeOrderFinishDate,
+  changeOrderMissing,
   changeOrderReady,
   changeOrderReasons,
   changeOrderScopeAreas,
@@ -115,6 +116,7 @@ import {
   delayCompletionStatuses,
   delayImpacts,
   delayReportDetails,
+  delayReportMissing,
   delayReportReady,
   delayRevisedFinishDate,
   delayStatusOnFinishDate,
@@ -135,6 +137,8 @@ import type { FormalReportSnapshot } from "@/lib/reports/daily-report-pdf";
 import type { PeriodReportSection, PeriodReportTopic } from "@/lib/reports/period-report-pdf";
 import { assignProjectAction, type InternalMember, type ProjectParty } from "@/lib/supabase/data";
 import { isStorageGatewayConfigured, loadProjectFileObjectUrl, openProjectFile, uploadProjectFile } from "@/lib/storage/gateway";
+import { isPhotoFile } from "@/lib/media/photo-library.mjs";
+import { countOpenFindings } from "@/lib/records/finding-counts.mjs";
 import { createFileOriginResolver, filesForRecord, type FileOriginKind, type FileOriginResolver } from "@/lib/supabase/file-origins";
 import {
   buildPeriodReportSnapshot,
@@ -3005,8 +3009,8 @@ function ProjectOperations({
 
   const projectSections: Array<[Exclude<ProjectTab, "home">, string, number]> = ([
     ["inspections", text("Inspections", "Inspecties"), data.inspections.length],
-    ["findings", text("Issues", "Issues"), data.findings.filter((item) => item.finding_type !== "ncr" && item.status !== "closed").length],
-    ["ncr", "NCR", data.findings.filter((item) => item.finding_type === "ncr" && item.status !== "closed").length],
+    ["findings", text("Issues", "Issues"), countOpenFindings(data.findings, "issue")],
+    ["ncr", "NCR", countOpenFindings(data.findings, "ncr")],
     ["hse", "HSE", data.hseEvents.length],
     // The page is named after what was asked for: one block of the day, or the whole day log.
     ["daily", !dayLogFocus ? text("Day log", "Daglog") : dailyWorkView === "works_completed" ? text("Works completed", "Werkzaamheden afgerond") : dailyWorkView === "delays" ? text("Delays", "Vertragingen") : text("Works ongoing", "Werkzaamheden gaande"), (data.dailyWork ?? []).length],
@@ -3016,7 +3020,7 @@ function ProjectOperations({
     ["visual", text("Visual evidence", "Visueel bewijs"), data.visualCaptures.length],
     ["drawings", text("Drawings", "Tekeningen"), data.files.filter((file) => file.category === "drawing" && file.status === "available").length],
     ["tools", text("Field tools", "Veldtools"), data.registerEntries.filter((entry) => ["notepad", "agreement", "technical_instruction"].includes(entry.register_type)).length],
-    ["files", text("Photos", "Foto's"), data.files.filter((file) => file.mime_type.startsWith("image/")).length],
+    ["files", text("Photos", "Foto's"), data.files.filter(isPhotoFile).length],
     ["assets", text("Assets", "Middelen"), data.files.length + data.inspections.length + data.findings.length + data.hseEvents.length + data.registerEntries.length + (data.dayReports ?? []).length],
   ] as Array<[Exclude<ProjectTab, "home">, string, number]>).filter(([sectionId]) => ({
     inspections: moduleEnabled("inspections"),
@@ -3051,10 +3055,11 @@ function ProjectOperations({
           <ProjectWorkspaceHome
             counts={{
               inspections: data.inspections.length,
-              issues: data.findings.filter((item) => item.finding_type !== "ncr" && !["closed", "cancelled"].includes(item.status)).length,
-              ncr: data.findings.filter((item) => item.finding_type === "ncr" && !["closed", "cancelled"].includes(item.status)).length,
+              issues: countOpenFindings(data.findings, "issue"),
+              ncr: countOpenFindings(data.findings, "ncr"),
               hse: data.hseEvents.length,
-              photos: data.visualCaptures.filter((capture) => capture.capture_type === "photo" && capture.status === "active").length,
+              // The tile opens the photo library, which lists photos and 360° images together.
+              photos: data.visualCaptures.filter((capture) => capture.status === "active").length,
               deliveries: data.registerEntries.filter((entry) => entry.register_type === "delivery").length,
               agreements: data.registerEntries.filter((entry) => entry.register_type === "agreement").length,
               deadlines: data.findings.filter((item) => item.due_at && !["closed", "cancelled"].includes(item.status)).length
@@ -3445,7 +3450,7 @@ function ProjectOperations({
                       {findingForm.responsibleUserId ? <button className="record-field-clear" type="button" onClick={() => setFindingForm({ ...findingForm, responsibleUserId: "", responsiblePerson: "" })} aria-label={text("Clear the responsible person", "Verantwoordelijke wissen")}><X size={14} /></button> : null}
                     </label>
                     {!responsiblePeople.length ? (
-                      <label className="form-field"><span>{text("Name of the responsible person", "Naam van de verantwoordelijke")}</span><input value={findingForm.responsiblePerson} onChange={(event) => setFindingForm({ ...findingForm, responsiblePerson: event.target.value })} placeholder={text("Nobody from this project is in the app yet", "Nog niemand van dit project staat in de app")} /></label>
+                      <label className="form-field"><span>{text("Name of the responsible person", "Naam van de verantwoordelijke")}</span><input value={findingForm.responsiblePerson} onChange={(event) => setFindingForm({ ...findingForm, responsiblePerson: event.target.value })} placeholder={text("First and last name", "Voor- en achternaam")} /></label>
                     ) : null}
                     {/* The contractor that has to correct it is a party, not a colleague:
                         the client's issue log carries both. */}
@@ -3530,6 +3535,13 @@ function ProjectOperations({
                   <Paperclip size={14} /> {text(`Attachments (${findingPhotos.length})`, `Bijlagen (${findingPhotos.length})`)}
                   <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
                 </label>
+                <StillNeeded items={[
+                  exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId ? text("exact location", "exacte locatie") : "",
+                  !online && !findingPhotos.length ? text("a photo (you are offline)", "een foto (je bent offline)") : "",
+                  !findingForm.issueCategory ? text("category", "categorie") : "",
+                  findingForm.responsiblePerson.trim().length < 2 ? text("responsible person", "verantwoordelijke") : "",
+                  findingForm.description.trim().length < 3 ? text("description", "omschrijving") : "",
+                ]} />
                 <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || !findingForm.issueCategory || findingForm.responsiblePerson.trim().length < 2 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><Send size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Issue indienen")}</button>
               </div>
             </div>
@@ -3669,6 +3681,12 @@ function ProjectOperations({
                   job the signer holds is the one thing the app cannot know. */}
               <label className="form-field ncr-signature-position"><span>{text("Position", "Functie")}</span><input value={findingForm.signedPosition} onChange={(event) => setFindingForm({ ...findingForm, signedPosition: event.target.value })} placeholder={text("Quality Engineer", "Quality Engineer")} /></label>
                 <div className="operation-alert warning"><RotateCcw size={17} /><div><strong>{text("The contractor fills in the correction", "De aannemer vult de correctie in")}</strong><span>{text("Submit, then send the NCR to the contractor. The contractor proposes the corrective action; CODECO verifies and closes.", "Dien in en stuur de NCR naar de aannemer. De aannemer stelt de corrigerende maatregel voor; CODECO verifieert en sluit.")}</span></div></div>
+              <StillNeeded items={[
+                exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId ? text("exact location", "exacte locatie") : "",
+                !online && !findingPhotos.length ? text("a photo (you are offline)", "een foto (je bent offline)") : "",
+                findingForm.title.trim().length < 3 ? text("title", "titel") : "",
+                findingForm.description.trim().length < 3 ? text("description", "omschrijving") : "",
+              ]} />
               <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit NCR", "NCR indienen")}</button>
             </div>
           ) : null}
@@ -3696,9 +3714,10 @@ function ProjectOperations({
                 [text("Verified", "Geverifieerd"), scopedFindings.filter((item) => item.status === "closed").length],
               ].map(([label, count], index) => <div className={index === 2 ? "attention" : index === 3 ? "complete" : ""} key={String(label)}><span>{index + 1}</span><strong>{count}</strong><small>{label}</small></div>)}
             </div>
-            <div className="punchlist-cycle-card">
-              <div className="button-row">{!permissions.can("files.manage") ? null : <><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setTab("visual")}><Camera size={14} /> {text("Open normal photo", "Open normale foto")}</button><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setTab("visual")}><RotateCcw size={14} /> {text("Open 360° image", "Open 360°-beeld")}</button></>}</div>
-            </div>
+            {permissions.can("files.manage") ? <div className="punchlist-cycle-card">
+              <div><strong>{text("Mark an issue on an image", "Een issue op een beeld markeren")}</strong><p>{text("Choose a photo or a 360° image and place the issue on it.", "Kies een foto of 360°-beeld en plaats het issue erop.")}</p></div>
+              <div className="button-row"><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setTab("visual")}><Camera size={14} /> {text("Open photo", "Foto openen")}</button><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setTab("visual")}><RotateCcw size={14} /> {text("Open 360° image", "360°-beeld openen")}</button></div>
+            </div> : null}
           </div>
           <FindingList
             data={data}
@@ -3848,7 +3867,7 @@ function ProjectOperations({
                     {/* A project without colleagues in the app still has to be able to file
                         the issue: then the name is written instead of chosen. */}
                     {!responsiblePeople.length ? (
-                      <label className="form-field"><span>{text("Name of the responsible person", "Naam van de verantwoordelijke")}</span><input value={hseForm.responsiblePerson} onChange={(event) => setHseForm({ ...hseForm, responsiblePerson: event.target.value })} placeholder={text("Nobody from this project is in the app yet", "Nog niemand van dit project staat in de app")} /></label>
+                      <label className="form-field"><span>{text("Name of the responsible person", "Naam van de verantwoordelijke")}</span><input value={hseForm.responsiblePerson} onChange={(event) => setHseForm({ ...hseForm, responsiblePerson: event.target.value })} placeholder={text("First and last name", "Voor- en achternaam")} /></label>
                     ) : null}
                   </section>
 
@@ -3970,6 +3989,12 @@ function ProjectOperations({
                   <Paperclip size={14} /> {text(`Attachments (${hsePhotos.length})`, `Bijlagen (${hsePhotos.length})`)}
                   <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setHsePhotos, setHsePhotoError); event.currentTarget.value = ""; }} />
                 </label>
+                <StillNeeded items={[
+                  exactLocationRequired && !hseLocationNodeId ? text("exact location", "exacte locatie") : "",
+                  !hseForm.issueCategory ? text("category", "categorie") : "",
+                  hseForm.responsiblePerson.trim().length < 2 ? text("responsible person", "verantwoordelijke") : "",
+                  hseForm.description.trim().length < 3 ? text("description", "omschrijving") : "",
+                ]} />
                 <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !hseLocationNodeId) || !hseForm.issueCategory || hseForm.responsiblePerson.trim().length < 2 || hseForm.description.trim().length < 3} onClick={() => void addHse()}><Send size={15} /> {text("Submit issue", "Issue indienen")}</button>
               </div>
             </RecordFormShell>
@@ -4658,9 +4683,13 @@ function ProjectOperations({
       : controlledRegister && registerForm.requestedTo.trim().length < 2 ? text("recipient", "ontvanger") : "",
     controlledRegister && registerForm.type === "inspection_request" && !registerForm.readyDate ? text("ready date", "gereeddatum") : "",
     controlledRegister && registerForm.type === "technical_instruction" && !registerForm.dueDate ? text("deadline", "deadline") : "",
-    controlledRegister && registerForm.type === "change_order" && !changeOrderReady(changeOrder) ? text("change order details", "gegevens wijzigingsopdracht") : "",
+    ...(controlledRegister && registerForm.type === "change_order" ? changeOrderMissing(changeOrder).map((item) => text(item.en, item.nl)) : []),
     !lessonFormReady ? text("lesson fields and both photos", "velden en beide foto's van de les") : "",
-    !delayReportFormReady ? text("delay report fields and status photo", "velden en statusfoto van het vertragingsrapport") : "",
+    ...(delayReportRegister ? [
+      ...delayReportMissing(delayForm).map((item) => text(item.en, item.nl)),
+      !registerNamedPhotos.delay_status ? text("photo on the original finish date", "foto op de oorspronkelijke einddatum") : "",
+      delayCompletionStarted(delayForm) && !registerNamedPhotos.delay_completion ? text("completion photo", "foto van de afronding") : "",
+    ] : []),
                 ].filter(Boolean);
                 return registerMissing.length ? <small className="confirm-needs">{text("Still needed", "Nog nodig")}: {registerMissing.join(" · ")}</small> : null;
               })()}
@@ -4804,7 +4833,11 @@ function ProjectOperations({
 
       {tab === "documents" ? <ProjectDocumentsHome data={data} client={client} organizationId={organizationId} projectId={projectId} reportId={reportId} buildingId={buildingId} buildings={buildings} busy={busy} run={run} openDrawings={() => switchTab("drawings")} openFiles={() => switchTab("assets")} openRegisters={() => switchTab("registers")} createDocument={() => openTask("registers", true)} /> : null}
 
-      {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} client={client} busy={busy} run={run} initialFindingId={drawingFindingId} initialInspectionId={drawingInspectionId} pendingRecord={pendingRecordPin} onPlaceRecordPin={onPlaceRecordPin} onOpenLinkedRecord={(recordType) => switchTab(recordType === "observation" ? "findings" : recordType === "inspection" ? "inspections" : recordType === "visual" ? "visual" : recordType === "registration" ? "daily" : "registers")} /> : null}
+      {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} client={client} busy={busy} run={run} initialFindingId={drawingFindingId} initialInspectionId={drawingInspectionId} pendingRecord={pendingRecordPin} onPlaceRecordPin={onPlaceRecordPin} onOpenLinkedRecord={(recordType, recordId) => {
+        // The pin points at one record, so the module opens on that record, not on its list.
+        if (recordType === "registration") { switchTab("daily"); return; }
+        openProjectArea(recordType === "observation" ? "findings" : recordType === "inspection" ? "inspections" : recordType === "visual" ? "visual" : "registers", recordId);
+      }} /> : null}
 
       {tab === "tools" ? <FieldTools data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} parties={parties} reportId={reportId} currentUserName={currentUserName} client={client} busy={busy} run={run} /> : null}
 
@@ -4893,6 +4926,13 @@ function BoqProgressRegister({
       </div>
     </section>
   );
+}
+
+/** What a disabled save button is waiting for, in words; nothing when the form is complete. */
+function StillNeeded({ items }: { items: string[] }) {
+  const { text } = useLanguage();
+  const missing = items.filter(Boolean);
+  return missing.length ? <small className="confirm-needs">{text("Still needed", "Nog nodig")}: {missing.join(" · ")}</small> : null;
 }
 
 function ControlledDocumentList({ entries, buildings, locationNodes, busy, currentUserName, focusRecordId = "", client, run }: {
@@ -5909,7 +5949,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
             ) : <div className="operation-alert warning"><Users size={18} /><div><strong>{text("No assignable company employees", "Geen toewijsbare eigen medewerkers")}</strong><span>{text("Add an active employee first.", "Voeg eerst een actieve medewerker toe.")}</span></div></div>}
           </section>
           <ControlledDocumentList entries={externalSubmissions} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={text("Company / owner reviewer", "Reviewer bedrijf / eigenaar")} client={client} run={run} />
-        <div className="management-context"><div><span>{text("Current report", "Huidig rapport")}</span><strong>{statusText(reportStatus, text)}</strong></div><div><span>{text("Project locations", "Projectlocaties")}</span><strong>{data.locationNodes.length}</strong></div><div><span>{text("Published checklists", "Gepubliceerde checklists")}</span><strong>{data.templates.filter((item) => item.status === "published").length}</strong></div><div><span>{text("Controlled files", "Beheerde bestanden")}</span><strong>{data.files.length}</strong></div></div>
+        <div className="management-context"><div><span>{text("Current report", "Huidig rapport")}</span><strong>{statusText(reportStatus, text)}</strong></div><div><span>{text("Rooms and areas", "Ruimtes en zones")}</span><strong>{data.locationNodes.length}</strong></div><div><span>{text("Published checklists", "Gepubliceerde checklists")}</span><strong>{data.templates.filter((item) => item.status === "published").length}</strong></div><div><span>{text("Controlled files", "Beheerde bestanden")}</span><strong>{data.files.length}</strong></div></div>
       </section> : null}
       {section === "settings" ? (
         <section className="operation-panel">

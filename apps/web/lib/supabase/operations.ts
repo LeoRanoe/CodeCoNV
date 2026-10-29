@@ -882,6 +882,25 @@ export async function createMediaFolder(client: SupabaseClient, input: {
   return result.data as MediaFolder;
 }
 
+/**
+ * The folder an upload files itself in: the one that already carries the name, or a new one.
+ * Looked up on the server because the folder list on screen can be a moment behind, and every
+ * upload used to add one more folder with the same name.
+ */
+export async function ensureMediaFolder(client: SupabaseClient, input: {
+  projectId: string;
+  buildingId?: string | null;
+  name: string;
+  folderType?: MediaFolder["folder_type"];
+}) {
+  let query = client.from("media_folders").select("id,name").eq("project_id", input.projectId).eq("status", "active").is("parent_id", null).ilike("name", input.name.replace(/[\\%_]/g, "\\$&")).limit(5);
+  query = input.buildingId ? query.eq("building_id", input.buildingId) : query.is("building_id", null);
+  const found = await query;
+  const existing = found.error ? null : found.data?.[0];
+  if (existing) return existing as Pick<MediaFolder, "id" | "name">;
+  return createMediaFolder(client, input);
+}
+
 /** Asset-library mutations stay on the existing project-scoped tables and their RLS. */
 export async function updateMediaFolder(client: SupabaseClient, folderId: string, patch: {
   name?: string;

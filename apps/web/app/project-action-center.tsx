@@ -309,7 +309,7 @@ export function ProjectActionCenter({
           {([
             ["open", text("Still open", "Nog open"), scopedItems.filter(isOpen).length],
             ["escalated", text("Escalations · late or urgent", "Escalaties · te laat of urgent"), scopedItems.filter(isEscalated).length],
-            ["verification", text("Waiting for your check", "Wacht op jouw controle"), scopedItems.filter((item) => item.status === "ready_for_verification").length],
+            ["verification", text("Waiting for verification", "Wacht op verificatie"), scopedItems.filter((item) => item.status === "ready_for_verification").length],
             ["all", text("All records", "Alle registraties"), scopedItems.length],
           ] as Array<[WorkFilter, string, number]>).map(([id, label, count]) => <button className={`${workFilter === id ? "active" : ""}${id === "escalated" && count ? " overdue" : ""}`} type="button" onClick={() => setWorkFilter(id)} key={id}><strong>{count}</strong><span>{label}</span></button>)}
         </div>

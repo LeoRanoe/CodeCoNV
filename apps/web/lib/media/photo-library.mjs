@@ -8,6 +8,16 @@
  * first, and the pictures stand under the day they were taken, newest day on top.
  */
 
+/**
+ * What counts as a photo: a picture that is not filed as something else. A drawing saved as a
+ * PNG is an image too, but it is a drawing; counting it as a photo made the tile, the tab and
+ * the library disagree.
+ */
+const nonPhotoCategories = new Set(["drawing", "document", "certificate", "report", "backup", "export"]);
+export function isPhotoFile(file) {
+  return Boolean(file) && String(file.mime_type ?? "").startsWith("image/") && !nonPhotoCategories.has(file.category);
+}
+
 /** The photos and drawings the library is showing, before any folder is chosen. */
 export function visibleLibraryFiles(files, buildingId) {
   return (files ?? []).filter((file) => file.status === "available"

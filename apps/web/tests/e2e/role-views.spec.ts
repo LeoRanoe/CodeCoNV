@@ -146,3 +146,10 @@ test("Management offers a contractor and a client only what their role may do", 
   await expect(page.getByRole("heading", { name: "Management overview" })).toBeVisible();
   for (const name of [...admin, "Record external submission"]) await expect(page.getByRole("button", { name: new RegExp(name) }), `client: ${name}`).toHaveCount(0);
 });
+
+test("a link to a project the account cannot open says so", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-office", "The address check does not depend on the viewport.");
+  await signInAs(page, supervisorEmail!, supervisorPassword!);
+  await page.goto("/supervisie?project=00000000-0000-4000-8000-000000000000&nav=project");
+  await expect(page.getByText("That project is not available to this account.")).toBeVisible();
+});

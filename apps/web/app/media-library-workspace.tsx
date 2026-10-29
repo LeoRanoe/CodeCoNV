@@ -18,6 +18,7 @@ import {
   folderMoveTargets,
   groupFilesByDay,
   groupPhotoStacks,
+  isPhotoFile,
   libraryDayKey,
   nestMediaFolders,
   orderMediaFolders,
@@ -40,7 +41,7 @@ import { syncOfflineRecords } from "@/lib/offline/record-queue";
 import { downloadProjectFile, loadProjectFileObjectUrl, openProjectFile } from "@/lib/storage/gateway";
 import { createFileOriginResolver, type FileOriginKind } from "@/lib/supabase/file-origins";
 import { StoredPhotoDetail } from "@/app/stored-photo-detail";
-import { createMediaFolder, createVisualCapture, linkFileToRecord, updateMediaFolder, updateProjectFile, updateVisualCaptureDetails, updateVisualCaptureStack, type FileRecord, type MediaFolder, type OperationSnapshot } from "@/lib/supabase/operations";
+import { createMediaFolder, createVisualCapture, ensureMediaFolder, linkFileToRecord, updateMediaFolder, updateProjectFile, updateVisualCaptureDetails, updateVisualCaptureStack, type FileRecord, type MediaFolder, type OperationSnapshot } from "@/lib/supabase/operations";
 import { statusText } from "@/lib/status-labels";
 
 function automaticTitle(filename: string) {
@@ -169,7 +170,7 @@ export function MediaLibraryWorkspace({
   // building, so photos looked lost that were simply filed under another building.
   const buildingFiles = useMemo<FileRecord[]>(() => (assetsMode
     ? data.files.filter((file) => file.status !== "deleted" && (!file.building_id || !libraryBuildingId || file.building_id === libraryBuildingId))
-    : (visibleLibraryFiles(data.files, libraryBuildingId) as FileRecord[]).filter((file) => file.mime_type.startsWith("image/"))), [assetsMode, data.files, libraryBuildingId]);
+    : (visibleLibraryFiles(data.files, libraryBuildingId) as FileRecord[]).filter(isPhotoFile)), [assetsMode, data.files, libraryBuildingId]);
   const folderFiles = useMemo<FileRecord[]>(() => assetsMode ? filesInFolder(buildingFiles, folderId) : buildingFiles, [assetsMode, buildingFiles, folderId]);
   const files = useMemo(() => folderFiles.filter((file) => {
     const normalizedQuery = normalizeRecordCode(assetQuery);
@@ -323,7 +324,7 @@ export function MediaLibraryWorkspace({
           targetFolder = existing.id;
         } else {
           try {
-            const created = await createMediaFolder(client, {
+            const created = await ensureMediaFolder(client, {
               projectId,
               buildingId: libraryBuildingId,
               name: automaticFolderName,

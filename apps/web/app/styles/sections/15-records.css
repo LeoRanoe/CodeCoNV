@@ -308,7 +308,7 @@
   .action-plan-preview { height: 180px; margin: 10px 0; }
   .secondary-header { align-items: flex-start; flex-direction: column; padding: var(--space-4); }
   .secondary-header > .ui-button--primary { width: 100%; }
-  .punchlist-cycle-card { grid-template-columns: 38px minmax(0, 1fr); }
+  .punchlist-cycle-card { grid-template-columns: minmax(0, 1fr); }
   .punchlist-cycle-card > .button-row { width: 100%; }
 }
 

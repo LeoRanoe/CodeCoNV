@@ -1139,10 +1139,15 @@ export function CodecoSupervisionApp() {
     const fromUrl = screenFromSearch(initialSearch);
     if (!fromUrl.project) return;
     const project = projects.find((candidate) => candidate.id === fromUrl.project);
-    if (!project) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- restoring a screen from the address bar can only happen once the projects have loaded
+    if (!project) {
+      // A link to a project this account cannot open (or that no longer exists) says so,
+      // instead of landing on the project list as if nothing had been asked.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the address bar can only be checked once the projects have loaded
+      setAccountNotice(text("That project is not available to this account. Choose one from the list.", "Dat project is niet beschikbaar voor dit account. Kies een project uit de lijst."));
+      return;
+    }
     applyScreen(fromUrl);
-  }, [applyScreen, initialSearch, workspaceQuery.data?.projects]);
+  }, [applyScreen, initialSearch, text, workspaceQuery.data?.projects]);
 
   const openProjectStartForAllBuildings = () => {
     setContextBuildingId(ALL_BUILDINGS);

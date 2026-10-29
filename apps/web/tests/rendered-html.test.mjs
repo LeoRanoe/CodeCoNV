@@ -3610,3 +3610,15 @@ test("retains historical client form-feedback fixes without losing underlying wo
   // Impact metadata remains available, but is not forced into every technical instruction.
   assert.match(workspace, /className="controlled-document-optional-impact"/);
 });
+
+test("QA M6/L3/L4: save buttons say what they wait for; pin removal is confirmed inline", async () => {
+  const [workspace, drawings] = await Promise.all([
+    readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/drawing-workspace.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.equal((workspace.match(/<StillNeeded items=/g) ?? []).length, 3);
+  assert.doesNotMatch(workspace, /Nog niemand van dit project staat in de app/);
+  assert.doesNotMatch(drawings, /window\.confirm/);
+  assert.match(drawings, /role="alertdialog"/);
+  assert.match(drawings, /\{activeDrawing \? <div className="operation-alert"><ShieldCheck/);
+});
