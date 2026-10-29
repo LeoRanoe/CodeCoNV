@@ -2765,7 +2765,7 @@ function ProjectStartForm({
           </div>
         </form>
 
-        {automation.length ? <aside className="automation-panel">
+        {automation.length ? <div className="automation-panel">
           <header><span className="automation-panel-icon"><Settings size={19} /></span><span><strong>{text("Checks", "Controles")}</strong></span></header>
           <div className="automation-rule-list">
             {automation.map((rule) => (
@@ -2775,7 +2775,7 @@ function ProjectStartForm({
               </article>
             ))}
           </div>
-        </aside> : null}
+        </div> : null}
       </div>
       </section>
     </div>

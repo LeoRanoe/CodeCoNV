@@ -59,7 +59,7 @@ export default async function SharedProjectRecord({ params }: { params: Promise<
     <main className="external-share-shell">
       <DocumentLanguage fixed="nl" />
       <section className="external-share-card">
-        <header><span className="external-share-brand">CODECO N.V. · SUPERVISIE</span><span className={`external-share-status ${record.severity ?? ""}`}>{labelFor(record.source_type === "action" ? actionStatusLabels : findingStatusLabels, record.status, "nl", "Open")}</span></header>
+        <header><span className="external-share-brand">CODECO N.V. · Supervisie</span><span className={`external-share-status ${record.severity ?? ""}`}>{labelFor(record.source_type === "action" ? actionStatusLabels : findingStatusLabels, record.status, "nl", "Open")}</span></header>
         <div className="external-share-context"><Building2 size={18} /><span><strong>{record.project_code} · {record.project_name}</strong><small>{record.building_name ?? "Projectbreed"}</small></span></div>
         <span className="record-number">{recordKindLabel(record)} · {record.source_number}</span>
         <h1>{record.title}</h1>

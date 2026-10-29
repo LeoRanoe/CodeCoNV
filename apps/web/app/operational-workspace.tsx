@@ -3343,7 +3343,7 @@ function ProjectOperations({
 
                   <section className="record-section record-order-2" aria-label={text("Category", "Categorie")}>
                     <h3><span className="record-section-number">2</span> {text("Category", "Categorie")} <em className="record-section-required">*</em></h3>
-                    <label className="form-field"><select value={findingForm.issueCategory} onChange={(event) => setFindingForm({ ...findingForm, issueCategory: event.target.value })}>
+                    <label className="form-field"><select aria-label={text("Category", "Categorie")} value={findingForm.issueCategory} onChange={(event) => setFindingForm({ ...findingForm, issueCategory: event.target.value })}>
                       <option value="">{text("Choose a category", "Kies een categorie")}</option>
                       {issueCategories.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}
                     </select></label>
@@ -3435,7 +3435,7 @@ function ProjectOperations({
                     <h3><span className="record-section-number">8</span> {text("Responsible person", "Verantwoordelijke")} <em className="record-section-required">*</em></h3>
                     <label className="form-field record-responsible-field">
                       <UserCheck size={15} />
-                      <select value={findingForm.responsibleUserId} onChange={(event) => {
+                      <select aria-label={text("Responsible person", "Verantwoordelijke")} value={findingForm.responsibleUserId} onChange={(event) => {
                         const chosen = responsiblePeople.find((option) => option.id === event.target.value);
                         setFindingForm({ ...findingForm, responsibleUserId: chosen?.id ?? "", responsiblePerson: chosen ? `${chosen.name}${chosen.role ? ` (${chosen.role})` : ""}` : "" });
                       }}>
@@ -3470,7 +3470,7 @@ function ProjectOperations({
 
                   <section className="record-section record-order-10" aria-label={text("Root cause", "Oorzaak")}>
                     <h3><span className="record-section-number">10</span> {text("Root cause", "Oorzaak")} <em className="record-section-optional">({text("optional", "optioneel")})</em></h3>
-                    <label className="form-field"><select value={findingForm.rootCause} onChange={(event) => setFindingForm({ ...findingForm, rootCause: event.target.value })}>
+                    <label className="form-field"><select aria-label={text("Root cause", "Oorzaak")} value={findingForm.rootCause} onChange={(event) => setFindingForm({ ...findingForm, rootCause: event.target.value })}>
                       <option value="">{text("Select root cause", "Kies een oorzaak")}</option>
                       {recordRootCauses.map((cause) => <option value={cause.id} key={cause.id}>{text(cause.en, cause.nl)}</option>)}
                     </select></label>
@@ -3801,7 +3801,7 @@ function ProjectOperations({
 
                   <section className="record-section record-order-2" aria-label={text("Category", "Categorie")}>
                     <h3><span className="record-section-number">2</span> {text("Category", "Categorie")} <em className="record-section-required">*</em></h3>
-                    <label className="form-field"><select value={hseForm.issueCategory} onChange={(event) => setHseForm({ ...hseForm, issueCategory: event.target.value })}>
+                    <label className="form-field"><select aria-label={text("Category", "Categorie")} value={hseForm.issueCategory} onChange={(event) => setHseForm({ ...hseForm, issueCategory: event.target.value })}>
                       <option value="">{text("Choose a category", "Kies een categorie")}</option>
                       {hseIssueCategories.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}
                     </select></label>
@@ -3836,7 +3836,7 @@ function ProjectOperations({
                     <h3><span className="record-section-number">8</span> {text("Responsible person", "Verantwoordelijke")} <em className="record-section-required">*</em></h3>
                     <label className="form-field record-responsible-field">
                       <UserCheck size={15} />
-                      <select value={hseForm.responsibleUserId} onChange={(event) => {
+                      <select aria-label={text("Responsible person", "Verantwoordelijke")} value={hseForm.responsibleUserId} onChange={(event) => {
                         const chosen = responsiblePeople.find((option) => option.id === event.target.value);
                         setHseForm({ ...hseForm, responsibleUserId: chosen?.id ?? "", responsiblePerson: chosen ? `${chosen.name}${chosen.role ? ` (${chosen.role})` : ""}` : "" });
                       }}>
@@ -3928,7 +3928,7 @@ function ProjectOperations({
 
                   <section className="record-section record-order-10" aria-label={text("Root cause", "Oorzaak")}>
                     <h3><span className="record-section-number">10</span> {text("Root cause", "Oorzaak")} <em className="record-section-optional">({text("optional", "optioneel")})</em></h3>
-                    <label className="form-field"><select value={hseForm.rootCause} onChange={(event) => setHseForm({ ...hseForm, rootCause: event.target.value })}>
+                    <label className="form-field"><select aria-label={text("Root cause", "Oorzaak")} value={hseForm.rootCause} onChange={(event) => setHseForm({ ...hseForm, rootCause: event.target.value })}>
                       <option value="">{text("Select root cause", "Kies een oorzaak")}</option>
                       {recordRootCauses.map((cause) => <option value={cause.id} key={cause.id}>{text(cause.en, cause.nl)}</option>)}
                     </select></label>

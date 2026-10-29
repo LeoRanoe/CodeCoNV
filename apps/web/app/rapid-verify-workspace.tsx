@@ -205,7 +205,7 @@ export function RapidVerifyWorkspace({
       {error ? <div className="operation-alert error"><AlertTriangle size={17} /> {error}</div> : null}
 
       <section className="rapid-verify-layout">
-        <aside className="rapid-source-panel">
+        <div className="rapid-source-panel">
           <div className="rapid-panel-heading">
             <span><BookOpenCheck size={19} /></span>
             <div><strong>{text("Project sources", "Projectbronnen")}</strong><small>{indexedPages.length} {text("indexed pages", "geindexeerde pagina's")}</small></div>
@@ -235,7 +235,7 @@ export function RapidVerifyWorkspace({
               </article>
             ))}
           </div>
-        </aside>
+        </div>
 
         <div className="rapid-query-panel">
           <SectionNav

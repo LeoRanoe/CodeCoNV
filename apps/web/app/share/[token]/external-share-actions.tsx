@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle, Camera, CheckCircle2, ImageOff, Loader2, PenLine, Send, Upload } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
 import { LanguageProvider } from "@/lib/i18n";
@@ -80,6 +81,7 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
+  const router = useRouter();
   const submittingRef = useRef(false);
   const attemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const uploadedRef = useRef<{ photo: File; fileId: string } | null>(null);

@@ -606,7 +606,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
 
       {drawings.length && activeDrawing ? (
         <div className="drawing-workspace-grid">
-          <aside className="drawing-file-list" aria-label={text("Drawing list", "Tekeningenlijst") }>
+          <section className="drawing-file-list" aria-label={text("Drawing list", "Tekeningenlijst") }>
             {drawings.map((drawing) => {
               const pinCount = data.drawingPins.filter((pin) => pin.drawing_file_id === drawing.id && pin.status === "active").length;
               return (
@@ -616,7 +616,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                 </button>
               );
             })}
-          </aside>
+          </section>
 
           <div className="drawing-stage-column">
             <div className="drawing-stage-header">
@@ -680,7 +680,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
             <div className="visual-stage-help">{tool === "pin" ? <MapPin size={15} /> : <MousePointer2 size={15} />}<span>{tool === "pin" ? text("Click the exact location, then choose the record to link.", "Klik op de exacte locatie en kies de registratie om te koppelen.") : text("Draw over the drawing. The original is not changed.", "Teken over de tekening. Het origineel blijft ongewijzigd.")}</span></div>
           </div>
 
-          <aside className="drawing-link-panel">
+          <div className="drawing-link-panel">
             {point && (pendingRecord || incomingFinding || incomingInspection) ? (
               <div className="drawing-link-form">
                 <div>
@@ -767,7 +767,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                 </section> : null}
               </div>
             )}
-          </aside>
+          </div>
         </div>
       ) : (
         <div className="empty-list-state visual-empty"><FileUp size={24} /><strong>{text("No previewable drawing yet", "Nog geen bekijkbare tekening")}</strong></div>

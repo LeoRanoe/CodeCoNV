@@ -1,7 +1,7 @@
 .external-share-shell { background: var(--ink-50); display: grid; min-height: 100dvh; padding: var(--space-6); place-items: center; }
 .external-share-card { background: var(--paper); border: 1px solid var(--ink-200); border-radius: var(--radius-md); box-shadow: none; display: grid; gap: var(--space-4); max-width: 680px; padding: var(--space-7); width: 100%; }
 .external-share-card header { align-items: center; display: flex; justify-content: space-between; }
-.external-share-brand { color: var(--red); font-size: var(--text-xs); font-weight: var(--weight-bold); letter-spacing: .12em; }
+.external-share-brand { color: var(--text); font-size: var(--text-sm); font-weight: var(--weight-bold); }
 .external-share-status { border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: var(--weight-bold); padding: 6px 9px; }
 .external-share-status.high, .external-share-status.critical { background: var(--red-soft); color: var(--red); }
 .external-share-context { align-items: center; display: flex; gap: 10px; padding: var(--space-3); }
@@ -10,7 +10,8 @@
 .external-share-card h1 { color: var(--ink-900); font-size: clamp(var(--text-xl), 5vw, var(--text-2xl)); line-height: 1.15; margin: 0; }
 .external-share-card > p { color: var(--ink-700); font-size: var(--text-md); line-height: 1.6; margin: 0; white-space: pre-wrap; }
 .external-share-meta { display: grid; gap: var(--space-2); grid-template-columns: 1fr 1fr; }
-.external-share-meta span { align-items: center; display: grid; gap: var(--space-1); grid-template-columns: auto 1fr; padding: var(--space-3); }
+/* Icon, label and value each in a fixed column, so "Prioriteit" and "Deadline" line up. */
+.external-share-meta span { align-items: center; display: grid; gap: var(--space-2); grid-template-columns: 16px 5.5rem 1fr; padding: var(--space-3); }
 .external-share-meta span b { font-size: var(--text-xs); }
 .external-share-meta span:not(b) { color: var(--ink-600); }
 .external-share-card footer { align-items: flex-start; border-top: 1px solid var(--ink-200); color: var(--ink-600); display: flex; font-size: var(--text-xs); gap: var(--space-2); padding-top: 14px; }
@@ -20,12 +21,13 @@
 .external-source-image-error span { display: grid; gap: 3px; }
 .external-source-image-error small { color: var(--ink-600); line-height: 1.4; }
 .whatsapp-button { align-items: center; background: var(--green-soft); border: 1px solid var(--ink-600); border-radius: var(--radius-control); color: var(--green); cursor: pointer; display: inline-flex; font-weight: var(--weight-bold); gap: 6px; justify-content: center; min-height: var(--control-h-md); padding: var(--space-2) 11px; }
+/* A secondary action next to the card's one primary: paper, a rule, ink. It was white text on white. */
 .external-party-button {
   align-items: center;
   background: var(--paper);
-  border: 1px solid var(--green);
+  border: 2px solid var(--border);
   border-radius: var(--radius-control);
-  color: var(--paper);
+  color: var(--text);
   cursor: pointer;
   display: inline-flex;
   gap: 9px;
@@ -35,7 +37,7 @@
 }
 .external-party-button > span { display: grid; gap: 2px; }
 .external-party-button strong { font-size: var(--text-xs); }
-.external-party-button small { color: var(--green-soft); font-size: var(--text-xs); }
+.external-party-button small { color: var(--muted); font-size: var(--text-xs); }
 .external-party-button:disabled { cursor: wait; opacity: .62; }
 .external-share-preflight {
   background: var(--paper);

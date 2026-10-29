@@ -690,12 +690,12 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           this form: on site they are three more things to read past before saving. */}
       {captures.length && !showUpload ? (
         <div className="visual-workspace-grid">
-          <aside className="visual-capture-list" aria-label={text("Visual evidence list", "Lijst visueel bewijs")}>
+          <section className="visual-capture-list" aria-label={text("Visual evidence list", "Lijst visueel bewijs")}>
             {captures.map((capture) => {
               const count = data.visualAnnotations.filter((annotation) => annotation.capture_id === capture.id && annotation.status === "active").length;
               return <button type="button" className={activeCapture?.id === capture.id ? "active" : ""} onClick={() => { setPendingSelectionFileId(""); setActiveCaptureId(capture.id); setPoint(null); setSelectedAnnotationId(null); }} key={capture.id}><span className="visual-list-icon">{capture.capture_type === "panorama" ? <ScanLine size={17} /> : <ImageIcon size={17} />}</span><span><strong>{capture.title}</strong><small>{capture.location_label} · {count} {text(count === 1 ? "issue" : "issues", count === 1 ? "probleem" : "problemen")}</small></span>{capture.capture_type === "panorama" ? <em>360°</em> : null}</button>;
             })}
-          </aside>
+          </section>
           <div className="visual-stage-column">
             {activeCapture && activeFile ? (
               <>
@@ -711,9 +711,9 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
               </>
             ) : null}
           </div>
-          <aside className="visual-issue-panel">
+          <div className="visual-issue-panel">
             {point && activeCapture ? <IssueForm point={point} capture={activeCapture} issue={issue} setIssue={setIssue} findings={data.findings} annotations={data.visualAnnotations} existingFindingId={existingFindingId} setExistingFindingId={setExistingFindingId} parties={parties} buildings={buildings} captureBuildingId={captureBuildingId} busy={busy} signature={issueSignature} setSignature={setIssueSignature} save={() => void saveIssue()} cancel={() => { setPoint(null); setIssue(emptyIssue); setIssueSignature(null); setExistingFindingId(""); }} /> : selectedAnnotation && selectedFinding ? <AnnotationDetails annotation={selectedAnnotation} finding={selectedFinding} /> : <div className="visual-panel-empty"><ScanLine size={24} /><strong>{text("Select or place a marker", "Selecteer of plaats een marker")}</strong></div>}
-          </aside>
+          </div>
         </div>
       ) : showUpload ? null : <div className="empty-list-state visual-empty"><Camera size={24} /><strong>{text("No project photos yet", "Nog geen projectfoto's")}</strong><button className="ui-button ui-button--primary ui-button--md" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={15} /> {text("Take photo", "Maak foto")}</button></div>}
     </section>

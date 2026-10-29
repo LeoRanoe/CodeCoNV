@@ -679,7 +679,7 @@
 }
 .external-submit {
   align-items: center;
-  background: var(--green);
+  background: var(--signal-dark);
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--paper);
@@ -690,7 +690,8 @@
   min-height: 44px;
   padding: 11px 14px;
 }
-.external-submit.issue { background: var(--red); }
+/* One primary action on the page, in the brand orange; red is for record status only. */
+.external-submit.issue { background: var(--signal-dark); }
 .external-submit:disabled { cursor: not-allowed; opacity: .5; }
 .external-response-note { background: var(--yellow-soft); border-radius: var(--radius-xs); color: var(--ink-700); font-size: var(--text-xs); margin: 0; padding: 10px; }
 .external-response-success { align-items: center; background: var(--ink-50); border-radius: var(--radius-md); color: var(--green); display: grid; gap: 6px; justify-items: center; padding: var(--space-6); text-align: center; }

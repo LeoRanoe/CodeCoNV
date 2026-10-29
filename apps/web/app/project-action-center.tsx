@@ -348,7 +348,7 @@ export function ProjectActionCenter({
 
         {/* What needs a decision today, instead of a drawing of a floor plan that was not
             the real one. */}
-        <aside className="action-focus-card">
+        <div className="action-focus-card">
           <header><span><ShieldAlert size={17} /></span><div><h2>{text("Needs attention now", "Vraagt nu aandacht")}</h2><p>{scopedItems.filter(isEscalated).length} {text("late or urgent records", "te late of urgente registraties")}</p></div></header>
           {escalations.length ? (
             <ul className="action-escalation-list">
@@ -368,7 +368,7 @@ export function ProjectActionCenter({
             <div><dt>{text("Due within 7 days", "Binnen 7 dagen")}</dt><dd>{scopedItems.filter(withinWeek).length}</dd></div>
           </dl>
           <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => openProjectArea("drawings")}><MapPin size={14} /> {text("Open coordinated drawing", "Open gecoördineerde tekening")} · {data.drawingPins.length} {text("points", "punten")} <ArrowRight size={14} /></button>
-        </aside>
+        </div>
       </div>
     </section>
   );
