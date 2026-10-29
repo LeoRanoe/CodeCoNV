@@ -13,7 +13,8 @@
  * PNG is an image too, but it is a drawing; counting it as a photo made the tile, the tab and
  * the library disagree.
  */
-const nonPhotoCategories = new Set(["drawing", "document", "certificate", "report", "backup", "export"]);
+export const nonPhotoCategoryList = ["drawing", "document", "certificate", "report", "backup", "export"];
+const nonPhotoCategories = new Set(nonPhotoCategoryList);
 export function isPhotoFile(file) {
   return Boolean(file) && String(file.mime_type ?? "").startsWith("image/") && !nonPhotoCategories.has(file.category);
 }

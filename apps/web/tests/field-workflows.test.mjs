@@ -1041,3 +1041,13 @@ test("QA L1: a time of day is picked on a 24-hour clock", async () => {
   assert.equal(minuteChoices.length, 60);
   assert.ok(!hourChoices.some((choice) => /am|pm/i.test(choice)));
 });
+
+test("QA M26: the overview counts the same files as the library calls photos", async () => {
+  const { isPhotoFile, nonPhotoCategoryList } = await import("../lib/media/photo-library.mjs");
+  for (const category of nonPhotoCategoryList) assert.equal(isPhotoFile({ mime_type: "image/png", category }), false, category);
+  assert.equal(isPhotoFile({ mime_type: "image/jpeg", category: "photo" }), true);
+  const { readFile } = await import("node:fs/promises");
+  const dashboard = await readFile(new URL("../app/client-dashboard.tsx", import.meta.url), "utf8");
+  assert.match(dashboard, /\.not\("category", "in", `\(\$\{nonPhotoCategoryList\.join\(","\)\}\)`\)/);
+  assert.match(dashboard, /\.eq\("status", "available"\)\.like\("mime_type", "image\/%"\)/);
+});

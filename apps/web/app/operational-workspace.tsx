@@ -132,7 +132,7 @@ import { TimeField } from "@/app/time-field";
 import { useLanguage } from "@/lib/i18n";
 import { cacheProjectSnapshot, getCachedProjectSnapshot } from "@/lib/offline/project-cache";
 import { useLiveProjectWeather } from "@/lib/weather-client";
-import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload } from "@/lib/offline/upload-queue";
+import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload, removeOfflineUpload } from "@/lib/offline/upload-queue";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import type { FormalReportSnapshot } from "@/lib/reports/daily-report-pdf";
 import type { PeriodReportSection, PeriodReportTopic } from "@/lib/reports/period-report-pdf";
@@ -1172,7 +1172,8 @@ function ProjectOperations({
     setDayLogFocus(view === "day" ? undefined : view === "delays" ? "delay" : view);
   };
   const permissions = useProjectPermissions();
-  const [wantsForm, setShowForm] = useState(initialTab !== "home");
+  // A module opens with its form ready, except when a link points at one record: that record is the page.
+  const [wantsForm, setShowForm] = useState(initialTab !== "home" && !focusRecordId);
   // What a user may write depends on the module. A reader (the client) gets the list and the
   // records, not a form that could only be refused when it is sent.
   const mayCreateHere = tab === "inspections" ? permissions.can("inspections.manage")
@@ -1327,9 +1328,10 @@ function ProjectOperations({
       return;
     }
     setSubmittedFinding(null);
-    setShowForm(tab !== "home");
+    // A link to one record shows that record; every other way in opens the module with its form.
+    setShowForm(tab !== "home" && !focusRecordId);
     setActiveInspection(null);
-  }, [tab]);
+  }, [tab, focusRecordId]);
   /** An agreement is text plus the two parties who made it, and who signs for them. */
   const [agreementForm, setAgreementForm] = useState({ ...emptyAgreementSignature });
   /** And the rest of the client's own form: the owner, the urgency and the completion. */
@@ -2779,6 +2781,13 @@ function ProjectOperations({
         if (!registerOnline && registerFiles.length) {
           throw new Error(text("Attachments need a connection. Remove them to save on this device, or go online.", "Bijlagen hebben verbinding nodig. Verwijder ze om op dit apparaat op te slaan, of ga online."));
         }
+        // A delay report and a lesson learned carry pictures the client's form marks as required.
+        // A formal record that exists without them is what the QA sweep found (M20), so these two
+        // are only saved with a connection, and only stay saved once the pictures are confirmed.
+        const photosAreMandatory = !editingRegisterId && (delayReportRegister || lessonsLearnedRegister) && namedRegisterPhotos.length > 0;
+        if (photosAreMandatory && !registerOnline) {
+          throw new Error(text("This form needs a connection: the required photos must be confirmed before it is saved. Your entries stay on this screen.", "Dit formulier heeft verbinding nodig: de verplichte foto's moeten bevestigd zijn voordat het wordt opgeslagen. Je invoer blijft op dit scherm staan."));
+        }
         const effectiveReportId = registerOnline ? await ensureProjectDayReport(client, projectId, reportId) : reportId;
         const uploadedFiles = [];
         for (const file of registerFiles) {
@@ -2863,13 +2872,14 @@ function ProjectOperations({
             ...namedRegisterPhotos.map(({ role, photo }) => ({ photo, role })),
             ...registerPhotos.map((photo) => ({ photo, role: "" })),
           ];
+          const queuedPhotoIds: string[] = [];
           for (const { photo, role } of filedPhotos) {
             const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
             const written = photoTitle(photo);
             const caption = role
               ? [namedPhotoLabel(role, language), written].filter(Boolean).join(" · ")
               : written;
-            await queueOfflineUpload({
+            const queuedPhoto = await queueOfflineUpload({
               projectId,
               buildingId: registerPhotoBuildingId,
               reportId: effectiveReportId,
@@ -2889,8 +2899,21 @@ function ProjectOperations({
               compressed: prepared.compressed,
               recordLink: { organizationId, recordType: "register_entry", recordId: entry.id, relationship: "evidence" },
             });
+            queuedPhotoIds.push(queuedPhoto.id);
           }
-          if (navigator.onLine) await syncQueuedEvidenceNow();
+          if (navigator.onLine) {
+            try {
+              await syncQueuedEvidenceNow();
+            } catch (error) {
+              if (!photosAreMandatory) throw error;
+              // The required pictures did not arrive: the record is withdrawn again, the pictures
+              // are taken off the queue and the form keeps everything that was typed, so nothing
+              // formal is left behind without its evidence.
+              await withdrawWorkspaceRecord(client, "register_entry", entry.id, "Verplichte foto's niet bevestigd; niet opgeslagen.");
+              await Promise.all(queuedPhotoIds.map((id) => removeOfflineUpload(id)));
+              throw new Error(text("Not saved: the required photos were not confirmed. Check the connection and save again; your entries are still here.", "Niet opgeslagen: de verplichte foto's zijn niet bevestigd. Controleer de verbinding en sla opnieuw op; je invoer staat er nog."));
+            }
+          }
         }
         if (!editingRegisterId && registerForm.type === "punch_list") {
           const punchInput = {

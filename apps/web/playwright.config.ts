@@ -62,7 +62,9 @@ export default defineConfig({
     : {
         // Service-worker takeover and offline boot are production behaviours. Running
         // them against `next dev` introduces HMR worker updates that never exist on site.
-        command: "npm run start:e2e",
+        // CODECO_E2E_FAKE_BLOB=1 runs the same production build against the fake Blob store, which
+        // the photo, drawing and delay-report specs need (tests/e2e/fake-blob).
+        command: process.env.CODECO_E2E_FAKE_BLOB === "1" ? "npm run start:e2e:blob" : "npm run start:e2e",
         url: `${baseURL}/supervisie`,
         reuseExistingServer: true,
         timeout: 120_000,

@@ -28,6 +28,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
+import { nonPhotoCategoryList } from "@/lib/media/photo-library.mjs";
 import { isOpenItem } from "@/lib/actions/action-center.mjs";
 import { isWorklistRegister, summarizeOpenWork, workItemFromAction, workItemFromFinding, workItemFromRegister } from "@/lib/actions/open-work.mjs";
 import { getCachedProjectSnapshot, cacheProjectSnapshot } from "@/lib/offline/project-cache";
@@ -282,7 +283,7 @@ export function ClientDashboard({
         pageAll((from, to) => client!.from("findings").select("id,finding_number,title,status,finding_type,priority,due_at,issue_management").eq("project_id", projectId).order("id").range(from, to)),
         pageAll((from, to) => client!.from("project_register_entries").select("id,entry_number,title,status,register_type,due_at,details").eq("project_id", projectId).order("id").range(from, to)),
         client!.from("inspections").select("id", { count: "exact", head: true }).eq("project_id", projectId),
-        client!.from("files").select("id", { count: "exact", head: true }).eq("project_id", projectId).neq("status", "deleted").like("mime_type", "image/%"),
+        client!.from("files").select("id", { count: "exact", head: true }).eq("project_id", projectId).eq("status", "available").like("mime_type", "image/%").not("category", "in", `(${nonPhotoCategoryList.join(",")})`),
       ]);
       if (findings.error) throw findings.error;
       if (registers.error) throw registers.error;
