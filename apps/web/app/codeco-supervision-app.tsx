@@ -39,7 +39,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useForm, useWatch } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
+import { TimeField } from "@/app/time-field";
 import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { actionStatusLabels as canonicalActionStatusLabels, labelMap, priorityText } from "@/lib/status-labels";
 import { screenFromSearch, useScreenHistory, type AppScreen } from "@/lib/navigation/app-history";
@@ -2457,7 +2458,7 @@ function ProjectSetupScreen({
   const localizedProjectSetupSchema = useMemo(() => createProjectSetupSchema(), []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const { register, handleSubmit, formState: { errors } } = useForm<ProjectSetupAnswers>({
+  const { register, handleSubmit, control, formState: { errors } } = useForm<ProjectSetupAnswers>({
     resolver: zodResolver(localizedProjectSetupSchema),
     defaultValues: {
       // Nothing here is a real project: a name, code or building that is not typed is not saved.
@@ -2525,8 +2526,8 @@ function ProjectSetupScreen({
             <div className="form-grid two-columns">
               <label className="form-field"><span>{text("Default language", "Standaardtaal")}</span><select {...register("defaultLanguage")}><option value="en">English</option><option value="nl">Nederlands</option></select></label>
               <label className="form-field"><span>{text("Report prefix", "Rapportprefix")}</span><input {...register("reportPrefix")} /></label>
-              <label className="form-field"><span>{text("Shift start", "Start werktijd")}</span><input type="time" {...register("shiftStart")} /></label>
-              <label className="form-field"><span>{text("Shift end", "Einde werktijd")}</span><input type="time" {...register("shiftEnd")} /></label>
+              <label className="form-field"><span>{text("Shift start", "Start werktijd")}</span><Controller control={control} name="shiftStart" render={({ field }) => <TimeField label={text("Shift start", "Start werktijd")} value={field.value ?? ""} onChange={field.onChange} />} /></label>
+              <label className="form-field"><span>{text("Shift end", "Einde werktijd")}</span><Controller control={control} name="shiftEnd" render={({ field }) => <TimeField label={text("Shift end", "Einde werktijd")} value={field.value ?? ""} onChange={field.onChange} />} /></label>
               <label className="form-field wide"><span>{text("Workforce disciplines · one per line", "Workforce-disciplines · één per regel")}</span><textarea rows={9} {...register("disciplines")} /></label>
             </div>
           </details>
@@ -2784,8 +2785,8 @@ function ProjectStartForm({
               <label className="form-field"><span>{text("What is the weather?", "Wat is het weer?")}</span><select {...register("weatherCondition")}><option value="sunny">{text("Sunny", "Zonnig")}</option><option value="partly_cloudy">{text("Partly cloudy", "Licht bewolkt")}</option><option value="cloudy">{text("Cloudy", "Bewolkt")}</option><option value="rain">{text("Rain", "Regen")}</option><option value="heavy_rain">{text("Heavy rain", "Zware regen")}</option></select></label>
               <label className="form-field"><span>{text("Temperature", "Temperatuur")}</span><span className="input-with-unit"><input type="number" {...register("temperatureC", { valueAsNumber: true })} /><em>°C</em></span>{errors.temperatureC ? <small className="field-error">{errors.temperatureC.message}</small> : null}</label>
               <label className="form-field"><span>{text("Wind", "Wind")}</span><select {...register("windCondition")}><option value="calm">{text("Calm", "Kalm")}</option><option value="moderate">{text("Moderate", "Matig")}</option><option value="strong">{text("Strong", "Sterk")}</option></select></label>
-              <label className="form-field"><span>{text("Shift start", "Start werktijd")}</span><input type="time" {...register("shiftStart")} />{errors.shiftStart ? <small className="field-error">{errors.shiftStart.message}</small> : null}</label>
-              <label className="form-field"><span>{text("Shift end", "Einde werktijd")}</span><input type="time" {...register("shiftEnd")} />{errors.shiftEnd ? <small className="field-error">{errors.shiftEnd.message}</small> : null}</label>
+              <label className="form-field"><span>{text("Shift start", "Start werktijd")}</span><Controller control={control} name="shiftStart" render={({ field }) => <TimeField label={text("Shift start", "Start werktijd")} value={field.value ?? ""} onChange={field.onChange} />} />{errors.shiftStart ? <small className="field-error">{errors.shiftStart.message}</small> : null}</label>
+              <label className="form-field"><span>{text("Shift end", "Einde werktijd")}</span><Controller control={control} name="shiftEnd" render={({ field }) => <TimeField label={text("Shift end", "Einde werktijd")} value={field.value ?? ""} onChange={field.onChange} />} />{errors.shiftEnd ? <small className="field-error">{errors.shiftEnd.message}</small> : null}</label>
               <div className="form-field"><label htmlFor="expected-workers">{text("Expected workforce", "Verwachte bezetting")}</label><span className="input-with-unit"><input id="expected-workers" type="number" min={0} inputMode="numeric" {...register("expectedWorkers", { setValueAs: (value) => value === "" || value === null || value === undefined ? null : Number(value) })} /><em>{text("people", "personen")}</em></span><span className="period-date-presets">{[10, 20, 30, 40, 50].map((count) => <button type="button" onClick={() => setValue("expectedWorkers", count, { shouldDirty: true, shouldValidate: true })} key={count}>{count}</button>)}</span></div>
             </div>
           </section>

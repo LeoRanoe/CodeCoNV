@@ -1945,7 +1945,7 @@ test("gives the workforce screen the full register, not a counter per party", as
   assert.match(register, /export function addWorkforceRow/);
   assert.match(register, /Add person|Persoon toevoegen/);
   assert.match(register, /workforce-row-remove/);
-  assert.match(register, /type="time"/);
+  assert.match(register, /<TimeField /);
   // The context tiles were struck through later; the headcount they left is what remains.
   assert.match(register, /workforce-headline/);
   assert.match(register, /No project parties configured yet|Nog geen projectpartijen ingericht/);
@@ -2098,7 +2098,7 @@ test("covers section 4.3 of the product plan on the workforce screen", async () 
   assert.match(register, /\{text\("Crew · optional", "Ploeg · optioneel"\)\}/);
   assert.match(register, /\{text\("Trade", "Discipline"\)\}/);
   // Werktijd of dienst.
-  assert.match(register, /type="time"/);
+  assert.match(register, /<TimeField /);
   // Bezoekersregistratie.
   assert.match(register, /export type VisitorRow/);
   assert.match(register, /title=\{text\("Visitors", "Bezoekers"\)\}/);

@@ -2,7 +2,7 @@ import { expect, type Page, test } from "@playwright/test";
 
 /**
  * Walkthrough finding (L13 follow-up). The people counter of the Workforce register, its remove
- * button and shift inputs, the "Remove this line" button of the delivery register and the
+ * button and shift lists, the "Remove this line" button of the delivery register and the
  * Online chip of the record forms were 33-38 px on a phone and a tablet. A thumb needs 44 px.
  */
 const email = process.env.CODECO_E2E_EMAIL;
@@ -50,12 +50,12 @@ test("the register steppers, remove buttons and sync chip are 44 px on a phone a
   await openDestination(page, "workforce");
   await page.getByRole("button", { name: "Add person" }).first().click();
   await expect(page.locator(".workforce-row").first()).toBeVisible();
-  for (const selector of [".workforce-row .counter-control button", ".workforce-row-remove", ".workforce-shift input"]) {
+  for (const selector of [".workforce-row .counter-control button", ".workforce-row-remove", ".workforce-shift select"]) {
     const found = await sizes(page, selector);
     expect(found.length, `${selector} exists`).toBeGreaterThan(0);
     for (const size of found) {
       expect(size.height, `${selector} height`).toBeGreaterThanOrEqual(44);
-      expect(size.width, `${selector} width`).toBeGreaterThanOrEqual(selector.includes("input") ? 80 : 44);
+      expect(size.width, `${selector} width`).toBeGreaterThanOrEqual(44);
     }
   }
 

@@ -568,7 +568,8 @@
 .workforce-row-name strong { color: var(--ink-900); font-size: var(--text-xs); }
 .workforce-row-name small { color: var(--muted); font-size: var(--text-xs); }
 .workforce-shift { align-items: center; display: flex; gap: var(--space-1); }
-.workforce-shift input {
+.workforce-shift input,
+.workforce-shift select {
   background: var(--paper);
   border: 1px solid var(--ink-200);
   border-radius: var(--radius-xs);
@@ -1131,7 +1132,13 @@
   .workforce-row .counter-control { grid-template-columns: 44px 44px 44px; }
   .workforce-row .counter-control button { height: 44px; width: 44px; }
   .workforce-row .workforce-row-remove { height: 44px; width: 44px; }
-  .workforce-shift input { min-height: 44px; }
+  .workforce-shift input,
+  .workforce-shift select { min-height: 44px; }
   .record-sync-chip { min-height: 44px; }
   .register-line .register-line-remove { height: 44px; width: 44px; }
 }
+
+/* A time of day is two lists on a 24-hour clock (app/time-field.tsx). */
+.time-field { align-items: center; display: inline-flex; gap: var(--space-1); }
+.time-field select { min-width: 0; padding-inline: var(--space-2); width: auto; }
+.time-field > span { color: var(--ink-700); }
