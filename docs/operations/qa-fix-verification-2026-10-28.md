@@ -1,14 +1,15 @@
 # QA fix verification — 2026-10-28
 
-Branch `fix/qa-sweep-2026-10-28` (from `fix/breakpoint-guardrail`). Everything below ran against the **local** stack
+Branches `fix/qa-sweep-2026-10-28` (merged as PR #8) and `fix/qa-followup-2026-10-29`. Everything below ran against the **local** stack
 (`127.0.0.1:54321`); nothing was written to production. No push, no pull request, no deploy.
 
 ## Result in one paragraph
 
-The report has 64 findings. **51 are fixed, 10 are partly fixed and 3 are still open.** All five high findings
+The report has 64 findings. **53 are fixed, 8 are partly fixed and 3 are still open.** All five high findings
 (H1–H5) are fixed and measured. The first pass (commits up to e122a95) fixed 29; this second pass (2222abb, 889d19f, 074d82e)
 took WP7, WP9, the rest of WP8, WP14 and most of WP15; a third pass (e145229, 4e81ac6) closed L2, L8, L20 and L23, and found three more
-defects in the walkthrough (W1–W3). The open ones are either a product decision (M20) or manual work on production or on seeded
+defects in the walkthrough (W1–W3); a fourth pass on `fix/qa-followup-2026-10-29` (PR #8 was merged before it) closed L13 and L28 and found W4.
+The open ones are either a product decision (M20) or manual work on production or on seeded
 content (L12, L26). The table at the end names every ID with its status.
 
 ## Commands and their output
@@ -16,16 +17,17 @@ content (L12, L26). The table at the end names every ID with its status.
 ```text
 == npm run lint  (eslint + stylelint): 0 errors, 0 warnings
 == npx tsc --noEmit: 0 errors
-== node --test tests/*.test.mjs: tests 225, pass 225, fail 0
-== npm test (the release script's list of node test files): tests 216, pass 216, fail 0
+== node --test tests/*.test.mjs: tests 227, pass 227, fail 0
+== npm test (the release script's list of node test files): tests 218, pass 218, fail 0
 == npm run test:design: tests 9, pass 9, fail 0
-   (the full gate showed 8/9 once: a new media query in overview.css made a fourth breakpoint; it reuses the 1024 px one now and the
-   guardrail passes. tests/design-baseline.json was not touched.)
 == supabase test db (fresh database): Files=23, Tests=592, Result: PASS
-== Playwright on a production build, 26 spec files, three projects: 132 passed, 90 skipped, 0 failed (8.6 min)
-== day-report-lifecycle: failed once in the gate only because no server was running for the reused-server run; re-run against the dev server: 1 passed
-== specs added or changed in the third pass that ran green: action-center-tabs (3 tests), overview-metrics-tablet; each fails on the old code
-   (tab count 11 versus 9 rows; label colour rgb(191, 61, 50); left cells at 18 and 34 px)
+== supabase test db on a database that still holds the seed fixtures (before the reset): Files=23, Tests=592, Result: PASS
+   (before the fourth pass 14 of the 23 files failed there, because only the first organization can be created without an administrator)
+== Playwright on a production build, 27 spec files, three projects: 135 passed, 90 skipped, 0 failed (8.3 min)
+== day-report-lifecycle: it needs a running server for its reused-server run; against the dev server: 1 passed
+== specs added or changed in the third and fourth pass that ran green: action-center-tabs (3 tests), overview-metrics-tablet,
+   register-touch-targets, tap-targets (now also at tablet width); each new one fails on the old code
+   (tab count 11 versus 9 rows; label colour rgb(191, 61, 50); left cells at 18 and 34 px; stepper 35 px high)
 ```
 
 ### Lint, tests, pgTAP and Playwright (production build, fresh database, local seed)
@@ -170,7 +172,7 @@ the Playwright measurements, the axe scans on 8 screens and the 320 px reflow te
 
 Open: M20, L12, L26. M20 is a product decision (the mandatory photos of a PDR go through the offline queue after the entry is saved; blocking the save until they are confirmed changes that design). L12 is a manual clean-up on production. L26 is content in the seeded checklists and findings, which follows the language policy.
 
-Partly fixed, with what is missing: M4 (Button only for actions.manage, hint reworded; assigning to the party itself needs a database change and a product decision); M8 (The pin panel scrolls into view and 'Open linked project record' opens that record; neither was exercised in a browser); M15 (Verified locally; the running stack must be restarted for the template to load; the hosted project is a manual step); M26 (A drawing saved as an image is no photo; uploads reuse a folder by name on the server (ensureMediaFolder), not tested against Blob); L1 (Draft notice fixed; native time inputs unchanged); L9 (NCR labels only; HSE types, 'Issues', 'Workforce', 'Project Docs' unchanged (language policy is a product decision)); L13 (The headings at 768 px were not found or measured); L19 (Local limit 20 per 5 minutes is asserted; the production value is a manual step); L24 (Geist Mono is no longer preloaded and the unused Hind weight 500 is gone; the 401 and the slow first load were not reproduced); L28 (Isolation from seed data not done).
+Partly fixed, with what is missing: M4 (Button only for actions.manage, hint reworded; assigning to the party itself needs a database change and a product decision); M8 (The pin panel scrolls into view and 'Open linked project record' opens that record; neither was exercised in a browser); M15 (Verified locally; the running stack must be restarted for the template to load; the hosted project is a manual step); M26 (A drawing saved as an image is no photo; uploads reuse a folder by name on the server (ensureMediaFolder), not tested against Blob); L1 (Draft notice fixed; native time inputs follow the browser language (a browser with a 12-hour setting shows AM/PM) and cannot be changed without replacing them); L9 (NCR labels only; HSE types, 'Issues', 'Workforce', 'Project Docs' unchanged (language policy is a product decision)); L19 (Local limit 20 per 5 minutes is asserted; the production value is a manual step); L24 (Geist Mono is no longer preloaded, the unused Hind weight 500 is gone, and a failed daily backup check is tried again after 10 minutes instead of on every change; the slow first load on production was not reproduced).
 
 L24 is partly fixed: the console preload warnings were addressed in the layout; the 401 on the first load of Werkruimte and the slow first load were not reproduced.
 
@@ -223,7 +225,7 @@ not in the report (table below, W1–W3) and these points that need a decision, 
 | M25 | LQA-045 | P2 | Landmarks and headings | fixed | e2e a11y-audit (landmark rules, heading-order, NCR screen) | 1fb083e, 3657afb, 2222abb | aside became div/section, the sign-in screen is a main; heading-order passes on 8 screens |
 | M26 | LQA-046 | P2 | Drawing counted as photo; a folder per upload | partly fixed | node field-workflows (isPhotoFile) | 2222abb | A drawing saved as an image is no photo; uploads reuse a folder by name on the server (ensureMediaFolder), not tested against Blob |
 | M27 | LQA-047 | P2 | 'Not saved' bar stays after saving | fixed | no dedicated test | 892f2b6 | The bar listens to draft changes |
-| L1 | LQA-048 | P3 | 12-hour time in the draft notice | partly fixed | - | 21f49f7 | Draft notice fixed; native time inputs unchanged |
+| L1 | LQA-048 | P3 | 12-hour time in the draft notice | partly fixed | - | 21f49f7 | Draft notice fixed; native time inputs follow the browser language (a browser with a 12-hour setting shows AM/PM) and cannot be changed without replacing them |
 | L2 | LQA-049 | P3 | RFI form: English chip, preset function | fixed | node rendered-html (labels) | 21f49f7, 889d19f | English chip, preset function and the colon in 'Aan' are gone; the form has no chips any more |
 | L3 | LQA-050 | P3 | window.confirm() for pin removal | fixed | source assertion in rendered-html | 2222abb | Inline confirmation with role=alertdialog |
 | L4 | LQA-051 | P3 | Empty drawing panel, permanent green bar | fixed | visual (CSS and render condition), source assertion | 2222abb, 889d19f | Not started |
@@ -235,7 +237,7 @@ not in the report (table below, W1–W3) and these points that need a decision, 
 | L10 | LQA-057 | P3 | Invalid ?project=<id> falls back silently | fixed | e2e role-views | 2222abb | Not started |
 | L11 | LQA-058 | P3 | Share page: green primary, red eyebrow, labels, badge | fixed | manual; router.refresh after a reply | 1fb083e, 2972ae8 |  |
 | L12 | LQA-059 | P3 | Test data on production | open | - | - | Manual step for the product owner; no safe delete or archive action was built |
-| L13 | LQA-060 | P3 | Touch targets under 44 px | partly fixed | e2e tap-targets | 892f2b6 | The headings at 768 px were not found or measured |
+| L13 | LQA-060 | P3 | Touch targets under 44 px | fixed | e2e tap-targets (phone and tablet); e2e register-touch-targets (fails on the old CSS) | 892f2b6, 39dfcdb, 66290f3 | Issue form tiles and the register steppers, remove buttons, shift inputs and sync chip reach 44 px up to 1024 px; ui-button--md (40 px) and the quick-pick chips (39 px) are the design system size and unchanged |
 | L14 | LQA-061 | P3 | Contractor reads colleagues' telephone numbers | fixed | pgTAP 022 (4) | daf328a | Column closed to signed-in users |
 | L15 | LQA-062 | P3 | Old notices stay after a screen change | fixed | - | 889d19f | A confirmation belongs to its screen and fades after 8 s; no dedicated test |
 | L16 | LQA-063 | P3 | Permission RPCs and duplicate day report call | fixed | e2e contractor-submission (one request per save) | 2f2d9e1 | 60 s cache for the two permission checks |
@@ -246,11 +248,11 @@ not in the report (table below, W1–W3) and these points that need a decision, 
 | L21 | LQA-068 | P3 | Overview says nothing happened | fixed | - | 2222abb | Both lines say 'today' |
 | L22 | LQA-069 | P3 | 'Project locations 0' | fixed | - | 2222abb | 'Ruimtes en zones' |
 | L23 | LQA-070 | P3 | Two terms for the same wait; '1/9' | fixed | e2e action-center-tabs (fails on the old code: 11 versus 9) | 2222abb, e145229 | One term for the verification wait; a tile counts within the chosen type, a tab within the chosen state |
-| L24 | LQA-071 | P3 | Console warnings, load time, a 401 | partly fixed | node rendered-html (layout fonts) | e145229 | Geist Mono is no longer preloaded and the unused Hind weight 500 is gone; the 401 and the slow first load were not reproduced |
+| L24 | LQA-071 | P3 | Console warnings, load time, a 401 | partly fixed | node rendered-html (layout fonts, backup check retry) | e145229, 868b0d5 | Geist Mono is no longer preloaded, the unused Hind weight 500 is gone, and a failed daily backup check is tried again after 10 minutes instead of on every change; the slow first load on production was not reproduced |
 | L25 | LQA-072 | P3 | Inspection completion sends 16 requests | fixed | pgTAP 023 (6); e2e inspection-workflow counts the requests | 889d19f | One save_inspection_responses call; migration 202610280006 |
 | L26 | LQA-073 | P3 | More NL/EN mix in content | open | - | - | Not started |
 | L27 | LQA-074 | P3 | Bare file input on 'Visueel bewijs' | fixed | CSS, no test | 2bdae55 | ::file-selector-button |
-| L28 | LQA-075 | P3 | pgTAP not isolated; no H1 test | partly fixed | pgTAP 021 covers H1 | 2f2d9e1 | Isolation from seed data not done |
+| L28 | LQA-075 | P3 | pgTAP not isolated; no H1 test | fixed | supabase test db on a seeded database (592 pass, data intact); node rendered-html (every file that creates an organization truncates first) | 2f2d9e1, 39dfcdb | pgTAP 021 covers H1; 14 files used to fail on a database with seed data |
 | L29 | LQA-076 | P3 | Admin text in the upload 503 | fixed | - | 2bdae55 |  |
 | L30 | LQA-077 | P3 | No confirmation after a password change | fixed | manual | 3657afb | 'Wachtwoord gewijzigd' on the project list |
 | L31 | LQA-078 | P3 | Recovery screen errors not announced | fixed | e2e login-a11y (sign-in); same markup on the recovery screen | 3657afb |  |
@@ -258,3 +260,4 @@ not in the report (table below, W1–W3) and these points that need a decision, 
 | W1 | - | P3 | Action center tab labels and counts painted red; a type menu showed "1/9" beside the count | fixed | e2e action-center-tabs (label colour, no position chip; fails on the old CSS) | 4e81ac6 | A stale rule coloured every span in the tabs like a late record |
 | W2 | - | P3 | Second row of the overview counts indented 16 px at 768 px | fixed | e2e overview-metrics-tablet (fails on the old CSS) | 4e81ac6, bac9083 |  |
 | W3 | - | P3 | Weather labels touch their values at 1440 px | fixed | visual (live weather needs the Open-Meteo service) | 4e81ac6 | Labels wrap above the value |
+| W4 | - | P3 | Register steppers, remove buttons, shift inputs and the sync chip 33-38 px on a tablet | fixed | e2e register-touch-targets (fails on the old CSS: stepper 35 px) | 66290f3 | Found by measuring every workspace destination at 768 px |

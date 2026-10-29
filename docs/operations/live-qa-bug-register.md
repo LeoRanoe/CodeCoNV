@@ -217,7 +217,7 @@ was not done are in `qa-fix-verification-2026-10-28.md`.
 | LQA-045 | M25 | P2 | Landmarks and headings — aside became div/section, the sign-in screen is a main; heading-order passes on 8 screens | fixed | e2e a11y-audit (landmark rules, heading-order, NCR screen) | 1fb083e, 3657afb, 2222abb |
 | LQA-046 | M26 | P2 | Drawing counted as photo; a folder per upload — A drawing saved as an image is no photo; uploads reuse a folder by name on the server (ensureMediaFolder), not tested against Blob | partly fixed | node field-workflows (isPhotoFile) | 2222abb |
 | LQA-047 | M27 | P2 | 'Not saved' bar stays after saving — The bar listens to draft changes | fixed | no dedicated test | 892f2b6 |
-| LQA-048 | L1 | P3 | 12-hour time in the draft notice — Draft notice fixed; native time inputs unchanged | partly fixed | - | 21f49f7 |
+| LQA-048 | L1 | P3 | 12-hour time in the draft notice — Draft notice fixed; native time inputs follow the browser language (a browser with a 12-hour setting shows AM/PM) and cannot be changed without replacing them | partly fixed | - | 21f49f7 |
 | LQA-049 | L2 | P3 | RFI form: English chip, preset function — English chip, preset function and the colon in 'Aan' are gone; the form has no chips any more | fixed | node rendered-html (labels) | 21f49f7, 889d19f |
 | LQA-050 | L3 | P3 | window.confirm() for pin removal — Inline confirmation with role=alertdialog | fixed | source assertion in rendered-html | 2222abb |
 | LQA-051 | L4 | P3 | Empty drawing panel, permanent green bar — Not started | fixed | visual (CSS and render condition), source assertion | 2222abb, 889d19f |
@@ -229,7 +229,7 @@ was not done are in `qa-fix-verification-2026-10-28.md`.
 | LQA-057 | L10 | P3 | Invalid ?project=<id> falls back silently — Not started | fixed | e2e role-views | 2222abb |
 | LQA-058 | L11 | P3 | Share page: green primary, red eyebrow, labels, badge | fixed | manual; router.refresh after a reply | 1fb083e, 2972ae8 |
 | LQA-059 | L12 | P3 | Test data on production — Manual step for the product owner; no safe delete or archive action was built | open | - | - |
-| LQA-060 | L13 | P3 | Touch targets under 44 px — The headings at 768 px were not found or measured | partly fixed | e2e tap-targets | 892f2b6 |
+| LQA-060 | L13 | P3 | Touch targets under 44 px — Issue form tiles and the register steppers, remove buttons, shift inputs and sync chip reach 44 px up to 1024 px; ui-button--md (40 px) and the quick-pick chips (39 px) are the design system size and unchanged | fixed | e2e tap-targets (phone and tablet); e2e register-touch-targets (fails on the old CSS) | 892f2b6, 39dfcdb, 66290f3 |
 | LQA-061 | L14 | P3 | Contractor reads colleagues' telephone numbers — Column closed to signed-in users | fixed | pgTAP 022 (4) | daf328a |
 | LQA-062 | L15 | P3 | Old notices stay after a screen change — A confirmation belongs to its screen and fades after 8 s; no dedicated test | fixed | - | 889d19f |
 | LQA-063 | L16 | P3 | Permission RPCs and duplicate day report call — 60 s cache for the two permission checks | fixed | e2e contractor-submission (one request per save) | 2f2d9e1 |
@@ -240,11 +240,11 @@ was not done are in `qa-fix-verification-2026-10-28.md`.
 | LQA-068 | L21 | P3 | Overview says nothing happened — Both lines say 'today' | fixed | - | 2222abb |
 | LQA-069 | L22 | P3 | 'Project locations 0' — 'Ruimtes en zones' | fixed | - | 2222abb |
 | LQA-070 | L23 | P3 | Two terms for the same wait; '1/9' — One term for the verification wait; a tile counts within the chosen type, a tab within the chosen state | fixed | e2e action-center-tabs (fails on the old code: 11 versus 9) | 2222abb, e145229 |
-| LQA-071 | L24 | P3 | Console warnings, load time, a 401 — Geist Mono is no longer preloaded and the unused Hind weight 500 is gone; the 401 and the slow first load were not reproduced | partly fixed | node rendered-html (layout fonts) | e145229 |
+| LQA-071 | L24 | P3 | Console warnings, load time, a 401 — Geist Mono is no longer preloaded, the unused Hind weight 500 is gone, and a failed daily backup check is tried again after 10 minutes instead of on every change; the slow first load on production was not reproduced | partly fixed | node rendered-html (layout fonts, backup check retry) | e145229, 868b0d5 |
 | LQA-072 | L25 | P3 | Inspection completion sends 16 requests — One save_inspection_responses call; migration 202610280006 | fixed | pgTAP 023 (6); e2e inspection-workflow counts the requests | 889d19f |
 | LQA-073 | L26 | P3 | More NL/EN mix in content — Not started | open | - | - |
 | LQA-074 | L27 | P3 | Bare file input on 'Visueel bewijs' — ::file-selector-button | fixed | CSS, no test | 2bdae55 |
-| LQA-075 | L28 | P3 | pgTAP not isolated; no H1 test — Isolation from seed data not done | partly fixed | pgTAP 021 covers H1 | 2f2d9e1 |
+| LQA-075 | L28 | P3 | pgTAP not isolated; no H1 test — pgTAP 021 covers H1; 14 files used to fail on a database with seed data | fixed | supabase test db on a seeded database (592 pass, data intact); node rendered-html (every file that creates an organization truncates first) | 2f2d9e1, 39dfcdb |
 | LQA-076 | L29 | P3 | Admin text in the upload 503 | fixed | - | 2bdae55 |
 | LQA-077 | L30 | P3 | No confirmation after a password change — 'Wachtwoord gewijzigd' on the project list | fixed | manual | 3657afb |
 | LQA-078 | L31 | P3 | Recovery screen errors not announced | fixed | e2e login-a11y (sign-in); same markup on the recovery screen | 3657afb |
@@ -252,4 +252,5 @@ was not done are in `qa-fix-verification-2026-10-28.md`.
 | LQA-080 | walkthrough | P3 | Action center tab labels and counts painted red; a type menu showed "1/9" beside the count — A stale rule coloured every span in the tabs like a late record | fixed | e2e action-center-tabs (label colour, no position chip; fails on the old CSS) | 4e81ac6 |
 | LQA-081 | walkthrough | P3 | Second row of the overview counts indented 16 px at 768 px | fixed | e2e overview-metrics-tablet (fails on the old CSS) | 4e81ac6, bac9083 |
 | LQA-082 | walkthrough | P3 | Weather labels touch their values at 1440 px — Labels wrap above the value | fixed | visual (live weather needs the Open-Meteo service) | 4e81ac6 |
+| LQA-083 | walkthrough | P3 | Register steppers, remove buttons, shift inputs and the sync chip 33-38 px on a tablet — Found by measuring every workspace destination at 768 px | fixed | e2e register-touch-targets (fails on the old CSS: stepper 35 px) | 66290f3 |
 
