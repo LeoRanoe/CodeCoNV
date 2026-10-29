@@ -249,7 +249,8 @@ export function ProjectActionCenter({
     if (step === "finish") return text("Finish and submit this record", "Maak deze registratie af en dien hem in");
     if (step === "verify") return text("Check the work on site and close it out", "Controleer het werk op locatie en sluit af");
     if (step === "decide") return text("Record the decision on this submission", "Leg het besluit over deze indiening vast");
-    if (step === "assign") return text("Assign who has to do this", "Wijs toe wie dit moet doen");
+    // Only someone who manages actions can assign; everybody else is told what the record is waiting for.
+    if (step === "assign") return permissions.can("actions.manage") ? text("Assign who has to do this", "Wijs toe wie dit moet doen") : text("Waiting for someone to be assigned", "Wacht tot iemand is toegewezen");
     if (step === "progress") return text("Add evidence and report it ready", "Voeg bewijs toe en meld het gereed");
     return text("Start the follow-up", "Start de opvolging");
   };

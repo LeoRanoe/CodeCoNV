@@ -1051,3 +1051,16 @@ test("QA M26: the overview counts the same files as the library calls photos", a
   assert.match(dashboard, /\.not\("category", "in", `\(\$\{nonPhotoCategoryList\.join\(","\)\}\)`\)/);
   assert.match(dashboard, /\.eq\("status", "available"\)\.like\("mime_type", "image\/%"\)/);
 });
+
+test("QA M26: a photo whose upload failed or is pending is not counted", async () => {
+  const { isPhotoFile } = await import("../lib/media/photo-library.mjs");
+  assert.equal(isPhotoFile({ mime_type: "image/jpeg", category: "photo", status: "available" }), true);
+  assert.equal(isPhotoFile({ mime_type: "image/jpeg", category: "photo", status: "failed" }), false);
+  assert.equal(isPhotoFile({ mime_type: "image/jpeg", category: "photo", status: "pending" }), false);
+});
+
+test("QA M26: the library's historical photo entries leave drawings out", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const operations = await readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8");
+  assert.match(operations, /\.filter\(\(file\) => isPhotoFile\(file\) && !capturedFileIds\.has\(file\.id\)\)/);
+});

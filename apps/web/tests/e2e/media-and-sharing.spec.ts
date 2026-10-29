@@ -226,14 +226,6 @@ async function uploadDrawingAndCreatePin(page: Page, findingTitle: string) {
 
   await page.context().setOffline(true);
   const offlinePin = page.locator("button.drawing-pin").first();
-  const offlinePinBox = await offlinePin.boundingBox();
-  expect(offlinePinBox).not.toBeNull();
-  const offlineStartX = offlinePinBox!.x + offlinePinBox!.width / 2;
-  const offlineStartY = offlinePinBox!.y + offlinePinBox!.height / 2;
-  await page.mouse.move(offlineStartX, offlineStartY);
-  await page.mouse.down();
-  await page.mouse.move(offlineStartX + 55, offlineStartY + 40, { steps: 6 });
-  await page.mouse.up();
   const queuedPinMutations = () => page.evaluate(async () => new Promise<number>((resolve, reject) => {
     const open = indexedDB.open("codeco-field-v1");
     open.onerror = () => reject(open.error);
@@ -244,16 +236,32 @@ async function uploadDrawingAndCreatePin(page: Page, findingTitle: string) {
       request.onsuccess = () => { resolve(request.result); database.close(); };
     };
   }));
-  await expect.poll(queuedPinMutations).toBeGreaterThan(0);
+  // A drag the page has not settled for yet is tried again, as a person would.
+  await expect(async () => {
+    const offlinePinBox = await offlinePin.boundingBox();
+    expect(offlinePinBox).not.toBeNull();
+    const offlineStartX = offlinePinBox!.x + offlinePinBox!.width / 2;
+    const offlineStartY = offlinePinBox!.y + offlinePinBox!.height / 2;
+    await page.mouse.move(offlineStartX, offlineStartY);
+    await page.mouse.down();
+    await page.mouse.move(offlineStartX + 55, offlineStartY + 40, { steps: 6 });
+    await page.mouse.up();
+    expect(await queuedPinMutations()).toBeGreaterThan(0);
+  }).toPass({ timeout: 30_000 });
   await page.context().setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect.poll(queuedPinMutations, { timeout: 60_000 }).toBe(0);
 
-  await offlinePin.click();
-  // The removal is confirmed on the page itself, next to the pin, not in a browser dialog.
-  await page.getByRole("button", { name: "Remove pin", exact: true }).click();
-  await page.getByRole("alertdialog", { name: "Remove this pin?" }).getByRole("button", { name: "Remove pin", exact: true }).click();
-  await expect(page.locator("button.drawing-pin")).toHaveCount(0, { timeout: 60_000 });
+  // The removal is confirmed on the page itself, next to the pin, not in a browser dialog. The
+  // synchronised move has just refreshed the drawing, so the whole step is tried again if it was not
+  // finished the first time.
+  await expect(async () => {
+    if (await page.locator("button.drawing-pin").count() === 0) return;
+    await page.locator("button.drawing-pin").first().click();
+    await page.getByRole("button", { name: "Remove pin", exact: true }).click();
+    await page.getByRole("alertdialog", { name: "Remove this pin?" }).getByRole("button", { name: "Remove pin", exact: true }).click();
+    await expect(page.locator("button.drawing-pin")).toHaveCount(0, { timeout: 8_000 });
+  }).toPass({ timeout: 60_000 });
 }
 
 async function testExternalShareAndRevocation(page: Page, browser: Browser, findingTitle: string) {

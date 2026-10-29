@@ -153,3 +153,24 @@ test("a link to a project the account cannot open says so", async ({ page }, tes
   await page.goto("/supervisie?project=00000000-0000-4000-8000-000000000000&nav=project");
   await expect(page.getByText("That project is not available to this account.")).toBeVisible();
 });
+
+test("a client is not told to assign a record nobody owns", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-office", "The wording does not depend on the viewport.");
+  await signInAs(page, clientEmail!, clientPassword!);
+  await goTo(page, "Actions");
+  await page.getByRole("tab", { name: /All project work/ }).click();
+  await page.locator(".action-center-summary button", { hasText: "All records" }).click();
+  await expect(page.locator(".unified-action-list > button").first()).toBeVisible();
+  // A client cannot assign; the list says what the record waits for instead of giving an order.
+  await expect(page.getByText("Assign who has to do this")).toHaveCount(0);
+  await expect(page.getByText("Waiting for someone to be assigned").first()).toBeVisible();
+});
+
+test("a supervisor is still told to assign a record nobody owns", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-office", "The wording does not depend on the viewport.");
+  await signInAs(page, supervisorEmail!, supervisorPassword!);
+  await goTo(page, "Actions");
+  await page.getByRole("tab", { name: /All project work/ }).click();
+  await page.locator(".action-center-summary button", { hasText: "All records" }).click();
+  await expect(page.getByText("Assign who has to do this").first()).toBeVisible();
+});
