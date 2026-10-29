@@ -149,6 +149,8 @@ export function ExternalShareActions({ token, sourceType, status, recordKind = n
         : "Probleem ontvangen. De verantwoordelijke CODECO-gebruiker krijgt direct een melding.");
       setPhoto(null);
       setSignature(null);
+      // The status badge above reads the record again, so it shows the new state without a reload.
+      router.refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "De reactie kon niet worden verzonden.");
     } finally {
