@@ -204,3 +204,20 @@
 }
 .draft-notice--restored svg { color: var(--ink-700); }
 .draft-notice .text-link { margin-inline-start: auto; min-height: var(--control-h-md); }
+
+/* Keyboard users jump past the sidebar to the content; the link shows only while it has focus. */
+.skip-link {
+  background: var(--paper);
+  border: 2px solid var(--signal);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-weight: var(--weight-bold);
+  left: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  position: fixed;
+  top: var(--space-3);
+  transform: translateY(-200%);
+  z-index: 100;
+}
+.skip-link:focus { transform: none; }
+.main-content:focus { outline: none; }

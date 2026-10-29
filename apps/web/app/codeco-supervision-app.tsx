@@ -397,6 +397,8 @@ export function CodecoSupervisionApp() {
   const supabase = getSupabaseBrowserClient();
   const queryClient = useQueryClient();
   const [session, setSession] = useState<Session | null>(null);
+  /** Said once on the project list after a password was changed. */
+  const [accountNotice, setAccountNotice] = useState("");
   const [passwordRecovery, setPasswordRecovery] = useState(
     () => typeof window !== "undefined" && window.location.hash.includes("type=recovery"),
   );
@@ -1232,6 +1234,7 @@ export function CodecoSupervisionApp() {
           });
           if (result.error) throw result.error;
           setPasswordRecovery(false);
+          setAccountNotice(text("Password changed.", "Wachtwoord gewijzigd."));
           window.history.replaceState(null, "", window.location.pathname);
           setSession((current) => current ? { ...current, user: result.data.user } : current);
         }}
@@ -1326,6 +1329,7 @@ export function CodecoSupervisionApp() {
           if (saved) await queryClient.invalidateQueries({ queryKey: ["workspace", session.user.id] });
           return saved ? true : (lastSaveErrorRef.current || false);
         }}
+        notice={accountNotice}
         canCreateProject={Boolean(workspaceQuery.data.manageableOrganizationIds.includes(workspaceQuery.data.organizations[0].id))}
         currentUserName={currentUserName}
         storageStatus={storageStatus}
@@ -1615,6 +1619,7 @@ export function CodecoSupervisionApp() {
           event.currentTarget.value = "";
         }}
       />
+      <a className="skip-link" href="#main-content">{text("Skip to the content", "Naar de inhoud")}</a>
       <aside className="sidebar" aria-label={text("Main navigation", "Hoofdnavigatie")}>
         <div className="brand">
           <CompanyLogo subtitle={text("Supervision", "Supervisie")} />
@@ -1719,7 +1724,7 @@ export function CodecoSupervisionApp() {
 
         {/* Keyed on the project: a module that switches to another project starts over
             instead of carrying the previous project's selection, filters and drafts. */}
-        <main className={`main-content${unsavedPhotos ? " has-resume-bar" : ""}`} key={selectedProject?.id ?? "no-project"}>
+        <main id="main-content" tabIndex={-1} className={`main-content${unsavedPhotos ? " has-resume-bar" : ""}`} key={selectedProject?.id ?? "no-project"}>
           {activeNav === "vandaag" ? (
             <ClientDashboard
               entries={entries}
@@ -2228,11 +2233,21 @@ function AppStateScreen({
   );
 }
 
+/**
+ * The address as it was when the page loaded. The auth client removes the #error=… part of a used
+ * recovery link while it starts, so the screen reads it from here.
+ */
+const addressHashAtLoad = typeof window !== "undefined" ? window.location.hash : "";
+
 function AuthScreen({ client }: { client: SupabaseClient }) {
   const { language, text } = useLanguage();
   const localizedAuthSchema = useMemo(() => createAuthSchema(language), [language]);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  // A recovery link that was used or has expired comes back as #error_code=otp_expired; say so,
+  // and the "Forgot your password?" button below asks for a new one.
+  const [error, setError] = useState(() => /error_code=otp_expired|error=access_denied/.test(addressHashAtLoad)
+    ? text("This link has expired or was already used. Ask for a new one with “Forgot your password?”.", "Deze link is verlopen of al gebruikt. Vraag een nieuwe aan met “Wachtwoord vergeten?”.")
+    : "");
   const [resetSent, setResetSent] = useState(false);
   const { register, handleSubmit, getValues, formState: { errors } } = useForm<AuthAnswers>({
     resolver: zodResolver(localizedAuthSchema),
@@ -2290,15 +2305,15 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
   };
 
   return (
-    <div className="access-shell">
+    <main className="access-shell">
       <section className="access-card auth-card">
         <div className="setup-top"><div className="access-brand"><CompanyLogo subtitle={text("Construction supervision", "Constructiesupervisie")} /></div><LanguageSwitcher /></div>
         <div className="auth-heading">
           <h1>{text("Sign in", "Aanmelden")}</h1>
         </div>
         <form className="access-form" onSubmit={handleSubmit(submit)} noValidate>
-          <label className="form-field"><span>{text("Email address", "E-mailadres")}</span><input type="email" autoComplete="email" {...register("email")} />{errors.email ? <small className="field-error">{errors.email.message}</small> : null}</label>
-          <label className="form-field"><span>{text("Password", "Wachtwoord")}</span><input type="password" autoComplete="current-password" {...register("password")} />{errors.password ? <small className="field-error">{errors.password.message}</small> : null}</label>
+          <label className="form-field"><span>{text("Email address", "E-mailadres")}</span><input type="email" autoComplete="email" aria-invalid={Boolean(errors.email)} aria-describedby={errors.email ? "login-email-error" : undefined} {...register("email")} />{errors.email ? <small className="field-error" id="login-email-error" role="alert">{errors.email.message}</small> : null}</label>
+          <label className="form-field"><span>{text("Password", "Wachtwoord")}</span><input type="password" autoComplete="current-password" aria-invalid={Boolean(errors.password)} aria-describedby={errors.password ? "login-password-error" : undefined} {...register("password")} />{errors.password ? <small className="field-error" id="login-password-error" role="alert">{errors.password.message}</small> : null}</label>
           {error ? <p className="access-message error" role="alert">{error}</p> : null}
           {resetSent ? <p className="access-message success" role="status">{text("If the account exists, a recovery link was sent. Check your inbox and spam folder.", "Als het account bestaat, is een herstellink verstuurd. Controleer je inbox en spam.")}</p> : null}
           <button className="ui-button ui-button--primary ui-button--lg access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <LogIn size={16} />}{text("Sign in securely", "Veilig aanmelden")}</button>
@@ -2306,7 +2321,7 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
         </form>
         <p className="security-note">{text("No account? Ask your CODECO administrator for a personal invitation.", "Geen account? Vraag je CODECO-beheerder om een persoonlijke uitnodiging.")}</p>
       </section>
-    </div>
+    </main>
   );
 }
 
@@ -2347,8 +2362,8 @@ function PasswordSetupScreen({
         <span className="state-icon"><KeyRound size={26} /></span>
         <h1>{mode === "recovery" ? text("Choose a new password", "Kies een nieuw wachtwoord") : text("Set your password", "Stel je wachtwoord in")}</h1><p>{mode === "recovery" ? <>{text("The recovery link for", "De herstellink voor")} <strong>{email}</strong> {text("has been verified. Choose a new personal password of at least 12 characters.", "is geverifieerd. Kies een nieuw persoonlijk wachtwoord van minimaal 12 tekens.")}</> : <>{text("The invitation for", "De uitnodiging voor")} <strong>{email}</strong> {text("has been verified. Choose a personal password of at least 12 characters.", "is geverifieerd. Kies nu een persoonlijk wachtwoord van minimaal 12 tekens.")}</>}</p>
         <form className="access-form setup-form" onSubmit={handleSubmit(submit)} noValidate>
-          <label className="form-field"><span>{text("New password", "Nieuw wachtwoord")}</span><input type="password" autoComplete="new-password" {...register("password")} />{errors.password ? <small className="field-error">{errors.password.message}</small> : null}</label>
-          <label className="form-field"><span>{text("Repeat password", "Herhaal wachtwoord")}</span><input type="password" autoComplete="new-password" {...register("passwordConfirmation")} />{errors.passwordConfirmation ? <small className="field-error">{errors.passwordConfirmation.message}</small> : null}</label>
+          <label className="form-field"><span>{text("New password", "Nieuw wachtwoord")}</span><input type="password" autoComplete="new-password" aria-invalid={Boolean(errors.password)} aria-describedby={errors.password ? "new-password-error" : undefined} {...register("password")} />{errors.password ? <small className="field-error" id="new-password-error" role="alert">{errors.password.message}</small> : null}</label>
+          <label className="form-field"><span>{text("Repeat password", "Herhaal wachtwoord")}</span><input type="password" autoComplete="new-password" aria-invalid={Boolean(errors.passwordConfirmation)} aria-describedby={errors.passwordConfirmation ? "new-password-confirmation-error" : undefined} {...register("passwordConfirmation")} />{errors.passwordConfirmation ? <small className="field-error" id="new-password-confirmation-error" role="alert">{errors.passwordConfirmation.message}</small> : null}</label>
           {error ? <p className="access-message error" role="alert">{error}</p> : null}
           <button className="ui-button ui-button--primary ui-button--md access-submit" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <Check size={16} />}{text("Save password", "Wachtwoord opslaan")}</button>
         </form>
@@ -2535,6 +2550,7 @@ function ContextSelection({
   organizationName,
   createProject,
   canCreateProject,
+  notice,
   currentUserName,
   storageStatus,
   isOnline,
@@ -2548,6 +2564,8 @@ function ContextSelection({
   createProject: (answers: ProjectSetupAnswers) => Promise<boolean | string>;
   /** Only a user who holds projects.create is offered the button; the database refuses anyone else. */
   canCreateProject: boolean;
+  /** A one-time confirmation above the list, such as "Password changed." */
+  notice?: string;
   currentUserName: string;
   storageStatus: string;
   isOnline: boolean;
@@ -2579,7 +2597,7 @@ function ContextSelection({
         </div>
 
         <section className="context-heading">
-          <div><h1>{text("My projects", "Mijn projecten")}</h1></div>
+          <div><h1>{text("My projects", "Mijn projecten")}</h1>{notice ? <p className="access-message success" role="status">{notice}</p> : null}</div>
           {canCreateProject ? <button className="ui-button ui-button--primary ui-button--md portfolio-cta" type="button" onClick={() => setShowProjectSetup(true)}><Plus size={15} /> {text("New configured project", "Nieuw geconfigureerd project")}</button> : null}
         </section>
         {/* No portfolio counters here: this screen only has to answer "which project am I
