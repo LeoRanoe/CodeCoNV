@@ -27,7 +27,14 @@ Read the local mail in Mailpit: <http://127.0.0.1:54324>.
 5. Check one recovery mail end to end on a test account: link opens the app, "Kies een nieuw wachtwoord"
    appears, the second use of the same link shows "Deze link is verlopen of al gebruikt".
 
+## Checked locally
+
+The recovery mail was requested for a seeded account against the local stack and read in Mailpit: the
+subject is "Wachtwoord herstellen · CODECO Supervisie", the body is `supabase/templates/recovery.html` and the
+link carries `redirect_to=http://127.0.0.1:3000/`. A stack that was started before the template was added has to be
+restarted (`supabase stop`, `supabase start`) before it sends the Dutch mail. The Playwright tests cover the form
+errors and the expired-link message.
+
 ## Not tested
 
-The recovery flow was not run end to end against Mailpit in this pass (the Playwright tests cover the
-form errors and the expired-link message only).
+The hosted project: nothing above was run against it, by design. Steps 1 to 5 are the owner's.
