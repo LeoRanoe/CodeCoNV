@@ -463,7 +463,12 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           failed: () => "",
         }).catch(() => undefined);
       }
-    }, text("Saved on this device. Sent when you're online.", "Opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent."));
+    }, typeof navigator !== "undefined" && !navigator.onLine
+      // Only a capture that really waits on the device says so; online it was sent while saving.
+      ? text("Saved on this device. Sent when you're online.", "Opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent.")
+      : captureForm.type === "panorama"
+        ? text("360° image uploaded.", "360°-beeld geüpload.")
+        : text("Photo uploaded.", "Foto geüpload."));
     if (okay) void clearFormDraft(formDraftKey("quick-photo", projectId));
     if (okay && generation === stagedImageRef.current) {
       setCaptureForm(emptyCaptureForm);

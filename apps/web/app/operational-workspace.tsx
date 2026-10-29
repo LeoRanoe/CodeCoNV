@@ -2673,7 +2673,10 @@ function ProjectOperations({
           if (navigator.onLine) await syncQueuedEvidenceNow();
         }
       },
-      text("Saved on this device. Photos are sent when you're online.", "Opgeslagen op dit apparaat. Foto's worden verzonden zodra je online bent."),
+      // Only a save that really waits on the device says so; online the server has it already.
+      typeof navigator !== "undefined" && !navigator.onLine
+        ? text("Saved on this device. Photos are sent when you're online.", "Opgeslagen op dit apparaat. Foto's worden verzonden zodra je online bent.")
+        : text("HSE saved.", "HSE opgeslagen."),
     );
     if (okay) {
       // The issue is filed, so the parked draft of it has nothing left to protect.

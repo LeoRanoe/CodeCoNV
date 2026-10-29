@@ -379,8 +379,9 @@
   font-size: var(--text-xs);
 }
 
-.media-library-toolbar,
-.media-actions-panel,
+/* The mobile sheet only exists on a phone. The photo toolbar and the panel with the building filter,
+   the photo stack and "Save photo stack" are the way to save an upload and are shown at every width
+   (they were hidden from 1025 px up, so a desktop upload could not be described or saved). */
 .mobile-module-sheet-backdrop,
 .mobile-module-sheet {
   display: none;

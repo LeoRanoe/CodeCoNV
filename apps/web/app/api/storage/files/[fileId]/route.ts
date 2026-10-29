@@ -20,7 +20,9 @@ export async function GET(
 ) {
   try {
     if (!isBlobServerConfigured()) {
-      return storageJson({ error: "Koppel eerst een private Vercel Blob-store aan dit Vercel-project." }, 503);
+      // The operator's instruction goes to the log; the person who is uploading reads what happens to the file.
+      console.warn("[storage] Geen private Vercel Blob-store gekoppeld aan dit Vercel-project.");
+      return storageJson({ error: "Uploaden is nu niet beschikbaar; je foto blijft op dit apparaat." }, 503);
     }
     const { fileId } = await params;
     if (!z.uuid().safeParse(fileId).success) return storageJson({ error: "Ongeldig bestand-ID." }, 400);
