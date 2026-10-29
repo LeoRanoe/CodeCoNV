@@ -33,7 +33,7 @@ async function signIn(page: Page) {
   await expect(page.getByRole("region", { name: "Project command center" })).toBeVisible();
 }
 
-function field(page: Page, label: string) {
+function field(page: Page, label: string | RegExp) {
   return page.locator("main label.form-field").filter({ has: page.locator("span", { hasText: label }) }).locator("input, textarea, select").first();
 }
 
@@ -63,7 +63,7 @@ test("an RFI is recorded, answered by a named respondent and keeps its response"
   await field(page, "Formal request / instruction / observation").fill("Please confirm the size and position of the slab penetrations on level 2 before the pour.");
   await field(page, "Submitted by").fill("J. Contractor");
   // The addressee is a project party, shown with its role in words.
-  const addressee = field(page, "To:");
+  const addressee = field(page, /^To$/);
   await expect(addressee.locator("option", { hasText: "Hoofdaannemer E2E · Contractor" })).toHaveCount(1);
   await addressee.selectOption({ label: "Hoofdaannemer E2E · Contractor" });
   await page.getByRole("button", { name: "Create controlled document" }).click();

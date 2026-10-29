@@ -862,6 +862,14 @@ export function OperationalWorkspace({
     },
   });
   const [notice, setNotice] = useState("");
+  // A confirmation belongs to the screen where the save happened and fades after a few seconds,
+  // so "Pin saved" does not follow you to the next module.
+  const [noticeMode, setNoticeMode] = useState(mode);
+  useEffect(() => {
+    if (!notice) return undefined;
+    const timer = window.setTimeout(() => setNotice(""), 8000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   // `busy` only reaches a button after the next render. Two taps that land before it does (a
@@ -910,6 +918,7 @@ export function OperationalWorkspace({
       await requestProjectNotificationDispatch(client, projectId).catch(() => false);
       // A registration that had to wait says so, instead of claiming it is central.
       const waiting = await listOfflineRecords(projectId).catch(() => []);
+      setNoticeMode(mode);
       setNotice(waiting.length > queuedBefore
         ? text("Saved on this device. Sent when you're online.", "Opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent.")
         : success);
@@ -943,7 +952,7 @@ export function OperationalWorkspace({
     <>
       {snapshot._offlineCached ? <div className="operation-alert warning"><HardDrive size={17} /><div><strong>{text("Offline project copy", "Offline projectkopie")}</strong><span>{text("Offline. Last synced data is available; formal changes wait for a connection.", "Offline. Laatst gesynchroniseerde gegevens zijn beschikbaar; formele wijzigingen wachten op verbinding.")} {snapshot._offlineSavedAt ? `${text("Saved", "Opgeslagen")} ${formatDate(snapshot._offlineSavedAt)}.` : ""}</span></div></div> : null}
       {error ? <div className="operation-alert error"><AlertTriangle size={17} /> {error}</div> : null}
-      {notice ? <div className="operation-alert success"><CheckCircle2 size={17} /> {notice}</div> : null}
+      {notice && noticeMode === mode ? <div className="operation-alert success"><CheckCircle2 size={17} /> {notice}</div> : null}
       {mode === "project" ? (
         <ProjectOperations
           key={`${projectId}:${externalSubmissionIntent}`}
@@ -4511,7 +4520,7 @@ function ProjectOperations({
                 ) : null}
                 {/* The party you address it to is the recipient; a second free-text name
                     next to it, plus reference fields nobody filled, are gone. */}
-                <label className="form-field"><span>{text("To:", "Aan:")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => { const party = parties.find((item) => item.id === event.target.value); setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value, requestedTo: party?.name ?? "" }); }}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name} · {partyTypeText(party.type, text)}</option>)}</select></label>
+                <label className="form-field"><span>{text("To", "Aan")}</span><select value={registerForm.responsiblePartyId} onChange={(event) => { const party = parties.find((item) => item.id === event.target.value); setRegisterForm({ ...registerForm, responsiblePartyId: event.target.value, requestedTo: party?.name ?? "" }); }}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name} · {partyTypeText(party.type, text)}</option>)}</select></label>
                 <details className="controlled-document-optional-attachments">
                   <summary>{text("Additional attachment notes", "Extra bijlageninformatie")}</summary>
                   <label className="form-field"><span>{text("Page count or reference (if applicable)", "Aantal pagina's of referentie (indien van toepassing)")}</span><input value={registerForm.attachments} onChange={(event) => setRegisterForm({ ...registerForm, attachments: event.target.value })} /></label>

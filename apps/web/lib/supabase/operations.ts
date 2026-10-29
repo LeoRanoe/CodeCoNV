@@ -1063,10 +1063,25 @@ export async function loadInspectionResponses(client: SupabaseClient, inspection
 
 type InspectionAnswers = Record<string, { result: string; notes: string; numericValue?: number; textValue?: string }>;
 
-/** Stores the answers given so far without completing the inspection, so a checklist can be left and resumed. */
-export async function saveInspectionAnswers(client: SupabaseClient, inspection: Pick<Inspection, "id">, answers: InspectionAnswers) {
-  for (const [itemId, answer] of Object.entries(answers)) {
-    if (!answer.result) continue;
+/**
+ * Stores a set of checklist answers in one request, in one transaction. An environment that does
+ * not have the batch function yet (PGRST202) falls back to one request per answer.
+ */
+async function storeInspectionAnswers(client: SupabaseClient, inspection: Pick<Inspection, "id">, entries: Array<[string, InspectionAnswers[string]]>) {
+  if (!entries.length) return;
+  const batch = await client.rpc("save_inspection_responses", {
+    p_inspection_id: inspection.id,
+    p_responses: entries.map(([itemId, answer]) => ({
+      checklist_item_id: itemId,
+      result: answer.result,
+      numeric_value: answer.result === "value" ? answer.numericValue ?? null : null,
+      text_value: answer.result === "text" ? answer.textValue?.trim() || null : null,
+      notes: answer.notes,
+    })),
+  });
+  if (!batch.error) return;
+  if (batch.error.code !== "PGRST202") fail(batch.error);
+  for (const [itemId, answer] of entries) {
     const saved = await client.rpc("save_inspection_response", {
       p_inspection_id: inspection.id,
       p_checklist_item_id: itemId,
@@ -1080,23 +1095,17 @@ export async function saveInspectionAnswers(client: SupabaseClient, inspection: 
   }
 }
 
+/** Stores the answers given so far without completing the inspection, so a checklist can be left and resumed. */
+export async function saveInspectionAnswers(client: SupabaseClient, inspection: Pick<Inspection, "id">, answers: InspectionAnswers) {
+  await storeInspectionAnswers(client, inspection, Object.entries(answers).filter(([, answer]) => answer.result));
+}
+
 export async function finishInspection(
   client: SupabaseClient,
   inspection: Inspection,
   answers: InspectionAnswers,
 ) {
-  for (const [itemId, answer] of Object.entries(answers)) {
-    const saved = await client.rpc("save_inspection_response", {
-      p_inspection_id: inspection.id,
-      p_checklist_item_id: itemId,
-      p_result: answer.result,
-      p_numeric_value: answer.result === "value" ? answer.numericValue ?? null : null,
-      p_text_value: answer.result === "text" ? answer.textValue?.trim() || null : null,
-      p_notes: answer.notes,
-      p_idempotency_key: `inspection-response:${inspection.id}:${itemId}`,
-    });
-    fail(saved.error);
-  }
+  await storeInspectionAnswers(client, inspection, Object.entries(answers));
   const completed = await client.rpc("complete_project_inspection", { p_inspection_id: inspection.id });
   fail(completed.error);
   return completed.data as Inspection;

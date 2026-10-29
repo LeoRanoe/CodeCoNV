@@ -1630,7 +1630,7 @@ export function CodecoSupervisionApp() {
           <CompanyLogo subtitle={text("Supervision", "Supervisie")} />
         </div>
 
-        <button className="project-context-card" type="button" aria-haspopup="dialog" onClick={() => setModal("switch_project")}>
+        <button className="project-context-card" type="button" aria-haspopup="dialog" title={`${projectName} · ${buildingContextLabel} · ${selectedProject?.location ?? ""}`} onClick={() => setModal("switch_project")}>
           <span className="project-context-icon"><Building2 size={17} /></span>
           <span className="project-context-copy">
             <span className="sr-only">{text("Switch project: ", "Van project wisselen: ")}</span>
@@ -2751,7 +2751,11 @@ function ProjectStartForm({
         </header>
 
       <div className="modal-body project-start-layout">
-        <form className="project-start-form" onSubmit={handleSubmit(save)} noValidate>
+        <form className="project-start-form" onSubmit={handleSubmit(save, () => {
+          // The first refused field can be a screen above the button that was pressed; a press
+          // that seems to do nothing is the worst answer, so bring the reason into view.
+          window.requestAnimationFrame(() => document.querySelector<HTMLElement>(".project-start-form .field-error")?.scrollIntoView({ block: "center" }));
+        })} noValidate>
           <BuildingPicker id="project-start-building" buildings={buildings} value={buildingId} onChange={onChangeBuilding} allowAll />
           <section className="form-section-card">
             <header><span className="form-section-number">1</span><span><strong>{text("Weather and working hours", "Weer en werktijden")}</strong></span></header>
@@ -2813,6 +2817,7 @@ function ProjectStartForm({
           </section>
 
           <div className="project-start-submit">
+            {Object.values(errors).some((error) => error?.message) ? <p className="field-error" role="alert">{text("Not complete yet", "Nog niet compleet")}: {Object.values(errors).map((error) => error?.message).filter(Boolean).join(" · ")}</p> : null}
             <span><ShieldCheck size={15} /> {text("Saving completes only after central confirmation.", "Opslaan is pas voltooid na centrale bevestiging.")}</span>
             <button className="ui-button ui-button--primary ui-button--md" type="submit">{text("Start daily report centrally", "Dagrapport centraal starten")} <ArrowRight size={15} /></button>
           </div>

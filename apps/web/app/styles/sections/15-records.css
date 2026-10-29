@@ -551,7 +551,13 @@
   .media-actions-panel {
     align-items: stretch;
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .media-actions-panel select,
+  .media-actions-panel input:not([type="checkbox"]) {
+    max-width: 100%;
+    min-width: 0;
   }
 
   .media-capture-actions button,
@@ -813,6 +819,8 @@
 .company-action-assignment-list > article small { display: block; }
 .company-action-assignment-list > article strong { color: var(--ink-800); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .company-action-assignment-list > article small { color: var(--ink-700); font-size: var(--text-xs); margin-top: 2px; }
+.company-action-assignment-list > article > div > span:last-child { min-width: 0; }
+.company-action-assignment-list > article small { overflow-wrap: anywhere; }
 .company-action-assignment-list .form-field { margin: 0; }
 .company-action-assignment-list .form-field span { font-size: var(--text-xs); }
 
@@ -830,7 +838,7 @@
   .workspace-section-controls { grid-template-columns: auto minmax(0, 1fr) auto; }
   .external-access-summary { grid-template-columns: 1fr; }
   .company-task-assignment > header { align-items: stretch; flex-direction: column; }
-  .company-action-assignment-list > article { align-items: stretch; grid-template-columns: 1fr; }
+  .company-action-assignment-list > article { align-items: stretch; grid-template-columns: minmax(0, 1fr); }
   .report-archive > header,
   .external-submission-center > header { align-items: stretch; flex-direction: column; }
   .report-archive-list > article > button { grid-template-columns: auto minmax(0, 1fr) auto; }

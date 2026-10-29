@@ -3622,3 +3622,9 @@ test("QA M6/L3/L4: save buttons say what they wait for; pin removal is confirmed
   assert.match(drawings, /role="alertdialog"/);
   assert.match(drawings, /\{activeDrawing \? <div className="operation-alert"><ShieldCheck/);
 });
+
+test("QA L18: a refused work-day start says why next to the button and scrolls to the reason", async () => {
+  const app = await readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8");
+  assert.match(app, /handleSubmit\(save, \(\) => \{/);
+  assert.match(app, /Nog niet compleet/);
+});
