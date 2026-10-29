@@ -502,6 +502,9 @@
   line-height: 1.5;
 }
 
+/* Beside a drawing the empty hint is a line of help, not a 250 px block of nothing. */
+.drawing-unplaced-panel .visual-panel-empty { min-height: 0; padding: var(--space-4) 0; }
+
 .visual-issue-form > div:first-child p {
   margin: 5px 0 0;
   color: var(--ink-700);

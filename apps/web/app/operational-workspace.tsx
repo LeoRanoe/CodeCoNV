@@ -849,6 +849,9 @@ export function OperationalWorkspace({
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["project-operations", projectId, reportId],
+    // The day report arrives after the first render and changes the key. The records of the same
+    // project stay on screen while the second load runs, instead of a spinner replacing them.
+    placeholderData: (previous, previousQuery) => previousQuery?.queryKey[1] === projectId ? previous : undefined,
     queryFn: async () => {
       try {
         const snapshot = await loadProjectOperations(client, projectId, organizationId, reportId);

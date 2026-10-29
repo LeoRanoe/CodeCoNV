@@ -29,6 +29,7 @@ const rules = [
   "landmark-unique",
   "aria-valid-attr-value",
   "aria-allowed-attr",
+  "heading-order",
 ];
 
 async function signIn(page: Page) {
@@ -86,6 +87,15 @@ const screens: Array<{ name: string; open: (page: Page) => Promise<void> }> = [
       const back = page.locator(".workspace-back-button");
       if (await back.isVisible().catch(() => false)) await back.click();
       await page.locator("[data-workspace-destination='issues']").click();
+    },
+  },
+  {
+    name: "NCR",
+    open: async (page) => {
+      await goTo(page, "Workspace");
+      const back = page.locator(".workspace-back-button");
+      if (await back.isVisible().catch(() => false)) await back.click();
+      await page.locator("[data-workspace-destination='ncr']").click();
     },
   },
   {
