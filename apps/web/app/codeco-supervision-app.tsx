@@ -672,8 +672,11 @@ export function CodecoSupervisionApp() {
   // leads back to the overview and says why.
   useEffect(() => {
     if (!permissions.known || navAllowed(activeNav)) return;
-    setToast(text("Your role has no access to that screen.", "Je rol heeft geen toegang tot dat scherm."));
-    setActiveNav("vandaag");
+    const timer = window.setTimeout(() => {
+      setToast(text("Your role has no access to that screen.", "Je rol heeft geen toegang tot dat scherm."));
+      setActiveNav("vandaag");
+    }, 0);
+    return () => window.clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [permissions.known, activeNav]);
 
