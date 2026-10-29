@@ -31,7 +31,7 @@ async function signIn(page: Page) {
 }
 
 test("the Issue form's thumb targets are 44 px and its tick boxes are named", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "mobile-field", "Touch targets are a phone rule (up to 1024 px).");
+  test.skip(testInfo.project.name === "desktop-office", "Touch targets are a rule up to 1024 px: phone and tablet.");
   await signIn(page);
   await page.locator(".mobile-bottom-nav").getByRole("button", { name: "Workspace" }).click();
   await page.locator("[data-workspace-destination='issues']").click();

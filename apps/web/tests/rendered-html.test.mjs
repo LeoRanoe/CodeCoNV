@@ -3652,3 +3652,15 @@ test("QA L24: the root layout does not preload fonts the first screen does not u
   assert.match(layout, /Geist_Mono\(\{[^}]*preload: false/s);
   assert.doesNotMatch(layout, /weight: \["400", "500"/);
 });
+
+test("QA L28: every pgTAP file that creates an organization starts from an empty tenant table", async () => {
+  const { readdir } = await import("node:fs/promises");
+  const directory = new URL("../../../supabase/tests/", import.meta.url);
+  const files = (await readdir(directory)).filter((name) => name.endsWith(".pgtap.sql"));
+  assert.ok(files.length >= 20);
+  for (const name of files) {
+    const sql = await readFile(new URL(name, directory), "utf8");
+    if (!/bootstrap_organization|insert into public\.organizations/.test(sql)) continue;
+    assert.match(sql, /truncate public\.organizations, auth\.users cascade;/, `${name} must not depend on an empty database`);
+  }
+});

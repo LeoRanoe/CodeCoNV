@@ -1,6 +1,10 @@
 begin;
 set local search_path = extensions, pgtap, public;
 
+-- Isolation: only the first organization can be created without an administrator, so the file
+-- starts from an empty tenant table; the rollback at the end puts any existing data back.
+truncate public.organizations, auth.users cascade;
+
 select plan(29);
 
 select has_table('public', 'external_share_responses', 'external subcontractor responses are stored centrally');

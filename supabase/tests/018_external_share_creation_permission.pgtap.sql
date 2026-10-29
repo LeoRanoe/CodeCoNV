@@ -4,6 +4,10 @@ set local search_path = extensions, pgtap, public;
 -- Creating a contractor share link is a write-level act: a read-only member (the client) and a
 -- stranger must be refused by the database itself, whatever the screen shows, and a supervisor
 -- must still be able to do it for each kind of source.
+-- Isolation: only the first organization can be created without an administrator, so the file
+-- starts from an empty tenant table; the rollback at the end puts any existing data back.
+truncate public.organizations, auth.users cascade;
+
 select plan(9);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at)

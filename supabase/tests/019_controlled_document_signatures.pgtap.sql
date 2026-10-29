@@ -3,6 +3,10 @@ set local search_path = extensions, pgtap, public;
 
 -- Controlled documents keep their signatures, a CODECO-issued document is signed under the
 -- account's own name, and the recipient signs the formal response as a different person.
+-- Isolation: only the first organization can be created without an administrator, so the file
+-- starts from an empty tenant table; the rollback at the end puts any existing data back.
+truncate public.organizations, auth.users cascade;
+
 select plan(21);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at)
