@@ -5,7 +5,9 @@ set local search_path = extensions, pgtap, public;
 -- secure link, and everything it must never be able to change. CODECO keeps verification.
 -- Isolation: only the first organization can be created without an administrator, so the file
 -- starts from an empty tenant table; the rollback at the end puts any existing data back.
+set local client_min_messages = warning;
 truncate public.organizations, auth.users cascade;
+set local client_min_messages = notice;
 
 select plan(28);
 
