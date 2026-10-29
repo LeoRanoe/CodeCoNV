@@ -72,7 +72,8 @@ export const emptyControlledDocumentDraft: ControlledDocumentDraft = {
   signedBy: "",
   signedAt: "",
   signatureImage: "",
-  issuerPosition: "Construction Supervisor",
+  // Typed by the person who signs; a default title would put words in a contractor's mouth.
+  issuerPosition: "",
   issuerCompany: "CODECO N.V.",
   discipline: "architectural",
   priority: "medium",

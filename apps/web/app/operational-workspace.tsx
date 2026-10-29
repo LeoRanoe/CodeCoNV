@@ -1886,13 +1886,10 @@ function ProjectOperations({
       { title: text("Delivery delay", "Vertraging door levering"), details: text("Planned work was delayed because materials arrived late or incomplete.", "Gepland werk is vertraagd doordat materiaal te laat of onvolledig aankwam.") },
     ],
     rfi: [
-      { title: "Detailed specifications for the server room of B1 second floor", details: "According to change CO-11 for the B1 second-floor PAHO server room, provide the detailed specifications after the change of location.", relatedReference: "CO-11 B1 SF PAHO SERVER ROOM EXCHANGE", revision: "0" },
       { title: text("Clarification required", "Verduidelijking vereist"), details: text("The approved documents do not provide sufficient information for execution.", "De goedgekeurde documenten geven onvoldoende informatie voor uitvoering.") },
       { title: text("Drawing conflict", "Tegenstrijdigheid in tekening"), details: text("A conflict was found between drawing, specification or site condition.", "Er is een tegenstrijdigheid vastgesteld tussen tekening, specificatie of situatie op locatie.") },
     ],
-    rfa: [
-      { title: "Lighting switch layout of Building B1", details: "Request approval of the lighting switch layout of Building B1.", relatedReference: "RFA.SU-L1054.519.4", revision: "4", attachments: "Lighting switch layout of Building B1.zip · 1 page" },
-    ],
+    rfa: [],
     inspection_request: [
       { title: "Acceptance of reinforcement for shear wall of Ground Floor, Building B2", details: "Inspect and confirm the reinforcement for the ground-floor shear wall before subsequent work proceeds.", inspectionCategory: "structural", readyTime: "07:30" },
       { title: text("Work ready for inspection", "Werk gereed voor inspectie"), details: text("The work is completed and available for the requested inspection.", "Het werk is uitgevoerd en beschikbaar voor de aangevraagde inspectie.") },
@@ -3599,10 +3596,10 @@ function ProjectOperations({
                 <label className="form-field"><span>{text("Reference checklist / earlier report", "Referentiechecklist / eerder rapport")}</span><input value={findingForm.referenceChecklist} onChange={(event) => setFindingForm({ ...findingForm, referenceChecklist: event.target.value })} placeholder="NCR - 51" /></label>
                 {/* Priority is High, Medium or Low, in the client's own words. The deadline
                     that follows from it stays visible, because it is rule-driven. */}
-                <label className="form-field"><span>{text("Priority", "Priority")}</span><select value={findingForm.severity} onChange={(event) => setFindingForm({ ...findingForm, severity: event.target.value })}><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="low">{text("Low · 14 days", "Laag · 14 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label>
+                <label className="form-field"><span>{text("Priority", "Prioriteit")}</span><select value={findingForm.severity} onChange={(event) => setFindingForm({ ...findingForm, severity: event.target.value })}><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="low">{text("Low · 14 days", "Laag · 14 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label>
               </div>
               <div className="form-grid-2">
-                <label className="form-field"><span>{text("Issue type", "Issue Type")}</span><select value={findingForm.issueType} onChange={(event) => setFindingForm({ ...findingForm, issueType: event.target.value })}>{issueTypeOptions.map((option) => <option value={option.id} key={option.id}>{option.label}</option>)}</select></label>
+                <label className="form-field"><span>{text("Issue type", "Soort melding")}</span><select value={findingForm.issueType} onChange={(event) => setFindingForm({ ...findingForm, issueType: event.target.value })}>{issueTypeOptions.map((option) => <option value={option.id} key={option.id}>{option.label}</option>)}</select></label>
                 <label className="form-field"><span>{text("Disposition", "Beoordeling")}</span><select value={findingForm.disposition} onChange={(event) => setFindingForm({ ...findingForm, disposition: event.target.value as typeof findingForm.disposition })}><option value="validated">{text("Validated", "Gevalideerd")}</option><option value="to_be_corrected">{text("To be corrected", "Te corrigeren")}</option><option value="alternative_solution">{text("Alternative solution required", "Alternatieve oplossing nodig")}</option></select></label>
               </div>
               <div className="form-grid">
@@ -3634,10 +3631,10 @@ function ProjectOperations({
                   proposal below. A third box in between only invited three answers to one
                   question. It stays on the issue screen, which has no such pair. */}
               <div className="form-grid-2">
-                <label className="form-field"><span>{text("Date identified", "Date Identified")}</span><input type="date" value={findingForm.dateIdentified} onChange={(event) => setFindingForm({ ...findingForm, dateIdentified: event.target.value })} /></label>
-                <label className="form-field"><span>{text("Expected resolution date", "Expected Resolution Date")}</span><input type="date" value={findingForm.expectedResolutionDate} onChange={(event) => setFindingForm({ ...findingForm, expectedResolutionDate: event.target.value })} /></label>
+                <label className="form-field"><span>{text("Date identified", "Datum vastgesteld")}</span><input type="date" value={findingForm.dateIdentified} onChange={(event) => setFindingForm({ ...findingForm, dateIdentified: event.target.value })} /></label>
+                <label className="form-field"><span>{text("Expected resolution date", "Verwachte oplossingsdatum")}</span><input type="date" value={findingForm.expectedResolutionDate} onChange={(event) => setFindingForm({ ...findingForm, expectedResolutionDate: event.target.value })} /></label>
               </div>
-              <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required (Y/N)", "Escalation Required (Y/N)")}</label>
+              <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required", "Escalatie nodig")}</label>
               <p className="form-helper">{text(`Entered by ${currentUserName}`, `Ingevoerd door ${currentUserName}`)}</p>
               <div className="form-grid-2">
                 <BuildingMultiPicker id="ncr-buildings" buildings={buildings} value={findingBuildingIds} onChange={chooseFindingBuildings} />
