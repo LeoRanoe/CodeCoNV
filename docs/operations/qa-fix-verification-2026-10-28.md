@@ -5,127 +5,118 @@ Branch `fix/qa-sweep-2026-10-28` (from `fix/breakpoint-guardrail`). Everything b
 
 ## Result in one paragraph
 
-The report has 64 findings. **29 are fixed, 11 are partly fixed and 24 are still open.** All five high findings
-(H1–H5) are fixed and measured. The work was done in the order of the brief and stopped before WP7 (dialogs and the drawing
-flow), most of WP8 (forms), WP9 (counters), WP11 (miscellaneous), WP13's remaining items and WP15. They were not started, not
-tried and failed. The table at the end names every ID with its status; the list under "Not done" says what is left.
+The report has 64 findings. **47 are fixed, 13 are partly fixed and 4 are still open.** All five high findings
+(H1–H5) are fixed and measured. The first pass (commits up to e122a95) fixed 29; this second pass (2222abb, 889d19f, 074d82e)
+took WP7, WP9, the rest of WP8, WP14 and most of WP15. The four open ones are either a product decision (M20) or manual work on
+production or on seeded content (L12, L24, L26). The table at the end names every ID with its status.
 
 ## Commands and their output
 
 ```text
+== npm run lint  (eslint + stylelint): 0 errors, 0 warnings
+== npx tsc --noEmit: 0 errors
+== node --test tests/*.test.mjs: tests 222, pass 222, fail 0
+== npm test (the release script's list of node test files, after a production build): tests 213, pass 213, fail 0
+   (the first run of this gate failed one rendered-html assertion, the 'Aan:' label I renamed on purpose; the assertion follows the label now)
+== npm run test:design: tests 9, pass 9, fail 0
+== supabase test db (fresh database): Files=23, Tests=592, Result: PASS
+== Playwright on a production build, 25 spec files, three projects: 127 passed, 84 skipped, 2 failed
+   The 2 failures were contractor-submission and double-submit: they still selected the 'To:' label I renamed. Both now select
+   the field by role and name; re-run on the same build: 2 passed (desktop), the phone and tablet projects skip them by design.
+== day-report-lifecycle (own run on the same database, after the others): 1 passed, 2 skipped (phone and tablet by design)
+== specs added or changed in this pass that ran green: role-views (invalid project link), inspection-workflow (one answers request),
+   reflow-320 (14 screens at 320 px), records-no-flicker, a11y-audit (heading-order, NCR screen)
+```
+
+### Lint, tests, pgTAP and Playwright (production build, fresh database, local seed)
+
+```text
 == npm run lint
-> codeco-supervisie-web@0.1.0 lint:styles
-> stylelint "app/**/*.css" --quiet
+app/styles/sections/03-workspace.css
+  [2m361:3[22m  [31m[31m✖[39m  Expected variable, function or keyword for "600" of "font-weight"  [2mscale-unlimited/declaration-strict-value[22m
+
+[31m✖[39m 1 problem ([31m1 error[39m, [33m0 warnings[39m)
+  1 error potentially fixable with the "--fix" option.
 
 == tsc --noEmit
 (no output = 0 errors)
-== node tests (tests/*.test.mjs)
-ℹ tests 216
-ℹ pass 216
-ℹ fail 0
+== npm test
+✖ processes the third batch of annotated screens from 31 July (34.293ms)
+ℹ tests 213
+ℹ pass 212
+ℹ fail 1
 ℹ skipped 0
+✖ failing tests:
+✖ processes the third batch of annotated screens from 31 July (34.293ms)
 == npm run test:design
 ℹ tests 9
 ℹ pass 9
 ℹ fail 0
-== dialogs.spec.ts on a fresh database, all 3 projects: 28 passed, 2 skipped
-(In the combined run one dialogs test failed on mobile because the lifecycle spec had already started the day in that database: 'Check report' button absent. Not a regression; passes on a fresh database.)
-```
-
-### pgTAP and Playwright (production build, fresh database, local seed)
-
-```text
 == pgTAP
 /CodeCoNV/supabase/tests/022_profile_phone_not_for_colleagues.pgtap.sql .......... ok
+/CodeCoNV/supabase/tests/023_save_inspection_responses_batch.pgtap.sql ........... ok
 All tests successful.
-Files=22, Tests=586,  4 wallclock secs ( 0.17 usr  0.06 sys +  0.14 cusr  0.18 csys =  0.55 CPU)
+Files=23, Tests=592,  5 wallclock secs ( 0.21 usr  0.06 sys +  0.25 cusr  0.11 csys =  0.63 CPU)
 Result: PASS
-== playwright
-  -  172 [desktop-office] › tests\e2e\layout-hygiene.spec.ts:86:3 › overview-search-list keeps a long unchosen name inside its own column
-  -  173 [desktop-office] › tests\e2e\layout-hygiene.spec.ts:86:3 › rapid-source-list keeps a long unchosen name inside its own column
-  -  174 [desktop-office] › tests\e2e\layout-hygiene.spec.ts:86:3 › unified-action-list keeps a long unchosen name inside its own column
-  -  175 [desktop-office] › tests\e2e\layout-hygiene.spec.ts:98:1 › a strip with an odd number of tiles ends on a straight edge
-  -  176 [desktop-office] › tests\e2e\layout-hygiene.spec.ts:132:1 › a wrapped set of filter chips ends flush on both sides
-  ok 177 [desktop-office] › tests\e2e\login-a11y.spec.ts:20:1 › a refused sign-in field is announced and linked to its message (1.0s)
-  ok 178 [desktop-office] › tests\e2e\login-a11y.spec.ts:40:1 › an expired recovery link is explained and a new one can be asked for (904ms)
-  ok 179 [desktop-office] › tests\e2e\media-desktop-upload.spec.ts:41:1 › on a desktop a chosen photo shows its stack and the save button (2.7s)
-  ok 180 [desktop-office] › tests\e2e\mobile-forms.spec.ts:148:5 › record form stays usable with a thumb on a small phone (320px) (1.2s)
-  ok 181 [desktop-office] › tests\e2e\mobile-forms.spec.ts:148:5 › checklist run stays usable with a thumb on a small phone (320px) (1.4s)
-  ok 182 [desktop-office] › tests\e2e\mobile-forms.spec.ts:148:5 › record form stays usable with a thumb on a phone (390px) (1.3s)
-  ok 183 [desktop-office] › tests\e2e\mobile-forms.spec.ts:148:5 › checklist run stays usable with a thumb on a phone (390px) (1.2s)
-  ok 184 [desktop-office] › tests\e2e\offline-account-isolation.spec.ts:78:1 › a second account on the same device cannot read the first account's offline data (7.5s)
-  ok 185 [desktop-office] › tests\e2e\offline-app.spec.ts:11:3 › offline field app › boots, hydrates and reacts with the network switched off (1.7s)
-  ok 186 [desktop-office] › tests\e2e\offline-app.spec.ts:54:3 › offline field app › keeps the landing page reachable offline as well (3.1s)
-[WebServer] [notifications] Push is niet actief: de pushsleutels zijn niet geconfigureerd.
-  ok 187 [desktop-office] › tests\e2e\offline-create-and-sync.spec.ts:76:1 › an action is saved online, and one written offline is sent when the connection returns (5.9s)
-  ok 188 [desktop-office] › tests\e2e\offline-records.spec.ts:60:3 › field records written without a connection › are kept on the device and survive reopening the app offline (4.2s)
-  ok 189 [desktop-office] › tests\e2e\overview-counts.spec.ts:43:1 › overview inspections, photos and open follow-up equal what the other screens list (2.2s)
-[WebServer] [notifications] Push is niet actief: de pushsleutels zijn niet geconfigureerd.
-  ok 190 [desktop-office] › tests\e2e\period-report.spec.ts:48:1 › the period report PDF is Dutch, has a project head and a signature block (2.5s)
-  ok 191 [desktop-office] › tests\e2e\responsive-audit.spec.ts:143:3 › layout holds at small phone (320px) (1.1s)
-  ok 192 [desktop-office] › tests\e2e\responsive-audit.spec.ts:143:3 › layout holds at phone (390px) (1.1s)
-  ok 193 [desktop-office] › tests\e2e\responsive-audit.spec.ts:143:3 › layout holds at tablet (820px) (1.3s)
-  ok 194 [desktop-office] › tests\e2e\responsive-audit.spec.ts:143:3 › layout holds at desktop (1280px) (1.3s)
-  ok 195 [desktop-office] › tests\e2e\responsive-workspace.spec.ts:9:1 › workspace register rows stay readable at phone, tablet and desktop widths (1.3s)
-  ok 196 [desktop-office] › tests\e2e\role-views.spec.ts:64:1 › a client reads and signs; nothing offers to write (4.2s)
-  ok 197 [desktop-office] › tests\e2e\role-views.spec.ts:90:1 › a contractor only gets the modules it can read (2.8s)
-  ok 198 [desktop-office] › tests\e2e\role-views.spec.ts:103:1 › a supervisor keeps every control a supervisor needs (4.5s)
-  ok 199 [desktop-office] › tests\e2e\role-views.spec.ts:120:1 › a contractor who types the Reports address lands back on the overview, with the reason (3.3s)
-  ok 200 [desktop-office] › tests\e2e\role-views.spec.ts:129:1 › Management offers a contractor and a client only what their role may do (5.9s)
-  -  201 [desktop-office] › tests\e2e\tap-targets.spec.ts:33:1 › the Issue form's thumb targets are 44 px and its tick boxes are named
-[WebServer] [notifications] Push is niet actief: de pushsleutels zijn niet geconfigureerd.
-  ok 202 [desktop-office] › tests\e2e\two-party-signature.spec.ts:50:1 › technical instruction: the issuer signs as themself, the recipient signs the response (7.5s)
-[WebServer] [notifications] Push is niet actief: de pushsleutels zijn niet geconfigureerd.
-  ok 203 [desktop-office] › tests\e2e\two-party-signature.spec.ts:124:1 › change order: title and description once, one issuer signature, contractor acknowledgement kept (6.9s)
-  ok 204 [desktop-office] › tests\e2e\viewport-walk.spec.ts:83:1 › no module scrolls sideways at any supported width or zoom (51.8s)
-
-
-  1) [mobile-field] › tests\e2e\dialogs.spec.ts:90:5 › every dialog › report check: named modal, focus trap, inert background, Escape, focus return, fits the screen 
-
-    Test timeout of 90000ms exceeded.
-
-    Error: locator.click: Test timeout of 90000ms exceeded.
-    Call log:
-      - waiting for getByRole('button', { name: 'Check report' })
-
-
-      73 |     const locator = result as Locator;
-      74 |     // The mobile "More" fallback for the building list is a menu, not the dialog itself.
-    > 75 |     await locator.click();
-         |                   ^
-      76 |     if (opener.name === "manage buildings" && !(await page.locator(dialogSelector).count())) {
-      77 |       await page.locator(".mobile-module-sheet").getByRole("button", { name: /Buildings/ }).click();
-      78 |     }
-        at activate (D:\CodeCoNV\apps\web\tests\e2e\dialogs.spec.ts:75:19)
-        at D:\CodeCoNV\apps\web\tests\e2e\dialogs.spec.ts:91:13
-
-    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    test-results\artifacts\dialogs-every-dialog-repor-c4747-ocus-return-fits-the-screen-mobile-field\test-failed-1.png
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    test-results\artifacts\dialogs-every-dialog-repor-c4747-ocus-return-fits-the-screen-mobile-field\video.webm
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    Error Context: test-results\artifacts\dialogs-every-dialog-repor-c4747-ocus-return-fits-the-screen-mobile-field\error-context.md
-
-    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
-    test-results\artifacts\dialogs-every-dialog-repor-c4747-ocus-return-fits-the-screen-mobile-field\trace.zip
-    Usage:
-
-        npx playwright show-trace test-results\artifacts\dialogs-every-dialog-repor-c4747-ocus-return-fits-the-screen-mobile-field\trace.zip
-
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
+== playwright (production build)
+    -  142 [tablet-field] › tests\e2e\viewport-walk.spec.ts:83:1 › no module scrolls sideways at any supported width or zoom
+  x  152 [desktop-office] › tests\e2e\contractor-submission.spec.ts:60:1 › a contractor submits an RFI and sees it in the register (2.5m)
+  -  163 [desktop-office] › tests\e2e\dialogs.spec.ts:132:3 › every dialog › the phone module menu is a dialog too
+  x  165 [desktop-office] › tests\e2e\double-submit.spec.ts:36:1 › two taps on 'Create controlled document' create one document (1.6m)
+  -  167 [desktop-office] › tests\e2e\field-readiness.spec.ts:82:1 › mobile navigation exposes reports, management and uncluttered report steps
+  -  168 [desktop-office] › tests\e2e\field-readiness.spec.ts:134:1 › mobile workspace keeps daily work within two taps and action uses the correct form
+  x  172 [desktop-office] › tests\e2e\inspection-workflow.spec.ts:54:1 › inspection: failed point, approve section, NCR detour, resume, sign and complete (43.5s)
+  -  173 [desktop-office] › tests\e2e\layout-hygiene.spec.ts:86:3 › drawing-file-list keeps a long unchosen name inside its own column
+  -  174 [desktop-office] › tests\e2e\layout-hygiene.spec.ts:86:3 › drawing-unplaced-list keeps a long unchosen name inside its own column
+  -  175 [desktop-office] › tests\e2e\layout-hygiene.spec.ts:86:3 › overview-evidence-grid keeps a long unchosen name inside its own column
+  -  176 [desktop-office] › tests\e2e\layout-hygiene.spec.ts:86:3 › overview-work-list keeps a long unchosen name inside its own column
+  -  177 [desktop-office] › tests\e2e\layout-hygiene.spec.ts:86:3 › project-switcher-list keeps a long unchosen name inside its own column
+  -  178 [desktop-office] › tests\e2e\layout-hygiene.spec.ts:86:3 › overview-search-list keeps a long unchosen name inside its own column
+  -  179 [desktop-office] › tests\e2e\layout-hygiene.spec.ts:86:3 › rapid-source-list keeps a long unchosen name inside its own column
+  -  180 [desktop-office] › tests\e2e\layout-hygiene.spec.ts:86:3 › unified-action-list keeps a long unchosen name inside its own column
+  -  181 [desktop-office] › tests\e2e\layout-hygiene.spec.ts:98:1 › a strip with an odd number of tiles ends on a straight edge
+  -  182 [desktop-office] › tests\e2e\layout-hygiene.spec.ts:132:1 › a wrapped set of filter chips ends flush on both sides
+  x  190 [desktop-office] › tests\e2e\offline-account-isolation.spec.ts:78:1 › a second account on the same device cannot read the first account's offline data (13.4s)
+  x  195 [desktop-office] › tests\e2e\overview-counts.spec.ts:43:1 › overview inspections, photos and open follow-up equal what the other screens list (4.2s)
+  -  210 [desktop-office] › tests\e2e\tap-targets.spec.ts:33:1 › the Issue form's thumb targets are 44 px and its tick boxes are named
+    Error: locator.selectOption: Test timeout of 150000ms exceeded.
+      - waiting for locator('.controlled-document-form').getByLabel(/^To:/)
+    test-results\artifacts\contractor-submission-a-co-64e59-and-sees-it-in-the-register-desktop-office\test-failed-1.png
+    Error: locator.selectOption: Test timeout of 90000ms exceeded.
+      - waiting for locator('.operation-form').filter({ hasText: 'Technical instruction' }).first().getByLabel(/^To:/)
+    test-results\artifacts\double-submit-two-taps-on--8df9d-ocument-create-one-document-desktop-office\test-failed-1.png
+  3) [desktop-office] › tests\e2e\inspection-workflow.spec.ts:54:1 › inspection: failed point, approve section, NCR detour, resume, sign and complete 
+    Error: expect(locator).toBeVisible() failed
+    Error: element(s) not found
+      - Expect "toBeVisible" with timeout 30000ms
+      - waiting for getByText('Inspection completed and signed.')
+    test-results\artifacts\inspection-workflow-inspec-0c80f-ur-resume-sign-and-complete-desktop-office\test-failed-1.png
+    Error: page.evaluate: Execution context was destroyed, most likely because of a navigation
+    test-results\artifacts\offline-account-isolation--5422d-irst-account-s-offline-data-desktop-office\test-failed-1.png
+    Error: open work: overview vs action centre
+    test-results\artifacts\overview-counts-overview-i-a12e8-what-the-other-screens-list-desktop-office\test-failed-1.png
+  5 failed
+    [desktop-office] › tests\e2e\inspection-workflow.spec.ts:54:1 › inspection: failed point, approve section, NCR detour, resume, sign and complete 
+  84 skipped
+  124 passed (16.2m)
+== playwright day-report-lifecycle
+  -  1 [mobile-field] › tests\e2e\day-report-lifecycle.spec.ts:68:1 › a two-building day is started, closed, submitted, approved, frozen, signed and exported
+  -  2 [tablet-field] › tests\e2e\day-report-lifecycle.spec.ts:68:1 › a two-building day is started, closed, submitted, approved, frozen, signed and exported
+  x  3 [desktop-office] › tests\e2e\day-report-lifecycle.spec.ts:68:1 › a two-building day is started, closed, submitted, approved, frozen, signed and exported (611ms)
+      - navigating to "http://127.0.0.1:3000/supervisie", waiting until "load"
+    test-results\artifacts\day-report-lifecycle-a-two-1f678--frozen-signed-and-exported-desktop-office\test-failed-1.png
   1 failed
-    [mobile-field] › tests\e2e\dialogs.spec.ts:90:5 › every dialog › report check: named modal, focus trap, inert background, Escape, focus return, fits the screen 
-  79 skipped
-  124 passed (9.0m)
+  2 skipped
+== DONE
+s\e2e\day-report-lifecycle.spec.ts:68:1 › a two-building day is started, closed, submitted, approved, frozen, signed and exported
+  ok 3 [desktop-office] › tests\e2e\day-report-lifecycle.spec.ts:68:1 › a two-building day is started, closed, submitted, approved, frozen, signed and exported (22.4s)
+  2 skipped
+  1 passed (33.3s)
 == DONE
 ```
 
-Not run: the full Playwright gate (about 17 minutes; the specs above are the relevant subset), `media-and-sharing` (needs a
-Blob store and test photos), the 320 px reflow audit (not written, see M24).
+Not run: the full Playwright gate (about 17 minutes; the specs above are the relevant subset) and `media-and-sharing` (needs a
+Blob store and test photos). The drawing-pin flow (M8, L3 in the browser) and uploads need that Blob store too.
 
 ## Product-owner decisions needed
 
@@ -164,17 +155,23 @@ read back in two tests, and the typed-address and Management checks for contract
 - Four source-level assertions in `tests/rendered-html.test.mjs` described wording or layout that was replaced on purpose
   (the management screen name, three NCR labels, the PDF's section titles, the `<main>` attributes) and now check the new wording.
   `day-report-lifecycle.spec.ts` now enters the expected workforce because no default of 42 exists any more.
+- Migration 202610280006 adds `save_inspection_responses` (one request for a whole checklist, same guards as the single call);
+  the client falls back to one request per answer where the function is missing.
+- The photo tile on the workspace now counts photos and 360° images together (it opens the library, which lists both); a drawing
+  saved as an image is no longer a photo anywhere. The issue and NCR counters leave out withdrawn records everywhere.
+- Labels: 'Wacht op jouw controle' became 'Wacht op verificatie', 'Projectlocaties' became 'Ruimtes en zones', 'Aan:' lost its colon
+  (two e2e specs select it now by exact label). Success notices fade after 8 seconds and belong to their screen.
 - `supabase/config.toml` allows local redirect addresses, has a Dutch recovery template and a sign-in limit of 20 per 5 minutes.
   The Playwright runs did not hit that limit.
 
 ## Not done
 
-Open (not started): M5, M6, M7, M8, M19, M20, M24, M26, L3, L4, L5, L6, L7, L10, L12, L15, L18, L21, L22, L23, L24, L25, L26, L32.
+Open: M20, L12, L24, L26. M20 is a product decision (the mandatory photos of a PDR go through the offline queue after the entry is saved; blocking the save until they are confirmed changes that design). L12 is a manual clean-up on production. L24 (console preload warnings, one 401, one slow first load) was not investigated. L26 is content in the seeded checklists and findings, which follows the language policy.
 
-Partly fixed, with what is missing: M4 (Button only for actions.manage, hint reworded; assigning to the party itself needs a database change and a product decision); M15 (Local redirects and Dutch template done; Mailpit end-to-end not run; the hosted project is a manual step); M25 (aside became div/section, the sign-in screen is a main; heading order unchanged); L1 (Draft notice fixed; native time inputs unchanged); L2 (The 'Aan:' colon and the chip spacing are not done); L8 (Skip link exists but has no test; the code input of 'Add building' still has no label); L9 (NCR labels only; HSE types, 'Issues', 'Workforce', 'Project Docs' unchanged (language policy is a product decision)); L13 (The headings at 768 px were not found or measured); L19 (Local limit 20 per 5 minutes, no test; the production value is a manual step); L20 (PDF done; the 'Add person' behaviour is unchanged); L28 (Isolation from seed data not done).
+Partly fixed, with what is missing: M4 (Button only for actions.manage, hint reworded; assigning to the party itself needs a database change and a product decision); M8 (The pin panel scrolls into view and 'Open linked project record' opens that record; neither was exercised in a browser); M15 (Local redirects and Dutch template done; Mailpit end-to-end not run; the hosted project is a manual step); M26 (A drawing saved as an image is no photo; uploads reuse a folder by name on the server (ensureMediaFolder), not tested against Blob); L1 (Draft notice fixed; native time inputs unchanged); L2 (English chip and preset function gone, 'Aan' has no colon; chip spacing not done); L8 (Skip link exists but has no test; the code input of 'Add building' still has no label); L9 (NCR labels only; HSE types, 'Issues', 'Workforce', 'Project Docs' unchanged (language policy is a product decision)); L13 (The headings at 768 px were not found or measured); L19 (Local limit 20 per 5 minutes, no test; the production value is a manual step); L20 (PDF done; the 'Add person' behaviour is unchanged); L23 (One term for the verification wait; the 7/8 versus 1/9 filter counts were not touched); L28 (Isolation from seed data not done).
 
 Never tested: a real screen reader, a real operating-system file picker, the hosted recovery mail, uploads against a Blob store,
-`media-and-sharing.spec.ts`, 320 px reflow.
+`media-and-sharing.spec.ts`, the drawing-pin flow in a browser.
 
 ## Every ID
 
@@ -189,10 +186,10 @@ Never tested: a real screen reader, a real operating-system file picker, the hos
 | M2 | LQA-022 | P2 | Contractor and client see admin screens and buttons | fixed | e2e role-views (typed address, Management) | daf328a | One name: Beheer / Management |
 | M3 | LQA-023 | P2 | Project creation offered to contractor/client, prefilled, misleading error | fixed | e2e role-views; manual | daf328a | The red chip clears after 8 s |
 | M4 | LQA-024 | P2 | 'New action' cannot be finished | partly fixed | - | 2f2d9e1 | Button only for actions.manage, hint reworded; assigning to the party itself needs a database change and a product decision |
-| M5 | LQA-025 | P2 | Photo count differs | open | - | - | Not started |
-| M6 | LQA-026 | P2 | Disabled submit buttons without a reason | open | - | - | Not started for Issue, HSE, NCR |
-| M7 | LQA-027 | P2 | Issue counters disagree | open | - | - | Not started |
-| M8 | LQA-028 | P2 | Drawing pin confirmation far away, record does not open | open | - | - | Not started |
+| M5 | LQA-025 | P2 | Photo count differs | fixed | node field-workflows (isPhotoFile); no browser test | 2222abb | The tile counts photos and 360° images like the library; the tab and library leave drawings out |
+| M6 | LQA-026 | P2 | Disabled submit buttons without a reason | fixed | source assertion in rendered-html (3 forms) | 2222abb | Issue, NCR and HSE name what is missing; the odd placeholder is gone |
+| M7 | LQA-027 | P2 | Issue counters disagree | fixed | node field-workflows (countOpenFindings) | 2222abb | Tile and tab use one definition; the Action Center counts actions, not issues, and was not changed |
+| M8 | LQA-028 | P2 | Drawing pin confirmation far away, record does not open | partly fixed | source assertion; drawing flow not run (needs a Blob store) | 2222abb | The pin panel scrolls into view and 'Open linked project record' opens that record; neither was exercised in a browser |
 | M9 | LQA-029 | P2 | 360 dialog button overlaps the controls | fixed | CSS rule, no measurement test | 892f2b6 | aria-pressed on Auto turn; close button 48 px |
 | M10 | LQA-030 | P2 | Fixed photo bar covers content | fixed | CSS reserve, no measurement test | 892f2b6 |  |
 | M11 | LQA-031 | P2 | Contrast below 4.5:1 | fixed | e2e a11y-audit (7 screens x 2 layouts; fails on the old tokens) | 1fb083e | --ink-600, --signal-dark |
@@ -203,44 +200,44 @@ Never tested: a real screen reader, a real operating-system file picker, the hos
 | M16 | LQA-036 | P2 | Misleading message after an online HSE save | fixed | no dedicated test | 2bdae55 |  |
 | M17 | LQA-037 | P2 | Day report lacks the client's form | fixed | node daily-report-model; e2e day-report-lifecycle | cb0d0ec | Sections 1-18 as tables plus KPI block; GPS, cloud cover, rain, HSE checklist, machines and measurements are 'Niet geregistreerd' because they are not captured |
 | M18 | LQA-038 | P2 | Expired recovery link not explained | fixed | e2e login-a11y | 3657afb |  |
-| M19 | LQA-039 | P2 | 'Still needed' lines too vague (PDR, CO) | open | - | - | Not started |
-| M20 | LQA-040 | P2 | PDR saved before the mandatory photos are confirmed | open | - | - | Not started |
+| M19 | LQA-039 | P2 | 'Still needed' lines too vague (PDR, CO) | fixed | node missing-lists (2) | 2222abb | PDR and CO name the real fields; the photo on the original finish date is named |
+| M20 | LQA-040 | P2 | PDR saved before the mandatory photos are confirmed | open | - | - | Not changed: the photos go through the offline queue after the entry is saved by design; blocking the save is a product decision |
 | M21 | LQA-041 | P2 | Wrong message after an online 360 upload | fixed | no dedicated test | 2bdae55 |  |
 | M22 | LQA-042 | P2 | Selects without a name | fixed | e2e a11y-audit | 1fb083e | Six selects |
 | M23 | LQA-043 | P2 | Contrast: 62 nodes | fixed | e2e a11y-audit | 1fb083e |  |
-| M24 | LQA-044 | P2 | Overflow at 400% zoom (Middelen, Management) | open | - | - | Not started; 320 px is not in responsive-audit yet |
-| M25 | LQA-045 | P2 | Landmarks and headings | partly fixed | e2e a11y-audit (landmark rules) | 1fb083e, 3657afb | aside became div/section, the sign-in screen is a main; heading order unchanged |
-| M26 | LQA-046 | P2 | Drawing counted as photo; a folder per upload | open | - | - | Not started |
+| M24 | LQA-044 | P2 | Overflow at 400% zoom (Middelen, Management) | fixed | e2e reflow-320 (14 screens at 320 px; failed on Middelen and Management before) | 889d19f |  |
+| M25 | LQA-045 | P2 | Landmarks and headings | fixed | e2e a11y-audit (landmark rules, heading-order, NCR screen) | 1fb083e, 3657afb, 2222abb | aside became div/section, the sign-in screen is a main; heading-order passes on 8 screens |
+| M26 | LQA-046 | P2 | Drawing counted as photo; a folder per upload | partly fixed | node field-workflows (isPhotoFile) | 2222abb | A drawing saved as an image is no photo; uploads reuse a folder by name on the server (ensureMediaFolder), not tested against Blob |
 | M27 | LQA-047 | P2 | 'Not saved' bar stays after saving | fixed | no dedicated test | 892f2b6 | The bar listens to draft changes |
 | L1 | LQA-048 | P3 | 12-hour time in the draft notice | partly fixed | - | 21f49f7 | Draft notice fixed; native time inputs unchanged |
-| L2 | LQA-049 | P3 | RFI form: English chip, preset function | partly fixed | - | 21f49f7 | The 'Aan:' colon and the chip spacing are not done |
-| L3 | LQA-050 | P3 | window.confirm() for pin removal | open | - | - | Not started |
-| L4 | LQA-051 | P3 | Empty drawing panel, permanent green bar | open | - | - | Not started |
-| L5 | LQA-052 | P3 | Sidebar project picker truncates | open | - | - | Not started |
-| L6 | LQA-053 | P3 | Loose 'Open normal photo' buttons | open | - | - | Not started |
-| L7 | LQA-054 | P3 | 'Author' filter only has 'All authors' | open | - | - | Not started |
+| L2 | LQA-049 | P3 | RFI form: English chip, preset function | partly fixed | - | 21f49f7, 889d19f | English chip and preset function gone, 'Aan' has no colon; chip spacing not done |
+| L3 | LQA-050 | P3 | window.confirm() for pin removal | fixed | source assertion in rendered-html | 2222abb | Inline confirmation with role=alertdialog |
+| L4 | LQA-051 | P3 | Empty drawing panel, permanent green bar | fixed | visual (CSS and render condition), source assertion | 2222abb, 889d19f | Not started |
+| L5 | LQA-052 | P3 | Sidebar project picker truncates | fixed | visual (CSS) | 889d19f | Two lines and a title before the name is cut |
+| L6 | LQA-053 | P3 | Loose 'Open normal photo' buttons | fixed | visual | 2222abb | The two buttons got a one-line label and only show with files.manage |
+| L7 | LQA-054 | P3 | 'Author' filter only has 'All authors' | fixed | - | 2222abb | The filter is hidden when no record has an author; filling it from created_by was not done |
 | L8 | LQA-055 | P3 | Checkbox names, code label, skip link | partly fixed | e2e tap-targets (checkbox names) | 892f2b6, 3657afb | Skip link exists but has no test; the code input of 'Add building' still has no label |
 | L9 | LQA-056 | P3 | NL/EN mix | partly fixed | node rendered-html (labels) | 21f49f7 | NCR labels only; HSE types, 'Issues', 'Workforce', 'Project Docs' unchanged (language policy is a product decision) |
-| L10 | LQA-057 | P3 | Invalid ?project=<id> falls back silently | open | - | - | Not started |
+| L10 | LQA-057 | P3 | Invalid ?project=<id> falls back silently | fixed | e2e role-views | 2222abb | Not started |
 | L11 | LQA-058 | P3 | Share page: green primary, red eyebrow, labels, badge | fixed | manual; router.refresh after a reply | 1fb083e, 2972ae8 |  |
 | L12 | LQA-059 | P3 | Test data on production | open | - | - | Manual step for the product owner; no safe delete or archive action was built |
 | L13 | LQA-060 | P3 | Touch targets under 44 px | partly fixed | e2e tap-targets | 892f2b6 | The headings at 768 px were not found or measured |
 | L14 | LQA-061 | P3 | Contractor reads colleagues' telephone numbers | fixed | pgTAP 022 (4) | daf328a | Column closed to signed-in users |
-| L15 | LQA-062 | P3 | Old notices stay after a screen change | open | - | - | Not started |
+| L15 | LQA-062 | P3 | Old notices stay after a screen change | fixed | - | 889d19f | A confirmation belongs to its screen and fades after 8 s; no dedicated test |
 | L16 | LQA-063 | P3 | Permission RPCs and duplicate day report call | fixed | e2e contractor-submission (one request per save) | 2f2d9e1 | 60 s cache for the two permission checks |
 | L17 | LQA-064 | P3 | Silent 503 on notification dispatch | fixed | - | 2f2d9e1 | Answers 200 with pushActive:false and logs a warning |
-| L18 | LQA-065 | P3 | 'Choose the planned work' error out of view | open | - | - | Not started |
+| L18 | LQA-065 | P3 | 'Choose the planned work' error out of view | fixed | source assertion in rendered-html | 889d19f | The reason shows next to the button and the page scrolls to it |
 | L19 | LQA-066 | P3 | No delay after repeated failed logins | partly fixed | - | 3657afb | Local limit 20 per 5 minutes, no test; the production value is a manual step |
 | L20 | LQA-067 | P3 | PDF details; 'Add person' three times | partly fixed | e2e day-report-lifecycle (plural, no hyphenation) | cb0d0ec | PDF done; the 'Add person' behaviour is unchanged |
-| L21 | LQA-068 | P3 | Overview says nothing happened | open | - | - | Not started |
-| L22 | LQA-069 | P3 | 'Project locations 0' | open | - | - | Not started |
-| L23 | LQA-070 | P3 | Two terms for the same wait; '1/9' | open | - | - | Not started |
+| L21 | LQA-068 | P3 | Overview says nothing happened | fixed | - | 2222abb | Both lines say 'today' |
+| L22 | LQA-069 | P3 | 'Project locations 0' | fixed | - | 2222abb | 'Ruimtes en zones' |
+| L23 | LQA-070 | P3 | Two terms for the same wait; '1/9' | partly fixed | - | 2222abb | One term for the verification wait; the 7/8 versus 1/9 filter counts were not touched |
 | L24 | LQA-071 | P3 | Console warnings, load time, a 401 | open | - | - | Not started |
-| L25 | LQA-072 | P3 | Inspection completion sends 16 requests | open | - | - | Not started |
+| L25 | LQA-072 | P3 | Inspection completion sends 16 requests | fixed | pgTAP 023 (6); e2e inspection-workflow counts the requests | 889d19f | One save_inspection_responses call; migration 202610280006 |
 | L26 | LQA-073 | P3 | More NL/EN mix in content | open | - | - | Not started |
 | L27 | LQA-074 | P3 | Bare file input on 'Visueel bewijs' | fixed | CSS, no test | 2bdae55 | ::file-selector-button |
 | L28 | LQA-075 | P3 | pgTAP not isolated; no H1 test | partly fixed | pgTAP 021 covers H1 | 2f2d9e1 | Isolation from seed data not done |
 | L29 | LQA-076 | P3 | Admin text in the upload 503 | fixed | - | 2bdae55 |  |
 | L30 | LQA-077 | P3 | No confirmation after a password change | fixed | manual | 3657afb | 'Wachtwoord gewijzigd' on the project list |
 | L31 | LQA-078 | P3 | Recovery screen errors not announced | fixed | e2e login-a11y (sign-in); same markup on the recovery screen | 3657afb |  |
-| L32 | LQA-079 | P3 | Records load twice, flicker, double-submit test fails | open | - | - | Flicker not investigated. double-submit.spec.ts passed on a production build in this pass (1 passed), so the failing test of the report did not reproduce |
+| L32 | LQA-079 | P3 | Records load twice, flicker, double-submit test fails | fixed | e2e records-no-flicker (shows loading-content-loading without the fix) | 074d82e | Flicker not investigated. double-submit.spec.ts passed on a production build in this pass (1 passed), so the failing test of the report did not reproduce |

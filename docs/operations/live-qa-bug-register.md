@@ -194,10 +194,10 @@ was not done are in `qa-fix-verification-2026-10-28.md`.
 | LQA-022 | M2 | P2 | Contractor and client see admin screens and buttons — One name: Beheer / Management | fixed | e2e role-views (typed address, Management) | daf328a |
 | LQA-023 | M3 | P2 | Project creation offered to contractor/client, prefilled, misleading error — The red chip clears after 8 s | fixed | e2e role-views; manual | daf328a |
 | LQA-024 | M4 | P2 | 'New action' cannot be finished — Button only for actions.manage, hint reworded; assigning to the party itself needs a database change and a product decision | partly fixed | - | 2f2d9e1 |
-| LQA-025 | M5 | P2 | Photo count differs — Not started | open | - | - |
-| LQA-026 | M6 | P2 | Disabled submit buttons without a reason — Not started for Issue, HSE, NCR | open | - | - |
-| LQA-027 | M7 | P2 | Issue counters disagree — Not started | open | - | - |
-| LQA-028 | M8 | P2 | Drawing pin confirmation far away, record does not open — Not started | open | - | - |
+| LQA-025 | M5 | P2 | Photo count differs — The tile counts photos and 360° images like the library; the tab and library leave drawings out | fixed | node field-workflows (isPhotoFile); no browser test | 2222abb |
+| LQA-026 | M6 | P2 | Disabled submit buttons without a reason — Issue, NCR and HSE name what is missing; the odd placeholder is gone | fixed | source assertion in rendered-html (3 forms) | 2222abb |
+| LQA-027 | M7 | P2 | Issue counters disagree — Tile and tab use one definition; the Action Center counts actions, not issues, and was not changed | fixed | node field-workflows (countOpenFindings) | 2222abb |
+| LQA-028 | M8 | P2 | Drawing pin confirmation far away, record does not open — The pin panel scrolls into view and 'Open linked project record' opens that record; neither was exercised in a browser | partly fixed | source assertion; drawing flow not run (needs a Blob store) | 2222abb |
 | LQA-029 | M9 | P2 | 360 dialog button overlaps the controls — aria-pressed on Auto turn; close button 48 px | fixed | CSS rule, no measurement test | 892f2b6 |
 | LQA-030 | M10 | P2 | Fixed photo bar covers content | fixed | CSS reserve, no measurement test | 892f2b6 |
 | LQA-031 | M11 | P2 | Contrast below 4.5:1 — --ink-600, --signal-dark | fixed | e2e a11y-audit (7 screens x 2 layouts; fails on the old tokens) | 1fb083e |
@@ -208,45 +208,45 @@ was not done are in `qa-fix-verification-2026-10-28.md`.
 | LQA-036 | M16 | P2 | Misleading message after an online HSE save | fixed | no dedicated test | 2bdae55 |
 | LQA-037 | M17 | P2 | Day report lacks the client's form — Sections 1-18 as tables plus KPI block; GPS, cloud cover, rain, HSE checklist, machines and measurements are 'Niet geregistreerd' because they are not captured | fixed | node daily-report-model; e2e day-report-lifecycle | cb0d0ec |
 | LQA-038 | M18 | P2 | Expired recovery link not explained | fixed | e2e login-a11y | 3657afb |
-| LQA-039 | M19 | P2 | 'Still needed' lines too vague (PDR, CO) — Not started | open | - | - |
-| LQA-040 | M20 | P2 | PDR saved before the mandatory photos are confirmed — Not started | open | - | - |
+| LQA-039 | M19 | P2 | 'Still needed' lines too vague (PDR, CO) — PDR and CO name the real fields; the photo on the original finish date is named | fixed | node missing-lists (2) | 2222abb |
+| LQA-040 | M20 | P2 | PDR saved before the mandatory photos are confirmed — Not changed: the photos go through the offline queue after the entry is saved by design; blocking the save is a product decision | open | - | - |
 | LQA-041 | M21 | P2 | Wrong message after an online 360 upload | fixed | no dedicated test | 2bdae55 |
 | LQA-042 | M22 | P2 | Selects without a name — Six selects | fixed | e2e a11y-audit | 1fb083e |
 | LQA-043 | M23 | P2 | Contrast: 62 nodes | fixed | e2e a11y-audit | 1fb083e |
-| LQA-044 | M24 | P2 | Overflow at 400% zoom (Middelen, Management) — Not started; 320 px is not in responsive-audit yet | open | - | - |
-| LQA-045 | M25 | P2 | Landmarks and headings — aside became div/section, the sign-in screen is a main; heading order unchanged | partly fixed | e2e a11y-audit (landmark rules) | 1fb083e, 3657afb |
-| LQA-046 | M26 | P2 | Drawing counted as photo; a folder per upload — Not started | open | - | - |
+| LQA-044 | M24 | P2 | Overflow at 400% zoom (Middelen, Management) | fixed | e2e reflow-320 (14 screens at 320 px; failed on Middelen and Management before) | 889d19f |
+| LQA-045 | M25 | P2 | Landmarks and headings — aside became div/section, the sign-in screen is a main; heading-order passes on 8 screens | fixed | e2e a11y-audit (landmark rules, heading-order, NCR screen) | 1fb083e, 3657afb, 2222abb |
+| LQA-046 | M26 | P2 | Drawing counted as photo; a folder per upload — A drawing saved as an image is no photo; uploads reuse a folder by name on the server (ensureMediaFolder), not tested against Blob | partly fixed | node field-workflows (isPhotoFile) | 2222abb |
 | LQA-047 | M27 | P2 | 'Not saved' bar stays after saving — The bar listens to draft changes | fixed | no dedicated test | 892f2b6 |
 | LQA-048 | L1 | P3 | 12-hour time in the draft notice — Draft notice fixed; native time inputs unchanged | partly fixed | - | 21f49f7 |
-| LQA-049 | L2 | P3 | RFI form: English chip, preset function — The 'Aan:' colon and the chip spacing are not done | partly fixed | - | 21f49f7 |
-| LQA-050 | L3 | P3 | window.confirm() for pin removal — Not started | open | - | - |
-| LQA-051 | L4 | P3 | Empty drawing panel, permanent green bar — Not started | open | - | - |
-| LQA-052 | L5 | P3 | Sidebar project picker truncates — Not started | open | - | - |
-| LQA-053 | L6 | P3 | Loose 'Open normal photo' buttons — Not started | open | - | - |
-| LQA-054 | L7 | P3 | 'Author' filter only has 'All authors' — Not started | open | - | - |
+| LQA-049 | L2 | P3 | RFI form: English chip, preset function — English chip and preset function gone, 'Aan' has no colon; chip spacing not done | partly fixed | - | 21f49f7, 889d19f |
+| LQA-050 | L3 | P3 | window.confirm() for pin removal — Inline confirmation with role=alertdialog | fixed | source assertion in rendered-html | 2222abb |
+| LQA-051 | L4 | P3 | Empty drawing panel, permanent green bar — Not started | fixed | visual (CSS and render condition), source assertion | 2222abb, 889d19f |
+| LQA-052 | L5 | P3 | Sidebar project picker truncates — Two lines and a title before the name is cut | fixed | visual (CSS) | 889d19f |
+| LQA-053 | L6 | P3 | Loose 'Open normal photo' buttons — The two buttons got a one-line label and only show with files.manage | fixed | visual | 2222abb |
+| LQA-054 | L7 | P3 | 'Author' filter only has 'All authors' — The filter is hidden when no record has an author; filling it from created_by was not done | fixed | - | 2222abb |
 | LQA-055 | L8 | P3 | Checkbox names, code label, skip link — Skip link exists but has no test; the code input of 'Add building' still has no label | partly fixed | e2e tap-targets (checkbox names) | 892f2b6, 3657afb |
 | LQA-056 | L9 | P3 | NL/EN mix — NCR labels only; HSE types, 'Issues', 'Workforce', 'Project Docs' unchanged (language policy is a product decision) | partly fixed | node rendered-html (labels) | 21f49f7 |
-| LQA-057 | L10 | P3 | Invalid ?project=<id> falls back silently — Not started | open | - | - |
+| LQA-057 | L10 | P3 | Invalid ?project=<id> falls back silently — Not started | fixed | e2e role-views | 2222abb |
 | LQA-058 | L11 | P3 | Share page: green primary, red eyebrow, labels, badge | fixed | manual; router.refresh after a reply | 1fb083e, 2972ae8 |
 | LQA-059 | L12 | P3 | Test data on production — Manual step for the product owner; no safe delete or archive action was built | open | - | - |
 | LQA-060 | L13 | P3 | Touch targets under 44 px — The headings at 768 px were not found or measured | partly fixed | e2e tap-targets | 892f2b6 |
 | LQA-061 | L14 | P3 | Contractor reads colleagues' telephone numbers — Column closed to signed-in users | fixed | pgTAP 022 (4) | daf328a |
-| LQA-062 | L15 | P3 | Old notices stay after a screen change — Not started | open | - | - |
+| LQA-062 | L15 | P3 | Old notices stay after a screen change — A confirmation belongs to its screen and fades after 8 s; no dedicated test | fixed | - | 889d19f |
 | LQA-063 | L16 | P3 | Permission RPCs and duplicate day report call — 60 s cache for the two permission checks | fixed | e2e contractor-submission (one request per save) | 2f2d9e1 |
 | LQA-064 | L17 | P3 | Silent 503 on notification dispatch — Answers 200 with pushActive:false and logs a warning | fixed | - | 2f2d9e1 |
-| LQA-065 | L18 | P3 | 'Choose the planned work' error out of view — Not started | open | - | - |
+| LQA-065 | L18 | P3 | 'Choose the planned work' error out of view — The reason shows next to the button and the page scrolls to it | fixed | source assertion in rendered-html | 889d19f |
 | LQA-066 | L19 | P3 | No delay after repeated failed logins — Local limit 20 per 5 minutes, no test; the production value is a manual step | partly fixed | - | 3657afb |
 | LQA-067 | L20 | P3 | PDF details; 'Add person' three times — PDF done; the 'Add person' behaviour is unchanged | partly fixed | e2e day-report-lifecycle (plural, no hyphenation) | cb0d0ec |
-| LQA-068 | L21 | P3 | Overview says nothing happened — Not started | open | - | - |
-| LQA-069 | L22 | P3 | 'Project locations 0' — Not started | open | - | - |
-| LQA-070 | L23 | P3 | Two terms for the same wait; '1/9' — Not started | open | - | - |
+| LQA-068 | L21 | P3 | Overview says nothing happened — Both lines say 'today' | fixed | - | 2222abb |
+| LQA-069 | L22 | P3 | 'Project locations 0' — 'Ruimtes en zones' | fixed | - | 2222abb |
+| LQA-070 | L23 | P3 | Two terms for the same wait; '1/9' — One term for the verification wait; the 7/8 versus 1/9 filter counts were not touched | partly fixed | - | 2222abb |
 | LQA-071 | L24 | P3 | Console warnings, load time, a 401 — Not started | open | - | - |
-| LQA-072 | L25 | P3 | Inspection completion sends 16 requests — Not started | open | - | - |
+| LQA-072 | L25 | P3 | Inspection completion sends 16 requests — One save_inspection_responses call; migration 202610280006 | fixed | pgTAP 023 (6); e2e inspection-workflow counts the requests | 889d19f |
 | LQA-073 | L26 | P3 | More NL/EN mix in content — Not started | open | - | - |
 | LQA-074 | L27 | P3 | Bare file input on 'Visueel bewijs' — ::file-selector-button | fixed | CSS, no test | 2bdae55 |
 | LQA-075 | L28 | P3 | pgTAP not isolated; no H1 test — Isolation from seed data not done | partly fixed | pgTAP 021 covers H1 | 2f2d9e1 |
 | LQA-076 | L29 | P3 | Admin text in the upload 503 | fixed | - | 2bdae55 |
 | LQA-077 | L30 | P3 | No confirmation after a password change — 'Wachtwoord gewijzigd' on the project list | fixed | manual | 3657afb |
 | LQA-078 | L31 | P3 | Recovery screen errors not announced | fixed | e2e login-a11y (sign-in); same markup on the recovery screen | 3657afb |
-| LQA-079 | L32 | P3 | Records load twice, flicker, double-submit test fails — Flicker not investigated. double-submit.spec.ts passed on a production build in this pass (1 passed), so the failing test of the report did not reproduce | open | - | - |
+| LQA-079 | L32 | P3 | Records load twice, flicker, double-submit test fails — Flicker not investigated. double-submit.spec.ts passed on a production build in this pass (1 passed), so the failing test of the report did not reproduce | fixed | e2e records-no-flicker (shows loading-content-loading without the fix) | 074d82e |
 

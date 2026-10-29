@@ -1151,7 +1151,7 @@ test("processes the third batch of annotated screens from 31 July", async () => 
   assert.doesNotMatch(workspace, /Requested to \/ recipient name/);
   assert.doesNotMatch(workspace, /Related RFI \/ NCR \/ drawing/);
   assert.doesNotMatch(workspace, /Reason for instruction|Reden voor instructie/);
-  assert.match(workspace, /text\("To:", "Aan:"\)/);
+  assert.match(workspace, /text\("To", "Aan"\)/);
   assert.match(controlledDocuments, /reason: draft\.reason\.trim\(\) \|\| draft\.details\.trim\(\)/);
   assert.match(controlledDocuments, /required_action: draft\.requiredAction \|\| "proceed"/);
   assert.match(controlledDocuments, /signedBy: string/);

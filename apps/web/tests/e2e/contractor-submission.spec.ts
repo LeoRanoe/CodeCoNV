@@ -73,7 +73,7 @@ test("a contractor submits an RFI and sees it in the register", async ({ page },
   const form = page.locator(".controlled-document-form");
   await form.locator(".controlled-document-primary input").fill(title);
   await form.locator(".controlled-document-primary textarea").fill("Which anchor type applies in the stair core?");
-  await form.getByLabel(/^To:/).selectOption({ index: 1 });
+  await form.getByRole("combobox", { name: "To", exact: true }).selectOption({ index: 1 });
   await form.getByLabel("Submitted by · name on the form").fill("P. Aannemer");
   await form.getByLabel("Position").fill("Site manager");
   await form.locator(".signature-field").getByRole("button", { name: "Sign now" }).click();
