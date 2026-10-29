@@ -89,7 +89,6 @@ function MenuNav({ label, items, className }: { label: string; items: SectionNav
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listId = useId();
   const current = items.find((item) => item.selected) ?? items[0];
-  const position = items.findIndex((item) => item.id === current?.id) + 1;
 
   const close = useCallback((restoreFocus = true) => {
     setOpen(false);
@@ -139,7 +138,6 @@ function MenuNav({ label, items, className }: { label: string; items: SectionNav
           <strong>{current.label}</strong>
         </span>
         <Count value={current.count} />
-        <span className="section-nav__position" aria-hidden="true">{position}/{items.length}</span>
         <ChevronDown className="section-nav__chevron" size={18} aria-hidden="true" />
       </button>
       {open ? <div className="section-nav__scrim" aria-hidden="true" /> : null}

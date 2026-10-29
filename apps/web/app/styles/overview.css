@@ -113,3 +113,8 @@
   .overview-metrics .ui-stat:nth-child(even) { border-inline-start: 1px solid var(--border); }
   .overview-metrics .ui-stat:nth-last-child(-n+2) { border-block-end: 0; }
 }
+
+/* Tablet: two columns, so the cell on the left of each row starts flush like the first one. */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .overview-metrics .ui-stat:nth-child(odd) { border-inline-start: 0; padding-inline-start: 0; }
+}

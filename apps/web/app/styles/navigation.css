@@ -105,7 +105,6 @@
 .section-nav__current { display: grid; flex: 1 1 auto; min-width: 0; }
 .section-nav__current small { color: var(--muted); font-size: var(--text-sm); line-height: 1.2; }
 .section-nav__current strong { font-size: var(--text-md); line-height: 1.25; overflow-wrap: anywhere; }
-.section-nav__position { color: var(--muted); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 .section-nav__chevron { color: var(--ink-700); flex: none; transition: transform 160ms ease; }
 .section-nav--menu.is-open .section-nav__chevron { transform: rotate(180deg); }
 .section-nav__icon { color: var(--ink-800); display: inline-flex; flex: none; }

@@ -96,3 +96,27 @@ test("a number on a tile or a tab is the number of rows it leaves", async ({ pag
   expect(await countOf(allWorkTab), "tab 'All work' within the state 'All records'").toBe(all);
   expect(all).toBeGreaterThanOrEqual(open);
 });
+
+/**
+ * QA L23, seen in the walkthrough. A stale rule painted the label of every tab, and its count,
+ * in the red of a late record, and the type menu added "1/9" next to the count. Navigation
+ * keeps the text colour; red stays with record state.
+ */
+test("the Action center tabs are not coloured like a late record and show no 'n/9' next to a count", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-office", "The widths are set by the test itself.");
+  await page.setViewportSize({ width: 1024, height: 800 });
+  await signIn(page);
+  await openActions(page);
+  const labels = page.locator(".action-center-views .section-nav__label");
+  await expect(labels).toHaveCount(3);
+  const colours = await labels.evaluateAll((elements) => elements.map((element) => {
+    const style = getComputedStyle(element);
+    return { colour: style.color, background: style.backgroundColor };
+  }));
+  for (const { colour, background } of colours) {
+    const [red, green, blue] = colour.match(/\d+/g)!.map(Number);
+    expect(red - Math.max(green, blue), `label colour ${colour} is not red`).toBeLessThan(40);
+    expect(background, "the label has no pill of its own").toBe("rgba(0, 0, 0, 0)");
+  }
+  await expect(page.locator(".section-nav__position")).toHaveCount(0);
+});
