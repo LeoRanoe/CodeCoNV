@@ -1124,3 +1124,14 @@
 
 /* Above the bottom bar, not on it: this button was covering the actions of the last card
    in every list on a phone. */
+
+/* Thumb targets up to a tablet: the small steppers and remove buttons of the registers, the shift
+   inputs and the sync chip reach 44 px; the 33 x 35 stepper and the 38 px remove button did not. */
+@media (max-width: 1024px) {
+  .workforce-row .counter-control { grid-template-columns: 44px 44px 44px; }
+  .workforce-row .counter-control button { height: 44px; width: 44px; }
+  .workforce-row .workforce-row-remove { height: 44px; width: 44px; }
+  .workforce-shift input { min-height: 44px; }
+  .record-sync-chip { min-height: 44px; }
+  .register-line .register-line-remove { height: 44px; width: 44px; }
+}
