@@ -418,6 +418,7 @@ export function CodecoSupervisionApp() {
   const [projectTabPreset, setProjectTabPreset] = useState<{ registerType?: string; hseEventType?: string; dailyWorkView?: "works_ongoing" | "works_completed" | "delays" | "day" } | undefined>(undefined);
   const quickCameraInputRef = useRef<HTMLInputElement>(null);
   const dailyBackupCheckRef = useRef("");
+  const dailyBackupFailedAtRef = useRef(0);
   const [pendingQuickPhotos, setPendingQuickPhotos] = useState<File[]>([]);
   /** Day-log photos already in the upload queue, so retrying a save never files them twice. */
   const queuedDailyLogPhotos = useRef(new Set<string>());
@@ -479,11 +480,15 @@ export function CodecoSupervisionApp() {
     if (!supabase || !session || !activeOrganizationId || !canManageMembers || !isOnline) return;
     const checkKey = `${activeOrganizationId}:${reportDate}`;
     if (dailyBackupCheckRef.current === checkKey) return;
+    // A failed check is tried again later, not on every change of session or connection; each
+    // refusal showed up as an unexplained error in the console.
+    if (Date.now() - dailyBackupFailedAtRef.current < 10 * 60 * 1000) return;
     dailyBackupCheckRef.current = checkKey;
     void ensureDailyBackup(supabase, activeOrganizationId)
       .then(() => queryClient.invalidateQueries({ queryKey: ["project-operations"] }))
       .catch(() => {
         dailyBackupCheckRef.current = "";
+        dailyBackupFailedAtRef.current = Date.now();
       });
   }, [activeOrganizationId, canManageMembers, isOnline, queryClient, reportDate, session, supabase]);
 

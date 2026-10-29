@@ -3664,3 +3664,9 @@ test("QA L28: every pgTAP file that creates an organization starts from an empty
     assert.match(sql, /truncate public\.organizations, auth\.users cascade;/, `${name} must not depend on an empty database`);
   }
 });
+
+test("QA L24: a failed daily backup check waits ten minutes before it is tried again", async () => {
+  const app = await readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8");
+  assert.match(app, /dailyBackupFailedAtRef\.current = Date\.now\(\)/);
+  assert.match(app, /Date\.now\(\) - dailyBackupFailedAtRef\.current < 10 \* 60 \* 1000/);
+});
