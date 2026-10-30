@@ -22,8 +22,8 @@ export default function manifest(): MetadataRoute.Manifest {
     lang: "nl",
     dir: "ltr",
     categories: ["business", "productivity", "utilities"],
-    background_color: "#f4f1e9",
-    theme_color: "#11120f",
+    background_color: "#f6f4ee",
+    theme_color: "#1b1e1c",
     icons: [
       { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
       { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
