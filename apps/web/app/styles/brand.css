@@ -1,0 +1,159 @@
+/* CODECO calm theme. Orange for the one primary action and the current selection, green for what is done and
+   what is on the device instead of on paper, a dark sidebar and cool blue-grey neutrals: the look of the first
+   version of the app, with the sizes, contrast and touch targets of the later ones. Loaded after every other
+   sheet so these roles are stated in one place. Values live in tokens.css. */
+
+/* Big surfaces get a soft outline; fields and buttons keep the 3:1 outline that makes them findable in daylight. */
+.overview-hero,
+.overview-panel,
+.operation-form,
+.management-card,
+.ui-panel,
+.media-card,
+.finding-card,
+.workflow-card,
+.field-tool-card,
+.record-row,
+.history-column,
+.template-card,
+.checklist-library-card,
+.media-library-toolbar,
+.media-actions-panel,
+.photo-stack-actions,
+.workspace-search-filters,
+.drawing-file-list,
+.drawing-link-panel,
+.drawing-stage-column {
+  border-color: var(--ink-300);
+}
+
+/* Ticks and radio dots are green. */
+input[type="checkbox"],
+input[type="radio"],
+.confirmation-check input,
+.building-multi-options input,
+.data-saver-toggle input,
+.report-source-checklist input { accent-color: var(--green); }
+
+/* Sidebar: dark, with orange only on the current page. The logo sits on a white plate so its colours stay true. */
+.sidebar {
+  background: var(--ink-950);
+  border-right: 0;
+  color: var(--paper);
+}
+.sidebar .brand {
+  background: var(--paper);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-1);
+}
+.sidebar .project-context-card {
+  background: var(--ink-900);
+  border-color: var(--ink-700);
+  color: var(--paper);
+}
+.sidebar .project-context-card:hover { background: var(--ink-800); border-color: var(--ink-500); }
+.sidebar .project-context-icon,
+.sidebar .project-context-card > svg { color: var(--ink-300); }
+.sidebar .project-context-copy small { color: var(--ink-300); }
+.sidebar .nav-label { color: var(--ink-400); }
+.sidebar .nav-button { color: var(--ink-200); }
+.sidebar .nav-button svg { color: var(--ink-400); }
+.sidebar .nav-button:hover { background: var(--ink-900); color: var(--paper); }
+.sidebar .nav-button:hover svg { color: var(--paper); }
+.sidebar .nav-button.active { background: var(--ink-800); color: var(--paper); font-weight: var(--weight-bold); }
+.sidebar .nav-button.active svg { color: var(--signal); }
+.sidebar .nav-button.active::before { background: var(--signal); }
+.sidebar .nav-badge { background: var(--signal); color: var(--ink-950); }
+.sidebar .quick-add-side.has-page-primary {
+  background: transparent;
+  border: 2px solid var(--ink-500);
+  color: var(--paper);
+}
+.sidebar .quick-add-side.has-page-primary:hover { background: var(--ink-900); border-color: var(--ink-300); }
+.sidebar .user-card { border-top: 1px solid var(--ink-800); color: var(--paper); }
+.sidebar .user-card:hover { background: var(--ink-900); }
+.sidebar .user-copy small { color: var(--ink-400); }
+.sidebar .user-card .avatar { background: var(--signal); color: var(--ink-950); }
+.sidebar :focus-visible { outline-color: var(--signal); }
+
+/* Overview: a short panel next to a long one stays short instead of stretching into an empty box, and the
+   row has a floor so the panels below do not jump down when the queue arrives. */
+.overview-primary-grid { align-items: start; min-height: 22rem; }
+
+/* The loading card is as tall as it will ever get, so the list of steps filling in does not re-centre it. */
+.loading-card { min-height: min(48rem, calc(100dvh - var(--space-8))); }
+.loading-card .state-body { justify-content: flex-start; padding-top: var(--space-8); }
+.loading-card .state-steps { min-height: 8.5rem; order: 2; }
+.loading-card .state-skeleton { order: 1; }
+
+/* Logo above, language below, always: a row that wraps depending on how wide the font turns out to be moves the whole card. */
+.access-card .setup-top { align-items: flex-start; flex-direction: column; flex-wrap: nowrap; gap: var(--space-3); }
+
+/* Panels that fill after the data arrives keep room for it, so the ones below do not jump down. */
+.overview-work-panel { min-height: 11.5rem; }
+.overview-activity-panel { min-height: 9rem; }
+.overview-evidence-panel,
+.overview-site-panel { min-height: 16rem; }
+
+.media-code-chip { white-space: nowrap; }
+.asset-library-filters select,
+.asset-bulk-actions select { min-height: 36px; }
+
+/* A folder row scrolls sideways when it is too wide; it must not squeeze its own buttons on top of each other. */
+.asset-folder-control { flex: 0 0 auto; }
+.field-inline-link,
+.overview-text-link,
+.overview-panel-heading > button { min-height: 32px; }
+
+/* A control a thumb has to hit is 48 px up to tablet width, wherever it sits. */
+@media (max-width: 1024px) {
+  :root:root :is(
+    .ui-button, .whatsapp-button, .workspace-back-button, .field-inline-link, .overview-text-link, .overview-icon-button,
+    .overview-weather-icon, .section-nav__trigger, .media-file-actions button, .media-preview-error button,
+    .overview-panel-heading > button, .project-document-footer, .download-group button, .asset-folder-control button,
+    .asset-folder-control select, .topbar .breadcrumb-step, .topbar .live-weather-chip, .topbar .storage-state,
+    .top-actions .field-guide-trigger, .top-actions > .icon-button
+  ) { min-height: var(--control-h-lg); }
+  :root:root :is(.overview-icon-button, .overview-weather-icon, .media-file-actions button, .asset-folder-control button) { min-width: var(--control-h-lg); }
+  /* Everything else in the page that can be pressed: answer chips, drawing tools, filters. Pins and markers sit on a
+     picture at an exact point and the colour swatches are a set, so they keep their own size. */
+  :root:root :is(main, [role="dialog"]) :is(button, select, summary):not([class*="marker"], [class*="pin"], .sketch-colors button, .sr-only, .record-severity) { min-height: var(--control-h-lg); }
+  :root:root :is(main, [role="dialog"]) button:not([class*="marker"], [class*="pin"], .sketch-colors button, .sr-only, .record-severity) { min-width: var(--control-h-lg); }
+  :root:root :is(main, [role="dialog"]) input:is([type="text"], [type="search"], [type="email"], [type="number"], [type="date"], [type="time"], [type="color"], :not([type])) { min-height: var(--control-h-lg); }
+  :root:root .workforce-row .counter-control { grid-template-columns: repeat(3, var(--control-h-lg)); }
+  :root:root .workforce-row .counter-control button { height: var(--control-h-lg); width: var(--control-h-lg); }
+  .workspace-search-filters select,
+  .workspace-search-filters input { min-height: var(--control-h-lg); }
+}
+
+@media (max-width: 640px) {
+  /* The save bar of a form reaches to the edge of the form, which is 12 px in from the card on a phone. */
+  .record-form-footer { margin-inline: calc(var(--space-3) * -1); padding-inline: var(--space-3); }
+
+  /* Workspace on a phone: icon, name and count on one row, so a screen shows more modules and none is tall and mostly empty. */
+  .workspace-launcher-grid .workspace-launcher-tile.ui-list-row {
+    align-content: center;
+    align-items: center;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto;
+    min-height: 64px;
+  }
+  .workspace-launcher-grid .workspace-launcher-tile .workspace-launcher-icon { grid-column: 1; grid-row: 1; }
+  .workspace-launcher-grid .workspace-launcher-tile > strong { grid-column: 2; grid-row: 1; }
+  .workspace-launcher-grid .workspace-launcher-tile .workspace-launcher-count { grid-column: 3; grid-row: 1; }
+
+  /* Action rows: the icon column and the side padding pushed the title into a narrow strip. */
+  .unified-action-list { padding-inline: 0; }
+  .unified-action-list > button { gap: var(--space-3); padding: var(--space-3); }
+}
+
+/* Latest work and recent activity share the left column, so neither the left nor the right side ends in empty space. */
+.overview-column { display: grid; gap: var(--space-4); min-width: 0; }
+.overview-secondary-grid { grid-template-columns: minmax(0, 1.25fr) minmax(0, .75fr); }
+@media (max-width: 1024px) {
+  .overview-secondary-grid { grid-template-columns: 1fr; }
+}
+
+/* The remove button of a source row is as wide as a thumb needs, whatever the row reserved for it. */
+.rapid-source-list article { grid-template-columns: 28px minmax(0, 1fr) auto; }

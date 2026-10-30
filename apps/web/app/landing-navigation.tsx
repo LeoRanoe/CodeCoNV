@@ -30,7 +30,7 @@ export function LandingNavigation() {
     <header className={`studio-nav-shell ${open ? "open" : ""}`}>
       <div className="studio-nav">
         <a className="studio-logo" href="#top" aria-label="CODECO home" onClick={() => setOpen(false)}>
-          <Image src="/codeco-logo.png" alt="CODECO Construction Designers & Consultants N.V." width={738} height={291} priority />
+          <Image src="/codeco-logo.png" alt="CODECO Construction Designers & Consultants N.V." width={2651} height={1248} priority />
         </a>
         <nav className="studio-desktop-nav" aria-label="Main navigation">
           {links.map(([label, href]) => <a href={href} key={href}>{label}</a>)}

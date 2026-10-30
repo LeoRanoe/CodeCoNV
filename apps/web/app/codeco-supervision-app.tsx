@@ -155,8 +155,8 @@ function CompanyLogo({ subtitle }: { subtitle?: string }) {
         className="company-logo"
         src="/codeco-logo.png"
         alt="CODECO Construction Designers & Consultants N.V."
-        width={738}
-        height={291}
+        width={2651}
+        height={1248}
         sizes="(max-width: 620px) 150px, 190px"
         priority
       />

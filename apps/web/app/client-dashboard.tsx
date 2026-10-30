@@ -491,25 +491,44 @@ export function ClientDashboard({
         </div>
 
         <div className="overview-primary-grid">
-          <article className="overview-panel overview-work-panel">
-            <header className="overview-panel-heading">
-              <div className="overview-panel-title"><Wrench size={18} aria-hidden="true" /><h2>{text("Latest recorded work", "Laatst vastgelegde werkzaamheden")}</h2></div>
-            </header>
-            <div className="overview-work-list">
-              {visibleEntries.length ? visibleEntries.map((entry, index) => (
-                <button type="button" key={entry.id} onClick={openWorkspace}>
-                  <span className="overview-work-index">{String(index + 1).padStart(2, "0")}</span>
-                  <span><strong>{entry.title}</strong><small>{entry.detail || text("No note", "Geen notitie")}</small></span>
-                  <span className="overview-work-location"><MapPin size={13} /> {entry.location || buildingName}</span>
-                  <time>{entry.time}</time>
-                </button>
-              )) : (
-                <div className="overview-purposeful-empty">
-                  <div><strong>{text("No work recorded today", "Vandaag geen werk vastgelegd")}</strong></div>
-                </div>
-              )}
-            </div>
-          </article>
+          <div className="overview-column">
+            <article className="overview-panel overview-work-panel">
+              <header className="overview-panel-heading">
+                <div className="overview-panel-title"><Wrench size={18} aria-hidden="true" /><h2>{text("Latest recorded work", "Laatst vastgelegde werkzaamheden")}</h2></div>
+              </header>
+              <div className="overview-work-list">
+                {visibleEntries.length ? visibleEntries.map((entry, index) => (
+                  <button type="button" key={entry.id} onClick={openWorkspace}>
+                    <span className="overview-work-index">{String(index + 1).padStart(2, "0")}</span>
+                    <span><strong>{entry.title}</strong><small>{entry.detail || text("No note", "Geen notitie")}</small></span>
+                    <span className="overview-work-location"><MapPin size={13} /> {entry.location || buildingName}</span>
+                    <time>{entry.time}</time>
+                  </button>
+                )) : (
+                  <div className="overview-purposeful-empty">
+                    <div><strong>{text("No work recorded today", "Vandaag geen werk vastgelegd")}</strong></div>
+                  </div>
+                )}
+              </div>
+            </article>
+
+            <article className="overview-panel overview-activity-panel">
+              <header className="overview-panel-heading">
+                <div className="overview-panel-title"><Activity size={18} aria-hidden="true" /><h2>{text("Recent activity", "Recente activiteit")}</h2></div>
+              </header>
+              {/* A line in this list is something that already happened. Tapping it opens the
+                  record, whatever it is; a photo line used to hand the user to the camera. */}
+              <div className="overview-activity-list">
+                {activityEntries.length ? activityEntries.map((entry) => (
+                  <button type="button" onClick={entry.kind === "photo" ? () => openRecord("files", "") : openActions} key={entry.id}>
+                    <i className={entry.badgeTone === "red" ? "alert" : entry.kind}><EntryIcon kind={entry.kind} alert={entry.badgeTone === "red"} /></i>
+                    <span><strong>{entry.title}</strong><small>{entry.person} · {entry.location || buildingName}</small></span>
+                    <time>{entry.time}</time>
+                  </button>
+                )) : <p className="overview-inline-empty">{text("No activity today.", "Vandaag geen activiteit.")}</p>}
+              </div>
+            </article>
+          </div>
 
           <article className="overview-panel overview-priority-panel">
             <header className="overview-panel-heading">
@@ -535,23 +554,6 @@ export function ClientDashboard({
         </div>
 
         <div className="overview-secondary-grid">
-          <article className="overview-panel overview-activity-panel">
-            <header className="overview-panel-heading">
-              <div className="overview-panel-title"><Activity size={18} aria-hidden="true" /><h2>{text("Recent activity", "Recente activiteit")}</h2></div>
-            </header>
-            {/* A line in this list is something that already happened. Tapping it opens the
-                record, whatever it is; a photo line used to hand the user to the camera. */}
-            <div className="overview-activity-list">
-              {activityEntries.length ? activityEntries.map((entry) => (
-                <button type="button" onClick={entry.kind === "photo" ? () => openRecord("files", "") : openActions} key={entry.id}>
-                  <i className={entry.badgeTone === "red" ? "alert" : entry.kind}><EntryIcon kind={entry.kind} alert={entry.badgeTone === "red"} /></i>
-                  <span><strong>{entry.title}</strong><small>{entry.person} · {entry.location || buildingName}</small></span>
-                  <time>{entry.time}</time>
-                </button>
-              )) : <p className="overview-inline-empty">{text("No activity today.", "Vandaag geen activiteit.")}</p>}
-            </div>
-          </article>
-
           <article className="overview-panel overview-evidence-panel">
             <header className="overview-panel-heading">
               <div className="overview-panel-title"><Camera size={18} aria-hidden="true" /><h2>{text("Latest photo records", "Laatste fotoregistraties")}</h2></div>
