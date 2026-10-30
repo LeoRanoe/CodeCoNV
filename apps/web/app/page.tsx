@@ -376,7 +376,7 @@ export default function Home() {
         <div className="studio-wrap">
           <div className="studio-footer-top">
             <div className="studio-footer-brand">
-              <Image src="/codeco-logo.png" alt="CODECO Construction Designers & Consultants N.V." width={738} height={291} />
+              <Image src="/codeco-logo.png" alt="CODECO Construction Designers & Consultants N.V." width={2651} height={1248} />
               <p>Architecture and multidisciplinary engineering in Suriname for professional, quality-driven civil, structural and construction projects.</p>
             </div>
             <div className="studio-footer-column">

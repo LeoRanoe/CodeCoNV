@@ -1,20 +1,22 @@
 :root {
   /* One neutral ramp, paper, canvas, and CODECO's action signal. */
-  --ink-950: #14151a;
-  --ink-900: #292b30;
-  --ink-800: #3d4147;
-  --ink-700: #555b62;
-  /* 4.5:1 on every surface of the ramp, down to --ink-50 (the old #707780 gave 4.1:1 there). */
-  --ink-600: #646b73;
-  --ink-500: #929aa2;
-  --ink-400: #bac1c7;
-  --ink-300: #d1d7dc;
-  --ink-200: #dce1e4;
-  --ink-100: #e9edef;
-  --ink-50: #f3f5f6;
-  --ink-025: #fafbfb;
+  --ink-950: #161a20;
+  --ink-900: #272d36;
+  --ink-800: #3a424d;
+  /* The blue-grey of the first version of the app, kept dark enough for 7:1 on white. */
+  --ink-700: #4a5a66;
+  /* 4.5:1 on every surface of the ramp, down to --ink-50. */
+  --ink-600: #5a6e7b;
+  /* 3:1 on white: the outline of every field and button. */
+  --ink-500: #8396a2;
+  --ink-400: #b3c1c9;
+  --ink-300: #cfd9de;
+  --ink-200: #dde5e9;
+  --ink-100: #e9eff2;
+  --ink-50: #f2f6f7;
+  --ink-025: #f9fbfb;
   --paper: #ffffff;
-  --canvas: #f6f7f6;
+  --canvas: #f4f7f6;
   --signal: #f07400;
   /* Orange as text on --signal-soft, and as the fill under white text: 5:1 (#cf6300 gave 3.5:1). */
   --signal-dark: #a64f00;

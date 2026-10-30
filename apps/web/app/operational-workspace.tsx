@@ -5163,7 +5163,7 @@ function RecordPhotoStrip({ data, client, kind, recordId, resolver, buildings, p
   if (!files.length) return null;
   const label = `${files.length} ${text(files.length === 1 ? "linked photo" : "linked photos", files.length === 1 ? "gekoppelde foto" : "gekoppelde foto's")}`;
   return (
-    <section className="record-photo-strip" aria-label={text("Photos linked to this record", "Foto's gekoppeld aan dit record")}>
+    <div className="record-photo-strip" role="group" aria-label={text("Photos linked to this record", "Foto's gekoppeld aan dit record")}>
       <header>
         <button className="record-photo-toggle" type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
           <Camera size={15} /> <span>{label}</span>
@@ -5191,7 +5191,7 @@ function RecordPhotoStrip({ data, client, kind, recordId, resolver, buildings, p
           openMarking={openPhotoMarking}
         />
       ) : null}
-    </section>
+    </div>
   );
 }
 

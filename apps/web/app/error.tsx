@@ -9,7 +9,7 @@ export default function ErrorScreen({ reset }: { error: Error & { digest?: strin
     <main className="access-shell">
       <section className="access-card state-card" role="alert" aria-labelledby="error-title">
         <div className="access-brand">
-          <Image src="/codeco-logo.png" alt="CODECO Construction Designers & Consultants N.V." width={738} height={291} priority />
+          <Image src="/codeco-logo.png" alt="CODECO Construction Designers & Consultants N.V." width={2651} height={1248} priority />
         </div>
         <span className="state-icon"><TriangleAlert size={26} /></span>
         <h1 id="error-title">Something went wrong / Er ging iets mis</h1>

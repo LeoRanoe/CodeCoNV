@@ -12,7 +12,7 @@ export default function NotFound() {
     <main className="access-shell">
       <section className="access-card state-card" aria-labelledby="not-found-title">
         <div className="access-brand">
-          <Image src="/codeco-logo.png" alt="CODECO Construction Designers & Consultants N.V." width={738} height={291} priority />
+          <Image src="/codeco-logo.png" alt="CODECO Construction Designers & Consultants N.V." width={2651} height={1248} priority />
         </div>
         <span className="state-icon"><SearchX size={26} /></span>
         <h1 id="not-found-title">This page does not exist</h1>
