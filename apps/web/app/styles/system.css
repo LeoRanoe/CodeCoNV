@@ -1,0 +1,694 @@
+/* Design system finish, loaded after brand.css.
+   Warm off-white canvas, white paper, charcoal ink. CODECO orange marks the one primary action,
+   the current page and the current selection. Sage marks what is done, what is in progress and
+   what moved from paper onto the device. Red, amber and blue are record state only.
+   Surfaces take a soft 1px rule; fields and buttons keep a 3:1 outline. Values live in tokens.css. */
+
+body { background: var(--canvas); color: var(--text); }
+.main-content { background: var(--canvas); }
+
+/* ---------- Controls ---------- */
+
+.ui-button { border-width: 1px; transition: background-color 150ms ease, border-color 150ms ease; }
+.ui-button--primary,
+.ui-button--primary:not(:disabled) {
+  background: var(--signal);
+  border: 1px solid var(--signal);
+  color: var(--ink-950);
+  font-weight: var(--weight-bold);
+}
+.ui-button--primary:not(:disabled):hover { border-color: var(--signal-dark); }
+.ui-button--secondary { border-color: var(--ink-500); border-width: 1px; }
+.ui-button--secondary:hover { background: var(--ink-50); border-color: var(--ink-700); }
+.ui-button--quiet:hover { background: var(--ink-100); }
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+select,
+textarea {
+  background-color: var(--paper);
+  border-color: var(--ink-500);
+  border-radius: var(--radius-sm);
+}
+input:not([type="checkbox"]):not([type="radio"]):hover,
+select:hover,
+textarea:hover { border-color: var(--ink-700); }
+input:not([type="checkbox"]):not([type="radio"]):focus,
+select:focus,
+textarea:focus { border-color: var(--ink-900); }
+input::placeholder,
+textarea::placeholder { color: var(--ink-600); font-weight: var(--weight-normal); opacity: 1; }
+
+/* Ticks, radio dots and switches are sage: a box that is ticked is work done. */
+input[type="checkbox"],
+input[type="radio"] { accent-color: var(--sage-700); }
+
+/* Status badges: a quiet pill in the state's soft colour, no outline. */
+.ui-status-badge { border-color: transparent; }
+
+/* ---------- Tabs and section navigation ---------- */
+
+.section-nav--segmented {
+  background: var(--ink-100);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+.section-nav--segmented > button { border-width: 1px; color: var(--ink-700); }
+.section-nav--segmented > button:hover:not(.active) { background: var(--ink-50); color: var(--text); }
+.section-nav--segmented > button.active {
+  background: var(--paper);
+  border-color: var(--ink-400);
+  color: var(--ink-950);
+}
+.section-nav--segmented > button.active .section-nav__count { color: var(--signal-dark); }
+.section-nav--bar { border-bottom: 1px solid var(--line); }
+.section-nav--bar > button { border-bottom-width: 3px; color: var(--ink-700); margin-bottom: -1px; }
+.section-nav--bar > button.active { color: var(--ink-950); }
+.section-nav__trigger,
+.section-nav__panel,
+.section-nav__close { border-width: 1px; }
+.section-nav__trigger { border-color: var(--ink-400); }
+.ui-tabs { border-block-end-color: var(--line); }
+.ui-tabs > [aria-selected="true"],
+.ui-tabs > [aria-current="page"] { border-block-end-width: 3px; }
+
+/* ---------- Shell: top bar and sidebar ---------- */
+
+.topbar {
+  background: var(--canvas);
+  border-bottom: 1px solid var(--line);
+}
+.topbar .live-weather-chip,
+.topbar .storage-state,
+.top-actions .field-guide-trigger,
+.top-actions > .icon-button,
+.topbar .language-switcher select {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.topbar .live-weather-chip:hover,
+.topbar .storage-state:hover,
+.top-actions .field-guide-trigger:hover,
+.top-actions > .icon-button:hover { background: var(--paper); border-color: var(--ink-500); }
+.topbar .storage-state.saved,
+.topbar .storage-state.idle { color: var(--sage-700); }
+
+.sidebar .nav-button { border-radius: var(--radius-sm); }
+.sidebar .nav-button.active { background: var(--ink-900); }
+.sidebar .project-context-card { background: var(--ink-900); border-color: var(--ink-800); }
+.sidebar .quick-add-side:not(.has-page-primary) {
+  background: var(--signal);
+  border: 1px solid var(--signal);
+  color: var(--ink-950);
+}
+.sidebar .quick-add-side:not(.has-page-primary):hover { border-color: var(--paper); }
+
+/* ---------- Page headers ---------- */
+
+.ui-page-header h1,
+.secondary-header h1,
+.action-center-hero h1,
+.workspace-header h1 { color: var(--ink-950); letter-spacing: -.01em; }
+.secondary-header,
+.action-center-hero,
+.workspace-header.home {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding-inline: 0;
+}
+.workspace-launcher-toolbar.ui-page-header h2 { color: var(--ink-800); font-size: var(--text-lg); }
+
+/* ---------- Surfaces ---------- */
+
+.ui-panel,
+.overview-panel,
+.operation-form,
+.management-card,
+.record-row,
+.workflow-card,
+.field-tool-card,
+.template-card,
+.checklist-library-card,
+.history-column {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+/* Workspace modules: paper cards with a soft rule. A count is a quiet figure in a pill. */
+.workspace-launcher-grid.client-workspace-grid { gap: var(--space-3); }
+.workspace-launcher-grid.client-workspace-grid .workspace-launcher-tile.ui-list-row {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  min-height: 60px;
+  padding: var(--space-3) var(--space-4);
+}
+.workspace-launcher-grid.client-workspace-grid .workspace-launcher-tile.ui-list-row:hover { border-color: var(--ink-500); }
+.workspace-launcher-grid .workspace-launcher-tile:hover { background: var(--ink-025); }
+.workspace-launcher-grid .workspace-launcher-icon { color: var(--ink-600); }
+.workspace-launcher-grid .workspace-launcher-tile > strong { color: var(--ink-900); font-size: var(--text-md); }
+.workspace-launcher-grid .workspace-launcher-count {
+  background: var(--ink-50);
+  border-radius: var(--radius-pill);
+  color: var(--ink-800);
+  font-weight: var(--weight-semibold);
+  min-width: 28px;
+  padding: 2px var(--space-2);
+  text-align: center;
+}
+.workspace-launcher-grid .workspace-launcher-arrow { color: var(--ink-400); }
+.workspace-launcher-grid .workspace-launcher-tile:hover .workspace-launcher-arrow { color: var(--ink-800); }
+
+/* Action center: the four counts are filters. The current one carries the orange selection on paper. */
+.action-center-summary > button {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+.action-center-summary > button:hover { border-color: var(--ink-500); }
+.action-center-summary > button.active {
+  background: var(--paper);
+  border-color: var(--signal);
+}
+.action-center-summary > button.active strong { color: var(--ink-950); }
+.action-center-summary > button.active span { color: var(--signal-dark); }
+
+/* Empty states: one sentence and the action that fills the state, on a quiet dashed field. */
+.overview-purposeful-empty,
+.action-center-empty,
+.project-document-empty,
+.workspace-launcher-empty {
+  background: var(--ink-025);
+  border: 1px dashed var(--ink-400);
+  border-radius: var(--radius-md);
+  color: var(--ink-700);
+}
+
+/* ---------- Overview ---------- */
+
+.project-overview { gap: var(--space-5); }
+
+/* Project heading: the name is the title of the page, not a card. */
+.project-overview .overview-hero {
+  align-items: flex-end;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: var(--space-1) 0 0;
+}
+.project-overview .overview-hero h1 {
+  color: var(--ink-950);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: -.015em;
+  line-height: 1.15;
+  margin: 0 0 var(--space-2);
+}
+.overview-hero-copy { min-width: 0; }
+.project-overview .overview-hero-copy p {
+  align-items: center;
+  color: var(--ink-700);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  gap: var(--space-1) var(--space-3);
+}
+.overview-hero-copy p > time::before {
+  color: var(--ink-400);
+  content: "·";
+  margin-inline-end: var(--space-3);
+}
+.overview-day-state {
+  align-items: center;
+  background: var(--yellow-soft);
+  border-radius: var(--radius-pill);
+  color: var(--yellow);
+  display: inline-flex;
+  font-weight: var(--weight-semibold);
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+}
+.overview-day-state.is-started { background: var(--sage-100); color: var(--sage-700); }
+.project-overview .overview-search {
+  background: var(--paper);
+  border: 1px solid var(--ink-500);
+  border-radius: var(--radius-sm);
+  min-height: var(--control-h-md);
+}
+.project-overview .overview-icon-button {
+  background: var(--paper);
+  border: 1px solid var(--ink-500);
+  border-radius: var(--radius-sm);
+  color: var(--ink-800);
+}
+.project-overview .overview-icon-button:hover { background: var(--ink-50); border-color: var(--ink-800); }
+
+/* Key figures: one ruled strip on paper, big tabular numbers, a small line icon beside each label. */
+.project-overview .overview-metrics {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.project-overview .overview-metrics .overview-metric {
+  align-content: start;
+  border-inline-start: 1px solid var(--ink-200);
+  column-gap: var(--space-2);
+  display: grid;
+  grid-template-areas: "icon label" "value value" "detail detail";
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: var(--space-4) var(--space-5);
+  row-gap: var(--space-1);
+}
+.project-overview .overview-metrics .overview-metric:first-child { border-inline-start: 0; }
+.project-overview .overview-metrics .overview-metric:hover { background: var(--ink-025); }
+.project-overview .overview-metric .ui-stat__icon { color: var(--ink-600); grid-area: icon; }
+.project-overview .overview-metric .ui-stat__icon svg { height: 18px; width: 18px; }
+.project-overview .overview-metric .ui-stat__label {
+  color: var(--ink-800);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  grid-area: label;
+}
+.project-overview .overview-metric .ui-stat__value {
+  color: var(--ink-950);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  grid-area: value;
+  line-height: 1.1;
+}
+.project-overview .overview-metric small { color: var(--ink-600); font-size: var(--text-sm); grid-area: detail; }
+.project-overview .overview-metric.is-attention small { color: var(--yellow); font-weight: var(--weight-semibold); }
+
+/* Panels: the heading is the first thing read, the icon is quiet line work beside it. */
+.project-overview .overview-panel { padding: var(--space-4) var(--space-5); }
+.project-overview .overview-panel-heading { margin-bottom: var(--space-3); min-height: var(--control-h-sm); }
+.project-overview .overview-panel-heading h2 {
+  color: var(--ink-950);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+}
+.project-overview .overview-panel-title svg { color: var(--ink-600); }
+.project-overview .overview-panel-heading > button,
+.project-overview .overview-text-link {
+  border-radius: var(--radius-sm);
+  color: var(--ink-800);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  padding-inline: var(--space-2);
+}
+.project-overview .overview-panel-heading > button:hover,
+.project-overview .overview-text-link:hover { background: var(--ink-50); color: var(--ink-950); }
+
+/* Latest work: the register of the day. */
+.overview-work-list > button { border-top-color: var(--ink-200); min-height: 60px; padding-inline: var(--space-1); }
+.overview-work-list > button:hover { background: var(--ink-025); }
+.overview-work-index { color: var(--ink-600); font-variant-numeric: tabular-nums; }
+.overview-work-list strong { color: var(--ink-950); font-size: var(--text-md); font-weight: var(--weight-semibold); }
+.overview-work-list small,
+.overview-work-location,
+.overview-work-list time { color: var(--ink-600); font-size: var(--text-sm); }
+.overview-work-list time { font-variant-numeric: tabular-nums; }
+
+/* Urgent work: the panel carries the state of the project's open work in its top rule. */
+.project-overview .overview-priority-panel.is-attention { border-top: 3px solid var(--yellow); }
+.project-overview .overview-priority-panel.is-stable { border-top: 3px solid var(--sage-500); }
+.overview-health { font-size: var(--text-sm); padding: 2px var(--space-2); }
+.overview-health.attention { background: var(--yellow-soft); color: var(--yellow); }
+.overview-health.stable { background: var(--sage-100); color: var(--sage-700); }
+.overview-progress {
+  background: transparent;
+  border-radius: 0;
+  margin-bottom: var(--space-2);
+  padding: 0 0 var(--space-3);
+}
+.overview-progress > div { color: var(--ink-700); font-size: var(--text-sm); }
+.overview-progress > div strong { color: var(--sage-700); font-size: var(--text-md); font-variant-numeric: tabular-nums; }
+.overview-progress > span { background: var(--ink-100); height: 8px; }
+.overview-progress > span i { background: var(--sage-500); border-radius: var(--radius-pill); }
+.overview-progress small { color: var(--ink-600); font-size: var(--text-sm); }
+.overview-priority-list > .ui-list-row { border-block-end: 0; border-top: 1px solid var(--ink-200); padding-block: var(--space-2); }
+.overview-priority-list > .ui-list-row:hover { background: var(--ink-025); }
+.overview-priority-list .ui-list-row__title { color: var(--ink-950); font-size: var(--text-sm); font-weight: var(--weight-bold); line-height: 1.3; }
+.overview-priority-list .ui-list-row__meta { color: var(--ink-600); font-size: var(--text-sm); }
+.overview-priority-list .ui-status-badge { background: var(--ink-50); border-color: transparent; color: var(--ink-800); }
+.overview-priority-list .ui-status-badge--red { background: var(--red-soft); color: var(--red); }
+.overview-priority-list .ui-status-badge--amber { background: var(--yellow-soft); color: var(--yellow); }
+.overview-clear-state { color: var(--sage-700); }
+
+/* Panels that fill after the data arrives keep room for a typical day, so nothing below them jumps. */
+.project-overview .overview-activity-panel { min-height: 12.5rem; }
+.project-overview .overview-priority-panel { min-height: 27rem; }
+@media (max-width: 1024px) {
+  .project-overview .overview-priority-panel { min-height: 0; }
+}
+
+/* Recent activity: secondary reading, so a quieter surface and a tighter line. */
+.project-overview .overview-activity-panel { background: var(--ink-025); }
+.project-overview .overview-activity-panel .overview-panel-heading h2 { color: var(--ink-800); font-size: var(--text-md); }
+.overview-activity-list > button { border-top-color: var(--ink-200); min-height: 48px; }
+.overview-activity-list > button > i { color: var(--ink-600); }
+.overview-activity-list > button > i.alert { color: var(--red); }
+.overview-activity-list strong { color: var(--ink-900); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.overview-activity-list small,
+.overview-activity-list time { color: var(--ink-600); font-size: var(--text-sm); }
+.overview-activity-list time { font-variant-numeric: tabular-nums; }
+
+/* Photos: pictures large enough to recognise the place. */
+.project-overview .overview-evidence-grid { gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.project-overview .overview-evidence-grid .evidence-thumbnail { background: var(--ink-100); border-radius: var(--radius-sm); height: 104px; }
+.project-overview .overview-evidence-grid strong { color: var(--ink-900); font-size: var(--text-sm); }
+.project-overview .overview-evidence-grid small { color: var(--ink-600); font-size: var(--text-sm); }
+.project-overview .overview-evidence-grid > .overview-evidence-empty {
+  background: var(--ink-025);
+  border: 1px dashed var(--ink-400);
+  border-radius: var(--radius-md);
+  color: var(--ink-800);
+  min-height: 104px;
+  padding: var(--space-4);
+}
+
+/* Site conditions: the one sage surface on the page, because it is the outdoors of the project. */
+.project-overview .overview-site-panel { background: var(--sage-50); border-color: var(--sage-200); }
+.project-overview .overview-weather-icon {
+  background: var(--paper);
+  border: 1px solid var(--sage-200);
+  border-radius: var(--radius-sm);
+  color: var(--sage-700);
+}
+.project-overview .overview-weather strong { color: var(--ink-950); font-size: var(--text-2xl); font-variant-numeric: tabular-nums; }
+.project-overview .overview-weather small { color: var(--ink-700); font-size: var(--text-sm); }
+.project-overview .overview-weather-status { background: var(--paper); color: var(--sage-700); font-size: var(--text-sm); }
+.project-overview .overview-site-meta { border-top: 1px solid var(--sage-200); color: var(--ink-700); font-size: var(--text-sm); padding-top: var(--space-3); }
+
+/* ---------- Mobile bottom navigation ---------- */
+
+@media (max-width: 1024px) {
+  .mobile-bottom-nav {
+    background: var(--paper);
+    border-top: 1px solid var(--line);
+  }
+  .mobile-nav-button { color: var(--ink-700); }
+  .mobile-nav-button.active,
+  .mobile-nav-button.active:hover { background: transparent; color: var(--ink-950); }
+  .mobile-nav-button.active svg { color: var(--signal-dark); }
+  .mobile-nav-button.active::before { background: var(--signal); }
+  .mobile-nav-button.quick { color: var(--ink-900); }
+  .mobile-nav-button.quick .mobile-plus { border-color: var(--paper); }
+}
+
+/* ---------- Phone ---------- */
+
+@media (max-width: 640px) {
+  .topbar { background: var(--ink-950); border-bottom: 0; }
+  .topbar .top-actions .field-guide-trigger,
+  .topbar .top-actions > .icon-button,
+  .topbar .storage-state { background: transparent; border-color: transparent; }
+  .topbar .storage-state.saved,
+  .topbar .storage-state.idle { color: var(--sage-200); }
+
+  .project-overview { gap: var(--space-3); }
+
+  /* Heading and tools in two short rows: name and date, then search beside the day's three buttons. */
+  .project-overview .overview-hero { align-items: stretch; flex-direction: column; gap: var(--space-3); padding: 0; text-align: left; }
+  .project-overview .overview-hero h1 { font-size: var(--text-xl); margin-bottom: var(--space-1); }
+  .project-overview .overview-hero-copy p { column-gap: var(--space-2); }
+  .overview-hero-copy p > time::before { margin-inline-end: var(--space-2); }
+  .project-overview .overview-hero-actions { flex-wrap: nowrap; }
+  .project-overview .overview-search { flex: 1 1 auto; min-width: 0; }
+  .project-overview .overview-search input { min-width: 0; width: 100%; }
+  .project-overview .overview-hero-actions .overview-create-button { display: none; }
+
+  /* Figures: a ruled two-by-two block in one surface. */
+  .project-overview .overview-metrics,
+  .project-overview .overview-metrics .ui-stat,
+  .project-overview .overview-metrics .overview-metric { border-radius: 0; }
+  .project-overview .overview-metrics {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    gap: 0;
+  }
+  .project-overview .overview-metrics .ui-stat,
+  .project-overview .overview-metrics .overview-metric,
+  .project-overview .overview-metrics .ui-stat:nth-child(odd),
+  .project-overview .overview-metrics .ui-stat:nth-child(even),
+  .project-overview .overview-metrics .ui-stat:nth-last-child(-n+2) {
+    background: var(--paper);
+    border: 0;
+    border-block-end: 1px solid var(--ink-200);
+    display: grid;
+    grid-template-areas: "icon label" "value value" "detail detail";
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: var(--space-3);
+  }
+  .project-overview .overview-metrics .ui-stat:nth-child(even) { border-inline-start: 1px solid var(--ink-200); }
+  .project-overview .overview-metrics .ui-stat:nth-last-child(-n+2) { border-block-end: 0; }
+  .project-overview .overview-metrics .overview-metric .ui-stat__icon { grid-area: icon; }
+  .project-overview .overview-metrics .overview-metric .ui-stat__value { font-size: var(--text-xl); grid-area: value; }
+  .project-overview .overview-metrics .overview-metric .ui-stat__label { grid-area: label; }
+  .project-overview .overview-metrics .overview-metric small { grid-area: detail; }
+
+  .project-overview .overview-panel { padding: var(--space-4); }
+
+  /* Workspace modules on a phone: two columns of cards; a name breaks between words, never inside one. */
+  .workspace-launcher-grid.client-workspace-grid { gap: var(--space-2); }
+  .workspace-launcher-grid.client-workspace-grid .workspace-launcher-tile.ui-list-row { padding: var(--space-3); }
+  .workspace-launcher-grid .workspace-launcher-tile > strong { font-size: var(--text-sm); hyphens: auto; overflow-wrap: break-word; }
+  .workspace-launcher-grid .workspace-launcher-count { min-width: 24px; padding-inline: var(--space-1); }
+
+  .workspace-section-controls,
+  .action-center-summary > button,
+  .draft-notice--restored { border-width: 1px; border-color: var(--line); }
+  .action-center-summary > button.active { border-color: var(--signal); }
+}
+
+/* Report sources: a ticked source is a quiet row, the tick carries the state. */
+.report-source-checklist label { border-color: var(--line); }
+.report-source-checklist label:hover { border-color: var(--ink-500); }
+@media (max-width: 640px) {
+  /* Short source names: two to a row, so the list is half as long. */
+  .report-source-checklist { display: grid; gap: var(--space-2); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .report-source-checklist label { min-width: 0; overflow-wrap: anywhere; }
+}
+
+/* ---------- Dialogs ---------- */
+
+/* Every dialog has one bold title; the line under it is plain muted text. */
+.modal-header { background: var(--paper); border-bottom-color: var(--line); }
+.modal-header h2,
+.mobile-module-sheet header h2,
+.field-guide-dialog > header h2 { color: var(--ink-950); font-weight: var(--weight-bold); letter-spacing: -.01em; }
+.modal-header p { color: var(--ink-700); font-size: var(--text-sm); }
+.modal-close,
+.mobile-module-sheet header > button {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--ink-800);
+}
+.modal-close:hover,
+.mobile-module-sheet header > button:hover { background: var(--ink-50); border-color: var(--ink-500); }
+
+/* Built-in guide: the small label above the question is plain muted text, not an orange caps line;
+   task icons are line work, and the chosen task carries the orange selection on its border. */
+.field-guide-dialog > header span { color: var(--ink-700); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.field-guide-task-picker button,
+.field-guide-task-detail { border-color: var(--line); }
+.field-guide-task-picker button > span,
+.field-guide-task-picker button.active > span { background: transparent; color: var(--ink-700); }
+.field-guide-task-picker button strong { color: var(--ink-900); font-size: var(--text-sm); }
+.field-guide-task-picker button.active { background: var(--paper); border-color: var(--signal); color: var(--ink-950); }
+.field-guide-task-picker button.active > span { color: var(--signal-dark); }
+
+/* Phone module sheet: one ruled list, icons without a tinted square. */
+.mobile-module-grid { gap: 0; }
+.mobile-module-grid > button,
+.mobile-module-grid > button.active {
+  background: var(--paper);
+  border: 0;
+  border-bottom: 1px solid var(--ink-200);
+  border-radius: 0;
+  color: var(--ink-800);
+}
+.mobile-module-grid > button:last-of-type { border-bottom: 0; }
+.mobile-module-grid > button > span:first-child { background: transparent; color: var(--ink-700); }
+.mobile-module-grid > button.active > span:first-child { color: var(--signal-dark); }
+.mobile-module-grid > button strong { color: var(--ink-950); }
+
+/* Project switcher: the current project is the current selection, so it is marked in orange. */
+.project-switcher-row { border-color: var(--line); }
+.project-switcher-row:hover,
+.project-switcher-row:focus-visible { border-color: var(--ink-500); }
+.project-switcher-row.active { background: var(--paper); border-color: var(--signal); }
+.project-switcher-row.active .project-switcher-icon,
+.project-switcher-row.active .project-switcher-state { color: var(--signal-dark); }
+
+/* Report check: a quiet ruled list; on a phone the button that fills a gap sits under its text. */
+.report-check-list { gap: 0; }
+.report-check-row {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--ink-200);
+  border-radius: 0;
+  padding: var(--space-3) 0;
+}
+.report-check-row:last-child { border-bottom: 0; }
+.report-check-state { border-radius: var(--radius-pill); }
+.report-check-copy strong { color: var(--ink-950); font-size: var(--text-md); }
+.report-check-copy span { color: var(--ink-700); font-size: var(--text-sm); }
+.report-summary-box { background: var(--ink-025); border-color: var(--line); }
+@media (max-width: 640px) {
+  .report-check-row { align-items: start; grid-template-columns: auto minmax(0, 1fr); }
+  .report-check-row > .ui-button { grid-column: 2; justify-self: start; padding-inline: 0; }
+}
+
+/* ---------- Project list ---------- */
+
+.context-shell { background: var(--canvas); }
+.context-topbar { background: var(--paper); border-bottom: 1px solid var(--line); }
+.context-brand .company-lockup { align-items: flex-start; }
+.context-brand .company-logo-context { color: var(--ink-700); font-size: var(--text-sm); letter-spacing: 0; text-transform: none; }
+.context-heading h1 { color: var(--ink-950); font-weight: var(--weight-bold); letter-spacing: -.015em; }
+.data-mode-notice { border-color: var(--line); border-radius: var(--radius-md); font-size: var(--text-sm); }
+.data-mode-notice.connected { background: var(--sage-50); border-color: var(--sage-200); color: var(--sage-700); }
+.portfolio-cta { border-radius: var(--radius-sm); }
+.project-selection-grid { border-color: var(--line); }
+.project-selection-grid .project-selection-card { border-color: var(--ink-200); }
+.project-selection-grid .project-selection-card:hover { background: var(--ink-025); }
+
+/* ---------- Module header in the workspace ---------- */
+
+/* Back to the workspace, then the module name as the page title, then its one create button. */
+.workspace-section-controls {
+  background: transparent;
+  border: 0;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 0;
+}
+.workspace-back-button { background: var(--paper); border: 1px solid var(--ink-500); color: var(--ink-900); font-size: var(--text-sm); }
+.workspace-back-button:hover { background: var(--ink-50); }
+.workspace-current-module { border-left: 0; padding: 0 var(--space-2); }
+.workspace-current-module > span { color: var(--ink-700); font-size: var(--text-sm); font-weight: var(--weight-normal); letter-spacing: 0; text-transform: none; }
+.workspace-current-module > h1 { color: var(--ink-950); font-size: var(--text-xl); line-height: 1.2; }
+.workspace-current-module > b { background: var(--ink-100); color: var(--ink-800); font-size: var(--text-sm); }
+.workspace-module-create { min-width: 112px; }
+
+/* Sliders: progress is sage. */
+input[type="range"] { accent-color: var(--sage-700); }
+
+/* ---------- Management ---------- */
+
+.management-kpis,
+.management-context {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.management-kpis > *,
+.management-context > * { border-color: var(--ink-200); }
+.external-submission-center,
+.company-task-assignment { border-color: var(--line); }
+.external-submission-center > header .record-number,
+.company-task-assignment .record-number { color: var(--ink-950); font-size: var(--text-lg); font-weight: var(--weight-bold); }
+.external-submission-center > header h2,
+.company-task-assignment h3 { color: var(--ink-700); font-size: var(--text-sm); font-weight: var(--weight-normal); }
+.external-access-summary > *,
+.company-action-assignment-list > *,
+.employee-workload-strip > * { background: var(--ink-025); border-color: var(--ink-200); }
+@media (max-width: 640px) {
+  .workspace-section-controls { background: transparent; border: 0; padding: 0; }
+  .workspace-section-controls .workspace-current-module h1 { font-size: var(--text-lg); }
+}
+
+/* Headings. Tailwind's reset sets every heading to the body weight, and many app headings never set
+   their own, so form, dialog and page titles read as plain text. Zero specificity: any rule that sets
+   a weight on purpose still wins. Scoped to the app so the public site keeps its own type. */
+:where(.app-shell, .access-shell, .context-shell, [role="dialog"]) :where(h1, h2, h3, h4) {
+  color: var(--ink-950);
+  font-weight: var(--weight-bold);
+}
+:where(.app-shell, [role="dialog"]) :where(h2) { letter-spacing: -.005em; }
+
+/* Action rows: the record type icon is plain line work in the row's ink, not a tinted square. */
+.unified-action-icon,
+.unified-action-icon.issue,
+.unified-action-icon.punchlist,
+.unified-action-icon.rfi,
+.unified-action-icon.rfa,
+.unified-action-icon.wir { background: transparent; color: var(--ink-700); }
+
+/* The count belongs to the module name, so it sits right after it. */
+.workspace-current-module { grid-template-columns: minmax(0, max-content) auto; justify-content: start; column-gap: var(--space-2); }
+@media (max-width: 640px) {
+  /* On a phone the way back is the arrow alone (its name stays for screen readers), so the module name fits. */
+  .workspace-section-controls .workspace-back-button { min-width: var(--control-h-lg); padding-inline: var(--space-3); }
+  .workspace-back-label { clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
+}
+
+/* ---------- Media ---------- */
+
+.media-choice,
+.media-choice.primary,
+.media-choice.media-choice-360 { border-color: var(--line); border-radius: var(--radius-md); }
+.media-choice:hover,
+.media-choice.primary:hover,
+.media-choice.media-choice-360:hover { background: var(--ink-025); border-color: var(--ink-500); }
+.media-choice strong { color: var(--ink-950); }
+.media-choice small { color: var(--ink-700); }
+.asset-library-filters,
+.asset-bulk-actions,
+.photo-stack-actions,
+.asset-record-library,
+.asset-folder-control,
+.media-card { border-color: var(--line); }
+.asset-library-filters input[type="search"] { border: 1px solid var(--ink-500); border-radius: var(--radius-sm); padding-inline: var(--space-3); }
+.asset-library-filters label > span,
+.asset-bulk-actions label > span { color: var(--ink-800); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.asset-record-grid button { background: var(--paper); border-color: var(--line); }
+.asset-record-grid button:hover { border-color: var(--ink-500); }
+.asset-record-grid button em { color: var(--sage-700); }
+
+/* ---------- Tablet ---------- */
+
+@media (max-width: 1024px) {
+  /* Headings stay left-aligned when their tools wrap under them. */
+  .project-overview .overview-hero { align-items: stretch; flex-direction: column; text-align: left; }
+  .workspace-launcher-toolbar,
+  .workspace-launcher-toolbar.ui-page-header { align-items: stretch; text-align: left; }
+  .workspace-launcher-toolbar h2 { text-align: left; }
+  /* A page title and its one primary action share a row while they fit. */
+  .action-center-hero { align-items: center; flex-direction: row; flex-wrap: wrap; justify-content: space-between; text-align: left; }
+}
+
+/* On/off options (project modules, report sections): "on" is sage with a tick, not the orange selection. */
+.toggle-presets button.active {
+  background: var(--sage-50);
+  border-color: var(--sage-500);
+  color: var(--sage-700);
+}
+.toggle-presets button.active::before { content: "✓"; margin-inline-end: var(--space-1); }
+.toggle-presets button:not(.active) { background: var(--paper); border-color: var(--ink-400); color: var(--ink-700); font-weight: var(--weight-semibold); }
+
+/* Checklist library: install is a secondary action on each card; the installed ones say so in sage. */
+.checklist-library-card .ui-button:disabled { border-color: var(--sage-200); color: var(--sage-700); }
+.checklist-library-card > span { color: var(--ink-700); font-size: var(--text-sm); }
+
+/* Backup health: the state is in the icon colour and the card's top rule, not in a tinted square. */
+.backup-health-card,
+.backup-health-card.attention,
+.backup-tool,
+.backup-retention,
+.backup-counts > * { border-color: var(--line); }
+.backup-health-card > span,
+.backup-health-card.healthy > span,
+.backup-health-card.attention > span { background: transparent; }
+.backup-health-card.healthy { border-top: 3px solid var(--sage-500); }
+.backup-health-card.attention { border-top: 3px solid var(--yellow); }
+.backup-health-card b { font-size: var(--text-lg); }
+
+/* Account security and access cards sit on the same soft rule as every other surface. */
+.mfa-card,
+.module-card { background: var(--paper); border-color: var(--line); border-radius: var(--radius-md); }
+.module-card:hover { border-color: var(--ink-500); }

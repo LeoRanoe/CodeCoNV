@@ -3126,7 +3126,7 @@ function ProjectOperations({
       ) : (
         <>
           <div className="workspace-section-controls">
-            <button className="workspace-back-button" type="button" onClick={() => switchTab("home")}><ArrowLeft size={17} /> {text("Workspace", "Werkruimte")}</button>
+            <button className="workspace-back-button" type="button" onClick={() => switchTab("home")}><ArrowLeft size={17} aria-hidden="true" /> <span className="workspace-back-label">{text("Workspace", "Werkruimte")}</span></button>
             <div className="workspace-current-module" aria-live="polite">
               <span>{projectName}</span>
               {/* The module's own title: a heading, so it is announced and navigable. */}
@@ -6015,15 +6015,15 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
               </div>
               <div className="click-answer-block">
                 <strong>{text("Active project modules", "Actieve projectmodules")}</strong>
-                <div className="quick-issue-presets">{Object.entries({
+                <div className="quick-issue-presets toggle-presets">{Object.entries({
                   attendance: text("Workforce", "Workforce"), inspections: text("Inspections", "Inspecties"),
                   quality: text("Issues & NCR", "Issues & NCR"), hse: "HSE", actions: text("Actions", "Acties"),
                   documents: text("Documents", "Documenten"), visual_evidence: text("Visual evidence", "Visueel bewijs"),
-                }).map(([module, label]) => <button className={settings.modules[module] !== false ? "active" : ""} type="button" onClick={() => setSettings({ ...settings, modules: { ...settings.modules, [module]: settings.modules[module] === false } })} key={module}>{label}</button>)}</div>
+                }).map(([module, label]) => <button className={settings.modules[module] !== false ? "active" : ""} type="button" aria-pressed={settings.modules[module] !== false} onClick={() => setSettings({ ...settings, modules: { ...settings.modules, [module]: settings.modules[module] === false } })} key={module}>{label}</button>)}</div>
               </div>
               <div className="click-answer-block">
                 <strong>{text("Client report sections", "Secties in klantrapport")}</strong>
-                <div className="quick-issue-presets">{[
+                <div className="quick-issue-presets toggle-presets">{[
                   ["photos", text("Photos", "Foto's")],
                   ["works_ongoing", text("Works ongoing", "Werkzaamheden gaande")],
                   ["works_completed", text("Works completed", "Werkzaamheden afgerond")],
@@ -6039,7 +6039,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
                   ["deadlines", text("Deadlines", "Deadlines")],
                   ["hse_incident", text("HSE incident", "HSE-incident")],
                   ["agreements_made", text("Agreements made", "Gemaakte afspraken")],
-                ].map(([sectionName, label]) => <button className={settings.reportSections.includes(sectionName) ? "active" : ""} type="button" onClick={() => setSettings({ ...settings, reportSections: settings.reportSections.includes(sectionName) ? settings.reportSections.filter((item) => item !== sectionName) : [...settings.reportSections, sectionName] })} key={sectionName}>{label}</button>)}</div>
+                ].map(([sectionName, label]) => <button className={settings.reportSections.includes(sectionName) ? "active" : ""} type="button" aria-pressed={settings.reportSections.includes(sectionName)} onClick={() => setSettings({ ...settings, reportSections: settings.reportSections.includes(sectionName) ? settings.reportSections.filter((item) => item !== sectionName) : [...settings.reportSections, sectionName] })} key={sectionName}>{label}</button>)}</div>
               </div>
               <div className="form-grid-2">
                 <label className="form-field"><span>{text("Report header", "Rapportkop")}</span><input value={settings.reportHeader} onChange={(event) => setSettings({ ...settings, reportHeader: event.target.value })} /></label>
@@ -6079,7 +6079,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
           <div className="checklist-library-grid">
             {data.checklistLibrary.filter((item) => libraryCategory === "all" || item.category === libraryCategory).map((item) => {
               const installed = data.templates.some((templateItem) => templateItem.project_id === projectId && templateItem.code === item.code && templateItem.status === "published");
-              return <article className="checklist-library-card" key={item.code}><span>{item.code} · {item.category}</span><h3>{item.name}</h3><small>{item.prompts.length} {text("mandatory checkpoints", "verplichte controlepunten")}</small><button className={installed ? "ui-button ui-button--secondary ui-button--md" : "ui-button ui-button--primary ui-button--md"} type="button" disabled={busy || installed} onClick={() => void run(() => installChecklistLibraryTemplate(client, projectId, item.code), text(`${item.name} installed as a project checklist.`, `${item.name} als projectchecklist geïnstalleerd.`))}>{installed ? <CheckCircle2 size={15} /> : <Plus size={15} />} {installed ? text("Installed", "Geïnstalleerd") : text("Install checklist", "Installeer checklist")}</button></article>;
+              return <article className="checklist-library-card" key={item.code}><span>{item.code} · {item.category}</span><h3>{item.name}</h3><small>{item.prompts.length} {text("mandatory checkpoints", "verplichte controlepunten")}</small><button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={busy || installed} onClick={() => void run(() => installChecklistLibraryTemplate(client, projectId, item.code), text(`${item.name} installed as a project checklist.`, `${item.name} als projectchecklist geïnstalleerd.`))}>{installed ? <CheckCircle2 size={15} /> : <Plus size={15} />} {installed ? text("Installed", "Geïnstalleerd") : text("Install checklist", "Installeer checklist")}</button></article>;
             })}
           </div>
           <details className="custom-checklist-details"><summary>{text("Create a custom project checklist", "Maak een eigen projectchecklist")}</summary><div className="operation-form"><h2>{text("Publish new project checklist", "Nieuwe projectchecklist publiceren")}</h2><div className="form-grid-2"><label className="form-field"><span>{text("Module", "Module")}</span><select value={template.module} onChange={(event) => setTemplate({ ...template, module: event.target.value })}><option value="inspection">{text("Inspection", "Inspectie")}</option><option value="hse">HSE</option><option value="delivery">{text("Delivery", "Levering")}</option><option value="test">{text("Test / measurement", "Test / meting")}</option></select></label><label className="form-field"><span>Code</span><input value={template.code} onChange={(event) => setTemplate({ ...template, code: event.target.value })} placeholder={text("For example CONC-01", "Bijv. BETON-01")} /></label></div><label className="form-field"><span>{text("Name", "Naam")}</span><input value={template.name} onChange={(event) => setTemplate({ ...template, name: event.target.value })} /></label><label className="form-field"><span>{text("Checkpoints · one per line", "Controlepunten · één per regel")}</span><textarea rows={6} value={template.prompts} onChange={(event) => setTemplate({ ...template, prompts: event.target.value })} /><DictateButton onText={(transcript) => setTemplate((current) => ({ ...current, prompts: appendDictation(current.prompts, transcript) }))} /></label><button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy} onClick={addTemplate}><Plus size={15} /> {text("Publish checklist", "Checklist publiceren")}</button></div></details>

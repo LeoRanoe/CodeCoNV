@@ -189,6 +189,7 @@ function MetricCard({
   detail,
   onClick,
   icon,
+  attention = false,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -196,9 +197,11 @@ function MetricCard({
   value: number | null;
   detail: string;
   onClick: () => void;
+  /** The detail line names something that needs a decision (high priority, an NCR). */
+  attention?: boolean;
 }) {
   return (
-    <button className="overview-metric ui-stat" type="button" onClick={onClick}>
+    <button className={`overview-metric ui-stat${attention ? " is-attention" : ""}`} type="button" onClick={onClick}>
       <span className="ui-stat__icon" aria-hidden="true">{icon}</span>
       <strong className="ui-stat__value">{value ?? "–"}</strong>
       <span className="ui-stat__label">{label}</span>
@@ -265,7 +268,9 @@ export function ClientDashboard({
 }) {
   const { locale, text } = useLanguage();
   // Starting the day, answering its questions and checking the report are the supervisor's; a reader does not get the buttons.
-  const canWriteDay = useProjectPermissions().canAny("reports.create", "reports.edit");
+  const projectPermissions = useProjectPermissions();
+  const canWriteDay = projectPermissions.canAny("reports.create", "reports.edit");
+  const canAddPhotos = projectPermissions.canAny("records.create", "files.manage");
   const [search, setSearch] = useState("");
   // Shared with the top bar so both show the same reading from one request.
   const { weather: liveWeather, error: weatherError, loading: weatherLoading, reload: loadLiveWeather } = useLiveProjectWeather(projectLocation);
@@ -436,6 +441,9 @@ export function ClientDashboard({
 
   const activityEntries = entries.slice(0, 6);
   const evidencePhotos = recentPhotos.slice(0, 4);
+  const today = new Date();
+  const todayIso = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(today);
+  const todayLabel = new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long", timeZone: "America/Paramaribo" }).format(today);
   const buildingContextLabel = buildingCount > 1 ? text(`${buildingCount} buildings`, `${buildingCount} gebouwen`) : buildingName;
   const weatherLabel = weather
     ? ({
@@ -450,9 +458,18 @@ export function ClientDashboard({
   return (
     <section className="project-overview" aria-label={text("Project command center", "Projectcommandocentrum")}>
       <header className="overview-hero">
-        <div>
+        <div className="overview-hero-copy">
           <h1>{projectName}</h1>
-          <p>{buildingContextLabel}</p>
+          <p>
+            <span>{buildingContextLabel}</span>
+            <time dateTime={todayIso}>{todayLabel}</time>
+            {canWriteDay ? (
+              <span className={`overview-day-state${dayStarted ? " is-started" : ""}`}>
+                {dayStarted ? <CheckCircle2 size={14} aria-hidden="true" /> : <TimerReset size={14} aria-hidden="true" />}
+                {dayStarted ? text("Day started", "Werkdag gestart") : text("Day not started", "Werkdag niet gestart")}
+              </span>
+            ) : null}
+          </p>
         </div>
         <div className="overview-hero-actions">
           <label className="overview-search">
@@ -484,8 +501,8 @@ export function ClientDashboard({
         <>
 
         <div className="overview-metrics">
-          <MetricCard icon={<ListChecks size={22} />} label={text("Open follow-up", "Open opvolging")} value={projectCounts.data ? openWork.open : null} detail={`${openWork.urgent} ${text("high priority", "hoge prioriteit")}`} onClick={openActions} />
-          <MetricCard icon={<ShieldAlert size={22} />} label={text("Quality issues", "Kwaliteitspunten")} value={projectCounts.data ? qualityOpen : null} detail={qualityNcr ? `${qualityNcr} NCR` : text("Open", "Open")} onClick={openActions} />
+          <MetricCard icon={<ListChecks size={22} />} label={text("Open follow-up", "Open opvolging")} value={projectCounts.data ? openWork.open : null} detail={`${openWork.urgent} ${text("high priority", "hoge prioriteit")}`} attention={Boolean(projectCounts.data && openWork.urgent)} onClick={openActions} />
+          <MetricCard icon={<ShieldAlert size={22} />} label={text("Quality issues", "Kwaliteitspunten")} value={projectCounts.data ? qualityOpen : null} detail={qualityNcr ? `${qualityNcr} NCR` : text("Open", "Open")} attention={Boolean(projectCounts.data && qualityNcr)} onClick={openActions} />
           <MetricCard icon={<ClipboardCheck size={22} />} label={text("Inspections", "Inspecties")} value={projectCounts.data ? inspectionTotal : null} detail={text("In project", "In project")} onClick={openWorkspace} />
           <MetricCard icon={<Camera size={22} />} label={text("Pictures", "Foto's")} value={projectCounts.data ? photoTotal : null} detail={text("In project", "In project")} onClick={() => openRecord("files", "")} />
         </div>
@@ -530,7 +547,7 @@ export function ClientDashboard({
             </article>
           </div>
 
-          <article className="overview-panel overview-priority-panel">
+          <article className={`overview-panel overview-priority-panel${projectCounts.data ? (openWork.escalated ? " is-attention" : " is-stable") : ""}`}>
             <header className="overview-panel-heading">
               <div className="overview-panel-title"><ListChecks size={18} aria-hidden="true" /><h2>{text("Priority queue", "Prioriteitenlijst")}</h2></div>
               {projectCounts.data ? <span className={`overview-health ${openWork.escalated ? "attention" : "stable"}`}>{openWork.escalated ? text("Action needed", "Actie nodig") : text("Under control", "Onder controle")}</span> : null}
@@ -569,7 +586,7 @@ export function ClientDashboard({
                   </span>
                   <span><strong>{photo.title}</strong><small>{new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Paramaribo" }).format(new Date(photo.capturedAt))}</small></span>
                 </button>
-              )) : <button className="ui-button ui-button--quiet ui-button--md overview-evidence-empty" type="button" onClick={() => openRecord("files", "")}>{text("No photos yet · Take photo", "Nog geen foto’s · Maak een foto")}</button>}
+              )) : <button className="ui-button ui-button--quiet ui-button--md overview-evidence-empty" type="button" onClick={() => openRecord("files", "")}>{canAddPhotos ? text("No photos yet · Take photo", "Nog geen foto’s · Maak een foto") : text("No photos yet · Open the photo library", "Nog geen foto’s · Open de fotobibliotheek")}</button>}
             </div>
           </article>
 
@@ -587,7 +604,7 @@ export function ClientDashboard({
               <span><small>{text("Humidity", "Luchtvochtigheid")}</small><strong>{liveWeather.relativeHumidityPercent}%</strong></span>
               <span><small>{text("Wind", "Wind")}</small><strong>{liveWeather.windSpeedKph} km/h</strong></span>
               <span><small>{text("Rain", "Regen")}</small><strong>{liveWeather.precipitationMm} mm</strong></span>
-            </div> : weatherError ? <p className="overview-weather-error">{weatherError}</p> : null}
+            </div> : weatherError ? <p className="overview-weather-error">{text("Live weather could not be loaded. Check it on site.", "Het actuele weer kon niet worden geladen. Controleer het ter plaatse.")}</p> : null}
             <div className="overview-site-meta"><span><TimerReset size={14} /> {text("Current report context", "Actuele rapportcontext")}</span><strong>{buildingContextLabel}</strong></div>
           </article>
         </div>
