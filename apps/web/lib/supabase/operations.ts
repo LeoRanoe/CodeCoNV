@@ -5,6 +5,7 @@ import { anchorChecklistLibrary, legacyAnchorPrompts } from "@/lib/checklists/an
 import { normalizeExternalShareToken } from "@/lib/external-share/token.mjs";
 import { schemaFeatureMissing } from "@/lib/supabase/schema-compatibility.mjs";
 import { pageAll } from "@/lib/supabase/page-all.mjs";
+import { isPhotoFile } from "@/lib/media/photo-library.mjs";
 
 export type ChecklistItem = {
   id: string;
@@ -788,7 +789,8 @@ export async function loadProjectOperations(
   // predate visual_captures, so project them into Visual Evidence and materialise a capture
   // only if somebody adds a marker. This repairs history without a data migration.
   const historicalImageCaptures = fileRows
-    .filter((file) => file.status === "available" && file.mime_type.startsWith("image/") && !capturedFileIds.has(file.id))
+    // A drawing or a document saved as an image is no photo (the library and the overview use one rule).
+    .filter((file) => isPhotoFile(file) && !capturedFileIds.has(file.id))
     .map((file): VisualCapture => ({
       id: `file:${file.id}`,
       building_id: file.building_id ?? "",

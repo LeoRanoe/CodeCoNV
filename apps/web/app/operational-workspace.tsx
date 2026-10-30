@@ -128,10 +128,11 @@ import type { ProjectStartAnswers } from "@/lib/forms/daily-report";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { DraftNotice } from "@/app/forms/draft-notice";
 import { useFormAutosave } from "@/lib/offline/use-form-autosave";
+import { TimeField } from "@/app/time-field";
 import { useLanguage } from "@/lib/i18n";
 import { cacheProjectSnapshot, getCachedProjectSnapshot } from "@/lib/offline/project-cache";
 import { useLiveProjectWeather } from "@/lib/weather-client";
-import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload } from "@/lib/offline/upload-queue";
+import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload, removeOfflineUpload } from "@/lib/offline/upload-queue";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import type { FormalReportSnapshot } from "@/lib/reports/daily-report-pdf";
 import type { PeriodReportSection, PeriodReportTopic } from "@/lib/reports/period-report-pdf";
@@ -1171,7 +1172,8 @@ function ProjectOperations({
     setDayLogFocus(view === "day" ? undefined : view === "delays" ? "delay" : view);
   };
   const permissions = useProjectPermissions();
-  const [wantsForm, setShowForm] = useState(initialTab !== "home");
+  // A module opens with its form ready, except when a link points at one record: that record is the page.
+  const [wantsForm, setShowForm] = useState(initialTab !== "home" && !focusRecordId);
   // What a user may write depends on the module. A reader (the client) gets the list and the
   // records, not a form that could only be refused when it is sent.
   const mayCreateHere = tab === "inspections" ? permissions.can("inspections.manage")
@@ -1326,9 +1328,10 @@ function ProjectOperations({
       return;
     }
     setSubmittedFinding(null);
-    setShowForm(tab !== "home");
+    // A link to one record shows that record; every other way in opens the module with its form.
+    setShowForm(tab !== "home" && !focusRecordId);
     setActiveInspection(null);
-  }, [tab]);
+  }, [tab, focusRecordId]);
   /** An agreement is text plus the two parties who made it, and who signs for them. */
   const [agreementForm, setAgreementForm] = useState({ ...emptyAgreementSignature });
   /** And the rest of the client's own form: the owner, the urgency and the completion. */
@@ -2778,6 +2781,13 @@ function ProjectOperations({
         if (!registerOnline && registerFiles.length) {
           throw new Error(text("Attachments need a connection. Remove them to save on this device, or go online.", "Bijlagen hebben verbinding nodig. Verwijder ze om op dit apparaat op te slaan, of ga online."));
         }
+        // A delay report and a lesson learned carry pictures the client's form marks as required.
+        // A formal record that exists without them is what the QA sweep found (M20), so these two
+        // are only saved with a connection, and only stay saved once the pictures are confirmed.
+        const photosAreMandatory = !editingRegisterId && (delayReportRegister || lessonsLearnedRegister) && namedRegisterPhotos.length > 0;
+        if (photosAreMandatory && !registerOnline) {
+          throw new Error(text("This form needs a connection: the required photos must be confirmed before it is saved. Your entries stay on this screen.", "Dit formulier heeft verbinding nodig: de verplichte foto's moeten bevestigd zijn voordat het wordt opgeslagen. Je invoer blijft op dit scherm staan."));
+        }
         const effectiveReportId = registerOnline ? await ensureProjectDayReport(client, projectId, reportId) : reportId;
         const uploadedFiles = [];
         for (const file of registerFiles) {
@@ -2862,13 +2872,14 @@ function ProjectOperations({
             ...namedRegisterPhotos.map(({ role, photo }) => ({ photo, role })),
             ...registerPhotos.map((photo) => ({ photo, role: "" })),
           ];
+          const queuedPhotoIds: string[] = [];
           for (const { photo, role } of filedPhotos) {
             const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
             const written = photoTitle(photo);
             const caption = role
               ? [namedPhotoLabel(role, language), written].filter(Boolean).join(" · ")
               : written;
-            await queueOfflineUpload({
+            const queuedPhoto = await queueOfflineUpload({
               projectId,
               buildingId: registerPhotoBuildingId,
               reportId: effectiveReportId,
@@ -2888,8 +2899,21 @@ function ProjectOperations({
               compressed: prepared.compressed,
               recordLink: { organizationId, recordType: "register_entry", recordId: entry.id, relationship: "evidence" },
             });
+            queuedPhotoIds.push(queuedPhoto.id);
           }
-          if (navigator.onLine) await syncQueuedEvidenceNow();
+          if (navigator.onLine) {
+            try {
+              await syncQueuedEvidenceNow();
+            } catch (error) {
+              if (!photosAreMandatory) throw error;
+              // The required pictures did not arrive: the record is withdrawn again, the pictures
+              // are taken off the queue and the form keeps everything that was typed, so nothing
+              // formal is left behind without its evidence.
+              await withdrawWorkspaceRecord(client, "register_entry", entry.id, "Verplichte foto's niet bevestigd; niet opgeslagen.");
+              await Promise.all(queuedPhotoIds.map((id) => removeOfflineUpload(id)));
+              throw new Error(text("Not saved: the required photos were not confirmed. Check the connection and save again; your entries are still here.", "Niet opgeslagen: de verplichte foto's zijn niet bevestigd. Controleer de verbinding en sla opnieuw op; je invoer staat er nog."));
+            }
+          }
         }
         if (!editingRegisterId && registerForm.type === "punch_list") {
           const punchInput = {
@@ -3793,7 +3817,7 @@ function ProjectOperations({
               {/* The head of the client's own screen: what the app already knows before a
                   single box is filled in. "Ik vermoed dat dag, datum & tijd zelf komen" —
                   they do, and so do the reporter, the project, the site and the weather. */}
-              <section className="controlled-document-context sectioned-record-context" aria-label={text("Issue header", "Kop van de melding")}>
+              <section className="controlled-document-context sectioned-record-context" aria-label={text("Issue header", "Kop van het issue")}>
                 <div><small>{text("Issue ID", "Issue ID")}</small><strong>{nextHseNumber}</strong><span>{text("Provisional · fixed on submit", "Voorlopig · vast bij indienen")}</span></div>
                 <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDateLabel}</strong><span>{issueTime}</span></div>
                 <div><small>{text("Reporter", "Melder")}</small><strong>{currentUserName}</strong><span>{reporterDepartment}</span></div>
@@ -4545,9 +4569,9 @@ function ProjectOperations({
                   />
                 </label>
                 {registerFiles.length ? <div className="boq-preview">{registerFiles.map((file) => <div key={`${file.name}:${file.lastModified}`}><FileText size={15} /><span>{file.name}</span><small>{Math.max(1, Math.round(file.size / 1024))} KB</small></div>)}</div> : null}
-                {registerForm.type === "inspection_request" ? <div className="form-grid-2"><label className="form-field"><span>{text("Inspection category", "Inspectiecategorie")}</span><select value={registerForm.inspectionCategory} onChange={(event) => setRegisterForm({ ...registerForm, inspectionCategory: event.target.value })}><option value="architectural">Architectural</option><option value="structural">Structural</option><option value="mep">MEP</option><option value="testing">Testing</option><option value="other">Other</option></select></label><div className="form-grid-2"><label className="form-field"><span>{text("Ready date", "Gereeddatum")}</span><input type="date" value={registerForm.readyDate} onChange={(event) => setRegisterForm({ ...registerForm, readyDate: event.target.value })} /></label><label className="form-field"><span>{text("Ready time", "Gereedtijd")}</span><input type="time" value={registerForm.readyTime} onChange={(event) => setRegisterForm({ ...registerForm, readyTime: event.target.value })} /></label></div></div> : null}
-                {registerForm.type === "technical_instruction" ? <label className="form-field"><span>{text("Discipline", "Discipline")}</span><select value={registerForm.discipline} onChange={(event) => setRegisterForm({ ...registerForm, discipline: event.target.value })}><option value="architectural">Architectural</option><option value="structural">Structural</option><option value="electrical">Electrical</option><option value="mechanical">Mechanical</option><option value="civil">Civil</option><option value="hse">HSE</option></select></label> : null}
-                {registerForm.type === "technical_instruction" ? <details className="controlled-document-optional-impact"><summary>{text("Schedule and cost impact", "Planning- en kostenimpact")}</summary><div className="form-grid-2"><label className="form-field"><span>{text("Schedule impact", "Planningimpact")}</span><select value={registerForm.scheduleImpact} onChange={(event) => setRegisterForm({ ...registerForm, scheduleImpact: event.target.value })}><option value="none">None</option><option value="possible">Possible</option><option value="confirmed">Confirmed</option><option value="unknown">To be assessed</option></select></label><label className="form-field"><span>{text("Cost impact", "Kostenimpact")}</span><select value={registerForm.costImpact} onChange={(event) => setRegisterForm({ ...registerForm, costImpact: event.target.value })}><option value="none">None</option><option value="possible">Possible</option><option value="confirmed">Confirmed</option><option value="unknown">To be assessed</option></select></label></div><label className="form-field"><span>{text("Impact explanation", "Toelichting impact")}</span><textarea rows={2} value={registerForm.impactExplanation} onChange={(event) => setRegisterForm({ ...registerForm, impactExplanation: event.target.value })} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, impactExplanation: appendDictation(current.impactExplanation, transcript) }))} /></label></details> : null}
+                {registerForm.type === "inspection_request" ? <div className="form-grid-2"><label className="form-field"><span>{text("Inspection category", "Inspectiecategorie")}</span><select value={registerForm.inspectionCategory} onChange={(event) => setRegisterForm({ ...registerForm, inspectionCategory: event.target.value })}><option value="architectural">{text("Architectural", "Architectonisch")}</option><option value="structural">{text("Structural", "Constructief")}</option><option value="mep">MEP</option><option value="testing">{text("Testing", "Testen")}</option><option value="other">{text("Other", "Overig")}</option></select></label><div className="form-grid-2"><label className="form-field"><span>{text("Ready date", "Gereeddatum")}</span><input type="date" value={registerForm.readyDate} onChange={(event) => setRegisterForm({ ...registerForm, readyDate: event.target.value })} /></label><label className="form-field"><span>{text("Ready time", "Gereedtijd")}</span><TimeField label={text("Ready time", "Gereedtijd")} value={registerForm.readyTime} onChange={(value) => setRegisterForm({ ...registerForm, readyTime: value })} /></label></div></div> : null}
+                {registerForm.type === "technical_instruction" ? <label className="form-field"><span>{text("Discipline", "Discipline")}</span><select value={registerForm.discipline} onChange={(event) => setRegisterForm({ ...registerForm, discipline: event.target.value })}><option value="architectural">{text("Architectural", "Architectonisch")}</option><option value="structural">{text("Structural", "Constructief")}</option><option value="electrical">{text("Electrical", "Elektrisch")}</option><option value="mechanical">{text("Mechanical", "Werktuigbouwkundig")}</option><option value="civil">{text("Civil", "Civiel")}</option><option value="hse">HSE</option></select></label> : null}
+                {registerForm.type === "technical_instruction" ? <details className="controlled-document-optional-impact"><summary>{text("Schedule and cost impact", "Planning- en kostenimpact")}</summary><div className="form-grid-2"><label className="form-field"><span>{text("Schedule impact", "Planningimpact")}</span><select value={registerForm.scheduleImpact} onChange={(event) => setRegisterForm({ ...registerForm, scheduleImpact: event.target.value })}><option value="none">{text("None", "Geen")}</option><option value="possible">{text("Possible", "Mogelijk")}</option><option value="confirmed">{text("Confirmed", "Bevestigd")}</option><option value="unknown">{text("To be assessed", "Nog te beoordelen")}</option></select></label><label className="form-field"><span>{text("Cost impact", "Kostenimpact")}</span><select value={registerForm.costImpact} onChange={(event) => setRegisterForm({ ...registerForm, costImpact: event.target.value })}><option value="none">{text("None", "Geen")}</option><option value="possible">{text("Possible", "Mogelijk")}</option><option value="confirmed">{text("Confirmed", "Bevestigd")}</option><option value="unknown">{text("To be assessed", "Nog te beoordelen")}</option></select></label></div><label className="form-field"><span>{text("Impact explanation", "Toelichting impact")}</span><textarea rows={2} value={registerForm.impactExplanation} onChange={(event) => setRegisterForm({ ...registerForm, impactExplanation: event.target.value })} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, impactExplanation: appendDictation(current.impactExplanation, transcript) }))} /></label></details> : null}
                 {changeOrderRegister ? (
                   <div className="record-form-sections change-order-sections">
                     <RecordFormSection
@@ -5973,8 +5997,8 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
               <div className="form-grid-2">
                 <label className="form-field"><span>{text("Report prefix", "Rapportprefix")}</span><input value={settings.reportPrefix} onChange={(event) => setSettings({ ...settings, reportPrefix: event.target.value.toUpperCase() })} /></label>
                 <label className="form-field"><span>{text("Default language", "Standaardtaal")}</span><select value={settings.defaultLanguage} onChange={(event) => setSettings({ ...settings, defaultLanguage: event.target.value })}><option value="en">English</option><option value="nl">Nederlands</option></select></label>
-                <label className="form-field"><span>{text("Default shift start", "Standaard starttijd")}</span><input type="time" value={settings.shiftStart} onChange={(event) => setSettings({ ...settings, shiftStart: event.target.value })} /></label>
-                <label className="form-field"><span>{text("Default shift end", "Standaard eindtijd")}</span><input type="time" value={settings.shiftEnd} onChange={(event) => setSettings({ ...settings, shiftEnd: event.target.value })} /></label>
+                <label className="form-field"><span>{text("Default shift start", "Standaard starttijd")}</span><TimeField label={text("Default shift start", "Standaard starttijd")} value={settings.shiftStart} onChange={(value) => setSettings({ ...settings, shiftStart: value })} /></label>
+                <label className="form-field"><span>{text("Default shift end", "Standaard eindtijd")}</span><TimeField label={text("Default shift end", "Standaard eindtijd")} value={settings.shiftEnd} onChange={(value) => setSettings({ ...settings, shiftEnd: value })} /></label>
                 <label className="form-field"><span>{text("Required location detail", "Verplicht locatieniveau")}</span><select value={settings.requiredLocationDepth} onChange={(event) => setSettings({ ...settings, requiredLocationDepth: event.target.value as typeof settings.requiredLocationDepth })}><option value="building">{text("Building", "Gebouw")}</option><option value="floor">{text("Floor", "Verdieping")}</option><option value="room">{text("Room", "Ruimte")}</option><option value="element">{text("Element", "Element")}</option></select></label>
                 <label className="form-field"><span>{text("File limit (MB)", "Bestandslimiet (MB)")}</span><input type="number" min="1" max="100" value={settings.maxFileSizeMb} onChange={(event) => setSettings({ ...settings, maxFileSizeMb: Number(event.target.value) })} /></label>
                 <label className="form-field"><span>{text("Reminder before deadline (hours)", "Herinnering vóór deadline (uur)")}</span><input type="number" min="1" max="720" value={settings.leadHours} onChange={(event) => setSettings({ ...settings, leadHours: Number(event.target.value) })} /></label>

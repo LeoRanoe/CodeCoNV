@@ -82,6 +82,11 @@ test("a second account on the same device cannot read the first account's offlin
   await signIn(page, emailA!, passwordA!);
   await openProject(page, projectA);
   await downloadEverything(page);
+  // The first service worker takes the page over and the app reloads once when it does; reading the
+  // device storage in the middle of that reload fails with "execution context was destroyed".
+  await page.waitForLoadState("load");
+  await page.waitForLoadState("networkidle").catch(() => undefined);
+  await page.waitForTimeout(1500);
 
   const ownerA = await page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve) => {

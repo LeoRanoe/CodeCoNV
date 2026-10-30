@@ -213,11 +213,18 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
   // On a narrow screen the form sits far below the drawing; bring it into view when a spot or a
   // pin is chosen, moving no further than needed so a form that is already visible stays put.
   const linkPanelRef = useRef<HTMLDivElement>(null);
+  // Every tap on a pin or a spot counts, also on the one that is already chosen: the page may have
+  // been scrolled away from its card since.
+  const [panelNudge, setPanelNudge] = useState(0);
   const panelKey = point ? `spot:${point.xRatio}:${point.yRatio}` : selectedPinId ? `pin:${selectedPinId}` : "";
   useEffect(() => {
     if (!panelKey) return;
-    linkPanelRef.current?.scrollIntoView({ block: "nearest" });
-  }, [panelKey]);
+    // The card inside the panel, not the whole panel: a panel taller than the window is already
+    // "partly visible" and would never move, with the button the person needs below the fold.
+    // After the next frame, when the card for this pin or spot is on the page.
+    const frame = requestAnimationFrame(() => (linkPanelRef.current?.firstElementChild ?? linkPanelRef.current)?.scrollIntoView({ block: "nearest" }));
+    return () => cancelAnimationFrame(frame);
+  }, [panelKey, panelNudge]);
 
   const changePage = useCallback((page: number) => {
     setViewport(resetDrawingViewport(page));
@@ -681,8 +688,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
               onPageCount={handlePageCount}
               onDocumentDetails={handleDocumentDetails}
               onViewportChange={setViewport}
-              onPoint={(nextPoint) => { setPoint(nextPoint); setSelectedPinId(null); }}
-              onSelectPin={(pinId) => { setSelectedPinId(pinId); setPoint(null); }}
+              onPoint={(nextPoint) => { setPoint(nextPoint); setSelectedPinId(null); setPanelNudge((count) => count + 1); }}
+              onSelectPin={(pinId) => { setSelectedPinId(pinId); setPoint(null); setPanelNudge((count) => count + 1); }}
               onMovePin={movePin}
               onCreateMarkup={saveMarkup}
             />

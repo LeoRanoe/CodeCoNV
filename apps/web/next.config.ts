@@ -10,6 +10,10 @@ function allowedConnectSources() {
     "https://blob.vercel-storage.com",
     "https://*.blob.vercel-storage.com",
   ];
+  // The local test stack keeps its fake Blob store on a port of this machine (tests/e2e/fake-blob).
+  // Nothing but a loopback address is ever added.
+  const localBlob = process.env.VERCEL_BLOB_API_URL ?? "";
+  if (/^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(localBlob)) sources.push(localBlob);
   for (const candidate of [process.env.NEXT_PUBLIC_SUPABASE_URL]) {
     if (!candidate) continue;
     try {

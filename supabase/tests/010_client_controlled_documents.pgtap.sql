@@ -1,6 +1,12 @@
 begin;
 set local search_path = extensions, pgtap, public;
 
+-- Isolation: only the first organization can be created without an administrator, so the file
+-- starts from an empty tenant table; the rollback at the end puts any existing data back.
+set local client_min_messages = warning;
+truncate public.organizations, auth.users cascade;
+set local client_min_messages = notice;
+
 select plan(31);
 
 select has_column('public', 'findings', 'issue_management', 'findings retain the client issue-management fields');

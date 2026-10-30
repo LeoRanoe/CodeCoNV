@@ -5,6 +5,12 @@ set local search_path = extensions, pgtap, public;
 -- day report with a function that needs reports.create. ensure_day_report_for_record hands out
 -- the id of the report of a date to every active member with a write permission, without
 -- opening the report for reading.
+-- Isolation: only the first organization can be created without an administrator, so the file
+-- starts from an empty tenant table; the rollback at the end puts any existing data back.
+set local client_min_messages = warning;
+truncate public.organizations, auth.users cascade;
+set local client_min_messages = notice;
+
 select plan(19);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at) values

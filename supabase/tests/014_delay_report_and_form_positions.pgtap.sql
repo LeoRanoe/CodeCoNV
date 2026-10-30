@@ -1,6 +1,12 @@
 begin;
 set local search_path = extensions, pgtap, public;
 
+-- Isolation: only the first organization can be created without an administrator, so the file
+-- starts from an empty tenant table; the rollback at the end puts any existing data back.
+set local client_min_messages = warning;
+truncate public.organizations, auth.users cascade;
+set local client_min_messages = notice;
+
 select plan(11);
 
 -- 202608090002: the contractor's box on the NCR form gains the position that stands under

@@ -4,6 +4,12 @@ set local search_path = extensions, pgtap, public;
 -- The contractor link answers only while the record is the contractor's to answer. A second
 -- proposal after the NCR went to verification, or after it was closed, used to replace the
 -- signed corrective action; the written signature of the first proposal was then lost.
+-- Isolation: only the first organization can be created without an administrator, so the file
+-- starts from an empty tenant table; the rollback at the end puts any existing data back.
+set local client_min_messages = warning;
+truncate public.organizations, auth.users cascade;
+set local client_min_messages = notice;
+
 select plan(20);
 
 create temporary table ext_share (payload jsonb) on commit drop;

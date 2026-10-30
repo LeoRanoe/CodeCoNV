@@ -1026,3 +1026,41 @@ test("QA M7: the issue and NCR counters leave out verified and withdrawn records
   assert.equal(countOpenFindings(findings, "ncr"), 1);
   assert.equal(countOpenFindings(undefined, "issue"), 0);
 });
+
+test("QA L1: a time of day is picked on a 24-hour clock", async () => {
+  const { splitTime, joinTime, hourChoices, minuteChoices } = await import("../lib/forms/time-value.mjs");
+  assert.deepEqual(splitTime("07:30"), { hour: "07", minute: "30" });
+  assert.deepEqual(splitTime("17:05:00"), { hour: "17", minute: "05" }, "the database returns seconds");
+  assert.deepEqual(splitTime("24:00"), { hour: "", minute: "" });
+  assert.deepEqual(splitTime(""), { hour: "", minute: "" });
+  assert.deepEqual(splitTime(undefined), { hour: "", minute: "" });
+  assert.equal(joinTime("17", "05"), "17:05");
+  assert.equal(joinTime("07", ""), "07:00", "a chosen hour without a minute is on the hour");
+  assert.equal(joinTime("", "30"), "", "no hour is no time");
+  assert.equal(hourChoices.length, 24);
+  assert.equal(minuteChoices.length, 60);
+  assert.ok(!hourChoices.some((choice) => /am|pm/i.test(choice)));
+});
+
+test("QA M26: the overview counts the same files as the library calls photos", async () => {
+  const { isPhotoFile, nonPhotoCategoryList } = await import("../lib/media/photo-library.mjs");
+  for (const category of nonPhotoCategoryList) assert.equal(isPhotoFile({ mime_type: "image/png", category }), false, category);
+  assert.equal(isPhotoFile({ mime_type: "image/jpeg", category: "photo" }), true);
+  const { readFile } = await import("node:fs/promises");
+  const dashboard = await readFile(new URL("../app/client-dashboard.tsx", import.meta.url), "utf8");
+  assert.match(dashboard, /\.not\("category", "in", `\(\$\{nonPhotoCategoryList\.join\(","\)\}\)`\)/);
+  assert.match(dashboard, /\.eq\("status", "available"\)\.like\("mime_type", "image\/%"\)/);
+});
+
+test("QA M26: a photo whose upload failed or is pending is not counted", async () => {
+  const { isPhotoFile } = await import("../lib/media/photo-library.mjs");
+  assert.equal(isPhotoFile({ mime_type: "image/jpeg", category: "photo", status: "available" }), true);
+  assert.equal(isPhotoFile({ mime_type: "image/jpeg", category: "photo", status: "failed" }), false);
+  assert.equal(isPhotoFile({ mime_type: "image/jpeg", category: "photo", status: "pending" }), false);
+});
+
+test("QA M26: the library's historical photo entries leave drawings out", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const operations = await readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8");
+  assert.match(operations, /\.filter\(\(file\) => isPhotoFile\(file\) && !capturedFileIds\.has\(file\.id\)\)/);
+});

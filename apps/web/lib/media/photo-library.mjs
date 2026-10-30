@@ -13,9 +13,11 @@
  * PNG is an image too, but it is a drawing; counting it as a photo made the tile, the tab and
  * the library disagree.
  */
-const nonPhotoCategories = new Set(["drawing", "document", "certificate", "report", "backup", "export"]);
+export const nonPhotoCategoryList = ["drawing", "document", "certificate", "report", "backup", "export"];
+const nonPhotoCategories = new Set(nonPhotoCategoryList);
 export function isPhotoFile(file) {
-  return Boolean(file) && String(file.mime_type ?? "").startsWith("image/") && !nonPhotoCategories.has(file.category);
+  // A photo whose upload failed or is still pending is not in the library, so it is not counted either.
+  return Boolean(file) && String(file.mime_type ?? "").startsWith("image/") && !nonPhotoCategories.has(file.category) && (!file.status || file.status === "available");
 }
 
 /** The photos and drawings the library is showing, before any folder is chosen. */

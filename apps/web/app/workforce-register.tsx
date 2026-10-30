@@ -7,6 +7,7 @@ import { type HandwrittenSignature } from "@/app/signature-pad";
 import { RecordFormSection, RecordFormShell, RecordSignatureField } from "@/app/forms/record-form-shell";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
+import { TimeField } from "@/app/time-field";
 import { useLanguage } from "@/lib/i18n";
 import { clearFormDraft, loadFormDraft, saveFormDraft } from "@/lib/offline/form-drafts";
 import {
@@ -170,13 +171,11 @@ export function WorkforceRegister({
             {editShifts ? (
               <span className="workforce-shift">
                 <label>
-                  <span className="sr-only">{text(`Shift start for ${row.discipline}`, `Aanvang dienst voor ${row.discipline}`)}</span>
-                  <input type="time" value={row.shiftStart} onChange={(event) => setShift(index, "shiftStart", event.target.value)} />
+                  <TimeField label={text(`Shift start for ${row.discipline}`, `Aanvang dienst voor ${row.discipline}`)} value={row.shiftStart} onChange={(value) => setShift(index, "shiftStart", value)} />
                 </label>
                 <em>–</em>
                 <label>
-                  <span className="sr-only">{text(`Shift end for ${row.discipline}`, `Einde dienst voor ${row.discipline}`)}</span>
-                  <input type="time" value={row.shiftEnd} onChange={(event) => setShift(index, "shiftEnd", event.target.value)} />
+                  <TimeField label={text(`Shift end for ${row.discipline}`, `Einde dienst voor ${row.discipline}`)} value={row.shiftEnd} onChange={(value) => setShift(index, "shiftEnd", value)} />
                 </label>
               </span>
             ) : <small className="workforce-shift-static">{row.shiftStart}–{row.shiftEnd}</small>}
@@ -576,13 +575,11 @@ export function WorkforceForm({
                     </span>
                     <span className="workforce-shift">
                       <label>
-                        <span className="sr-only">{text(`Arrival of ${visitor.visitorName}`, `Aankomst van ${visitor.visitorName}`)}</span>
-                        <input type="time" value={visitor.shiftStart} onChange={(event) => setVisitors(visitors.map((entry, entryIndex) => entryIndex === index ? { ...entry, shiftStart: event.target.value } : entry))} />
+                        <TimeField label={text(`Arrival of ${visitor.visitorName}`, `Aankomst van ${visitor.visitorName}`)} value={visitor.shiftStart} onChange={(value) => setVisitors(visitors.map((entry, entryIndex) => entryIndex === index ? { ...entry, shiftStart: value } : entry))} />
                       </label>
                       <em>–</em>
                       <label>
-                        <span className="sr-only">{text(`Departure of ${visitor.visitorName}`, `Vertrek van ${visitor.visitorName}`)}</span>
-                        <input type="time" value={visitor.shiftEnd} onChange={(event) => setVisitors(visitors.map((entry, entryIndex) => entryIndex === index ? { ...entry, shiftEnd: event.target.value } : entry))} />
+                        <TimeField label={text(`Departure of ${visitor.visitorName}`, `Vertrek van ${visitor.visitorName}`)} value={visitor.shiftEnd} onChange={(value) => setVisitors(visitors.map((entry, entryIndex) => entryIndex === index ? { ...entry, shiftEnd: value } : entry))} />
                       </label>
                     </span>
                     <button className="workforce-row-remove" type="button" onClick={() => setVisitors(visitors.filter((_, entryIndex) => entryIndex !== index))} aria-label={text(`Remove ${visitor.visitorName}`, `Verwijder ${visitor.visitorName}`)}><X size={14} /></button>

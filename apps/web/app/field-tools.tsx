@@ -10,6 +10,7 @@ import { RecordBuildingsField, RecordFormSection, RecordFormShell, RecordSignatu
 import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
 import type { HandwrittenSignature } from "@/app/signature-pad";
 import { signatureFromDetails } from "@/lib/signatures/handwritten-signature.mjs";
+import { TimeField } from "@/app/time-field";
 import { useLanguage } from "@/lib/i18n";
 import type { ProjectParty } from "@/lib/supabase/data";
 import { createRegisterEntry, updateRegisterRecord, type OperationSnapshot } from "@/lib/supabase/operations";
@@ -172,7 +173,7 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
         {note.type === "agreement" ? <div className="agreement-fields">
           <div className="form-grid-2">
             <label className="form-field"><span>{text("Agreement date", "Datum afspraak")}</span><input type="date" value={note.agreementDate} onChange={(event) => setNote({ ...note, agreementDate: event.target.value })} /></label>
-            <label className="form-field"><span>{text("Agreement time", "Tijd afspraak")}</span><input type="time" value={note.agreementTime} onChange={(event) => setNote({ ...note, agreementTime: event.target.value })} /></label>
+            <label className="form-field"><span>{text("Agreement time", "Tijd afspraak")}</span><TimeField label={text("Agreement time", "Tijd afspraak")} value={note.agreementTime} onChange={(value) => setNote({ ...note, agreementTime: value })} /></label>
             <label className="form-field"><span>{text("Responsible project party", "Verantwoordelijke projectpartij")}</span><select value={note.responsiblePartyId} onChange={(event) => setNote({ ...note, responsiblePartyId: event.target.value })}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name} · {partyTypeText(party.type, text)}</option>)}</select></label>
             <label className="form-field"><span>{text("Deadline / follow-up date", "Deadline / opvolgdatum")}</span><input type="date" min={note.agreementDate} value={note.dueDate} onChange={(event) => setNote({ ...note, dueDate: event.target.value })} /></label>
             <label className="form-field"><span>{text("Agreement status", "Status afspraak")}</span><select value={note.status} onChange={(event) => setNote({ ...note, status: event.target.value })}><option value="agreed">{text("Agreed", "Afgesproken")}</option><option value="open">{text("Open for confirmation", "Open voor bevestiging")}</option><option value="in_progress">{text("In progress", "In uitvoering")}</option><option value="completed">{text("Completed", "Afgerond")}</option></select></label>

@@ -39,7 +39,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useForm, useWatch } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
+import { TimeField } from "@/app/time-field";
 import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { actionStatusLabels as canonicalActionStatusLabels, labelMap, priorityText } from "@/lib/status-labels";
 import { screenFromSearch, useScreenHistory, type AppScreen } from "@/lib/navigation/app-history";
@@ -418,6 +419,7 @@ export function CodecoSupervisionApp() {
   const [projectTabPreset, setProjectTabPreset] = useState<{ registerType?: string; hseEventType?: string; dailyWorkView?: "works_ongoing" | "works_completed" | "delays" | "day" } | undefined>(undefined);
   const quickCameraInputRef = useRef<HTMLInputElement>(null);
   const dailyBackupCheckRef = useRef("");
+  const dailyBackupFailedAtRef = useRef(0);
   const [pendingQuickPhotos, setPendingQuickPhotos] = useState<File[]>([]);
   /** Day-log photos already in the upload queue, so retrying a save never files them twice. */
   const queuedDailyLogPhotos = useRef(new Set<string>());
@@ -479,11 +481,15 @@ export function CodecoSupervisionApp() {
     if (!supabase || !session || !activeOrganizationId || !canManageMembers || !isOnline) return;
     const checkKey = `${activeOrganizationId}:${reportDate}`;
     if (dailyBackupCheckRef.current === checkKey) return;
+    // A failed check is tried again later, not on every change of session or connection; each
+    // refusal showed up as an unexplained error in the console.
+    if (Date.now() - dailyBackupFailedAtRef.current < 10 * 60 * 1000) return;
     dailyBackupCheckRef.current = checkKey;
     void ensureDailyBackup(supabase, activeOrganizationId)
       .then(() => queryClient.invalidateQueries({ queryKey: ["project-operations"] }))
       .catch(() => {
         dailyBackupCheckRef.current = "";
+        dailyBackupFailedAtRef.current = Date.now();
       });
   }, [activeOrganizationId, canManageMembers, isOnline, queryClient, reportDate, session, supabase]);
 
@@ -2452,7 +2458,7 @@ function ProjectSetupScreen({
   const localizedProjectSetupSchema = useMemo(() => createProjectSetupSchema(), []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const { register, handleSubmit, formState: { errors } } = useForm<ProjectSetupAnswers>({
+  const { register, handleSubmit, control, formState: { errors } } = useForm<ProjectSetupAnswers>({
     resolver: zodResolver(localizedProjectSetupSchema),
     defaultValues: {
       // Nothing here is a real project: a name, code or building that is not typed is not saved.
@@ -2520,8 +2526,8 @@ function ProjectSetupScreen({
             <div className="form-grid two-columns">
               <label className="form-field"><span>{text("Default language", "Standaardtaal")}</span><select {...register("defaultLanguage")}><option value="en">English</option><option value="nl">Nederlands</option></select></label>
               <label className="form-field"><span>{text("Report prefix", "Rapportprefix")}</span><input {...register("reportPrefix")} /></label>
-              <label className="form-field"><span>{text("Shift start", "Start werktijd")}</span><input type="time" {...register("shiftStart")} /></label>
-              <label className="form-field"><span>{text("Shift end", "Einde werktijd")}</span><input type="time" {...register("shiftEnd")} /></label>
+              <label className="form-field"><span>{text("Shift start", "Start werktijd")}</span><Controller control={control} name="shiftStart" render={({ field }) => <TimeField label={text("Shift start", "Start werktijd")} value={field.value ?? ""} onChange={field.onChange} />} /></label>
+              <label className="form-field"><span>{text("Shift end", "Einde werktijd")}</span><Controller control={control} name="shiftEnd" render={({ field }) => <TimeField label={text("Shift end", "Einde werktijd")} value={field.value ?? ""} onChange={field.onChange} />} /></label>
               <label className="form-field wide"><span>{text("Workforce disciplines · one per line", "Workforce-disciplines · één per regel")}</span><textarea rows={9} {...register("disciplines")} /></label>
             </div>
           </details>
@@ -2779,8 +2785,8 @@ function ProjectStartForm({
               <label className="form-field"><span>{text("What is the weather?", "Wat is het weer?")}</span><select {...register("weatherCondition")}><option value="sunny">{text("Sunny", "Zonnig")}</option><option value="partly_cloudy">{text("Partly cloudy", "Licht bewolkt")}</option><option value="cloudy">{text("Cloudy", "Bewolkt")}</option><option value="rain">{text("Rain", "Regen")}</option><option value="heavy_rain">{text("Heavy rain", "Zware regen")}</option></select></label>
               <label className="form-field"><span>{text("Temperature", "Temperatuur")}</span><span className="input-with-unit"><input type="number" {...register("temperatureC", { valueAsNumber: true })} /><em>°C</em></span>{errors.temperatureC ? <small className="field-error">{errors.temperatureC.message}</small> : null}</label>
               <label className="form-field"><span>{text("Wind", "Wind")}</span><select {...register("windCondition")}><option value="calm">{text("Calm", "Kalm")}</option><option value="moderate">{text("Moderate", "Matig")}</option><option value="strong">{text("Strong", "Sterk")}</option></select></label>
-              <label className="form-field"><span>{text("Shift start", "Start werktijd")}</span><input type="time" {...register("shiftStart")} />{errors.shiftStart ? <small className="field-error">{errors.shiftStart.message}</small> : null}</label>
-              <label className="form-field"><span>{text("Shift end", "Einde werktijd")}</span><input type="time" {...register("shiftEnd")} />{errors.shiftEnd ? <small className="field-error">{errors.shiftEnd.message}</small> : null}</label>
+              <label className="form-field"><span>{text("Shift start", "Start werktijd")}</span><Controller control={control} name="shiftStart" render={({ field }) => <TimeField label={text("Shift start", "Start werktijd")} value={field.value ?? ""} onChange={field.onChange} />} />{errors.shiftStart ? <small className="field-error">{errors.shiftStart.message}</small> : null}</label>
+              <label className="form-field"><span>{text("Shift end", "Einde werktijd")}</span><Controller control={control} name="shiftEnd" render={({ field }) => <TimeField label={text("Shift end", "Einde werktijd")} value={field.value ?? ""} onChange={field.onChange} />} />{errors.shiftEnd ? <small className="field-error">{errors.shiftEnd.message}</small> : null}</label>
               <div className="form-field"><label htmlFor="expected-workers">{text("Expected workforce", "Verwachte bezetting")}</label><span className="input-with-unit"><input id="expected-workers" type="number" min={0} inputMode="numeric" {...register("expectedWorkers", { setValueAs: (value) => value === "" || value === null || value === undefined ? null : Number(value) })} /><em>{text("people", "personen")}</em></span><span className="period-date-presets">{[10, 20, 30, 40, 50].map((count) => <button type="button" onClick={() => setValue("expectedWorkers", count, { shouldDirty: true, shouldValidate: true })} key={count}>{count}</button>)}</span></div>
             </div>
           </section>
@@ -3223,7 +3229,7 @@ function ActionCreateModal({
             <BuildingPicker id="action-building" buildings={buildings} value={buildingId} onChange={(next) => { setBuildingId(next); setLocationNodeId(""); }} allowAll />
             {buildingId !== ALL_BUILDINGS ? <LocationPicker id="action-location" nodes={locationNodes} buildingId={buildingId} value={locationNodeId} onChange={setLocationNodeId} requiredDepth={requiredLocationDepth} /> : null}
             <label className="form-field"><span>{text("Responsible party *", "Verantwoordelijke partij *")}</span><select {...register("ownerPartyId")} disabled={parties.length === 0}><option value="">{text("Choose party", "Kies partij")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select>{errors.ownerPartyId ? <small className="field-error">{errors.ownerPartyId.message}</small> : null}</label>
-            <label className="form-field"><span>{text("Assigned company employee *", "Toegewezen bedrijfsmedewerker *")}</span><select {...register("ownerUserId")} disabled={employees.length === 0}><option value="">{text("Choose employee", "Kies medewerker")}</option>{employees.map((employee) => <option value={employee.userId} key={employee.userId}>{employee.displayName || employee.email} · {[...employee.organizationRoles.map((role) => role.name), ...employee.projectRoles.filter((role) => role.projectId).map((role) => role.roleName)][0] ?? text("Employee", "Medewerker")}</option>)}</select>{errors.ownerUserId ? <small className="field-error">{errors.ownerUserId.message}</small> : null}{employees.length === 0 ? <small className="field-error">{text("No active employees in this project. Ask an administrator to add one; an action is assigned to an employee.", "Geen actieve medewerkers in dit project. Vraag een beheerder er een toe te voegen; een actie wordt aan een medewerker toegewezen.")}</small> : null}</label>
+            <label className="form-field"><span>{text("Assigned company employee", "Toegewezen bedrijfsmedewerker")}</span><select {...register("ownerUserId")} disabled={employees.length === 0}><option value="">{text("Not assigned yet", "Nog niet toegewezen")}</option>{employees.map((employee) => <option value={employee.userId} key={employee.userId}>{employee.displayName || employee.email} · {[...employee.organizationRoles.map((role) => role.name), ...employee.projectRoles.filter((role) => role.projectId).map((role) => role.roleName)][0] ?? text("Employee", "Medewerker")}</option>)}</select>{errors.ownerUserId ? <small className="field-error">{errors.ownerUserId.message}</small> : null}{employees.length === 0 ? <small className="form-helper">{text("No active employees in this project yet. The action stays with you until one is assigned.", "Nog geen actieve medewerkers in dit project. De actie blijft bij jou tot er iemand is toegewezen.")}</small> : null}</label>
             <div className="form-field"><label htmlFor="action-deadline">Deadline *</label><input id="action-deadline" type="datetime-local" {...register("dueAt")} />{errors.dueAt ? <small className="field-error">{errors.dueAt.message}</small> : null}<span className="period-date-presets">{[[0, text("Today", "Vandaag")], [1, text("Tomorrow", "Morgen")], [3, text("3 days", "3 dagen")], [7, text("7 days", "7 dagen")]].map(([days, label]) => <button type="button" onClick={() => setValue("dueAt", actionDeadlineFromToday(Number(days)), { shouldDirty: true, shouldValidate: true })} key={String(label)}>{label}</button>)}</span></div>
             <label className="form-field"><span>{text("Priority", "Prioriteit")}</span><select {...register("priority")}><option value="low">{text("Low", "Laag")}</option><option value="normal">{text("Normal", "Normaal")}</option><option value="high">{text("High", "Hoog")}</option><option value="critical">{text("Critical", "Kritiek")}</option></select></label>
           </div>
@@ -3231,7 +3237,7 @@ function ActionCreateModal({
             {/* Cancel closes the form. "Back" used to open a hidden sheet of record types that
                 each already have a workspace tile. */}
             <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
-            <button className="ui-button ui-button--primary ui-button--md" type="submit" disabled={busy || parties.length === 0 || employees.length === 0 || (buildingId !== ALL_BUILDINGS && requiredLocationDepth !== "building" && !locationNodeId)}>{busy ? <Loader2 className="spin" size={14} /> : <Check size={14} />} {text("Save and assign", "Opslaan en toewijzen")}</button>
+            <button className="ui-button ui-button--primary ui-button--md" type="submit" disabled={busy || parties.length === 0 || (buildingId !== ALL_BUILDINGS && requiredLocationDepth !== "building" && !locationNodeId)}>{busy ? <Loader2 className="spin" size={14} /> : <Check size={14} />} {text("Save and assign", "Opslaan en toewijzen")}</button>
           </div>
         </form>
       </section>

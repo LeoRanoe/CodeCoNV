@@ -1945,7 +1945,7 @@ test("gives the workforce screen the full register, not a counter per party", as
   assert.match(register, /export function addWorkforceRow/);
   assert.match(register, /Add person|Persoon toevoegen/);
   assert.match(register, /workforce-row-remove/);
-  assert.match(register, /type="time"/);
+  assert.match(register, /<TimeField /);
   // The context tiles were struck through later; the headcount they left is what remains.
   assert.match(register, /workforce-headline/);
   assert.match(register, /No project parties configured yet|Nog geen projectpartijen ingericht/);
@@ -2098,7 +2098,7 @@ test("covers section 4.3 of the product plan on the workforce screen", async () 
   assert.match(register, /\{text\("Crew · optional", "Ploeg · optioneel"\)\}/);
   assert.match(register, /\{text\("Trade", "Discipline"\)\}/);
   // Werktijd of dienst.
-  assert.match(register, /type="time"/);
+  assert.match(register, /<TimeField /);
   // Bezoekersregistratie.
   assert.match(register, /export type VisitorRow/);
   assert.match(register, /title=\{text\("Visitors", "Bezoekers"\)\}/);
@@ -3651,4 +3651,32 @@ test("QA L24: the root layout does not preload fonts the first screen does not u
   const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
   assert.match(layout, /Geist_Mono\(\{[^}]*preload: false/s);
   assert.doesNotMatch(layout, /weight: \["400", "500"/);
+});
+
+test("QA L28: every pgTAP file that creates an organization starts from an empty tenant table", async () => {
+  const { readdir } = await import("node:fs/promises");
+  const directory = new URL("../../../supabase/tests/", import.meta.url);
+  const files = (await readdir(directory)).filter((name) => name.endsWith(".pgtap.sql"));
+  assert.ok(files.length >= 20);
+  for (const name of files) {
+    const sql = await readFile(new URL(name, directory), "utf8");
+    if (!/bootstrap_organization|insert into public\.organizations/.test(sql)) continue;
+    assert.match(sql, /truncate public\.organizations, auth\.users cascade;/, `${name} must not depend on an empty database`);
+  }
+});
+
+test("QA L24: a failed daily backup check waits ten minutes before it is tried again", async () => {
+  const app = await readFile(new URL("../app/codeco-supervision-app.tsx", import.meta.url), "utf8");
+  assert.match(app, /dailyBackupFailedAtRef\.current = Date\.now\(\)/);
+  assert.match(app, /Date\.now\(\) - dailyBackupFailedAtRef\.current < 10 \* 60 \* 1000/);
+});
+
+test("QA L9/L26: the technical instruction answers follow the language; the policy is written down", async () => {
+  const workspace = await readFile(new URL("../app/operational-workspace.tsx", import.meta.url), "utf8");
+  assert.match(workspace, /<option value="none">\{text\("None", "Geen"\)\}<\/option>/);
+  assert.match(workspace, /<option value="confirmed">\{text\("Confirmed", "Bevestigd"\)\}<\/option>/);
+  assert.match(workspace, /<option value="structural">\{text\("Structural", "Constructief"\)\}<\/option>/);
+  assert.doesNotMatch(workspace, /<option value="possible">Possible<\/option>/);
+  const policy = await readFile(new URL("../../../docs/product/taalbeleid.md", import.meta.url), "utf8");
+  assert.match(policy, /Workforce, Issues, Punchlist, Project Docs/);
 });

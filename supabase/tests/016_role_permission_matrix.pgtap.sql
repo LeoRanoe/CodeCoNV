@@ -4,6 +4,12 @@ set local search_path = extensions, pgtap, public;
 -- The canonical role matrix (docs/operations/role-permission-matrix.md) for an organization
 -- bootstrapped today. A change here is a deliberate authorization change and must update
 -- that document in the same commit.
+-- Isolation: only the first organization can be created without an administrator, so the file
+-- starts from an empty tenant table; the rollback at the end puts any existing data back.
+set local client_min_messages = warning;
+truncate public.organizations, auth.users cascade;
+set local client_min_messages = notice;
+
 select plan(9);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at)

@@ -1146,7 +1146,8 @@ export async function createProjectAction(
     buildingId: string;
     locationNodeId?: string;
     ownerPartyId: string;
-    ownerUserId: string;
+    /** Empty or missing: the action belongs to its party until a manager assigns it. */
+    ownerUserId?: string;
     title: string;
     description: string;
     dueAt: string;
@@ -1160,7 +1161,7 @@ export async function createProjectAction(
     p_project_id: input.projectId,
     p_building_id: input.buildingId,
     p_owner_party_id: input.ownerPartyId,
-    p_owner_user_id: input.ownerUserId,
+    p_owner_user_id: input.ownerUserId || null,
     p_title: input.title,
     p_description: input.description,
     p_due_at: surinameLocalDateTimeToIso(input.dueAt),
@@ -1181,6 +1182,7 @@ export async function createProjectAction(
     });
     fail(compatible.error);
     const action = compatible.data as ProjectAction & { organization_id?: string; project_id?: string };
+    if (!input.ownerUserId) return action as ProjectAction;
     const assigned = await client.from("actions").update({ owner_user_id: input.ownerUserId }).eq("id", action.id).select("*").single();
     fail(assigned.error);
     if (action.organization_id && action.project_id) {
