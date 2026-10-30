@@ -268,7 +268,9 @@ export function ClientDashboard({
 }) {
   const { locale, text } = useLanguage();
   // Starting the day, answering its questions and checking the report are the supervisor's; a reader does not get the buttons.
-  const canWriteDay = useProjectPermissions().canAny("reports.create", "reports.edit");
+  const projectPermissions = useProjectPermissions();
+  const canWriteDay = projectPermissions.canAny("reports.create", "reports.edit");
+  const canAddPhotos = projectPermissions.canAny("records.create", "files.manage");
   const [search, setSearch] = useState("");
   // Shared with the top bar so both show the same reading from one request.
   const { weather: liveWeather, error: weatherError, loading: weatherLoading, reload: loadLiveWeather } = useLiveProjectWeather(projectLocation);
@@ -584,7 +586,7 @@ export function ClientDashboard({
                   </span>
                   <span><strong>{photo.title}</strong><small>{new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Paramaribo" }).format(new Date(photo.capturedAt))}</small></span>
                 </button>
-              )) : <button className="ui-button ui-button--quiet ui-button--md overview-evidence-empty" type="button" onClick={() => openRecord("files", "")}>{text("No photos yet · Take photo", "Nog geen foto’s · Maak een foto")}</button>}
+              )) : <button className="ui-button ui-button--quiet ui-button--md overview-evidence-empty" type="button" onClick={() => openRecord("files", "")}>{canAddPhotos ? text("No photos yet · Take photo", "Nog geen foto’s · Maak een foto") : text("No photos yet · Open the photo library", "Nog geen foto’s · Open de fotobibliotheek")}</button>}
             </div>
           </article>
 
@@ -602,7 +604,7 @@ export function ClientDashboard({
               <span><small>{text("Humidity", "Luchtvochtigheid")}</small><strong>{liveWeather.relativeHumidityPercent}%</strong></span>
               <span><small>{text("Wind", "Wind")}</small><strong>{liveWeather.windSpeedKph} km/h</strong></span>
               <span><small>{text("Rain", "Regen")}</small><strong>{liveWeather.precipitationMm} mm</strong></span>
-            </div> : weatherError ? <p className="overview-weather-error">{weatherError}</p> : null}
+            </div> : weatherError ? <p className="overview-weather-error">{text("Live weather could not be loaded. Check it on site.", "Het actuele weer kon niet worden geladen. Controleer het ter plaatse.")}</p> : null}
             <div className="overview-site-meta"><span><TimerReset size={14} /> {text("Current report context", "Actuele rapportcontext")}</span><strong>{buildingContextLabel}</strong></div>
           </article>
         </div>

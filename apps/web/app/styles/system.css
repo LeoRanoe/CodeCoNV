@@ -36,7 +36,7 @@ input:not([type="checkbox"]):not([type="radio"]):focus,
 select:focus,
 textarea:focus { border-color: var(--ink-900); }
 input::placeholder,
-textarea::placeholder { color: var(--ink-600); }
+textarea::placeholder { color: var(--ink-600); font-weight: var(--weight-normal); opacity: 1; }
 
 /* Ticks, radio dots and switches are sage: a box that is ticked is work done. */
 input[type="checkbox"],
@@ -466,4 +466,229 @@ input[type="radio"] { accent-color: var(--sage-700); }
 /* Report sources: a ticked source is a quiet row, the tick carries the state. */
 .report-source-checklist label { border-color: var(--line); }
 .report-source-checklist label:hover { border-color: var(--ink-500); }
-.report-source-checklist label:has(input:checked) { background: var(--sage-50); border-color: var(--sage-200); }
+@media (max-width: 640px) {
+  /* Short source names: two to a row, so the list is half as long. */
+  .report-source-checklist { display: grid; gap: var(--space-2); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .report-source-checklist label { min-width: 0; overflow-wrap: anywhere; }
+}
+
+/* ---------- Dialogs ---------- */
+
+/* Every dialog has one bold title; the line under it is plain muted text. */
+.modal-header { background: var(--paper); border-bottom-color: var(--line); }
+.modal-header h2,
+.mobile-module-sheet header h2,
+.field-guide-dialog > header h2 { color: var(--ink-950); font-weight: var(--weight-bold); letter-spacing: -.01em; }
+.modal-header p { color: var(--ink-700); font-size: var(--text-sm); }
+.modal-close,
+.mobile-module-sheet header > button {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--ink-800);
+}
+.modal-close:hover,
+.mobile-module-sheet header > button:hover { background: var(--ink-50); border-color: var(--ink-500); }
+
+/* Built-in guide: the small label above the question is plain muted text, not an orange caps line;
+   task icons are line work, and the chosen task carries the orange selection on its border. */
+.field-guide-dialog > header span { color: var(--ink-700); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.field-guide-task-picker button,
+.field-guide-task-detail { border-color: var(--line); }
+.field-guide-task-picker button > span,
+.field-guide-task-picker button.active > span { background: transparent; color: var(--ink-700); }
+.field-guide-task-picker button strong { color: var(--ink-900); font-size: var(--text-sm); }
+.field-guide-task-picker button.active { background: var(--paper); border-color: var(--signal); color: var(--ink-950); }
+.field-guide-task-picker button.active > span { color: var(--signal-dark); }
+
+/* Phone module sheet: one ruled list, icons without a tinted square. */
+.mobile-module-grid { gap: 0; }
+.mobile-module-grid > button,
+.mobile-module-grid > button.active {
+  background: var(--paper);
+  border: 0;
+  border-bottom: 1px solid var(--ink-200);
+  border-radius: 0;
+  color: var(--ink-800);
+}
+.mobile-module-grid > button:last-of-type { border-bottom: 0; }
+.mobile-module-grid > button > span:first-child { background: transparent; color: var(--ink-700); }
+.mobile-module-grid > button.active > span:first-child { color: var(--signal-dark); }
+.mobile-module-grid > button strong { color: var(--ink-950); }
+
+/* Project switcher: the current project is the current selection, so it is marked in orange. */
+.project-switcher-row { border-color: var(--line); }
+.project-switcher-row:hover,
+.project-switcher-row:focus-visible { border-color: var(--ink-500); }
+.project-switcher-row.active { background: var(--paper); border-color: var(--signal); }
+.project-switcher-row.active .project-switcher-icon,
+.project-switcher-row.active .project-switcher-state { color: var(--signal-dark); }
+
+/* Report check: a quiet ruled list; on a phone the button that fills a gap sits under its text. */
+.report-check-list { gap: 0; }
+.report-check-row {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--ink-200);
+  border-radius: 0;
+  padding: var(--space-3) 0;
+}
+.report-check-row:last-child { border-bottom: 0; }
+.report-check-state { border-radius: var(--radius-pill); }
+.report-check-copy strong { color: var(--ink-950); font-size: var(--text-md); }
+.report-check-copy span { color: var(--ink-700); font-size: var(--text-sm); }
+.report-summary-box { background: var(--ink-025); border-color: var(--line); }
+@media (max-width: 640px) {
+  .report-check-row { align-items: start; grid-template-columns: auto minmax(0, 1fr); }
+  .report-check-row > .ui-button { grid-column: 2; justify-self: start; padding-inline: 0; }
+}
+
+/* ---------- Project list ---------- */
+
+.context-shell { background: var(--canvas); }
+.context-topbar { background: var(--paper); border-bottom: 1px solid var(--line); }
+.context-brand .company-lockup { align-items: flex-start; }
+.context-brand .company-logo-context { color: var(--ink-700); font-size: var(--text-sm); letter-spacing: 0; text-transform: none; }
+.context-heading h1 { color: var(--ink-950); font-weight: var(--weight-bold); letter-spacing: -.015em; }
+.data-mode-notice { border-color: var(--line); border-radius: var(--radius-md); font-size: var(--text-sm); }
+.data-mode-notice.connected { background: var(--sage-50); border-color: var(--sage-200); color: var(--sage-700); }
+.portfolio-cta { border-radius: var(--radius-sm); }
+.project-selection-grid { border-color: var(--line); }
+.project-selection-grid .project-selection-card { border-color: var(--ink-200); }
+.project-selection-grid .project-selection-card:hover { background: var(--ink-025); }
+
+/* ---------- Module header in the workspace ---------- */
+
+/* Back to the workspace, then the module name as the page title, then its one create button. */
+.workspace-section-controls {
+  background: transparent;
+  border: 0;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 0;
+}
+.workspace-back-button { background: var(--paper); border: 1px solid var(--ink-500); color: var(--ink-900); font-size: var(--text-sm); }
+.workspace-back-button:hover { background: var(--ink-50); }
+.workspace-current-module { border-left: 0; padding: 0 var(--space-2); }
+.workspace-current-module > span { color: var(--ink-700); font-size: var(--text-sm); font-weight: var(--weight-normal); letter-spacing: 0; text-transform: none; }
+.workspace-current-module > h1 { color: var(--ink-950); font-size: var(--text-xl); line-height: 1.2; }
+.workspace-current-module > b { background: var(--ink-100); color: var(--ink-800); font-size: var(--text-sm); }
+.workspace-module-create { min-width: 112px; }
+
+/* Sliders: progress is sage. */
+input[type="range"] { accent-color: var(--sage-700); }
+
+/* ---------- Management ---------- */
+
+.management-kpis,
+.management-context {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.management-kpis > *,
+.management-context > * { border-color: var(--ink-200); }
+.external-submission-center,
+.company-task-assignment { border-color: var(--line); }
+.external-submission-center > header .record-number,
+.company-task-assignment .record-number { color: var(--ink-950); font-size: var(--text-lg); font-weight: var(--weight-bold); }
+.external-submission-center > header h2,
+.company-task-assignment h3 { color: var(--ink-700); font-size: var(--text-sm); font-weight: var(--weight-normal); }
+.external-access-summary > *,
+.company-action-assignment-list > *,
+.employee-workload-strip > * { background: var(--ink-025); border-color: var(--ink-200); }
+@media (max-width: 640px) {
+  .workspace-section-controls { background: transparent; border: 0; padding: 0; }
+  .workspace-section-controls .workspace-current-module h1 { font-size: var(--text-lg); }
+}
+
+/* Headings. Tailwind's reset sets every heading to the body weight, and many app headings never set
+   their own, so form, dialog and page titles read as plain text. Zero specificity: any rule that sets
+   a weight on purpose still wins. Scoped to the app so the public site keeps its own type. */
+:where(.app-shell, .access-shell, .context-shell, [role="dialog"]) :where(h1, h2, h3, h4) {
+  color: var(--ink-950);
+  font-weight: var(--weight-bold);
+}
+:where(.app-shell, [role="dialog"]) :where(h2) { letter-spacing: -.005em; }
+
+/* Action rows: the record type icon is plain line work in the row's ink, not a tinted square. */
+.unified-action-icon,
+.unified-action-icon.issue,
+.unified-action-icon.punchlist,
+.unified-action-icon.rfi,
+.unified-action-icon.rfa,
+.unified-action-icon.wir { background: transparent; color: var(--ink-700); }
+
+/* The count belongs to the module name, so it sits right after it. */
+.workspace-current-module { grid-template-columns: minmax(0, max-content) auto; justify-content: start; column-gap: var(--space-2); }
+@media (max-width: 640px) {
+  /* On a phone the way back is the arrow alone (its name stays for screen readers), so the module name fits. */
+  .workspace-section-controls .workspace-back-button { min-width: var(--control-h-lg); padding-inline: var(--space-3); }
+  .workspace-back-label { clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
+}
+
+/* ---------- Media ---------- */
+
+.media-choice,
+.media-choice.primary,
+.media-choice.media-choice-360 { border-color: var(--line); border-radius: var(--radius-md); }
+.media-choice:hover,
+.media-choice.primary:hover,
+.media-choice.media-choice-360:hover { background: var(--ink-025); border-color: var(--ink-500); }
+.media-choice strong { color: var(--ink-950); }
+.media-choice small { color: var(--ink-700); }
+.asset-library-filters,
+.asset-bulk-actions,
+.photo-stack-actions,
+.asset-record-library,
+.asset-folder-control,
+.media-card { border-color: var(--line); }
+.asset-library-filters input[type="search"] { border: 1px solid var(--ink-500); border-radius: var(--radius-sm); padding-inline: var(--space-3); }
+.asset-library-filters label > span,
+.asset-bulk-actions label > span { color: var(--ink-800); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.asset-record-grid button { background: var(--paper); border-color: var(--line); }
+.asset-record-grid button:hover { border-color: var(--ink-500); }
+.asset-record-grid button em { color: var(--sage-700); }
+
+/* ---------- Tablet ---------- */
+
+@media (max-width: 1024px) {
+  /* Headings stay left-aligned when their tools wrap under them. */
+  .project-overview .overview-hero { align-items: stretch; flex-direction: column; text-align: left; }
+  .workspace-launcher-toolbar,
+  .workspace-launcher-toolbar.ui-page-header { align-items: stretch; text-align: left; }
+  .workspace-launcher-toolbar h2 { text-align: left; }
+  /* A page title and its one primary action share a row while they fit. */
+  .action-center-hero { align-items: center; flex-direction: row; flex-wrap: wrap; justify-content: space-between; text-align: left; }
+}
+
+/* On/off options (project modules, report sections): "on" is sage with a tick, not the orange selection. */
+.toggle-presets button.active {
+  background: var(--sage-50);
+  border-color: var(--sage-500);
+  color: var(--sage-700);
+}
+.toggle-presets button.active::before { content: "✓"; margin-inline-end: var(--space-1); }
+.toggle-presets button:not(.active) { background: var(--paper); border-color: var(--ink-400); color: var(--ink-700); font-weight: var(--weight-semibold); }
+
+/* Checklist library: install is a secondary action on each card; the installed ones say so in sage. */
+.checklist-library-card .ui-button:disabled { border-color: var(--sage-200); color: var(--sage-700); }
+.checklist-library-card > span { color: var(--ink-700); font-size: var(--text-sm); }
+
+/* Backup health: the state is in the icon colour and the card's top rule, not in a tinted square. */
+.backup-health-card,
+.backup-health-card.attention,
+.backup-tool,
+.backup-retention,
+.backup-counts > * { border-color: var(--line); }
+.backup-health-card > span,
+.backup-health-card.healthy > span,
+.backup-health-card.attention > span { background: transparent; }
+.backup-health-card.healthy { border-top: 3px solid var(--sage-500); }
+.backup-health-card.attention { border-top: 3px solid var(--yellow); }
+.backup-health-card b { font-size: var(--text-lg); }
+
+/* Account security and access cards sit on the same soft rule as every other surface. */
+.mfa-card,
+.module-card { background: var(--paper); border-color: var(--line); border-radius: var(--radius-md); }
+.module-card:hover { border-color: var(--ink-500); }

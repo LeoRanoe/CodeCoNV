@@ -815,6 +815,7 @@ export function CodecoSupervisionApp() {
       setDayHydrated(true);
 
       const buildingNameById = new Map((selectedProject?.buildings ?? []).map((building) => [building.id, building.name]));
+      const memberNameById = new Map((internalAccessQuery.data?.members ?? []).map((member) => [member.userId, member.displayName?.trim() || member.email]));
       setEntries(day.registrations.map((row) => {
       const type = String(row.registration_type);
       const occurredAt = new Date(String(row.occurred_at));
@@ -830,7 +831,11 @@ export function CodecoSupervisionApp() {
           buildingNameById.get(String(row.building_id)) ?? selectedBuilding.name,
           locationBreadcrumb(projectLocationsQuery.data ?? [], String(row.location_node_id ?? "")),
         ].filter(Boolean).join(" → "),
-        person: currentUserName,
+        // The person who recorded it, not whoever is reading: another member's name when the
+        // directory is loaded, otherwise a neutral label rather than the reader's own name.
+        person: String(row.created_by ?? "") === session?.user.id
+          ? currentUserName
+          : memberNameById.get(String(row.created_by ?? "")) ?? text("Another team member", "Ander teamlid"),
         badge: priorityLabel,
         badgeTone: String(row.priority) === "critical" ? "red" : "green",
       };
@@ -839,7 +844,7 @@ export function CodecoSupervisionApp() {
       setAttendance(attendanceRowsForBuilding(day, selectedBuilding.id, text("Unknown party", "Onbekende partij"), configuredShiftStart, configuredShiftEnd));
     }, 0);
     return () => window.clearTimeout(hydration);
-  }, [configuredShiftEnd, configuredShiftStart, currentUserName, dayQuery.data, locale, projectLocationsQuery.data, selectedBuilding, selectedProject, text]);
+  }, [configuredShiftEnd, configuredShiftStart, currentUserName, dayQuery.data, internalAccessQuery.data?.members, locale, projectLocationsQuery.data, selectedBuilding, selectedProject, session?.user.id, text]);
 
   useEffect(() => {
     if (!supabase || !session || !selectedProject) return;
@@ -3611,7 +3616,7 @@ function ReportModal({
                 <span className="report-check-copy"><strong>{check.title}</strong><span>{check.detail}</span></span>
                 {check.complete || !check.open
                   ? <span className="report-check-label">{check.complete ? text("Complete", "Compleet") : text("Missing", "Ontbreekt")}</span>
-                  : <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={check.open}>{text("Complete", "Aanvullen")}</button>}
+                  : <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={check.open}>{text("Fill in", "Aanvullen")}</button>}
               </div>
             ))}
           </div>

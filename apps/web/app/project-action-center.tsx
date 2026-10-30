@@ -347,7 +347,7 @@ export function ProjectActionCenter({
                 <span className={`document-status ${isSettledStatus(item.status) ? "approved" : ""}`}>{statusText(item.status, text)}</span>
                 <ArrowRight size={15} />
               </button>
-            )) : <div className="action-center-empty"><Filter size={24} /><div><strong>{view === "mine" ? text("Nothing is waiting for you", "Er wacht niets op jou") : view === "deadlines" && deadlineFilter === "overdue" ? text("Nothing is overdue", "Niets is te laat") : text("No records match this view", "Geen registraties in deze weergave")}</strong></div><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setTypeFilter("all"); setWorkFilter("all"); setDeadlineFilter("all"); setSearch(""); }}>{text("Clear filters", "Wis filters")}</button></div>}
+            )) : <div className="action-center-empty"><Filter size={24} /><div><strong>{view === "mine" ? text("Nothing is waiting for you", "Er wacht niets op jou") : !scopedItems.length ? text("No follow-up in this project yet", "Nog geen opvolging in dit project") : view === "deadlines" && deadlineFilter === "overdue" ? text("Nothing is overdue", "Niets is te laat") : text("No records match this view", "Geen registraties in deze weergave")}</strong></div>{scopedItems.length ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setTypeFilter("all"); setWorkFilter("all"); setDeadlineFilter("all"); setSearch(""); }}>{text("Clear filters", "Wis filters")}</button> : null}</div>}
           </div>
         </div>
 
