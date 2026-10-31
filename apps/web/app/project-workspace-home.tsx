@@ -107,7 +107,7 @@ export function ProjectWorkspaceHome({
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState({ kind: "", buildingId: "", status: "", dateFrom: "", dateTo: "", author: "" });
   /* Open where there is room for them, folded away on a phone. Read once, at mount. */
-  const [filtersOpen, setFiltersOpen] = useState(() => typeof window === "undefined" || window.matchMedia("(min-width: 761px)").matches);
+  const [filtersOpen, setFiltersOpen] = useState(() => typeof window === "undefined" || window.matchMedia("(min-width: 1025px)").matches);
   const moduleEnabled = (module?: string) => !module || modules[module] !== false;
 
   const tiles = useMemo<WorkspaceTile[]>(() => [
@@ -295,7 +295,8 @@ export function ProjectWorkspaceHome({
       </div>
 
       {/* Six filters stacked full width filled a phone screen before anything was found.
-          They fold away behind their own summary there, and stand open on a desktop. */}
+          They fold away behind their own summary there and on a tablet, where they pushed the modules
+          half a screen down; on a desktop they stand open. */}
       <details className="workspace-search-filters-block" open={filtersOpen} onToggle={(event) => setFiltersOpen(event.currentTarget.open)}>
         <summary>
           <Filter size={15} /> {text("Filters", "Filters")}

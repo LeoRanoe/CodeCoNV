@@ -6,6 +6,13 @@ export function imageContentType(bytes) {
   return "";
 }
 
+/** HEIC, HEIF or AVIF: an ISO base media file whose "ftyp" box names an image brand. */
+export function isHeifImage(bytes) {
+  if (bytes.length < 12 || String.fromCharCode(...bytes.slice(4, 8)) !== "ftyp") return false;
+  const brand = String.fromCharCode(...bytes.slice(8, 12));
+  return ["heic", "heix", "hevc", "hevx", "heim", "heis", "mif1", "msf1", "avif", "avis"].includes(brand);
+}
+
 export function validTourPosition(name, order) {
   if (!name.trim()) return !String(order).trim();
   const number = Number(order);

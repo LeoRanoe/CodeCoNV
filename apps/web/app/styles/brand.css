@@ -35,18 +35,20 @@ input[type="radio"],
 .data-saver-toggle input,
 .report-source-checklist input { accent-color: var(--green); }
 
-/* Sidebar: dark, with orange only on the current page. The logo sits on a white plate so its colours stay true. */
+/* Sidebar: dark, with orange only on the current page. The logo stands on the dark ink itself, as in the
+   August–September version the client preferred: its yellow letters carry their own black outline, and a
+   white plate around them read as a sticker. */
 .sidebar {
   background: var(--ink-950);
   border-right: 0;
   color: var(--paper);
 }
 .sidebar .brand {
-  background: var(--paper);
-  border-radius: var(--radius-md);
+  background: transparent;
   margin-bottom: var(--space-3);
-  padding: var(--space-2) var(--space-2) var(--space-1);
+  padding: var(--space-1) var(--space-2) 0;
 }
+.sidebar .company-logo-context { color: var(--ink-300); }
 .sidebar .project-context-card {
   background: var(--ink-900);
   border-color: var(--ink-700);
@@ -153,6 +155,13 @@ input[type="radio"],
 .overview-secondary-grid { grid-template-columns: minmax(0, 1.25fr) minmax(0, .75fr); }
 @media (max-width: 1024px) {
   .overview-secondary-grid { grid-template-columns: 1fr; }
+
+  /* One column on a tablet or phone: the priority queue follows the latest work directly, as in the
+     August–September version, instead of waiting below the recent activity outside the first screen. */
+  .overview-column { display: contents; }
+  .overview-work-panel { order: 1; }
+  .overview-priority-panel { order: 2; }
+  .overview-activity-panel { order: 3; }
 }
 
 /* The remove button of a source row is as wide as a thumb needs, whatever the row reserved for it. */

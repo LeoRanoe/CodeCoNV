@@ -6,10 +6,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
-import { photoFiles, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
+import { photoFiles, photoTitle, photoUploadDescription, PhotoEvidenceList, samePhotoFile, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
-import { normalizeImageFile } from "@/lib/images/normalize-image";
+import { normalizeImageFile, photoRefusalMessage, prepareCameraPhotos } from "@/lib/images/normalize-image";
 import { clearFormDraft, formDraftKey, loadFormDraft, saveFormDraft } from "@/lib/offline/form-drafts";
 import { normalizeRecordCode } from "@/lib/records/record-directory.mjs";
 import {
@@ -75,8 +75,17 @@ function SecureImage({ client, file, large = false }: { client: SupabaseClient; 
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [attempt, client, file.id]);
+  // A preview that failed tries again when the connection returns. It has no button of its own:
+  // it sits inside the card's open button, where a second button overlapped it and was invalid
+  // markup; opening the card shows the photo with its own retry.
+  useEffect(() => {
+    if (!failed) return undefined;
+    const retry = () => { setFailed(false); setSource(""); setAttempt((value) => value + 1); };
+    window.addEventListener("online", retry);
+    return () => window.removeEventListener("online", retry);
+  }, [failed]);
   if (failed) {
-    return <span className="media-preview-error"><ImageIcon size={20} /><small>{text("Image unavailable", "Beeld niet beschikbaar")}</small><button type="button" onClick={() => { setFailed(false); setSource(""); setAttempt((value) => value + 1); }}><RefreshCw size={14} /> {text("Retry", "Opnieuw")}</button></span>;
+    return <span className="media-preview-error"><ImageIcon size={20} /><small>{text("Image unavailable", "Beeld niet beschikbaar")}</small></span>;
   }
   // Private object URLs cannot use the Next image optimizer without exposing a public URL.
   // eslint-disable-next-line @next/next/no-img-element
@@ -142,6 +151,8 @@ export function MediaLibraryWorkspace({
   const [online, setOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
   const [syncing, setSyncing] = useState(false);
   const [fieldError, setFieldError] = useState("");
+  // What happened to photos that are only on this device: a fact, not a success.
+  const [fieldNotice, setFieldNotice] = useState("");
   const [photoDescription, setPhotoDescription] = useState("");
   const [stackTitle, setStackTitle] = useState("");
   const [pendingCapture, setPendingCapture] = useState<PhotoEvidence[]>([]);
@@ -384,7 +395,10 @@ export function MediaLibraryWorkspace({
         });
       }
       await reloadQueue();
-      if (navigator.onLine && !(savingData && connectionIsMetered())) {
+      // Tapping save is the deliberate act that sends the photo, also on mobile data; the data
+      // saver only holds back the automatic background sync. Waiting for Wi-Fi here meant a
+      // supervisor on a SIM tablet saved photos that never left the device.
+      if (navigator.onLine) {
         const synchronized = await run(
           () => synchronize(true, true),
           text("Files uploaded and linked automatically.", "Bestanden geüpload en automatisch gekoppeld."),
@@ -392,6 +406,10 @@ export function MediaLibraryWorkspace({
         if (!synchronized) {
           setFieldError(text("Upload is waiting. Your files are still on this device. Check the connection and tap Send now.", "Upload wacht. Je bestanden staan nog op dit apparaat. Controleer de verbinding en tik op Nu verzenden."));
         }
+      } else {
+        // Not uploaded: the photo is only on this device until the connection returns. Said
+        // here and not through run(), whose refetch remounts this screen while offline.
+        setFieldNotice(text("Saved on this device. Not uploaded yet; sent when you're online.", "Op dit apparaat bewaard. Nog niet geüpload; wordt verstuurd zodra je online bent."));
       }
       // From here the files are in the device queue, whatever the connection does next.
       return true;
@@ -410,11 +428,20 @@ export function MediaLibraryWorkspace({
     const captured = [...initialFiles];
     const captureTimer = window.setTimeout(() => {
       onInitialFilesConsumed?.();
-      // Added to what is already waiting: a second photo never replaces the first.
-      setPendingCapture((current) => [...current, ...captured.map((file) => toPhotoEvidence(file))]);
+      // Added to what is already waiting: a second photo never replaces the first. The camera
+      // button also wrote it to the device, so a photo already read from there is not doubled.
+      setPendingCapture((current) => [...current, ...captured.filter((file) => !current.some((photo) => samePhotoFile(photo.original, file))).map((file) => toPhotoEvidence(file))]);
     }, 0);
     return () => window.clearTimeout(captureTimer);
   }, [initialFiles, onInitialFilesConsumed]);
+
+  // A photo is staged as the bytes say it is; one that cannot be stored is named right away,
+  // not after it has been described.
+  const stagePhotos = useCallback(async (selected: File[]) => {
+    const { photos, refused } = await prepareCameraPhotos(selected);
+    setFieldError(refused.length ? photoRefusalMessage(refused, text) : "");
+    if (photos.length) setPendingCapture((current) => [...current, ...photos.map((file) => toPhotoEvidence(file))]);
+  }, [text]);
 
   const savePendingCapture = useCallback(async () => {
     if (!pendingCapture.length) return;
@@ -464,7 +491,7 @@ export function MediaLibraryWorkspace({
       if (cancelled) return;
       if (Array.isArray(draft?.value) && draft.value.length) {
         // A photo that arrived from the camera before the draft was read stays as well.
-        setPendingCapture((current) => [...draft.value.filter((saved) => !current.some((photo) => photo.id === saved.id)), ...current]);
+        setPendingCapture((current) => [...draft.value.filter((saved) => !current.some((photo) => photo.id === saved.id || samePhotoFile(photo.original, saved.original))), ...current]);
       }
       setLibraryDraftReady(true);
     });
@@ -724,7 +751,7 @@ export function MediaLibraryWorkspace({
           <button className={kind === "document" ? "active" : ""} type="button" onClick={() => setKind("document")}><FileText size={16} /> {text("Document", "Document")}</button>
         </div> : null}
         {assetsMode ? <div className="quick-issue-presets media-folder-presets" aria-label={text("Choose an asset folder", "Kies een middelenmap")}>{standardFolderNames.map((name) => { const folder = folders.find((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase()); return <button className={Boolean(folder && folderId === folder.id) ? "active" : ""} type="button" disabled={busy} onClick={() => folder ? setFolderId(folder.id) : void addFolder(name)} key={name}><Folder size={13} /> {name}</button>; })}</div> : null}
-        <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { const captured = Array.from(event.target.files ?? []).map((file) => toPhotoEvidence(file)); setPendingCapture((current) => [...current, ...captured]); event.target.value = ""; }} />
+        <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { void stagePhotos(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
         <input
           ref={photoImportRef}
           hidden
@@ -732,8 +759,7 @@ export function MediaLibraryWorkspace({
           multiple
           accept="image/jpeg,image/png,image/webp"
           onChange={(event) => {
-            const imported = Array.from(event.target.files ?? []).map((file) => toPhotoEvidence(file));
-            setPendingCapture((current) => [...current, ...imported]);
+            void stagePhotos(Array.from(event.target.files ?? []));
             event.target.value = "";
           }}
         />
@@ -819,9 +845,10 @@ export function MediaLibraryWorkspace({
         </div> : null}
       </div> : null}
       {!assetsMode && selectedFiles.length ? <div className="photo-stack-actions"><strong>{selectedFiles.length} {text("photos selected", "foto's geselecteerd")}</strong><button className="ui-button ui-button--primary ui-button--md" type="button" disabled={selectedFiles.length < 2} onClick={() => void stackSelectedPhotos()}><ImageIcon size={15} /> {text("Make one stack", "Maak één stapel")}</button><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => void softDeleteFiles(selectedFiles)}><Trash2 size={15} /> {text("Delete", "Verwijderen")}</button><button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setSelectedIds([])}>{text("Cancel selection", "Selectie stoppen")}</button></div> : null}
+      {fieldNotice && queue.length ? <div className="operation-alert warning" role="status"><HardDrive size={17} /> {fieldNotice}</div> : null}
       {fieldError ? <div className="operation-alert error" role="alert"><HardDrive size={17} /> {fieldError}</div> : null}
 
-      {queue.length ? <div className="offline-queue"><div><strong>{queue.length} {text("upload(s) waiting to be sent", "upload(s) wachten op verzending")}</strong><span>{!online ? text("Sent when you're online.", "Wordt verstuurd zodra je online bent.") : savingData && connectionIsMetered() ? text("Automatic sync is paused on this metered connection.", "Automatische synchronisatie is gepauzeerd op deze databundel.") : text("Automatic synchronization is active.", "Automatische synchronisatie is actief.")}</span></div><button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={!online || syncing} onClick={() => void run(() => synchronize(true, true), text("Offline uploads synchronized.", "Offline uploads gesynchroniseerd."))}>{syncing ? <Loader2 className="spin" size={15} /> : <RefreshCw size={15} />} {text("Send now", "Nu verzenden")}</button><div className="offline-queue-list">{queue.map((upload) => <span className={upload.lastError ? "failed" : ""} key={upload.id}><ImageIcon size={14} /><b>{upload.fileName}</b><small title={upload.lastError ?? undefined}>{upload.lastError ? text("Sending failed · tap Send now", "Verzenden mislukt · tik op Nu verzenden") : humanSize(upload.queuedSize)}{!upload.lastError && upload.compressed ? ` · ${Math.round((1 - upload.queuedSize / upload.originalSize) * 100)}% bespaard` : ""}</small><button type="button" aria-label={text("Remove queued upload", "Verwijder wachtende upload")} onClick={() => { if (window.confirm(text("Remove this unsynchronized field file from this device?", "Dit niet-gesynchroniseerde veldbestand van dit apparaat verwijderen?"))) void removeOfflineUpload(upload.id).then(reloadQueue); }}><Trash2 size={14} /></button></span>)}</div></div> : null}
+      {queue.length ? <div className="offline-queue"><div><strong>{queue.length} {text("upload(s) waiting to be sent", "upload(s) wachten op verzending")}</strong><span>{!online ? text("Sent when you're online.", "Wordt verstuurd zodra je online bent.") : savingData && connectionIsMetered() ? text("Automatic sync is paused on this metered connection.", "Automatische synchronisatie is gepauzeerd op deze databundel.") : text("Automatic synchronization is active.", "Automatische synchronisatie is actief.")}</span></div><button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={!online || syncing} onClick={() => void run(() => synchronize(true, true), text("Offline uploads synchronized.", "Offline uploads gesynchroniseerd.")).then((sent) => { if (sent) setFieldError(""); })}>{syncing ? <Loader2 className="spin" size={15} /> : <RefreshCw size={15} />} {text("Send now", "Nu verzenden")}</button><div className="offline-queue-list">{queue.map((upload) => <span className={upload.lastError ? "failed" : ""} key={upload.id}><ImageIcon size={14} /><b>{upload.fileName}</b><small title={upload.lastError ?? undefined}>{upload.lastError ? text("Sending failed · tap Send now", "Verzenden mislukt · tik op Nu verzenden") : humanSize(upload.queuedSize)}{!upload.lastError && upload.compressed ? ` · ${Math.round((1 - upload.queuedSize / upload.originalSize) * 100)}% bespaard` : ""}</small><button type="button" aria-label={text("Remove queued upload", "Verwijder wachtende upload")} onClick={() => { if (window.confirm(text("Remove this unsynchronized field file from this device?", "Dit niet-gesynchroniseerde veldbestand van dit apparaat verwijderen?"))) void removeOfflineUpload(upload.id).then(reloadQueue); }}><Trash2 size={14} /></button></span>)}</div></div> : null}
 
 
       {assetsMode && assetRecords.length ? <section className="asset-record-library" aria-label={text("Project reports and forms", "Projectrapporten en formulieren")}>
