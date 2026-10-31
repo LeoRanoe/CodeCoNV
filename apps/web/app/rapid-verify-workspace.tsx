@@ -19,6 +19,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { copyText } from "@/lib/browser/clipboard";
 import { extractPdfPages } from "@/lib/rapid-verify/pdf-pages.mjs";
+import { compareSpecificationValues } from "@/lib/rapid-verify/compare-values.mjs";
 import { normalizeEvidence, searchDocuments, searchTerms } from "@/lib/rapid-verify/search.mjs";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
@@ -176,7 +177,17 @@ export function RapidVerifyWorkspace({
     return Math.round((terms.filter((term) => evidence.includes(term)).length / terms.length) * 100);
   }, [comparison, mode, results]);
 
-  const conclusion = mode === "compare"
+  /** Figures with a unit and colour words, compared one by one against the whole pages that matched. */
+  const valueChecks = useMemo(() => {
+    if (mode !== "compare" || !comparison.trim() || !results.length) return [];
+    const pages = results.map((result) => documents.find((document) => document.id === result.documentId)?.pages.find((page) => page.page === result.page)?.text ?? result.excerpt);
+    return compareSpecificationValues(comparison, pages.join(" "));
+  }, [comparison, documents, mode, results]);
+  const differing = valueChecks.filter((check) => check.status === "differs");
+
+  const conclusion = mode === "compare" && differing.length
+    ? { tone: "error", title: text("Submitted values differ from the specification", "Aangeleverde waarden wijken af van de specificatie"), copy: text(`${differing.length} value${differing.length === 1 ? "" : "s"} below do not match the project sources. Human technical verification remains required.`, `${differing.length} waarde${differing.length === 1 ? "" : "n"} hieronder komt niet overeen met de projectbronnen. Menselijke technische verificatie blijft vereist.`) }
+    : mode === "compare"
     ? coverage >= 60
       ? { tone: "success", title: text("Relevant requirements found", "Relevante eisen gevonden"), copy: text(`${coverage}% of the submitted specification terms occur in the selected project sources. Human technical verification remains required.`, `${coverage}% van de termen uit de aangeleverde specificatie komt terug in de geselecteerde projectbronnen. Menselijke technische verificatie blijft vereist.`) }
       : results.length
@@ -269,6 +280,24 @@ export function RapidVerifyWorkspace({
             <section className={`rapid-conclusion ${conclusion.tone}`}>
               {conclusion.tone === "success" ? <CheckCircle2 size={21} /> : <AlertTriangle size={21} />}
               <div><strong>{conclusion.title}</strong><p>{conclusion.copy}</p></div>
+            </section>
+          ) : null}
+
+          {searched && valueChecks.length ? (
+            <section className="rapid-value-checks" aria-label={text("Values compared", "Vergeleken waarden")}>
+              <h2>{text("Values compared", "Vergeleken waarden")}</h2>
+              <ul>
+                {valueChecks.map((check) => (
+                  <li key={`${check.kind}:${check.submitted}`} data-status={check.status}>
+                    <strong>{check.submitted}</strong>
+                    <span>{check.status === "matches"
+                      ? text("matches the sources", "komt overeen met de bronnen")
+                      : check.status === "differs"
+                        ? text(`differs: the sources give ${check.prescribed.join(", ")}`, `wijkt af: de bronnen noemen ${check.prescribed.join(", ")}`)
+                        : text("not found in the matched pages", "niet gevonden op de gevonden pagina's")}</span>
+                  </li>
+                ))}
+              </ul>
             </section>
           ) : null}
 
