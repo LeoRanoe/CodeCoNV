@@ -1,15 +1,15 @@
 # Production readiness: client feedback pass (2026-10-31)
 
-Branch `claude/amazing-tesla-xx8xc7` (PR #11). Everything below ran against a local Supabase stack and local fixture accounts. The production environment file, the production Supabase project and the production Blob store were not read or used. Nothing was merged or deployed in this pass.
+Branch `claude/amazing-tesla-xx8xc7` (PRs #12 and #13; #12 was merged by the owner on 2026-10-31, #13 holds the later commits). Every test below ran against a local Supabase stack and local fixture accounts. The production environment file was never read and no test or seed ran against production. Two read-only lookups were made on hosted services: the list of applied migrations on the production Supabase project, and the names, targets and deployment history of the Vercel project (no values decrypted). Nothing on production was changed.
 
 This file is the evidence for one pass. The standing checklist is `production-readiness-checklist.md`.
 
 ## Release decision
 
-Not released. The code gates below passed. The release itself is blocked on things only the owner can do:
+Code gates passed. `main` is already deployed to production (PR #12), but production's database is nine migrations behind the repository (see "Production database state"). What only the owner can do:
 
-1. Approval to merge PR #11.
-2. Applying migration `202610300001_day_closeout_one_field.sql` to the Supabase project before (or with) the deployment, because `lib/release.ts` now expects schema version `202610300001`. Rollback is in the migration header.
+1. Approval to apply the nine pending migrations (`202610100005` to `202610300001`) to the production Supabase project, in file order, with a backup first. `lib/release.ts` expects schema version `202610300001`. This also covers `202610300001_day_closeout_one_field.sql`, whose rollback is in its header.
+2. Approval to merge PR #13 (pin colours, return for correction, Rapid Verify comparison; no migration).
 3. A check of photo, 360 and drawing flows against the real Vercel Blob store on a preview (they pass on the fake store).
 4. Answers to the client questions in `CLIENT-FEEDBACK-RECONCILIATION.md` ("Still open").
 
@@ -62,6 +62,28 @@ It only loosens limits: no data is changed, no column or policy is added or remo
 | Photo, drawing and 360 flows unverified after this pass | Run the fake-Blob e2e stack (`npm run dev:blob`, `CODECO_E2E_FAKE_BLOB=1`) or test on a Blob-enabled preview before release. |
 | Restored palette not re-measured for contrast | It is the palette that passed the earlier audit; measure it on the preview. |
 | Open client decisions (see reconciliation) | Ask before building; none of them is a regression. |
+
+## Production database state (read-only check, 2026-10-31)
+
+PR #12 was merged on 2026-10-31 at 10:18 UTC and Vercel deployed `main` to production (deployment of commit `29c85ea`). Nothing in the CI workflow applies migrations. The list of applied migrations on the production Supabase project (metadata only; no data was read or changed) ends at **`202610100004`**. The repository is nine migrations ahead:
+
+| Migration | What it does | Why it matters in production |
+|---|---|---|
+| `202610100005_external_response_respects_record_status` | A contractor link can no longer overwrite a corrective action or signature on an NCR that is ready for verification or closed. | Security and data integrity: without it a signed statement can be overwritten by whoever holds the link. |
+| `202610280001_ensure_day_report_for_record` | A role without report rights (the contractor) can still save a record that hangs on a day report. | The app calls `ensure_day_report_for_record`; contractor saves fail without it. |
+| `202610280002_register_entry_accepts_ensured_day_report` | Register entries accept that day report. | Same contractor save path. |
+| `202610280003_creator_sets_record_buildings` | The creator of an RFI, RFA, WCR or WIR may set its buildings. | Contractor saves end in a 403 without it. |
+| `202610280004_day_report_honest_blanks_and_snapshot` | Expected workforce and building progress may stay empty; frozen report carries parties. | Day report forms and the formal report. |
+| `202610280005_profile_phone_not_for_colleagues` | Colleagues can no longer read each other's phone number. | Privacy. |
+| `202610280006_save_inspection_responses_batch` | Finishing an inspection stores all checklist answers in one transaction. | The app calls `save_inspection_responses_batch`. |
+| `202610290001_action_without_assignee` | An action can be created before an employee is chosen. | Action creation in a project with no company employee. |
+| `202610300001_day_closeout_one_field` | Loosens four `day_closeouts` check constraints. | Works ongoing as one field cannot be saved without it. |
+
+None of the nine contains `drop table`, `drop column`, `delete from` or `truncate`. They have all been applied from scratch on the local stack, the pgTAP suite (25 files, 607 assertions) passes after them, and CI runs the same on every push. They have **not** been applied on a copy of production, so how they behave on production's existing rows is untested. Each one only adds or replaces functions, policies and constraints; `202610300001` and `202610280004` change constraints and are the ones to look at against real rows first.
+
+Where some of the code has a fallback for a missing function (`schemaFeatureMissing` in `lib/supabase/operations.ts`) it keeps working, but this pass did not test the production build against the old schema. Treat production as unverified until the migrations are applied and the smoke checks (sign in as supervisor and contractor, save Works ongoing, save an RFI as a contractor, finish an inspection) pass.
+
+Applying them needs the owner's go-ahead: they change the production database. Suggested order: take a backup (the project has daily Blob backups), apply in file order with `supabase db push` against the linked production project from a clean checkout of `main`, run the smoke checks, and record the result here. Rollback for `202610300001` is in its header; the others are additive, and a function can be restored by re-applying the previous migration that defined it.
 
 ## Vercel preview check (names and targets only)
 
