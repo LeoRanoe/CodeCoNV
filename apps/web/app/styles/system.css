@@ -1,6 +1,6 @@
 /* Design system finish, loaded after brand.css.
-   Warm off-white canvas, white paper, charcoal ink. CODECO orange marks the one primary action,
-   the current page and the current selection. Sage marks what is done, what is in progress and
+   Light canvas, white paper, blue-grey ink (the first version's palette). CODECO orange marks the one primary action,
+   the current page and the current selection. Green marks what is done, what is in progress and
    what moved from paper onto the device. Red, amber and blue are record state only.
    Surfaces take a soft 1px rule; fields and buttons keep a 3:1 outline. Values live in tokens.css. */
 
@@ -38,9 +38,9 @@ textarea:focus { border-color: var(--ink-900); }
 input::placeholder,
 textarea::placeholder { color: var(--ink-600); font-weight: var(--weight-normal); opacity: 1; }
 
-/* Ticks, radio dots and switches are sage: a box that is ticked is work done. */
+/* Ticks, radio dots and switches are green: a box that is ticked is work done. */
 input[type="checkbox"],
-input[type="radio"] { accent-color: var(--sage-700); }
+input[type="radio"] { accent-color: var(--green); }
 
 /* Status badges: a quiet pill in the state's soft colour, no outline. */
 .ui-status-badge { border-color: transparent; }
@@ -91,7 +91,7 @@ input[type="radio"] { accent-color: var(--sage-700); }
 .top-actions .field-guide-trigger:hover,
 .top-actions > .icon-button:hover { background: var(--paper); border-color: var(--ink-500); }
 .topbar .storage-state.saved,
-.topbar .storage-state.idle { color: var(--sage-700); }
+.topbar .storage-state.idle { color: var(--green); }
 
 .sidebar .nav-button { border-radius: var(--radius-sm); }
 .sidebar .nav-button.active { background: var(--ink-900); }
@@ -229,7 +229,7 @@ input[type="radio"] { accent-color: var(--sage-700); }
   gap: var(--space-1);
   padding: 2px var(--space-2);
 }
-.overview-day-state.is-started { background: var(--sage-100); color: var(--sage-700); }
+.overview-day-state.is-started { background: var(--green-soft); color: var(--green); }
 .project-overview .overview-search {
   background: var(--paper);
   border: 1px solid var(--ink-500);
@@ -313,10 +313,10 @@ input[type="radio"] { accent-color: var(--sage-700); }
 
 /* Urgent work: the panel carries the state of the project's open work in its top rule. */
 .project-overview .overview-priority-panel.is-attention { border-top: 3px solid var(--yellow); }
-.project-overview .overview-priority-panel.is-stable { border-top: 3px solid var(--sage-500); }
+.project-overview .overview-priority-panel.is-stable { border-top: 3px solid var(--green); }
 .overview-health { font-size: var(--text-sm); padding: 2px var(--space-2); }
 .overview-health.attention { background: var(--yellow-soft); color: var(--yellow); }
-.overview-health.stable { background: var(--sage-100); color: var(--sage-700); }
+.overview-health.stable { background: var(--green-soft); color: var(--green); }
 .overview-progress {
   background: transparent;
   border-radius: 0;
@@ -324,9 +324,9 @@ input[type="radio"] { accent-color: var(--sage-700); }
   padding: 0 0 var(--space-3);
 }
 .overview-progress > div { color: var(--ink-700); font-size: var(--text-sm); }
-.overview-progress > div strong { color: var(--sage-700); font-size: var(--text-md); font-variant-numeric: tabular-nums; }
+.overview-progress > div strong { color: var(--green); font-size: var(--text-md); font-variant-numeric: tabular-nums; }
 .overview-progress > span { background: var(--ink-100); height: 8px; }
-.overview-progress > span i { background: var(--sage-500); border-radius: var(--radius-pill); }
+.overview-progress > span i { background: var(--green); border-radius: var(--radius-pill); }
 .overview-progress small { color: var(--ink-600); font-size: var(--text-sm); }
 .overview-priority-list > .ui-list-row { border-block-end: 0; border-top: 1px solid var(--ink-200); padding-block: var(--space-2); }
 .overview-priority-list > .ui-list-row:hover { background: var(--ink-025); }
@@ -335,7 +335,7 @@ input[type="radio"] { accent-color: var(--sage-700); }
 .overview-priority-list .ui-status-badge { background: var(--ink-50); border-color: transparent; color: var(--ink-800); }
 .overview-priority-list .ui-status-badge--red { background: var(--red-soft); color: var(--red); }
 .overview-priority-list .ui-status-badge--amber { background: var(--yellow-soft); color: var(--yellow); }
-.overview-clear-state { color: var(--sage-700); }
+.overview-clear-state { color: var(--green); }
 
 /* Panels that fill after the data arrives keep room for a typical day, so nothing below them jumps. */
 .project-overview .overview-activity-panel { min-height: 12.5rem; }
@@ -369,18 +369,18 @@ input[type="radio"] { accent-color: var(--sage-700); }
   padding: var(--space-4);
 }
 
-/* Site conditions: the one sage surface on the page, because it is the outdoors of the project. */
-.project-overview .overview-site-panel { background: var(--sage-50); border-color: var(--sage-200); }
+/* Site conditions: the one soft green surface on the page, because it is the outdoors of the project. */
+.project-overview .overview-site-panel { background: var(--green-soft); border-color: var(--line); }
 .project-overview .overview-weather-icon {
   background: var(--paper);
-  border: 1px solid var(--sage-200);
+  border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  color: var(--sage-700);
+  color: var(--green);
 }
 .project-overview .overview-weather strong { color: var(--ink-950); font-size: var(--text-2xl); font-variant-numeric: tabular-nums; }
 .project-overview .overview-weather small { color: var(--ink-700); font-size: var(--text-sm); }
-.project-overview .overview-weather-status { background: var(--paper); color: var(--sage-700); font-size: var(--text-sm); }
-.project-overview .overview-site-meta { border-top: 1px solid var(--sage-200); color: var(--ink-700); font-size: var(--text-sm); padding-top: var(--space-3); }
+.project-overview .overview-weather-status { background: var(--paper); color: var(--green); font-size: var(--text-sm); }
+.project-overview .overview-site-meta { border-top: 1px solid var(--line); color: var(--ink-700); font-size: var(--text-sm); padding-top: var(--space-3); }
 
 /* ---------- Mobile bottom navigation ---------- */
 
@@ -406,7 +406,7 @@ input[type="radio"] { accent-color: var(--sage-700); }
   .topbar .top-actions > .icon-button,
   .topbar .storage-state { background: transparent; border-color: transparent; }
   .topbar .storage-state.saved,
-  .topbar .storage-state.idle { color: var(--sage-200); }
+  .topbar .storage-state.idle { color: var(--green-soft); }
 
   .project-overview { gap: var(--space-3); }
 
@@ -551,7 +551,7 @@ input[type="radio"] { accent-color: var(--sage-700); }
 .context-brand .company-logo-context { color: var(--ink-700); font-size: var(--text-sm); letter-spacing: 0; text-transform: none; }
 .context-heading h1 { color: var(--ink-950); font-weight: var(--weight-bold); letter-spacing: -.015em; }
 .data-mode-notice { border-color: var(--line); border-radius: var(--radius-md); font-size: var(--text-sm); }
-.data-mode-notice.connected { background: var(--sage-50); border-color: var(--sage-200); color: var(--sage-700); }
+.data-mode-notice.connected { background: var(--green-soft); border-color: var(--line); color: var(--green); }
 .portfolio-cta { border-radius: var(--radius-sm); }
 .project-selection-grid { border-color: var(--line); }
 .project-selection-grid .project-selection-card { border-color: var(--ink-200); }
@@ -574,8 +574,8 @@ input[type="radio"] { accent-color: var(--sage-700); }
 .workspace-current-module > b { background: var(--ink-100); color: var(--ink-800); font-size: var(--text-sm); }
 .workspace-module-create { min-width: 112px; }
 
-/* Sliders: progress is sage. */
-input[type="range"] { accent-color: var(--sage-700); }
+/* Sliders: progress is green. */
+input[type="range"] { accent-color: var(--green); }
 
 /* ---------- Management ---------- */
 
@@ -648,7 +648,7 @@ input[type="range"] { accent-color: var(--sage-700); }
 .asset-bulk-actions label > span { color: var(--ink-800); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
 .asset-record-grid button { background: var(--paper); border-color: var(--line); }
 .asset-record-grid button:hover { border-color: var(--ink-500); }
-.asset-record-grid button em { color: var(--sage-700); }
+.asset-record-grid button em { color: var(--green); }
 
 /* ---------- Tablet ---------- */
 
@@ -662,17 +662,17 @@ input[type="range"] { accent-color: var(--sage-700); }
   .action-center-hero { align-items: center; flex-direction: row; flex-wrap: wrap; justify-content: space-between; text-align: left; }
 }
 
-/* On/off options (project modules, report sections): "on" is sage with a tick, not the orange selection. */
+/* On/off options (project modules, report sections): "on" is green with a tick, not the orange selection. */
 .toggle-presets button.active {
-  background: var(--sage-50);
-  border-color: var(--sage-500);
-  color: var(--sage-700);
+  background: var(--green-soft);
+  border-color: var(--green);
+  color: var(--green);
 }
 .toggle-presets button.active::before { content: "✓"; margin-inline-end: var(--space-1); }
 .toggle-presets button:not(.active) { background: var(--paper); border-color: var(--ink-400); color: var(--ink-700); font-weight: var(--weight-semibold); }
 
-/* Checklist library: install is a secondary action on each card; the installed ones say so in sage. */
-.checklist-library-card .ui-button:disabled { border-color: var(--sage-200); color: var(--sage-700); }
+/* Checklist library: install is a secondary action on each card; the installed ones say so in green. */
+.checklist-library-card .ui-button:disabled { border-color: var(--line); color: var(--green); }
 .checklist-library-card > span { color: var(--ink-700); font-size: var(--text-sm); }
 
 /* Backup health: the state is in the icon colour and the card's top rule, not in a tinted square. */
@@ -684,7 +684,7 @@ input[type="range"] { accent-color: var(--sage-700); }
 .backup-health-card > span,
 .backup-health-card.healthy > span,
 .backup-health-card.attention > span { background: transparent; }
-.backup-health-card.healthy { border-top: 3px solid var(--sage-500); }
+.backup-health-card.healthy { border-top: 3px solid var(--green); }
 .backup-health-card.attention { border-top: 3px solid var(--yellow); }
 .backup-health-card b { font-size: var(--text-lg); }
 
