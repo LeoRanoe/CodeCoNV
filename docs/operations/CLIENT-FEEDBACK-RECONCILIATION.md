@@ -1,6 +1,6 @@
 # Client feedback reconciliation (WhatsApp export 15-07-2026 to 30-10-2026)
 
-Prepared 2026-10-31 on branch `claude/amazing-tesla-xx8xc7` (open PR #11). The client is Ashvin Pancham (CODECO N.V.). The developer is Leonardo.
+Prepared 2026-10-31 on branch `claude/amazing-tesla-xx8xc7` (PRs #12 and #13, after the merged PR #11). The client is Ashvin Pancham (CODECO N.V.). The developer is Leonardo.
 
 ## Source inventory
 

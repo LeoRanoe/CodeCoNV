@@ -1,6 +1,6 @@
 # Functional audit (2026-10-31)
 
-Scope: the CODECO Supervisie web app on branch `claude/amazing-tesla-xx8xc7` (PR #11), checked against a local Supabase stack with seeded fixture accounts. Production, the production Supabase project and the production Blob store were not touched. Headless Chromium at phone (390x844), tablet (820x1180) and desktop (1280x800).
+Scope: the CODECO Supervisie web app on branch `claude/amazing-tesla-xx8xc7` (PRs #12 and #13, after the merged PR #11), checked against a local Supabase stack with seeded fixture accounts. No test ran against production; see PRODUCTION-READINESS-2026-10-31.md for the two read-only lookups. Headless Chromium at phone (390x844), tablet (820x1180) and desktop (1280x800).
 
 Where a finding is fixed, the fix is in the working tree of this branch and the check that covers it is named. Where it is not, it says why.
 
