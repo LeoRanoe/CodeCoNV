@@ -111,6 +111,10 @@ function typeSpecificDetails(type: ControlledDocumentType, details: Details, ent
         ) : null}
         {text(details, "impact_explanation") !== "—" ? <Text style={styles.sectionText}>{text(details, "impact_explanation")}</Text> : null}
       </Section>
+      <Section title="COST IMPACT">
+        <Options values={["None", "Possible", "Confirmed", "To be assessed"]} selected={humanizeToken(text(details, "cost_impact", "none")).replace("Unknown", "To be assessed")} />
+        {text(details, "cost_impact_explanation") !== "—" ? <Text style={styles.sectionText}>{text(details, "cost_impact_explanation")}</Text> : null}
+      </Section>
       {/* Section 5 and 6 of the client's form: the contractor acknowledges, supervision
           approves. The developer and contractor-acceptance columns are struck off. */}
       <Section title="ACKNOWLEDGEMENT · CONTRACTOR">

@@ -35,14 +35,21 @@ export function appendDictation(current: string, transcript: string) {
   return words ? `${current}${current && !/\s$/.test(current) ? " " : ""}${words}` : current;
 }
 
+/** Where the microphone sits on a one-line field, and the room the field leaves for it. */
+export const micInputStyle = { bottom: 3 } as const;
+export const inputWithMicStyle = { paddingRight: 52 } as const;
+
 export function DictateButton({
   onText,
   className = "dictate-button",
   label,
+  style,
 }: {
   onText: (transcript: string) => void;
   className?: string;
   label?: string;
+  /** A single-line field is shorter than the writing area the button is sized for. */
+  style?: React.CSSProperties;
 }) {
   const { language, text } = useLanguage();
   const [listening, setListening] = useState(false);
@@ -118,6 +125,7 @@ export function DictateButton({
   return (
     <button
       className={`${className} ${listening ? "recording" : ""}`}
+      style={style}
       type="button"
       onClick={toggle}
       aria-label={listening ? stopLabel : startLabel}

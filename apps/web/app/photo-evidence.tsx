@@ -1,7 +1,7 @@
 "use client";
 
 import { Camera, Check, ChevronRight, MapPin, RotateCcw, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad, type MarkupOption, type PhotoMarkupContext } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
@@ -123,11 +123,17 @@ export function photoUploadDescription(photo: PhotoEvidence, fallback: string, l
 
 function PhotoThumbnail({ file, large }: { file: File; large?: boolean }) {
   // The preview follows the file: marking a photo swaps it for the marked copy.
-  const source = useMemo(() => URL.createObjectURL(file), [file]);
-  useEffect(() => () => URL.revokeObjectURL(source), [source]);
+  // Created inside the effect so a development double-mount cannot leave a revoked URL behind.
+  const [source, setSource] = useState("");
+  useEffect(() => {
+    const url = URL.createObjectURL(file);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a blob URL can only be made in the effect, or a dev double-mount revokes the memoised one
+    setSource(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
   // A local blob URL cannot pass through the Next image optimizer.
   // eslint-disable-next-line @next/next/no-img-element
-  return <img className={large ? "photo-detail-image" : "photo-evidence-thumb"} src={source} alt="" />;
+  return <img className={large ? "photo-detail-image" : "photo-evidence-thumb"} src={source || undefined} alt="" />;
 }
 
 /**

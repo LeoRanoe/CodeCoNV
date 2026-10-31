@@ -5,6 +5,7 @@ import {
   ArrowRight,
   BookOpenCheck,
   CalendarClock,
+  Calculator,
   Camera,
   CheckCircle2,
   ClipboardCheck,
@@ -57,6 +58,10 @@ type ProjectWorkspaceHomeProps = {
     photos: number;
     deliveries: number;
     agreements: number;
+    technicalInstructions: number;
+    changeOrders: number;
+    lessons: number;
+    delayReports: number;
     deadlines: number;
   };
   modules: Record<string, boolean>;
@@ -142,6 +147,7 @@ export function ProjectWorkspaceHome({
       id: "delay-report",
       label: text("Project Delay Report (PDR)", "Vertragingsrapport (PDR)"),
       icon: CalendarClock,
+      count: counts.delayReports,
       action: () => openTask("registers", false, { registerType: "delay_report" }),
     },
     {
@@ -179,12 +185,14 @@ export function ProjectWorkspaceHome({
       id: "technical-instructions",
       label: text("Technical instructions", "Technische instructies"),
       icon: Wrench,
+      count: counts.technicalInstructions,
       action: () => openTask("registers", false, { registerType: "technical_instruction" }),
     },
     {
       id: "change-order",
       label: text("Change order (CO)", "Change order (CO)"),
       icon: FileCheck2,
+      count: counts.changeOrders,
       action: () => openTask("registers", false, { registerType: "change_order" }),
     },
     {
@@ -202,6 +210,7 @@ export function ProjectWorkspaceHome({
       id: "lessons-learned",
       label: text("Lessons Learned (LL)", "Geleerde lessen (LL)"),
       icon: Lightbulb,
+      count: counts.lessons,
       action: () => openTask("registers", false, { registerType: "lessons_learned" }),
     },
     {
@@ -326,7 +335,7 @@ export function ProjectWorkspaceHome({
           return (
             <button className="workspace-launcher-tile ui-list-row" type="button" onClick={tile.action} data-workspace-destination={tile.id} key={tile.id}>
               <span className="workspace-launcher-icon"><Icon size={23} /></span>
-              {typeof tile.count === "number" ? <span className="workspace-launcher-count">{tile.count}</span> : null}
+              {typeof tile.count === "number" ? <span className="workspace-launcher-count" aria-hidden="true">{tile.count}</span> : null}
               <strong>{tile.label}</strong>
               <ArrowRight className="workspace-launcher-arrow" size={15} />
             </button>
@@ -342,6 +351,8 @@ export function ProjectWorkspaceHome({
         <button type="button" onClick={() => openTask("documents", false)}><FileText size={15} /> Project Docs</button>
         <button type="button" onClick={() => openTask("assets", false)}><FolderOpen size={15} /> {text("Assets & folders", "Middelen & mappen")}</button>
         <button type="button" onClick={() => openTask("drawings", false)}><AlertTriangle size={15} /> {text("Drawings & pins", "Tekeningen & pins")}</button>
+        {/* The calculator and the notepad of the field tools had no way in from here. */}
+        <button type="button" onClick={() => openTask("tools", false)}><Calculator size={15} /> {text("Calculator & notes", "Rekenmachine & notities")}</button>
         {/* Deadlines lost their tile, not their way in: the action centre still opens
             on the deadline view, next to the other supporting tools. */}
         <button type="button" onClick={() => openActionCenter("deadlines")}><CalendarClock size={15} /> {text("Deadlines", "Deadlines")}{counts.deadlines ? <span className="workspace-support-count">{counts.deadlines}</span> : null}</button>

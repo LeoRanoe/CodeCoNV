@@ -173,8 +173,13 @@ export function PhotoMarkupPad({
   const [selected, setSelected] = useState<{ kind: "marker" | "shape"; id: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const previewUrl = useMemo(() => URL.createObjectURL(file), [file]);
-  useEffect(() => () => URL.revokeObjectURL(previewUrl), [previewUrl]);
+  const [previewUrl, setPreviewUrl] = useState("");
+  useEffect(() => {
+    const url = URL.createObjectURL(file);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a blob URL can only be made in the effect, or a dev double-mount revokes the memoised one
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
 
   const buildings = useMemo(() => context.buildings ?? [], [context.buildings]);
   const parties = useMemo(() => context.parties ?? [], [context.parties]);
@@ -506,7 +511,7 @@ export function PhotoMarkupPad({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               ref={imageRef}
-              src={previewUrl}
+              src={previewUrl || undefined}
               alt={text("Photo to mark", "Te markeren foto")}
               draggable={false}
               onLoad={paintOverlay}

@@ -44,6 +44,14 @@ export const changeOrderScopeAreas = [
   { id: "other", en: "Other", nl: "Overig" },
 ] as const;
 
+/** Section 4: what the change does to the cost. The same four answers a technical instruction uses for time. */
+export const changeOrderCostImpacts = [
+  { id: "none", en: "None", nl: "Geen" },
+  { id: "possible", en: "Possible", nl: "Mogelijk" },
+  { id: "confirmed", en: "Confirmed", nl: "Bevestigd" },
+  { id: "unknown", en: "To be assessed", nl: "Nog te beoordelen" },
+] as const;
+
 export type ChangeOrderState = {
   changeOrderType: string;
   reason: string;
@@ -60,6 +68,9 @@ export type ChangeOrderState = {
   originalFinishDate: string;
   newExpectedFinishDate: string;
   extensionDays: string;
+  /** Section 4: the cost answer and its explanation. */
+  costImpact: string;
+  costImpactExplanation: string;
   /** Section 5: the contractor acknowledges the change and what it does to the schedule. */
   contractorRepresentative: string;
   contractorPosition: string;
@@ -85,6 +96,8 @@ export const emptyChangeOrder: ChangeOrderState = {
   originalFinishDate: "",
   newExpectedFinishDate: "",
   extensionDays: "0",
+  costImpact: "none",
+  costImpactExplanation: "",
   contractorRepresentative: "",
   contractorPosition: "",
   contractorRemarks: "",
@@ -126,6 +139,8 @@ export function changeOrderFromDetails(details: Record<string, unknown>): Change
     originalFinishDate: text("original_finish_date"),
     newExpectedFinishDate: text("new_expected_finish_date"),
     extensionDays: String(details.extension_days ?? "0"),
+    costImpact: text("cost_impact") || "none",
+    costImpactExplanation: text("cost_impact_explanation"),
     contractorRepresentative: text("contractor_representative"),
     contractorPosition: text("contractor_position"),
     contractorRemarks: text("contractor_remarks"),
@@ -155,6 +170,8 @@ export function changeOrderDetails(state: ChangeOrderState) {
       ? state.newExpectedFinishDate || changeOrderFinishDate(state.originalFinishDate, state.extensionDays) || null
       : null,
     extension_days: scheduled ? Number(state.extensionDays || 0) : 0,
+    cost_impact: state.costImpact || "none",
+    cost_impact_explanation: state.costImpactExplanation.trim() || null,
     contractor_representative: state.contractorRepresentative.trim() || null,
     contractor_position: state.contractorPosition.trim() || null,
     contractor_remarks: state.contractorRemarks.trim() || null,
@@ -186,4 +203,51 @@ export function changeOrderMissing(state: ChangeOrderState): Array<{ en: string;
   if (state.scopeDetails.trim().length < 3) missing.push({ en: "scope description", nl: "omschrijving van de scope" });
   if (state.affectsSchedule && !state.originalFinishDate) missing.push({ en: "original finish date", nl: "oorspronkelijke einddatum" });
   return missing;
+}
+
+type Translate = (en: string, nl: string) => string;
+
+const labelOf = (list: ReadonlyArray<{ id: string; en: string; nl: string }>, id: unknown, text: Translate) => {
+  const found = list.find((item) => item.id === id);
+  return found ? text(found.en, found.nl) : typeof id === "string" ? id.replaceAll("_", " ") : "";
+};
+
+/**
+ * What a stored change order says, as label and value pairs for its record card: the type,
+ * the reason, what changes, the schedule answer, the cost answer and whether the contractor
+ * representative has signed. Empty answers are left out.
+ */
+export function changeOrderSummary(details: Record<string, unknown>, text: Translate): Array<{ label: string; value: string }> {
+  const read = (key: string) => (typeof details[key] === "string" ? (details[key] as string).trim() : "");
+  const areas = Array.isArray(details.scope_areas)
+    ? (details.scope_areas as unknown[]).map((area) => labelOf(changeOrderScopeAreas, area, text)).filter(Boolean).join(", ")
+    : "";
+  const scheduled = details.affects_schedule === true;
+  const costImpact = read("cost_impact");
+  const contractorSigned = Boolean(read("contractor_signed_at") || read("contractor_signature_image") || read("contractor_signed_by"));
+  const rows: Array<{ label: string; value: string }> = [
+    { label: text("Type of change", "Soort wijziging"), value: labelOf(changeOrderTypes, details.change_order_type, text) },
+    { label: text("Reason", "Reden"), value: labelOf(changeOrderReasons, details.change_reason, text) },
+    { label: text("Requested by", "Aangevraagd door"), value: read("requested_by") },
+    { label: text("Scope", "Scope"), value: [areas, read("scope_area_other")].filter(Boolean).join(" · ") },
+    { label: text("What changes", "Wat verandert"), value: read("scope_details") },
+    {
+      label: text("Schedule impact", "Planningimpact"),
+      value: scheduled
+        ? [text("Yes", "Ja"), read("new_expected_finish_date") ? `${text("new finish", "nieuwe einddatum")} ${read("new_expected_finish_date")}` : "", Number(details.extension_days) ? `+${Number(details.extension_days)} ${text("days", "dagen")}` : ""].filter(Boolean).join(" · ")
+        : text("No", "Nee"),
+    },
+    {
+      label: text("Cost impact", "Kostenimpact"),
+      value: [labelOf(changeOrderCostImpacts, costImpact || "none", text), read("cost_impact_explanation")].filter(Boolean).join(" · "),
+    },
+    {
+      label: text("Contractor representative", "Vertegenwoordiger aannemer"),
+      value: [
+        read("contractor_representative") || read("contractor_signed_by"),
+        contractorSigned ? text("signed", "ondertekend") : text("not signed yet", "nog niet ondertekend"),
+      ].filter(Boolean).join(" · "),
+    },
+  ];
+  return rows.filter((row) => row.value);
 }

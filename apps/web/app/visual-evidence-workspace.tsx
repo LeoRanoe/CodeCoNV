@@ -36,7 +36,7 @@ import { imageContentType, orderedTour, validTourPosition } from "@/lib/images/c
 import { currentCompassPoint, startCompassWatch } from "@/lib/images/compass";
 import { readPhotoDirection } from "@/lib/images/exif-direction.mjs";
 import { compassPointFromDegrees, describePanoramaImage, fieldPhotoMimeTypes, looksLikeDualFisheye, normalizedImagePoint, panoramaFileExtensions, panoramaUploadSource, photoMarkupToneColors, photoTitleFromDescription } from "@/lib/images/field-image.mjs";
-import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, preparePanoramaUpload, queueOfflineUpload } from "@/lib/offline/upload-queue";
+import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, listOfflineUploads, preparePanoramaUpload, queueOfflineUpload } from "@/lib/offline/upload-queue";
 import { clearFormDraft, formDraftKey, saveFormDraft } from "@/lib/offline/form-drafts";
 import { downloadProjectFile, isStorageGatewayConfigured, loadProjectFileObjectUrl, openProjectFile } from "@/lib/storage/gateway";
 import {
@@ -66,7 +66,7 @@ type VisualEvidenceWorkspaceProps = {
   parties: ProjectParty[];
   client: SupabaseClient;
   busy: boolean;
-  run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
+  run: (operation: () => Promise<unknown>, success: string | (() => string)) => Promise<boolean>;
   initialFindingId?: string;
   /** A photo from the library that was sent here to have a problem marked on it. */
   initialFileId?: string;
@@ -419,7 +419,10 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
         ? `${text("Facing", "Kijkrichting")} ${language === "en" ? captureForm.direction : dutchDirectionLabels[captureForm.direction] ?? captureForm.direction}`
         : "",
     ].filter(Boolean).join("\n");
+    // Set when the upload did not reach central storage: the image then stays on the device.
+    let keptOnDevice = false;
     const okay = await run(async () => {
+      const queuedIds: string[] = [];
       // A photo that shows two buildings is filed under both, so neither register misses it.
       // A project with a single building never reaches the button row, so the primary
       // building stands in for an empty choice.
@@ -452,6 +455,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           queuedSize: prepared.blob.size,
           compressed: "compressed" in prepared ? prepared.compressed : prepared.resized,
         });
+        queuedIds.push(queued.id);
         if (targetBuildingId === captureBuildingId) setPendingSelectionFileId(queued.id);
       }
       // The image is in the device queue from here on. A send that does not go through leaves
@@ -462,13 +466,26 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           paused: "",
           failed: () => "",
         }).catch(() => undefined);
+        // "Uploaded" is only said when the queue no longer holds the image: storage can
+        // refuse it (no connection, no storage) while the save itself went through.
+        const remaining = await listOfflineUploads(projectId).catch(() => []);
+        keptOnDevice = queuedIds.some((id) => remaining.some((item) => item.id === id));
       }
-    }, typeof navigator !== "undefined" && !navigator.onLine
-      // Only a capture that really waits on the device says so; online it was sent while saving.
-      ? text("Saved on this device. Sent when you're online.", "Opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent.")
-      : captureForm.type === "panorama"
+    }, () => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        // Only a capture that really waits on the device says so; online it was sent while saving.
+        return text("Saved on this device. Sent when you're online.", "Opgeslagen op dit apparaat. Wordt verstuurd zodra je online bent.");
+      }
+      if (keptOnDevice) {
+        return text(
+          "Not uploaded yet: the photo could not be sent to storage. It is kept on this device and is sent again later.",
+          "Nog niet geüpload: de foto kon niet naar de opslag worden verstuurd. Hij blijft op dit apparaat en wordt later opnieuw verstuurd.",
+        );
+      }
+      return captureForm.type === "panorama"
         ? text("360° image uploaded.", "360°-beeld geüpload.")
-        : text("Photo uploaded.", "Foto geüpload."));
+        : text("Photo uploaded.", "Foto geüpload.");
+    });
     if (okay) void clearFormDraft(formDraftKey("quick-photo", projectId));
     if (okay && generation === stagedImageRef.current) {
       setCaptureForm(emptyCaptureForm);
