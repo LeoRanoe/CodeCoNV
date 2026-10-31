@@ -1948,8 +1948,10 @@ export async function createVisualCapture(client: SupabaseClient, input: {
   fail(result.error);
   const capture = result.data as VisualCapture;
   if (input.stackId && capture?.id) {
-    const stackResult = await client.from("visual_captures").update({ stack_id: input.stackId }).eq("id", capture.id);
-    if (!schemaFeatureMissing(stackResult.error, ["stack_id"])) fail(stackResult.error);
+    // Signed-in users may only read visual_captures; the stack is set through its function.
+    const stackResult = await client.rpc("set_visual_capture_stack", { p_capture_id: capture.id, p_stack_id: input.stackId });
+    // A database without 202610310001 keeps the photo and loses only the grouping, as before.
+    if (!schemaFeatureMissing(stackResult.error, ["set_visual_capture_stack"])) fail(stackResult.error);
   }
   return { ...capture, stack_id: input.stackId || capture.stack_id || null };
 }
@@ -1958,10 +1960,11 @@ export async function updateVisualCaptureDetails(client: SupabaseClient, capture
   title: string;
   description: string;
 }) {
-  const result = await client.from("visual_captures").update({
-    title: input.title.trim(),
-    description: input.description.trim() || null,
-  }).eq("id", captureId).select("id").single();
+  const result = await client.rpc("update_visual_capture_details", {
+    p_capture_id: captureId,
+    p_title: input.title.trim(),
+    p_description: input.description.trim(),
+  });
   fail(result.error);
 }
 
@@ -1972,13 +1975,14 @@ export async function updateVisualCaptureStack(client: SupabaseClient, captureId
   description: string;
   capturedAt: string;
 }) {
-  const result = await client.from("visual_captures").update({
-    stack_id: input.stackId,
-    building_id: input.buildingId,
-    title: input.title.trim(),
-    description: input.description.trim() || null,
-    captured_at: input.capturedAt,
-  }).eq("id", captureId).select("id").single();
+  const result = await client.rpc("set_visual_capture_stack", {
+    p_capture_id: captureId,
+    p_stack_id: input.stackId,
+    p_building_id: input.buildingId || null,
+    p_title: input.title.trim(),
+    p_description: input.description.trim(),
+    p_captured_at: input.capturedAt,
+  });
   fail(result.error);
 }
 

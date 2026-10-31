@@ -26,9 +26,9 @@ Status values: **fixed** (committed, automated test, browser retest), **fixed �
 | LQA-008 | P3 | NCR card says "sent link" when none was sent | fixed |
 | LQA-009 | P3 | Contractor page shows English enum names, calls an NCR "FINDING" | fixed |
 | LQA-010 | P3 | "In progress" stage counts rejected findings | fixed |
-| LQA-011 | P3 | Project Docs has two visible `h1` | open |
-| LQA-012 | P3 | Deep link `nav=punchlist` without `tab` shows the Workspace grid | open |
-| LQA-013 | P3 | Contractor page status badge stays stale after a submit | open |
+| LQA-011 | P3 | Project Docs has two visible `h1` | fixed (2026-10-31) |
+| LQA-012 | P3 | Deep link `nav=punchlist` without `tab` shows the Workspace grid | fixed (2026-10-31) |
+| LQA-013 | P3 | Contractor page status badge stays stale after a submit | fixed |
 | LQA-014 | P1 | A refused session keeps showing the cached workspace as live | fixed |
 | LQA-015 | P3 | Several phone/tablet controls are 24–35 px high | accepted (design) |
 
@@ -143,9 +143,9 @@ Status values: **fixed** (committed, automated test, browser retest), **fixed �
 | LQA-008 | NCR card read "Waiting for the contractor's answer through the sent link." before any link existed | now conditional on an active link; otherwise "No contractor answer yet." |
 | LQA-009 | Dutch contractor page printed `FINDING · Q-2026-0003` for an NCR (raw enum) | "NCR", "Bevinding", "Actie", "Inspectie", "Foto" |
 | LQA-010 | Workspace "In progress" stage counted `rejected` findings (terminal) | removed |
-| LQA-011 | Project Docs renders two visible `h1` | open |
-| LQA-012 | `?nav=punchlist` without `tab` renders the Workspace grid while "Issues" is highlighted | open; the app itself never produces that URL |
-| LQA-013 | After a submit the contractor page keeps the old status badge until reload | open |
+| LQA-011 | Project Docs renders two visible `h1` | fixed 2026-10-31: the document centre's heading is an `h2` under the workspace's `h1` |
+| LQA-012 | `?nav=punchlist` without `tab` renders the Workspace grid while "Issues" is highlighted | fixed 2026-10-31: a bare `nav=punchlist` or `nav=projectdocs` opens its module (`screen-url.mjs`, node field-workflows) |
+| LQA-013 | After a submit the contractor page keeps the old status badge until reload | fixed: `router.refresh()` after the reply; asserted in `media-and-sharing.spec.ts` (badge reads "Gereed voor verificatie" without a reload), passed 31-10-2026 on the production fake-Blob build |
 
 ## LQA-015 · P3 · Small touch targets (accepted)
 
@@ -255,3 +255,18 @@ was not done are in `qa-fix-verification-2026-10-28.md`.
 | LQA-083 | walkthrough | P3 | Register steppers, remove buttons, shift inputs and the sync chip 33-38 px on a tablet — Found by measuring every workspace destination at 768 px | fixed | e2e register-touch-targets (fails on the old CSS: stepper 35 px) | 66290f3 |
 | LQA-084 | walkthrough | P3 | A client was told to assign a record nobody owns — Walkthrough finding: only someone with actions.manage is told to assign | fixed | e2e role-views (client sees the waiting wording, supervisor still the order) | 045de7f |
 
+## Launch audit 2026-10-31 (LQA-085 and up)
+
+Evidence, reproduction and verification per row: `LAUNCH-AUDIT-2026-10-31.md`.
+
+| ID | Audit | Sev | What | Status |
+| --- | --- | --- | --- | --- |
+| LQA-085 | CAM-1 | P1 | A photo stack never saves (direct update on read-only `visual_captures`; production has no stacked capture at all) | fixed locally; production needs migration `202610310001` |
+| LQA-086 | CAM-2 | P1 | Form photo buttons refuse an Android JPEG labelled `image/jpg` or untyped | fixed |
+| LQA-087 | CAM-3 | P2 | A HEIC photo disappears without a word | fixed; iPad conversion awaits a device |
+| LQA-088 | CAM-4 | P1 | On mobile data the library's Save keeps photos on the device | fixed (emulated); awaits an Android SIM device |
+| LQA-089 | CAM-5 | P1 | Offline photo before the project was opened is lost; workspace loads for ever | fixed |
+| LQA-090 | CAM-6 | P1 | Offline save in the library uploads the photo twice | fixed |
+| LQA-091 | CAM-7 | P3 | "Upload is waiting" stays after a successful Send now | fixed |
+| LQA-092 | CAM-8 | P3 | Screen readers hear "Back online." on every load | fixed |
+| LQA-093 | UI-1..3 | P2 | White plate around the logo; tablet overview queue and workspace modules below the first screen | fixed |

@@ -279,7 +279,9 @@
 .asset-record-grid button em { color: var(--green); font-size: var(--text-xs); font-style: normal; font-weight: var(--weight-bold); }
 .media-gallery.asset-list-view { grid-template-columns: 1fr; }
 .media-gallery.asset-list-view .media-card { grid-template-columns: minmax(150px, 220px) 1fr auto; }
-.media-stack-thumbnails { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; height: 100%; overflow: hidden; }
+/* The same 155 px as a single preview, held before the private image has loaded: with height 100% of an
+   auto-height button the card's open button collapsed to a few pixels and the card jumped when the photo arrived. */
+.media-stack-thumbnails { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; height: 155px; overflow: hidden; background: var(--ink-50); }
 .media-stack-thumbnails > img { width: 100%; height: 100%; min-height: 0; object-fit: cover; }
 .media-stack-thumbnails > img:only-of-type { grid-column: 1 / -1; grid-row: 1 / -1; }
 .media-stack-thumbnails > em { position: absolute; right: 9px; bottom: 9px; padding: 5px var(--space-2); border-radius: var(--radius-pill); color: var(--paper); background: rgba(15, 23, 42, 0.8); font-size: var(--text-xs); font-style: normal; font-weight: var(--weight-bold); }
@@ -390,8 +392,9 @@
 }
 .workspace-search-filters-block[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .workspace-search-filters-block[open] > .workspace-search-filters { border-top-left-radius: 0; border-top-right-radius: 0; margin-top: -1px; }
-/* On a desktop the filters are simply there; the summary has nothing to add. */
-@media (min-width: 640px) {
+/* On a desktop the filters are simply there; the summary has nothing to add. A tablet keeps the summary:
+   there the filters start folded so the modules fit the first screen. */
+@media not all and (max-width: 1024px) {
   .workspace-search-filters-block > summary { display: none; }
   .workspace-search-filters-block > .workspace-search-filters { border-radius: var(--radius-md); margin-top: 0; }
 }

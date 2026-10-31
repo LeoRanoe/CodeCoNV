@@ -427,7 +427,7 @@
   padding: 18px var(--space-5);
 }
 
-.project-documents-summary h1 { color: var(--ink-900); font-size: var(--text-lg); margin: 0 0 var(--space-1); }
+.project-documents-summary h2 { color: var(--ink-900); font-size: var(--text-lg); margin: 0 0 var(--space-1); }
 .project-documents-summary p { color: var(--ink-600); font-size: var(--text-xs); line-height: 1.45; margin: 0; }
 .project-documents-actions { display: flex; align-items: center; gap: var(--space-2); }
 

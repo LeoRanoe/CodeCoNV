@@ -530,6 +530,10 @@ test("walks the back button through the screens the field user actually visited"
   });
   // A drawer never comes back from a link.
   assert.equal(screenFromSearch("?project=p1").menu, false);
+  // LQA-012: Issues and Project Docs are the workspace with one module open, also from a bare link.
+  assert.equal(screenFromSearch("?project=p1&nav=punchlist").tab, "findings");
+  assert.equal(screenFromSearch("?project=p1&nav=projectdocs").tab, "documents");
+  assert.equal(screenFromSearch("?project=p1&nav=punchlist&tab=ncr").tab, "ncr");
 
   // The first screen replaces; nothing that did not change touches the history.
   assert.equal(historyActionFor(null, emptyScreen, false), "replace");

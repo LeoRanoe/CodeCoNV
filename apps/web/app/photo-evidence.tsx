@@ -72,6 +72,11 @@ function newId() {
 }
 
 /** Wraps a freshly taken or chosen file so it can carry its own words from the first second. */
+/** The same photo, whichever way it reached a form: same original name, size and capture time. */
+export function samePhotoFile(left: File, right: File) {
+  return left.name === right.name && left.size === right.size && left.lastModified === right.lastModified;
+}
+
 export function toPhotoEvidence(file: File, defaults: Partial<PhotoEvidenceDetails> = {}): PhotoEvidence {
   return {
     id: newId(),

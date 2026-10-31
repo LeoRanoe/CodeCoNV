@@ -33,12 +33,17 @@ export function screenToSearch(screen) {
   return search ? `?${search}` : "";
 }
 
+/** Destinations that are the workspace with one module open (LQA-012). */
+const destinationTabs = { punchlist: "findings", projectdocs: "documents" };
+
 export function screenFromSearch(search) {
   const query = new URLSearchParams(search);
+  const nav = query.get("nav") ?? emptyScreen.nav;
   return {
     project: query.get("project"),
-    nav: query.get("nav") ?? emptyScreen.nav,
-    tab: query.get("tab") ?? emptyScreen.tab,
+    nav,
+    // A link to Issues or Project Docs without a module opens that module, not the workspace grid.
+    tab: query.get("tab") ?? destinationTabs[nav] ?? emptyScreen.tab,
     modal: query.get("modal"),
     // A drawer is never restored from a link; it is only ever opened by hand.
     menu: false,

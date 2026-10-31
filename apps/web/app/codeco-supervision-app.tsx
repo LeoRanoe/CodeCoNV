@@ -45,7 +45,7 @@ import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingO
 import { actionStatusLabels as canonicalActionStatusLabels, labelMap, priorityText } from "@/lib/status-labels";
 import { screenFromSearch, useScreenHistory, type AppScreen } from "@/lib/navigation/app-history";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
-import { photoTitle, photoUploadDescription } from "@/app/photo-evidence";
+import { photoTitle, photoUploadDescription, samePhotoFile, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
 import { ClientDashboard } from "@/app/client-dashboard";
 import { DailyLogForm } from "@/app/daily-log-modal";
 import { LiveWeatherChip } from "@/app/live-weather-chip";
@@ -59,12 +59,12 @@ import { constructionDisciplines } from "@/lib/forms/disciplines";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 import { ProjectPermissionsProvider, useProjectPermissionsQuery } from "@/lib/permissions/project-permissions";
 import { startCompassWatch } from "@/lib/images/compass";
-import { normalizeImageFile } from "@/lib/images/normalize-image";
+import { photoRefusalMessage, prepareCameraPhotos } from "@/lib/images/normalize-image";
 import { WorkforceForm } from "@/app/workforce-register";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import { currentPushState, enablePushNotifications, type PushState } from "@/lib/notifications/push-client";
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
-import { clearFormDraft, FORM_DRAFTS_CHANGED, formDraftKey, loadFormDraft } from "@/lib/offline/form-drafts";
+import { clearFormDraft, FORM_DRAFTS_CHANGED, formDraftKey, loadFormDraft, saveFormDraft } from "@/lib/offline/form-drafts";
 import { useFormAutosave } from "@/lib/offline/use-form-autosave";
 import { DraftNotice } from "@/app/forms/draft-notice";
 import { cacheProjectDay, cacheWorkspace, getCachedProjectDay, getCachedWorkspace } from "@/lib/offline/workspace-cache";
@@ -776,12 +776,12 @@ export function CodecoSupervisionApp() {
 
   // A screen reader hears the connection change; the sync chip alone is only text on a button.
   const [connectivityNote, setConnectivityNote] = useState("");
-  const connectivitySeen = useRef(false);
+  // Only a change of the connection is announced; a change of language is not "back online".
+  const connectivitySeen = useRef<boolean | null>(null);
   useEffect(() => {
-    if (!connectivitySeen.current) {
-      connectivitySeen.current = true;
-      return;
-    }
+    const previous = connectivitySeen.current;
+    connectivitySeen.current = isOnline;
+    if (previous === null || previous === isOnline) return;
     setConnectivityNote(isOnline
       ? (language === "en" ? "Back online." : "Weer online.")
       : (language === "en" ? "No connection. Work is saved on this device." : "Geen verbinding. Werk wordt op dit apparaat bewaard."));
@@ -964,18 +964,29 @@ export function CodecoSupervisionApp() {
 
   const receiveQuickCameraPhoto = async (files: FileList | null) => {
     // Judged by the bytes: a camera that labels a JPEG "image/jpg" or not at all still counts.
-    const captured = (await Promise.all(Array.from(files ?? []).map((file) => normalizeImageFile(file).catch(() => null))))
-      .filter((file): file is File => Boolean(file));
-    if (!captured.length) return;
+    // A photo that cannot be used is named, never dropped without a word.
+    const { photos: captured, refused } = await prepareCameraPhotos(files);
+    if (!captured.length) {
+      if (refused.length) setToast(photoRefusalMessage(refused, text));
+      return;
+    }
     if (!selectedProject || !selectedBuilding) {
       setToast(text("Choose a project and building first.", "Kies eerst een project en gebouw."));
       return;
     }
     // The camera button and the Photos tile are one way of taking photos: the photo lands in
     // the photo library, next to any photo taken before it that is not saved yet, instead of
-    // replacing it. The library keeps them on the device until they are saved.
+    // replacing it. It is written to the device first: until the library has opened (offline
+    // without a project copy it cannot) the photo was only in memory, and a reload lost it.
+    const draftKey = formDraftKey("library-photos", selectedProject.id);
+    const waiting = await loadFormDraft<PhotoEvidence[]>(draftKey);
+    const kept = Array.isArray(waiting?.value) ? waiting.value : [];
+    const fresh = captured.filter((file) => !kept.some((photo) => photo?.original instanceof File && samePhotoFile(photo.original, file)));
+    await saveFormDraft(draftKey, [...kept, ...fresh.map((file) => toPhotoEvidence(file))]);
     setPendingQuickPhotos(captured);
-    setToast(text("Photo added. Describe it and save.", "Foto toegevoegd. Omschrijf en sla op."));
+    setToast(refused.length
+      ? `${text("Photo added. Describe it and save.", "Foto toegevoegd. Omschrijf en sla op.")} ${photoRefusalMessage(refused, text)}`
+      : text("Photo added. Describe it and save.", "Foto toegevoegd. Omschrijf en sla op."));
     openWorkspaceModule("files");
     setModal(null);
   };

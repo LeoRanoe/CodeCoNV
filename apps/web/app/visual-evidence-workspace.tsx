@@ -33,6 +33,7 @@ import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
 import { useLanguage } from "@/lib/i18n";
 import { imageContentType, orderedTour, validTourPosition } from "@/lib/images/content-type.mjs";
+import { normalizeImageFile } from "@/lib/images/normalize-image";
 import { currentCompassPoint, startCompassWatch } from "@/lib/images/compass";
 import { readPhotoDirection } from "@/lib/images/exif-direction.mjs";
 import { compassPointFromDegrees, describePanoramaImage, fieldPhotoMimeTypes, looksLikeDualFisheye, normalizedImagePoint, panoramaFileExtensions, panoramaUploadSource, photoMarkupToneColors, photoTitleFromDescription } from "@/lib/images/field-image.mjs";
@@ -387,9 +388,11 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     try {
       // The only thing that can stop a 360° image here is an image the browser cannot read at
       // all; how much of the sphere it covers is shown on the form, not enforced.
-      const detected = imageContentType(new Uint8Array(await file.slice(0, 16).arrayBuffer()));
+      const normalized = captureForm.type === "photo" ? await normalizeImageFile(file) : null;
+      const detected = normalized ? normalized.type : imageContentType(new Uint8Array(await file.slice(0, 16).arrayBuffer()));
       if (!detected) throw new Error("invalid-image-type");
-      if (detected !== file.type) source = new File([file], file.name, { type: detected, lastModified: file.lastModified });
+      if (normalized) source = normalized;
+      else if (detected !== file.type) source = new File([file], file.name, { type: detected, lastModified: file.lastModified });
       const dimensions = await imageDimensions(source);
       if (generation !== stagedImageRef.current) return;
       if (captureForm.type === "panorama" && !describePanoramaImage(dimensions.width, dimensions.height).valid) {

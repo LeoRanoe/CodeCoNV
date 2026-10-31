@@ -135,6 +135,7 @@ import { useLanguage } from "@/lib/i18n";
 import { cacheProjectSnapshot, getCachedProjectSnapshot } from "@/lib/offline/project-cache";
 import { useLiveProjectWeather } from "@/lib/weather-client";
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload, removeOfflineUpload } from "@/lib/offline/upload-queue";
+import { photoRefusalMessage, prepareCameraPhotos } from "@/lib/images/normalize-image";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import type { FormalReportSnapshot } from "@/lib/reports/daily-report-pdf";
 import type { PeriodReportSection, PeriodReportTopic } from "@/lib/reports/period-report-pdf";
@@ -882,6 +883,11 @@ export function OperationalWorkspace({
     // The day report arrives after the first render and changes the key. The records of the same
     // project stay on screen while the second load runs, instead of a spinner replacing them.
     placeholderData: (previous, previousQuery) => previousQuery?.queryKey[1] === projectId ? previous : undefined,
+    // Offline, a retry of a load that found no copy on the device waits for the connection,
+    // and the screen said "Loading" for ever. It answers at once instead: the device copy, or
+    // the plain fact that there is none.
+    networkMode: "always",
+    retry: (failureCount) => failureCount < 1 && (typeof navigator === "undefined" || navigator.onLine),
     queryFn: async () => {
       try {
         const snapshot = await loadProjectOperations(client, projectId, organizationId, reportId);
@@ -975,6 +981,9 @@ export function OperationalWorkspace({
     return <div className="operation-loading"><Loader2 className="spin" size={22} /> {text("Loading project records…", "Projectregisters laden…")}</div>;
   }
   if (query.error || !query.data) {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      return <div className="operation-alert warning"><HardDrive size={18} /><div><strong>{text("No connection", "Geen verbinding")}</strong><span>{text("This project has no offline copy on this device yet. Photos you take are kept on this device and come back here when you are online.", "Dit project heeft nog geen offline kopie op dit apparaat. Foto's die je maakt blijven op dit apparaat en komen hier terug zodra je online bent.")}</span></div></div>;
+    }
     return <div className="operation-alert error"><AlertTriangle size={18} /> {userFacingError(query.error, text)}</div>;
   }
 
@@ -2360,17 +2369,13 @@ function ProjectOperations({
     setError: Dispatch<SetStateAction<string>>,
   ) => {
     if (!files) return;
-    const maximumSize = (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024;
+    const maximumMegabytes = data.settings?.max_file_size_mb ?? 25;
+    // Read now: the input is emptied for the next photo as soon as this returns.
     const candidates = Array.from(files);
-    const valid = candidates.filter((file) => ["image/jpeg", "image/png", "image/webp"].includes(file.type) && file.size <= maximumSize);
-    if (valid.length !== candidates.length) {
-      setError(text(
-        `Use JPEG, PNG or WebP files up to ${data.settings?.max_file_size_mb ?? 25} MB each.`,
-        `Gebruik JPEG-, PNG- of WebP-bestanden tot ${data.settings?.max_file_size_mb ?? 25} MB per foto.`,
-      ));
-    } else {
-      setError("");
-    }
+    // Judged by the bytes, like every other camera button: an Android camera that labels a
+    // JPEG "image/jpg" or gives it no type was refused here although the photo was fine.
+    void prepareCameraPhotos(candidates, maximumMegabytes * 1024 * 1024).then(({ photos: valid, refused }) => {
+    setError(refused.length ? photoRefusalMessage(refused, text, maximumMegabytes) : "");
     setFiles((current) => {
       const keyed = new Map(current.map((photo) => [`${photo.original.name}:${photo.original.size}:${photo.original.lastModified}`, photo]));
       valid.forEach((file) => {
@@ -2378,6 +2383,7 @@ function ProjectOperations({
         if (!keyed.has(key)) keyed.set(key, toPhotoEvidence(file));
       });
       return [...keyed.values()].slice(0, 12);
+    });
     });
   };
 
