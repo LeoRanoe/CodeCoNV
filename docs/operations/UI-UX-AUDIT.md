@@ -18,6 +18,9 @@ The client wrote on 30-10-2026 at 13:05 that the first colour version "was good"
 | Count badges on PDR, TI, CO and Lessons Learned tiles | `project-workspace-home.tsx` | P row 2, C D8 |
 | "Calculator & notes" entry in Workspace; "HSE incident" tile preselects Incident | `project-workspace-home.tsx` | P row 53, B def 3 |
 | Dictate microphone on the remaining free-text inputs | `dictate-button.tsx` and callers | P row 52 |
+| Drawing pins take the colour of their record type; legend swatches match; the colour picker is removed | `drawing-workspace.tsx`, `tokens.css`, `02-media.css` | C R445-2, R445-4 |
+| "Return for correction" on issues that are ready for verification | `operational-workspace.tsx` | P 43 |
+| Rapid Verify lists each compared value as matches, differs or not found | `rapid-verify-workspace.tsx` | P 37, 38 |
 | Inspection lookup date defaults to today | `operational-workspace.tsx` | C R453-4 |
 | Photo thumbnails and markup preview no longer blank in development | `photo-evidence.tsx`, `photo-markup.tsx` | B def 1 |
 
@@ -27,7 +30,6 @@ All edits use existing tokens and classes. No gradients, glass, tinted icon squa
 
 | Finding | Why |
 |---|---|
-| Drawing toolbar keeps a free colour input; pins are not coloured per record type | Needs the fake-Blob stack to verify; client asked on 04-08. |
 | "Works completed" and "Delays" still open the full ten-section log | The client decided only Works ongoing. Ask before changing. |
 | Phone header: dark or light | Client screenshots show both; ask. |
 | Narrow portrait photos make a thin strip in a wide preview frame | Cosmetic. |

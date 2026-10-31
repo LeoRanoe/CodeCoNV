@@ -192,6 +192,13 @@
   margin-bottom: var(--space-2);
 }
 
+.drawing-pin-legend i {
+  border-radius: var(--radius-pill);
+  display: inline-block;
+  height: 10px;
+  width: 10px;
+}
+
 .drawing-pin-legend span {
   align-items: center;
   background: var(--canvas);
@@ -440,7 +447,6 @@
 
   .drawing-markup-toolbar::-webkit-scrollbar { display: none; }
   .drawing-markup-toolbar > button { flex: 0 0 auto; font-size: var(--text-xs); padding: 0 9px; }
-  .drawing-color-control,
   .drawing-stroke-control { flex: 0 0 auto; }
 
   .drawing-pin-legend {

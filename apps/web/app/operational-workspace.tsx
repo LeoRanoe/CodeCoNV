@@ -5393,6 +5393,9 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   const [measure, setMeasure] = useState("");
   /** What the contractor proposes to do, as on the client's own NCR form. */
   const [correction, setCorrection] = useState("");
+  /** Sending a repair back: the issue whose return form is open, and the reason the contractor will read. */
+  const [returning, setReturning] = useState<string | null>(null);
+  const [returnReason, setReturnReason] = useState("");
   /** The written signature under the Quality Control / Verification box, required to
    * close an NCR — the client's own form marks that box "Signature *". */
   const [verificationSignature, setVerificationSignature] = useState<HandwrittenSignature | null>(null);
@@ -5513,6 +5516,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
               <ReportDownloadButtons disabled={busy} onDownloadPdf={() => import("@/lib/reports/ncr-pdf").then(({ downloadNcrPdf }) => downloadNcrPdf(finding, latestProgress, ncrContext(finding, recordBuildingName)))} onDownloadWord={() => import("@/lib/reports/ncr-docx").then(({ downloadNcrDocx }) => downloadNcrDocx(finding, latestProgress, ncrContext(finding, recordBuildingName)))} />
               {!["closed", "cancelled", "rejected"].includes(finding.status) && permissions.can("findings.manage") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setProgressActive(progressActive === finding.id ? null : finding.id); setProgressPercent(String(latestProgress?.progress_percent ?? 0)); setProgressDisposition(latestProgress?.disposition ?? issue.disposition ?? "to_be_corrected"); }}>{text("Record inspection progress", "Inspectievoortgang vastleggen")}</button> : null}
               {nextStatus ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setActive(active === finding.id ? null : finding.id); setCorrection(""); setVerificationSignature(null); }}>{nextStatus === "closed" ? finding.finding_type === "ncr" ? text("Quality control · resolve", "Kwaliteitscontrole · afsluiten") : text("Verify", "Verifiëren") : nextStatus === "ready_for_verification" ? text("Mark repair ready", "Herstel gereedmelden") : finding.finding_type === "ncr" ? text("Record contractor answer", "Antwoord aannemer vastleggen") : text("Update status", "Status bijwerken")}</button> : null}
+              {finding.status === "ready_for_verification" && permissions.can("findings.verify") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setReturning(returning === finding.id ? null : finding.id); setReturnReason(""); }}>{text("Return for correction", "Terug voor correctie")}</button> : null}
             </div>
             {/* The three signed boxes of the client's NCR form, in the order of the form:
                 what the engineer recommends, what the contractor proposes, what quality
@@ -5687,6 +5691,13 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
                   qc_issue_resolved: verification.issueResolved,
                   qc_remarks: verification.remarks.trim(),
                 } : {}).then((okay) => { if (okay) { setActive(null); setNote(""); setMeasure(""); setCorrection(""); setVerificationSignature(null); setVerification({ ...emptyVerification }); } })}>{text("Confirm human status change", "Bevestig menselijke statuswijziging")}</button>
+              </div>
+            ) : null}
+            {returning === finding.id ? (
+              <div className="inline-transition" role="group" aria-label={text("Return for correction", "Terug voor correctie")}>
+                <label className="form-field"><span>{text("What still has to be corrected", "Wat er nog gecorrigeerd moet worden")}</span><textarea rows={2} maxLength={1000} value={returnReason} onChange={(event) => setReturnReason(event.target.value)} placeholder={text("The contractor reads this and sees the issue open again.", "De aannemer leest dit en ziet de bevinding weer open.")} /><DictateButton onText={(transcript) => setReturnReason((current) => appendDictation(current, transcript))} /></label>
+                {returnReason.trim().length < 5 ? <small className="confirm-needs">{text("Still needed", "Nog nodig")}: {text("reason (5 characters)", "reden (5 tekens)")}</small> : null}
+                <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || returnReason.trim().length < 5} onClick={() => void transition(finding, "reopened", returnReason.trim(), "", "", "", "").then((okay) => { if (okay) { setReturning(null); setReturnReason(""); } })}>{text("Send back for correction", "Stuur terug voor correctie")}</button>
               </div>
             ) : null}
           </article>

@@ -105,6 +105,9 @@ function isDwgFile(file: { name?: string; original_name?: string; type?: string;
   return name.toLowerCase().endsWith(".dwg") && (dwgMimeTypes.includes(mimeType) || !mimeType);
 }
 
+/** Revision clouds, arrows and notes are red, the colour a reviewer expects on a drawing. */
+const markupInk = "#D92D20";
+
 /** What each pin colour stands for, so the drawing can be read without opening a pin. */
 const linkTypeLabels: Record<DrawingPin["linked_record_type"], { en: string; nl: string }> = {
   rfi: { en: "RFI", nl: "RFI" },
@@ -143,7 +146,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [tool, setTool] = useState<DrawingTool>(pendingRecord || initialFindingId || initialInspectionId ? "pin" : "pan");
-  const [markupColor, setMarkupColor] = useState("#D92D20");
+  // Markup is drawn in one colour: colour belongs to the record type of a pin, not to the user.
+  const markupColor = markupInk;
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [markupText, setMarkupText] = useState("");
   const [uploadBuildingId, setUploadBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
@@ -664,13 +668,12 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
               ] as Array<[DrawingTool, typeof MapPin, string]>).map(([id, Icon, label]) => (
                 <button type="button" className={tool === id ? "active" : ""} aria-pressed={tool === id} onClick={() => { setTool(id); setPoint(null); setSelectedPinId(null); }} key={id}><Icon size={15} /> {label}</button>
               ))}
-              <label className="drawing-color-control"><span>{text("Color", "Kleur")}</span><input type="color" value={markupColor} onChange={(event) => setMarkupColor(event.target.value.toUpperCase())} /></label>
               <label className="drawing-stroke-control"><span>{text("Line", "Lijn")}</span><select value={strokeWidth} onChange={(event) => setStrokeWidth(Number(event.target.value))}><option value={2}>2 px</option><option value={3}>3 px</option><option value={5}>5 px</option><option value={8}>8 px</option></select></label>
               {tool === "text" ? <label className="drawing-text-control"><span>{text("Text to place", "Te plaatsen tekst")}</span><input maxLength={500} value={markupText} onChange={(event) => setMarkupText(event.target.value)} placeholder={text("Type the drawing note", "Typ de tekeningnotitie")} /></label> : null}
             </div>
             <div className="drawing-pin-legend" aria-label={text("Pin record types", "Pintypen registraties")}>
               {(Object.keys(linkTypeLabels) as Array<DrawingPin["linked_record_type"]>).map((type) => (
-                <span key={type}>{linkTypeLabels[type][language]}</span>
+                <span key={type} data-record-type={type}><i aria-hidden="true" />{linkTypeLabels[type][language]}</span>
               ))}
             </div>
             <DrawingCanvas
@@ -775,7 +778,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                   <header><FileQuestion size={15} /> <strong>{text("Not on a drawing yet", "Nog niet op een tekening")}</strong> <b>{unplacedRecords.length}</b></header>
                   {unplacedRecords.map((record) => (
                     <button type="button" onClick={() => { setTool("pin"); setSpotMode("link"); setSpotRecord(record.value); }} key={record.value}>
-                      <span className="drawing-unplaced-dot"><MapPin size={12} /></span>
+                      <span className="drawing-unplaced-dot" data-record-type={record.type}><MapPin size={12} /></span>
                       <span><strong>{record.code}</strong><small>{record.title}</small></span>
                       <ArrowUpRight size={14} />
                     </button>
@@ -1120,7 +1123,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
             const shownPoint = draggedPin?.id === pin.id ? draggedPin.point : { xRatio: Number(pin.x_ratio), yRatio: Number(pin.y_ratio) };
             return (
             <span className="drawing-pin-anchor" style={{ left: `${shownPoint.xRatio * 100}%`, top: `${shownPoint.yRatio * 100}%`, transform: `scale(${1 / viewport.scale})`, transformOrigin: "0 0" }} key={pin.id}>
-              <button className="drawing-pin" type="button" aria-label={`${pin.linked_record_number} · ${pin.linked_record_title}`} onPointerDown={(event) => beginPinDrag(event, pin)} onPointerMove={(event) => movePinDrag(event, pin)} onPointerUp={(event) => finishPinDrag(event, pin)} onPointerCancel={(event) => { event.stopPropagation(); setDraggedPin(null); }}><span>{index + 1}</span></button>
+              <button className="drawing-pin" data-record-type={pin.linked_record_type} type="button" aria-label={`${pin.linked_record_number} · ${pin.linked_record_title}`} onPointerDown={(event) => beginPinDrag(event, pin)} onPointerMove={(event) => movePinDrag(event, pin)} onPointerUp={(event) => finishPinDrag(event, pin)} onPointerCancel={(event) => { event.stopPropagation(); setDraggedPin(null); }}><span>{index + 1}</span></button>
               <em className="drawing-pin-code">{pin.linked_record_number}</em>
             </span>
             );

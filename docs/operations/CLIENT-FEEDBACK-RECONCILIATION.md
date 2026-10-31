@@ -1,6 +1,6 @@
 # Client feedback reconciliation (WhatsApp export 15-07-2026 to 30-10-2026)
 
-Prepared 2026-10-31 on branch `claude/amazing-tesla-xx8xc7` (open PR #11). The client is Ashvin Pancham (CODECO N.V.). The developer is Leonardo.
+Prepared 2026-10-31 on branch `claude/amazing-tesla-xx8xc7` (PRs #12 and #13, after the merged PR #11). The client is Ashvin Pancham (CODECO N.V.). The developer is Leonardo.
 
 ## Source inventory
 
@@ -59,6 +59,9 @@ Fixed in code, with the check that covers it. "Gate" means the release-gate run 
 | Inspection lookup date defaults to today. | C R453-4 |
 | Count badges on the PDR, TI, CO and Lessons Learned tiles. | P row 2, C defect D8 |
 | "Calculator & notes" entry in Workspace. | P row 53 |
+| Drawing pins coloured per record type, colour picker removed. | C R445-2, R445-4, C defect D10 |
+| "Return for correction" on issues ready for verification. | P row 43 |
+| Rapid Verify compares numbers with units and colours (12 mm against 13 mm is flagged). | P rows 37, 38 |
 | "HSE incident" tile preselects the Incident type. | B defect 3 |
 | Reports links to the registered forms. | P row 24 |
 | Dictate microphone on the remaining free-text inputs. | P row 52 |
@@ -67,13 +70,12 @@ Fixed in code, with the check that covers it. "Gate" means the release-gate run 
 
 | Item | Why |
 |---|---|
-| Inspection signature Position field (C R454-2) | The inspections table has no column for it; needs a migration. |
-| Pin colour per record type and removing the colour picker on drawings (C R445-2, R445-4) | Not done in this pass; needs a Blob-enabled build to verify. |
+| Inspection signature Position field (C R454-2) | The client wrote only "naam etc."; Position was an inference and needs a new column. Not done; ask. |
 | Pin from a daily-works record (C R445-1) | Superseded by the 30-10 decision that Works ongoing is one box. |
 | Issue Priority High/Medium/Low (C R449-5) | NEEDS_CLIENT: relabel Severity or add a selectable Priority. |
 | Works completed and Delays still open the full day log | The client only decided Works ongoing. |
-| TI/CO "Send to contractor" is a text-only WhatsApp message with no response link; Rapid Verify does not flag 12 mm against 13 mm; Punch list has no "return for correction" button; Overview has no plan card; Reports have no summary text | Larger than the "no new features" rule of 11-08 allows without the client's decision. Listed with the NEEDS_CLIENT items below. |
-| Photo, 360 and drawing flows | CODE_ONLY: need the fake-Blob e2e stack (`CODECO_E2E_FAKE_BLOB=1`) or a Blob-enabled preview. |
+| TI/CO "Send to contractor" is a text-only WhatsApp message with no response link; Overview has no plan card; Reports have no summary text | Larger than the "no new features" rule of 11-08 allows without the client's decision. |
+| Photo, 360 and drawing flows | Passed on the fake-Blob e2e stack (149 passed); not tried against the real Vercel Blob. Items marked CODE_ONLY in the tables below stay so until a Blob-enabled preview is checked. |
 | 06-10 screenshots (D R1..R29) | The client wrote "Werk even nog niet eraan" on 06-10 and never released them. The 10-10 message shows the developer picked them up. Confirm with the client that they are final. |
 
 ## Full verification tables

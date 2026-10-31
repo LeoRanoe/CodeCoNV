@@ -386,7 +386,11 @@ export function DailyLogForm({
           {/* These write into the works-ongoing field, so they only belong beside it. */}
           {completedOnly ? null : <div className="quick-issue-presets" aria-label={text("Common activities", "Veelvoorkomende activiteiten")}>
             {activityChoices.map((choice) => (
-              <button type="button" onClick={() => setLog((current) => ({ ...current, constructionActivity: appendDictation(current.constructionActivity, `${choice} · ${buildings.find((building) => building.id === buildingId)?.name ?? buildingName}`) }))} key={choice}>{choice}</button>
+              <button type="button" onClick={() => setLog((current) => {
+                const phrase = `${choice} · ${buildings.find((building) => building.id === buildingId)?.name ?? buildingName}`;
+                // A second tap on the same chip must not write the same words twice.
+                return current.constructionActivity.includes(phrase) ? current : { ...current, constructionActivity: appendDictation(current.constructionActivity, phrase) };
+              })} key={choice}>{choice}</button>
             ))}
           </div>}
           {/* Works ongoing and works completed are two fields of one record. The field the
