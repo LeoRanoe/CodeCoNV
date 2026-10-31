@@ -85,6 +85,34 @@ Where some of the code has a fallback for a missing function (`schemaFeatureMiss
 
 Applying them needs the owner's go-ahead: they change the production database. Suggested order: take a backup (the project has daily Blob backups), apply in file order with `supabase db push` against the linked production project from a clean checkout of `main`, run the smoke checks, and record the result here. Rollback for `202610300001` is in its header; the others are additive, and a function can be restored by re-applying the previous migration that defined it.
 
+### Applying the nine migrations (runbook)
+
+The production project is `dljbeheogaeviokpcvca` (Supabase ref). The migration history there uses the repository's own version numbers, so apply them with the Supabase CLI (which records the same versions) and not by pasting SQL into the dashboard or an MCP tool, which would record a different version and make the next `db push` try them again.
+
+Run from a clean checkout of `main` (or of the PR #13 branch; PR #13 adds no migration):
+
+```bash
+npx supabase@2.109.1 login
+npx supabase@2.109.1 link --project-ref dljbeheogaeviokpcvca
+npx supabase@2.109.1 db push --dry-run
+npx supabase@2.109.1 db push
+```
+
+`db push` asks for the database password; type it yourself, it is not needed anywhere else. The dry run must list exactly the nine files from `202610100005` to `202610300001` and nothing else. At the time of the check production held 2 projects, 1 day close-out, 3 profiles and 56 findings, so the loosening changes (`202610280004` drops two NOT NULL constraints, `202610300001` widens four check constraints) cannot reject an existing row. `202610280004` also rewrites `build_day_report_snapshot` in place by text replacement and raises an error, rolling the file back, if production's version of that function does not contain the text it expects; if that happens, send me the error and I will adapt the file.
+
+Check afterwards, in the SQL editor:
+
+```sql
+select max(version) from supabase_migrations.schema_migrations;  -- 202610300001
+select proname from pg_proc join pg_namespace n on n.oid = pronamespace
+ where n.nspname = 'public' and proname in ('ensure_day_report_for_record', 'save_inspection_responses_batch');  -- 2 rows
+select conname from pg_constraint where conrelid = 'public.day_closeouts'::regclass and conname like 'day_closeouts_%_check';
+```
+
+Then the smoke checks: sign in as a supervisor and a contractor; save Works ongoing with only the text box and a building; save an RFI as the contractor; finish an inspection; open `/api/release` and confirm `expectedSchemaVersion` is `202610300001`.
+
+If a migration fails, `db push` stops at that file and the earlier ones stay applied; fix forward from the message. Rollback for `202610300001` is in its header.
+
 ## Vercel preview check (names and targets only)
 
 PR #12's checks are green on GitHub: browser flows, database migrations with lint and pgTAP, web lint/test/build/audit, and the Vercel preview deployment. The Vercel project has separate **preview** entries for `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY` and `BLOB_READ_WRITE_TOKEN`, next to the production ones. They are stored encrypted or sensitive and were not decrypted, so this pass cannot say whether the preview points at a different Supabase project and Blob store than production. Confirm that before anyone signs in to the preview with real client data. The migration is not applied to whichever database the preview uses.
