@@ -1,5 +1,6 @@
 "use client";
 
+import { appendDictation, DictateButton, inputWithMicStyle, micInputStyle } from "@/app/dictate-button";
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
 import { useLanguage } from "@/lib/i18n";
 import { signatureFromDetails } from "@/lib/signatures/handwritten-signature.mjs";
@@ -177,20 +178,24 @@ export function AgreementSignatureFields({
                   <label className="form-field">
                     <span>{text("Name", "Naam")}</span>
                     <input
+                      style={inputWithMicStyle}
                       list={`agreement-party-${partyKey}`}
                       value={partyName}
                       onChange={(event) => onChange({ ...value, [partyKey]: event.target.value })}
                       placeholder={text("Enter name", "Voer naam in")}
                     />
+                    <DictateButton style={micInputStyle} onText={(transcript) => onChange({ ...value, [partyKey]: appendDictation(partyName, transcript) })} />
                     <datalist id={`agreement-party-${partyKey}`}>{options.map((name) => <option value={name} key={name} />)}</datalist>
                   </label>
                   <label className="form-field">
                     <span>{text("Position / title", "Functie / titel")}</span>
                     <input
+                      style={inputWithMicStyle}
                       value={value[positionKey]}
                       onChange={(event) => onChange({ ...value, [positionKey]: event.target.value })}
                       placeholder={text("Enter position / title", "Voer functie / titel in")}
                     />
+                    <DictateButton style={micInputStyle} onText={(transcript) => onChange({ ...value, [positionKey]: appendDictation(value[positionKey], transcript) })} />
                   </label>
                 </>
               ) : null}

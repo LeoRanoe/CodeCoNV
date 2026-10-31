@@ -1178,11 +1178,23 @@ export function CodecoSupervisionApp() {
 
   const addBuilding = async (input: { code: string; name: string; description: string }) => {
     if (!selectedProject || !supabase) return false;
+    lastSaveErrorRef.current = "";
     const created = await runSynced(
-      () => createBuilding(supabase, { projectId: selectedProject.id, code: input.code, name: input.name, description: input.description }),
+      async () => {
+        const building = await createBuilding(supabase, { projectId: selectedProject.id, code: input.code, name: input.name, description: input.description });
+        // The database answers a code that is already in use with the building that owns it
+        // instead of an error. That is not a new building: say so, and add nothing to the count.
+        if (selectedProject.buildings.some((existing) => existing.id === building.id)) {
+          throw new Error(text(
+            `A building with code ${input.code.toUpperCase()} already exists in this project. Use another code.`,
+            `Er bestaat al een gebouw met code ${input.code.toUpperCase()} in dit project. Gebruik een andere code.`,
+          ));
+        }
+        return building;
+      },
       text("Building added to the project.", "Gebouw aan het project toegevoegd."),
     );
-    if (!created) return false;
+    if (!created) return lastSaveErrorRef.current || false;
     const newBuilding: BuildingContext = {
       id: created.id,
       name: created.name,
@@ -1456,6 +1468,9 @@ export function CodecoSupervisionApp() {
                 projectId: selectedProject.id,
                 buildingId: logBuildingId,
                 answers,
+                // Works ongoing is one text box: it must not overwrite what the same building's
+                // closeout already says about everything else.
+                onlyColumns: focus === "works_ongoing" ? ["day_summary", "work_ongoing"] : undefined,
               });
             }
             if (photos.length) {
@@ -3487,19 +3502,26 @@ function ManageBuildingsModal({
 }: {
   buildings: BuildingContext[];
   close: () => void;
-  addBuilding: (input: { code: string; name: string; description: string }) => Promise<boolean>;
+  /** True when the building was added; otherwise false or the reason it was refused. */
+  addBuilding: (input: { code: string; name: string; description: string }) => Promise<boolean | string>;
 }) {
   const { text } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [buildingError, setBuildingError] = useState("");
 
   const submit = async () => {
     if (code.trim().length < 1 || name.trim().length < 2) return;
     setBusy(true);
+    setBuildingError("");
     const saved = await addBuilding({ code: code.trim(), name: name.trim(), description: description.trim() });
     setBusy(false);
+    if (typeof saved === "string") {
+      setBuildingError(saved);
+      return;
+    }
     if (saved) {
       setCode("");
       setName("");
@@ -3527,10 +3549,11 @@ function ManageBuildingsModal({
           <details className="optional-text-entry full">
             <summary>{text("Add a new building", "Nieuw gebouw toevoegen")}</summary>
             <div className="form-grid two-columns">
-              <label className="form-field"><span>{text("Building code *", "Gebouwcode *")}</span><input value={code} onChange={(event) => setCode(event.target.value)} placeholder={text("e.g. TOWER-B", "bijv. TOREN-B")} /></label>
+              <label className="form-field"><span>{text("Building code *", "Gebouwcode *")}</span><input value={code} onChange={(event) => { setCode(event.target.value); setBuildingError(""); }} placeholder={text("e.g. TOWER-B", "bijv. TOREN-B")} /></label>
               <label className="form-field"><span>{text("Building name *", "Gebouwnaam *")}</span><input value={name} onChange={(event) => setName(event.target.value)} /></label>
               <label className="form-field wide"><span>{text("Description", "Omschrijving")}</span><input value={description} onChange={(event) => setDescription(event.target.value)} /></label>
             </div>
+            {buildingError ? <p className="field-error" role="alert">{buildingError}</p> : null}
             <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || code.trim().length < 1 || name.trim().length < 2} onClick={() => void submit()}>{busy ? <Loader2 className="spin" size={15} /> : <Plus size={15} />} {text("Add building", "Gebouw toevoegen")}</button>
           </details>
         </div>

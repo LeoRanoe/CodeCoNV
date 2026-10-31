@@ -1,42 +1,34 @@
 :root {
-  /* Warm charcoal ink on warm off-white paper, CODECO orange for the one primary action and the current
-     selection, and sage for what is done and what moved from paper onto the device. */
-  --ink-950: #1b1e1c;
-  --ink-900: #262a27;
-  --ink-800: #383d39;
-  /* 7:1 on the canvas. */
-  --ink-700: #4a514b;
+  /* One neutral ramp, paper, canvas, and CODECO's action signal. */
+  --ink-950: #161a20;
+  --ink-900: #272d36;
+  --ink-800: #3a424d;
+  /* The blue-grey of the first version of the app, kept dark enough for 7:1 on white. */
+  --ink-700: #4a5a66;
   /* 4.5:1 on every surface of the ramp, down to --ink-50. */
-  --ink-600: #5d655e;
+  --ink-600: #5a6e7b;
   /* 3:1 on white: the outline of every field and button. */
-  --ink-500: #858c84;
-  --ink-400: #b4bbb2;
-  --ink-300: #d8dbd2;
-  --ink-200: #e4e5de;
-  --ink-100: #edede6;
-  --ink-50: #f3f3ee;
-  --ink-025: #faf9f5;
+  --ink-500: #8396a2;
+  --ink-400: #b3c1c9;
+  --ink-300: #cfd9de;
+  --ink-200: #dde5e9;
+  --ink-100: #e9eff2;
+  --ink-50: #f2f6f7;
+  --ink-025: #f9fbfb;
   --paper: #ffffff;
-  --canvas: #f6f4ee;
+  --canvas: #f4f7f6;
   --signal: #f07400;
-  /* Orange as text on --signal-soft and on white: 5:1. */
+  /* Orange as text on --signal-soft, and as the fill under white text: 5:1 (#cf6300 gave 3.5:1). */
   --signal-dark: #a64f00;
-  --signal-soft: #fdeedf;
-  /* Sage: the secondary brand colour. 700 is text and ticks (6:1 on white), 500 is a fill beside text
-     (3:1 on white), the soft steps are surfaces for done, digital and site-condition moments. */
-  --sage-700: #3c6a4c;
-  --sage-500: #6f9a76;
-  --sage-200: #cfe0cc;
-  --sage-100: #e5eee2;
-  --sage-50: #f1f6ef;
-  --red: #b33a2f;
-  --red-soft: #fbecea;
-  --yellow: #855600;
-  --yellow-soft: #fbf3d9;
-  --green: var(--sage-700);
-  --green-soft: var(--sage-100);
-  --blue: #22609a;
-  --blue-soft: #e8f0f7;
+  --signal-soft: #fff0e4;
+  --red: #bf3d32;
+  --red-soft: #fff0ee;
+  --yellow: #8a5700;
+  --yellow-soft: #fff7df;
+  --green: #177960;
+  --green-soft: #e4f5ef;
+  --blue: #1667a8;
+  --blue-soft: #e9f3fb;
   --landing-yellow: #ebdf4a;
 
   --border: var(--ink-500);

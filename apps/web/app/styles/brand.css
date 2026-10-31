@@ -1,8 +1,7 @@
-/* CODECO theme roles. Orange for the one primary action, the current page and the current selection;
-   sage green for what is done, in progress, or on the device instead of on paper; a dark charcoal sidebar
-   that carries the black-and-yellow logo on a white plate; warm off-white canvas and charcoal ink.
-   Loaded after every other sheet except system.css, which finishes the shared surfaces and controls.
-   Values live in tokens.css. */
+/* CODECO calm theme. Orange for the one primary action and the current selection, green for what is done and
+   what is on the device instead of on paper, a dark sidebar and cool blue-grey neutrals: the look of the first
+   version of the app, with the sizes, contrast and touch targets of the later ones. Loaded after every other
+   sheet except system.css so these roles are stated in one place. Values live in tokens.css. */
 
 /* Big surfaces get a soft outline; fields and buttons keep the 3:1 outline that makes them findable in daylight. */
 .overview-hero,

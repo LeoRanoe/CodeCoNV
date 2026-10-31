@@ -276,7 +276,9 @@ export function DailyLogForm({
   // A focused entry lives in the day closeout, so the day still has to say what happened.
   // When the closeout already exists this form only asks about the one thing the button
   // was pressed for; when it does not, the day's own blocks are required too.
-  const dayContextRequired = !(delayOnly || workOnly) || !initialCloseout;
+  // Works ongoing is one input box plus the buildings it happens in (client, 30-10-2026): it
+  // never asks for the rest of the day, not even on the first entry of the day.
+  const dayContextRequired = !(delayOnly || workOnly) || (!initialCloseout && !ongoingOnly);
   // Works ongoing and works completed are the same form; each tile still has to end up
   // with the field it was opened for filled in.
   const summaryRequired = dayContextRequired || ongoingOnly;
@@ -284,10 +286,11 @@ export function DailyLogForm({
   const problems: string[] = [];
   // The day report stands on the weather of the day; without the project start there is none,
   // and the database refuses the closeout. Saying so here beats a failed save.
-  if (answers.weatherSummary.trim().length < 5) problems.push(text("Confirm the project start first: weather and working hours.", "Bevestig eerst de projectstart: weer en werktijden."));
+  if (!ongoingOnly && answers.weatherSummary.trim().length < 5) problems.push(text("Confirm the project start first: weather and working hours.", "Bevestig eerst de projectstart: weer en werktijden."));
   if (!buildingIds.length && buildings.length > 1) problems.push(text("Choose at least one building.", "Kies minimaal één gebouw."));
   if (delayOnly && answers.delayCause === "none") problems.push(text("Choose what caused the delay.", "Kies waardoor de vertraging is ontstaan."));
-  if (summaryRequired && answers.daySummary.length < 20) problems.push(text("Describe the construction activity and location in at least one full sentence.", "Beschrijf de bouwactiviteit en locatie in minimaal één volledige zin."));
+  if (summaryRequired && ongoingOnly && answers.daySummary.length < 3) problems.push(text("Describe what is in progress and where.", "Beschrijf wat er gaande is en waar."));
+  else if (summaryRequired && !ongoingOnly && answers.daySummary.length < 20) problems.push(text("Describe the construction activity and location in at least one full sentence.", "Beschrijf de bouwactiviteit en locatie in minimaal één volledige zin."));
   if (performedRequired && answers.workPerformed.length < 10) problems.push(text("Describe the work completed today.", "Beschrijf het werk dat vandaag is afgerond."));
   if (dayContextRequired && answers.tomorrowPlan.length < 3) problems.push(text("Enter the plan for tomorrow.", "Vul de planning voor morgen in."));
   if (answers.delayCause !== "none" && answers.delayHours <= 0) problems.push(text("Enter the hours lost to the delay.", "Vul de uren verlies door de vertraging in."));
@@ -603,7 +606,27 @@ export function DailyLogForm({
     },
   ];
   const leading = delayOnly ? "delay" : workOnly ? "works" : "";
-  const ordered = leading ? [...blocks.filter((block) => block.id === leading), ...blocks.filter((block) => block.id !== leading)] : blocks;
+  // Works ongoing: the one text box and the buildings it happens in, nothing else.
+  const ongoingBlock = {
+    id: "ongoing",
+    title: text("What is running right now", "Wat er op dit moment loopt"),
+    className: "daily-log-works",
+    content: (
+      <>
+        {ongoingField}
+        <BuildingMultiPicker
+          id="daily-log-building"
+          buildings={buildings}
+          value={buildingIds}
+          onChange={setBuildingIds}
+          hint={text("Saved once per building.", "Eén keer per gebouw opgeslagen.")}
+        />
+      </>
+    ),
+  };
+  const ordered = ongoingOnly
+    ? [ongoingBlock]
+    : leading ? [...blocks.filter((block) => block.id === leading), ...blocks.filter((block) => block.id !== leading)] : blocks;
 
   const todayLabel = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "America/Paramaribo" }).format(new Date());
 

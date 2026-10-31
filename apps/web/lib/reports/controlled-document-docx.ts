@@ -82,6 +82,9 @@ function typeSpecificDetails(type: ControlledDocumentType, details: Details, ent
         labelValue("Extension of time (days)", text(details, "extension_days", "0")),
       ] : []),
       ...(text(details, "impact_explanation") === "—" ? [] : [bodyText(text(details, "impact_explanation"))]),
+      sectionHeading("Cost impact"),
+      labelValue("Cost impact", humanizeToken(text(details, "cost_impact", "none"))),
+      ...(text(details, "cost_impact_explanation") === "—" ? [] : [bodyText(text(details, "cost_impact_explanation"))]),
       // Section 5 and 6: the contractor acknowledges, supervision approves. The developer
       // and contractor-acceptance columns are struck off the client's own form.
       sectionHeading("Acknowledgement · contractor"),

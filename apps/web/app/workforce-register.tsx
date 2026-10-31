@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { type HandwrittenSignature } from "@/app/signature-pad";
 import { RecordFormSection, RecordFormShell, RecordSignatureField } from "@/app/forms/record-form-shell";
-import { DictateButton, appendDictation } from "@/app/dictate-button";
+import { DictateButton, appendDictation, inputWithMicStyle, micInputStyle } from "@/app/dictate-button";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { TimeField } from "@/app/time-field";
 import { useLanguage } from "@/lib/i18n";
@@ -150,11 +150,13 @@ export function WorkforceRegister({
         <label className="form-field">
           <span>{text("Crew · optional", "Ploeg · optioneel")}</span>
           <input
+            style={inputWithMicStyle}
             value={draft.crew}
             onChange={(event) => setDraft({ ...draft, crew: event.target.value })}
             placeholder={text("For example: crew 2", "Bijvoorbeeld: ploeg 2")}
             maxLength={100}
           />
+          <DictateButton style={micInputStyle} onText={(transcript) => setDraft((current) => ({ ...current, crew: appendDictation(current.crew, transcript).slice(0, 100) }))} />
         </label>
         <button className="ui-button ui-button--secondary ui-button--md workforce-add-button" type="button" onClick={add}>
           <Plus size={15} /> {text("Add person", "Persoon toevoegen")}
@@ -555,12 +557,14 @@ export function WorkforceForm({
                 <label className="form-field">
                   <span>{text("Name", "Naam")}</span>
                   <input
+                    style={inputWithMicStyle}
                     value={visitorDraft.visitorName}
                     onChange={(event) => setVisitorDraft({ ...visitorDraft, visitorName: event.target.value })}
                     onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addVisitor(); } }}
                     placeholder={text("Who visited the site?", "Wie was er op bezoek?")}
                     maxLength={160}
                   />
+                  <DictateButton style={micInputStyle} onText={(transcript) => setVisitorDraft((current) => ({ ...current, visitorName: appendDictation(current.visitorName, transcript).slice(0, 160) }))} />
                 </label>
                 <button className="ui-button ui-button--secondary ui-button--md workforce-add-button" type="button" disabled={visitorDraft.visitorName.trim().length < 2} onClick={addVisitor}>
                   <Plus size={15} /> {text("Add visitor", "Bezoeker toevoegen")}

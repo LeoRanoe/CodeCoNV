@@ -958,6 +958,13 @@ export async function saveDailyCloseout(
     projectId: string;
     buildingId: string;
     answers: DailyCloseoutAnswers;
+    /**
+     * A focused entry (Works ongoing is one text box) only knows these columns. When the
+     * building's closeout already exists, only they are written; everything else it says
+     * stays as it was. Without this, saving one line for two buildings overwrote the other
+     * building's own answers with the first building's.
+     */
+    onlyColumns?: readonly string[];
   },
 ) {
   const user = await currentUser(client);
@@ -1007,9 +1014,13 @@ export async function saveDailyCloseout(
     Object.entries(values).filter(([column]) => !signatureColumns.includes(column)),
   );
   if (existing.data) {
-    let update = await client.from("day_closeouts").update(payload).eq("id", existing.data.id);
+    const onlyColumns = input.onlyColumns;
+    const updateValues: Record<string, unknown> = onlyColumns
+      ? Object.fromEntries(Object.entries(payload).filter(([column]) => onlyColumns.includes(column)))
+      : payload;
+    let update = await client.from("day_closeouts").update(updateValues).eq("id", existing.data.id);
     if (schemaColumnMissing(update.error, "signed_by") || schemaColumnMissing(update.error, "signature_image")) {
-      update = await client.from("day_closeouts").update(withoutSignature(payload)).eq("id", existing.data.id);
+      update = await client.from("day_closeouts").update(withoutSignature(updateValues)).eq("id", existing.data.id);
     }
     fail(update.error);
   } else {
@@ -1023,6 +1034,8 @@ export async function saveDailyCloseout(
     }
     fail(insert.error);
   }
+  // A one-line entry does not make the day 90% complete.
+  if (input.onlyColumns) return;
   const reportUpdate = await client.from("day_reports").update({ completeness_percent: 90 }).eq("id", reportId);
   fail(reportUpdate.error);
 }

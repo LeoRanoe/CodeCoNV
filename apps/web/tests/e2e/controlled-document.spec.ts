@@ -120,6 +120,11 @@ test("historical feedback: technical instruction prioritizes content over repeat
   await expect(impact.locator("summary")).toBeVisible();
   await impact.locator("summary").click();
   await expect(impact.getByText("Schedule impact", { exact: true })).toBeVisible();
-  await expect(impact.getByText("Cost impact", { exact: true })).toBeVisible();
+  // The client crossed Cost impact out of the technical instruction; it stays on the change order.
+  await expect(impact.getByText("Cost impact", { exact: true })).toHaveCount(0);
+  await expect(form.locator(".controlled-document-upload")).toHaveText("Upload attachment");
+  // Discipline stands directly above the title.
+  const order = await form.locator(".controlled-document-primary > label").evaluateAll((labels) => labels.map((label) => label.querySelector("span")?.textContent ?? ""));
+  expect(order[0]).toBe("Discipline");
   await expect(form.locator(".controlled-document-deadline input[type=date]")).toBeVisible();
 });
