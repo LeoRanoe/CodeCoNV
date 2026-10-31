@@ -359,7 +359,8 @@ test("implements the handwritten client PDF as required workflows without AI or 
   assert.match(await readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"), /Beton en wapening/);
   assert.match(await readFile(new URL("../app/daily-log-modal.tsx", import.meta.url), "utf8"), /Werk vandaag afgerond/);
   assert.match(dataLayer, /work_ongoing/);
-  assert.match(operationalWorkspace, /Upload contract, technische specificatie of bijlage/);
+  assert.match(operationalWorkspace, /Bijlage uploaden/);
+  assert.doesNotMatch(operationalWorkspace, /Upload contract, technische specificatie of bijlage/);
   assert.match(operationalWorkspace, /uploadProjectFile/);
   assert.match(operationalWorkspace, /Markeer op foto \/ 360°/);
   assert.match(operationalWorkspace, /Plaats op tekening/);
@@ -2761,7 +2762,7 @@ test("every workspace button opens the record it names", async () => {
 
   // A tile that names a register opens that register, not the last type chosen.
   assert.match(workspace, /if \(preset\?\.registerType\)/);
-  assert.match(workspace, /setRegisterForm\(\{ \.\.\.emptyControlledDocumentDraft, type: preset\.registerType \}\)/);
+  assert.match(workspace, /clearRegisterStaging\(preset\.registerType\)/);
   assert.match(workspace, /if \(preset\?\.hseEventType\)/);
   assert.match(workspaceHome, /hseEventType: "incident"/);
 
@@ -2785,7 +2786,10 @@ test("every workspace button opens the record it names", async () => {
 
   // Opening on a block means that block reads as the subject, and a focused screen only
   // demands the day's own answers when there is no closeout to attach itself to.
-  assert.match(dailyLog, /const dayContextRequired = !\(delayOnly \|\| workOnly\) \|\| !initialCloseout/);
+  // Works ongoing is the exception: one input box plus the buildings, never the rest of the day
+  // (client, 30-10-2026), so even its first entry of the day asks for nothing else.
+  assert.match(dailyLog, /const dayContextRequired = !\(delayOnly \|\| workOnly\) \|\| \(!initialCloseout && !ongoingOnly\)/);
+  assert.match(dailyLog, /const ordered = ongoingOnly\s*\? \[ongoingBlock\]/);
   assert.match(styles, /\.daily-log-body\.focus-delay > \.daily-log-delay/);
 
   // Every route into a workspace module runs through one helper, so a tile, a menu row and
@@ -3106,7 +3110,7 @@ test("gives the project delay report its own form, numbered PDR and evidenced by
 
   // The five sections of the client's own form, with the header the client asked to work
   // "zelfde als HSE" — filled by the app before a box is touched.
-  assert.match(workspace, /aria-label=\{text\("Delay report header", "Kop van het vertragingsrapport"\)\}/);
+  assert.match(workspace, /text\("Delay report header", "Kop van het vertragingsrapport"\)/);
   for (const heading of [
     /title=\{text\("Delay details", "Details van de vertraging"\)\}/,
     /title=\{text\("Delay dates", "Datums van de vertraging"\)\}/,
@@ -3602,7 +3606,9 @@ test("retains historical client form-feedback fixes without losing underlying wo
   assert.match(css, /\.controlled-document-primary\s*\{\s*grid-template-columns: minmax\(0, 1fr\)/);
 
   // Record type switching is still available for external submissions and general registers.
-  assert.match(workspace, /!controlledRegister \|\| submittedRegister/);
+  // The client crossed out the format switch on the materials delivery; only a submitted form keeps it.
+  assert.match(workspace, /\{submittedRegister \? <details className="optional-text-entry register-type-switch"/);
+  assert.doesNotMatch(workspace, /!controlledRegister \|\| submittedRegister/);
   // Existing records retain revision editing; new records start with the canonical default.
   assert.match(workspace, /editingRegisterId \? <label className="form-field"><span>\{text\("Revision"/);
   // The original author remains changeable in the existing header, not duplicated below.
