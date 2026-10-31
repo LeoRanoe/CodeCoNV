@@ -10,7 +10,7 @@ Not released. The code gates below passed. The release itself is blocked on thin
 
 1. Approval to merge PR #11.
 2. Applying migration `202610300001_day_closeout_one_field.sql` to the Supabase project before (or with) the deployment, because `lib/release.ts` now expects schema version `202610300001`. Rollback is in the migration header.
-3. Verification of photo, 360 and drawing flows with a Blob store (not possible on the plain local stack).
+3. A check of photo, 360 and drawing flows against the real Vercel Blob store on a preview (they pass on the fake store).
 4. Answers to the client questions in `CLIENT-FEEDBACK-RECONCILIATION.md` ("Still open").
 
 ## Gates
@@ -26,9 +26,11 @@ Not released. The code gates below passed. The release itself is blocked on thin
 | Offline | Pass | `offline-app`, `offline-create-and-sync`, `offline-records`, `offline-account-isolation` in the run above. |
 | Tenant isolation | Pass | pgTAP suites; `offline-account-isolation` (second account on one device cannot read the first's data); `role-views` (client and contractor see only what the role allows; a link to an unreachable project says so). |
 
-Specs in the browser run: controlled-document, two-party-signature, inspection-workflow, day-report-lifecycle, works-ongoing-one-field, dialogs, role-views, mobile-forms, field-readiness, layout-hygiene, offline x4, responsive-audit, responsive-workspace, viewport-walk, double-submit, ui-stability-audit.
+Second run, after the drawing pin colours, return for correction, Rapid Verify comparison and photo preview fix, on the fake-Blob stack (`CODECO_E2E_FAKE_BLOB=1`, whole suite, production build): 149 passed, 1 failed, 144 skipped by design (14 minutes). The one failure, `first-load.spec.ts`, saw a 429 from the local `/api/weather/current` rate limiter during the long run; it passes on its own. `npm test` ran 223 of 223 before the new Rapid Verify unit file was added to the script; its 5 tests pass separately.
 
-What this does not cover: the photo preview fix (F-10) and the "photo stayed on the device" message (F-05) were made or verified at code level only, and the photo fix landed after the browser run's production build. Specs that need a Blob store (`media-and-sharing` and the photo, drawing and 360 flows) were not run.
+Specs in the first browser run: controlled-document, two-party-signature, inspection-workflow, day-report-lifecycle, works-ongoing-one-field, dialogs, role-views, mobile-forms, field-readiness, layout-hygiene, offline x4, responsive-audit, responsive-workspace, viewport-walk, double-submit, ui-stability-audit.
+
+What this does not cover: the real Vercel Blob store (the fake store replaces it), the colours of the drawing pins by eye, and anything on real devices.
 
 ## Database change
 
