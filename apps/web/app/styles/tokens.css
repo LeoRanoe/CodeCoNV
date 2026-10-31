@@ -42,6 +42,15 @@
   --brand-700: var(--ink-700);
   --danger: var(--red);
 
+  /* A drawing pin takes the colour of the record it links to. */
+  --pin-observation: var(--red);
+  --pin-inspection: var(--blue);
+  --pin-visual: var(--green);
+  --pin-registration: var(--ink-700);
+  --pin-document: var(--ink-950);
+  --pin-rfi: #7a4fa3;
+  --pin-submittal: #0e7c86;
+
   --text-xs: 14px;
   --text-sm: 14px;
   --text-md: 16px;

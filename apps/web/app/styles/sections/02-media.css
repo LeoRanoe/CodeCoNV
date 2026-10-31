@@ -136,7 +136,6 @@
   color: var(--primary-dark);
 }
 
-.drawing-color-control,
 .drawing-stroke-control,
 .drawing-text-control {
   align-items: center;
@@ -145,15 +144,6 @@
   font-size: var(--text-xs);
   font-weight: var(--weight-bold);
   gap: 6px;
-}
-
-.drawing-color-control input {
-  background: var(--paper);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xs);
-  height: 36px;
-  padding: 3px;
-  width: 44px;
 }
 
 .drawing-stroke-control select,
@@ -262,6 +252,14 @@ button.drawing-pin {
 .drawing-pin > * {
   transform: rotate(45deg);
 }
+
+.drawing-pin[data-record-type="observation"], .drawing-unplaced-dot[data-record-type="observation"], .drawing-pin-legend [data-record-type="observation"] i { background: var(--pin-observation); }
+.drawing-pin[data-record-type="inspection"], .drawing-unplaced-dot[data-record-type="inspection"], .drawing-pin-legend [data-record-type="inspection"] i { background: var(--pin-inspection); }
+.drawing-pin[data-record-type="visual"], .drawing-unplaced-dot[data-record-type="visual"], .drawing-pin-legend [data-record-type="visual"] i { background: var(--pin-visual); }
+.drawing-pin[data-record-type="registration"], .drawing-unplaced-dot[data-record-type="registration"], .drawing-pin-legend [data-record-type="registration"] i { background: var(--pin-registration); }
+.drawing-pin[data-record-type="document"], .drawing-unplaced-dot[data-record-type="document"], .drawing-pin-legend [data-record-type="document"] i { background: var(--pin-document); }
+.drawing-pin[data-record-type="rfi"], .drawing-unplaced-dot[data-record-type="rfi"], .drawing-pin-legend [data-record-type="rfi"] i { background: var(--pin-rfi); }
+.drawing-pin[data-record-type="submittal"], .drawing-unplaced-dot[data-record-type="submittal"], .drawing-pin-legend [data-record-type="submittal"] i { background: var(--pin-submittal); }
 
 .drawing-pin.pending { background: var(--ink-900); pointer-events: none; }
 .drawing-pin.pending.drawing-pin-scaled { transform: translate(-50%, -100%) rotate(-45deg) scale(var(--pin-inverse-scale, 1)); }
