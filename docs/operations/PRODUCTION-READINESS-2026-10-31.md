@@ -6,9 +6,9 @@ This file is the evidence for one pass. The standing checklist is `production-re
 
 ## Release decision
 
-Code gates passed. `main` is already deployed to production (PR #12), but production's database is nine migrations behind the repository (see "Production database state"). What only the owner can do:
+Code gates passed. `main` is deployed to production (PR #12) and the nine pending migrations are now applied to the production database (see "Applied on 2026-10-31"). What is left for the owner:
 
-1. Approval to apply the nine pending migrations (`202610100005` to `202610300001`) to the production Supabase project, in file order, with a backup first. `lib/release.ts` expects schema version `202610300001`. This also covers `202610300001_day_closeout_one_field.sql`, whose rollback is in its header.
+1. A sign-in smoke test on production as a supervisor and as a contractor (list below).
 2. Approval to merge PR #13 (pin colours, return for correction, Rapid Verify comparison; no migration).
 3. A check of photo, 360 and drawing flows against the real Vercel Blob store on a preview (they pass on the fake store).
 4. Answers to the client questions in `CLIENT-FEEDBACK-RECONCILIATION.md` ("Still open").
@@ -85,6 +85,17 @@ Where some of the code has a fallback for a missing function (`schemaFeatureMiss
 
 Applying them needs the owner's go-ahead: they change the production database. Suggested order: take a backup (the project has daily Blob backups), apply in file order with `supabase db push` against the linked production project from a clean checkout of `main`, run the smoke checks, and record the result here. Rollback for `202610300001` is in its header; the others are additive, and a function can be restored by re-applying the previous migration that defined it.
 
+### Applied on 2026-10-31
+
+The owner gave explicit permission in chat to apply the nine migrations to the production project (a development environment). They were applied in file order, one at a time, through the Supabase tool of this session and not through `supabase db push`, because the database password is not available to the session. Two consequences:
+
+- Each migration was recorded by the tool under a new timestamp version; the rows in `supabase_migrations.schema_migrations` were then renamed to the repository's versions (`202610100005` to `202610300001`), so a later `supabase db push` sees them as applied. The history now ends at `202610300001` with nine rows after `202610100004`.
+- In `202610100005` the explanatory comments inside the function body were left out of the statement that was run; the code is identical. Everything else was run as written, minus the `begin`/`commit` wrapper.
+
+Checked in the database afterwards (read-only queries): latest version `202610300001`; `ensure_day_report_for_record`, `save_inspection_responses`, `submit_external_share_response` and `create_project_action` exist; `day_closeouts_day_summary_check` is `3 to 700`; `day_start_checks.expected_workers` is nullable; `create_project_register_entry` now calls `day_report_in_project`; `set_record_buildings` is `SECURITY DEFINER`; `build_day_report_snapshot` now carries `visual_captures`; the `authenticated` role can no longer select `profiles.phone`. None of the nine files failed or rolled back, so the in-place patches (`202610100005` aside, `202610280002`, `202610280003`, `202610280004`) all found the text they expected.
+
+Not done: a smoke test through the application as a supervisor and a contractor. That needs a sign-in and was not attempted with any account; do it on the next visit (the list is below). The Supabase security advisor reports the same two kinds of warning as before and nothing new from these migrations: many `SECURITY DEFINER` functions are callable by `authenticated` (they check project permissions inside), and leaked-password protection in Supabase Auth is switched off (a dashboard setting, worth turning on).
+
 ### Applying the nine migrations (runbook)
 
 The production project is `dljbeheogaeviokpcvca` (Supabase ref). The migration history there uses the repository's own version numbers, so apply them with the Supabase CLI (which records the same versions) and not by pasting SQL into the dashboard or an MCP tool, which would record a different version and make the next `db push` try them again.
@@ -105,7 +116,7 @@ Check afterwards, in the SQL editor:
 ```sql
 select max(version) from supabase_migrations.schema_migrations;  -- 202610300001
 select proname from pg_proc join pg_namespace n on n.oid = pronamespace
- where n.nspname = 'public' and proname in ('ensure_day_report_for_record', 'save_inspection_responses_batch');  -- 2 rows
+ where n.nspname = 'public' and proname in ('ensure_day_report_for_record', 'save_inspection_responses');  -- 2 rows
 select conname from pg_constraint where conrelid = 'public.day_closeouts'::regclass and conname like 'day_closeouts_%_check';
 ```
 
