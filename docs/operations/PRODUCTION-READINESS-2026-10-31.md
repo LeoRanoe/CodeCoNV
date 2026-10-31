@@ -63,6 +63,10 @@ It only loosens limits: no data is changed, no column or policy is added or remo
 | Restored palette not re-measured for contrast | It is the palette that passed the earlier audit; measure it on the preview. |
 | Open client decisions (see reconciliation) | Ask before building; none of them is a regression. |
 
+## Vercel preview check (names and targets only)
+
+PR #12's checks are green on GitHub: browser flows, database migrations with lint and pgTAP, web lint/test/build/audit, and the Vercel preview deployment. The Vercel project has separate **preview** entries for `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY` and `BLOB_READ_WRITE_TOKEN`, next to the production ones. They are stored encrypted or sensitive and were not decrypted, so this pass cannot say whether the preview points at a different Supabase project and Blob store than production. Confirm that before anyone signs in to the preview with real client data. The migration is not applied to whichever database the preview uses.
+
 ## Deployment
 
 Not done. Order when the owner approves: apply the migration to a Supabase preview or branch and run `supabase test db` there, deploy the branch to a Vercel preview, run the smoke checks (sign-in, Works ongoing save, one issue with a photo, one share link), then promote. Roll back by promoting the previous deployment; the migration is compatible with the previous app version because it only loosens limits.
