@@ -6,7 +6,7 @@ Status labels: **verified fixed** (reproduced, fixed, re-run in the running app 
 
 ## Release decision
 
-Not launch-ready yet. The camera and image path now passes every scenario that can be run here, on tablet, phone and desktop widths. Three checks remain that this machine cannot do: real iPad Safari and Android Chrome devices, a real Blob-enabled preview, and migration `202610310001` on production (needs the owner's go-ahead). See "Blocked checks".
+Not launch-ready yet. The camera and image path now passes every scenario that can be run here, on tablet, phone and desktop widths. It is merged (PR #14, `33471d8`) and deployed to production, and migration `202610310001` is applied there. Two checks remain that this machine cannot do: real iPad Safari and Android Chrome devices, and a real Blob-enabled run (preview or a signed-in production photo). See "Blocked checks".
 
 ## Camera and saved images
 
@@ -119,5 +119,12 @@ Not covered by any local run: the real Vercel Blob store, real devices, and prod
 |---|---|---|
 | iPad Safari and Android Chrome on real devices (camera, permission prompt, HEIC conversion, mobile data) | No device is connected to this machine. | Run `tests/e2e/camera-capture.spec.ts` steps by hand on an iPad and an Android tablet with a SIM, against a preview. |
 | Real Blob-enabled preview | Preview deployments sit behind Vercel Authentication; opening one needs a share link (a write on the Vercel project) and a sign-in on whatever database the preview uses, which is not known (its environment values were not decrypted). | The owner opens the preview of this branch, applies `202610310001` to the preview database, and takes a photo, a stack and a 360° image. |
-| Migration `202610310001` on production | Changes the production database. | Owner approval; then `supabase db push` (runbook in `PRODUCTION-READINESS-2026-10-31.md`). |
 | Production sign-in smoke | Needs a production account; none was used. | As in `PRODUCTION-READINESS-2026-10-31.md`. |
+
+## Deployed on 2026-10-31
+
+With the owner's permission in chat: PR #14 merged into `main` (`33471d8`) after its five checks passed (Playwright, database lint and pgTAP, web lint/test/build/audit, Vercel preview). Vercel built it as production deployment `dpl_Ber2aLi2MGfY3N8Cxa54iVe6ryVx`; `/api/release` reports commit `33471d81774a` and `expectedSchemaVersion` `202610310001`.
+
+Migration `202610310001` was then applied to production (`dljbeheogaeviokpcvca`) through the Supabase tool, as written. The tool recorded it as `20261031180519`; that row was renamed to `202610310001` so a later `supabase db push` sees it as applied. Checked afterwards: latest version `202610310001`; both functions are `SECURITY DEFINER`, executable by `authenticated` and not by `anon`; an anonymous call to `/rest/v1/rpc/set_visual_capture_stack` returns 401 "permission denied for function", so the API has loaded it. The security advisor lists the two new functions under the existing "signed-in users can execute SECURITY DEFINER function" warning (they check `files.manage` inside) and nothing new otherwise.
+
+Read-only smoke after the deploy: `/`, `/supervisie`, `/sw.js` and `/manifest.webmanifest` return 200; an unknown share token returns 404; no runtime errors in the hour after the deploy. Not done: a signed-in photo, stack and 360° capture on production, which needs a production account.
