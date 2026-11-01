@@ -349,7 +349,9 @@
   gap: var(--space-3);
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
-.management-kpis > button {
+.management-overview .management-kpis > button,
+.management-overview .management-kpis > button.attention,
+.management-overview .management-kpis > button.healthy {
   align-content: start;
   background: var(--paper);
   border: 1px solid var(--line);
@@ -360,15 +362,15 @@
   padding: var(--space-4) var(--space-5);
   text-align: left;
 }
-.management-kpis > button:hover { border-color: var(--ink-500); }
-.management-kpis > button.healthy strong { color: var(--green); }
+.management-overview .management-kpis > button:hover { border-color: var(--ink-500); }
+.management-overview .management-kpis > button.healthy strong { color: var(--green); }
 .management-columns { gap: var(--space-4); }
 .management-card { padding: var(--space-5); }
 /* Summaries inside a panel are rows, not cards inside a card. */
-.external-access-summary > *,
-.employee-workload-strip > * { background: transparent; border: 0; border-left: 1px solid var(--line); border-radius: 0; }
-.external-access-summary > *:first-child,
-.employee-workload-strip > *:first-child { border-left: 0; }
+.external-submission-center .external-access-summary > *,
+.company-task-assignment .employee-workload-strip > * { background: transparent; border: 0; border-left: 1px solid var(--line); border-radius: 0; }
+.external-submission-center .external-access-summary > *:first-child,
+.company-task-assignment .employee-workload-strip > *:first-child { border-left: 0; }
 .management-context { gap: var(--space-3); }
 @media (max-width: 1024px) { .management-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
@@ -479,3 +481,17 @@
 .workspace-support-strip > * { margin: 0; }
 /* The frame count and the Open hint each have their own corner. */
 .media-stack-thumbnails > em { left: 9px; right: auto; }
+/* Buildings take the whole row of a register form, and are named once: the block's own label
+   is visible, the fieldset's legend stays for screen readers. */
+.form-grid-2 > .record-form-field-buildings { grid-column: 1 / -1; }
+.record-form-field-buildings .building-multi-picker > legend {
+  border: 0;
+  clip: rect(0 0 0 0);
+  margin: 0;
+  padding: 0;
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}

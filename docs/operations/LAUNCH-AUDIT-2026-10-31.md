@@ -152,3 +152,18 @@ The owner walked every page on a tablet and desktop and listed what to change. E
 | Stack badge | The frame count sat on top of "Open" on a stack card | Count moved to its own corner | Screenshot |
 
 UI stability audit after the pass: 72 screens, 0 findings, worst layout shift 0.043.
+
+### Final audit before client testing, 01-11-2026
+
+Every screen captured as supervisor at 1180×820, 820×1180 and 390×844 (84 screenshots), the client and contractor views, and the notification, offline, help and new-action dialogs at tablet and phone width. Found and fixed:
+
+| Found | Change |
+|---|---|
+| Opening Project Docs or Assets from the workspace kept the scroll position of the workspace, so on a phone the module opened halfway down (likely the client's "I click on the docs and see nothing") | A module opens at its top (`operational-workspace.tsx`) |
+| Project Docs opened with its two-step folder/upload panel filling the first screen | The panel opens from "Upload file"; the documents come first |
+| Register forms (PDR, TI, CO, LL, agreements, deliveries, HSE incident, inspections) held the building picker at half width under a doubled "Buildings" label | The block spans the row; the legend is kept for screen readers only |
+| Management figures: two of four had no card because older, more specific rules won | Selectors raised; all four are cards; summaries inside panels are rows |
+| "Kritieke bevinding …" notifications stayed Dutch in the English interface | Translated like the other notification titles |
+| Gate: workforce heading broke into two lines (step number and count on different baselines) | Section headings no longer align on the baseline |
+
+Gate on a fresh database and production build: pgTAP 27 files, 622 assertions; unit 228; design guardrails 9; lint and types clean; Playwright 176 passed with 2 failures that came from reusing a dirty database and passed on a clean one (day-report lifecycle, offline account isolation). After the last fixes: UI stability audit 72 screens, 0 findings, worst layout shift 0.045; accessibility audit, camera capture (4), Works completed, action-center tabs, responsive audit and desktop upload pass.

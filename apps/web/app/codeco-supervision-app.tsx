@@ -3172,6 +3172,7 @@ function notificationTitle(stored: string, text: (english: string, dutch: string
     ["Actie verlopen: ", text("Action overdue: ", "Actie verlopen: ")],
     ["Actie nadert deadline: ", text("Action due soon: ", "Actie nadert deadline: ")],
     ["Bevinding nadert deadline: ", text("Finding due soon: ", "Bevinding nadert deadline: ")],
+    ["Kritieke bevinding ", text("Critical finding ", "Kritieke bevinding ")],
     ["Actie aan jou toegewezen: ", text("Action assigned to you: ", "Actie aan jou toegewezen: ")],
     ["Issue aan jou toegewezen: ", text("Issue assigned to you: ", "Issue aan jou toegewezen: ")],
   ];

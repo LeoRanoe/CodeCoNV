@@ -2075,6 +2075,15 @@ function ProjectOperations({
     ].filter(Boolean).join(" · ").slice(0, 90)
     : registerForm.title.trim();
 
+  // A module opens at its top. Keeping the scroll position of the page it came from opened
+  // Project Docs and Assets halfway down on a phone, past everything there was to see.
+  const previousTab = useRef(tab);
+  useEffect(() => {
+    if (previousTab.current === tab) return;
+    previousTab.current = tab;
+    window.scrollTo({ top: 0 });
+  }, [tab]);
+
   const switchTab = (next: ProjectTab) => {
     setTab(next);
     setSubmittedFinding(null);

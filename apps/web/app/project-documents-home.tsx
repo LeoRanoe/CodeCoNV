@@ -86,6 +86,8 @@ export function ProjectDocumentsHome({
   const [linkFolderId, setLinkFolderId] = useState("");
   const [linkRecordId, setLinkRecordId] = useState("");
   const [openingFileId, setOpeningFileId] = useState("");
+  // The folder and upload steps open from "Upload file"; closed, the documents come first.
+  const [intakeOpen, setIntakeOpen] = useState(false);
   const [openError, setOpenError] = useState("");
   const [preview, setPreview] = useState<{ fileId: string; title: string; url: string; mimeType: string } | null>(null);
   useEffect(() => () => {
@@ -230,12 +232,12 @@ export function ProjectDocumentsHome({
       <div className="project-documents-summary">
         <div><h2>{text("Project document center", "Projectdocumentencentrum")}</h2><p>{text("Controlled project information", "Beheerde projectinformatie")}</p></div>
         <div className="project-documents-actions">
-          {canManageFiles ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => document.getElementById("project-document-upload")?.scrollIntoView({ behavior: "smooth", block: "center" })}><Upload size={15} /> {text("Upload file", "Upload bestand")}</button> : null}
+          {canManageFiles ? <button className={`ui-button ui-button--secondary ui-button--md${intakeOpen ? " active" : ""}`} type="button" aria-expanded={intakeOpen} aria-controls="project-document-upload" onClick={() => setIntakeOpen((open) => !open)}><Upload size={15} /> {text("Upload file", "Upload bestand")}</button> : null}
           {canCreateRecords ? <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={createDocument}><Plus size={15} /> {text("New controlled record", "Nieuw beheerd record")}</button> : null}
         </div>
       </div>
 
-      {canManageFiles ? <section className="project-document-intake" id="project-document-upload" aria-label={text("Create a folder and upload", "Map maken en uploaden")}>
+      {canManageFiles && intakeOpen ? <section className="project-document-intake" id="project-document-upload" aria-label={text("Create a folder and upload", "Map maken en uploaden")}>
         <div className="project-document-folder-create">
           <span className="record-number">{text("1. Folder and project link", "1. Map en projectkoppeling")}</span>
           <h2>{text("Create the destination here", "Maak de bestemming hier")}</h2>
