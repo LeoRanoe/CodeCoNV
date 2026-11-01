@@ -140,10 +140,11 @@ import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import type { FormalReportSnapshot } from "@/lib/reports/daily-report-pdf";
 import type { PeriodReportSection, PeriodReportTopic } from "@/lib/reports/period-report-pdf";
 import { assignProjectAction, type InternalMember, type ProjectParty } from "@/lib/supabase/data";
-import { isStorageGatewayConfigured, loadProjectFileObjectUrl, openProjectFile, uploadProjectFile } from "@/lib/storage/gateway";
+import { isStorageGatewayConfigured, openProjectFile, uploadProjectFile } from "@/lib/storage/gateway";
 import { isPhotoFile } from "@/lib/media/photo-library.mjs";
 import { countOpenFindings } from "@/lib/records/finding-counts.mjs";
 import { createFileOriginResolver, filesForRecord, type FileOriginKind, type FileOriginResolver } from "@/lib/supabase/file-origins";
+import { loadProjectThumbnailUrl } from "@/lib/images/thumbnail";
 import {
   buildPeriodReportSnapshot,
   createChecklist,
@@ -5220,18 +5221,13 @@ function StoredPhotoThumbnail({ client, file }: { client: SupabaseClient; file: 
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let active = true;
-    let objectUrl = "";
-    void loadProjectFileObjectUrl(client, file.id).then((url) => {
-      objectUrl = url;
+    // A small shared preview, not the camera original (see lib/images/thumbnail.ts).
+    void loadProjectThumbnailUrl(client, file.id).then((url) => {
       if (active) setSource(url);
-      else URL.revokeObjectURL(url);
     }).catch(() => {
       if (active) setFailed(true);
     });
-    return () => {
-      active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
+    return () => { active = false; };
   }, [client, file.id]);
   if (failed || !file.mime_type.startsWith("image/")) return <span className="record-photo-fallback"><FolderOpen size={17} /></span>;
   // Private object URLs cannot pass through the Next image optimizer.

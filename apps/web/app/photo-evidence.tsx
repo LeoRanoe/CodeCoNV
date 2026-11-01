@@ -8,6 +8,7 @@ import { useLanguage } from "@/lib/i18n";
 import { compassPointFromDegrees, photoTitleFromDescription } from "@/lib/images/field-image.mjs";
 import { readPhotoDirection } from "@/lib/images/exif-direction.mjs";
 import { useBackToClose } from "@/lib/navigation/app-history";
+import { thumbnailUrlFromBlob } from "@/lib/images/thumbnail";
 
 /**
  * What the client's own product plan asks of every photo (§4.16): a location, the direction it
@@ -131,11 +132,25 @@ function PhotoThumbnail({ file, large }: { file: File; large?: boolean }) {
   // Created inside the effect so a development double-mount cannot leave a revoked URL behind.
   const [source, setSource] = useState("");
   useEffect(() => {
-    const url = URL.createObjectURL(file);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- a blob URL can only be made in the effect, or a dev double-mount revokes the memoised one
-    setSource(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
+    // The large view shows the photo itself; a row in a list of many photos shows a small
+    // preview, so a round of field photos does not hold every original decoded at once.
+    let active = true;
+    let url = "";
+    if (large) {
+      url = URL.createObjectURL(file);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- a blob URL can only be made in the effect, or a dev double-mount revokes the memoised one
+      setSource(url);
+    } else {
+      void thumbnailUrlFromBlob(file).then((made) => {
+        if (active) { url = made; setSource(made); } else URL.revokeObjectURL(made);
+      }).catch(() => {
+        if (!active) return;
+        url = URL.createObjectURL(file);
+        setSource(url);
+      });
+    }
+    return () => { active = false; if (url) URL.revokeObjectURL(url); };
+  }, [file, large]);
   // A local blob URL cannot pass through the Next image optimizer.
   // eslint-disable-next-line @next/next/no-img-element
   return <img className={large ? "photo-detail-image" : "photo-evidence-thumb"} src={source || undefined} alt="" />;

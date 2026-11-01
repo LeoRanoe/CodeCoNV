@@ -83,13 +83,56 @@ export async function ensureOfflineDatabase() {
   return stores;
 }
 
+/**
+ * Photos and files are stored as their bytes, not as Blob or File objects.
+ *
+ * WebKit inside a third-party iPhone browser (Brave, Chrome, Firefox on iOS all use it) refuses to
+ * put a Blob into IndexedDB: the transaction fails and the photo could not be saved at all
+ * (client, 01-11-2026, Brave on iPhone). An ArrayBuffer with its type, name and date is stored
+ * everywhere and is turned back into a File when it is read. Values written before this change
+ * still hold real Blobs and read back unchanged.
+ */
+type StoredBlob = { __codecoBlob: 1; bytes: ArrayBuffer; type: string; name?: string; lastModified?: number };
+
+async function encodeBlobs(value: unknown): Promise<unknown> {
+  if (typeof Blob !== "undefined" && value instanceof Blob) {
+    const encoded: StoredBlob = { __codecoBlob: 1, bytes: await value.arrayBuffer(), type: value.type };
+    if (typeof File !== "undefined" && value instanceof File) {
+      encoded.name = value.name;
+      encoded.lastModified = value.lastModified;
+    }
+    return encoded;
+  }
+  if (Array.isArray(value)) return Promise.all(value.map((item) => encodeBlobs(item)));
+  if (value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
+    const entries = await Promise.all(Object.entries(value).map(async ([key, item]) => [key, await encodeBlobs(item)] as const));
+    return Object.fromEntries(entries);
+  }
+  return value;
+}
+
+function decodeBlobs(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => decodeBlobs(item));
+  if (value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
+    const record = value as Record<string, unknown>;
+    if (record.__codecoBlob === 1 && record.bytes instanceof ArrayBuffer) {
+      const type = typeof record.type === "string" ? record.type : "";
+      return typeof record.name === "string" && typeof File !== "undefined"
+        ? new File([record.bytes], record.name, { type, lastModified: Number(record.lastModified) || Date.now() })
+        : new Blob([record.bytes], { type });
+    }
+    return Object.fromEntries(Object.entries(record).map(([key, item]) => [key, decodeBlobs(item)]));
+  }
+  return value;
+}
+
 export async function idbPut<T>(store: OfflineStore, value: T) {
-  let stored: unknown = value;
+  let stored: unknown = await encodeBlobs(value);
   if (ownedStores.has(store)) {
     const owner = (value as Owned).ownerUserId ?? activeUserId;
     // Unsent work without an author could later be sent by whoever signs in next.
     if (!owner) throw new Error("Offline werk kan alleen worden opgeslagen terwijl u bent aangemeld.");
-    stored = { ...(value as object), ownerUserId: owner };
+    stored = { ...(stored as object), ownerUserId: owner };
   }
   const database = await openDatabase();
   await new Promise<void>((resolve, reject) => {
@@ -105,7 +148,7 @@ export async function idbGet<T>(store: OfflineStore, id: string) {
   const database = await openDatabase();
   const value = await new Promise<T | undefined>((resolve, reject) => {
     const request = database.transaction(store, "readonly").objectStore(store).get(id);
-    request.onsuccess = () => resolve(request.result as T | undefined);
+    request.onsuccess = () => resolve(decodeBlobs(request.result) as T | undefined);
     request.onerror = () => reject(request.error ?? new Error("Offline gegevens konden niet worden gelezen."));
   }).finally(() => database.close());
   return visibleToActiveUser(store, value) ? value : undefined;
@@ -116,7 +159,7 @@ export async function idbGetAllUnscoped<T>(store: OfflineStore) {
   const database = await openDatabase();
   const values = await new Promise<T[]>((resolve, reject) => {
     const request = database.transaction(store, "readonly").objectStore(store).getAll();
-    request.onsuccess = () => resolve(request.result as T[]);
+    request.onsuccess = () => resolve((request.result as unknown[]).map((item) => decodeBlobs(item)) as T[]);
     request.onerror = () => reject(request.error ?? new Error("Offline gegevens konden niet worden gelezen."));
   }).finally(() => database.close());
   return values;
