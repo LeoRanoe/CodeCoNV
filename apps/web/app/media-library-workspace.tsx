@@ -43,6 +43,7 @@ import { createFileOriginResolver, type FileOriginKind } from "@/lib/supabase/fi
 import { StoredPhotoDetail } from "@/app/stored-photo-detail";
 import { createMediaFolder, createVisualCapture, ensureMediaFolder, linkFileToRecord, updateMediaFolder, updateProjectFile, updateVisualCaptureDetails, updateVisualCaptureStack, type FileRecord, type MediaFolder, type OperationSnapshot } from "@/lib/supabase/operations";
 import { statusText } from "@/lib/status-labels";
+import { loadProjectThumbnailUrl, useNearViewport } from "@/lib/images/thumbnail";
 
 function automaticTitle(filename: string) {
   const title = filename.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
@@ -60,21 +61,28 @@ function SecureImage({ client, file, large = false }: { client: SupabaseClient; 
   const [source, setSource] = useState("");
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  // A card shows a small preview, made once it scrolls near the screen; only the opened photo
+  // is loaded at full size. Every original decoded at once made iOS kill and reload the page.
+  const holderRef = useRef<HTMLSpanElement>(null);
+  const near = useNearViewport(holderRef);
   useEffect(() => {
+    if (!large && !near) return;
     let active = true;
     let objectUrl = "";
-    void loadProjectFileObjectUrl(client, file.id).then((url) => {
-      objectUrl = url;
+    const loading = large ? loadProjectFileObjectUrl(client, file.id) : loadProjectThumbnailUrl(client, file.id);
+    void loading.then((url) => {
+      if (large) objectUrl = url;
       if (active) setSource(url);
-      else URL.revokeObjectURL(url);
+      else if (large) URL.revokeObjectURL(url);
     }).catch(() => {
       if (active) setFailed(true);
     });
     return () => {
       active = false;
+      // Shared previews stay for the session; only a full-size original is let go here.
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [attempt, client, file.id]);
+  }, [attempt, client, file.id, large, near]);
   // A preview that failed tries again when the connection returns. It has no button of its own:
   // it sits inside the card's open button, where a second button overlapped it and was invalid
   // markup; opening the card shows the photo with its own retry.
@@ -89,7 +97,7 @@ function SecureImage({ client, file, large = false }: { client: SupabaseClient; 
   }
   // Private object URLs cannot use the Next image optimizer without exposing a public URL.
   // eslint-disable-next-line @next/next/no-img-element
-  return source ? <img className={large ? "media-detail-image" : undefined} src={source} alt={file.original_name} loading="lazy" onError={() => setFailed(true)} /> : <span className="media-preview-loading"><Loader2 className="spin" size={20} /></span>;
+  return source ? <img className={large ? "media-detail-image" : undefined} src={source} alt={file.original_name} loading="lazy" onError={() => setFailed(true)} /> : <span className="media-preview-loading" ref={holderRef}><Loader2 className="spin" size={20} /></span>;
 }
 
 export function MediaLibraryWorkspace({

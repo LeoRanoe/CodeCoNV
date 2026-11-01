@@ -34,7 +34,7 @@ import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
 import { useLanguage } from "@/lib/i18n";
 import { imageContentType, orderedTour, validTourPosition } from "@/lib/images/content-type.mjs";
 import { normalizeImageFile } from "@/lib/images/normalize-image";
-import { currentCompassPoint, startCompassWatch } from "@/lib/images/compass";
+import { currentCompassPoint } from "@/lib/images/compass";
 import { readPhotoDirection } from "@/lib/images/exif-direction.mjs";
 import { compassPointFromDegrees, describePanoramaImage, fieldPhotoMimeTypes, looksLikeDualFisheye, normalizedImagePoint, panoramaFileExtensions, panoramaUploadSource, photoMarkupToneColors, photoTitleFromDescription } from "@/lib/images/field-image.mjs";
 import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, listOfflineUploads, preparePanoramaUpload, queueOfflineUpload } from "@/lib/offline/upload-queue";
@@ -593,7 +593,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { stageImage(event.currentTarget.files?.[0] ?? null, "photo"); event.currentTarget.value = ""; }} />
           {/* The compass is started on the tap that opens the camera: it is the gesture a phone
               needs before it hands out its orientation, and it is the moment the reading matters. */}
-          <button className="ui-button ui-button--primary ui-button--md camera-primary-action" type="button" disabled={!isStorageGatewayConfigured} onClick={() => { void startCompassWatch(); cameraInputRef.current?.click(); }}><Camera size={17} /> {text("Take photo", "Maak foto")}</button>
+          <button className="ui-button ui-button--primary ui-button--md camera-primary-action" type="button" disabled={!isStorageGatewayConfigured} onClick={() => { cameraInputRef.current?.click(); }}><Camera size={17} /> {text("Take photo", "Maak foto")}</button>
           <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={!isStorageGatewayConfigured} onClick={() => { setCaptureForm({ ...captureForm, type: "panorama" }); setFile(null); setShowUpload(true); }}><ScanLine size={16} /> {text("Upload 360°", "Upload 360°")}</button>
         </div>
       </div>
@@ -643,7 +643,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           ) : null}
           {captureForm.type === "panorama"
             ? <label className="form-field"><span>{text("360° image · every 360° camera export · JPEG, PNG, WebP or Insta360 .insp", "360°-beeld · elke 360°-camera-export · JPEG, PNG, WebP of Insta360 .insp")}</span><input type="file" accept={`image/jpeg,image/png,image/webp,${panoramaFileExtensions.join(",")}`} onChange={(event) => stageImage(event.currentTarget.files?.[0] ?? null, "panorama")} /></label>
-            : <div className="visual-review-actions"><button className="ui-button ui-button--secondary ui-button--md visual-retake-button" type="button" onClick={() => { void startCompassWatch(); cameraInputRef.current?.click(); }}><Camera size={16} /> {text("Retake photo", "Foto opnieuw maken")}</button><button className="ui-button ui-button--secondary ui-button--md visual-discard-button" type="button" onClick={discardCapture}>{text("Discard photo", "Foto verwijderen")}</button></div>}
+            : <div className="visual-review-actions"><button className="ui-button ui-button--secondary ui-button--md visual-retake-button" type="button" onClick={() => { cameraInputRef.current?.click(); }}><Camera size={16} /> {text("Retake photo", "Foto opnieuw maken")}</button><button className="ui-button ui-button--secondary ui-button--md visual-discard-button" type="button" onClick={discardCapture}>{text("Discard photo", "Foto verwijderen")}</button></div>}
 
           {/* One text box, in the supervisor's own words. Everything else on this form is
               either a tap or something the app fills in by itself. */}

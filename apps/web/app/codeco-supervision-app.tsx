@@ -58,7 +58,6 @@ import { ensureDailyBackup } from "@/lib/backups/client";
 import { constructionDisciplines } from "@/lib/forms/disciplines";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 import { ProjectPermissionsProvider, useProjectPermissionsQuery } from "@/lib/permissions/project-permissions";
-import { startCompassWatch } from "@/lib/images/compass";
 import { photoRefusalMessage, prepareCameraPhotos } from "@/lib/images/normalize-image";
 import { WorkforceForm } from "@/app/workforce-register";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
@@ -956,9 +955,9 @@ export function CodecoSupervisionApp() {
   }, [syncState]);
 
   const openQuickAdd = () => {
-    // The tap that opens the camera is also the moment a phone will hand out its compass, so
-    // the photo can say by itself which way it was facing.
-    void startCompassWatch();
+    // Nothing may come between the tap and the camera. Asking for the compass here showed
+    // iOS's motion permission dialog first, which used up the tap: the camera never opened
+    // (client, 01-11-2026). The direction is read from the photo itself.
     quickCameraInputRef.current?.click();
   };
 

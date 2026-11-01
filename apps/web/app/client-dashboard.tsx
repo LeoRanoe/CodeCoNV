@@ -32,12 +32,12 @@ import { nonPhotoCategoryList } from "@/lib/media/photo-library.mjs";
 import { isOpenItem } from "@/lib/actions/action-center.mjs";
 import { isWorklistRegister, summarizeOpenWork, workItemFromAction, workItemFromFinding, workItemFromRegister } from "@/lib/actions/open-work.mjs";
 import { getCachedProjectSnapshot, cacheProjectSnapshot } from "@/lib/offline/project-cache";
-import { loadProjectFileObjectUrl } from "@/lib/storage/gateway";
 import type { ProjectRecentPhoto } from "@/lib/supabase/data";
 import { loadProjectOperations } from "@/lib/supabase/operations";
 import { pageAll } from "@/lib/supabase/page-all.mjs";
 import { useLiveProjectWeather } from "@/lib/weather-client";
 import { statusText, typeText, priorityText } from "@/lib/status-labels";
+import { loadProjectThumbnailUrl } from "@/lib/images/thumbnail";
 
 /** One dashboard thumbnail, fetched through the private storage gateway like everywhere else. */
 function EvidenceThumbnail({ client, fileId, alt }: { client: SupabaseClient | null; fileId: string; alt: string }) {
@@ -45,16 +45,11 @@ function EvidenceThumbnail({ client, fileId, alt }: { client: SupabaseClient | n
   useEffect(() => {
     if (!client) return;
     let active = true;
-    let objectUrl = "";
-    void loadProjectFileObjectUrl(client, fileId).then((url) => {
-      objectUrl = url;
+    // A small shared preview, not the camera original (see lib/images/thumbnail.ts).
+    void loadProjectThumbnailUrl(client, fileId).then((url) => {
       if (active) setSource(url);
-      else URL.revokeObjectURL(url);
     }).catch(() => undefined);
-    return () => {
-      active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
+    return () => { active = false; };
   }, [client, fileId]);
   // A private object URL cannot pass through the Next image optimizer.
   // eslint-disable-next-line @next/next/no-img-element

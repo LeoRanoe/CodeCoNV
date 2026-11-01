@@ -167,3 +167,15 @@ Every screen captured as supervisor at 1180×820, 820×1180 and 390×844 (84 scr
 | Gate: workforce heading broke into two lines (step number and count on different baselines) | Section headings no longer align on the baseline |
 
 Gate on a fresh database and production build: pgTAP 27 files, 622 assertions; unit 228; design guardrails 9; lint and types clean; Playwright 176 passed with 2 failures that came from reusing a dirty database and passed on a clean one (day-report lifecycle, offline account isolation). After the last fixes: UI stability audit 72 screens, 0 findings, worst layout shift 0.045; accessibility audit, camera capture (4), Works completed, action-center tabs, responsive audit and desktop upload pass.
+
+## iPhone report from the owner, 01-11-2026 (Brave on iPhone, production)
+
+"It loads constantly and refreshes when I press something, I get an annoying popup, and Maak foto or the camera icon does not take me to the camera." Reproduced as far as possible without the device: WebKit (the engine every iPhone browser uses) with the iPhone 13 profile against the production build on the local stack.
+
+| Found | Root cause | Change | Verified |
+|---|---|---|---|
+| Popup on the camera tap; camera did not open | The camera buttons (bottom bar, sidebar, Visual Evidence Take photo and Retake) first asked for the compass. On iOS that shows the motion-and-orientation permission dialog, which uses up the tap, so the file picker was never opened | No permission request between the tap and the camera; the direction is still read from the photo's own data | WebKit iPhone: bottom-bar Foto, "Nog een foto" and library "Maak foto" each open the camera picker (`capture=environment`) |
+| A photo could not be saved: "Offline gegevens konden niet worden opgeslagen." | WebKit in third-party iPhone browsers refuses Blob/File values in IndexedDB; every photo is queued there before upload, and drafts hold photos too | `lib/offline/idb.ts` stores photos and files as bytes with type, name and date, and turns them back into Files on read; values stored earlier still read back | WebKit iPhone: two photos reviewed and saved; library shows them |
+| Page reloads, constant loading | Every photo card downloaded its full camera original as soon as the page opened and showed it at full size; a 12 MP photo is ~48 MB decoded, and two dozen exhaust an iPhone tab, which iOS then kills and reloads (also when the camera sends the page to the background) | `lib/images/thumbnail.ts`: cards load when near the screen, as a JPEG of at most 480 px made two at a time; only an opened photo is loaded in full. Same for record photo strips, the client dashboard and photos waiting for review | WebKit iPhone: library previews 480×320 instead of the original; one page load for the whole run, no page errors |
+
+Not verifiable here: the real iPhone and its memory limit. The owner should retest on the phone after the deploy (reload the app once first).
