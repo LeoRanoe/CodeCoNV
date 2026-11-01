@@ -2786,9 +2786,11 @@ test("every workspace button opens the record it names", async () => {
 
   // Opening on a block means that block reads as the subject, and a focused screen only
   // demands the day's own answers when there is no closeout to attach itself to.
-  // Works ongoing is the exception: one input box plus the buildings, never the rest of the day
-  // (client, 30-10-2026), so even its first entry of the day asks for nothing else.
-  assert.match(dailyLog, /const dayContextRequired = !\(delayOnly \|\| workOnly\) \|\| \(!initialCloseout && !ongoingOnly\)/);
+  // Works ongoing is one input box plus the buildings (client, 30-10-2026), and Works completed
+  // is what was finished, the buildings and the plan for tomorrow (client, 01-11-2026): neither
+  // asks for the rest of the day, not even on its first entry of the day.
+  assert.match(dailyLog, /const dayContextRequired = !\(delayOnly \|\| workOnly\) \|\| \(!initialCloseout && !workOnly\)/);
+  assert.match(dailyLog, /: completedOnly \? completedBlocks/);
   assert.match(dailyLog, /const ordered = ongoingOnly\s*\? \[ongoingBlock\]/);
   assert.match(styles, /\.daily-log-body\.focus-delay > \.daily-log-delay/);
 

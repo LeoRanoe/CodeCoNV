@@ -3148,16 +3148,10 @@ function ProjectOperations({
 
   return (
     <>
-      {tab === "home" ? <header className="secondary-header workspace-header home">
-        <div>
-          <h1>{text("Workspace", "Werkruimte")}</h1>
-          <p>{projectName}</p>
-        </div>
-      </header> : null}
-
       {tab === "home" ? (
         <>
           <ProjectWorkspaceHome
+            projectName={projectName}
             counts={{
               inspections: data.inspections.length,
               issues: countOpenFindings(data.findings, "issue"),

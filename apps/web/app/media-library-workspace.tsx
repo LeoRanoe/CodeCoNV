@@ -155,6 +155,9 @@ export function MediaLibraryWorkspace({
   const [fieldNotice, setFieldNotice] = useState("");
   const [photoDescription, setPhotoDescription] = useState("");
   const [stackTitle, setStackTitle] = useState("");
+  // Photos taken one after another on site are reviewed together but saved as separate photos,
+  // each with its own marks. A stack (one situation, several frames) is a choice.
+  const [keepAsStack, setKeepAsStack] = useState(false);
   const [pendingCapture, setPendingCapture] = useState<PhotoEvidence[]>([]);
   const [libraryBuildingId, setLibraryBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const libraryBuildingName = buildings.find((building) => building.id === libraryBuildingId)?.name ?? buildingName;
@@ -451,9 +454,10 @@ export function MediaLibraryWorkspace({
       month: "2-digit",
       day: "2-digit",
     }).format(new Date());
-    const evidenceGroupId = pendingCapture.length > 1 ? crypto.randomUUID() : null;
-    const sharedTitle = stackTitle.trim() || (pendingCapture.length > 1 ? photoTitle(pendingCapture[0]!) || automaticTitle(pendingCapture[0]!.original.name) : "");
-    const sharedDescription = photoDescription.trim() || (pendingCapture.length > 1 ? pendingCapture.find((photo) => photo.details.description.trim())?.details.description.trim() ?? "" : "");
+    const asStack = keepAsStack && pendingCapture.length > 1;
+    const evidenceGroupId = asStack ? crypto.randomUUID() : null;
+    const sharedTitle = asStack ? stackTitle.trim() || photoTitle(pendingCapture[0]!) || automaticTitle(pendingCapture[0]!.original.name) : "";
+    const sharedDescription = asStack ? photoDescription.trim() || pendingCapture.find((photo) => photo.details.description.trim())?.details.description.trim() || "" : "";
     const stored = await addFiles(
       photoFiles(pendingCapture),
       `${text("Daily progress", "Dagvoortgang")} · ${dayKey}`,
@@ -463,7 +467,7 @@ export function MediaLibraryWorkspace({
         if (!photo) return undefined;
         return {
           title: sharedTitle || photoTitle(photo),
-          description: pendingCapture.length > 1 ? sharedDescription : photoUploadDescription(photo, photoDescription, language),
+          description: asStack ? sharedDescription : photoUploadDescription(photo, photoDescription, language),
           locationNodeId: photo.details.locationNodeId || null,
         };
       },
@@ -476,8 +480,9 @@ export function MediaLibraryWorkspace({
     setPendingCapture([]);
     setPhotoDescription("");
     setStackTitle("");
+    setKeepAsStack(false);
     void clearFormDraft(formDraftKey("library-photos", projectId));
-  }, [addFiles, language, pendingCapture, photoDescription, projectId, stackTitle, text]);
+  }, [addFiles, keepAsStack, language, pendingCapture, photoDescription, projectId, stackTitle, text]);
 
   // The photos taken here are kept on the device until they are saved or thrown away, so a
   // back press, a reload or a phone that drops the tab behind the camera does not lose them.
@@ -780,7 +785,13 @@ export function MediaLibraryWorkspace({
             <div className="media-capture-review-heading">
               <span><Camera size={18} /></span>
               <div>
-                <strong>{pendingCapture.length === 1 ? pendingCapture[0]?.original.name : `${pendingCapture.length} ${text("photos", "foto's")}`}</strong>
+                <strong>{pendingCapture.length === 1 ? text("1 photo to review", "1 foto te beoordelen") : text(`${pendingCapture.length} photos to review`, `${pendingCapture.length} foto's te beoordelen`)}</strong>
+                <small>{text("Kept on this device until you save.", "Op dit apparaat bewaard tot je opslaat.")}</small>
+              </div>
+              {/* Keep shooting into the same review: every picture of the round is marked in one go. */}
+              <div className="media-capture-review-add">
+                <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={15} /> {text("Take another", "Nog een foto")}</button>
+                <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => photoImportRef.current?.click()}><ImageIcon size={15} /> {text("Add from gallery", "Uit galerij")}</button>
               </div>
             </div>
             {/* Marking and describing happen before the photo leaves the device, so what is
@@ -799,7 +810,8 @@ export function MediaLibraryWorkspace({
                 locations: data.locationNodes.map((node) => ({ id: node.id, label: `${node.code} · ${node.name}`, buildingId: node.building_id })),
               }}
             />
-            {pendingCapture.length > 1 ? <label className="form-field"><span>{text("Stack title · shared by every photo", "Stapeltitel · gedeeld door elke foto")}</span><input value={stackTitle} onChange={(event) => setStackTitle(event.target.value)} placeholder={text("One situation, several frames", "Eén situatie, meerdere beelden")} /></label> : null}
+            {pendingCapture.length > 1 ? <label className="confirmation-check media-stack-choice"><input type="checkbox" checked={keepAsStack} onChange={(event) => setKeepAsStack(event.target.checked)} /> <span>{text("Keep together as one photo stack (one situation, several frames)", "Samen bewaren als één fotostapel (één situatie, meerdere beelden)")}</span></label> : null}
+            {pendingCapture.length > 1 && keepAsStack ? <label className="form-field"><span>{text("Stack title · shared by every photo", "Stapeltitel · gedeeld door elke foto")}</span><input value={stackTitle} onChange={(event) => setStackTitle(event.target.value)} placeholder={text("One situation, several frames", "Eén situatie, meerdere beelden")} /></label> : null}
             {/* Applies to every photo that was not given its own words above. */}
             <label className="form-field">
               <span>{text("Description for all of them together · optional", "Omschrijving voor alle foto's samen · optioneel")}</span>
@@ -812,7 +824,7 @@ export function MediaLibraryWorkspace({
             </label>
             <div className="media-capture-review-actions">
               <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setPendingCapture([]); setPhotoDescription(""); setStackTitle(""); void clearFormDraft(libraryDraftKey); }}>{text("Discard", "Verwijderen")}</button>
-              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy} onClick={() => void savePendingCapture()}><Upload size={15} /> {pendingCapture.length > 1 ? text("Save photo stack", "Fotostapel opslaan") : text("Save with date", "Opslaan met datum")}</button>
+              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy} onClick={() => void savePendingCapture()}><Upload size={15} /> {pendingCapture.length > 1 ? keepAsStack ? text("Save photo stack", "Fotostapel opslaan") : text(`Save ${pendingCapture.length} photos`, `${pendingCapture.length} foto's opslaan`) : text("Save with date", "Opslaan met datum")}</button>
             </div>
           </div>
         ) : null}

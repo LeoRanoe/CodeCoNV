@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, Check, ChevronRight, MapPin, RotateCcw, Trash2, X } from "lucide-react";
+import { Camera, Check, ChevronLeft, ChevronRight, MapPin, RotateCcw, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad, type MarkupOption, type PhotoMarkupContext } from "@/app/photo-markup";
@@ -214,6 +214,8 @@ export function PhotoEvidenceList({
           <PhotoDetailSheet
             photo={openPhoto}
             index={photos.findIndex((photo) => photo.id === openPhoto.id)}
+            total={photos.length}
+            step={(offset) => { const at = photos.findIndex((photo) => photo.id === openPhoto.id); const next = photos[at + offset]; if (next) setOpenId(next.id); }}
             markupContext={markupContext}
             allowMarkup={allowMarkup}
             close={() => setOpenId("")}
@@ -259,6 +261,8 @@ export function PhotoEvidenceList({
         <PhotoDetailSheet
           photo={openPhoto}
           index={photos.findIndex((photo) => photo.id === openPhoto.id)}
+          total={photos.length}
+          step={(offset) => { const at = photos.findIndex((photo) => photo.id === openPhoto.id); const next = photos[at + offset]; if (next) setOpenId(next.id); }}
           markupContext={markupContext}
           allowMarkup={allowMarkup}
           close={() => setOpenId("")}
@@ -388,9 +392,14 @@ export function PhotoDetailSheet({
   onChange,
   onRemove,
   allowMarkup = true,
+  total = 1,
+  step,
 }: {
   photo: PhotoEvidence;
   index: number;
+  /** With several photos the sheet steps through them, so a whole round is reviewed in one go. */
+  total?: number;
+  step?: (offset: -1 | 1) => void;
   markupContext?: PhotoMarkupContext;
   close: () => void;
   onChange: (photo: PhotoEvidence) => void;
@@ -432,8 +441,14 @@ export function PhotoDetailSheet({
         <header className="modal-header">
           <div>
             <h2 id="photo-detail-title">{text("Photo details", "Fotodetails")}</h2>
-            <p>{text(`Photo ${index + 1}`, `Foto ${index + 1}`)}</p>
+            <p>{total > 1 ? text(`Photo ${index + 1} of ${total}`, `Foto ${index + 1} van ${total}`) : text(`Photo ${index + 1}`, `Foto ${index + 1}`)}</p>
           </div>
+          {total > 1 && step ? (
+            <div className="photo-detail-steps">
+              <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={index <= 0} onClick={() => step(-1)} aria-label={text("Previous photo", "Vorige foto")}><ChevronLeft size={18} /></button>
+              <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={index >= total - 1} onClick={() => step(1)} aria-label={text("Next photo", "Volgende foto")}><ChevronRight size={18} /></button>
+            </div>
+          ) : null}
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
 

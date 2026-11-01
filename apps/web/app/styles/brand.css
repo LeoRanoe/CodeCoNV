@@ -1,5 +1,5 @@
 /* CODECO calm theme. Orange for the one primary action and the current selection, green for what is done and
-   what is on the device instead of on paper, a dark sidebar and cool blue-grey neutrals: the look of the first
+   what is on the device instead of on paper, cool blue-grey neutrals (the sidebar is light since 01-11-2026; see final-pass.css): the look of the first
    version of the app, with the sizes, contrast and touch targets of the later ones. Loaded after every other
    sheet except system.css so these roles are stated in one place. Values live in tokens.css. */
 

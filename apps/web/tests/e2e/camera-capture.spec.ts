@@ -97,8 +97,35 @@ test("a photo stack is saved centrally and leaves nothing waiting on the device"
     { name: "stack-a.jpg", mimeType: "image/jpeg", buffer: bytes },
     { name: "stack-b.jpg", mimeType: "image/jpeg", buffer: bytes },
   ]);
+  await page.getByLabel(/Keep together as one photo stack/).check();
   await page.getByRole("button", { name: "Save photo stack" }).click();
   await expect(page.locator(".media-capture-review")).toHaveCount(0, { timeout: 60_000 });
   await expect.poll(() => deviceQueue(page), { timeout: 30_000 }).toEqual([]);
   await expect(page.getByText("Sending failed")).toHaveCount(0);
+});
+
+test("photos taken one after another are reviewed together and saved as separate photos", async ({ page }) => {
+  test.skip(!fakeBlob, "Saving needs a Blob store (CODECO_E2E_FAKE_BLOB=1 or a real one).");
+  await signIn(page);
+  const bytes = readFileSync(photoPath!);
+  const chooser = page.waitForEvent("filechooser");
+  await page.locator(".quick-add-side:visible, .mobile-nav-button.quick:visible").first().click();
+  await (await chooser).setFiles({ name: "round-1.jpg", mimeType: "image/jpeg", buffer: bytes });
+  await expect(page.getByText("1 photo to review")).toBeVisible();
+  // The next picture goes into the same review.
+  const again = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Take another" }).click();
+  await (await again).setFiles({ name: "round-2.jpg", mimeType: "image/jpeg", buffer: bytes });
+  await expect(page.getByText("2 photos to review")).toBeVisible();
+  // Each photo is described in one pass, stepping from one to the next.
+  await page.getByRole("button", { name: "Open the details of photo 1" }).click();
+  await expect(page.getByText("Photo 1 of 2")).toBeVisible();
+  await page.getByRole("dialog").getByLabel("Description").fill("Scheur in de kolom bij as B-3");
+  await page.getByRole("button", { name: "Next photo" }).click();
+  await expect(page.getByText("Photo 2 of 2")).toBeVisible();
+  await page.getByRole("dialog").getByLabel("Description").fill("Wapening zichtbaar aan de onderzijde");
+  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Save 2 photos" }).click();
+  await expect(page.locator(".media-capture-review")).toHaveCount(0, { timeout: 60_000 });
+  await expect.poll(() => deviceQueue(page), { timeout: 30_000 }).toEqual([]);
 });
