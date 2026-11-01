@@ -14,7 +14,7 @@ type SpeechRecognitionLike = {
   stop: () => void;
   abort?: () => void;
   onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event?: { error?: string }) => void) | null;
   onend: (() => void) | null;
 };
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
@@ -55,7 +55,8 @@ export function DictateButton({
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const onTextRef = useRef(onText);
-  const [error, setError] = useState(false);
+  // Why dictation stopped, shown beside the button: a tooltip never appears on a tablet.
+  const [error, setError] = useState<"" | "blocked" | "failed">("");
   useEffect(() => { onTextRef.current = onText; }, [onText]);
   useEffect(() => {
     const stop = () => {
@@ -84,8 +85,9 @@ export function DictateButton({
     const Constructor = speechConstructor();
     if (!Constructor) return;
     const recognition = new Constructor();
-    setError(false);
-    recognition.continuous = true;
+    setError("");
+    // Android Chrome repeats earlier words in continuous mode; one phrase per tap there.
+    recognition.continuous = !/Android/i.test(navigator.userAgent);
     recognition.interimResults = false;
     recognition.lang = language === "nl" ? "nl-NL" : "en-US";
     recognition.onresult = (event) => {
@@ -95,12 +97,13 @@ export function DictateButton({
       }
       if (recognitionRef.current === recognition && transcript.trim()) onTextRef.current(transcript.trim());
     };
-    recognition.onerror = () => {
+    recognition.onerror = (event) => {
       if (recognitionRef.current !== recognition) return;
+      if (event?.error === "no-speech" || event?.error === "aborted") { recognitionRef.current = null; setListening(false); return; }
       recognitionRef.current = null;
       recognition.onresult = null; recognition.onend = null; recognition.onerror = null;
       try { recognition.abort?.(); } catch { /* Already stopped. */ }
-      setError(true);
+      setError(event?.error === "not-allowed" || event?.error === "service-not-allowed" ? "blocked" : "failed");
       setListening(false);
     };
     recognition.onend = () => {
@@ -115,24 +118,31 @@ export function DictateButton({
     catch {
       recognitionRef.current = null;
       setListening(false);
-      setError(true);
+      setError("failed");
     }
   };
 
   const stopLabel = text("Stop dictation", "Stop dicteren");
   const startLabel = label ?? text("Dictate", "Dicteren");
 
+  const errorText = error === "blocked"
+    ? text("Microphone blocked. Allow it for this site in the browser settings.", "Microfoon geblokkeerd. Sta hem toe voor deze site in de browserinstellingen.")
+    : text("Dictation unavailable. Your typed text is kept; try again.", "Dicteren niet beschikbaar. Je tekst blijft bewaard; probeer opnieuw.");
+
   return (
-    <button
-      className={`${className} ${listening ? "recording" : ""}`}
-      style={style}
-      type="button"
-      onClick={toggle}
-      aria-label={listening ? stopLabel : startLabel}
-      title={error ? text("Dictation unavailable. Your typed text is preserved; try again.", "Dicteren niet beschikbaar. Je tekst blijft behouden; probeer opnieuw.") : listening ? stopLabel : startLabel}
-      aria-pressed={listening}
-    >
-      {listening ? <MicOff size={18} /> : <Mic size={18} />}
-    </button>
+    <>
+      <button
+        className={`${className} ${listening ? "recording" : ""}`}
+        style={style}
+        type="button"
+        onClick={toggle}
+        aria-label={listening ? stopLabel : startLabel}
+        title={error ? errorText : listening ? stopLabel : startLabel}
+        aria-pressed={listening}
+      >
+        {listening ? <MicOff size={18} /> : <Mic size={18} />}
+      </button>
+      {error ? <span className="dictate-error" role="status" style={style?.bottom !== undefined ? { bottom: Number(style.bottom) + 44 } : undefined}>{errorText}</span> : null}
+    </>
   );
 }

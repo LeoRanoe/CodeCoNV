@@ -50,6 +50,7 @@ export type WorkspaceRecord = {
 };
 
 type ProjectWorkspaceHomeProps = {
+  projectName?: string;
   counts: {
     inspections: number;
     issues: number;
@@ -101,13 +102,14 @@ export function ProjectWorkspaceHome({
   openDailyWork,
   openActionCenter,
   openRapidVerify,
+  projectName,
 }: ProjectWorkspaceHomeProps) {
   const { locale, text } = useLanguage();
   const permissions = useProjectPermissions();
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState({ kind: "", buildingId: "", status: "", dateFrom: "", dateTo: "", author: "" });
-  /* Open where there is room for them, folded away on a phone. Read once, at mount. */
-  const [filtersOpen, setFiltersOpen] = useState(() => typeof window === "undefined" || window.matchMedia("(min-width: 1025px)").matches);
+  /* Folded behind a button beside the search: open, they pushed the modules half a screen down. */
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const moduleEnabled = (module?: string) => !module || modules[module] !== false;
 
   const tiles = useMemo<WorkspaceTile[]>(() => [
@@ -285,24 +287,29 @@ export function ProjectWorkspaceHome({
 
   return (
     <section className="workspace-launcher" aria-labelledby="workspace-launcher-title">
+      {/* One row: the page title on the left, search and filters on the right. */}
       <div className="workspace-launcher-toolbar ui-page-header">
-        <h2 id="workspace-launcher-title">{text("Field records and project control", "Veldregistratie en projectsturing")}</h2>
-        <label className="workspace-launcher-search">
-          <Search size={16} />
-          <span className="sr-only">{text("Search workspace", "Doorzoek werkruimte")}</span>
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={text("Search a code, number or module", "Zoek een code, nummer of module")} />
-        </label>
+        <div className="workspace-launcher-title">
+          <h1 id="workspace-launcher-title">{text("Workspace", "Werkruimte")}</h1>
+          {projectName ? <p>{projectName}</p> : null}
+        </div>
+        <div className="workspace-launcher-tools">
+          <label className="workspace-launcher-search">
+            <Search size={16} />
+            <span className="sr-only">{text("Search workspace", "Doorzoek werkruimte")}</span>
+            <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={text("Search a code, number or module", "Zoek een code, nummer of module")} />
+          </label>
+          <button className={`ui-button ui-button--secondary ui-button--md workspace-filter-toggle${filtersOpen ? " active" : ""}`} type="button" aria-expanded={filtersOpen} aria-controls="workspace-search-filters" onClick={() => setFiltersOpen((open) => !open)}>
+            <Filter size={15} /> {text("Filters", "Filters")}
+            {filtersActive ? <b>{Object.values(filters).filter(Boolean).length}</b> : null}
+          </button>
+        </div>
       </div>
 
       {/* Six filters stacked full width filled a phone screen before anything was found.
           They fold away behind their own summary there and on a tablet, where they pushed the modules
           half a screen down; on a desktop they stand open. */}
-      <details className="workspace-search-filters-block" open={filtersOpen} onToggle={(event) => setFiltersOpen(event.currentTarget.open)}>
-        <summary>
-          <Filter size={15} /> {text("Filters", "Filters")}
-          {filtersActive ? <b>{Object.values(filters).filter(Boolean).length}</b> : null}
-        </summary>
-      <div className="workspace-search-filters" aria-label={text("Search filters", "Zoekfilters")}>
+      {filtersOpen ? <div className="workspace-search-filters" id="workspace-search-filters" aria-label={text("Search filters", "Zoekfilters")}>
         <label><span>{text("Kind", "Soort")}</span><select value={filters.kind} onChange={(event) => setFilters({ ...filters, kind: event.target.value })}><option value="">{text("All kinds", "Alle soorten")}</option>{Object.entries(kindLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
         <label><span>{text("Building", "Gebouw")}</span><select value={filters.buildingId} onChange={(event) => setFilters({ ...filters, buildingId: event.target.value })}><option value="">{text("All buildings", "Alle gebouwen")}</option>{buildings.map((building) => <option value={building.id} key={building.id}>{building.name}</option>)}</select></label>
         <label><span>{text("Status", "Status")}</span><select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}><option value="">{text("All statuses", "Alle statussen")}</option><option value="open">Open</option><option value="closed">{text("Closed", "Gesloten")}</option><option value="completed">{text("Completed", "Afgerond")}</option><option value="urgent">Urgent</option></select></label>
@@ -310,8 +317,7 @@ export function ProjectWorkspaceHome({
         <label><span>{text("To", "Tot")}</span><input type="date" value={filters.dateTo} onChange={(event) => setFilters({ ...filters, dateTo: event.target.value })} /></label>
         {authors.length ? <label><span>{text("Author", "Auteur")}</span><select value={filters.author} onChange={(event) => setFilters({ ...filters, author: event.target.value })}><option value="">{text("All authors", "Alle auteurs")}</option>{authors.map((author) => <option value={author} key={author}>{author}</option>)}</select></label> : null}
         {filtersActive ? <button className="ui-button ui-button--quiet ui-button--sm" type="button" onClick={() => setFilters({ kind: "", buildingId: "", status: "", dateFrom: "", dateTo: "", author: "" })}>{text("Clear filters", "Wis filters")}</button> : null}
-      </div>
-      </details>
+      </div> : null}
 
       {query.trim().length >= 2 || filtersActive ? (
         <div className="workspace-code-results" aria-label={text("Records found by code", "Gevonden registraties op code")}>

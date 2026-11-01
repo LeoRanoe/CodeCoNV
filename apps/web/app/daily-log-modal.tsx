@@ -240,7 +240,9 @@ export function DailyLogForm({
   // The database requires a full closeout record; these blocks are the ones the client
   // fills in, the rest is read from the other modules or keeps what was recorded earlier.
   const answers: DailyCloseoutAnswers = {
-    daySummary: log.constructionActivity.trim(),
+    // A day first opened from Works completed has no running-work line yet; the work that was
+    // finished then stands as the day's summary, which the closeout cannot be without.
+    daySummary: log.constructionActivity.trim() || initialCloseout?.daySummary || (focus === "works_completed" ? log.workPerformed.trim() : ""),
     weatherSummary: weatherLabel || initialCloseout?.weatherSummary || "",
     workOngoing: log.constructionActivity.trim(),
     workPerformed: log.workPerformed.trim(),
@@ -278,7 +280,9 @@ export function DailyLogForm({
   // was pressed for; when it does not, the day's own blocks are required too.
   // Works ongoing is one input box plus the buildings it happens in (client, 30-10-2026): it
   // never asks for the rest of the day, not even on the first entry of the day.
-  const dayContextRequired = !(delayOnly || workOnly) || (!initialCloseout && !ongoingOnly);
+  // Works completed is likewise what was finished today, the buildings and the plan for tomorrow
+  // (client, 01-11-2026): the running work belongs to Works ongoing.
+  const dayContextRequired = !(delayOnly || workOnly) || (!initialCloseout && !workOnly);
   // Works ongoing and works completed are the same form; each tile still has to end up
   // with the field it was opened for filled in.
   const summaryRequired = dayContextRequired || ongoingOnly;
@@ -286,13 +290,13 @@ export function DailyLogForm({
   const problems: string[] = [];
   // The day report stands on the weather of the day; without the project start there is none,
   // and the database refuses the closeout. Saying so here beats a failed save.
-  if (!ongoingOnly && answers.weatherSummary.trim().length < 5) problems.push(text("Confirm the project start first: weather and working hours.", "Bevestig eerst de projectstart: weer en werktijden."));
+  if (!workOnly && answers.weatherSummary.trim().length < 5) problems.push(text("Confirm the project start first: weather and working hours.", "Bevestig eerst de projectstart: weer en werktijden."));
   if (!buildingIds.length && buildings.length > 1) problems.push(text("Choose at least one building.", "Kies minimaal één gebouw."));
   if (delayOnly && answers.delayCause === "none") problems.push(text("Choose what caused the delay.", "Kies waardoor de vertraging is ontstaan."));
   if (summaryRequired && ongoingOnly && answers.daySummary.length < 3) problems.push(text("Describe what is in progress and where.", "Beschrijf wat er gaande is en waar."));
   else if (summaryRequired && !ongoingOnly && answers.daySummary.length < 20) problems.push(text("Describe the construction activity and location in at least one full sentence.", "Beschrijf de bouwactiviteit en locatie in minimaal één volledige zin."));
-  if (performedRequired && answers.workPerformed.length < 10) problems.push(text("Describe the work completed today.", "Beschrijf het werk dat vandaag is afgerond."));
-  if (dayContextRequired && answers.tomorrowPlan.length < 3) problems.push(text("Enter the plan for tomorrow.", "Vul de planning voor morgen in."));
+  if (performedRequired && answers.workPerformed.length < (completedOnly ? 3 : 10)) problems.push(text("Describe the work completed today.", "Beschrijf het werk dat vandaag is afgerond."));
+  if ((dayContextRequired || completedOnly) && answers.tomorrowPlan.length < 3) problems.push(text("Enter the plan for tomorrow.", "Vul de planning voor morgen in."));
   if (answers.delayCause !== "none" && answers.delayHours <= 0) problems.push(text("Enter the hours lost to the delay.", "Vul de uren verlies door de vertraging in."));
   if (answers.delayCause !== "none" && (answers.delayReason?.length ?? 0) < 10) problems.push(text("Describe what actually caused the delay in at least one sentence.", "Beschrijf in minimaal één zin wat de vertraging daadwerkelijk heeft veroorzaakt."));
   if (answers.delayCause !== "none" && (answers.contractorCompany?.length ?? 0) < 2) problems.push(text("Enter the responsible contractor company.", "Vul het verantwoordelijke aannemersbedrijf in."));
@@ -628,8 +632,41 @@ export function DailyLogForm({
       </>
     ),
   };
+  // Works completed: what was finished, where, and what follows tomorrow. Nothing else.
+  const completedBlocks = [
+    {
+      id: "completed",
+      title: text("What was finished today", "Wat vandaag is afgerond"),
+      className: "daily-log-works",
+      content: (
+        <>
+          {completedField}
+          <BuildingMultiPicker
+            id="daily-log-building"
+            buildings={buildings}
+            value={buildingIds}
+            onChange={setBuildingIds}
+            hint={text("Saved once per building.", "Eén keer per gebouw opgeslagen.")}
+          />
+        </>
+      ),
+    },
+    {
+      id: "tomorrow",
+      title: text("Plan for tomorrow", "Planning voor morgen"),
+      content: (
+        <label className="form-field">
+          <span>{text("What happens tomorrow", "Wat er morgen gebeurt")}</span>
+          <textarea rows={3} value={log.tomorrowPlan} onChange={(event) => setLog({ ...log, tomorrowPlan: event.target.value })} />
+          <DictateButton onText={(transcript) => setLog((current) => ({ ...current, tomorrowPlan: appendDictation(current.tomorrowPlan, transcript) }))} />
+        </label>
+      ),
+    },
+    ...blocks.filter((block) => block.id === "photos"),
+  ];
   const ordered = ongoingOnly
     ? [ongoingBlock]
+    : completedOnly ? completedBlocks
     : leading ? [...blocks.filter((block) => block.id === leading), ...blocks.filter((block) => block.id !== leading)] : blocks;
 
   const todayLabel = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "America/Paramaribo" }).format(new Date());

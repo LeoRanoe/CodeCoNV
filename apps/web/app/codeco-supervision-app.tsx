@@ -1481,7 +1481,8 @@ export function CodecoSupervisionApp() {
                 answers,
                 // Works ongoing is one text box: it must not overwrite what the same building's
                 // closeout already says about everything else.
-                onlyColumns: focus === "works_ongoing" ? ["day_summary", "work_ongoing"] : undefined,
+                // Works completed likewise writes only what was finished and the plan for tomorrow.
+                onlyColumns: focus === "works_ongoing" ? ["day_summary", "work_ongoing"] : focus === "works_completed" ? ["work_performed", "tomorrow_plan", "photo_count", "attachments_confirmed"] : undefined,
               });
             }
             if (photos.length) {
@@ -2192,6 +2193,11 @@ export function CodecoSupervisionApp() {
           notifications={notificationQuery.data ?? []}
           loading={notificationQuery.isLoading}
           close={() => setModal(null)}
+          openSource={(sourceType) => {
+            if (sourceType === "action") { setModal(null); navigate("acties"); }
+            else if (sourceType === "finding") { setModal(null); openWorkspaceModule("findings"); }
+            else if (sourceType === "report") { setModal(null); navigate("rapporten"); }
+          }}
           markRead={async (notificationId) => {
             const saved = await runSynced(
               () => markNotificationRead(supabase, notificationId),
@@ -2877,7 +2883,7 @@ function ProjectStartForm({
   );
 }
 
-function NotificationsModal({ client, notifications, loading, close, markRead }: { client: SupabaseClient; notifications: ProjectNotification[]; loading: boolean; close: () => void; markRead: (notificationId: string) => Promise<void> }) {
+function NotificationsModal({ client, notifications, loading, close, markRead, openSource }: { client: SupabaseClient; notifications: ProjectNotification[]; loading: boolean; close: () => void; markRead: (notificationId: string) => Promise<void>; openSource: (sourceType: string | null) => void }) {
   const { locale, text } = useLanguage();
   const [pushState, setPushState] = useState<PushState>("inactive");
   const [pushBusy, setPushBusy] = useState(false);
@@ -2926,7 +2932,11 @@ function NotificationsModal({ client, notifications, loading, close, markRead }:
           {loading ? <div className="empty-list-state"><Loader2 className="spin" size={22} /><strong>{text("Loading notifications", "Meldingen laden")}</strong></div> : null}
           {!loading && notifications.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No notifications", "Geen meldingen")}</strong></div> : null}
           {notifications.map((notification) => (
-            <button className={`notification-row ${notification.read_at ? "read" : ""}`} type="button" key={notification.id} onClick={() => void markRead(notification.id)}>
+            <button className={`notification-row ${notification.read_at ? "read" : ""}`} type="button" key={notification.id} onClick={() => {
+              // A notification is the way to the record it is about: it is marked read and opened.
+              if (!notification.read_at) void markRead(notification.id);
+              openSource(notification.source_type);
+            }}>
               <span className="notification-row-icon">{notification.notification_type.includes("overdue") || notification.notification_type.includes("critical") ? <AlertTriangle size={17} /> : <Bell size={17} />}</span>
               <span><strong>{notificationTitle(notification.title, text)}</strong><span>{notification.body}</span><small>{notification.due_at ? `${text("Deadline", "Deadline")} ${new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(notification.due_at))}` : text("Immediate follow-up", "Directe opvolging")} · {notification.push_status === "sent" ? text("Push sent", "Push verzonden") : notification.push_status === "failed" ? text("Push retry pending", "Nieuwe pushpoging gepland") : notification.push_status === "skipped" ? text("Activate push on a device", "Activeer push op een apparaat") : text("Push queued", "Push in wachtrij")}</small></span>
               {!notification.read_at ? <i aria-label={text("Unread", "Ongelezen")} /> : null}
@@ -3162,6 +3172,9 @@ function notificationTitle(stored: string, text: (english: string, dutch: string
     ["Actie verlopen: ", text("Action overdue: ", "Actie verlopen: ")],
     ["Actie nadert deadline: ", text("Action due soon: ", "Actie nadert deadline: ")],
     ["Bevinding nadert deadline: ", text("Finding due soon: ", "Bevinding nadert deadline: ")],
+    ["Kritieke bevinding ", text("Critical finding ", "Kritieke bevinding ")],
+    ["Actie aan jou toegewezen: ", text("Action assigned to you: ", "Actie aan jou toegewezen: ")],
+    ["Issue aan jou toegewezen: ", text("Issue assigned to you: ", "Issue aan jou toegewezen: ")],
   ];
   for (const [dutch, shown] of prefixes) if (stored.startsWith(dutch)) return shown + stored.slice(dutch.length);
   return stored;

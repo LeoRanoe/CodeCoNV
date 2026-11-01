@@ -128,3 +128,42 @@ With the owner's permission in chat: PR #14 merged into `main` (`33471d8`) after
 Migration `202610310001` was then applied to production (`dljbeheogaeviokpcvca`) through the Supabase tool, as written. The tool recorded it as `20261031180519`; that row was renamed to `202610310001` so a later `supabase db push` sees it as applied. Checked afterwards: latest version `202610310001`; both functions are `SECURITY DEFINER`, executable by `authenticated` and not by `anon`; an anonymous call to `/rest/v1/rpc/set_visual_capture_stack` returns 401 "permission denied for function", so the API has loaded it. The security advisor lists the two new functions under the existing "signed-in users can execute SECURITY DEFINER function" warning (they check `files.manage` inside) and nothing new otherwise.
 
 Read-only smoke after the deploy: `/`, `/supervisie`, `/sw.js` and `/manifest.webmanifest` return 200; an unknown share token returns 404; no runtime errors in the hour after the deploy. Not done: a signed-in photo, stack and 360° capture on production, which needs a production account.
+
+## Client feedback pass, 01-11-2026
+
+The owner walked every page on a tablet and desktop and listed what to change. Each item below was reproduced on the local fixture stack first (screenshots at 1180×820, 820×1180 and 390×844), changed, and checked again in the running app.
+
+| Item | Found | Change | Verified |
+|---|---|---|---|
+| Colours | Dark sidebar, hard to read in sun; green hardly used | Light shell in `app/styles/final-pass.css` (loaded last): white sidebar, pale orange current page, light phone header. Green for done, saved and progress: "Supervision" label, avatar, progress bars, saved state, "Active"/"Verified" figures | Screenshots at three widths; design guardrails 9/9 |
+| Project picker | Card of 108 px with a wrapped name | One compact row, name and place on one line each (56 px) | Screenshot |
+| Overview | Priority queue with an orange cap and pills, a 22rem floor that left a gap, a half-width photo panel, a tinted weather block | Dashboard grid (main column and side column, both rows), metric cards, priority list with the severity as a word, green completion bar, plain weather panel; tablet keeps the queue straight after latest work | Screenshots 1180, 820, 390 |
+| Workspace header | "Workspace" alone in a 97 px header, a second heading row with the search, six filters standing open | One row: title and project, search, Filters button; filters folded until asked for | Screenshots; stability audit |
+| Forms (Issues, HSE, NCR, PDR, registers, day log) | Eight facts in a 192 px grid, two 430 px columns, rules on top of rules | Facts as one quiet line, one column below 980 px form width (container query), space between sections, no second rule, building picker full width | Screenshots; stability audit |
+| Works completed | Asked "What is in progress, and where?" (20+ characters), weather, QC, advice, HSE, workforce, delay and a signature on the first entry of the day | Only what was finished, the buildings, the plan for tomorrow, and photos; it writes only `work_performed`, `tomorrow_plan` and the photo count, so the same day's Works ongoing line stays | `works-completed-focus.spec.ts`; source assertion updated in `rendered-html.test.mjs` |
+| Management | Figures glued to the tabs, cards inside a card | Space under the tabs, figure cards like the overview, summaries as rows | Screenshot |
+| Action type | Nine types behind a small scrolling menu | Every type as a chip with its count, wrapping; on a phone the empty types are hidden | `action-center-tabs.spec.ts`; screenshots |
+| Loading screen | A 768 px phone-shaped card that scrolled the page on a tablet | Compact centred card from 641 px up; no page scroll (document height = viewport) | Screenshot with the API held back |
+| Project Docs | "All documents" listed every site photo; a PDF opened in an `<iframe>` (blank on Android Chrome, first page only on iPad) | Photos stay in the photo library; a document opens in `DocumentPreview`: PDF pages drawn with pdf.js, images as images, other files with an Open button | Type check; preview styles |
+| Drawings | The drawing started 700 px down | Upload folds behind "New drawing" once a project has drawings; drawing list above the drawing on a tablet; the drawing takes the remaining screen height | Screenshot (drawing starts at 555 px, full width) |
+| Photos: review | Each camera photo waited in a review; several were always saved as one stack | A round of photos is reviewed together: "Take another" and "Add from gallery" in the review, Previous/Next with "Photo 2 of 5" in the detail sheet, separate photos by default, a stack only when ticked | `camera-capture.spec.ts` (new test: two photos, described one after the other, saved separately, device queue empty) |
+| Microphone | A refused microphone was only explained in a hover tooltip; Android repeated words in continuous dictation | The reason shows beside the button ("Microphone blocked. Allow it for this site…"); Android dictates one phrase per tap; no-speech no longer counts as an error | Type check; header `Permissions-Policy: camera=(self), microphone=(self)` confirmed |
+| Notifications | Push works (the one active device, an iPhone, received the last one), but a notification was only created a day before a due date: 6 ever in production against 56 issues. Tapping one only marked it read | Migration `202611010001`: an action or issue given to someone notifies them at once (not when they assign it to themselves); the existing send-after-save pushes it. Tapping a notification opens Actions, Issues or Reports | pgTAP `027` (6) |
+| Stack badge | The frame count sat on top of "Open" on a stack card | Count moved to its own corner | Screenshot |
+
+UI stability audit after the pass: 72 screens, 0 findings, worst layout shift 0.043.
+
+### Final audit before client testing, 01-11-2026
+
+Every screen captured as supervisor at 1180×820, 820×1180 and 390×844 (84 screenshots), the client and contractor views, and the notification, offline, help and new-action dialogs at tablet and phone width. Found and fixed:
+
+| Found | Change |
+|---|---|
+| Opening Project Docs or Assets from the workspace kept the scroll position of the workspace, so on a phone the module opened halfway down (likely the client's "I click on the docs and see nothing") | A module opens at its top (`operational-workspace.tsx`) |
+| Project Docs opened with its two-step folder/upload panel filling the first screen | The panel opens from "Upload file"; the documents come first |
+| Register forms (PDR, TI, CO, LL, agreements, deliveries, HSE incident, inspections) held the building picker at half width under a doubled "Buildings" label | The block spans the row; the legend is kept for screen readers only |
+| Management figures: two of four had no card because older, more specific rules won | Selectors raised; all four are cards; summaries inside panels are rows |
+| "Kritieke bevinding …" notifications stayed Dutch in the English interface | Translated like the other notification titles |
+| Gate: workforce heading broke into two lines (step number and count on different baselines) | Section headings no longer align on the baseline |
+
+Gate on a fresh database and production build: pgTAP 27 files, 622 assertions; unit 228; design guardrails 9; lint and types clean; Playwright 176 passed with 2 failures that came from reusing a dirty database and passed on a clean one (day-report lifecycle, offline account isolation). After the last fixes: UI stability audit 72 screens, 0 findings, worst layout shift 0.045; accessibility audit, camera capture (4), Works completed, action-center tabs, responsive audit and desktop upload pass.

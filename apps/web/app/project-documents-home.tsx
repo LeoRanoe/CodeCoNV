@@ -1,6 +1,7 @@
 "use client";
 
 import { SectionNav } from "@/app/section-nav";
+import { DocumentPreview } from "@/app/document-preview";
 import {
   Archive,
   ArrowRight,
@@ -85,8 +86,10 @@ export function ProjectDocumentsHome({
   const [linkFolderId, setLinkFolderId] = useState("");
   const [linkRecordId, setLinkRecordId] = useState("");
   const [openingFileId, setOpeningFileId] = useState("");
+  // The folder and upload steps open from "Upload file"; closed, the documents come first.
+  const [intakeOpen, setIntakeOpen] = useState(false);
   const [openError, setOpenError] = useState("");
-  const [preview, setPreview] = useState<{ fileId: string; title: string; url: string } | null>(null);
+  const [preview, setPreview] = useState<{ fileId: string; title: string; url: string; mimeType: string } | null>(null);
   useEffect(() => () => {
     if (preview?.url) URL.revokeObjectURL(preview.url);
   }, [preview?.url]);
@@ -102,7 +105,8 @@ export function ProjectDocumentsHome({
 
   const items = (() => {
     const registerSource = view === "boq" ? boq : view === "specifications" ? specifications : view === "contracts" ? contracts : view === "all" ? controlled : [];
-    const fileSource = view === "drawings" ? drawings : view === "renders" ? renders : view === "all" ? availableFiles : [];
+    // Site photos have their own library; the document list would drown in them.
+    const fileSource = view === "drawings" ? drawings : view === "renders" ? renders : view === "all" ? availableFiles.filter((file) => !["photo", "evidence"].includes(file.category ?? "")) : [];
     const normalized = [
       ...fileSource.map((file) => ({ id: file.id, code: file.document_code ?? "", title: file.original_name, type: file.category || "file", status: file.status, date: file.created_at, source: "file" as const, folderId: file.folder_id, buildingIds: file.building_ids?.length ? file.building_ids : file.building_id ? [file.building_id] : [] })),
       ...registerSource.map((entry) => ({ id: entry.id, code: entry.entry_number, title: entry.title, type: entry.register_type, status: entry.status, date: entry.occurred_at, source: "register" as const, folderId: null, buildingIds: entry.building_ids?.length ? entry.building_ids : [entry.building_id] })),
@@ -214,7 +218,7 @@ export function ProjectDocumentsHome({
       const url = URL.createObjectURL(blob);
       setPreview((current) => {
         if (current?.url) URL.revokeObjectURL(current.url);
-        return { fileId: item.id, title: item.title, url };
+        return { fileId: item.id, title: item.title, url, mimeType: blob.type || data.files.find((file) => file.id === item.id)?.mime_type || "" };
       });
     } catch (error) {
       setOpenError(error instanceof Error ? error.message : text("The document could not be opened.", "Het document kon niet worden geopend."));
@@ -228,12 +232,12 @@ export function ProjectDocumentsHome({
       <div className="project-documents-summary">
         <div><h2>{text("Project document center", "Projectdocumentencentrum")}</h2><p>{text("Controlled project information", "Beheerde projectinformatie")}</p></div>
         <div className="project-documents-actions">
-          {canManageFiles ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => document.getElementById("project-document-upload")?.scrollIntoView({ behavior: "smooth", block: "center" })}><Upload size={15} /> {text("Upload file", "Upload bestand")}</button> : null}
+          {canManageFiles ? <button className={`ui-button ui-button--secondary ui-button--md${intakeOpen ? " active" : ""}`} type="button" aria-expanded={intakeOpen} aria-controls="project-document-upload" onClick={() => setIntakeOpen((open) => !open)}><Upload size={15} /> {text("Upload file", "Upload bestand")}</button> : null}
           {canCreateRecords ? <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={createDocument}><Plus size={15} /> {text("New controlled record", "Nieuw beheerd record")}</button> : null}
         </div>
       </div>
 
-      {canManageFiles ? <section className="project-document-intake" id="project-document-upload" aria-label={text("Create a folder and upload", "Map maken en uploaden")}>
+      {canManageFiles && intakeOpen ? <section className="project-document-intake" id="project-document-upload" aria-label={text("Create a folder and upload", "Map maken en uploaden")}>
         <div className="project-document-folder-create">
           <span className="record-number">{text("1. Folder and project link", "1. Map en projectkoppeling")}</span>
           <h2>{text("Create the destination here", "Maak de bestemming hier")}</h2>
@@ -305,7 +309,7 @@ export function ProjectDocumentsHome({
         <section className="document-preview-modal" role="dialog" aria-modal="true" aria-labelledby="document-preview-title">
           <header><div><span>{text("Secure project document", "Beveiligd projectdocument")}</span><h3 id="document-preview-title">{preview.title}</h3></div><div><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => void downloadProjectFile(client, preview.fileId, preview.title)}><Download size={15} /> {text("Download", "Downloaden")}</button><button className="modal-close" type="button" onClick={() => setPreview(null)} aria-label={text("Close document", "Sluit document")}><X size={18} /></button></div></header>
           <div className="document-preview-body">
-            <iframe src={preview.url} title={preview.title} />
+            <DocumentPreview url={preview.url} mimeType={preview.mimeType} title={preview.title} />
             <div className="document-link-panel">
               <h4>{text("Link without copying", "Koppel zonder te kopiëren")}</h4>
               <label className="form-field"><span>{text("Folder", "Map")}</span><select value={linkFolderId} onChange={(event) => setLinkFolderId(event.target.value)}><option value="">{text("Keep current folder", "Huidige map behouden")}</option>{folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}</select></label>

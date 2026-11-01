@@ -177,6 +177,8 @@ async function uploadDrawingAndCreatePin(page: Page, findingTitle: string) {
   await page.getByRole("button", { name: "Zoom in" }).click();
   expect(await normalizedPosition()).toEqual(positionBeforeZoom);
 
+  // The drawing takes the screen height, so a pin in its middle can sit below the fold.
+  await pin.scrollIntoViewIfNeeded();
   const pinBox = await pin.boundingBox();
   expect(pinBox).not.toBeNull();
   await page.mouse.move(pinBox!.x + pinBox!.width / 2, pinBox!.y + pinBox!.height / 2);

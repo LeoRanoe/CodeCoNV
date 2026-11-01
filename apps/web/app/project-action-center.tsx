@@ -323,11 +323,20 @@ export function ProjectActionCenter({
       <div className="action-center-layout">
         <div className="action-center-worklist">
           <div className="action-center-toolbar">
-            <SectionNav
-              className="action-type-tabs"
-              label={text("Action type", "Actietype")}
-              items={typeTabs.map((tab) => ({ id: tab.id, label: tab.label, count: tab.id === "all" ? stateScopedItems.length : stateScopedItems.filter((item) => item.type === tab.id).length, selected: typeFilter === tab.id, onSelect: () => setTypeFilter(tab.id) }))}
-            />
+            {/* Every type stands in view with its count. A menu of nine that had to be scrolled
+                hid where the list was and which types held anything (client, 01-11-2026). */}
+            <div className="action-type-tabs action-type-chips" role="tablist" aria-label={text("Action type", "Actietype")}>
+              {typeTabs.map((tab) => {
+                const count = tab.id === "all" ? stateScopedItems.length : stateScopedItems.filter((item) => item.type === tab.id).length;
+                const selected = typeFilter === tab.id;
+                return (
+                  <button type="button" role="tab" aria-selected={selected} className={`${selected ? "active" : ""}${count ? "" : " empty"}`} onClick={() => setTypeFilter(tab.id)} key={tab.id}>
+                    <span className="section-nav__label">{tab.label}</span>
+                    <span className="section-nav__count">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
             <label className="action-center-search"><Search size={15} /><span className="sr-only">{text("Search action center", "Doorzoek actiecentrum")}</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text("Search reference, title or person", "Zoek referentie, titel of persoon")} /></label>
           </div>
 

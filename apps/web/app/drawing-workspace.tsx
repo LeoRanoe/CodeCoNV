@@ -144,6 +144,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
   const [queueError, setQueueError] = useState("");
   const [queuedMutations, setQueuedMutations] = useState<DrawingPinMutation[]>([]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [tool, setTool] = useState<DrawingTool>(pendingRecord || initialFindingId || initialInspectionId ? "pin" : "pan");
   // Markup is drawn in one colour: colour belongs to the record type of a pin, not to the user.
@@ -601,6 +602,10 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
         </div>
       ) : null}
 
+      {/* Once a project has drawings, adding one is the exception: the form folds away and the
+          drawing gets the screen (client, 01-11-2026). */}
+      <details className="drawing-upload-block" open={!drawings.length || Boolean(uploadFile) || uploadOpen} onToggle={(event) => setUploadOpen(event.currentTarget.open)}>
+      <summary><FileUp size={15} /> {text("New drawing", "Nieuwe tekening")}</summary>
       <div className="drawing-upload-strip">
         <BuildingPicker id="drawing-upload-building" buildings={buildings} value={uploadBuildingId} onChange={setUploadBuildingId} />
         {/* The browser's own "Choose File · no file selected" was the one control on this
@@ -621,6 +626,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
         {uploadError ? <p className="field-error" role="alert">{uploadError}</p> : null}
         {uploadProgress > 0 ? <div className="upload-progress" aria-label={`${text("Upload", "Upload")} ${uploadProgress}%`}><span style={{ width: `${uploadProgress}%` }} /><small>{uploadProgress}%</small></div> : null}
       </div>
+      </details>
 
       {dwgSources.length ? <div className="operation-alert"><FileText size={18} /><div><strong>{text(`${dwgSources.length} native DWG source file(s) retained`, `${dwgSources.length} native DWG-bronbestand(en) bewaard`)}</strong><span>{text("Upload a PDF export to mark up or pin on this drawing.", "Upload een PDF-export om te markeren of pins te plaatsen.")}</span></div></div> : null}
 
