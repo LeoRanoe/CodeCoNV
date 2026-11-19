@@ -174,6 +174,8 @@ export type AttendanceInput = {
   entryType?: "workforce" | "visitor";
   /** Why today's manning deviates from the plan or from the last workday (§4.3). */
   notes?: string;
+  /** Shift, attendance status and competency status of the specification's Workforce form. */
+  spec?: Record<string, string>;
 };
 
 function fail(error: { message: string; code?: string; status?: number; name?: string } | null) {
@@ -603,7 +605,7 @@ export async function loadProjectDay(
       .limit(100),
     client
       .from("attendance_entries")
-      .select("id,party_id,discipline,shift_start,shift_end,headcount,building_id,entry_type,crew,visitor_name,notes")
+      .select("id,party_id,discipline,shift_start,shift_end,headcount,building_id,entry_type,crew,visitor_name,notes,spec")
       .eq("day_report_id", reportId)
       .order("created_at"),
   ]);
@@ -617,7 +619,7 @@ export async function loadProjectDay(
     : registrationResult;
   // Crew, visitors and the entry type arrive with a later migration. Before it has run the
   // day must still open, so the day falls back to the columns that were always there.
-  const compatibleAttendanceResult = ["entry_type", "crew", "visitor_name"].some((column) => schemaColumnMissing(attendanceResult.error, column))
+  const compatibleAttendanceResult = ["entry_type", "crew", "visitor_name", "spec"].some((column) => schemaColumnMissing(attendanceResult.error, column))
     ? await client
         .from("attendance_entries")
         .select("id,party_id,discipline,shift_start,shift_end,headcount,building_id,notes")
@@ -1135,7 +1137,10 @@ export async function saveAttendance(
           idempotency_key: `attendance:${reportId}:${input.buildingId}:${row.partyId}:${row.discipline}`.slice(0, 200),
           created_by: user.id,
         });
-    const result = await write(payload);
+    const rowSpec = Object.fromEntries(Object.entries(row.spec ?? {}).filter(([, value]) => value));
+    let result = await write(Object.keys(rowSpec).length ? { ...payload, spec: rowSpec } : payload);
+    // A database without the specification column keeps the count and the signature.
+    if (schemaColumnMissing(result.error, "spec")) result = await write(payload);
     // The signature arrives with a later migration than crew and visitors, so the write
     // steps back one column set at a time rather than losing the headcount itself.
     const signatureMissing = ["signed_by", "signed_at", "signature_image"].some((column) => schemaColumnMissing(result.error, column));

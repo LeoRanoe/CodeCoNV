@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { fillSpecFields } from "./spec-fill";
 
 /**
  * QA M20. A Project Delay Report is a formal document and its photo on the original finish date is
@@ -73,6 +74,7 @@ test("a delay report is saved with its required photo confirmed", async ({ page 
   const description = `Rain stopped the pour ${Date.now().toString(36)}`;
   await fillDelayReport(page, description);
   await page.getByLabel(/Tap to capture photo/).first().setInputFiles(photo!);
+  await fillSpecFields(page.locator(".record-form-shell").first());
   await page.getByRole("button", { name: "Save delay report" }).click();
   await expect(page.locator(".operation-alert.success")).toBeVisible({ timeout: 90_000 });
   expect((await liveReports(page, description)).length, "the report is saved").toBe(1);
@@ -87,6 +89,7 @@ test("a delay report whose required photo is not confirmed is not left behind", 
   const description = `Rain stopped the pour ${Date.now().toString(36)}`;
   await fillDelayReport(page, description);
   await page.getByLabel(/Tap to capture photo/).first().setInputFiles(photo!);
+  await fillSpecFields(page.locator(".record-form-shell").first());
   await page.getByRole("button", { name: "Save delay report" }).click();
   await expect(page.getByText(/Not saved: the required photos were not confirmed/)).toBeVisible({ timeout: 90_000 });
   expect((await liveReports(page, description)).length, "no formal report without its photo").toBe(0);

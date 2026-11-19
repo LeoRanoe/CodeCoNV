@@ -1,5 +1,6 @@
 import { openSavedRecords } from "./section-nav";
 import { expect, type Page, test } from "@playwright/test";
+import { fillSpecFields } from "./spec-fill";
 
 /**
  * Two taps on a save button that land before React has disabled it must still create one
@@ -47,6 +48,7 @@ test("two taps on 'Create controlled document' create one document", async ({ pa
   await form.getByLabel(/deadline/i).fill("2026-12-31");
   await form.getByRole("combobox", { name: "To", exact: true }).selectOption({ index: 2 });
 
+  await fillSpecFields(page.locator(".record-form-shell").first());
   const create = page.getByRole("button", { name: "Create controlled document" });
   await expect(create).toBeEnabled();
   await create.evaluate((button: HTMLButtonElement) => { button.click(); button.click(); });

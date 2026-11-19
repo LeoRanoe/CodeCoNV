@@ -3,11 +3,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AlertTriangle, CircleDot, Download, ExternalLink, HardDrive, Loader2, RefreshCw, ScanLine, Image as ImageIcon, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { SpecFields } from "@/app/forms/spec-fields";
+import { cleanSpecValues, specMissing, type SpecValues } from "@/lib/forms/spec-forms";
 import { useLanguage } from "@/lib/i18n";
 import { readableFileLabel } from "@/lib/media/photo-library.mjs";
 import { downloadProjectFile, loadProjectFileObjectUrl, openProjectFile } from "@/lib/storage/gateway";
 import { createFileOriginResolver } from "@/lib/supabase/file-origins";
-import { createVisualCapture, type FileRecord, type OperationSnapshot, type VisualAnnotation } from "@/lib/supabase/operations";
+import { createVisualCapture, updateVisualCaptureSpec, type FileRecord, type OperationSnapshot, type VisualAnnotation } from "@/lib/supabase/operations";
 import { PanoramaViewer } from "@/app/visual-evidence-workspace";
 import type { BuildingOption } from "@/app/building-picker";
 
@@ -119,9 +121,13 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
   onDelete?: (files: FileRecord[]) => void;
   onDescribe?: (files: FileRecord[]) => void;
 }) {
-  const { locale, text } = useLanguage();
+  const { language, locale, text } = useLanguage();
   const isImage = file.mime_type.startsWith("image/");
   const capture = data.visualCaptures.find((item) => item.file_id === file.id) ?? null;
+  // Photo purpose, discipline and related record (the specification's Photos form).
+  const [photoSpec, setPhotoSpec] = useState<SpecValues>(() => (capture?.spec ?? {}) as SpecValues);
+  const photoSpecMissing = specMissing("photo", photoSpec, language);
+  const photoSpecChanged = JSON.stringify(cleanSpecValues("photo", photoSpec)) !== JSON.stringify(cleanSpecValues("photo", (capture?.spec ?? {}) as SpecValues));
   const markers = capture
     ? data.visualAnnotations.filter((annotation) => annotation.capture_id === capture.id && annotation.status === "active")
     : [];
@@ -207,6 +213,14 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
                   <li key={marker.id}><b className={`marker-dot tone-${marker.severity ?? "medium"}`} />{marker.title || text("Marked problem", "Gemarkeerd probleem")}</li>
                 ))}
               </ul>
+            </div>
+          ) : null}
+          {capture ? (
+            <div className="media-detail-spec">
+              <SpecFields form="photo" values={photoSpec} onChange={setPhotoSpec} text={text} language={language} heading={text("Photo classification", "Fotoclassificatie")} />
+              <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={busy || !photoSpecChanged || photoSpecMissing.length > 0} onClick={() => void run(() => updateVisualCaptureSpec(client, capture.id, cleanSpecValues("photo", photoSpec)), text("Photo classification saved.", "Fotoclassificatie opgeslagen."))}>
+                {text("Save classification", "Classificatie opslaan")}
+              </button>
             </div>
           ) : null}
           <div className="media-detail-links">

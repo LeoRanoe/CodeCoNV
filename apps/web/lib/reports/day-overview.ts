@@ -38,7 +38,7 @@ type InspectionLike = WithStatus & { completed_at?: string | null; started_at?: 
 type CaptureLike = WithStatus & { captured_at: string };
 
 /** Register types that have their own block; every other type is listed under "other registers". */
-export const dayOverviewRegisterTypes = ["delivery", "technical_instruction", "change_order", "lessons_learned", "agreement", "delay_report"] as const;
+export const dayOverviewRegisterTypes = ["delivery", "technical_instruction", "change_order", "lessons_learned", "agreement", "delay_report", "works_ongoing", "works_completed"] as const;
 
 export type DayOverview<F, H, R, W, A, I, V> = {
   day: string;

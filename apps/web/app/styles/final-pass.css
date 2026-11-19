@@ -707,3 +707,32 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
   .day-overview-list button { grid-template-columns: auto minmax(0, 1fr); }
   .day-overview-list button > .task-status { grid-column: 2; justify-self: start; }
 }
+
+/* ---- Developer specification (FINAL v2): workbook fields and the sign-off log --------- */
+
+.spec-section .form-grid-2 + .form-field,
+.spec-section .form-field + .form-field { margin-top: var(--space-4); }
+.spec-choices { border: 0; margin: 0; min-width: 0; padding: 0; }
+.spec-choices legend { margin-bottom: var(--space-2); padding: 0; }
+.spec-choice-list { display: grid; gap: var(--space-2) var(--space-4); grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.spec-choice { align-items: flex-start; display: flex; gap: var(--space-2); min-height: 44px; }
+.spec-choice input { flex: none; height: 20px; margin-top: 2px; width: 20px; }
+.spec-other { margin-top: var(--space-3); }
+.spec-prompts { color: var(--muted); font-size: var(--text-sm); margin: var(--space-2) 0 0; padding-left: var(--space-5); }
+
+.signoff-state { display: grid; gap: var(--space-3) var(--space-5); grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); margin: 0 0 var(--space-3); }
+.signoff-state dt { color: var(--muted); font-size: var(--text-sm); }
+.signoff-state dd { font-weight: 600; margin: 0; }
+.signoff-history { border-left: 2px solid var(--border); display: grid; gap: var(--space-3); list-style: none; margin: var(--space-4) 0; padding: 0 0 0 var(--space-4); }
+.signoff-history p { margin: var(--space-1) 0 0; }
+.signoff-meta { color: var(--muted); font-size: var(--text-sm); }
+.signoff-signature { background: var(--surface, #fff); border: 1px solid var(--border); border-radius: var(--radius-sm); display: block; margin-top: var(--space-2); max-height: 72px; max-width: 220px; }
+.signoff-action { border-top: 1px solid var(--border); display: grid; gap: var(--space-4); margin-top: var(--space-4); padding-top: var(--space-4); }
+.workforce-row-spec { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.workforce-row-spec select { min-height: 44px; min-width: 0; }
+.record-spec-facts { display: grid; gap: var(--space-2) var(--space-4); grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); margin: var(--space-3) 0; }
+.record-spec-facts dt { color: var(--muted); font-size: var(--text-sm); }
+.record-spec-facts dd { margin: 0; overflow-wrap: anywhere; }
+.media-detail-spec { display: grid; gap: var(--space-3); justify-items: start; }
+.media-detail-spec .spec-section { width: 100%; }
+.works-activity-record { display: flex; justify-content: flex-end; margin-bottom: var(--space-3); }

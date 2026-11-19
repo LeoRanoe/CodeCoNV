@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { fillSpecFields } from "./spec-fill";
 
 /**
  * QA sweep H1. A contractor has no right to create a day report, yet every save first asked
@@ -79,6 +80,7 @@ test("a contractor submits an RFI and sees it in the register", async ({ page },
   await form.locator(".signature-field").getByRole("button", { name: "Sign now" }).click();
   await drawSignature(page);
 
+  await fillSpecFields(page.locator(".record-form-shell").first());
   const create = page.getByRole("button", { name: "Create controlled document" });
   await expect(create).toBeEnabled();
   await create.click();

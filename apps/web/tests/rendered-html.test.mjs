@@ -2077,8 +2077,9 @@ test("processes the annotated screens of 4 August: ordered photos, a named pin, 
   // "Required follow-up" was struck off the NCR form itself on 9 August — what has to
   // happen is the engineer's recommended action, and what will happen is the
   // contractor's proposal. The two lists at the head of that form replaced it.
-  assert.match(operations, /text\("Category", "Categorie"\)/);
-  assert.match(operations, /text\("Type", "Type"\)/);
+  // Since the developer specification (FINAL v2) the head of that form is the workbook's
+  // NCR type → category and the work discipline, rendered from lib/forms/spec-forms.ts.
+  assert.match(operations, /<SpecFields form="ncr" only=\{\["ncr_type", "ncr_category", "discipline"\]\}/);
   assert.doesNotMatch(operations, /Different impact or action|Andere impact of actie/);
   // The issue form is signed too: the client wrote "signature" beside it.
   assert.match(operations, /Sign as the supervisor who reports this issue|Ondertekenen als supervisor die dit issue meldt/);
@@ -3038,8 +3039,7 @@ test("finishes the NCR form the way the client marked up its three sheets", asyn
   assert.ok(ncrFormStart > 0 && ncrForm.length > 1000, "the NCR entry form should be findable in the workspace");
   assert.doesNotMatch(ncrForm, /text\("Required follow-up", "Vereiste opvolging"\)/);
   assert.match(workspace, /text\("Required follow-up", "Vereiste opvolging"\)/);
-  assert.match(ncrForm, /text\("Category", "Categorie"\)/);
-  assert.match(ncrForm, /text\("Type", "Type"\)/);
+  assert.match(ncrForm, /<SpecFields form="ncr" only=\{\["ncr_type", "ncr_category", "discipline"\]\}/);
 
   // Name and position under every signature line.
   assert.match(workspace, /findingForm\.signedPosition/);
@@ -3608,6 +3608,8 @@ test("retains historical client form-feedback fixes without losing underlying wo
   assert.doesNotMatch(home, /id: "delays",/);
   assert.match(home, /id: "delay-report",/);
   assert.match(home, /openDailyWork\("works_ongoing"\)/);
+  // The specification's per-activity records (WO / WC) open from the Works page itself.
+  assert.match(workspace, /registerType: dailyWorkView === "works_completed" \? "works_completed" : "works_ongoing"/);
   assert.match(home, /"works_ongoing" \| "works_completed" \| "delays"/);
 
   // The controlled document starts with title and description, not duplicate read-only dates.

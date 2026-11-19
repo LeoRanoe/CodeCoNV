@@ -1,5 +1,6 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { expect, type Page, test } from "@playwright/test";
+import { fillSpecFields } from "./spec-fill";
 
 /**
  * Client, 19-11-2026: "the user must be able to export their own report of everything — all
@@ -54,6 +55,7 @@ test("the day overview exports every Workspace form of the day as PDF and Word",
   await form.getByLabel("Title / reference").fill(title);
   await form.locator("#register-unit-0").selectOption("m³");
   await form.getByLabel("Quantity").fill("12");
+  await fillSpecFields(page.locator(".record-form-shell").first());
   await page.getByRole("button", { name: "Save register item" }).click();
   await expect(page.getByText(/saved/i).first()).toBeVisible();
 

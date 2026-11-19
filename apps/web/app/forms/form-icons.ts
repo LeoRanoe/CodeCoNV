@@ -66,6 +66,8 @@ const registerIcons: Record<string, LucideIcon> = {
   lessons_learned: formIcons.lessons_learned,
   agreement: formIcons.agreement,
   delay_report: formIcons.delay_report,
+  works_ongoing: formIcons.works_ongoing,
+  works_completed: formIcons.works_completed,
   delay: formIcons.delays,
   equipment: Gauge,
   test: Ruler,

@@ -1,3 +1,4 @@
+import { specFacts, specForms, type SpecFormKey, type SpecValues } from "../forms/spec-forms.ts";
 /**
  * The day report the user exports from Reports · Day overview. It is built from exactly the
  * records the screen shows for that day, so the file and the screen can never disagree: every
@@ -150,6 +151,10 @@ const signature = (label: string, name: unknown, signedAt: unknown, image: unkno
   return { label, name: written, signedAt: momentOf(clean(signedAt)), image: ink };
 };
 
+/** The developer specification's own fields of a record, in the workbook's order. */
+const specFactsOf = (form: SpecFormKey, spec: unknown, language: "en" | "nl"): Array<[string, string]> =>
+  spec && typeof spec === "object" ? specFacts(form, spec as SpecValues, language) : [];
+
 const facts = (pairs: Array<[string, unknown]>): Array<[string, string]> =>
   pairs.map(([label, value]) => [label, humanize(value)] as [string, string]).filter(([, value]) => Boolean(value));
 
@@ -169,6 +174,7 @@ export type DayExportInput = {
 
 export function buildDayExport(day: DayExportInput, context: DayExportContext): DayExportDocument {
   const { text, buildingNames, momentOf, timeOf } = context;
+  const language: "en" | "nl" = text("en", "nl") === "nl" ? "nl" : "en";
   const str = (value: unknown) => clean(value);
   const ids = (row: Row) => (Array.isArray(row.building_ids) ? row.building_ids as string[] : undefined);
 
@@ -217,7 +223,7 @@ export function buildDayExport(day: DayExportInput, context: DayExportContext): 
         [text("Escalation required", "Escalatie nodig"), issue.escalation_required ? text("Yes", "Ja") : ""],
         [text("Corrective action proposed", "Voorgestelde correctie"), row.proposed_correction],
         [text("Remarks", "Opmerkingen"), issue.remarks],
-      ]),
+      ]).concat(specFactsOf(ncr ? "ncr" : "issue", issue.spec, language)),
       signatures: [
         signature(ncr ? text("Engineer (issued by)", "Ingenieur (uitgegeven door)") : text("Supervisor", "Supervisor"), issue.signed_by, issue.signed_at, issue.signature_image, momentOf),
         signature(text("Contractor", "Aannemer"), issue.contractor_signed_by, issue.contractor_signed_at, issue.contractor_signature_image, momentOf),
@@ -247,7 +253,7 @@ export function buildDayExport(day: DayExportInput, context: DayExportContext): 
         [text("Due", "Deadline"), str(row.due_at).slice(0, 10)],
         [text("Corrective action required", "Vereiste correctieve actie"), row.corrective_action],
         [text("Notes", "Notities"), row.notes],
-      ]),
+      ]).concat(specFactsOf(row.event_type === "incident" || row.event_type === "near_miss" ? "hse_incident" : "hse", row.spec, language)),
       signatures: confidential ? [] : [
         signature(text("Supervisor", "Supervisor"), row.signed_by, row.signed_at, row.signature_image, momentOf),
         signature(text("Contractor", "Aannemer"), row.contractor_signed_by, row.contractor_signed_at, row.contractor_signature_image, momentOf),
@@ -283,7 +289,7 @@ export function buildDayExport(day: DayExportInput, context: DayExportContext): 
         [text("Due", "Deadline"), str(row.due_at).slice(0, 10)],
         [text("Quantities", "Hoeveelheden"), lines],
         ...registerDetailLabels.map(([key, en, nl]): [string, unknown] => [text(en, nl), details[key]]),
-      ]),
+      ]).concat(str(row.register_type) in specForms ? specFactsOf(str(row.register_type) as SpecFormKey, details.spec, language) : []),
       signatures: [
         signature(text("Signed by", "Ondertekend door"), row.signed_by ?? details.signed_by, row.signed_at ?? details.signed_at, row.signature_image ?? details.signature_image, momentOf),
         signature(text("Supervision", "Supervisie"), details.supervision_signed_by, details.supervision_signed_at, details.supervision_signature_image, momentOf),
@@ -303,7 +309,9 @@ export function buildDayExport(day: DayExportInput, context: DayExportContext): 
   }
 
   const registerOrder = ["delivery", "technical_instruction", "change_order", "delay_report", "lessons_learned", "agreement"];
-  const otherTypes = Object.keys(day.registers).filter((type) => !registerOrder.includes(type) && day.registers[type].length);
+  const worksTypes = ["works_ongoing", "works_completed"];
+  const otherTypes = Object.keys(day.registers).filter((type) => !registerOrder.includes(type) && !worksTypes.includes(type) && day.registers[type].length);
+  const worksRecords = (type: string) => day.registers[type] ?? [];
   const sections: DayExportSection[] = [
     {
       key: "workforce",
@@ -315,8 +323,8 @@ export function buildDayExport(day: DayExportInput, context: DayExportContext): 
       table: groups.size ? { columns: [text("Organisation · trade · building", "Organisatie · discipline · gebouw"), text("People", "Personen")], rows: [...groups.entries()].map(([label, count]) => [label, String(count)]) } : undefined,
       items: [],
     },
-    { key: "works_ongoing", title: text("Works ongoing", "Werkzaamheden gaande"), count: day.worksOngoing.length, items: day.worksOngoing.map((row) => workItem(row, "ongoing")) },
-    { key: "works_completed", title: text("Works completed", "Werkzaamheden afgerond"), count: day.worksCompleted.length, items: day.worksCompleted.map((row) => workItem(row, "completed")) },
+    { key: "works_ongoing", title: text("Works ongoing", "Werkzaamheden gaande"), count: day.worksOngoing.length + worksRecords("works_ongoing").length, items: [...worksRecords("works_ongoing").map(registerItem), ...day.worksOngoing.map((row) => workItem(row, "ongoing"))] },
+    { key: "works_completed", title: text("Works completed", "Werkzaamheden afgerond"), count: day.worksCompleted.length + worksRecords("works_completed").length, items: [...worksRecords("works_completed").map(registerItem), ...day.worksCompleted.map((row) => workItem(row, "completed"))] },
     { key: "delays", title: text("Delays", "Vertragingen"), count: day.delays.length, items: day.delays.map((row) => workItem(row, "delay")) },
     { key: "issues", title: text("Issues", "Issues"), count: day.issues.length, items: day.issues.map((row) => findingItem(row, false)) },
     { key: "ncr", title: "NCR", count: day.ncrs.length, items: day.ncrs.map((row) => findingItem(row, true)) },
