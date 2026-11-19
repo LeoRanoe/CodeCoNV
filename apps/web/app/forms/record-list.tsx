@@ -2,6 +2,9 @@
 
 import { Edit3, Eye, Undo2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
+
+const subscribeToNothing = () => () => {};
 import { recordAnchorId, useRecordFocus } from "@/lib/navigation/record-focus";
 import { isPendingRecordId } from "@/lib/offline/record-queue";
 import { pendingStatus } from "@/lib/offline/pending-records";
@@ -63,4 +66,41 @@ export function RecordList({
       </article>
     );
   })}</div>;
+}
+
+/**
+ * The records already saved in a module. While the entry form is open they fold shut under
+ * one bar: the client crossed the long lists out under every form, where they pushed the
+ * save button off the screen. Closed form, open list — every module behaves the same way.
+ */
+export function SavedRecordsFold({ formOpen, count, children, storageKey = "" }: { formOpen: boolean; count: number; children: ReactNode; storageKey?: string }) {
+  const { text } = useLanguage();
+  // Whoever opens the bar keeps it open in that module on this device: a supervisor who
+  // verifies records does not have to unfold them every time.
+  const key = storageKey ? `codeco-saved-records-open:${storageKey}` : "";
+  const stored = useSyncExternalStore(
+    subscribeToNothing,
+    () => { if (!key) return false; try { return window.localStorage.getItem(key) === "1"; } catch { return false; } },
+    () => false,
+  );
+  const [chosen, setOpen] = useState<boolean | null>(null);
+  const open = chosen ?? stored;
+  if (!formOpen) return <>{children}</>;
+  return (
+    <details
+      className="saved-records-fold"
+      open={open}
+      onToggle={(event) => {
+        const next = event.currentTarget.open;
+        setOpen(next);
+        if (key) { try { window.localStorage.setItem(key, next ? "1" : "0"); } catch { /* storage unavailable */ } }
+      }}
+    >
+      <summary>
+        <span>{text("Saved records", "Opgeslagen registraties")}</span>
+        <b>{count}</b>
+      </summary>
+      <div className="saved-records-fold-body">{children}</div>
+    </details>
+  );
 }

@@ -19,11 +19,11 @@ test("a delay report names every field it still needs, and the list agrees with 
   assert.equal(delayReportReady(filled), true);
 });
 
-test("a change order asks for the scope area, not just 'details'", () => {
+test("a change order asks for the type and scope area; the reason and details are in the formal request", () => {
   assert.deepEqual(changeOrderMissing(emptyChangeOrder).map((item) => item.nl), [
-    "soort wijzigingsopdracht", "reden", "scope-gebied", "omschrijving van de scope",
+    "soort wijzigingsopdracht", "scope-gebied",
   ]);
-  const withSchedule = { ...emptyChangeOrder, changeOrderType: "a", reason: "b", scopeAreas: ["c"], scopeDetails: "details", affectsSchedule: true };
+  const withSchedule = { ...emptyChangeOrder, changeOrderType: "a", scopeAreas: ["c"], affectsSchedule: true };
   assert.deepEqual(changeOrderMissing(withSchedule).map((item) => item.nl), ["oorspronkelijke einddatum"]);
   assert.equal(changeOrderReady({ ...withSchedule, originalFinishDate: "2026-10-01" }), true);
 });

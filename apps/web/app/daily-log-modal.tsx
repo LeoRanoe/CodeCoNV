@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { BuildingMultiPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { RecordFormSection, RecordFormShell } from "@/app/forms/record-form-shell";
+import { formIcons } from "@/app/forms/form-icons";
 import { PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
 import { SketchPad } from "@/app/sketch-pad";
@@ -280,8 +281,8 @@ export function DailyLogForm({
   // was pressed for; when it does not, the day's own blocks are required too.
   // Works ongoing is one input box plus the buildings it happens in (client, 30-10-2026): it
   // never asks for the rest of the day, not even on the first entry of the day.
-  // Works completed is likewise what was finished today, the buildings and the plan for tomorrow
-  // (client, 01-11-2026): the running work belongs to Works ongoing.
+  // Works completed is likewise what was finished today and the buildings (client, 01-11-2026
+  // and 19-11-2026): the running work belongs to Works ongoing, the plan for tomorrow is gone.
   const dayContextRequired = !(delayOnly || workOnly) || (!initialCloseout && !workOnly);
   // Works ongoing and works completed are the same form; each tile still has to end up
   // with the field it was opened for filled in.
@@ -296,7 +297,7 @@ export function DailyLogForm({
   if (summaryRequired && ongoingOnly && answers.daySummary.length < 3) problems.push(text("Describe what is in progress and where.", "Beschrijf wat er gaande is en waar."));
   else if (summaryRequired && !ongoingOnly && answers.daySummary.length < 20) problems.push(text("Describe the construction activity and location in at least one full sentence.", "Beschrijf de bouwactiviteit en locatie in minimaal één volledige zin."));
   if (performedRequired && answers.workPerformed.length < (completedOnly ? 3 : 10)) problems.push(text("Describe the work completed today.", "Beschrijf het werk dat vandaag is afgerond."));
-  if ((dayContextRequired || completedOnly) && answers.tomorrowPlan.length < 3) problems.push(text("Enter the plan for tomorrow.", "Vul de planning voor morgen in."));
+  if (dayContextRequired && answers.tomorrowPlan.length < 3) problems.push(text("Enter the plan for tomorrow.", "Vul de planning voor morgen in."));
   if (answers.delayCause !== "none" && answers.delayHours <= 0) problems.push(text("Enter the hours lost to the delay.", "Vul de uren verlies door de vertraging in."));
   if (answers.delayCause !== "none" && (answers.delayReason?.length ?? 0) < 10) problems.push(text("Describe what actually caused the delay in at least one sentence.", "Beschrijf in minimaal één zin wat de vertraging daadwerkelijk heeft veroorzaakt."));
   if (answers.delayCause !== "none" && (answers.contractorCompany?.length ?? 0) < 2) problems.push(text("Enter the responsible contractor company.", "Vul het verantwoordelijke aannemersbedrijf in."));
@@ -632,7 +633,8 @@ export function DailyLogForm({
       </>
     ),
   };
-  // Works completed: what was finished, where, and what follows tomorrow. Nothing else.
+  // Works completed: what was finished and where, with its photos. The client struck the
+  // plan for tomorrow off this form (19-11-2026).
   const completedBlocks = [
     {
       id: "completed",
@@ -651,17 +653,6 @@ export function DailyLogForm({
         </>
       ),
     },
-    {
-      id: "tomorrow",
-      title: text("Plan for tomorrow", "Planning voor morgen"),
-      content: (
-        <label className="form-field">
-          <span>{text("What happens tomorrow", "Wat er morgen gebeurt")}</span>
-          <textarea rows={3} value={log.tomorrowPlan} onChange={(event) => setLog({ ...log, tomorrowPlan: event.target.value })} />
-          <DictateButton onText={(transcript) => setLog((current) => ({ ...current, tomorrowPlan: appendDictation(current.tomorrowPlan, transcript) }))} />
-        </label>
-      ),
-    },
     ...blocks.filter((block) => block.id === "photos"),
   ];
   const ordered = ongoingOnly
@@ -674,6 +665,7 @@ export function DailyLogForm({
   return (
     <RecordFormShell
       code={`${text("Day log", "Daglog")} · ${todayLabel}`}
+      icon={delayOnly ? formIcons.delays : ongoingOnly ? formIcons.works_ongoing : completedOnly ? formIcons.works_completed : undefined}
       title={delayOnly
         ? text("Record a delay", "Vertraging vastleggen")
         : ongoingOnly ? text("Record works ongoing", "Werkzaamheden gaande vastleggen")

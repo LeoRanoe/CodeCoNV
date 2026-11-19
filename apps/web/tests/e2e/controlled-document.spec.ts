@@ -1,3 +1,4 @@
+import { openSavedRecords } from "./section-nav";
 import { expect, type Page, test } from "@playwright/test";
 
 /**
@@ -50,14 +51,15 @@ test("an RFI is recorded, answered by a named respondent and keeps its response"
   // The button opens the submission form it names, not the default register.
   await expect(page.getByRole("heading", { name: "RFI", exact: true })).toBeVisible();
   const controlledForm = page.locator(".controlled-document-form");
-  // The primary fields come before context and optional metadata, not underneath them.
+  // "Header always on top" (client, 19-11-2026): the head of the form comes first, the
+  // title and the request directly under it.
   await expect(controlledForm.locator(".controlled-document-primary input")).toBeVisible();
-  const titleAboveContext = await page.evaluate(() => {
+  const contextAboveTitle = await page.evaluate(() => {
     const title = document.querySelector(".controlled-document-primary");
     const context = document.querySelector(".controlled-document-context");
-    return Boolean(title && context && (title.compareDocumentPosition(context) & Node.DOCUMENT_POSITION_FOLLOWING));
+    return Boolean(title && context && (context.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING));
   });
-  expect(titleAboveContext).toBe(true);
+  expect(contextAboveTitle).toBe(true);
   await expect(controlledForm.locator(".controlled-document-dates")).toHaveCount(0);
   await field(page, "Title / reference").fill(title);
   await field(page, "Formal request / instruction / observation").fill("Please confirm the size and position of the slab penetrations on level 2 before the pour.");
@@ -90,6 +92,7 @@ test("an RFI is recorded, answered by a named respondent and keeps its response"
   // Contractor submissions are listed under Management, not in the supervision workspace.
   await page.locator(".sidebar").getByRole("button", { name: "Management", exact: true }).click();
   await page.getByRole("button", { name: "Record external submission" }).click();
+  await openSavedRecords(page);
   const reloaded = page.locator(".controlled-document-card").filter({ hasText: title }).first();
   await expect(reloaded).toBeVisible({ timeout: 30_000 });
   await expect(reloaded).toContainText("Approved with comments");

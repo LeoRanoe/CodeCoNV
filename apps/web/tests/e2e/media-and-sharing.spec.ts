@@ -1,3 +1,4 @@
+import { openSavedRecords } from "./section-nav";
 import { expect, type Browser, type Page, test } from "@playwright/test";
 import { basename, extname } from "node:path";
 
@@ -48,6 +49,7 @@ async function openVisualEvidence(page: Page) {
   await openWorkspaceHome(page);
   // The photo and 360° tools open from the module they are used in.
   await page.locator('[data-workspace-destination="issues"]').click();
+  await openSavedRecords(page);
   await page.getByRole("button", { name: "Open photo", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Visual evidence", exact: true })).toBeVisible();
 }
@@ -71,6 +73,7 @@ async function createStackedFinding(page: Page, title: string) {
   await expect(page.locator(".operation-alert.success")).toContainText(/Issue|saved|secured/i, { timeout: 90_000 });
   await openWorkspaceHome(page);
   await page.locator('[data-workspace-destination="issues"]').click();
+  await openSavedRecords(page);
   await expect(page.locator(".finding-card").filter({ hasText: title })).toBeVisible({ timeout: 60_000 });
   const queueState = await page.evaluate(async () => new Promise<Array<{ fileName: string; lastError: string | null }>>((resolve, reject) => {
     const open = indexedDB.open("codeco-field-v1");
@@ -155,6 +158,7 @@ async function uploadDrawingAndCreatePin(page: Page, findingTitle: string) {
 
   await openWorkspaceHome(page);
   await page.locator('[data-workspace-destination="issues"]').click();
+  await openSavedRecords(page);
   const finding = page.locator(".finding-card").filter({ hasText: findingTitle });
   await finding.getByRole("button", { name: "Place on drawing" }).click();
   await expect(page.getByRole("heading", { name: "Pins that open the exact project record" })).toBeVisible();
@@ -202,6 +206,7 @@ async function uploadDrawingAndCreatePin(page: Page, findingTitle: string) {
   await page.locator(".sidebar").getByRole("button", { name: "Workspace", exact: true }).click();
   await openWorkspaceHome(page);
   await page.locator('[data-workspace-destination="issues"]').click();
+  await openSavedRecords(page);
   await page.locator(".finding-card").filter({ hasText: findingTitle }).getByRole("button", { name: "View on drawing" }).click();
   await expect(page.locator("button.drawing-pin").first()).toBeVisible({ timeout: 60_000 });
 
@@ -269,6 +274,7 @@ async function uploadDrawingAndCreatePin(page: Page, findingTitle: string) {
 async function testExternalShareAndRevocation(page: Page, browser: Browser, findingTitle: string) {
   await openWorkspaceHome(page);
   await page.locator('[data-workspace-destination="issues"]').click();
+  await openSavedRecords(page);
   const finding = page.locator(".finding-card").filter({ hasText: findingTitle });
   await expect(finding).toBeVisible();
   await finding.getByRole("button", { name: /Send to external party/ }).click();
@@ -361,6 +367,7 @@ test("a placed pin is confirmed on screen, its record opens from the pin, and a 
 
   await openWorkspaceHome(page);
   await page.locator('[data-workspace-destination="issues"]').click();
+  await openSavedRecords(page);
   await page.locator(".finding-card").filter({ hasText: findingTitle }).getByRole("button", { name: "Place on drawing" }).click();
   await page.locator(".drawing-file-list button").first().click();
   const canvas = page.getByRole("application", { name: "Interactive drawing. Pan, zoom or place a linked pin." });

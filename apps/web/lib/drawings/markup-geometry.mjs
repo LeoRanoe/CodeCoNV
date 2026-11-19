@@ -113,3 +113,49 @@ export function textBoxSize(content, fontSize = 15) {
   const width = Math.min(420, Math.max(60, text.length * fontSize * 0.58 + 16));
   return { width: round(width), height: round(fontSize * 1.9) };
 }
+
+function distanceToSegment(point, from, to) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (!lengthSquared) return Math.hypot(point.x - from.x, point.y - from.y);
+  const along = Math.max(0, Math.min(1, ((point.x - from.x) * dx + (point.y - from.y) * dy) / lengthSquared));
+  return Math.hypot(point.x - (from.x + along * dx), point.y - (from.y + along * dy));
+}
+
+/**
+ * The markup under a tap, for the eraser: the shape whose line (or text box) passes closest
+ * to the tapped spot, within `tolerance` page pixels. Null when the tap hit empty drawing.
+ */
+export function markupAtPoint(markups, point, size, tolerance = 24) {
+  const tap = toPagePoint(point, size);
+  let best = null;
+  let bestDistance = Infinity;
+  for (const markup of markups ?? []) {
+    const geometry = markup?.geometry ?? {};
+    let distance = Infinity;
+    if (markup.markup_type === "text" && geometry.position) {
+      const at = toPagePoint(geometry.position, size);
+      const box = textBoxSize(markup.text_content);
+      const dx = Math.max(at.x - tap.x, 0, tap.x - (at.x + box.width));
+      const dy = Math.max(at.y - box.height - tap.y, 0, tap.y - at.y);
+      distance = Math.hypot(dx, dy);
+    } else if (markup.markup_type === "arrow" && geometry.start && geometry.end) {
+      distance = distanceToSegment(tap, toPagePoint(geometry.start, size), toPagePoint(geometry.end, size));
+    } else {
+      const points = (geometry.points ?? []).map((item) => toPagePoint(item, size));
+      for (let index = 1; index < points.length; index += 1) {
+        distance = Math.min(distance, distanceToSegment(tap, points[index - 1], points[index]));
+      }
+      // A revision cloud is drawn closed, so its last side counts too.
+      if (markup.markup_type === "cloud" && points.length > 2) {
+        distance = Math.min(distance, distanceToSegment(tap, points[points.length - 1], points[0]));
+      }
+    }
+    if (distance <= tolerance && distance < bestDistance) {
+      best = markup;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}

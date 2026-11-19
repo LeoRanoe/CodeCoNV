@@ -150,6 +150,15 @@ export function buildControlledDocumentDocx(entry: RegisterEntry, logoBytes: Arr
             ["Position / company", [signatures.issuer.position, signatures.issuer.company].filter(Boolean).join(" · ")],
             ["Date signed", signatures.issuer.signed ? signatures.issuer.signedAt : "Not signed yet"],
           ]),
+          // The contractor signed on site, next to the issuer (a change order prints its own box).
+          ...(type !== "change_order" && signatures.contractor.ink ? [
+            sectionHeading("Signed on site · contractor"),
+            signatureBlock([
+              ["Name", signatures.contractor.name, signatures.contractor.ink],
+              ["Position", signatures.contractor.position],
+              ["Date signed", signatures.contractor.signedAt],
+            ]),
+          ] : []),
           ...(type === "change_order" && !signatures.recipient.decision ? [] : [
             sectionHeading(type === "technical_instruction" || type === "change_order" ? "Recipient acknowledgement / closeout" : "Engineer / client response"),
             labelValue("Decision / status", humanizeToken(signatures.recipient.decision || "Pending formal response")),

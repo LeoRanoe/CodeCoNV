@@ -107,6 +107,13 @@ export type Finding = {
      * The third list on that sheet, "Source", was struck through by the client.
      */
     ncr_category?: string;
+    /** Client, contractor or supervision: who has to act on it. */
+    responsible_role?: string | null;
+    /** The contractor's representative, signed on the form next to the supervisor. */
+    contractor_signed_by?: string;
+    contractor_signed_at?: string | null;
+    contractor_signature_image?: string | null;
+    contractor_signed_position?: string;
     ncr_work_type?: string;
     recommended_action?: "rework" | "repair" | "alternative";
     recommended_action_detail?: string;
@@ -197,6 +204,12 @@ export type HseEvent = {
   signed_by?: string | null;
   signed_at?: string | null;
   signature_image?: string | null;
+  /** Client, contractor or supervision: who has to act on it. */
+  responsible_role?: string | null;
+  contractor_signed_by?: string | null;
+  contractor_signed_at?: string | null;
+  contractor_signature_image?: string | null;
+  contractor_signed_position?: string | null;
 };
 
 export type RegisterEntry = {
@@ -658,7 +671,7 @@ export async function loadProjectOperations(
     pageAll((from, to) => client.from("inspections").select("id,building_id,location_node_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at,signed_by,signed_at,signature_image").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 10000),
     pageAll((from, to) => client.from("findings").select("id,building_id,location_node_id,finding_number,finding_type,title,description,severity,priority,status,responsible_party_id,assigned_user_id,due_at,cause,proposed_correction,final_measure,issue_management,verified_by,verified_at,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 20000),
     pageAll((from, to) => client.from("finding_progress_updates").select("id,finding_id,progress_percent,disposition,note,inspected_at,created_at").eq("project_id", projectId).order("inspected_at", { ascending: false }).order("id").range(from, to), 20000),
-    pageAll((from, to) => client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,hse_category,title,description,severity,status,confidential,immediate_measure,occurred_at,issue_type,issue_category,immediate_actions,immediate_action_other,responsible_person,responsible_user_id,due_at,priority,root_cause,corrective_action,notes,latitude,longitude,location_label,signed_by,signed_at,signature_image").eq("project_id", projectId).order("occurred_at", { ascending: false }).order("id").range(from, to), 10000),
+    pageAll((from, to) => client.from("hse_events").select(`${hseSignedColumns},${hseExtraColumns}`).eq("project_id", projectId).order("occurred_at", { ascending: false }).order("id").range(from, to), 10000),
     pageAll((from, to) => client.from("project_register_entries").select("id,building_id,location_node_id,register_type,entry_number,title,status,occurred_at,due_at,details,signed_by,signed_at,signature_image,version").eq("project_id", projectId).order("occurred_at", { ascending: false }).order("id").range(from, to), 20000),
     pageAll((from, to) => client.from("boq_progress_updates").select("id,register_entry_id,building_id,progress_percent,quantity_completed,note,recorded_at,created_at").eq("project_id", projectId).order("recorded_at", { ascending: false }).order("id").range(from, to), 20000),
     pageAll((from, to) => client.from("files").select("id,building_id,folder_id,original_name,mime_type,size_bytes,category,status,document_code,created_at").eq("project_id", projectId).neq("status", "deleted").order("created_at", { ascending: false }).order("id").range(from, to), 20000),
@@ -703,9 +716,13 @@ export async function loadProjectOperations(
     : inspectionResult;
   // The twelve boxes of the client's HSE screen are newer still, so the load steps back
   // one column set at a time instead of failing on the first database that is behind.
-  const hseWithoutSignatureResult = schemaFeatureMissing(hseResult.error, ["signed_by", "signed_at", "signature_image"])
-    ? await client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,hse_category,title,description,severity,status,confidential,immediate_measure,occurred_at,issue_type,issue_category,immediate_actions,immediate_action_other,responsible_person,responsible_user_id,due_at,priority,root_cause,corrective_action,notes,latitude,longitude,location_label").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100)
+  // The responsible party and the contractor signature (19-11-2026) are the newest columns.
+  const hseWithoutExtraResult = schemaFeatureMissing(hseResult.error, hseExtraColumns.split(","))
+    ? await pageAll((from, to) => client.from("hse_events").select(hseSignedColumns).eq("project_id", projectId).order("occurred_at", { ascending: false }).order("id").range(from, to), 10000)
     : hseResult;
+  const hseWithoutSignatureResult = schemaFeatureMissing(hseWithoutExtraResult.error, ["signed_by", "signed_at", "signature_image"])
+    ? await client.from("hse_events").select("id,building_id,location_node_id,event_number,event_type,hse_category,title,description,severity,status,confidential,immediate_measure,occurred_at,issue_type,issue_category,immediate_actions,immediate_action_other,responsible_person,responsible_user_id,due_at,priority,root_cause,corrective_action,notes,latitude,longitude,location_label").eq("project_id", projectId).order("occurred_at", { ascending: false }).limit(100)
+    : hseWithoutExtraResult;
   const hseWithoutIssueFormResult = schemaFeatureMissing(hseWithoutSignatureResult.error, [
     "issue_type", "issue_category", "immediate_actions", "immediate_action_other",
     "responsible_person", "responsible_user_id", "due_at", "priority", "root_cause",
@@ -1182,6 +1199,12 @@ export async function createFinding(client: SupabaseClient, input: {
   signatureImage?: string | null;
   locationNodeId?: string;
   idempotencyKey?: string;
+  /**
+   * Boxes added to the issue and NCR forms after the RPC was written: who is responsible
+   * (client, contractor or supervision) and the contractor's own signature. They live in
+   * the same issue box, so no database change is needed to keep them.
+   */
+  extraIssueManagement?: Record<string, unknown>;
 }) {
   const reportId = await ensureProjectDayReport(client, input.projectId, input.reportId);
   const result = await client.rpc("create_project_finding", {
@@ -1227,6 +1250,7 @@ export async function createFinding(client: SupabaseClient, input: {
       signed_position: input.signedPosition?.trim() || "",
       signature_image: input.signatureImage || null,
       location_node_id: input.locationNodeId || null,
+      ...(input.extraIssueManagement ?? {}),
     },
   });
   fail(result.error);
@@ -1323,7 +1347,37 @@ export async function transitionFinding(
   return result.data as Finding;
 }
 
-export async function createHseEvent(client: SupabaseClient, input: { projectId: string; buildingId: string; buildingIds?: string[]; locationNodeId?: string; reportId?: string | null; type: string; title: string; description: string; severity: string; immediateMeasure: string; confidential: boolean; category?: string; issueType?: string; issueCategory?: string; immediateActions?: string[]; immediateActionOther?: string; responsiblePerson?: string; responsibleUserId?: string; dueAt?: string | null; rootCause?: string; correctiveAction?: string; notes?: string; latitude?: number | null; longitude?: number | null; locationLabel?: string; signedBy?: string; signedAt?: string; signatureImage?: string | null; idempotencyKey?: string }) {
+/**
+ * The boxes added to the HSE screen on 19-11-2026: who is responsible (client, contractor or
+ * supervision) and the contractor's own signature. They are written after the record itself,
+ * so a database that has not received the columns yet still stores the HSE record.
+ */
+const hseSignedColumns = "id,building_id,location_node_id,event_number,event_type,hse_category,title,description,severity,status,confidential,immediate_measure,occurred_at,issue_type,issue_category,immediate_actions,immediate_action_other,responsible_person,responsible_user_id,due_at,priority,root_cause,corrective_action,notes,latitude,longitude,location_label,signed_by,signed_at,signature_image";
+const hseExtraColumns = "responsible_role,contractor_signed_by,contractor_signed_at,contractor_signature_image,contractor_signed_position";
+
+export type HseExtraFields = {
+  responsible_role?: string | null;
+  contractor_signed_by?: string;
+  contractor_signed_at?: string | null;
+  contractor_signature_image?: string | null;
+  contractor_signed_position?: string;
+};
+
+async function writeHseExtraFields(client: SupabaseClient, eventId: string, extra: HseExtraFields | undefined) {
+  if (!extra) return;
+  const update = Object.fromEntries(Object.entries(extra).filter(([, value]) => value !== undefined)) as HseExtraFields;
+  // Without ink there is no contractor signature to write; a stored one is never cleared here.
+  if (!update.contractor_signature_image) {
+    delete update.contractor_signature_image;
+    delete update.contractor_signed_at;
+    delete update.contractor_signed_by;
+  }
+  if (!Object.keys(update).length) return;
+  const result = await client.from("hse_events").update(update).eq("id", eventId);
+  if (!schemaFeatureMissing(result.error, ["responsible_role", "contractor_signed_by", "contractor_signed_at", "contractor_signature_image", "contractor_signed_position"])) fail(result.error);
+}
+
+export async function createHseEvent(client: SupabaseClient, input: { projectId: string; buildingId: string; buildingIds?: string[]; locationNodeId?: string; reportId?: string | null; type: string; title: string; description: string; severity: string; immediateMeasure: string; confidential: boolean; category?: string; issueType?: string; issueCategory?: string; immediateActions?: string[]; immediateActionOther?: string; responsiblePerson?: string; responsibleUserId?: string; dueAt?: string | null; rootCause?: string; correctiveAction?: string; notes?: string; latitude?: number | null; longitude?: number | null; locationLabel?: string; signedBy?: string; signedAt?: string; signatureImage?: string | null; idempotencyKey?: string; extra?: HseExtraFields }) {
   const reportId = await ensureProjectDayReport(client, input.projectId, input.reportId);
   const occurredAt = new Date().toISOString();
   const idempotencyKey = input.idempotencyKey ?? `hse:${crypto.randomUUID()}`;
@@ -1415,8 +1469,10 @@ export async function createHseEvent(client: SupabaseClient, input: { projectId:
     }).eq("id", created.id);
     if (!schemaFeatureMissing(signatureResult.error, ["signed_by", "signed_at", "signature_image"])) fail(signatureResult.error);
   }
+  await writeHseExtraFields(client, created.id, input.extra);
   return {
     ...created,
+    ...(input.extra ?? {}),
     building_ids: input.buildingIds ?? [input.buildingId],
     signed_by: input.signedBy ?? null,
     signed_at: input.signedAt ?? null,
@@ -1543,6 +1599,7 @@ export async function updateHseRecord(client: SupabaseClient, input: {
   longitude?: number | null;
   locationLabel?: string;
   signature?: { name: string; signedAt: string; image: string } | null;
+  extra?: HseExtraFields;
 }) {
   const modernUpdate = {
     building_id: input.buildingId,
@@ -1578,8 +1635,9 @@ export async function updateHseRecord(client: SupabaseClient, input: {
     result = await client.from("hse_events").update(withoutSignature).eq("id", input.id).select("id,building_id,location_node_id,event_number,event_type,hse_category,title,description,severity,status,confidential,immediate_measure,occurred_at,issue_type,issue_category,immediate_actions,immediate_action_other,responsible_person,responsible_user_id,due_at,priority,root_cause,corrective_action,notes,latitude,longitude,location_label").single();
   }
   fail(result.error);
+  await writeHseExtraFields(client, input.id, input.extra);
   await setRecordBuildings(client, { projectId: input.projectId, recordType: "hse", recordId: input.id, buildingIds: input.buildingIds });
-  return { ...(result.data as HseEvent), building_ids: input.buildingIds };
+  return { ...(result.data as HseEvent), ...(input.extra ?? {}), building_ids: input.buildingIds };
 }
 
 export async function updateRegisterRecord(client: SupabaseClient, input: {

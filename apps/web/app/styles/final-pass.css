@@ -495,3 +495,215 @@
   white-space: nowrap;
   width: 1px;
 }
+
+/* "Kan dit groter worden": marking a photo uses most of the screen, so the spot that is
+   tapped is the spot that was meant. The picture grows with the window, never past it. */
+.modal.photo-markup-modal {
+  width: min(1240px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 24px);
+}
+.modal-backdrop:has(> .photo-markup-modal) { padding: 12px; }
+.photo-markup-stage img { max-height: min(72dvh, 900px); }
+@media (max-width: 640px) {
+  .modal.photo-markup-modal { width: 100%; }
+  .photo-markup-stage img { max-height: 52dvh; }
+}
+
+/* ---- Client feedback 19-11-2026: one layout rule for every form ------------------------ */
+
+/* Long text always stands full width, one box below the other; short choices (lists, dates,
+   names, numbers) may stand in pairs. Before, the same kind of box sat beside its neighbour
+   on one form and below it on the next. */
+.operation-form .form-grid:has(textarea),
+.operation-form .form-grid-2:has(> label > textarea),
+.operation-form .form-grid-2:has(> .form-field > textarea) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* The form's own icon in front of its title, the same one its Workspace tile carries. */
+.record-form-heading-icon {
+  color: var(--muted);
+  display: inline-block;
+  flex: none;
+  margin-right: var(--space-2);
+  vertical-align: -3px;
+}
+h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0; }
+
+/* The signatures close every form: supervision first, the contractor beside it. */
+.record-signatures {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  padding-top: var(--space-4);
+}
+.record-signatures > h3 {
+  color: var(--text);
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  margin: 0;
+}
+.record-signatures-grid {
+  align-items: start;
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.record-signatures-grid > .record-form-field-block { margin: 0; }
+.record-signature-with-position,
+.contractor-signature-field {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+@media (max-width: 1024px) {
+  .record-signatures-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Responsible party, then the name, one below the other. */
+.record-responsible-fields { display: grid; gap: var(--space-3); }
+
+/* The NCR's escalation box lines up with the date beside it. */
+.ncr-escalation-field { align-content: end; min-height: 100%; }
+
+/* Lessons learned: four numbered questions, one below the other. */
+.numbered-question-list { display: grid; gap: var(--space-4); }
+.numbered-question-number {
+  color: var(--muted);
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+  margin-right: var(--space-2);
+  min-width: 1ch;
+}
+
+/* Materials delivery: the unit is a list; "Other" opens a short box under it. */
+.register-unit-field { display: grid; gap: var(--space-2); min-width: 0; }
+.register-unit-field > label { font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+
+/* The saved records fold shut under an open form. */
+.saved-records-fold {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  margin-top: var(--space-4);
+}
+.saved-records-fold > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  font-weight: var(--weight-semibold);
+  gap: var(--space-2);
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 0 var(--space-4);
+}
+.saved-records-fold > summary > b { color: var(--muted); font-variant-numeric: tabular-nums; }
+.saved-records-fold[open] > summary { border-bottom: 1px solid var(--line); }
+.saved-records-fold-body { display: grid; gap: var(--space-3); padding: var(--space-3); }
+
+/* ---- Reports · day overview: every Workspace record of one site day ------------------ */
+.day-overview { display: grid; gap: var(--space-4); }
+.day-overview-header {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-5);
+  justify-content: space-between;
+}
+.day-overview-header h2 { font-size: var(--text-xl); margin: 0; }
+.day-overview-header p { color: var(--muted); margin: var(--space-1) 0 0; }
+.day-overview-day-picker { align-items: center; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.day-overview-day-picker .form-field { min-width: 168px; }
+.day-overview-recent { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.day-overview-recent button {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  min-height: 40px;
+  padding: 0 var(--space-3);
+}
+.day-overview-recent button.active { border-color: var(--signal); color: var(--signal-dark); }
+.day-overview-block {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+}
+.day-overview-block > h3 {
+  align-items: center;
+  display: flex;
+  font-size: var(--text-md);
+  gap: var(--space-2);
+  margin: 0;
+}
+.day-overview-block > h3 > svg { color: var(--muted); flex: none; }
+.day-overview-block > h3 > b { color: var(--muted); font-variant-numeric: tabular-nums; margin-left: auto; }
+.day-overview-workforce p { margin: 0; }
+.day-overview-workforce dl { display: grid; gap: var(--space-1); margin: var(--space-2) 0 0; }
+.day-overview-workforce dl > div { display: flex; gap: var(--space-3); justify-content: space-between; }
+.day-overview-workforce dd { font-variant-numeric: tabular-nums; font-weight: var(--weight-semibold); margin: 0; }
+.day-overview-photos {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.day-overview-photos button {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: var(--space-1);
+  overflow: hidden;
+  padding: 0 0 var(--space-2);
+  text-align: left;
+  width: 100%;
+}
+.day-overview-photos img,
+.day-overview-photo-fallback {
+  aspect-ratio: 4 / 3;
+  background: var(--ink-50);
+  display: grid;
+  object-fit: cover;
+  place-items: center;
+  width: 100%;
+}
+.day-overview-photos button > span:last-child {
+  font-size: var(--text-sm);
+  overflow: hidden;
+  padding: 0 var(--space-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.day-overview-nothing { color: var(--muted); margin: 0; }
+
+.day-overview-list { display: grid; list-style: none; margin: 0; padding: 0; }
+.day-overview-list > li { border-bottom: 1px solid var(--line); }
+.day-overview-list button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 56px;
+  padding: var(--space-2) var(--space-1);
+  text-align: left;
+  width: 100%;
+}
+.day-overview-list button:hover:not(:disabled) { background: var(--ink-025); }
+.day-overview-list button > svg { color: var(--muted); }
+.day-overview-list button > span:nth-child(2) { display: grid; gap: 2px; min-width: 0; }
+.day-overview-list strong { font-weight: var(--weight-semibold); overflow-wrap: anywhere; }
+.day-overview-list small { color: var(--muted); font-size: var(--text-sm); }
+@media (max-width: 640px) {
+  .day-overview-list button { grid-template-columns: auto minmax(0, 1fr); }
+  .day-overview-list button > .task-status { grid-column: 2; justify-self: start; }
+}

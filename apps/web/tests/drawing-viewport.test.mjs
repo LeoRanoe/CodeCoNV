@@ -13,6 +13,7 @@ import {
   arrowHeadPoints,
   arrowLineEnd,
   cloudPath,
+  markupAtPoint,
   polylinePoints,
   textBoxSize,
   toPagePoint,
@@ -104,4 +105,20 @@ test("a text note gets a box that fits its words", () => {
   assert.ok(large.width <= 420);
   assert.ok(small.width >= 60);
   assert.equal(small.height, large.height);
+});
+
+test("the eraser picks the markup under the tap and nothing on empty drawing", () => {
+  const size = { width: 1000, height: 800 };
+  const arrow = { id: "arrow", markup_type: "arrow", geometry: { start: { x: 0.1, y: 0.1 }, end: { x: 0.5, y: 0.1 } } };
+  const cloud = { id: "cloud", markup_type: "cloud", geometry: { points: [{ x: 0.6, y: 0.6 }, { x: 0.8, y: 0.6 }, { x: 0.8, y: 0.8 }] } };
+  const note = { id: "note", markup_type: "text", text_content: "Check", geometry: { position: { x: 0.2, y: 0.5 } } };
+  const markups = [arrow, cloud, note];
+  assert.equal(markupAtPoint(markups, { x: 0.3, y: 0.105 }, size)?.id, "arrow");
+  // Inside the cloud but away from every side is empty drawing.
+  assert.equal(markupAtPoint(markups, { x: 0.74, y: 0.64 }, size), null);
+  // The closing side of the cloud, from the last point back to the first.
+  assert.equal(markupAtPoint(markups, { x: 0.7, y: 0.7 }, size, 5)?.id, "cloud");
+  assert.equal(markupAtPoint(markups, { x: 0.8, y: 0.7 }, size)?.id, "cloud");
+  assert.equal(markupAtPoint(markups, { x: 0.21, y: 0.49 }, size)?.id, "note");
+  assert.equal(markupAtPoint([], { x: 0.5, y: 0.5 }, size), null);
 });

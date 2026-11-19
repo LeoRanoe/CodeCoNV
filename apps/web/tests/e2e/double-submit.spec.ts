@@ -1,3 +1,4 @@
+import { openSavedRecords } from "./section-nav";
 import { expect, type Page, test } from "@playwright/test";
 
 /**
@@ -52,6 +53,7 @@ test("two taps on 'Create controlled document' create one document", async ({ pa
   await expect(page.getByText("Technical instruction (TI) saved.")).toBeVisible();
 
   await page.reload();
+  await openSavedRecords(page);
   await page.locator("main").getByText(title).first().waitFor({ timeout: 20_000 });
   expect(await page.locator("main").getByText(title, { exact: false }).count(), "one document, not two").toBe(1);
 });
