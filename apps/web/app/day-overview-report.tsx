@@ -39,7 +39,7 @@ function DayPhoto({ client, file }: { client: SupabaseClient; file: FileRecord }
 }
 
 /** One line per record; the whole line opens the record itself. */
-type DayRow = { id: string; icon: typeof Users; title: string; meta: string; status: string; tone: string; onOpen?: () => void };
+type DayRow = { id: string; icon: typeof Users; title: string; meta: string; statusLabel: string; tone: string; onOpen?: () => void };
 
 function DayRows({ rows }: { rows: DayRow[] }) {
   return (
@@ -51,7 +51,7 @@ function DayRows({ rows }: { rows: DayRow[] }) {
             <button type="button" onClick={row.onOpen} disabled={!row.onOpen}>
               <Icon size={17} aria-hidden="true" />
               <span><strong>{row.title}</strong>{row.meta ? <small>{row.meta}</small> : null}</span>
-              <span className={`task-status ui-status-badge ${row.tone === "red" ? "ui-status-badge--red" : row.tone === "green" ? "ui-status-badge--green" : ""}`}>{row.status}</span>
+              <span className={`task-status ui-status-badge ${row.tone === "red" ? "ui-status-badge--red" : row.tone === "green" ? "ui-status-badge--green" : ""}`}>{row.statusLabel}</span>
             </button>
           </li>
         );
@@ -138,7 +138,7 @@ export function DayOverviewReport({
     icon,
     title: record.title,
     meta: meta(record.finding_number, timeOf(record.created_at), buildingNames(record.building_id, record.building_ids), severityText(record.severity, text), record.issue_management?.responsible_person ? text(`for ${record.issue_management.responsible_person}`, `voor ${record.issue_management.responsible_person}`) : ""),
-    status: statusText(record.status, text),
+    statusLabel: statusText(record.status, text),
     tone: record.status === "closed" ? "green" : record.severity === "critical" ? "red" : "",
     onOpen: () => openRecord(tab, record.id),
   }));
@@ -157,7 +157,7 @@ export function DayOverviewReport({
       kind === "delay" && record.contractor_company ? record.contractor_company : "",
       record.signed_by ? `${text("signed by", "ondertekend door")} ${record.signed_by}` : "",
     ),
-    status: record.signed_by ? text("Signed", "Ondertekend") : text("Saved", "Opgeslagen"),
+    statusLabel: record.signed_by ? text("Signed", "Ondertekend") : text("Saved", "Opgeslagen"),
     tone: kind === "delay" ? "red" : record.signed_by ? "green" : "",
     onOpen: () => openRecord("daily"),
   }));
@@ -189,7 +189,7 @@ export function DayOverviewReport({
     icon: registerIcon(type),
     title: record.title,
     meta: meta(record.entry_number, timeOf(record.occurred_at), buildingNames(record.building_id, record.building_ids), otherRegisterTypes.includes(type) ? registerNames[type] ?? type : ""),
-    status: statusText(record.status, text),
+    statusLabel: statusText(record.status, text),
     tone: record.status === "closed" || record.status === "approved" ? "green" : "",
     onOpen: () => openRecord("registers", record.id),
   }));
@@ -222,7 +222,7 @@ export function DayOverviewReport({
         icon: record.event_type === "incident" ? formIcons.hse_incident : formIcons.hse,
         title: record.confidential ? `${record.title} · ${text("confidential", "vertrouwelijk")}` : record.title,
         meta: meta(record.event_number, timeOf(record.occurred_at), buildingNames(record.building_id, record.building_ids), severityText(record.severity, text), record.responsible_person ? text(`for ${record.responsible_person}`, `voor ${record.responsible_person}`) : ""),
-        status: statusText(record.status, text),
+        statusLabel: statusText(record.status, text),
         tone: record.status === "closed" ? "green" : record.severity === "critical" ? "red" : "",
         onOpen: () => openRecord("hse", record.id),
       }))} /> : null,
@@ -237,7 +237,7 @@ export function DayOverviewReport({
         icon: formIcons.inspection,
         title: record.title,
         meta: meta(record.inspection_number, timeOf(record.completed_at ?? record.started_at), buildingNames(record.building_id, record.building_ids), record.signed_by ? `${text("signed by", "ondertekend door")} ${record.signed_by}` : ""),
-        status: statusText(record.status, text),
+        statusLabel: statusText(record.status, text),
         tone: record.status === "passed" ? "green" : record.status === "failed" ? "red" : "",
         onOpen: () => openRecord("inspections", record.id),
       }))} /> : null,
