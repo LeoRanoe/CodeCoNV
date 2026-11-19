@@ -7,7 +7,7 @@ set local client_min_messages = notice;
 
 -- The client's developer specification (FINAL v2): works records per activity, specification
 -- fields per record, and the append-only sign-off event log of the Sign-off Workflow sheet.
-select plan(17);
+select plan(18);
 
 select has_column('public', 'hse_events', 'spec', 'HSE records keep their specification fields');
 select has_column('public', 'visual_captures', 'spec', 'photos keep their specification fields');
@@ -15,6 +15,7 @@ select has_column('public', 'attendance_entries', 'spec', 'attendance lines keep
 select has_table('public', 'record_signoff_events', 'the sign-off event log exists');
 select has_function('public', 'record_signoff_action', 'sign-off actions go through one checked function');
 select has_function('public', 'set_visual_capture_spec', 'photo specification fields are written through a function');
+select has_column('public', 'record_signoff_events', 'sequence_number', 'sign-off events keep the order they were written in');
 
 insert into auth.users (id, aud, role, email, created_at, updated_at)
 values ('00000000-0000-0000-0000-0000000029a1', 'authenticated', 'authenticated', 'signoff@example.test', now(), now());

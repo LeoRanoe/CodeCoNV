@@ -261,8 +261,7 @@ export async function loadSignoffEvents(client: SupabaseClient, recordKind: Sign
     .select("id,record_kind,record_id,workflow_profile,round_number,stage_number,action,actor_user_id,actor_name,actor_organization,actor_role,attestation_method,signature_image,comments,return_reason,next_actor,due_at,previous_status,new_status,created_at")
     .eq("record_kind", recordKind)
     .eq("record_id", recordId)
-    .order("created_at", { ascending: true })
-    .order("id", { ascending: true });
+    .order("sequence_number", { ascending: true });
   if (result.error) {
     // An app version ahead of its database shows no history rather than breaking the record.
     if (/record_signoff_events/.test(result.error.message)) return [] as SignoffEvent[];
