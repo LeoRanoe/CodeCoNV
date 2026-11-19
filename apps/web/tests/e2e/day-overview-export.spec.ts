@@ -54,7 +54,7 @@ test("the day overview exports every Workspace form of the day as PDF and Word",
   const form = page.locator(".record-form-shell").first();
   await form.getByLabel("Title / reference").fill(title);
   await form.locator("#register-unit-0").selectOption("m³");
-  await form.getByLabel("Quantity").fill("12");
+  await form.getByLabel("Quantity", { exact: true }).fill("12");
   await fillSpecFields(page.locator(".record-form-shell").first());
   await page.getByRole("button", { name: "Save register item" }).click();
   await expect(page.getByText(/saved/i).first()).toBeVisible();

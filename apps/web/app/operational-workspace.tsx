@@ -65,7 +65,7 @@ import { ContractorSignatureField, RecordSignatures, contractorSignatureDetails,
 import { SpecFields } from "@/app/forms/spec-fields";
 import { SignoffPanel } from "@/app/forms/signoff-panel";
 import { cleanSpecValues, specFacts, specForms, specMissing, workflowProfiles, type SpecFormKey, type SpecValues } from "@/lib/forms/spec-forms";
-import { hseCategories as specHseCategories, incidentCategories as specIncidentCategories, issueCategories as specIssueCategories } from "@/lib/forms/spec-catalogue";
+import { lessonPhases as specLessonPhases, hseCategories as specHseCategories, incidentCategories as specIncidentCategories, issueCategories as specIssueCategories } from "@/lib/forms/spec-catalogue";
 import { formIcons, registerIcon } from "@/app/forms/form-icons";
 import { NamedPhotoSlot, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
 import { RecordLocationMap } from "@/app/record-location-map";
@@ -2151,8 +2151,19 @@ function ProjectOperations({
   // A delivery's received quantity is the quantity lines of the form; the specification
   // compares it with the ordered quantity to ask for a discrepancy note.
   const deliveredQuantity = registerLines.reduce((total, line) => total + (Number(line.quantity) || 0), 0);
-  const registerSpecValues: SpecValues = registerForm.type === "delivery" && registerLines.some((line) => line.quantity.trim()) ? { ...registerSpec, delivered_quantity: String(deliveredQuantity) } : registerSpec;
-  const registerSpecProblems = registerSpecForm ? specMissing(registerSpecForm, registerSpecValues, language) : [];
+  // Where the client's own form already asks a question of the specification, its answer is
+  // used and the question is not asked a second time.
+  const registerSpecValues: SpecValues = registerForm.type === "delivery" && registerLines.some((line) => line.quantity.trim())
+    ? { ...registerSpec, delivered_quantity: String(deliveredQuantity) }
+    : registerForm.type === "lessons_learned"
+      ? { ...registerSpec, project_phase: lessonForm.projectPhase, action_owner: lessonForm.responsiblePerson }
+      : registerForm.type === "change_order"
+        ? { ...registerSpec, originator: changeOrder.requestedBy, cost_impact: changeOrder.costImpact, time_impact: changeOrder.extensionDays, time_impact_unit: "Calendar Days" }
+        : registerSpec;
+  const registerSpecSkip: string[] = registerForm.type === "lessons_learned"
+    ? ["project_phase", "action_owner"]
+    : registerForm.type === "change_order" ? ["originator", "cost_impact", "time_impact", "time_impact_unit"] : [];
+  const registerSpecProblems = registerSpecForm ? specMissing(registerSpecForm, registerSpecValues, language, registerSpecSkip) : [];
   // Section 3 is marked "photo required" on the client's own form, and section 5 asks for
   // one the moment the completion box is started.
   const delayReportFormReady = !delayReportRegister || (
@@ -4714,7 +4725,7 @@ function ProjectOperations({
                 <>
                   {/* Capture, learn and improve: the client's own form, as one project
                       phase and four short questions instead of a free-text register line. */}
-                  <label className="form-field"><span>{text("Project phase", "Projectfase")}</span><select value={lessonForm.projectPhase} onChange={(event) => setLessonForm({ ...lessonForm, projectPhase: event.target.value })}><option value="">{text("Choose a phase", "Kies een fase")}</option>{lessonProjectPhases.map((phase) => <option value={phase.id} key={phase.id}>{text(phase.en, phase.nl)}</option>)}</select></label>
+                  <label className="form-field"><span>{text("Project phase", "Projectfase")}</span><select value={lessonForm.projectPhase} onChange={(event) => setLessonForm({ ...lessonForm, projectPhase: event.target.value })}><option value="">{text("Choose a phase", "Kies een fase")}</option>{specLessonPhases.map((phase) => <option value={phase} key={phase}>{phase}</option>)}{lessonForm.projectPhase && !specLessonPhases.includes(lessonForm.projectPhase) ? <option value={lessonForm.projectPhase}>{(() => { const legacy = lessonProjectPhases.find((phase) => phase.id === lessonForm.projectPhase); return legacy ? text(legacy.en, legacy.nl) : lessonForm.projectPhase; })()}</option> : null}</select></label>
                   {/* "Nummeren & onder elkaar": the four questions are numbered and stacked. */}
                   <div className="numbered-question-list">
                     <label className="form-field"><span><b className="numbered-question-number" aria-hidden="true">1</b>{text("Issue", "Probleem")}</span><textarea rows={3} value={lessonForm.issue} onChange={(event) => setLessonForm({ ...lessonForm, issue: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, issue: appendDictation(current.issue, transcript) }))} /></label>
@@ -4902,7 +4913,7 @@ function ProjectOperations({
                 {registerPhotoError ? <p className="field-error" role="alert">{registerPhotoError}</p> : null}
                 </>
               ) : null}
-              {registerSpecForm ? <SpecFields form={registerSpecForm} values={registerSpecValues} onChange={setRegisterSpec} text={text} language={language} heading={text("Specification details", "Specificatiegegevens")} /> : null}
+              {registerSpecForm ? <SpecFields form={registerSpecForm} skip={registerSpecSkip} values={registerSpecValues} onChange={setRegisterSpec} text={text} language={language} heading={text("Specification details", "Specificatiegegevens")} /> : null}
               {/* "Overal aan het eind": the signatures close every register form — supervision
                   first, the contractor next to it. */}
               {changeOrderRegister ? (

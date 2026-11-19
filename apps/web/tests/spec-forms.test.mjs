@@ -51,7 +51,9 @@ test("changing the discipline clears the activity, its completion items and its 
 test("required fields follow the workbook, conditional ones only when their trigger applies", () => {
   const empty = specMissing("delay_report", {});
   assert.ok(empty.includes("Delay start date/time"));
-  assert.ok(empty.includes("Critical path impact"));
+  assert.ok(empty.includes("Delay cause type"));
+  // The client's own PDR form asks the critical-path question; it is not asked twice.
+  assert.ok(!empty.includes("Critical path impact"));
   // Closed needs a closure note; an open record does not.
   assert.ok(!specMissing("issue", { workflow_status: "Open" }).includes("Resolution / closure note"));
   assert.ok(specMissing("issue", { workflow_status: "Closed" }).includes("Resolution / closure note"));
