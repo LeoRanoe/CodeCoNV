@@ -1,3 +1,4 @@
+import { openSavedRecords } from "./section-nav";
 import { createClient } from "@supabase/supabase-js";
 import { expect, type Page, test } from "@playwright/test";
 
@@ -64,6 +65,7 @@ test("supervision sends a finished repair back with a reason, and the issue is o
   await signIn(page);
   await page.locator(".sidebar").getByRole("button", { name: "Workspace", exact: true }).click();
   await page.locator("[data-workspace-destination='issues']").click();
+  await openSavedRecords(page);
 
   const card = page.locator("article", { hasText: title });
   await expect(card).toContainText("Ready for verification");

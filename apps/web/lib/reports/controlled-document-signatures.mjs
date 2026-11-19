@@ -63,7 +63,7 @@ export function controlledDocumentSignatures(entry) {
     },
     contractor: {
       name: filled(details.contractor_signed_by, details.contractor_representative),
-      position: filled(details.contractor_position),
+      position: filled(details.contractor_position, details.contractor_signed_position),
       remarks: filled(details.contractor_remarks),
       ink: png(filled(details.contractor_signature_image)),
       signedAt: signatureMoment(filled(details.contractor_signed_at)),

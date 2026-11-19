@@ -164,7 +164,7 @@ export function ControlledDocument({ entry, logoSource = "/codeco-logo-pdf.png" 
         {/* Issuer and recipient sign separately. The issuer's signature comes from the record, the
             recipient's from the formal response, with the moment the server recorded in Suriname time. */}
         {(() => {
-          const { issuer, recipient } = signatures;
+          const { issuer, recipient, contractor } = signatures;
           const external = ["wcr", "rfi", "rfa", "inspection_request"].includes(type);
           const recipientRows = [
             { label: "Name", result: recipient.name || " ", ink: recipient.ink },
@@ -180,6 +180,17 @@ export function ControlledDocument({ entry, logoSource = "/codeco-logo-pdf.png" 
                 { label: "Date signed", result: issuer.signed ? issuer.signedAt || " " : "Not signed yet", ink: null },
               ].map((line, index) => <View style={[styles.signature, index < 2 ? styles.borderRight : {}]} key={line.label}><Text style={styles.label}>{line.label}</Text>{line.ink ? <Image src={line.ink} style={styles.signatureInk} /> : <View style={styles.signatureLine} />}<Text>{line.result}</Text></View>)}
             </View>
+            {/* The contractor signed on site, next to the issuer (a change order prints its own box). */}
+            {type !== "change_order" && contractor.ink ? <>
+              <Text style={styles.sectionTitle}>SIGNED ON SITE · CONTRACTOR</Text>
+              <View style={styles.signatureGrid}>
+                {[
+                  { label: "Name", result: contractor.name || " ", ink: contractor.ink },
+                  { label: "Position", result: contractor.position || " ", ink: null },
+                  { label: "Date signed", result: contractor.signedAt || " ", ink: null },
+                ].map((line, index) => <View style={[styles.signature, index < 2 ? styles.borderRight : {}]} key={line.label}><Text style={styles.label}>{line.label}</Text>{line.ink ? <Image src={line.ink} style={styles.signatureInk} /> : <View style={styles.signatureLine} />}<Text>{line.result}</Text></View>)}
+              </View>
+            </> : null}
 
             {type === "change_order" && !recipient.decision ? null : <View style={styles.response} wrap={false}>
               <Text style={styles.responseHeader}>{type === "technical_instruction" || type === "change_order" ? "RECIPIENT ACKNOWLEDGEMENT / CLOSEOUT" : "ENGINEER / CLIENT RESPONSE"}</Text>

@@ -6,24 +6,12 @@ import {
   BookOpenCheck,
   CalendarClock,
   Calculator,
-  Camera,
-  CheckCircle2,
-  ClipboardCheck,
   Clock3,
-  FileCheck2,
   FileText,
   Filter,
   FolderOpen,
-  HardHat,
   Hash,
-  Lightbulb,
-  MessageSquareText,
-  PackageCheck,
   Search,
-  ShieldAlert,
-  ShieldCheck,
-  Users,
-  Wrench,
   type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -32,6 +20,7 @@ import { useLanguage } from "@/lib/i18n";
 import { filterRecordDirectory } from "@/lib/records/record-directory.mjs";
 import type { BuildingOption } from "@/app/building-picker";
 import { codeText } from "@/lib/status-labels";
+import { formIcons } from "@/app/forms/form-icons";
 
 type WorkspaceDestination = "inspections" | "findings" | "ncr" | "hse" | "daily" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files" | "assets";
 
@@ -119,7 +108,7 @@ export function ProjectWorkspaceHome({
       // for. It opens the photo library instead: the photos that are already there, with
       // taking one, uploading one and a 360° upload as the choices on top of them.
       label: text("Photos", "Foto's"),
-      icon: Camera,
+      icon: formIcons.photos,
       count: counts.photos,
       module: "visual_evidence",
       action: openPhotoLibrary,
@@ -127,19 +116,19 @@ export function ProjectWorkspaceHome({
     {
       id: "works-ongoing",
       label: text("Works ongoing", "Werkzaamheden gaande"),
-      icon: HardHat,
+      icon: formIcons.works_ongoing,
       action: () => openDailyWork("works_ongoing"),
     },
     {
       id: "works-completed",
       label: text("Works completed", "Werkzaamheden afgerond"),
-      icon: CheckCircle2,
+      icon: formIcons.works_completed,
       action: () => openDailyWork("works_completed"),
     },
     {
       id: "workforce",
       label: text("Workforce", "Workforce"),
-      icon: Users,
+      icon: formIcons.workforce,
       // §4.3 of the product plan: the workforce register, not the day's work list.
       action: openWorkforce,
     },
@@ -148,14 +137,14 @@ export function ProjectWorkspaceHome({
          separate formal report for schedule changes that need evidence and sign-off. */
       id: "delay-report",
       label: text("Project Delay Report (PDR)", "Vertragingsrapport (PDR)"),
-      icon: CalendarClock,
+      icon: formIcons.delay_report,
       count: counts.delayReports,
       action: () => openTask("registers", false, { registerType: "delay_report" }),
     },
     {
       id: "issues",
       label: text("Issues", "Issues"),
-      icon: AlertTriangle,
+      icon: formIcons.issue,
       count: counts.issues,
       module: "quality",
       action: () => openFinding("issue", false),
@@ -163,7 +152,7 @@ export function ProjectWorkspaceHome({
     {
       id: "hse",
       label: "HSE",
-      icon: ShieldCheck,
+      icon: formIcons.hse,
       count: counts.hse,
       module: "hse",
       action: () => openTask("hse", false),
@@ -171,14 +160,14 @@ export function ProjectWorkspaceHome({
     {
       id: "materials-delivery",
       label: text("Materials delivery", "Materiaallevering"),
-      icon: PackageCheck,
+      icon: formIcons.delivery,
       count: counts.deliveries,
       action: () => openTask("registers", false, { registerType: "delivery" }),
     },
     {
       id: "inspections",
       label: text("Inspections", "Inspecties"),
-      icon: ClipboardCheck,
+      icon: formIcons.inspection,
       count: counts.inspections,
       module: "inspections",
       action: () => openTask("inspections", false),
@@ -186,21 +175,21 @@ export function ProjectWorkspaceHome({
     {
       id: "technical-instructions",
       label: text("Technical instructions", "Technische instructies"),
-      icon: Wrench,
+      icon: formIcons.technical_instruction,
       count: counts.technicalInstructions,
       action: () => openTask("registers", false, { registerType: "technical_instruction" }),
     },
     {
       id: "change-order",
       label: text("Change order (CO)", "Change order (CO)"),
-      icon: FileCheck2,
+      icon: formIcons.change_order,
       count: counts.changeOrders,
       action: () => openTask("registers", false, { registerType: "change_order" }),
     },
     {
       id: "ncr",
       label: "NCR",
-      icon: ShieldAlert,
+      icon: formIcons.ncr,
       count: counts.ncr,
       module: "quality",
       action: () => openFinding("ncr", false),
@@ -211,21 +200,21 @@ export function ProjectWorkspaceHome({
          already keeps. It moved to the supporting tools, below the grid. */
       id: "lessons-learned",
       label: text("Lessons Learned (LL)", "Geleerde lessen (LL)"),
-      icon: Lightbulb,
+      icon: formIcons.lessons_learned,
       count: counts.lessons,
       action: () => openTask("registers", false, { registerType: "lessons_learned" }),
     },
     {
       id: "hse-incident",
       label: text("HSE incident", "HSE-incident"),
-      icon: ShieldAlert,
+      icon: formIcons.hse_incident,
       module: "hse",
       action: () => openTask("hse", false, { hseEventType: "incident" }),
     },
     {
       id: "agreements-made",
       label: text("Agreements Made", "Gemaakte afspraken"),
-      icon: MessageSquareText,
+      icon: formIcons.agreement,
       count: counts.agreements,
       action: () => openTask("registers", false, { registerType: "agreement" }),
     },

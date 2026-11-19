@@ -198,9 +198,9 @@ export function changeOrderReady(state: ChangeOrderState) {
 export function changeOrderMissing(state: ChangeOrderState): Array<{ en: string; nl: string }> {
   const missing: Array<{ en: string; nl: string }> = [];
   if (!state.changeOrderType) missing.push({ en: "type of change order", nl: "soort wijzigingsopdracht" });
-  if (!state.reason) missing.push({ en: "reason", nl: "reden" });
+  // "Reason for change" and "what will change" are struck off the form (19-11-2026): the formal
+  // request at the top already says both. Older change orders keep what they stored.
   if (!state.scopeAreas.length) missing.push({ en: "affected scope area", nl: "scope-gebied" });
-  if (state.scopeDetails.trim().length < 3) missing.push({ en: "scope description", nl: "omschrijving van de scope" });
   if (state.affectsSchedule && !state.originalFinishDate) missing.push({ en: "original finish date", nl: "oorspronkelijke einddatum" });
   return missing;
 }

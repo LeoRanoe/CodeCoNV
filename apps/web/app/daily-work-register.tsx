@@ -10,7 +10,7 @@ import type { DailyWorkRecord, DayReportSummary } from "@/lib/supabase/operation
 
 export type DailyWorkView = "works_ongoing" | "works_completed" | "delays";
 
-const delayCauseLabels: Record<string, { en: string; nl: string }> = {
+export const delayCauseLabels: Record<string, { en: string; nl: string }> = {
   weather: { en: "Weather", nl: "Weer" },
   delivery: { en: "Delivery", nl: "Levering" },
   material: { en: "Material", nl: "Materiaal" },

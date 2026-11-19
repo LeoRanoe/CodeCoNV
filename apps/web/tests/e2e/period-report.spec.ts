@@ -1,4 +1,5 @@
 import { mkdir, readFile } from "node:fs/promises";
+import { openSection } from "./section-nav";
 import { expect, type Page, test } from "@playwright/test";
 
 /**
@@ -50,6 +51,7 @@ test("the period report PDF is Dutch, has a project head and a signature block",
   test.setTimeout(120_000);
   await signIn(page);
   await page.locator(".sidebar").getByRole("button", { name: "Reports", exact: true }).click();
+  await openSection(page, /^Create report$/);
   await expect(page.locator(".period-report-card")).toBeVisible();
   // A window that contains the demo data.
   await page.locator(".period-report-card input[type='date']").first().fill("2026-09-01");

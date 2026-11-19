@@ -109,6 +109,7 @@ test("mobile navigation exposes reports, management and uncluttered report steps
   await moduleMenu.getByRole("button", { name: /Reports/ }).click();
   await expect(page.getByRole("heading", { name: "Client reports" })).toBeVisible();
   await expect(page.getByRole("tablist", { name: "Report workspace", includeHidden: true }).getByRole("tab", { includeHidden: true })).toHaveText([
+    "Day overview",
     "Daily report",
     "Weekly report",
     "Monthly report",
@@ -117,6 +118,9 @@ test("mobile navigation exposes reports, management and uncluttered report steps
     "Versions & history",
     "Beyond this app",
   ]);
+  // Reports opens on the central day overview: everything recorded today under Workspace.
+  await expect(page.locator(".day-overview")).toBeVisible();
+  await openSection(page, /^Create report$/);
   await expect(page.locator(".period-report-card")).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
@@ -224,8 +228,10 @@ test("desktop reports show one calm task area at a time and secondary actions ar
   await page.locator(".sidebar").getByRole("button", { name: "Reports", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: "Client reports" })).toBeVisible();
-  await expect(page.locator(".period-report-card")).toBeVisible();
+  await expect(page.locator(".day-overview")).toBeVisible();
   await expect(page.locator(".workflow-grid")).toHaveCount(0);
+  await openSection(page, /^Create report$/);
+  await expect(page.locator(".period-report-card")).toBeVisible();
 
   await openSection(page, /Review & sign/);
   await expect(page.locator(".period-report-card")).toHaveCount(0);

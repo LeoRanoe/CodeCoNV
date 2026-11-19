@@ -1125,17 +1125,22 @@ test("processes the third batch of annotated screens from 31 July", async () => 
 
   // The columns of the client's own Issue Management Template are still filled in, but
   // through the newer screen they sent: the description is section 4, the deadline is
-  // section 9, and the owner of the correction stands under the responsible person.
+  // section 9. The separate "contractor · owner of the correction" box is struck off (19-11-2026):
+  // section 8 is client / contractor / supervision and then the name.
   assert.match(workspace, /expectedResolutionDate: event\.target\.value/);
-  assert.match(workspace, /Contractor · owner of the correction|Aannemer · eigenaar van de correctie/);
+  assert.doesNotMatch(workspace, /Contractor · owner of the correction|Aannemer · eigenaar van de correctie/);
+  assert.match(workspace, /function ResponsiblePartyFields\(/);
+  assert.match(workspace, /\{ id: "client", en: "Client", nl: "Opdrachtgever" \}/);
+  assert.match(workspace, /\{ id: "supervision", en: "Supervision", nl: "Supervisie" \}/);
   // The NCR module keeps the client's own paper form, with its own columns.
   assert.match(workspace, /text\("Date identified", "Datum vastgesteld"\)/);
   assert.match(workspace, /text\("Expected resolution date", "Verwachte oplossingsdatum"\)/);
   assert.match(workspace, /text\("Escalation required", "Escalatie nodig"\)/);
   assert.match(workspace, /Final Resolution & Rationale/);
-  // The issue type list became the client's own vocabulary on 4 August; the columns of
-  // their Issues_Tracking_Log around it stayed.
-  assert.match(workspace, /const issueTypeOptions = \[/);
+  // The issue type list on the NCR is struck off (19-11-2026): in the NCR module it can only
+  // say NCR. The issue screen keeps its own tiles; the log columns around it stayed.
+  assert.doesNotMatch(workspace, /const issueTypeOptions = \[/);
+  assert.match(workspace, /const issueTypeTiles = \[/);
   assert.match(operations, /date_identified: input\.dateIdentified/);
   assert.doesNotMatch(workspace, /Initial completion date|Eerste opleverdatum/);
 
@@ -2058,7 +2063,7 @@ test("processes the annotated screens of 4 August: ordered photos, a named pin, 
   // catalog, the type is safety / quality / equipment / materials / schedule /
   // operational, priority is high, medium or low, no disposition, and impact and
   // follow-up can simply be typed.
-  assert.match(operations, /const issueTypeOptions = \[/);
+  assert.match(operations, /const issueTypeTiles = \[/);
   for (const kind of ["safety", "quality", "equipment", "materials", "schedule", "operational"]) {
     assert.match(operations, new RegExp(`id: "${kind}"`));
   }
@@ -2106,7 +2111,9 @@ test("covers section 4.3 of the product plan on the workforce screen", async () 
   assert.match(app, /entryType: "visitor" as const/);
   // Toelichting bij afwijkende bezetting.
   assert.match(register, /title=\{text\("Deviating workforce", "Afwijkende bezetting"\)\}/);
-  assert.match(register, /\{text\("Explanation", "Toelichting"\)\}/);
+  // "Ik kan niet opslaan" (19-11-2026): the explanation is asked for, never required to save.
+  assert.match(register, /\{text\("Explanation \(optional\)", "Toelichting \(optioneel\)"\)\}/);
+  assert.match(register, /canSave=\{!readOnly && filledBuildings\.length > 0\}/);
   assert.match(dataLayer, /notes: row\.notes\?\.trim\(\) \|\| null/);
 
   // Automatisering: vorige werkdag kopiëren, totalen per organisatie en discipline,
@@ -2221,9 +2228,9 @@ test("builds the HSE observation / issue screen the client sent, section by sect
     [7, /Immediate action taken", "Directe maatregel/],
     [8, /Responsible person", "Verantwoordelijke/],
     [9, /Due date", "Deadline/],
-    [10, /Root cause", "Oorzaak/],
-    [11, /Corrective action required", "Vereiste correctieve actie/],
-    [12, /Notes", "Notities/],
+    // "Root cause" is struck off the HSE screen (19-11-2026); the sections after it move up.
+    [10, /Corrective action required", "Vereiste correctieve actie/],
+    [11, /Notes", "Notities/],
   ];
   for (const [number, label] of sections) {
     assert.match(operations, new RegExp(`record-section-number">${number}<`), `section ${number} is numbered as the client numbered it`);
@@ -2265,7 +2272,8 @@ test("builds the HSE observation / issue screen the client sent, section by sect
 
   // A database that has not run the migration yet still records the event and still loads
   // its own list: the newer boxes step back one signature at a time.
-  assert.match(dataLayer, /schemaFeatureMissing\(hseResult\.error, \[/);
+  assert.match(dataLayer, /schemaFeatureMissing\(hseResult\.error, hseExtraColumns\.split\(","\)\)/);
+  assert.match(dataLayer, /schemaFeatureMissing\(hseWithoutExtraResult\.error, \[/);
   assert.match(dataLayer, /const fallbackType = input\.type === "observation" \|\| input\.type === "other" \? "positive_observation" : input\.type/);
 
   // A box that is filled in on the screen is printed in the period report; a box that is
@@ -2304,10 +2312,11 @@ test("builds the HSE observation / issue screen the client sent, section by sect
   assert.match(styles, /\.record-evidence-strip \{ display: flex; align-items: center; flex-wrap: wrap; gap: 9px; \}/);
   assert.match(styles, /\.photo-evidence-tile-open \{[^}]*width: 108px;/);
 
-  // Section 9 says what the deadline means, and a chosen person can be cleared again.
+  // Section 9 says what the deadline means. Section 8 is a party and a typed name since
+  // 19-11-2026, so emptying the name box is how a person is cleared again.
   assert.match(operations, /function deadlineDistanceLabel\(/);
   assert.match(operations, /className="record-due-distance"/);
-  assert.match(operations, /className="record-field-clear"/);
+  assert.match(operations, /text\("Name of the responsible person", "Naam van de verantwoordelijke"\)/);
 
   // Every control on the client's bar does something: the chip pushes what is still on
   // the device, the paperclip attaches, and the boxes read back where they are looked for.
@@ -3151,8 +3160,8 @@ test("gives every record form the width of the desktop it is opened on", async (
   assert.match(workspace, /const registerFormClassName = `wide sectioned-record-form\$\{controlledRegister \? " controlled-document-form" : ""\}`/);
   assert.match(workspace, /className=\{registerFormClassName\}/);
   assert.doesNotMatch(workspace, /className=\{controlledRegister \? "wide controlled-document-form" : ""\}/);
-  assert.match(workspace, /className="operation-form wide sectioned-record-form snap-assign-form"/);
-  assert.match(workspace, /title=\{text\("Start inspection", "Inspectie starten"\)\} status=\{text\("New", "Nieuw"\)\} busy=\{busy\} className="wide sectioned-record-form"/);
+  assert.match(workspace, /className="operation-form wide sectioned-record-form snap-assign-form ncr-record-form"/);
+  assert.match(workspace, /title=\{text\("Start inspection", "Inspectie starten"\)\} icon=\{formIcons\.inspection\} status=\{text\("New", "Nieuw"\)\} busy=\{busy\} className="wide sectioned-record-form"/);
 
   // And the width is used rather than only granted: two columns of sections once the form
   // itself is wide enough, measured on the form and not on the window.
@@ -3209,7 +3218,7 @@ test("calls each form what the client's own paper calls it, in one place", async
   // same form written two ways.
   assert.match(home, /label: text\("Change order \(CO\)", "Change order \(CO\)"\)/);
   // The NCR form heading is the title on the client's own sheet.
-  assert.match(workspace, /<h2>\{text\("Non-conformance report", "Non-conformance report"\)\}<\/h2>/);
+  assert.match(workspace, /<h2><formIcons\.ncr className="record-form-heading-icon" size=\{20\} aria-hidden="true" \/>\{text\("Non-conformance report", "Non-conformance report"\)\}<\/h2>/);
 
   // One module, one name. The bottom bar called the findings module Punchlist while the
   // workspace tile called it Issues, and punch_list is a register of its own.

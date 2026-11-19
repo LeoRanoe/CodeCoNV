@@ -1,9 +1,9 @@
 import { expect, type Page, test } from "@playwright/test";
 
 /**
- * Client feedback of 01-11-2026: "Works completed" is what was finished today and the plan for
- * tomorrow. What is still running belongs to Works ongoing, and QC, advice, HSE, workforce,
- * delay and the signature are left out of this form, also on the first entry of the day.
+ * Client feedback of 01-11-2026 and 19-11-2026: "Works completed" is what was finished today.
+ * The plan for tomorrow, what is still running, QC, advice, HSE, workforce, delay and the
+ * signature are left out of this form, also on the first entry of the day.
  */
 const email = process.env.CODECO_E2E_EMAIL;
 const password = process.env.CODECO_E2E_PASSWORD;
@@ -29,7 +29,7 @@ async function signIn(page: Page) {
   await expect(page.getByRole("region", { name: "Project command center" })).toBeVisible();
 }
 
-test("Works completed asks what was finished and the plan for tomorrow, nothing else", async ({ page }, testInfo) => {
+test("Works completed asks what was finished, nothing else", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-office", "desktop route");
   await signIn(page);
   await page.locator(".sidebar").getByRole("button", { name: "Workspace", exact: true }).click();
@@ -37,8 +37,7 @@ test("Works completed asks what was finished and the plan for tomorrow, nothing 
 
   const form = page.locator(".daily-log-form");
   await expect(form.getByLabel("Work completed today")).toBeVisible();
-  await expect(form.getByLabel("What happens tomorrow")).toBeVisible();
-  for (const absent of ["What is in progress, and where?", "Advice recorded for the contractor", "Delay cause"]) {
+  for (const absent of ["What happens tomorrow", "What is in progress, and where?", "Advice recorded for the contractor", "Delay cause"]) {
     await expect(form.getByLabel(absent)).toHaveCount(0);
   }
   await expect(form.getByRole("button", { name: "Confirm project start" })).toHaveCount(0);
@@ -46,7 +45,6 @@ test("Works completed asks what was finished and the plan for tomorrow, nothing 
 
   await form.getByLabel("All buildings").check();
   await form.getByLabel("Work completed today").fill("Formwork of axis A to C");
-  await form.getByLabel("What happens tomorrow").fill("Pour the slab");
   await form.getByRole("button", { name: "Save daily log" }).click();
   await expect(page.getByText(/Daily log saved/)).toBeVisible();
   await expect(form.locator(".record-form-validation")).toHaveCount(0);

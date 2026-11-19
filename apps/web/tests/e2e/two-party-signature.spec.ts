@@ -1,3 +1,4 @@
+import { openSavedRecords } from "./section-nav";
 import { mkdir } from "node:fs/promises";
 import { expect, type Page, test } from "@playwright/test";
 
@@ -64,7 +65,8 @@ test("technical instruction: the issuer signs as themself, the recipient signs t
   await form.locator("label.form-field").filter({ has: page.locator("span", { hasText: /^To$/ }) }).locator("select").selectOption({ label: "Hoofdaannemer E2E · Contractor" });
 
   // The issuer's name on the signature is the account's own name; it cannot be typed over.
-  await form.getByRole("button", { name: "Sign now" }).click();
+  // (The contractor's own signature box stands beside it since 19-11-2026.)
+  await form.locator(".signature-field").filter({ hasText: "Sign as the author of this document" }).getByRole("button", { name: "Sign now" }).click();
   await expect(page.locator(".signature-modal input").first()).toHaveAttribute("readonly", "");
   await drawSignature(page);
   await form.getByRole("button", { name: "Create controlled document" }).click();
@@ -102,6 +104,7 @@ test("technical instruction: the issuer signs as themself, the recipient signs t
   await page.reload();
   await page.locator(".sidebar").getByRole("button", { name: "Workspace", exact: true }).click();
   await page.locator('[data-workspace-destination="technical-instructions"]').click();
+  await openSavedRecords(page);
   const reloaded = page.locator(".controlled-document-card").filter({ hasText: title }).first();
   await expect(reloaded).toBeVisible({ timeout: 30_000 });
   await reloaded.getByRole("button", { name: /Open record/ }).click();
@@ -140,9 +143,10 @@ test("change order: title and description once, one issuer signature, contractor
   await form.locator(".controlled-document-primary input").fill(title);
   await form.locator(".controlled-document-primary textarea").fill("Add a second row of cast-in anchors along gridline C.");
   await form.locator("label.form-field").filter({ hasText: "Change order type" }).locator("select").selectOption("addition");
-  await form.locator("label.form-field").filter({ hasText: "Reason for change" }).locator("select").selectOption("design_development");
+  // The reason and "what will change" are struck off the form: the formal request says both.
+  await expect(form.getByText("Reason for change", { exact: true })).toHaveCount(0);
+  await expect(form.getByText("Details / what will change?", { exact: true })).toHaveCount(0);
   await form.getByText("Work scope", { exact: true }).click();
-  await form.locator("label.form-field").filter({ hasText: "Details / what will change?" }).locator("textarea").fill("Eight additional anchors, 16 mm, at 400 mm centres.");
   await form.locator("label.form-field").filter({ has: page.locator("span", { hasText: /^To$/ }) }).locator("select").selectOption({ label: "Hoofdaannemer E2E · Contractor" });
 
   // Issuer: the account's own name. Contractor: a different person, signing on this device.

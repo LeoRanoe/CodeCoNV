@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   AlertTriangle,
   Cloud,
+  Eraser,
   ChevronLeft,
   ChevronRight,
   FileQuestion,
@@ -19,6 +20,7 @@ import {
   ShieldCheck,
   Trash2,
   Type,
+  Undo2,
   ArrowUpRight,
   ZoomIn,
   ZoomOut,
@@ -30,6 +32,7 @@ import {
   arrowHeadPoints,
   arrowLineEnd,
   cloudPath,
+  markupAtPoint,
   polylinePoints,
   textBoxSize,
   toPagePoint,
@@ -54,6 +57,7 @@ import {
 import { loadProjectFilePreviewObjectUrl, uploadProjectFile } from "@/lib/storage/gateway";
 import {
   createDrawingMarkup,
+  voidDrawingMarkup,
   createFinding,
   type DrawingMarkup,
   type DrawingPin,
@@ -93,7 +97,8 @@ type DrawingWorkspaceProps = {
 };
 
 type PinPoint = { xRatio: number; yRatio: number };
-type DrawingTool = "pan" | "pin" | DrawingMarkup["markup_type"];
+/** "erase" removes the markup under the tap; it never draws anything itself. */
+type DrawingTool = "pan" | "pin" | "erase" | DrawingMarkup["markup_type"];
 type DrawingViewport = { scale: number; offset: { x: number; y: number }; page: number };
 
 const supportedDrawingMimeTypes = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
@@ -151,6 +156,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
   const markupColor = markupInk;
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [markupText, setMarkupText] = useState("");
+  /** Markups removed on this screen, hidden at once while the server records the removal. */
+  const [hiddenMarkupIds, setHiddenMarkupIds] = useState<string[]>([]);
   const [uploadBuildingId, setUploadBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [uploadError, setUploadError] = useState("");
   /**
@@ -195,7 +202,9 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
     ? { ...selectedPinSource, x_ratio: pinOverrides[selectedPinSource.id].xRatio, y_ratio: pinOverrides[selectedPinSource.id].yRatio }
     : selectedPinSource;
   const activeMarkups = activeDrawing
-    ? data.drawingMarkups.filter((markup) => markup.drawing_file_id === activeDrawing.id && markup.page_number === pageNumber && markup.status === "active")
+    ? data.drawingMarkups
+      .filter((markup) => markup.drawing_file_id === activeDrawing.id && markup.page_number === pageNumber && markup.status === "active" && !hiddenMarkupIds.includes(markup.id))
+      .sort((left, right) => String(left.created_at).localeCompare(String(right.created_at)))
     : [];
 
   const incomingFinding = initialFindingId ? data.findings.find((finding) => finding.id === initialFindingId) ?? null : null;
@@ -543,8 +552,24 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
     }
   };
 
+  /**
+   * "Veger & undo button": a markup is taken off the drawing again, either the one tapped with
+   * the eraser or the last one drawn on this page. The removal is recorded on the server like
+   * the markup itself, so the drawing's history still shows it was there.
+   */
+  const removeMarkup = async (markup: DrawingMarkup) => {
+    setHiddenMarkupIds((current) => [...current, markup.id]);
+    const okay = await run(
+      () => voidDrawingMarkup(client, markup.id, text("Removed from drawing by supervisor", "Door toezichthouder van tekening verwijderd")),
+      text("Markup removed.", "Markering verwijderd."),
+    );
+    if (!okay) setHiddenMarkupIds((current) => current.filter((id) => id !== markup.id));
+    return okay;
+  };
+  const lastMarkup = activeMarkups[activeMarkups.length - 1] ?? null;
+
   const saveMarkup = async (geometry: DrawingMarkup["geometry"]) => {
-    if (!activeDrawing || tool === "pin" || tool === "pan") return false;
+    if (!activeDrawing || tool === "pin" || tool === "pan" || tool === "erase") return false;
     return run(
       () => createDrawingMarkup(client, {
         drawingFileId: activeDrawing.id,
@@ -671,9 +696,11 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
                 ["cloud", Cloud, text("Revision cloud", "Revisiewolk")],
                 ["arrow", ArrowUpRight, text("Arrow", "Pijl")],
                 ["text", Type, "Tekst"],
+                ["erase", Eraser, text("Eraser", "Gum")],
               ] as Array<[DrawingTool, typeof MapPin, string]>).map(([id, Icon, label]) => (
                 <button type="button" className={tool === id ? "active" : ""} aria-pressed={tool === id} onClick={() => { setTool(id); setPoint(null); setSelectedPinId(null); }} key={id}><Icon size={15} /> {label}</button>
               ))}
+              <button type="button" disabled={busy || !lastMarkup} onClick={() => { if (lastMarkup) void removeMarkup(lastMarkup); }} aria-label={text("Undo the last markup", "Laatste markering ongedaan maken")}><Undo2 size={15} /> {text("Undo", "Ongedaan maken")}</button>
               <label className="drawing-stroke-control"><span>{text("Line", "Lijn")}</span><select value={strokeWidth} onChange={(event) => setStrokeWidth(Number(event.target.value))}><option value={2}>2 px</option><option value={3}>3 px</option><option value={5}>5 px</option><option value={8}>8 px</option></select></label>
               {tool === "text" ? <label className="drawing-text-control"><span>{text("Text to place", "Te plaatsen tekst")}</span><input maxLength={500} value={markupText} onChange={(event) => setMarkupText(event.target.value)} placeholder={text("Type the drawing note", "Typ de tekeningnotitie")} /></label> : null}
             </div>
@@ -698,6 +725,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
               onDocumentDetails={handleDocumentDetails}
               onViewportChange={setViewport}
               onPoint={(nextPoint) => { setPoint(nextPoint); setSelectedPinId(null); setPanelNudge((count) => count + 1); }}
+              onEraseMarkup={(markup) => void removeMarkup(markup)}
               onSelectPin={(pinId) => { setSelectedPinId(pinId); setPoint(null); setPanelNudge((count) => count + 1); }}
               onMovePin={movePin}
               onCreateMarkup={saveMarkup}
@@ -803,7 +831,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
   );
 }
 
-function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, color, strokeWidth, textContent, client, onPageCount, onDocumentDetails, onViewportChange, onPoint, onSelectPin, onMovePin, onCreateMarkup }: {
+function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, color, strokeWidth, textContent, client, onPageCount, onDocumentDetails, onViewportChange, onPoint, onSelectPin, onMovePin, onCreateMarkup, onEraseMarkup }: {
   file: FileRecord;
   viewport: DrawingViewport;
   pins: DrawingPin[];
@@ -822,6 +850,7 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
   onSelectPin: (pinId: string) => void;
   onMovePin: (pin: DrawingPin, point: PinPoint) => Promise<boolean>;
   onCreateMarkup: (geometry: DrawingMarkup["geometry"]) => Promise<boolean>;
+  onEraseMarkup: (markup: DrawingMarkup) => void;
 }) {
   const { text } = useLanguage();
   const pageNumber = viewport.page;
@@ -950,6 +979,12 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
     if (tool === "pin" || tool === "pan") return;
     event.preventDefault();
     const start = normalizedPoint(event.clientX, event.clientY);
+    if (tool === "erase") {
+      // The tolerance is in page pixels, so it shrinks as the drawing is zoomed in.
+      const hit = markupAtPoint(markups, start, pageSize, 24 / Math.max(1, viewport.scale));
+      if (hit) onEraseMarkup(hit);
+      return;
+    }
     if (tool === "text") {
       if (textContent.trim()) void onCreateMarkup({ position: start });
       return;
@@ -960,14 +995,14 @@ function DrawingCanvas({ file, viewport, pins, markups, pendingPoint, tool, colo
   };
 
   const continueMarkup = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!drawingRef.current || tool === "pin" || tool === "pan" || tool === "text") return;
+    if (!drawingRef.current || tool === "pin" || tool === "pan" || tool === "text" || tool === "erase") return;
     const point = normalizedPoint(event.clientX, event.clientY);
     const points = draftPointsRef.current;
     updateDraftPoints(tool === "arrow" ? [points[0], point] : [...points, point]);
   };
 
   const finishMarkup = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!drawingRef.current || tool === "pin" || tool === "pan" || tool === "text") return;
+    if (!drawingRef.current || tool === "pin" || tool === "pan" || tool === "text" || tool === "erase") return;
     event.preventDefault();
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     drawingRef.current = false;

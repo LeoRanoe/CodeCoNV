@@ -60,12 +60,15 @@ import { AgreementSignatureFields, agreementRecordDetails, agreementSignatureDet
 import { ALL_BUILDINGS, BuildingMultiPicker, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton, inputWithMicStyle, micInputStyle } from "@/app/dictate-button";
 import { RecordBuildingsField, RecordFormSection, RecordFormShell, RecordSignatureField } from "@/app/forms/record-form-shell";
-import { RecordList } from "@/app/forms/record-list";
+import { RecordList, SavedRecordsFold } from "@/app/forms/record-list";
+import { ContractorSignatureField, RecordSignatures, contractorSignatureDetails, contractorSignatureFrom, emptyContractorSignature, type ContractorSignatureValue } from "@/app/forms/contractor-signature";
+import { formIcons, registerIcon } from "@/app/forms/form-icons";
 import { NamedPhotoSlot, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
 import { RecordLocationMap } from "@/app/record-location-map";
 import { StoredPhotoDetail } from "@/app/stored-photo-detail";
 import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
+import { DayOverviewReport } from "@/app/day-overview-report";
 import { VisualEvidenceWorkspace } from "@/app/visual-evidence-workspace";
 import { DailyWorkRegister, type DailyWorkView } from "@/app/daily-work-register";
 import type { DayLogFocus, DayLogToday } from "@/app/daily-log-modal";
@@ -107,7 +110,6 @@ import {
   changeOrderSummary,
   changeOrderMissing,
   changeOrderReady,
-  changeOrderReasons,
   changeOrderScopeAreas,
   changeOrderTypes,
   emptyChangeOrder, changeOrderFromDetails } from "@/lib/forms/change-order";
@@ -355,6 +357,14 @@ const hseIssueTypes = [
   { id: "other", en: "Other", nl: "Overig", icon: MoreHorizontal, category: "safety", eventType: "other" },
 ] as const;
 
+/** The three parties the client wrote beside "Responsible person" on the issue screen. */
+type ResponsibleRole = "" | "client" | "contractor" | "supervision";
+const responsibleRoles = [
+  { id: "client", en: "Client", nl: "Opdrachtgever" },
+  { id: "contractor", en: "Contractor", nl: "Aannemer" },
+  { id: "supervision", en: "Supervision", nl: "Supervisie" },
+] as const;
+
 /**
  * The client's issue screen and their own non-conformance report fill the same record.
  * The screen decides which of these boxes are asked for; the register keeps them all.
@@ -398,6 +408,10 @@ const emptyFindingForm = {
   signedPosition: "",
   /** The signature that was written on this form, not a tick in a box. */
   signatureImage: "",
+  /** Who has to act: the client, the contractor or supervision (client, 19-11-2026). */
+  responsibleRole: "" as ResponsibleRole,
+  /** The contractor's representative signs at the end of the form, next to the supervisor. */
+  contractorSignature: { ...emptyContractorSignature } as ContractorSignatureValue,
 };
 
 export type FindingForm = typeof emptyFindingForm;
@@ -580,6 +594,8 @@ const emptyHseIssueForm = {
   latitude: "",
   longitude: "",
   confidential: false,
+  responsibleRole: "" as ResponsibleRole,
+  contractorSignature: { ...emptyContractorSignature } as ContractorSignatureValue,
 };
 
 export type HseIssueForm = typeof emptyHseIssueForm;
@@ -704,6 +720,8 @@ function formatDate(value: string | null, locale = "en-GB") {
 }
 
 type DeliveryLine = { quantity: string; unit: string; description: string };
+/** "Unit → dropdown": the unit list of the client's specification (Shared Dropdown Lists). */
+const deliveryUnits = ["m", "m²", "m³", "mm", "cm", "kg", "tonne", "pcs", "number", "lot", "hours", "set"];
 
 /**
  * Every Quantity + Unit line of a delivery, read back from the stored details. Older records
@@ -1065,6 +1083,10 @@ export function OperationalWorkspace({
           openModule={openProjectArea}
           openDeadlines={() => openActionCenter("deadlines")}
           openReportCheck={openReportCheck}
+          buildings={buildings}
+          parties={parties}
+          projectCode={projectCode}
+          openRecord={(recordTab, recordId) => openProjectArea(recordTab, recordId)}
         />
       ) : null}
       {mode === "admin" ? (
@@ -1281,6 +1303,7 @@ function ProjectOperations({
     setLessonForm({ ...emptyLessonLearned });
     setRegisterFiles([]);
     setRegisterSignature(null);
+    setRegisterContractorSignature({ ...emptyContractorSignature });
     setRegisterOutcome("");
     setRegisterLines([{ quantity: "", unit: "", description: "" }]);
     setRegisterPhotos([]);
@@ -1317,6 +1340,8 @@ function ProjectOperations({
     ...(externalSubmissionIntent ? { type: "rfi" } : {}),
   });
   const [registerSignature, setRegisterSignature] = useState<HandwrittenSignature | null>(null);
+  /** The contractor's representative signs a register item at its end (19-11-2026). */
+  const [registerContractorSignature, setRegisterContractorSignature] = useState<ContractorSignatureValue>({ ...emptyContractorSignature });
   const [registerFiles, setRegisterFiles] = useState<File[]>([]);
   const [boqFile, setBoqFile] = useState<File | null>(null);
   const [boqItems, setBoqItems] = useState<BoqImportItem[]>([]);
@@ -1358,7 +1383,7 @@ function ProjectOperations({
    * "wel optie voor omschrijving extra". So the quantity is a list, each line with its own
    * unit and its own words, and the register keeps every line.
    */
-  const [registerLines, setRegisterLines] = useState<Array<{ quantity: string; unit: string; description: string }>>([{ quantity: "", unit: "", description: "" }]);
+  const [registerLines, setRegisterLines] = useState<Array<{ quantity: string; unit: string; description: string; customUnit?: boolean }>>([{ quantity: "", unit: "", description: "" }]);
   const [registerPhotos, setRegisterPhotos] = useState<PhotoEvidence[]>([]);
   const [registerPhotoError, setRegisterPhotoError] = useState("");
   /**
@@ -1569,18 +1594,6 @@ function ProjectOperations({
     { title: text("Incorrect dimensions", "Verkeerde maatvoering"), description: text("The executed dimensions do not match the approved drawing.", "De uitgevoerde maatvoering komt niet overeen met de goedgekeurde tekening.") },
     { title: text("Safety risk", "Veiligheidsrisico"), description: text("An unsafe condition requires immediate attention.", "Een onveilige situatie vraagt directe opvolging.") },
     { title: text("Finish or cleaning", "Afwerking of schoonmaak"), description: text("The finish or work area does not meet the required condition.", "De afwerking of werkzone voldoet niet aan de vereiste staat.") },
-  ];
-  /**
-   * The kinds of issue the client registers, written on the issue screen itself:
-   * "safety / quality / equipment / materials / schedule / operational".
-   */
-  const issueTypeOptions = [
-    { id: "safety", label: text("Safety", "Veiligheid") },
-    { id: "quality", label: text("Quality", "Kwaliteit") },
-    { id: "equipment", label: text("Equipment", "Materieel") },
-    { id: "materials", label: text("Materials", "Materialen") },
-    { id: "schedule", label: text("Schedule", "Planning") },
-    { id: "operational", label: text("Operational", "Operationeel") },
   ];
   const findingImpactPresets = [
     text("No schedule impact identified.", "Geen planningimpact vastgesteld."),
@@ -1829,6 +1842,11 @@ function ProjectOperations({
       signedBy: issue.signed_by ?? "",
       signedAt: issue.signed_at ?? "",
       signatureImage: issue.signature_image ?? "",
+      signedPosition: issue.signed_position ?? "",
+      ncrCategory: storedCategoryId(issue.ncr_category, ncrCategories),
+      ncrWorkType: storedCategoryId(issue.ncr_work_type, ncrWorkTypes),
+      responsibleRole: (["client", "contractor", "supervision"].includes(String(issue.responsible_role)) ? issue.responsible_role : "") as ResponsibleRole,
+      contractorSignature: contractorSignatureFrom(issue as Record<string, unknown>),
     });
     setFindingBuildingId(finding.building_id);
     setFindingBuildingIds(finding.building_ids?.length ? finding.building_ids : [finding.building_id]);
@@ -1864,6 +1882,8 @@ function ProjectOperations({
       latitude: event.latitude == null ? "" : String(event.latitude),
       longitude: event.longitude == null ? "" : String(event.longitude),
       confidential: event.confidential,
+      responsibleRole: (["client", "contractor", "supervision"].includes(String(event.responsible_role)) ? event.responsible_role : "") as ResponsibleRole,
+      contractorSignature: contractorSignatureFrom(event as unknown as Record<string, unknown>),
     });
     setHseBuildingId(event.building_id);
     setHseBuildingIds(event.building_ids?.length ? event.building_ids : [event.building_id]);
@@ -1927,6 +1947,7 @@ function ProjectOperations({
     setRegisterBuildingIds(entry.building_ids?.length ? entry.building_ids : entry.building_id ? [entry.building_id] : []);
     setRegisterLocationNodeId(entry.location_node_id ?? "");
     setRegisterSignature(signatureFromDetails(entry.signed_by, entry.signed_at, entry.signature_image));
+    setRegisterContractorSignature(entry.register_type === "change_order" ? { ...emptyContractorSignature } : contractorSignatureFrom(details));
     // Staged evidence belongs to the form it was added in, never to the record being edited.
     setRegisterFiles([]);
     setRegisterPhotos([]);
@@ -1934,7 +1955,8 @@ function ProjectOperations({
     setRegisterPhotoError("");
     setRegisterOutcome(String(details.outcome ?? ""));
     const storedLines = deliveryLinesFromDetails(details);
-    setRegisterLines(storedLines.length ? storedLines : [{ quantity: "", unit: "", description: "" }]);
+    // A unit typed before the list existed stays as written, under "Other".
+    setRegisterLines(storedLines.length ? storedLines.map((line) => ({ ...line, customUnit: Boolean(line.unit) && !deliveryUnits.includes(line.unit) })) : [{ quantity: "", unit: "", description: "" }]);
     if (entry.register_type === "change_order") setChangeOrder(changeOrderFromDetails(details));
     setEditingRegisterId(entry.id);
     setViewedRecord(null);
@@ -2055,6 +2077,13 @@ function ProjectOperations({
   // WCR, RFI, RFA and WIR are forms the contractor draws up and signs. CODECO only
   // records them and signs the response, so "sign as the author" is not CODECO's to tick.
   const submittedRegister = externalSubmissionRegisterTypes.includes(registerForm.type);
+  /**
+   * "Add contractor sign": every register form the supervisor draws up ends with the
+   * contractor's signature next to their own. A change order, a delay report and an
+   * agreement already carry their own contractor box; a lesson learned is reviewed
+   * internally; a contractor's own submission is already signed by the contractor.
+   */
+  const registerContractorSignatureApplies = !changeOrderRegister && !delayReportRegister && !agreementRegister && !lessonsLearnedRegister && !submittedRegister;
   // Who the parties of an agreement can be: the own company, the signed-in supervisor
   // and every party of this project.
   const agreementPartyOptions = Array.from(new Set([
@@ -2467,6 +2496,10 @@ function ProjectOperations({
       signedPosition: findingForm.signedPosition,
       signatureImage: findingForm.signatureImage || null,
       locationNodeId: findingLocationNodeId,
+      extraIssueManagement: {
+        responsible_role: findingForm.responsibleRole || null,
+        ...contractorSignatureDetails(findingForm.contractorSignature),
+      },
     };
     // The record itself is created first whenever there is a connection. That is what
     // makes the link to the contractor available the moment the NCR is submitted; the
@@ -2499,6 +2532,12 @@ function ProjectOperations({
           assignedUserId: draft.assignedUserId,
           dueAt: draft.expectedResolutionDate ? `${draft.expectedResolutionDate}T23:59:59-03:00` : null,
           issueManagement: {
+            // Everything stored earlier stays: an edit only replaces the boxes on screen.
+            ...(data.findings.find((item) => item.id === editingFindingId)?.issue_management ?? {}),
+            ncr_category: draft.ncrCategory,
+            ncr_work_type: draft.ncrWorkType,
+            signed_position: draft.signedPosition,
+            ...draft.extraIssueManagement,
             issue_type: draft.issueType,
             issue_category: draft.issueCategory,
             immediate_actions: draft.immediateActions,
@@ -2646,6 +2685,10 @@ function ProjectOperations({
     const hseLatitude = hseForm.latitude.trim() === "" ? null : Number(hseForm.latitude);
     const hseLongitude = hseForm.longitude.trim() === "" ? null : Number(hseForm.longitude);
     const hseDueAt = new Date(hseDueValue);
+    const hseExtra = {
+      responsible_role: hseForm.responsibleRole || null,
+      ...contractorSignatureDetails(hseForm.contractorSignature),
+    };
     const selectedHseBuildingIds = hseBuildingIds.length ? hseBuildingIds : [hseBuildingId];
     const primaryHseBuildingId = selectedHseBuildingIds[0] ?? hseBuildingId;
     const projectWideHse = selectedHseBuildingIds.length === buildings.length;
@@ -2686,6 +2729,7 @@ function ProjectOperations({
             signedBy: hseSignature?.name,
             signedAt: hseSignature?.signedAt,
             signatureImage: hseSignature?.image ?? null,
+            extra: hseExtra,
         };
         let eventId = editingHseId;
         if (editingHseId) {
@@ -2717,6 +2761,7 @@ function ProjectOperations({
             longitude: hseLongitude,
             locationLabel: hseBuildingName,
             signature: hseSignature,
+            extra: hseExtra,
           });
         } else {
           const saved = await saveRecordOnlineOrQueue({
@@ -2810,6 +2855,7 @@ function ProjectOperations({
         // A change order carries the client's own sections next to the shared document
         // header, so the register, the printed form and the reports read the same thing.
         ...(changeOrderRegister ? changeOrderDetails(changeOrder) : {}),
+        ...(registerContractorSignatureApplies ? contractorSignatureDetails(registerContractorSignature) : {}),
         named_photos: namedRegisterPhotos.map(({ role, photo }) => ({
           role,
           label: namedPhotoLabel(role, "en"),
@@ -2822,6 +2868,7 @@ function ProjectOperations({
         // Every line of the delivery, and the first one still as the plain quantity and
         // unit the register and the reports already read.
         lines: deliveryLines.map((line) => ({ quantity: Number(line.quantity), unit: line.unit.trim() || null, description: line.description.trim() || null })),
+        ...(registerContractorSignatureApplies ? contractorSignatureDetails(registerContractorSignature) : {}),
         quantity: deliveryLines.length ? Number(deliveryLines[0].quantity) : null,
         unit: deliveryLines[0]?.unit.trim() || null,
         // An agreement carries the two parties that made it and their signatures.
@@ -3043,6 +3090,7 @@ function ProjectOperations({
       setLessonForm({ ...emptyLessonLearned });
       setRegisterFiles([]);
       setRegisterSignature(null);
+      setRegisterContractorSignature({ ...emptyContractorSignature });
       setRegisterOutcome("");
       setRegisterLines([{ quantity: "", unit: "", description: "" }]);
       setRegisterPhotos([]);
@@ -3261,7 +3309,7 @@ function ProjectOperations({
       {tab === "inspections" ? (
         <section className="operation-panel">
           {activeInspection && activeTemplate ? (
-            <RecordFormShell code={activeInspection.inspection_number} title={activeInspection.title} status={text("In progress", "In uitvoering")} busy={busy} className="wide sectioned-record-form">
+            <RecordFormShell code={activeInspection.inspection_number} title={activeInspection.title} icon={formIcons.inspection} status={text("In progress", "In uitvoering")} busy={busy} className="wide sectioned-record-form">
               <p className="form-intro">{text("A failed point creates a finding when you complete the inspection.", "Een niet-geslaagd punt maakt een bevinding aan zodra je de inspectie afrondt.")}</p>
               <div className="checklist-progress" aria-label={text("Checklist progress", "Checklistvoortgang")}>
                 <span><b>{answeredChecklistItems}</b> / {activeTemplate.items.length} {text("answered", "beantwoord")}</span>
@@ -3347,7 +3395,7 @@ function ProjectOperations({
             </RecordFormShell>
           ) : null}
           {showForm && !activeInspection ? (
-            <RecordFormShell title={text("Start inspection", "Inspectie starten")} status={text("New", "Nieuw")} busy={busy} className="wide sectioned-record-form">
+            <RecordFormShell title={text("Start inspection", "Inspectie starten")} icon={formIcons.inspection} status={text("New", "Nieuw")} busy={busy} className="wide sectioned-record-form">
               <DraftNotice status={inspectionAutosave.status} savedAt={inspectionAutosave.savedAt} onDiscard={() => { inspectionAutosave.clear(); setInspectionTitle(""); setInspectionTemplateId(""); setInspectionLocationNodeId(""); }} />
               
               {anchorWorkPlanned && missingAnchorChecklistCodes.length ? (
@@ -3418,7 +3466,7 @@ function ProjectOperations({
               <div className="operation-form-heading sectioned-record-heading">
                 <button className="record-back-button" type="button" onClick={() => { resetFindingForm(); setShowForm(false); }} aria-label={text("Leave this screen", "Dit scherm verlaten")}><ArrowLeft size={18} /></button>
                 <div>
-                  <h2>{text("Create issue", "Issue registreren")}</h2>
+                  <h2><formIcons.issue className="record-form-heading-icon" size={20} aria-hidden="true" />{text("Create issue", "Issue registreren")}</h2>
                 </div>
                 <button className={`record-sync-chip${online ? "" : " offline"}`} type="button" disabled={busy} onClick={syncWaitingRecordsNow} title={text("Send what is still waiting on this device", "Verstuur wat nog op dit apparaat wacht")}>{online ? <CloudSun size={15} /> : <WifiOff size={15} />}<span><strong>{syncChip.label}</strong></span></button>
                 <button className="ui-button ui-button--secondary ui-button--md record-heading-draft" type="button" onClick={() => writeRecordDraft("issue", projectId, findingForm)}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
@@ -3551,23 +3599,16 @@ function ProjectOperations({
 
                   <section className="record-section record-order-8" aria-label={text("Responsible person", "Verantwoordelijke")}>
                     <h3><span className="record-section-number">8</span> {text("Responsible person", "Verantwoordelijke")} <em className="record-section-required">*</em></h3>
-                    <label className="form-field record-responsible-field">
-                      <UserCheck size={15} />
-                      <select aria-label={text("Responsible person", "Verantwoordelijke")} value={findingForm.responsibleUserId} onChange={(event) => {
-                        const chosen = responsiblePeople.find((option) => option.id === event.target.value);
-                        setFindingForm({ ...findingForm, responsibleUserId: chosen?.id ?? "", responsiblePerson: chosen ? `${chosen.name}${chosen.role ? ` (${chosen.role})` : ""}` : "" });
-                      }}>
-                        <option value="">{text("Choose who has to act", "Kies wie moet handelen")}</option>
-                        {responsiblePeople.map((option) => <option value={option.id} key={option.id}>{option.role ? `${option.name} (${option.role})` : option.name}</option>)}
-                      </select>
-                      {findingForm.responsibleUserId ? <button className="record-field-clear" type="button" onClick={() => setFindingForm({ ...findingForm, responsibleUserId: "", responsiblePerson: "" })} aria-label={text("Clear the responsible person", "Verantwoordelijke wissen")}><X size={14} /></button> : null}
-                    </label>
-                    {!responsiblePeople.length ? (
-                      <label className="form-field"><span>{text("Name of the responsible person", "Naam van de verantwoordelijke")}</span><input value={findingForm.responsiblePerson} onChange={(event) => setFindingForm({ ...findingForm, responsiblePerson: event.target.value })} placeholder={text("First and last name", "Voor- en achternaam")} /></label>
-                    ) : null}
-                    {/* The contractor that has to correct it is a party, not a colleague:
-                        the client's issue log carries both. */}
-                    <label className="form-field"><span>{text("Contractor · owner of the correction", "Aannemer · eigenaar van de correctie")}</span><select value={findingForm.responsiblePartyId} onChange={(event) => setFindingForm({ ...findingForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Nog niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
+                    {/* "Client / contractor / supervision", then the name. The separate
+                        "contractor · owner of the correction" box is struck off the form. */}
+                    <ResponsiblePartyFields
+                      idPrefix="issue"
+                      role={findingForm.responsibleRole}
+                      name={findingForm.responsiblePerson}
+                      people={responsiblePeople}
+                      partyNames={parties.map((party) => party.name)}
+                      onChange={(next) => setFindingForm((current) => ({ ...current, responsibleRole: next.role, responsiblePerson: next.name, responsibleUserId: next.userId }))}
+                    />
                   </section>
 
                   <section className="record-section record-order-9" aria-label={text("Due date", "Deadline")}>
@@ -3623,7 +3664,9 @@ function ProjectOperations({
                   <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required (Y/N)", "Escalatie vereist (J/N)")}</label>
                 </div>
               </details>
-              {/* The client wrote "signature" beside the issue form too. */}
+              {/* The client wrote "signature" beside the issue form too, and "contractor ook
+                  tekenen": both signatures close the form, supervisor first. */}
+              <RecordSignatures>
               <SignatureField
                 label={text("Sign as the supervisor who reports this issue", "Ondertekenen als supervisor die dit issue meldt")}
                 declaration={text(
@@ -3641,6 +3684,14 @@ function ProjectOperations({
                   signatureImage: signature?.image ?? "",
                 })}
               />
+              <ContractorSignatureField
+                idPrefix="issue"
+                value={findingForm.contractorSignature}
+                partyNames={parties.map((party) => party.name)}
+                locked={Boolean(editingFindingId && data.findings.find((item) => item.id === editingFindingId)?.issue_management?.contractor_signature_image)}
+                onChange={(contractorSignature) => setFindingForm((current) => ({ ...current, contractorSignature }))}
+              />
+              </RecordSignatures>
               <div className="record-form-actions">
                 <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => { resetFindingForm(); setShowForm(false); }}><X size={14} /> {text("Cancel", "Annuleren")}</button>
                 <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => writeRecordDraft("issue", projectId, findingForm)}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
@@ -3660,10 +3711,10 @@ function ProjectOperations({
             </div>
           ) : null}
           {showForm && findingScope === "ncr" ? (
-            <div className="operation-form wide sectioned-record-form snap-assign-form">
-              <div className="operation-form-heading"><div><h2>{text("Non-conformance report", "Non-conformance report")}</h2></div>{!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}</div>
-              {/* The head of the client's own NCR form: project, contractor, subject and
-                  the reference, with the date and the report number filled by the app. */}
+            <div className="operation-form wide sectioned-record-form snap-assign-form ncr-record-form">
+              <div className="operation-form-heading"><div><h2><formIcons.ncr className="record-form-heading-icon" size={20} aria-hidden="true" />{text("Non-conformance report", "Non-conformance report")}</h2></div>{!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}</div>
+              {/* The head of the form is always first: project, contractor, date, author and
+                  number, filled by the app - the same head every other form has. */}
               <section className="controlled-document-context ncr-form-context" aria-label={text("Non-conformance report header", "Kop van het non-conformance report")}>
                 <div><small>{text("Project name and number", "Projectnaam en -nummer")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
                 <div><small>{text("Contractor", "Aannemer")}</small><strong>{parties.find((party) => party.id === findingForm.responsiblePartyId)?.name || text("Not assigned yet", "Nog niet toegewezen")}</strong><span>{findingBuildingsLabel}</span></div>
@@ -3684,9 +3735,6 @@ function ProjectOperations({
                 markupContext={{ ...markupOptions, defaultBuildingId: findingBuildingId }}
               />
               {findingPhotoError ? <p className="field-error" role="alert">{findingPhotoError}</p> : null}
-              {/* The client struck the ready-made problems and the historic B1 catalog off
-                  the issue screen: an issue is written in the words of the site. The NCR
-                  form keeps both, because that is where they were asked for. */}
               <div className="quick-issue-presets" aria-label={text("Common issue choices", "Veelvoorkomende problemen")}>
                 {findingPresets.map((preset) => <button className={findingForm.title === preset.title ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, title: preset.title, description: preset.description, type: preset.title === text("Safety risk", "Veiligheidsrisico") ? "observation" : "deficiency", severity: preset.title === text("Safety risk", "Veiligheidsrisico") ? "high" : findingForm.severity })} key={preset.title}>{preset.title}</button>)}
               </div>
@@ -3707,32 +3755,20 @@ function ProjectOperations({
                 issueType: "quality",
               });
               }}><option value="">{text("Choose only when applicable", "Kies alleen indien van toepassing")}</option>{issueCatalogPresets.map((preset) => <option value={preset.subject} key={preset.subject}>{preset.subject}</option>)}</select></label>
-              {/* The two lists at the head of the client's own NCR form: what the
-                  non-conformance is, and which work it hit. The third list on that sheet,
-                  "Source", is struck through — an NCR is answered by what is wrong and
-                  where in the works, not by which inspection happened to find it. */}
+              {/* "On top": the subject and its description come before the lists, right
+                  under the quick choices that fill them, one below the other. */}
+              <label className="form-field"><span>{text("Subject", "Onderwerp")}</span><input value={findingForm.title} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} placeholder={text("What the non-conformance is about", "Waar de afwijking over gaat")} /></label>
+              <label className="form-field"><span>{text("Description of non-conformance", "Omschrijving van de afwijking")}</span><textarea rows={5} value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} /></label>
+              {/* Short choices stand in pairs, long text stands full width - on every form. */}
               <div className="form-grid-2">
                 <label className="form-field"><span>{text("Category", "Categorie")}</span><select value={findingForm.ncrCategory} onChange={(event) => setFindingForm({ ...findingForm, ncrCategory: event.target.value })}><option value="">{text("Choose a category", "Kies een categorie")}</option>{ncrCategories.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
                 <label className="form-field"><span>{text("Type", "Type")}</span><select value={findingForm.ncrWorkType} onChange={(event) => setFindingForm({ ...findingForm, ncrWorkType: event.target.value })}><option value="">{text("Choose a type of work", "Kies een soort werk")}</option>{ncrWorkTypes.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
               </div>
               <div className="form-grid-2">
-                {/* In the NCR module the type is the NCR itself; a dropdown that can only
-                    say "NCR" is one box too many on the client's form. */}
-                <label className="form-field"><span>{text("Reference checklist / earlier report", "Referentiechecklist / eerder rapport")}</span><input value={findingForm.referenceChecklist} onChange={(event) => setFindingForm({ ...findingForm, referenceChecklist: event.target.value })} placeholder="NCR - 51" /></label>
-                {/* Priority is High, Medium or Low, in the client's own words. The deadline
-                    that follows from it stays visible, because it is rule-driven. */}
                 <label className="form-field"><span>{text("Priority", "Prioriteit")}</span><select value={findingForm.severity} onChange={(event) => setFindingForm({ ...findingForm, severity: event.target.value })}><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="low">{text("Low · 14 days", "Laag · 14 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label>
-              </div>
-              <div className="form-grid-2">
-                <label className="form-field"><span>{text("Issue type", "Soort melding")}</span><select value={findingForm.issueType} onChange={(event) => setFindingForm({ ...findingForm, issueType: event.target.value })}>{issueTypeOptions.map((option) => <option value={option.id} key={option.id}>{option.label}</option>)}</select></label>
                 <label className="form-field"><span>{text("Disposition", "Beoordeling")}</span><select value={findingForm.disposition} onChange={(event) => setFindingForm({ ...findingForm, disposition: event.target.value as typeof findingForm.disposition })}><option value="validated">{text("Validated", "Gevalideerd")}</option><option value="to_be_corrected">{text("To be corrected", "Te corrigeren")}</option><option value="alternative_solution">{text("Alternative solution required", "Alternatieve oplossing nodig")}</option></select></label>
               </div>
-              <div className="form-grid">
-                <label className="form-field"><span>{text("Subject", "Onderwerp")}</span><input value={findingForm.title} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} placeholder={text("What the non-conformance is about", "Waar de afwijking over gaat")} /></label>
-                <label className="form-field"><span>{text("Description of non-conformance", "Omschrijving van de afwijking")}</span><textarea rows={5} value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} /></label>
-              </div>
-              {/* "Recommended Action by Engineer" on the client's own NCR form: rework or
-                  repair, with the sentence that says what has to happen. */}
+              {/* "Issue type" is struck off the NCR: in this module it can only ever say NCR. */}
               <div className="click-answer-block ncr-recommended-action">
                 <strong>{text("Recommended action by engineer", "Aanbevolen actie door de ingenieur")}</strong>
                 <div className="quick-issue-presets">
@@ -3742,58 +3778,61 @@ function ProjectOperations({
                 </div>
                 <label className="form-field"><span>{text("What the contractor has to do", "Wat de aannemer moet doen")}</span><textarea rows={2} value={findingForm.recommendedActionDetail} onChange={(event) => setFindingForm({ ...findingForm, recommendedActionDetail: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, recommendedActionDetail: appendDictation(current.recommendedActionDetail, transcript) }))} /></label>
               </div>
-              {/* "Moet ook kunnen invoeren": the impact and the follow-up are typed here,
-                  in the same block as the ready-made sentences. A choice fills the field
-                  and stays editable, instead of hiding the writing behind a fold-out. */}
+              {/* The impact is chosen, not written: "Impact in your own words" is struck off. */}
               <div className="click-answer-block">
                 <strong>{text("Impact", "Impact")}</strong>
                 <div className="quick-issue-presets">{findingImpactPresets.map((option) => <button className={findingForm.impactSummary === option ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, impactSummary: findingForm.impactSummary === option ? "" : option })} key={option}>{option}</button>)}</div>
-                <label className="form-field"><span>{text("Impact in your own words", "Impact in eigen woorden")}</span><textarea rows={2} value={findingForm.impactSummary} onChange={(event) => setFindingForm({ ...findingForm, impactSummary: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, impactSummary: appendDictation(current.impactSummary, transcript) }))} /></label>
               </div>
-              {/* "Corrective Action Required" is struck through on the client's own NCR
-                  form, and rightly so: what has to happen is already the engineer's
-                  recommended action above, and what will happen is the contractor's own
-                  proposal below. A third box in between only invited three answers to one
-                  question. It stays on the issue screen, which has no such pair. */}
               <div className="form-grid-2">
+                <label className="form-field"><span>{text("Reference checklist / earlier report", "Referentiechecklist / eerder rapport")}</span><input value={findingForm.referenceChecklist} onChange={(event) => setFindingForm({ ...findingForm, referenceChecklist: event.target.value })} placeholder="NCR - 51" /></label>
                 <label className="form-field"><span>{text("Date identified", "Datum vastgesteld")}</span><input type="date" value={findingForm.dateIdentified} onChange={(event) => setFindingForm({ ...findingForm, dateIdentified: event.target.value })} /></label>
-                <label className="form-field"><span>{text("Expected resolution date", "Verwachte oplossingsdatum")}</span><input type="date" value={findingForm.expectedResolutionDate} onChange={(event) => setFindingForm({ ...findingForm, expectedResolutionDate: event.target.value })} /></label>
               </div>
-              <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required", "Escalatie nodig")}</label>
-              <p className="form-helper">{text(`Entered by ${currentUserName}`, `Ingevoerd door ${currentUserName}`)}</p>
+              <div className="form-grid-2">
+                <label className="form-field"><span>{text("Expected resolution date", "Verwachte oplossingsdatum")}</span><input type="date" value={findingForm.expectedResolutionDate} onChange={(event) => setFindingForm({ ...findingForm, expectedResolutionDate: event.target.value })} /></label>
+                <div className="form-field ncr-escalation-field">
+                <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required", "Escalatie nodig")}</label>
+                </div>
+              </div>
               <div className="form-grid-2">
                 <BuildingMultiPicker id="ncr-buildings" buildings={buildings} value={findingBuildingIds} onChange={chooseFindingBuildings} />
                 <label className="form-field"><span>{text("Contractor · receives this NCR", "Aannemer · ontvangt deze NCR")}</span><select value={findingForm.responsiblePartyId} onChange={(event) => setFindingForm({ ...findingForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Nog niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
               </div>
               <LocationPicker id="finding-location" nodes={data.locationNodes} buildingId={findingBuildingId} value={findingLocationNodeId} onChange={setFindingLocationNodeId} requiredDepth={requiredLocationDepth} />
-              {/* The last two boxes of the client's NCR form: free remarks and the
-                  signature of the engineer who issues it. */}
               <label className="form-field"><span>{text("Remarks", "Opmerkingen")}</span><textarea rows={2} value={findingForm.remarks} onChange={(event) => setFindingForm({ ...findingForm, remarks: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, remarks: appendDictation(current.remarks, transcript) }))} /></label>
-              {/* Signing is the signature itself, written here, on this form, at this
-                  moment — not a box that records that somebody clicked. The client wrote
-                  "signature" beside the issue form too, so both are signed the same way. */}
-              <SignatureField
-                label={text("Sign as the engineer who issues this NCR", "Ondertekenen als ingenieur die deze NCR uitgeeft")}
-                declaration={text(
-                  "By signing you issue this non-conformance report to the contractor named above.",
-                  "Met je handtekening geef je dit non-conformance report uit aan de hierboven genoemde aannemer.",
-                )}
-                hint={text("Signature, name and date are stored with the report.", "Handtekening, naam en datum worden bij het rapport bewaard.")}
-                nameSuggestion={currentUserName}
-                nameOptions={documentIssuerOptions}
-                value={signatureFromDetails(findingForm.signedBy, findingForm.signedAt, findingForm.signatureImage)}
-                onChange={(signature) => setFindingForm({
-                  ...findingForm,
-                  signedBy: signature?.name ?? "",
-                  signedAt: signature?.signedAt ?? "",
-                  signatureImage: signature?.image ?? "",
-                })}
-              />
-              {/* Every signature box on the client's own form prints Name and Position
-                  under the line. The name and the date come from the act of signing; the
-                  job the signer holds is the one thing the app cannot know. */}
-              <label className="form-field ncr-signature-position"><span>{text("Position", "Functie")}</span><input value={findingForm.signedPosition} onChange={(event) => setFindingForm({ ...findingForm, signedPosition: event.target.value })} placeholder={text("Quality Engineer", "Quality Engineer")} /></label>
-                <div className="operation-alert warning"><RotateCcw size={17} /><div><strong>{text("The contractor fills in the correction", "De aannemer vult de correctie in")}</strong><span>{text("Submit, then send the NCR to the contractor. The contractor proposes the corrective action; CODECO verifies and closes.", "Dien in en stuur de NCR naar de aannemer. De aannemer stelt de corrigerende maatregel voor; CODECO verifieert en sluit.")}</span></div></div>
+              {/* "Gaat dit in de app gebeuren?" - yes: the contractor answers in the app through
+                  the link, without an account, and CODECO verifies and closes it here. */}
+              <div className="operation-alert warning"><RotateCcw size={17} /><div><strong>{text("The contractor answers in the app", "De aannemer antwoordt in de app")}</strong><span>{text("After submitting, send the NCR link to the contractor (no account needed). The contractor writes the corrective action in the app; CODECO verifies and closes it here.", "Stuur na het indienen de NCR-link naar de aannemer (geen account nodig). De aannemer schrijft de corrigerende maatregel in de app; CODECO verifieert en sluit hier af.")}</span></div></div>
+              {/* "Overal aan het eind plaatsen": the engineer and the contractor sign last. */}
+              <RecordSignatures>
+                <div className="record-signature-with-position">
+                <SignatureField
+                  label={text("Sign as the engineer who issues this NCR", "Ondertekenen als ingenieur die deze NCR uitgeeft")}
+                  declaration={text(
+                    "By signing you issue this non-conformance report to the contractor named above.",
+                    "Met je handtekening geef je dit non-conformance report uit aan de hierboven genoemde aannemer.",
+                  )}
+                  hint={text("Signature, name and date are stored with the report.", "Handtekening, naam en datum worden bij het rapport bewaard.")}
+                  nameSuggestion={currentUserName}
+                  nameOptions={documentIssuerOptions}
+                  value={signatureFromDetails(findingForm.signedBy, findingForm.signedAt, findingForm.signatureImage)}
+                  onChange={(signature) => setFindingForm({
+                    ...findingForm,
+                    signedBy: signature?.name ?? "",
+                    signedAt: signature?.signedAt ?? "",
+                    signatureImage: signature?.image ?? "",
+                  })}
+                />
+                <label className="form-field ncr-signature-position"><span>{text("Position", "Functie")}</span><input value={findingForm.signedPosition} onChange={(event) => setFindingForm({ ...findingForm, signedPosition: event.target.value })} placeholder={text("Quality Engineer", "Quality Engineer")} /></label>
+                </div>
+                <ContractorSignatureField
+                  idPrefix="ncr"
+                  value={findingForm.contractorSignature}
+                  partyNames={parties.map((party) => party.name)}
+                  locked={Boolean(editingFindingId && data.findings.find((item) => item.id === editingFindingId)?.issue_management?.contractor_signature_image)}
+                  onChange={(contractorSignature) => setFindingForm((current) => ({ ...current, contractorSignature }))}
+                />
+              </RecordSignatures>
+              <p className="form-helper">{text(`Entered by ${currentUserName}`, `Ingevoerd door ${currentUserName}`)}</p>
               <StillNeeded items={[
                 exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId ? text("exact location", "exacte locatie") : "",
                 !online && !findingPhotos.length ? text("a photo (you are offline)", "een foto (je bent offline)") : "",
@@ -3828,10 +3867,12 @@ function ProjectOperations({
               ].map(([label, count], index) => <div className={index === 2 ? "attention" : index === 3 ? "complete" : ""} key={String(label)}><span>{index + 1}</span><strong>{count}</strong><small>{label}</small></div>)}
             </div>
             {permissions.can("files.manage") ? <div className="punchlist-cycle-card">
-              <div><strong>{text("Mark an issue on an image", "Een issue op een beeld markeren")}</strong><p>{text("Choose a photo or a 360° image and place the issue on it.", "Kies een foto of 360°-beeld en plaats het issue erop.")}</p></div>
-              <div className="button-row"><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setTab("visual")}><Camera size={14} /> {text("Open photo", "Foto openen")}</button><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setTab("visual")}><RotateCcw size={14} /> {text("Open 360° image", "360°-beeld openen")}</button></div>
+              <div><strong>{text("Mark an issue on an image", "Een issue op een beeld markeren")}</strong><p>{text("Choose a photo and place the issue on it.", "Kies een foto en plaats het issue erop.")}</p></div>
+              {/* "Alleen maar foto's kunnen plaatsen, geen 360°": an issue is marked on a photo. */}
+              <div className="button-row"><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setTab("visual")}><Camera size={14} /> {text("Open photo", "Foto openen")}</button></div>
             </div> : null}
           </div>
+          <SavedRecordsFold formOpen={showForm && !focusRecordId} count={scopedFindings.length} storageKey={`${findingScope}:${projectId}`}>
           <FindingList
             data={data}
             client={client}
@@ -3874,6 +3915,7 @@ function ProjectOperations({
             editRecord={editFinding}
             withdrawRecord={(finding) => withdrawRecord({ kind: "finding", id: finding.id, code: finding.finding_number, title: finding.title, status: finding.status, meta: recordContextLabel(finding.building_id, finding.location_node_id, finding.building_ids), description: finding.description })}
           />
+          </SavedRecordsFold>
         </section>
       ) : null}
       {tab === "hse" ? (
@@ -3882,6 +3924,7 @@ function ProjectOperations({
             <RecordFormShell
               code={data.hseEvents.find((item) => item.id === editingHseId)?.event_number ?? nextHseNumber}
               title={editingHseId ? text("Edit HSE observation / issue", "HSE-observatie / issue bewerken") : text("HSE observation / issue", "HSE-observatie / issue")}
+              icon={hseForm.type === "incident" ? formIcons.hse_incident : formIcons.hse}
               status={hseStatusLabel}
               busy={busy}
               className="wide sectioned-record-form"
@@ -3966,22 +4009,16 @@ function ProjectOperations({
 
                   <section className="record-section record-order-8" aria-label={text("Responsible person", "Verantwoordelijke")}>
                     <h3><span className="record-section-number">8</span> {text("Responsible person", "Verantwoordelijke")} <em className="record-section-required">*</em></h3>
-                    <label className="form-field record-responsible-field">
-                      <UserCheck size={15} />
-                      <select aria-label={text("Responsible person", "Verantwoordelijke")} value={hseForm.responsibleUserId} onChange={(event) => {
-                        const chosen = responsiblePeople.find((option) => option.id === event.target.value);
-                        setHseForm({ ...hseForm, responsibleUserId: chosen?.id ?? "", responsiblePerson: chosen ? `${chosen.name}${chosen.role ? ` (${chosen.role})` : ""}` : "" });
-                      }}>
-                        <option value="">{text("Choose who has to act", "Kies wie moet handelen")}</option>
-                        {responsiblePeople.map((option) => <option value={option.id} key={option.id}>{option.role ? `${option.name} (${option.role})` : option.name}</option>)}
-                      </select>
-                      {hseForm.responsibleUserId ? <button className="record-field-clear" type="button" onClick={() => setHseForm({ ...hseForm, responsibleUserId: "", responsiblePerson: "" })} aria-label={text("Clear the responsible person", "Verantwoordelijke wissen")}><X size={14} /></button> : null}
-                    </label>
-                    {/* A project without colleagues in the app still has to be able to file
-                        the issue: then the name is written instead of chosen. */}
-                    {!responsiblePeople.length ? (
-                      <label className="form-field"><span>{text("Name of the responsible person", "Naam van de verantwoordelijke")}</span><input value={hseForm.responsiblePerson} onChange={(event) => setHseForm({ ...hseForm, responsiblePerson: event.target.value })} placeholder={text("First and last name", "Voor- en achternaam")} /></label>
-                    ) : null}
+                    {/* "Dit is al voorhanden": one choice of party and one name, not a list
+                        of colleagues above a second box for the same name. */}
+                    <ResponsiblePartyFields
+                      idPrefix="hse"
+                      role={hseForm.responsibleRole}
+                      name={hseForm.responsiblePerson}
+                      people={responsiblePeople}
+                      partyNames={parties.map((party) => party.name)}
+                      onChange={(next) => setHseForm((current) => ({ ...current, responsibleRole: next.role, responsiblePerson: next.name, responsibleUserId: next.userId }))}
+                    />
                   </section>
 
                   <section className="record-section record-order-9" aria-label={text("Due date", "Deadline")}>
@@ -4058,24 +4095,16 @@ function ProjectOperations({
                     </div>
                   </section>
 
-                  <section className="record-section record-order-10" aria-label={text("Root cause", "Oorzaak")}>
-                    <h3><span className="record-section-number">10</span> {text("Root cause", "Oorzaak")} <em className="record-section-optional">({text("optional", "optioneel")})</em></h3>
-                    <label className="form-field"><select aria-label={text("Root cause", "Oorzaak")} value={hseForm.rootCause} onChange={(event) => setHseForm({ ...hseForm, rootCause: event.target.value })}>
-                      <option value="">{text("Select root cause", "Kies een oorzaak")}</option>
-                      {recordRootCauses.map((cause) => <option value={cause.id} key={cause.id}>{text(cause.en, cause.nl)}</option>)}
-                    </select></label>
-                  </section>
-
-                  <section className="record-section record-order-11" aria-label={text("Corrective action required", "Vereiste correctieve actie")}>
-                    <h3><span className="record-section-number">11</span> {text("Corrective action required", "Vereiste correctieve actie")}</h3>
+                  <section className="record-section record-order-10" aria-label={text("Corrective action required", "Vereiste correctieve actie")}>
+                    <h3><span className="record-section-number">10</span> {text("Corrective action required", "Vereiste correctieve actie")}</h3>
                     <label className="form-field">
                       <textarea rows={3} maxLength={1000} value={hseForm.correctiveAction} onChange={(event) => setHseForm({ ...hseForm, correctiveAction: event.target.value })} aria-label={text("What corrective action is required?", "Welke correctieve actie is nodig?")} placeholder={text("What corrective action is required?", "Welke correctieve actie is nodig?")} />
                       <DictateButton onText={(transcript) => setHseForm((current) => ({ ...current, correctiveAction: appendDictation(current.correctiveAction, transcript) }))} />
                     </label>
                   </section>
 
-                  <section className="record-section record-order-12" aria-label={text("Notes", "Notities")}>
-                    <h3><span className="record-section-number">12</span> {text("Notes", "Notities")} <em className="record-section-optional">({text("optional", "optioneel")})</em></h3>
+                  <section className="record-section record-order-11" aria-label={text("Notes", "Notities")}>
+                    <h3><span className="record-section-number">11</span> {text("Notes", "Notities")} <em className="record-section-optional">({text("optional", "optioneel")})</em></h3>
                     <label className="form-field">
                       <textarea rows={3} maxLength={500} value={hseForm.notes} onChange={(event) => setHseForm({ ...hseForm, notes: event.target.value })} placeholder={text("Additional notes...", "Aanvullende notities...")} /><DictateButton style={{ bottom: 34 }} onText={(transcript) => setHseForm((current) => ({ ...current, notes: appendDictation(current.notes, transcript) }))} />
                       <div className="record-field-foot"><span /><span className="record-counter">{hseForm.notes.length} / 500</span></div>
@@ -4085,6 +4114,7 @@ function ProjectOperations({
               </div>
 
               <label className="check-field"><input type="checkbox" checked={hseForm.confidential} onChange={(event) => setHseForm({ ...hseForm, confidential: event.target.checked })} /> {text("Restrict this sensitive incident to authorized HSE roles", "Beperk dit gevoelige incident tot bevoegde HSE-rollen")}</label>
+              <RecordSignatures>
               <RecordSignatureField
                 value={hseSignature}
                 onChange={setHseSignature}
@@ -4093,6 +4123,15 @@ function ProjectOperations({
                 locked={Boolean(data.hseEvents.find((item) => item.id === editingHseId)?.signature_image)}
                 declaration={text("I confirm this HSE record is complete and accurate.", "Ik bevestig dat deze HSE-registratie volledig en juist is.")}
               />
+              {/* "Contractor ook tekenen!" */}
+              <ContractorSignatureField
+                idPrefix="hse"
+                value={hseForm.contractorSignature}
+                partyNames={parties.map((party) => party.name)}
+                locked={Boolean(data.hseEvents.find((item) => item.id === editingHseId)?.contractor_signature_image)}
+                onChange={(contractorSignature) => setHseForm((current) => ({ ...current, contractorSignature }))}
+              />
+              </RecordSignatures>
               {/* The bar of the client's screen: leave it, park it, count the evidence,
                   submit it. */}
               <div className="record-form-actions">
@@ -4115,9 +4154,10 @@ function ProjectOperations({
           {/* The line under a record says what was filled in on the screen: the heading,
               the category, who has to act and by when. A box that is only asked for and
               never read back reads as a box that was not stored. */}
+          <SavedRecordsFold formOpen={showForm && !focusRecordId} count={data.hseEvents.length} storageKey={`hse:${projectId}`}>
           <RecordList empty={text("No formal HSE records yet.", "Nog geen formele HSE-registraties.")} rows={data.hseEvents.map((event) => ({
             id: event.id,
-            icon: ShieldCheck,
+            icon: event.event_type === "incident" ? formIcons.hse_incident : formIcons.hse,
             title: event.confidential ? `${event.title} · ${text("confidential", "vertrouwelijk")}` : event.title,
             meta: [
               event.event_number,
@@ -4136,6 +4176,7 @@ function ProjectOperations({
             onEdit: event.status !== "cancelled" ? () => editHse(event) : undefined,
             onWithdraw: event.status !== "cancelled" ? () => withdrawRecord({ kind: "hse", id: event.id, code: event.event_number, title: event.title, status: event.status, meta: recordContextLabel(event.building_id, event.location_node_id, event.building_ids), description: event.description }) : undefined,
           }))} />
+          </SavedRecordsFold>
         </section>
       ) : null}
 
@@ -4145,34 +4186,29 @@ function ProjectOperations({
             <RecordFormShell
               code={data.registerEntries.find((item) => item.id === editingRegisterId)?.entry_number}
               title={registerNames[registerForm.type] ?? text("Project register item", "Projectregistratie")}
+              icon={registerIcon(registerForm.type)}
               status={editingRegisterId ? text("Editing", "Bewerken") : text("Draft", "Concept")}
               busy={busy}
               className={registerFormClassName}
               headerAside={controlledRegister ? <span className="controlled-document-badge">{projectCode} · {registerContextLabel}</span> : null}
             >
-              <DraftNotice status={registerAutosave.status} savedAt={registerAutosave.savedAt} onDiscard={discardRegisterDraft} />
-              {controlledRegister ? (
-                <div className="form-grid controlled-document-primary">
-                  {/* The client's arrow runs from Discipline to the top of the form: it comes before the title. */}
-                  {registerForm.type === "technical_instruction" ? <label className="form-field"><span>{text("Discipline", "Discipline")}</span><select value={registerForm.discipline} onChange={(event) => setRegisterForm({ ...registerForm, discipline: event.target.value })}><option value="architectural">{text("Architectural", "Architectonisch")}</option><option value="structural">{text("Structural", "Constructief")}</option><option value="electrical">{text("Electrical", "Elektrisch")}</option><option value="mechanical">{text("Mechanical", "Werktuigbouwkundig")}</option><option value="civil">{text("Civil", "Civiel")}</option><option value="hse">HSE</option></select></label> : null}
-                  <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction title / reference", "Titel / referentie instructie") : text("Title / reference", "Titel / referentie")}</span><input value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} /></label>
-                  <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction description", "Omschrijving instructie") : text("Formal request / instruction / observation", "Formeel verzoek / instructie / observatie")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
-                </div>
-              ) : null}
+
               {/* The form says what is being recorded — Materials delivery, Agreement,
                   RFI — instead of a general register heading with the answer hidden in a
                   dropdown below it. */}
               {/* "Zelfde als HSE": the head of the client's own delay report is what the
                   app already knows before a single box is filled in — the project, where
                   it is, who is reporting it, and the day and time it is being written. */}
-              {delayReportRegister || agreementRegister || lessonsLearnedRegister ? (
+              {/* "Zelfde info als HSE en anderen": every form opens with the same head — number,
+                  project, location, date and author — before a single box is filled in. */}
+              {!controlledRegister ? (
                 <>
-                  <section className="controlled-document-context sectioned-record-context" aria-label={delayReportRegister ? text("Delay report header", "Kop van het vertragingsrapport") : agreementRegister ? text("Agreement header", "Kop van de afspraak") : text("Lesson learned header", "Kop van de les")}>
+                  <section className="controlled-document-context sectioned-record-context" aria-label={delayReportRegister ? text("Delay report header", "Kop van het vertragingsrapport") : agreementRegister ? text("Agreement header", "Kop van de afspraak") : lessonsLearnedRegister ? text("Lesson learned header", "Kop van de les") : text("Register header", "Kop van de registratie")}>
                     <div><small>{text("Form no · automatic", "Formuliernummer · automatisch")}</small><strong>{editingDocument?.entry_number || text("On submit", "Bij indienen")}</strong><span>{text("Unique project code", "Unieke projectcode")}</span></div>
                     <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
                     <div><small>{text("Location / area", "Locatie / gebied")}</small><strong>{registerContextLabel}</strong><span>{registerLocationNodeId ? locationBreadcrumb(data.locationNodes, registerLocationNodeId) : text("Building level", "Gebouwniveau")}</span></div>
                     <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDateLabel}</strong><span>{issueTime}</span></div>
-                    <div><small>{delayReportRegister ? text("Reported by", "Gemeld door") : text("Prepared by", "Opgesteld door")}</small><strong>{currentUserName}</strong><span>{reporterDepartment}</span></div>
+                    <div><small>{delayReportRegister ? text("Reported by", "Gemeld door") : registerForm.type === "delivery" ? text("Received by", "Ontvangen door") : text("Prepared by", "Opgesteld door")}</small><strong>{currentUserName}</strong><span>{reporterDepartment}</span></div>
                   </section>
                 </>
               ) : null}
@@ -4180,8 +4216,8 @@ function ProjectOperations({
                   that is the head of the paper form the client hands out. */}
               {controlledRegister ? (
                 <>
-                <section className={`controlled-document-context${changeOrderRegister ? " sectioned-record-context" : ""}`} aria-label={text("Project information", "Projectinformatie")}>
-                  {changeOrderRegister ? <div><small>{text("Form no · automatic", "Formuliernummer · automatisch")}</small><strong>{editingDocument?.entry_number || text("On submit", "Bij indienen")}</strong><span>{text("Unique project code", "Unieke projectcode")}</span></div> : null}
+                <section className="controlled-document-context sectioned-record-context" aria-label={text("Project information", "Projectinformatie")}>
+                  <div><small>{text("Form no · automatic", "Formuliernummer · automatisch")}</small><strong>{editingDocument?.entry_number || text("On submit", "Bij indienen")}</strong><span>{text("Unique project code", "Unieke projectcode")}</span></div>
                   <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
                   <div><small>{text("Applies to", "Geldt voor")}</small><strong>{registerContextLabel}</strong><span>{registerLocationNodeId ? locationBreadcrumb(data.locationNodes, registerLocationNodeId) : text("Building level", "Gebouwniveau")}</span></div>
                   <div><small>{text("Issue date and time", "Uitgiftedatum en -tijd")}</small><strong>{documentIssueDateLabel}</strong><span>{documentIssueTime}</span></div>
@@ -4204,6 +4240,15 @@ function ProjectOperations({
 
                 </>
               ) : null}
+              <DraftNotice status={registerAutosave.status} savedAt={registerAutosave.savedAt} onDiscard={discardRegisterDraft} />
+              {controlledRegister ? (
+                <div className="form-grid controlled-document-primary">
+                  {/* The client's arrow runs from Discipline to the top of the form: it comes before the title. */}
+                  {registerForm.type === "technical_instruction" ? <label className="form-field"><span>{text("Discipline", "Discipline")}</span><select value={registerForm.discipline} onChange={(event) => setRegisterForm({ ...registerForm, discipline: event.target.value })}><option value="architectural">{text("Architectural", "Architectonisch")}</option><option value="structural">{text("Structural", "Constructief")}</option><option value="electrical">{text("Electrical", "Elektrisch")}</option><option value="mechanical">{text("Mechanical", "Werktuigbouwkundig")}</option><option value="civil">{text("Civil", "Civiel")}</option><option value="hse">HSE</option></select></label> : null}
+                  <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction title / reference", "Titel / referentie instructie") : text("Title / reference", "Titel / referentie")}</span><input value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} /></label>
+                  <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction description", "Omschrijving instructie") : text("Formal request / instruction / observation", "Formeel verzoek / instructie / observatie")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
+                </div>
+              ) : null}
               <div className="form-grid-2">
                 <RecordBuildingsField id="register-buildings" buildings={buildings} value={registerBuildingIds} onChange={(next) => { setRegisterBuildingIds(next); setRegisterBuildingId(next[0] ?? registerBuildingId); setRegisterLocationNodeId(""); }} />
                 <LocationPicker id="register-location" nodes={data.locationNodes} buildingId={registerBuildingId} value={registerLocationNodeId} onChange={setRegisterLocationNodeId} requiredDepth={requiredLocationDepth} />
@@ -4215,7 +4260,8 @@ function ProjectOperations({
                     clearRegisterStaging(event.target.value);
                   }}>{Object.entries(registerNames).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
                 </details> : null}
-                {registerDrawings.length && registerForm.type !== "delivery" ? (
+                {/* A lesson learned is not tied to a spot on a drawing: struck off its form. */}
+                {registerDrawings.length && registerForm.type !== "delivery" && !lessonsLearnedRegister ? (
                   <label className="form-field"><span>{text("Location on drawing", "Locatie op tekening")}</span>
                     <select value={registerDrawingId} onChange={(event) => setRegisterDrawingId(event.target.value)}>
                       <option value="">{text("No PDF selected", "Geen pdf gekozen")}</option>
@@ -4381,11 +4427,9 @@ function ProjectOperations({
                     number={1}
                     title={text("Change description", "Omschrijving van de wijziging")}
                   >
+                    {/* "Reason for change" is struck off: the formal request above already says why. */}
                     <div className="form-grid-2">
                       <label className="form-field"><span>{text("Change order type", "Type wijzigingsopdracht")}</span><select value={changeOrder.changeOrderType} onChange={(event) => setChangeOrder({ ...changeOrder, changeOrderType: event.target.value })}><option value="">{text("Select type", "Kies type")}</option>{changeOrderTypes.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
-                      <label className="form-field"><span>{text("Reason for change", "Reden van de wijziging")}</span><select value={changeOrder.reason} onChange={(event) => setChangeOrder({ ...changeOrder, reason: event.target.value })}><option value="">{text("Select reason", "Kies reden")}</option>{changeOrderReasons.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
-                    </div>
-                    <div className="form-grid-2">
                       <label className="form-field"><span>{text("Requested by", "Aangevraagd door")}</span><input style={inputWithMicStyle} list="change-order-requesters" value={changeOrder.requestedBy} onChange={(event) => setChangeOrder({ ...changeOrder, requestedBy: event.target.value })} placeholder={text("Enter name", "Voer naam in")} /><DictateButton style={micInputStyle} onText={(transcript) => setChangeOrder((current) => ({ ...current, requestedBy: appendDictation(current.requestedBy, transcript) }))} /><datalist id="change-order-requesters">{documentIssuerOptions.map((name) => <option value={name} key={name} />)}{parties.map((party) => <option value={party.name} key={party.id} />)}</datalist></label>
                     </div>
                   </RecordFormSection>
@@ -4414,8 +4458,9 @@ function ProjectOperations({
                     {changeOrder.scopeAreas.includes("other") ? (
                       <label className="form-field"><span>{text("Other · specify", "Overig · omschrijf")}</span><input style={inputWithMicStyle} value={changeOrder.scopeAreaOther} maxLength={240} onChange={(event) => setChangeOrder({ ...changeOrder, scopeAreaOther: event.target.value })} /><DictateButton style={micInputStyle} onText={(transcript) => setChangeOrder((current) => ({ ...current, scopeAreaOther: appendDictation(current.scopeAreaOther, transcript) }))} /></label>
                     ) : null}
+                    {/* "Dit doe ik al bij formal request": what will change is written once, in
+                        the formal request at the top of the form. */}
                     <div className="form-grid-2">
-                      <label className="form-field"><span>{text("Details / what will change?", "Details / wat verandert er?")}</span><textarea rows={4} maxLength={1000} value={changeOrder.scopeDetails} onChange={(event) => setChangeOrder({ ...changeOrder, scopeDetails: event.target.value })} /><DictateButton onText={(transcript) => setChangeOrder((current) => ({ ...current, scopeDetails: appendDictation(current.scopeDetails, transcript) }))} /></label>
                       <NamedPhotoSlot
                         label={text("Photo (scope / reference)", "Foto (scope / referentie)")}
                         value={registerNamedPhotos.change_scope ?? null}
@@ -4531,11 +4576,12 @@ function ProjectOperations({
                   {/* Capture, learn and improve: the client's own form, as one project
                       phase and four short questions instead of a free-text register line. */}
                   <label className="form-field"><span>{text("Project phase", "Projectfase")}</span><select value={lessonForm.projectPhase} onChange={(event) => setLessonForm({ ...lessonForm, projectPhase: event.target.value })}><option value="">{text("Choose a phase", "Kies een fase")}</option>{lessonProjectPhases.map((phase) => <option value={phase.id} key={phase.id}>{text(phase.en, phase.nl)}</option>)}</select></label>
-                  <div className="form-grid">
-                    <label className="form-field"><span>{text("Issue", "Probleem")}</span><textarea rows={3} value={lessonForm.issue} onChange={(event) => setLessonForm({ ...lessonForm, issue: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, issue: appendDictation(current.issue, transcript) }))} /></label>
-                    <label className="form-field"><span>{text("Cause", "Oorzaak")}</span><textarea rows={3} value={lessonForm.cause} onChange={(event) => setLessonForm({ ...lessonForm, cause: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, cause: appendDictation(current.cause, transcript) }))} /></label>
-                    <label className="form-field"><span>{text("Solution / improvement", "Oplossing / verbetering")}</span><textarea rows={3} value={lessonForm.solution} onChange={(event) => setLessonForm({ ...lessonForm, solution: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, solution: appendDictation(current.solution, transcript) }))} /></label>
-                    <label className="form-field"><span>{text("Expected results", "Verwacht resultaat")}</span><textarea rows={3} value={lessonForm.expectedResults} onChange={(event) => setLessonForm({ ...lessonForm, expectedResults: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, expectedResults: appendDictation(current.expectedResults, transcript) }))} /></label>
+                  {/* "Nummeren & onder elkaar": the four questions are numbered and stacked. */}
+                  <div className="numbered-question-list">
+                    <label className="form-field"><span><b className="numbered-question-number" aria-hidden="true">1</b>{text("Issue", "Probleem")}</span><textarea rows={3} value={lessonForm.issue} onChange={(event) => setLessonForm({ ...lessonForm, issue: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, issue: appendDictation(current.issue, transcript) }))} /></label>
+                    <label className="form-field"><span><b className="numbered-question-number" aria-hidden="true">2</b>{text("Cause", "Oorzaak")}</span><textarea rows={3} value={lessonForm.cause} onChange={(event) => setLessonForm({ ...lessonForm, cause: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, cause: appendDictation(current.cause, transcript) }))} /></label>
+                    <label className="form-field"><span><b className="numbered-question-number" aria-hidden="true">3</b>{text("Solution / improvement", "Oplossing / verbetering")}</span><textarea rows={3} value={lessonForm.solution} onChange={(event) => setLessonForm({ ...lessonForm, solution: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, solution: appendDictation(current.solution, transcript) }))} /></label>
+                    <label className="form-field"><span><b className="numbered-question-number" aria-hidden="true">4</b>{text("Expected results", "Verwacht resultaat")}</span><textarea rows={3} value={lessonForm.expectedResults} onChange={(event) => setLessonForm({ ...lessonForm, expectedResults: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, expectedResults: appendDictation(current.expectedResults, transcript) }))} /></label>
                   </div>
                   {/* The two pictures the client's own form marks required: the problem as
                       it was found, and the result after the improvement. A lesson nobody
@@ -4593,7 +4639,20 @@ function ProjectOperations({
                       {registerLines.map((line, index) => (
                         <div className="register-line" key={index}>
                           <label className="form-field"><span>{text("Quantity", "Hoeveelheid")}</span><input type="number" min="0" step="0.01" value={line.quantity} onChange={(event) => setRegisterLines((lines) => lines.map((item, position) => position === index ? { ...item, quantity: event.target.value } : item))} /></label>
-                          <label className="form-field"><span>{text("Unit", "Eenheid")}</span><input value={line.unit} onChange={(event) => setRegisterLines((lines) => lines.map((item, position) => position === index ? { ...item, unit: event.target.value } : item))} placeholder={text("pcs, m³, kg", "st, m³, kg")} /></label>
+                          <div className="form-field register-unit-field">
+                            <label htmlFor={`register-unit-${index}`}>{text("Unit", "Eenheid")}</label>
+                            <select id={`register-unit-${index}`} value={line.customUnit ? "other" : line.unit} onChange={(event) => {
+                              const chosen = event.target.value;
+                              setRegisterLines((lines) => lines.map((item, position) => position === index
+                                ? chosen === "other" ? { ...item, unit: "", customUnit: true } : { ...item, unit: chosen, customUnit: false }
+                                : item));
+                            }}>
+                              <option value="">{text("Choose", "Kies")}</option>
+                              {deliveryUnits.map((unit) => <option value={unit} key={unit}>{unit}</option>)}
+                              <option value="other">{text("Other", "Anders")}</option>
+                            </select>
+                            {line.customUnit ? <input aria-label={text("Other unit", "Andere eenheid")} value={line.unit} maxLength={24} onChange={(event) => setRegisterLines((lines) => lines.map((item, position) => position === index ? { ...item, unit: event.target.value } : item))} placeholder={text("Unit", "Eenheid")} /> : null}
+                          </div>
                           <label className="form-field"><span>{text("Description · optional", "Omschrijving · optioneel")}</span><input style={inputWithMicStyle} value={line.description} onChange={(event) => setRegisterLines((lines) => lines.map((item, position) => position === index ? { ...item, description: event.target.value } : item))} placeholder={text("What was delivered on this line", "Wat op deze regel is geleverd")} /><DictateButton style={micInputStyle} onText={(transcript) => setRegisterLines((lines) => lines.map((item, position) => position === index ? { ...item, description: appendDictation(item.description, transcript) } : item))} /></label>
                           <button className="ui-button ui-button--quiet ui-button--md register-line-remove" type="button" disabled={registerLines.length === 1} aria-label={text("Remove this line", "Verwijder deze regel")} onClick={() => setRegisterLines((lines) => lines.filter((item, position) => position !== index))}><X size={14} /></button>
                         </div>
@@ -4682,6 +4741,32 @@ function ProjectOperations({
                       <label className="form-field"><span>{text("Cost explanation (optional)", "Toelichting kosten (optioneel)")}</span><textarea rows={2} maxLength={500} value={changeOrder.costImpactExplanation} onChange={(event) => setChangeOrder({ ...changeOrder, costImpactExplanation: event.target.value })} /><DictateButton onText={(transcript) => setChangeOrder((current) => ({ ...current, costImpactExplanation: appendDictation(current.costImpactExplanation, transcript) }))} /></label>
                     </RecordFormSection>
 
+
+                  </div>
+                ) : null}
+                {registerForm.type === "environmental_report" ? <><div className="form-grid-2"><label className="form-field"><span>{text("Period start", "Periode start")}</span><input type="date" value={registerForm.periodStart} onChange={(event) => setRegisterForm({ ...registerForm, periodStart: event.target.value })} /></label><label className="form-field"><span>{text("Period end", "Periode einde")}</span><input type="date" value={registerForm.periodEnd} onChange={(event) => setRegisterForm({ ...registerForm, periodEnd: event.target.value })} /></label></div><div className="form-grid-2"><label className="form-field"><span>{text("Lost hours", "Verloren uren")}</span><input type="number" min="0" value={registerForm.lostHours} onChange={(event) => setRegisterForm({ ...registerForm, lostHours: event.target.value })} /></label><label className="form-field"><span>{text("Reason for lost hours", "Reden verloren uren")}</span><input value={registerForm.lostHoursReason} onChange={(event) => setRegisterForm({ ...registerForm, lostHoursReason: event.target.value })} /></label></div></> : null}
+              </> : null}
+              {/* Site photos come before the signatures. A lesson learned has its own two named
+                  pictures; a third, general photo box on it was "dubbel". */}
+              {!lessonsLearnedRegister ? (
+                <>
+                <label className="finding-photo-capture register-photo-capture">
+                  <Camera size={22} />
+                  <span><strong>{registerPhotos.length ? text(`${registerPhotos.length} photos ready`, `${registerPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
+                  <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setRegisterPhotos, setRegisterPhotoError); event.currentTarget.value = ""; }} />
+                </label>
+                <PhotoEvidenceList
+                  photos={registerPhotos}
+                  setPhotos={setRegisterPhotos}
+                  markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
+                />
+                {registerPhotoError ? <p className="field-error" role="alert">{registerPhotoError}</p> : null}
+                </>
+              ) : null}
+              {/* "Overal aan het eind": the signatures close every register form — supervision
+                  first, the contractor next to it. */}
+              {changeOrderRegister ? (
+                <div className="record-form-sections change-order-sections">
                     <RecordFormSection
                       number={5}
                       title={text("Acknowledgement & agreement", "Erkenning & akkoord")}
@@ -4739,12 +4824,12 @@ function ProjectOperations({
                         }}
                       />
                     </RecordFormSection>
-                  </div>
-                ) : null}
-                {registerForm.type === "environmental_report" ? <><div className="form-grid-2"><label className="form-field"><span>{text("Period start", "Periode start")}</span><input type="date" value={registerForm.periodStart} onChange={(event) => setRegisterForm({ ...registerForm, periodStart: event.target.value })} /></label><label className="form-field"><span>{text("Period end", "Periode einde")}</span><input type="date" value={registerForm.periodEnd} onChange={(event) => setRegisterForm({ ...registerForm, periodEnd: event.target.value })} /></label></div><div className="form-grid-2"><label className="form-field"><span>{text("Lost hours", "Verloren uren")}</span><input type="number" min="0" value={registerForm.lostHours} onChange={(event) => setRegisterForm({ ...registerForm, lostHours: event.target.value })} /></label><label className="form-field"><span>{text("Reason for lost hours", "Reden verloren uren")}</span><input value={registerForm.lostHoursReason} onChange={(event) => setRegisterForm({ ...registerForm, lostHoursReason: event.target.value })} /></label></div></> : null}
+                </div>
+              ) : controlledRegister ? (
+                <RecordSignatures>
                 {/* The document is signed here, with a written signature, at the moment it
                     is drawn up or the moment the received form is recorded. */}
-                {changeOrderRegister ? null : <SignatureField
+                  <SignatureField
                   label={submittedRegister
                     ? text("Signature on the submitted form", "Handtekening op het ingediende formulier")
                     : text("Sign as the author of this document", "Ondertekenen als opsteller van dit document")}
@@ -4765,33 +4850,40 @@ function ProjectOperations({
                     signedAt: signature?.signedAt ?? "",
                     signatureImage: signature?.image ?? "",
                   })}
-                />}
-                {submittedRegister ? <p className="form-helper">{text("Drawn up and signed by the submitting party. CODECO signs in the formal response below.", "Opgesteld en ondertekend door de indienende partij. CODECO tekent bij de formele reactie hieronder.")}</p> : null}
-              </> : null}
-              {!controlledRegister && !agreementRegister ? (
-                <RecordSignatureField
-                  value={registerSignature}
-                  onChange={setRegisterSignature}
-                  nameSuggestion={currentUserName}
-                  declaration={text(
-                    "I confirm that this register entry reflects what was recorded on site.",
-                    "Ik bevestig dat dit registeritem weergeeft wat op de bouwplaats is vastgelegd.",
-                  )}
                 />
+                {submittedRegister ? <p className="form-helper">{text("Drawn up and signed by the submitting party. CODECO signs in the formal response below.", "Opgesteld en ondertekend door de indienende partij. CODECO tekent bij de formele reactie hieronder.")}</p> : null}
+                  {registerContractorSignatureApplies ? (
+                    <ContractorSignatureField
+                      idPrefix="register"
+                      value={registerContractorSignature}
+                      partyNames={parties.map((party) => party.name)}
+                      locked={Boolean(editingDocument?.details?.contractor_signature_image)}
+                      onChange={setRegisterContractorSignature}
+                    />
+                  ) : null}
+                </RecordSignatures>
+              ) : !agreementRegister ? (
+                <RecordSignatures>
+                  <RecordSignatureField
+                    value={registerSignature}
+                    onChange={setRegisterSignature}
+                    nameSuggestion={currentUserName}
+                    declaration={text(
+                      "I confirm that this register entry reflects what was recorded on site.",
+                      "Ik bevestig dat dit registeritem weergeeft wat op de bouwplaats is vastgelegd.",
+                    )}
+                  />
+                  {registerContractorSignatureApplies ? (
+                    <ContractorSignatureField
+                      idPrefix="register"
+                      value={registerContractorSignature}
+                      partyNames={parties.map((party) => party.name)}
+                      locked={Boolean(editingDocument?.details?.contractor_signature_image)}
+                      onChange={setRegisterContractorSignature}
+                    />
+                  ) : null}
+                </RecordSignatures>
               ) : null}
-              {/* Every register item can carry site photos, with the text that says what
-                  the photo shows. Documents alone were not enough for the client. */}
-              <label className="finding-photo-capture register-photo-capture">
-                <Camera size={22} />
-                <span><strong>{registerPhotos.length ? text(`${registerPhotos.length} photos ready`, `${registerPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
-                <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setRegisterPhotos, setRegisterPhotoError); event.currentTarget.value = ""; }} />
-              </label>
-              <PhotoEvidenceList
-                photos={registerPhotos}
-                setPhotos={setRegisterPhotos}
-                markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
-              />
-              {registerPhotoError ? <p className="field-error" role="alert">{registerPhotoError}</p> : null}
               {(() => {
                 // What is still missing before the save button works, in words. A disabled button
                 // that does not say why is how a form gets abandoned; this mirrors the rules above.
@@ -4820,7 +4912,9 @@ function ProjectOperations({
           {/* The bill of quantities has nothing to do with a delivery or any other
               register item you are filling in, so it no longer sits open underneath the
               form. It stays one tap away. */}
-          {registerForm.type === "delivery" ? (
+          {/* Struck off under the delivery form: the bill of quantities is only offered once
+              the form is folded away, so filling in a delivery shows the delivery alone. */}
+          {registerForm.type === "delivery" && !showForm ? (
           <details className="boq-import-section">
             <summary>{text("Bill of quantities · import and progress", "Meetstaat · import en voortgang")}<span>{data.registerEntries.filter((entry) => entry.register_type === "boq").length} {text("BOQ lines", "BOQ-regels")}</span></summary>
             <div className="boq-import-card">
@@ -4841,7 +4935,7 @@ function ProjectOperations({
             />
           </details>
           ) : null}
-          <div className="register-summary-grid">{Object.entries(registerNames).map(([type, label]) => <div className="register-summary" key={type}><strong>{data.registerEntries.filter((entry) => entry.register_type === type).length}</strong><span>{label}</span></div>)}</div>
+          {/* The grid of counts per register type is struck off under every form. */}
           {externalSubmissionIntent ? (
             <div className="operation-alert success external-submission-notice">
               <Users size={18} />
@@ -4851,6 +4945,7 @@ function ProjectOperations({
               <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={openManagement}>{text("Back to Management", "Terug naar Management")}</button>
             </div>
           ) : null}
+          <SavedRecordsFold formOpen={showForm && !focusRecordId} count={data.registerEntries.filter((entry) => entry.register_type !== "boq" && (externalSubmissionIntent || !externalSubmissionRegisterTypes.includes(entry.register_type))).length} storageKey={`registers:${projectId}`}>
           <ControlledDocumentList entries={data.registerEntries.filter((entry) => isControlledDocumentType(entry.register_type) && (externalSubmissionIntent || !externalSubmissionRegisterTypes.includes(entry.register_type)))} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={currentUserName} focusRecordId={focusRecordId} client={client} run={run} />
           <RecordList empty={text("No additional project registers yet.", "Nog geen aanvullende projectregisters.")} rows={data.registerEntries.filter((entry) => !isControlledDocumentType(entry.register_type) && entry.register_type !== "boq").map((entry) => {
             // The verdict and the quantity are the point of a delivery line, so the list
@@ -4868,7 +4963,7 @@ function ProjectOperations({
               : entry.status;
             return {
               id: entry.id,
-              icon: Wrench,
+              icon: registerIcon(entry.register_type),
               title: entry.title,
               meta: [
                 entry.entry_number,
@@ -4899,6 +4994,7 @@ function ProjectOperations({
               onWithdraw: entry.status !== "cancelled" ? () => withdrawRecord({ kind: "register_entry", id: entry.id, code: entry.entry_number, title: entry.title, status: entry.status, meta: recordContextLabel(entry.building_id, entry.location_node_id, entry.building_ids), description: String(entry.details?.description ?? "") }) : undefined,
             };
           })} focusRecordId={focusRecordId} />
+          </SavedRecordsFold>
         </section>
       ) : null}
 
@@ -4913,6 +5009,7 @@ function ProjectOperations({
             openModule: (module: "inspections" | "findings" | "ncr" | "hse") => switchTab(module),
             openWorkforce: () => switchTab("workforce"),
           }} /> : null}
+          <SavedRecordsFold formOpen={showForm} count={(data.dailyWork ?? []).length} storageKey={`daily:${projectId}`}>
           <DailyWorkRegister
             records={data.dailyWork ?? []}
             dayReports={data.dayReports ?? []}
@@ -4934,6 +5031,7 @@ function ProjectOperations({
               ].filter((line) => line && !line.endsWith(`: ${title}`)).join("\n"),
             })}
           />
+          </SavedRecordsFold>
         </section>
       ) : null}
 
@@ -5057,6 +5155,43 @@ function BoqProgressRegister({
 }
 
 /** What a disabled save button is waiting for, in words; nothing when the form is complete. */
+/**
+ * Section 8 of the issue and HSE screens. "Client / contractor / supervision" is who has to
+ * act; the name is written once beneath it. A name that matches a colleague in the app still
+ * assigns the record to that colleague, so their notification keeps working.
+ */
+function ResponsiblePartyFields({ idPrefix, role, name, people, partyNames, onChange }: {
+  idPrefix: string;
+  role: ResponsibleRole;
+  name: string;
+  people: Array<{ id: string; name: string; role: string }>;
+  partyNames: string[];
+  onChange: (next: { role: ResponsibleRole; name: string; userId: string }) => void;
+}) {
+  const { text } = useLanguage();
+  const userIdFor = (typed: string) => people.find((person) => person.name.trim().toLocaleLowerCase() === typed.trim().toLocaleLowerCase())?.id ?? "";
+  const suggestions = Array.from(new Set([
+    ...(role === "client" || role === "contractor" ? partyNames : []),
+    ...(role === "" || role === "supervision" ? people.map((person) => person.name) : []),
+  ].filter(Boolean)));
+  return (
+    <div className="record-responsible-fields">
+      <label className="form-field record-responsible-field">
+        <UserCheck size={15} />
+        <select aria-label={text("Responsible party", "Verantwoordelijke partij")} value={role} onChange={(event) => onChange({ role: event.target.value as ResponsibleRole, name, userId: userIdFor(name) })}>
+          <option value="">{text("Client, contractor or supervision", "Opdrachtgever, aannemer of supervisie")}</option>
+          {responsibleRoles.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}
+        </select>
+      </label>
+      <label className="form-field">
+        <span>{text("Name of the responsible person", "Naam van de verantwoordelijke")}</span>
+        <input list={suggestions.length ? `${idPrefix}-responsible-names` : undefined} value={name} onChange={(event) => onChange({ role, name: event.target.value, userId: userIdFor(event.target.value) })} placeholder={text("First and last name", "Voor- en achternaam")} />
+        {suggestions.length ? <datalist id={`${idPrefix}-responsible-names`}>{suggestions.map((option) => <option value={option} key={option} />)}</datalist> : null}
+      </label>
+    </div>
+  );
+}
+
 function StillNeeded({ items }: { items: string[] }) {
   const { text } = useLanguage();
   const missing = items.filter(Boolean);
@@ -5712,7 +5847,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   );
 }
 
-function ReportOperations({ data, reportId, reportNumber, reportStatus, currentUserName, projectId, projectName, busy, run, client, openModule, openDeadlines, openReportCheck }: { data: OperationSnapshot; reportId: string | null; reportNumber: string; reportStatus: string; currentUserName: string; projectId: string; projectName: string; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>; client: SupabaseClient; openModule: (tab: "documents" | "drawings" | "findings" | "ncr" | "hse" | "inspections" | "registers" | "files" | "assets" | "daily") => void; openDeadlines: () => void; openReportCheck?: () => void }) {
+function ReportOperations({ data, reportId, reportNumber, reportStatus, currentUserName, projectId, projectName, busy, run, client, openModule, openDeadlines, openReportCheck, buildings, parties, projectCode, openRecord }: { data: OperationSnapshot; reportId: string | null; reportNumber: string; reportStatus: string; currentUserName: string; projectId: string; projectName: string; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>; client: SupabaseClient; openModule: (tab: "documents" | "drawings" | "findings" | "ncr" | "hse" | "inspections" | "registers" | "files" | "assets" | "daily") => void; openDeadlines: () => void; openReportCheck?: () => void; buildings: BuildingOption[]; parties: ProjectParty[]; projectCode: string; openRecord: (tab: "findings" | "ncr" | "hse" | "inspections" | "registers" | "daily" | "files", recordId?: string) => void }) {
   const { language, locale, text } = useLanguage();
   const statusLabels = language === "en" ? reportStatusLabelsEnglish : reportStatusLabels;
   const [reviewComment, setReviewComment] = useState("");
@@ -5752,7 +5887,8 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
     { id: "visual", title: text("Visual progress report", "Visueel voortgangsrapport"), sections: ["visual", "work"] },
   ];
   const [reportChoice, setReportChoice] = useState(data.settings?.report_sections?.length ? "project" : "complete");
-  const [reportView, setReportView] = useState<"create" | "workflow" | "history" | "prompts">("create");
+  // "Eén centraal rapport": Reports opens on the day overview — everything recorded today.
+  const [reportView, setReportView] = useState<"overview" | "create" | "workflow" | "history" | "prompts">("overview");
   const [historyType, setHistoryType] = useState<"all" | "daily" | "weekly" | "monthly">("all");
   const [openHistoryId, setOpenHistoryId] = useState("");
   const [periodPreset, setPeriodPreset] = useState<"day" | "week" | "month" | "custom">("month");
@@ -5882,12 +6018,28 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
       <SectionNav
         label={text("Report workspace", "Rapportwerkruimte")}
         items={[
+          { id: "overview", label: text("Day overview", "Dagoverzicht"), selected: reportView === "overview", onSelect: () => setReportView("overview") },
           { id: "day", label: text("Daily report", "Dagrapport"), selected: reportView === "create" && periodPreset === "day", onSelect: () => { setReportView("create"); applyDatePreset(1, text("Daily supervision report", "Dagelijks supervisierapport"), "day"); } },
           { id: "week", label: text("Weekly report", "Weekrapport"), selected: reportView === "create" && periodPreset === "week", onSelect: () => { setReportView("create"); applyDatePreset(7, text("Weekly supervision report", "Wekelijks supervisierapport"), "week"); } },
           { id: "month", label: text("Monthly report", "Maandrapport"), selected: reportView === "create" && periodPreset === "month", onSelect: () => { setReportView("create"); setPeriod({ start: `${today.slice(0, 8)}01`, end: today }); setPeriodLabel(text("Monthly supervision report", "Maandelijks supervisierapport")); setPeriodPreset("month"); } },
           ...reportViews.map((view) => ({ id: view.id, label: view.title, selected: reportView === view.id && (view.id !== "create" || periodPreset === "custom"), onSelect: () => { setReportView(view.id); if (view.id === "create") setPeriodPreset("custom"); } })),
         ]}
       />
+      {reportView === "overview" ? (
+        <DayOverviewReport
+          data={data}
+          client={client}
+          projectName={projectName}
+          projectCode={projectCode}
+          currentUserName={currentUserName}
+          buildings={buildings}
+          partyNames={Object.fromEntries(parties.map((party) => [party.id, party.name]))}
+          registerNames={language === "en" ? registerLabelsEnglish : registerLabels}
+          busy={busy}
+          run={run}
+          openRecord={openRecord}
+        />
+      ) : null}
       {reportView === "prompts" ? (
         <PromptLibrary
           shortcuts={{

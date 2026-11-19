@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { type HandwrittenSignature } from "@/app/signature-pad";
 import { RecordFormSection, RecordFormShell, RecordSignatureField } from "@/app/forms/record-form-shell";
+import { formIcons } from "@/app/forms/form-icons";
 import { DictateButton, appendDictation, inputWithMicStyle, micInputStyle } from "@/app/dictate-button";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { TimeField } from "@/app/time-field";
@@ -14,7 +15,6 @@ import {
   workforceByDiscipline,
   workforceByParty,
   workforceDeviations,
-  workforceNoteRequired,
 } from "@/lib/forms/workforce.mjs";
 
 /**
@@ -372,7 +372,6 @@ export function WorkforceForm({
   const byDiscipline = workforceByDiscipline(allRows);
   const previousTotal = previousDay ? workforceTotal(previousDay.rows) : null;
   const deviations = workforceDeviations({ total, expected: expectedWorkers, previous: previousTotal });
-  const noteMissing = workforceNoteRequired(deviations, note);
 
   // Every other form in the app numbers its sections, and a number that jumps from 1 to 3
   // because a block did not apply today reads as a step that was skipped. The blocks that
@@ -463,11 +462,12 @@ export function WorkforceForm({
   return (
     <RecordFormShell
       title={text("Who is on site today?", "Wie is er vandaag op de bouwplaats?")}
+      icon={formIcons.workforce}
       status={readOnly ? text("Read only", "Alleen lezen") : undefined}
       busy={busy}
-      canSave={!readOnly && filledBuildings.length > 0 && !noteMissing}
-      // Asked for once there is a count to explain, not on an empty form.
-      validation={noteMissing && filledBuildings.length ? [text("Explain the deviation to confirm.", "Licht de afwijking toe om te bevestigen.")] : []}
+      // "Ik kan niet opslaan": a deviation is signalled and can be explained, but it never
+      // blocks the count itself. A supervisor who cannot save writes nothing at all.
+      canSave={!readOnly && filledBuildings.length > 0}
       saveLabel={filledBuildings.length > 1
         ? text(`Confirm attendance · ${filledBuildings.length} buildings`, `Aanwezigheid bevestigen · ${filledBuildings.length} gebouwen`)
         : text("Confirm attendance", "Aanwezigheid bevestigen")}
@@ -643,7 +643,7 @@ export function WorkforceForm({
                 ))}
               </ul>
               <label className="form-field">
-                <span>{text("Explanation", "Toelichting")}</span>
+                <span>{text("Explanation (optional)", "Toelichting (optioneel)")}</span>
                 <textarea
                   rows={2}
                   value={note}

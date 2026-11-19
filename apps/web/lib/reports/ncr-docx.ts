@@ -83,7 +83,7 @@ export function buildNcrDocxDocument(finding: Finding, progress: FindingProgress
           new Paragraph({ children: [new TextRun({ text: (issue.qc_issue_resolved ?? resolved) ? "Issue resolved" : "Issue not resolved", bold: true, size: 18 })], spacing: { before: 120, after: 160 } }),
           signatureBlock([
             ["Issued by", issue.signed_by || issue.issued_by || context.issuerName, issue.signature_image || context.signatureImage || null],
-            ["Received / contractor", issue.correction_signed_by || issue.completion_signed_by || "", issue.correction_signature_image || issue.completion_signature_image || null],
+            ["Received / contractor", issue.correction_signed_by || issue.completion_signed_by || issue.contractor_signed_by || "", issue.correction_signature_image || issue.completion_signature_image || issue.contractor_signature_image || null],
             ["QC verification", resolved ? issue.verification_signed_by || context.verifierName || "" : "", resolved ? issue.verification_signature_image || null : null],
           ]),
           // Name and position under every signature line, as the printed form has them.

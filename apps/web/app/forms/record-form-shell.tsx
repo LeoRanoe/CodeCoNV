@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Save, X } from "lucide-react";
+import { Loader2, Save, X, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { BuildingMultiPicker, type BuildingOption } from "@/app/building-picker";
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
@@ -20,9 +20,12 @@ export function RecordFormShell({
   onCancel,
   className = "",
   headerAside,
+  icon: Icon,
 }: {
   code?: string;
   title: string;
+  /** The form's own icon (app/forms/form-icons.ts), the same one its Workspace tile shows. */
+  icon?: LucideIcon;
   status?: string;
   children: ReactNode;
   validation?: string[];
@@ -41,7 +44,7 @@ export function RecordFormShell({
       <div className="operation-form-heading record-form-heading ui-page-header">
         <div>
           {code ? <span className="record-number">{code}</span> : null}
-          <h2>{title}</h2>
+          <h2>{Icon ? <Icon className="record-form-heading-icon" size={20} aria-hidden="true" /> : null}{title}</h2>
         </div>
         <div className="record-form-heading-aside">
           {headerAside}
