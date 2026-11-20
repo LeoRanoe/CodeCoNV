@@ -497,7 +497,7 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     discipline("secondary_discipline", false, w("Secondary discipline", "Tweede discipline")),
     { key: "activity", label: w("Activity", "Activiteit"), kind: "activity", parent: "discipline", required: true },
     ...locationFields(w("The exact completed section, e.g. Level 1, grids A-D/1-4", "Het exacte gereedgekomen deel, bv. Niveau 1, stramien A-D/1-4")),
-    { key: "completed_items", label: w("What was completed?", "Wat is gereed?"), kind: "completion", parent: "activity", required: true, otherExplanation: true },
+    { key: "completed_items", label: w("What was completed?", "Wat is gereed?"), kind: "completion", parent: "activity", required: true, otherExplanation: true, hint: w("Photo evidence is recommended: add before/after or completion photos to this record.", "Fotobewijs wordt aanbevolen: voeg voor/na- of opleverfoto's toe aan deze registratie.") },
     ...quantityFields(w("Quantity completed", "Hoeveelheid gereed")),
     { key: "inspection_status", label: w("Completion / inspection status", "Status gereed / keuring"), kind: "select", options: catalogue.completionInspectionStatuses, required: true, decision: ["Inspected - Accepted", "Inspected - Rejected"], hint: w("Completed is not the same as accepted; a reviewer records the inspection.", "Gereed is niet hetzelfde als geaccepteerd; een beoordelaar legt de keuring vast.") },
     { key: "inspected_by", label: w("Inspected by", "Gekeurd door"), kind: "text", auto: true, visible: (values) => has(values, "inspected_by") },

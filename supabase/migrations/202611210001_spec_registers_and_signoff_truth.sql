@@ -889,8 +889,8 @@ as $$
     jsonb_build_object(
       'spec', coalesce(entry.details -> 'spec', '{}'::jsonb) - array['action_owner_ref', 'reviewed_by_user_id'],
       'issue', entry.details -> 'issue', 'cause', entry.details -> 'cause',
-      'solution', entry.details -> 'solution', 'expected_results', entry.details -> 'expected_results',
-      'description', entry.details -> 'description'
+      'solution_improvement', entry.details -> 'solution_improvement', 'expected_results', entry.details -> 'expected_results',
+      'project_phase', entry.details -> 'project_phase'
     )
   from public.project_register_entries entry
   join public.projects project on project.id = entry.project_id

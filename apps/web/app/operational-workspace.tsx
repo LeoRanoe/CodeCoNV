@@ -65,6 +65,7 @@ import { ContractorSignatureField, RecordSignatures, contractorSignatureDetails,
 import { SpecFields, SpecLinkChips } from "@/app/forms/spec-fields";
 import { WorkspaceSpecDirectory } from "@/app/forms/workspace-spec-directory";
 import { SpecConfigurationPanel } from "@/app/forms/spec-configuration-panel";
+import { SharedLessons } from "@/app/forms/shared-lessons";
 import { SignoffPanel } from "@/app/forms/signoff-panel";
 import { loadSignoffHistory, signoffHistoryEntries } from "@/lib/forms/signoff";
 import { cleanSpecValues, sensitiveKeys, specFacts, specFollowUps, specForms, specLinks, specMissing, workflowProfiles, type SpecFormKey, type SpecRow, type SpecValues } from "@/lib/forms/spec-forms";
@@ -3726,7 +3727,7 @@ function ProjectOperations({
                     <h3><span className="record-section-number">2</span> {text("Category", "Categorie")} <em className="record-section-required">*</em></h3>
                     <label className="form-field"><select aria-label={text("Category", "Categorie")} value={findingForm.issueCategory} onChange={(event) => setFindingForm({ ...findingForm, issueCategory: event.target.value })}>
                       <option value="">{text("Choose a category", "Kies een categorie")}</option>
-                      {issueCategoryChoices.map((option) => <option value={option.value} key={option.value}>{option.value}</option>)}
+                      {issueCategoryChoices.map((option) => <option value={option.value} key={option.value}>{specLabel(option.value, language)}</option>)}
                       {findingForm.issueCategory && !issueCategoryChoices.some((option) => option.value === findingForm.issueCategory) ? <option value={findingForm.issueCategory}>{issueCategoryOption ? text(issueCategoryOption.en, issueCategoryOption.nl) : findingForm.issueCategory}</option> : null}
                     </select></label>
                     {issueCategoryChoices.find((option) => option.value === findingForm.issueCategory)?.description ? <p className="form-helper">{issueCategoryChoices.find((option) => option.value === findingForm.issueCategory)?.description}</p> : null}
@@ -4199,7 +4200,7 @@ function ProjectOperations({
                     ) : null}
                     <label className="form-field"><select aria-label={text("Category", "Categorie")} value={hseForm.issueCategory} onChange={(event) => setHseForm({ ...hseForm, issueCategory: event.target.value })}>
                       <option value="">{text("Choose a category", "Kies een categorie")}</option>
-                      {hseCategoryChoices.map((option) => <option value={option.value} key={option.value}>{option.value}</option>)}
+                      {hseCategoryChoices.map((option) => <option value={option.value} key={option.value}>{specLabel(option.value, language)}</option>)}
                       {hseForm.issueCategory && !hseCategoryChoices.some((option) => option.value === hseForm.issueCategory) ? <option value={hseForm.issueCategory}>{hseCategoryOption ? text(hseCategoryOption.en, hseCategoryOption.nl) : hseForm.issueCategory}</option> : null}
                     </select></label>
                     {hseCategoryChoices.find((option) => option.value === hseForm.issueCategory)?.description ? <p className="form-helper">{hseCategoryChoices.find((option) => option.value === hseForm.issueCategory)?.description}</p> : null}
@@ -4801,7 +4802,7 @@ function ProjectOperations({
                 <>
                   {/* Capture, learn and improve: the client's own form, as one project
                       phase and four short questions instead of a free-text register line. */}
-                  <label className="form-field"><span>{text("Project phase", "Projectfase")}</span><select value={lessonForm.projectPhase} onChange={(event) => setLessonForm({ ...lessonForm, projectPhase: event.target.value })}><option value="">{text("Choose a phase", "Kies een fase")}</option>{specLessonPhases.map((phase) => <option value={phase} key={phase}>{phase}</option>)}{lessonForm.projectPhase && !specLessonPhases.includes(lessonForm.projectPhase) ? <option value={lessonForm.projectPhase}>{(() => { const legacy = lessonProjectPhases.find((phase) => phase.id === lessonForm.projectPhase); return legacy ? text(legacy.en, legacy.nl) : lessonForm.projectPhase; })()}</option> : null}</select></label>
+                  <label className="form-field"><span>{text("Project phase", "Projectfase")}</span><select value={lessonForm.projectPhase} onChange={(event) => setLessonForm({ ...lessonForm, projectPhase: event.target.value })}><option value="">{text("Choose a phase", "Kies een fase")}</option>{specLessonPhases.map((phase) => <option value={phase} key={phase}>{specLabel(phase, language)}</option>)}{lessonForm.projectPhase && !specLessonPhases.includes(lessonForm.projectPhase) ? <option value={lessonForm.projectPhase}>{(() => { const legacy = lessonProjectPhases.find((phase) => phase.id === lessonForm.projectPhase); return legacy ? text(legacy.en, legacy.nl) : lessonForm.projectPhase; })()}</option> : null}</select></label>
                   {/* "Nummeren & onder elkaar": the four questions are numbered and stacked. */}
                   <div className="numbered-question-list">
                     <label className="form-field"><span><b className="numbered-question-number" aria-hidden="true">1</b>{text("Issue", "Probleem")}</span><textarea rows={3} value={lessonForm.issue} onChange={(event) => setLessonForm({ ...lessonForm, issue: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, issue: appendDictation(current.issue, transcript) }))} /></label>
@@ -5224,6 +5225,7 @@ function ProjectOperations({
             };
           })} focusRecordId={focusRecordId} />
           </SavedRecordsFold>
+          {lessonsLearnedRegister ? <SharedLessons client={client} organizationId={organizationId} projectId={projectId} /> : null}
         </section>
       ) : null}
 

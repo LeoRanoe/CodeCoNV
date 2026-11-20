@@ -2,6 +2,7 @@
 
 import { AlertTriangle, Copy, Loader2, Minus, Plus, Sigma, UserCheck, Users, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { specLabel } from "@/lib/forms/spec-labels-nl";
 import { attendanceStatuses as specAttendanceStatuses, competencyStatuses as specCompetencyStatuses, shifts as specShifts } from "@/lib/forms/spec-catalogue";
 import { resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { type HandwrittenSignature } from "@/app/signature-pad";
@@ -109,7 +110,7 @@ export function WorkforceRegister({
   /** The standalone screen can correct a shift; inside the daily log that is one field too many. */
   editShifts?: boolean;
 }) {
-  const { text } = useLanguage();
+  const { language, text } = useLanguage();
   const [draft, setDraft] = useState(() => ({ partyId: parties[0]?.id ?? "", discipline: disciplines[0] ?? "", crew: "" }));
 
   const add = () => {
@@ -189,15 +190,15 @@ export function WorkforceRegister({
             <span className="workforce-row-spec">
               <select aria-label={text(`Shift of ${row.discipline}`, `Dienst van ${row.discipline}`)} value={row.spec?.shift ?? ""} onChange={(event) => setRowSpec(index, "shift", event.target.value)}>
                 <option value="">{text("Shift", "Dienst")}</option>
-                {specShifts.map((value) => <option key={value} value={value}>{value}</option>)}
+                {specShifts.map((value) => <option key={value} value={value}>{specLabel(value, language)}</option>)}
               </select>
               <select aria-label={text(`Attendance status of ${row.discipline}`, `Aanwezigheidsstatus van ${row.discipline}`)} value={row.spec?.attendance_status ?? ""} onChange={(event) => setRowSpec(index, "attendance_status", event.target.value)}>
                 <option value="">{text("Attendance", "Aanwezigheid")}</option>
-                {specAttendanceStatuses.map((value) => <option key={value} value={value}>{value}</option>)}
+                {specAttendanceStatuses.map((value) => <option key={value} value={value}>{specLabel(value, language)}</option>)}
               </select>
               <select aria-label={text(`Competency status of ${row.discipline}`, `Bevoegdheidsstatus van ${row.discipline}`)} value={row.spec?.competency_status ?? ""} onChange={(event) => setRowSpec(index, "competency_status", event.target.value)}>
                 <option value="">{text("Competency", "Bevoegdheid")}</option>
-                {specCompetencyStatuses.map((value) => <option key={value} value={value}>{value}</option>)}
+                {specCompetencyStatuses.map((value) => <option key={value} value={value}>{specLabel(value, language)}</option>)}
               </select>
             </span>
             <span className="counter-control">
