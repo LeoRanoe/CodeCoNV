@@ -755,7 +755,9 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 .spec-row-list { display: grid; gap: var(--space-3); list-style: none; margin: 0 0 var(--space-3); padding: 0; }
 .spec-row { border-top: 1px solid var(--line); display: grid; gap: var(--space-2); padding-top: var(--space-3); }
 .spec-row > .ui-button { justify-self: start; }
-.spec-row-grid { display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) minmax(0, 1fr); }
+.spec-row-grid { display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) minmax(0, 1.2fr); }
+.spec-row-grid > *, .spec-stage-grid > * { min-width: 0; }
+.spec-row-grid input, .spec-row-grid select { max-width: 100%; min-width: 0; }
 .spec-rows > .ui-button { justify-self: start; }
 .spec-stage-grid { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .spec-row-step { font-weight: var(--weight-semibold); }
@@ -776,6 +778,11 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 .shared-lesson-list li { border-top: 1px solid var(--line); display: grid; gap: var(--space-1); padding-top: var(--space-3); }
 .shared-lesson-list p { margin: 0; }
 .shared-lesson-list small { color: var(--muted); font-size: var(--text-sm); }
+/* The record viewer: number, title and status on the first row; everything else full width. */
+.record-readonly-panel > .record-spec-facts,
+.record-readonly-panel > .signoff-panel,
+.record-readonly-panel > .spec-link-chips,
+.record-readonly-panel > .media-detail-spec { grid-column: 1 / -1; }
 .field-warning { background: var(--yellow-soft); border-radius: var(--radius-sm); color: var(--yellow); margin: var(--space-2) 0; padding: var(--space-2) var(--space-3); }
 @media (max-width: 640px) {
   .spec-people-add, .spec-record-search, .spec-row-grid { grid-template-columns: minmax(0, 1fr); }
