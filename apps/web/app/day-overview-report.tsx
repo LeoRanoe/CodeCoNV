@@ -1,5 +1,7 @@
 "use client";
 
+import { SignoffPanel } from "@/app/forms/signoff-panel";
+import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ChevronLeft, ChevronRight, Image as ImageIcon, Loader2, Users } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -78,6 +80,7 @@ function DayBlock({ icon: Icon, title, count, children }: { icon: typeof Users; 
 export function DayOverviewReport({
   data,
   client,
+  projectId,
   projectName,
   projectCode,
   currentUserName,
@@ -90,6 +93,8 @@ export function DayOverviewReport({
 }: {
   data: OperationSnapshot;
   client: SupabaseClient;
+  /** For the daily attendance verification (WF-ATTENDANCE) of the specification. */
+  projectId?: string;
   projectName: string;
   projectCode: string;
   currentUserName: string;
@@ -101,6 +106,7 @@ export function DayOverviewReport({
   openRecord: (tab: RecordTab, recordId?: string) => void;
 }) {
   const { language, locale, text } = useLanguage();
+  const permissions = useProjectPermissions();
   const today = todayOnSite();
   const [day, setDay] = useState(today);
   const overview = useMemo(() => buildDayOverview(day, {
@@ -183,7 +189,7 @@ export function DayOverviewReport({
     ["lessons_learned", formIcons.lessons_learned],
     ["agreement", formIcons.agreement],
   ] as const;
-  const otherRegisterTypes = Object.keys(overview.registers).filter((type) => !registerOrder.some(([known]) => known === type) && overview.registers[type].length);
+  const otherRegisterTypes = Object.keys(overview.registers).filter((type) => !registerOrder.some(([known]) => known === type) && type !== "works_ongoing" && type !== "works_completed" && overview.registers[type].length);
   const registerRows = (type: string): DayRow[] => (overview.registers[type] ?? []).map((record) => ({
     id: `day-${record.id}`,
     icon: registerIcon(type),
@@ -194,6 +200,7 @@ export function DayOverviewReport({
     onOpen: () => openRecord("registers", record.id),
   }));
 
+  const dayReport = (data.dayReports ?? []).find((report) => report.report_date === day);
   const blocks: Array<{ key: string; title: string; icon: typeof Users; count: number; content: ReactNode }> = [
     {
       key: "workforce",
@@ -204,11 +211,25 @@ export function DayOverviewReport({
         <div className="day-overview-workforce">
           <p><strong>{text(`${overview.workforce.headcount} on site`, `${overview.workforce.headcount} aanwezig`)}</strong>{overview.workforce.visitors ? <span>{text(` · ${overview.workforce.visitors} visitor(s)`, ` · ${overview.workforce.visitors} bezoeker(s)`)}</span> : null}</p>
           <dl>{workforceGroups.map((group) => <div key={group.label}><dt>{group.label}</dt><dd>{group.headcount}</dd></div>)}</dl>
+          {dayReport && projectId ? (
+            <SignoffPanel
+              client={client}
+              projectId={projectId}
+              recordKind="day_report"
+              recordId={dayReport.id}
+              profile="WF-ATTENDANCE"
+              text={text}
+              language={language}
+              canReview={permissions.can("findings.verify") || permissions.can("reports.review") || permissions.can("attendance.manage")}
+              partyNames={Object.values(partyNames)}
+            />
+          ) : null}
         </div>
       ) : null,
     },
-    { key: "works_ongoing", title: text("Works ongoing", "Werkzaamheden gaande"), icon: formIcons.works_ongoing, count: overview.worksOngoing.length, content: overview.worksOngoing.length ? <DayRows rows={workRows(overview.worksOngoing, "ongoing")} /> : null },
-    { key: "works_completed", title: text("Works completed", "Werkzaamheden afgerond"), icon: formIcons.works_completed, count: overview.worksCompleted.length, content: overview.worksCompleted.length ? <DayRows rows={workRows(overview.worksCompleted, "completed")} /> : null },
+    // The activity records (WO / WC) and the day log's own lines stand in one section each.
+    { key: "works_ongoing", title: text("Works ongoing", "Werkzaamheden gaande"), icon: formIcons.works_ongoing, count: overview.worksOngoing.length + (overview.registers.works_ongoing?.length ?? 0), content: overview.worksOngoing.length || overview.registers.works_ongoing?.length ? <DayRows rows={[...registerRows("works_ongoing"), ...workRows(overview.worksOngoing, "ongoing")]} /> : null },
+    { key: "works_completed", title: text("Works completed", "Werkzaamheden afgerond"), icon: formIcons.works_completed, count: overview.worksCompleted.length + (overview.registers.works_completed?.length ?? 0), content: overview.worksCompleted.length || overview.registers.works_completed?.length ? <DayRows rows={[...registerRows("works_completed"), ...workRows(overview.worksCompleted, "completed")]} /> : null },
     { key: "delays", title: text("Delays", "Vertragingen"), icon: formIcons.delays, count: overview.delays.length, content: overview.delays.length ? <DayRows rows={workRows(overview.delays, "delay")} /> : null },
     { key: "issues", title: text("Issues", "Issues"), icon: formIcons.issue, count: overview.issues.length, content: overview.issues.length ? <DayRows rows={findingRows(overview.issues, "findings", formIcons.issue)} /> : null },
     { key: "ncr", title: "NCR", icon: formIcons.ncr, count: overview.ncrs.length, content: overview.ncrs.length ? <DayRows rows={findingRows(overview.ncrs, "ncr", formIcons.ncr)} /> : null },

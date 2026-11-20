@@ -1,6 +1,7 @@
 import { openSavedRecords } from "./section-nav";
 import { mkdir } from "node:fs/promises";
 import { expect, type Page, test } from "@playwright/test";
+import { fillSpecFields } from "./spec-fill";
 
 /**
  * A technical instruction signed by two different people: the issuer signs under their own
@@ -69,6 +70,7 @@ test("technical instruction: the issuer signs as themself, the recipient signs t
   await form.locator(".signature-field").filter({ hasText: "Sign as the author of this document" }).getByRole("button", { name: "Sign now" }).click();
   await expect(page.locator(".signature-modal input").first()).toHaveAttribute("readonly", "");
   await drawSignature(page);
+  await fillSpecFields(page.locator(".record-form-shell").first());
   await form.getByRole("button", { name: "Create controlled document" }).click();
 
   const card = page.locator(".controlled-document-card").filter({ hasText: title }).first();
@@ -157,6 +159,7 @@ test("change order: title and description once, one issuer signature, contractor
   await form.locator("label.form-field").filter({ hasText: "Position" }).locator("input").first().fill("Site manager");
   await form.locator(".signature-field").filter({ hasText: "Signature · contractor representative" }).getByRole("button", { name: "Sign now" }).click();
   await drawSignature(page);
+  await fillSpecFields(page.locator(".record-form-shell").first());
   await form.getByRole("button", { name: "Create controlled document" }).click();
 
   const card = page.locator(".controlled-document-card").filter({ hasText: title }).first();

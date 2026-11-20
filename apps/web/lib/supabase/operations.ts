@@ -210,6 +210,8 @@ export type HseEvent = {
   contractor_signed_at?: string | null;
   contractor_signature_image?: string | null;
   contractor_signed_position?: string | null;
+  /** Fields of the client's developer specification (lib/forms/spec-forms.ts). */
+  spec?: Record<string, unknown> | null;
 };
 
 export type RegisterEntry = {
@@ -433,6 +435,8 @@ export type ProductionReadinessItem = {
 
 export type VisualCapture = {
   id: string;
+  /** Photo purpose, discipline and related record of the client's specification. */
+  spec?: Record<string, unknown> | null;
   building_id: string;
   file_id: string;
   location_node_id: string | null;
@@ -679,7 +683,7 @@ export async function loadProjectOperations(
     pageAll((from, to) => client.from("backup_runs").select("id,project_id,run_type,status,schema_version,size_bytes,sha256,verified_at,created_at,retention_tier,record_counts,error_summary").eq("organization_id", organizationId).order("created_at", { ascending: false }).order("id").range(from, to), 200),
     pageAll((from, to) => client.from("location_nodes").select("id,building_id,parent_id,node_type,code,name,description,status").eq("project_id", projectId).order("sort_order").order("id").range(from, to), 5000),
     client.from("production_readiness_items").select("id,code,category,title,description,owner_hint,blocking,status,evidence,completed_at,sort_order").eq("organization_id", organizationId).order("sort_order"),
-    pageAll((from, to) => client.from("visual_captures").select("id,building_id,file_id,location_node_id,day_report_id,capture_type,title,description,location_label,tour_name,tour_order,stack_id,captured_at,status,created_at").eq("project_id", projectId).order("captured_at", { ascending: false }).order("id").range(from, to), 10000),
+    pageAll((from, to) => client.from("visual_captures").select("id,building_id,file_id,location_node_id,day_report_id,capture_type,title,description,location_label,tour_name,tour_order,stack_id,spec,captured_at,status,created_at").eq("project_id", projectId).order("captured_at", { ascending: false }).order("id").range(from, to), 10000),
     pageAll((from, to) => client.from("visual_annotations").select("id,capture_id,finding_id,coordinate_mode,x_ratio,y_ratio,yaw,pitch,title,description,severity,disposition,status,created_at").eq("project_id", projectId).order("created_at").order("id").range(from, to), 20000),
     pageAll((from, to) => client.from("drawing_pins").select("id,drawing_file_id,page_number,x_ratio,y_ratio,linked_record_type,linked_record_id,linked_record_number,linked_record_title,note,status,created_at,updated_at,version").eq("project_id", projectId).order("created_at").order("id").range(from, to), 20000),
     pageAll((from, to) => client.from("drawing_markups").select("id,drawing_file_id,page_number,markup_type,geometry,color,stroke_width,text_content,status,created_at").eq("project_id", projectId).order("created_at").order("id").range(from, to), 20000),
@@ -738,7 +742,7 @@ export async function loadProjectOperations(
   const compatibleFileResult = schemaFeatureMissing(fileResult.error, ["document_code"])
     ? await client.from("files").select("id,building_id,folder_id,original_name,mime_type,size_bytes,category,status,created_at").eq("project_id", projectId).neq("status", "deleted").order("created_at", { ascending: false }).limit(500)
     : fileResult;
-  const compatibleVisualCaptureResult = schemaFeatureMissing(visualCaptureResult.error, ["stack_id"])
+  const compatibleVisualCaptureResult = schemaFeatureMissing(visualCaptureResult.error, ["stack_id", "spec"])
     ? await client.from("visual_captures").select("id,building_id,file_id,location_node_id,day_report_id,capture_type,title,description,location_label,tour_name,tour_order,captured_at,status,created_at").eq("project_id", projectId).order("captured_at", { ascending: false }).limit(250)
     : visualCaptureResult;
   const compatibleBoqProgressResult = schemaFeatureMissing(boqProgressResult.error, ["boq_progress_updates"])
@@ -1353,7 +1357,7 @@ export async function transitionFinding(
  * so a database that has not received the columns yet still stores the HSE record.
  */
 const hseSignedColumns = "id,building_id,location_node_id,event_number,event_type,hse_category,title,description,severity,status,confidential,immediate_measure,occurred_at,issue_type,issue_category,immediate_actions,immediate_action_other,responsible_person,responsible_user_id,due_at,priority,root_cause,corrective_action,notes,latitude,longitude,location_label,signed_by,signed_at,signature_image";
-const hseExtraColumns = "responsible_role,contractor_signed_by,contractor_signed_at,contractor_signature_image,contractor_signed_position";
+const hseExtraColumns = "responsible_role,contractor_signed_by,contractor_signed_at,contractor_signature_image,contractor_signed_position,spec";
 
 export type HseExtraFields = {
   responsible_role?: string | null;
@@ -1361,6 +1365,8 @@ export type HseExtraFields = {
   contractor_signed_at?: string | null;
   contractor_signature_image?: string | null;
   contractor_signed_position?: string;
+  /** Fields of the client's developer specification (lib/forms/spec-forms.ts). */
+  spec?: Record<string, unknown>;
 };
 
 async function writeHseExtraFields(client: SupabaseClient, eventId: string, extra: HseExtraFields | undefined) {
@@ -1374,7 +1380,7 @@ async function writeHseExtraFields(client: SupabaseClient, eventId: string, extr
   }
   if (!Object.keys(update).length) return;
   const result = await client.from("hse_events").update(update).eq("id", eventId);
-  if (!schemaFeatureMissing(result.error, ["responsible_role", "contractor_signed_by", "contractor_signed_at", "contractor_signature_image", "contractor_signed_position"])) fail(result.error);
+  if (!schemaFeatureMissing(result.error, ["responsible_role", "contractor_signed_by", "contractor_signed_at", "contractor_signature_image", "contractor_signed_position", "spec"])) fail(result.error);
 }
 
 export async function createHseEvent(client: SupabaseClient, input: { projectId: string; buildingId: string; buildingIds?: string[]; locationNodeId?: string; reportId?: string | null; type: string; title: string; description: string; severity: string; immediateMeasure: string; confidential: boolean; category?: string; issueType?: string; issueCategory?: string; immediateActions?: string[]; immediateActionOther?: string; responsiblePerson?: string; responsibleUserId?: string; dueAt?: string | null; rootCause?: string; correctiveAction?: string; notes?: string; latitude?: number | null; longitude?: number | null; locationLabel?: string; signedBy?: string; signedAt?: string; signatureImage?: string | null; idempotencyKey?: string; extra?: HseExtraFields }) {
@@ -2023,6 +2029,11 @@ export async function updateVisualCaptureDetails(client: SupabaseClient, capture
     p_title: input.title.trim(),
     p_description: input.description.trim(),
   });
+  fail(result.error);
+}
+
+export async function updateVisualCaptureSpec(client: SupabaseClient, captureId: string, spec: Record<string, unknown>) {
+  const result = await client.rpc("set_visual_capture_spec", { p_capture_id: captureId, p_spec: spec });
   fail(result.error);
 }
 

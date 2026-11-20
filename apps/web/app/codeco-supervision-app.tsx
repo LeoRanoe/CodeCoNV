@@ -378,6 +378,7 @@ function attendanceRowsForBuilding(
         shiftStart: String(row.shift_start).slice(0, 5),
         shiftEnd: String(row.shift_end).slice(0, 5),
         crew: row.crew ? String(row.crew) : undefined,
+        spec: row.spec && typeof row.spec === "object" ? row.spec as Record<string, string> : undefined,
       };
     });
   }
@@ -1608,6 +1609,7 @@ export function CodecoSupervisionApp() {
                     shiftEnd: row.shiftEnd,
                     crew: row.crew,
                     notes: note,
+                    spec: row.spec,
                   })),
                   signature: signature ? { name: signature.name, signedAt: signature.signedAt, image: signature.image } : null,
                 });

@@ -150,6 +150,8 @@ export const recordTypeLabels: Labels = {
   environmental_report: { en: "Environmental report (ER)", nl: "Milieurapport (ER)" },
   lessons_learned: { en: "Lessons learned (LL)", nl: "Geleerde lessen (LL)" },
   delay_report: { en: "Project delay report (PDR)", nl: "Vertragingsrapport (PDR)" },
+  works_ongoing: { en: "Works ongoing (WO)", nl: "Werkzaamheden gaande (WO)" },
+  works_completed: { en: "Works completed (WC)", nl: "Werkzaamheden afgerond (WC)" },
   // Other records, locations and media
   registration: { en: "Site registration", nl: "Dagregistratie" },
   inspection: { en: "Inspection", nl: "Inspectie" },

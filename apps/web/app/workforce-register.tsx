@@ -2,6 +2,7 @@
 
 import { AlertTriangle, Copy, Loader2, Minus, Plus, Sigma, UserCheck, Users, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { attendanceStatuses as specAttendanceStatuses, competencyStatuses as specCompetencyStatuses, shifts as specShifts } from "@/lib/forms/spec-catalogue";
 import { resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { type HandwrittenSignature } from "@/app/signature-pad";
 import { RecordFormSection, RecordFormShell, RecordSignatureField } from "@/app/forms/record-form-shell";
@@ -34,6 +35,8 @@ export type WorkforceRow = {
   shiftEnd: string;
   /** The gang within the organisation. Optional: not every project names its crews. */
   crew?: string;
+  /** Shift, attendance status and competency status of the specification's Workforce form. */
+  spec?: Record<string, string>;
 };
 
 export type WorkforceParty = { id: string; name: string };
@@ -119,6 +122,8 @@ export function WorkforceRegister({
   const setShift = (index: number, part: "shiftStart" | "shiftEnd", value: string) => setRows(rows.map((row, rowIndex) =>
     rowIndex === index ? { ...row, [part]: value } : row));
   const remove = (index: number) => setRows(rows.filter((_, rowIndex) => rowIndex !== index));
+  const setRowSpec = (index: number, key: string, value: string) => setRows(rows.map((row, rowIndex) =>
+    rowIndex === index ? { ...row, spec: { ...(row.spec ?? {}), [key]: value } } : row));
 
   if (!parties.length || !disciplines.length) {
     return (
@@ -181,6 +186,20 @@ export function WorkforceRegister({
                 </label>
               </span>
             ) : <small className="workforce-shift-static">{row.shiftStart}–{row.shiftEnd}</small>}
+            <span className="workforce-row-spec">
+              <select aria-label={text(`Shift of ${row.discipline}`, `Dienst van ${row.discipline}`)} value={row.spec?.shift ?? ""} onChange={(event) => setRowSpec(index, "shift", event.target.value)}>
+                <option value="">{text("Shift", "Dienst")}</option>
+                {specShifts.map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+              <select aria-label={text(`Attendance status of ${row.discipline}`, `Aanwezigheidsstatus van ${row.discipline}`)} value={row.spec?.attendance_status ?? ""} onChange={(event) => setRowSpec(index, "attendance_status", event.target.value)}>
+                <option value="">{text("Attendance", "Aanwezigheid")}</option>
+                {specAttendanceStatuses.map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+              <select aria-label={text(`Competency status of ${row.discipline}`, `Bevoegdheidsstatus van ${row.discipline}`)} value={row.spec?.competency_status ?? ""} onChange={(event) => setRowSpec(index, "competency_status", event.target.value)}>
+                <option value="">{text("Competency", "Bevoegdheid")}</option>
+                {specCompetencyStatuses.map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+            </span>
             <span className="counter-control">
               <button type="button" onClick={() => setCount(index, -1)} aria-label={text(`One fewer ${row.discipline}`, `Eén ${row.discipline} minder`)}><Minus size={14} /></button>
               <strong>{row.count}</strong>

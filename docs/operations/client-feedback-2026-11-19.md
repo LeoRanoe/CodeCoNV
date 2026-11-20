@@ -48,20 +48,29 @@ Status per item: **done** (built and covered by a test), **interpreted** (built,
 | Fields beside vs below each other | done | One rule for every form: long text (text areas) always full width and stacked; short choices (lists, dates, names) may stand in pairs. |
 | Signatures at the end | done | Shared `RecordSignatures` block at the end of every form. |
 
-## Specification workbook (FINAL_v2) — gaps not built in this round
+## Specification workbook (FINAL_v2) — built in the second round (20-11-2026)
 
-The workbook specifies a field-by-field rebuild of 14 forms plus a sign-off workflow engine. The items below differ from the current forms and are **open**. Several conflict with the handwritten notes (for example the workbook keeps "Reason for change" as required on the Change Order; the client struck it off) — those need the client's choice before they are built.
+Every dropdown value comes from the workbook itself: `apps/web/scripts/generate-spec-catalogue.py` writes `apps/web/lib/forms/spec-catalogue.ts` (17 disciplines, 147 activities with their "What was completed?" options and prompts, every Type → Category list with descriptions, every shared list). The fields per form are in `apps/web/lib/forms/spec-forms.ts`, in the workbook's order, with its required, conditional and "Other → explain" rules.
 
-- **Sign-off workflow engine** (Sign-off Workflow sheet): append-only event log per record, review rounds, return-for-correction with mandatory comments, version freezing, role-based approval limits, notifications per stage. Today each form stores its signatures on the record; the contractor signature added now is a receipt acknowledgement, which the sheet allows ("Acknowledge Receipt").
-- **Dependent Type → Category lists** with the workbook's exact values for Issue, HSE, NCR, Change Order, Materials Delivery, Lessons Learned, Technical Instructions (17 disciplines, category per discipline), Photos.
-- **Works Ongoing / Works Completed** with Work discipline → Activity and the Activity Detail Guide prompts (148 rows).
-- **HSE risk matrix**: likelihood × severity → risk rating, potential consequence multi-select.
-- **Materials delivery**: supplier register, PO / delivery note number, ordered vs delivered quantity, delivery status, condition on arrival, inspection result, storage location.
-- **NCR**: detected during, requirement reference, containment multi-select, root cause category/analysis, verification result.
-- **Project Delay Report**: delay start date/time, cause type → category, critical path impact, duration unit, action owner, target recovery date.
-- **Lessons learned**: title, situation, impact, applicability, review status.
-- **Change Order**: cost amount, approval status, instruction to proceed, approved amount/days.
-- **Issue**: impact type multi-select, discipline/work package, target completion date as required.
+| Workbook item | Status | Where |
+|---|---|---|
+| Dependent Type → Category lists (Issue, HSE, HSE incident, NCR, CO, Agreements, LL, PDR, Materials, TI by discipline) | done | Category only offers the chosen type's values, shows the description as helper text, clears when the type changes. |
+| Works Ongoing / Works Completed per activity | done | "Add an activity record (WO / WC)" on the Works page: discipline → activity, Activity Detail Guide prompts, completion items, quantity + unit, progress / inspection status, Concrete Pouring fields. Numbered WO-0001 / WC-0001, in the day overview and the day export. The client's quick one-box day log stays (their note of 01-11). |
+| Issue: discipline, impact type, related record, status, closure note | done | Issue form, "Follow-up and classification". |
+| HSE: person involved, potential consequence, likelihood × severity, status | done | HSE form, "Risk and follow-up". No numeric risk score is invented (no approved matrix). |
+| HSE incident registration (injury, body part, environment, damage, notification, investigation, reviewer) | done | HSE incident tile and Near miss tile. |
+| Materials delivery: supplier, PO, delivery note, material group, ordered vs delivered, status, condition, inspection result, storage, discrepancy | done | Delivery form; a differing quantity, damage or rejection asks for a discrepancy note. |
+| TI: instruction type, discipline → subject, drawing revision, reason, issued to, action owner, response date, status | done | TI form. |
+| CO: type → category, quantities, currency, approval status, approved amount/days/approver/date, instruction to proceed | done | CO form. "Reason for change" stays removed (client's note); originator, cost and time impact use the client's own boxes. |
+| NCR: type → category, discipline, requirement reference, detected during, severity, containment, disposition, root cause, action owner, verification | done | NCR form. |
+| PDR: delay start, cause type → category, responsible party, actual/estimated, milestone, action owner, recovery date, status | done | PDR form; the client's own boxes keep activity, duration, critical path and recovery plan. |
+| LL: phase → category (workbook phases), situation, impact, applicability, discipline, review status | done | LL form; the client's four numbered questions stay. |
+| Agreements: date/time, source, type → category, agreed by, action required → owner + due date, status | done | Agreements form. |
+| Photos: purpose, discipline, related record | done | Photo detail → "Photo classification". |
+| Workforce: shift, attendance status, competency status | done | Per line on the workforce register. |
+| Sign-off Workflow sheet: append-only event log, rounds, return with mandatory comment and next actor, frozen submitted version, role-restricted approval, no self-approval, notification of the next actor, external representative signature | done | `record_signoff_events` + `record_signoff_action()` (migration `202611200001`); "Sign-off and review" panel on every opened record, attendance verification on Reports · Day overview. |
+| Project-configurable workflow profiles, approval limits, parallel review rules | open | Profiles are fixed to the sheet's stages; limits and legal effect need the project owner's decision (the workbook says so itself). |
+| Dutch translations of the workbook's lists | open | The lists are shown in the workbook's English; field labels are bilingual. |
 
 ## Verification
 

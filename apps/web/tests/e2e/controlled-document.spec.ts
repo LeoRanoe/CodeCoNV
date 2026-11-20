@@ -1,5 +1,6 @@
 import { openSavedRecords } from "./section-nav";
 import { expect, type Page, test } from "@playwright/test";
+import { fillSpecFields } from "./spec-fill";
 
 /**
  * A controlled document from request to formal response, through the screens a project
@@ -68,6 +69,7 @@ test("an RFI is recorded, answered by a named respondent and keeps its response"
   const addressee = field(page, /^To$/);
   await expect(addressee.locator("option", { hasText: "Hoofdaannemer E2E · Contractor" })).toHaveCount(1);
   await addressee.selectOption({ label: "Hoofdaannemer E2E · Contractor" });
+  await fillSpecFields(page.locator(".record-form-shell").first());
   await page.getByRole("button", { name: "Create controlled document" }).click();
 
   // It is in the register with a number and a status in words.

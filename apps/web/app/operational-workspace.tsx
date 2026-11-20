@@ -62,6 +62,10 @@ import { appendDictation, DictateButton, inputWithMicStyle, micInputStyle } from
 import { RecordBuildingsField, RecordFormSection, RecordFormShell, RecordSignatureField } from "@/app/forms/record-form-shell";
 import { RecordList, SavedRecordsFold } from "@/app/forms/record-list";
 import { ContractorSignatureField, RecordSignatures, contractorSignatureDetails, contractorSignatureFrom, emptyContractorSignature, type ContractorSignatureValue } from "@/app/forms/contractor-signature";
+import { SpecFields } from "@/app/forms/spec-fields";
+import { SignoffPanel } from "@/app/forms/signoff-panel";
+import { cleanSpecValues, specFacts, specForms, specMissing, workflowProfiles, type SpecFormKey, type SpecValues } from "@/lib/forms/spec-forms";
+import { lessonPhases as specLessonPhases, hseCategories as specHseCategories, incidentCategories as specIncidentCategories, issueCategories as specIssueCategories } from "@/lib/forms/spec-catalogue";
 import { formIcons, registerIcon } from "@/app/forms/form-icons";
 import { NamedPhotoSlot, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
 import { RecordLocationMap } from "@/app/record-location-map";
@@ -283,6 +287,8 @@ const registerLabels: Record<string, string> = {
   environmental_report: "Milieurapport (ER)",
   lessons_learned: "Geleerde lessen (LL)",
   delay_report: "Vertragingsrapport (PDR)",
+  works_ongoing: "Werkzaamheden gaande (WO)",
+  works_completed: "Werkzaamheden afgerond (WC)",
 };
 
 /**
@@ -421,13 +427,39 @@ export type FindingForm = typeof emptyFindingForm;
  * kinds an issue is filed under here: what it is about decides who picks it up.
  */
 const issueTypeTiles = [
-  { id: "safety", en: "Safety", nl: "Veiligheid", icon: ShieldCheck },
   { id: "quality", en: "Quality", nl: "Kwaliteit", icon: CheckCircle2 },
   { id: "equipment", en: "Equipment", nl: "Materieel", icon: Wrench },
   { id: "materials", en: "Materials", nl: "Materialen", icon: PackageCheck },
   { id: "schedule", en: "Schedule", nl: "Planning", icon: CalendarRange },
   { id: "operational", en: "Operational", nl: "Operationeel", icon: Settings },
+  { id: "technical_design", en: "Technical / Design", nl: "Technisch / ontwerp", icon: ClipboardCheck },
+  { id: "commercial_contractual", en: "Commercial / Contractual", nl: "Commercieel / contractueel", icon: FileCheck2 },
 ] as const;
+
+/**
+ * The developer specification (FINAL v2) names seven issue types and moves safety to the HSE
+ * form ("Do not use HSE impact here; use HSE form if there is a hazard"). Each tile is one of
+ * those types; its categories are the workbook's own list for that type.
+ */
+const issueSpecTypes: Record<string, string> = {
+  quality: "Quality",
+  equipment: "Equipment",
+  materials: "Materials",
+  schedule: "Schedule",
+  operational: "Operational",
+  technical_design: "Technical / Design",
+  commercial_contractual: "Commercial / Contractual",
+};
+
+/** The HSE tiles and the HSE types of the specification; incidents use the incident form. */
+const hseSpecTypes: Record<string, string> = {
+  safety: "Safety",
+  health: "Health",
+  environment: "Environment",
+  unsafe_act: "Unsafe Act",
+  unsafe_condition: "Unsafe Condition",
+  other: "HSE Observation",
+};
 
 /**
  * The client asked for exactly six kinds. Issues that were filed earlier under one of these
@@ -435,6 +467,7 @@ const issueTypeTiles = [
  * and is not offered for a new issue.
  */
 const legacyIssueTypeTiles = [
+  { id: "safety", en: "Safety", nl: "Veiligheid", icon: ShieldCheck },
   { id: "environmental", en: "Environmental", nl: "Milieu", icon: Leaf },
   { id: "documentation", en: "Documentation", nl: "Documentatie", icon: FileText },
   { id: "other", en: "Other", nl: "Overig", icon: MoreHorizontal },
@@ -692,6 +725,7 @@ const registerLabelsEnglish: Record<string, string> = {
   change_order: "Change order (CO)", contract: "Contract", specification: "Technical specification",
   environmental_report: "Environmental report (ER)", lessons_learned: "Lessons Learned (LL)",
   delay_report: "Project Delay Report (PDR)",
+  works_ongoing: "Works ongoing (WO)", works_completed: "Works completed (WC)",
 };
 
 /** A calendar day (YYYY-MM-DD) as a date on site; noon in Suriname so it never shifts a day. */
@@ -1269,6 +1303,10 @@ function ProjectOperations({
    * chosen tile, so the record keeps saying both without asking twice.
    */
   const [hseForm, setHseForm] = useState({ ...emptyHseIssueForm });
+  // The developer specification's own fields per form (lib/forms/spec-forms.ts).
+  const [findingSpec, setFindingSpec] = useState<SpecValues>({});
+  const [hseSpec, setHseSpec] = useState<SpecValues>({});
+  const [registerSpec, setRegisterSpec] = useState<SpecValues>({});
   const [hsePhotos, setHsePhotos] = useState<PhotoEvidence[]>([]);
   const [hseSignature, setHseSignature] = useState<HandwrittenSignature | null>(null);
   // One short text per evidence photo, in the same order as the photos themselves.
@@ -1296,6 +1334,7 @@ function ProjectOperations({
    */
   const clearRegisterStaging = (type: string) => {
     setRegisterForm({ ...emptyControlledDocumentDraft, type });
+    setRegisterSpec({});
     setAgreementForm({ ...emptyAgreementSignature });
     setAgreementRecord({ ...emptyAgreementRecord });
     setChangeOrder({ ...emptyChangeOrder });
@@ -1660,7 +1699,7 @@ function ProjectOperations({
   /** Section 1: the tile decides the heading of the form and the kind of event it is. */
   const chooseHseIssueType = (id: string) => {
     const tile = hseIssueTypes.find((option) => option.id === id) ?? hseIssueTypes[0];
-    setHseForm((current) => ({ ...current, issueType: tile.id, category: tile.category, type: tile.eventType }));
+    setHseForm((current) => ({ ...current, issueType: tile.id, category: tile.category, type: tile.eventType, issueCategory: current.issueType === tile.id ? current.issueCategory : "" }));
   };
   /** The HSE incident tile opens the HSE form with the Incident tile already chosen. */
   const applyHsePreset = (eventType: string) => {
@@ -1748,7 +1787,12 @@ function ProjectOperations({
     : text("Open", "Open");
   /** Section 9 shows the deadline the severity implies until somebody sets another one. */
   const issueDueValue = findingForm.expectedResolutionDate || recordDueDateDefault(findingForm.severity);
-  const chooseIssueType = (id: string) => setFindingForm((current) => ({ ...current, issueType: id }));
+  const chooseIssueType = (id: string) => setFindingForm((current) => ({
+    ...current,
+    issueType: id,
+    // A category of another type does not stay selected (specification, dependent dropdowns).
+    issueCategory: (specIssueCategories[issueSpecTypes[id] ?? ""] ?? []).some((option) => option.value === current.issueCategory) ? current.issueCategory : "",
+  }));
   const toggleIssueAction = (id: string) => setFindingForm((current) => ({
     ...current,
     immediateActions: current.immediateActions.includes(id)
@@ -1781,6 +1825,7 @@ function ProjectOperations({
     setFindingPhotos([]);
     setFindingPhotoError("");
     setFindingLocationNodeId("");
+    setFindingSpec({});
     setIssueLocationError("");
     setIssueManualPosition(false);
     const defaultId = resolveDefaultBuildingId(buildings, buildingId);
@@ -1796,6 +1841,7 @@ function ProjectOperations({
     setHseManualPosition(false);
     setHseLocationNodeId("");
     setHseSignature(null);
+    setHseSpec({});
     const defaultId = resolveDefaultBuildingId(buildings, buildingId);
     setHseBuildingId(defaultId);
     setHseBuildingIds(defaultId ? [defaultId] : []);
@@ -1804,6 +1850,29 @@ function ProjectOperations({
   const storedCategoryId = (value: string | null | undefined, options: ReadonlyArray<{ id: string; en: string; nl: string }>) => {
     const normalized = (value ?? "").trim().toLocaleLowerCase();
     return options.find((option) => [option.id, option.en, option.nl].some((candidate) => candidate.toLocaleLowerCase() === normalized))?.id ?? "";
+  };
+  /** Which specification form, values and sign-off profile belong to an opened record. */
+  const viewedRecordSignoff = (record: ViewedWorkspaceRecord): { form: SpecFormKey; values: SpecValues; profile: string; kind: "finding" | "hse_event" | "register_entry" | "inspection" } | null => {
+    if (record.kind === "finding") {
+      const finding = data.findings.find((item) => item.id === record.id);
+      if (!finding) return null;
+      const form: SpecFormKey = finding.finding_type === "ncr" ? "ncr" : "issue";
+      return { form, values: ((finding.issue_management as Record<string, unknown> | null)?.spec ?? {}) as SpecValues, profile: workflowProfiles[form], kind: "finding" };
+    }
+    if (record.kind === "hse") {
+      const event = data.hseEvents.find((item) => item.id === record.id);
+      if (!event) return null;
+      const form: SpecFormKey = event.event_type === "incident" || event.event_type === "near_miss" ? "hse_incident" : "hse";
+      return { form, values: (event.spec ?? {}) as SpecValues, profile: workflowProfiles[form], kind: "hse_event" };
+    }
+    if (record.kind === "register_entry") {
+      const entry = data.registerEntries.find((item) => item.id === record.id);
+      if (!entry || !(entry.register_type in specForms)) return null;
+      const form = entry.register_type as SpecFormKey;
+      return { form, values: ((entry.details ?? {}).spec ?? {}) as SpecValues, profile: workflowProfiles[form], kind: "register_entry" };
+    }
+    if (record.kind === "inspection") return { form: "photo", values: {}, profile: workflowProfiles.inspection, kind: "inspection" };
+    return null;
   };
   const viewInspection = (inspection: Inspection) => setViewedRecord({
     kind: "inspection", id: inspection.id, code: inspection.inspection_number, title: inspection.title,
@@ -1822,7 +1891,7 @@ function ProjectOperations({
       responsibleUserId: finding.assigned_user_id ?? "",
       responsiblePerson: issue.responsible_person ?? "",
       issueType: issue.issue_type ?? "quality",
-      issueCategory: storedCategoryId(issue.issue_category, issueCategories),
+      issueCategory: storedCategoryId(issue.issue_category, issueCategories) || String(issue.issue_category ?? ""),
       immediateActions: issue.immediate_actions ?? [],
       immediateActionOther: issue.immediate_action_other ?? "",
       rootCause: issue.root_cause ?? "",
@@ -1852,6 +1921,7 @@ function ProjectOperations({
     setFindingBuildingIds(finding.building_ids?.length ? finding.building_ids : [finding.building_id]);
     setFindingLocationNodeId(finding.location_node_id ?? "");
     setFindingPhotos([]);
+    setFindingSpec(((issue as Record<string, unknown>).spec ?? {}) as SpecValues);
     setEditingFindingId(finding.id);
     setViewedRecord(null);
     setShowForm(true);
@@ -1868,7 +1938,7 @@ function ProjectOperations({
       issueType: event.issue_type ?? "safety",
       category: event.hse_category ?? "safety",
       type: event.event_type,
-      issueCategory: storedCategoryId(event.issue_category, hseIssueCategories),
+      issueCategory: storedCategoryId(event.issue_category, hseIssueCategories) || String(event.issue_category ?? ""),
       severity: event.severity,
       description: event.description,
       immediateActions: event.immediate_actions ?? [],
@@ -1890,6 +1960,7 @@ function ProjectOperations({
     setHseLocationNodeId(event.location_node_id ?? "");
     setHseSignature(signatureFromDetails(event.signed_by, event.signed_at, event.signature_image));
     setHsePhotos([]);
+    setHseSpec((event.spec ?? {}) as SpecValues);
     setEditingHseId(event.id);
     setViewedRecord(null);
     setShowForm(true);
@@ -1902,6 +1973,7 @@ function ProjectOperations({
   });
   const editRegister = (entry: RegisterEntry) => {
     const details = entry.details ?? {};
+    setRegisterSpec((details.spec ?? {}) as SpecValues);
     setRegisterForm({
       ...emptyControlledDocumentDraft,
       type: entry.register_type,
@@ -2056,6 +2128,42 @@ function ProjectOperations({
   const changeOrderRegister = registerForm.type === "change_order";
   const lessonsLearnedRegister = registerForm.type === "lessons_learned";
   const delayReportRegister = registerForm.type === "delay_report";
+  const findingSpecForm: SpecFormKey = findingScope === "ncr" ? "ncr" : "issue";
+  // The tile is the issue type and the severity buttons are the priority: they are not asked twice.
+  const findingSpecValues: SpecValues = findingSpecForm === "issue"
+    ? { ...findingSpec, issue_type: issueSpecTypes[findingForm.issueType] ?? "", issue_category: findingForm.issueCategory, priority: findingForm.severity ? findingForm.severity[0].toUpperCase() + findingForm.severity.slice(1) : "" }
+    : { ...findingSpec, target_date: findingForm.expectedResolutionDate };
+  const findingSpecSkip = findingSpecForm === "issue"
+    ? ["issue_type", "issue_category", "priority", "responsible_party", "corrective_action", "target_date"]
+    : ["ncr_type", "ncr_category", "discipline", "target_date"];
+  const findingSpecProblems = specMissing(findingSpecForm, findingSpecValues, language, findingSpecSkip);
+  const hseSpecForm: SpecFormKey = hseForm.issueType === "incident" || hseForm.issueType === "near_miss" ? "hse_incident" : "hse";
+  const hseSpecValues: SpecValues = hseSpecForm === "hse"
+    ? { ...hseSpec, hse_type: hseSpecTypes[hseForm.issueType] ?? "", hse_category: hseForm.issueCategory, action_owner: hseForm.responsiblePerson }
+    : { ...hseSpec, incident_type: hseForm.issueType === "near_miss" ? "Near Miss" : hseSpec.incident_type, incident_category: hseForm.issueCategory, corrective_actions: hseSpec.corrective_actions ?? hseForm.correctiveAction };
+  const hseSpecSkip = hseSpecForm === "hse" ? ["hse_type", "hse_category", "action_owner"] : ["incident_category", ...(hseForm.issueType === "near_miss" ? ["incident_type"] : [])];
+  const hseSpecProblems = specMissing(hseSpecForm, hseSpecValues, language, hseSpecSkip);
+  const issueCategoryChoices = specIssueCategories[issueSpecTypes[findingForm.issueType] ?? ""] ?? [];
+  const hseCategoryChoices = hseSpecForm === "hse"
+    ? specHseCategories[hseSpecTypes[hseForm.issueType] ?? ""] ?? []
+    : specIncidentCategories[String(hseSpecValues.incident_type ?? "")] ?? [];
+  const registerSpecForm: SpecFormKey | null = registerForm.type in specForms ? registerForm.type as SpecFormKey : null;
+  // A delivery's received quantity is the quantity lines of the form; the specification
+  // compares it with the ordered quantity to ask for a discrepancy note.
+  const deliveredQuantity = registerLines.reduce((total, line) => total + (Number(line.quantity) || 0), 0);
+  // Where the client's own form already asks a question of the specification, its answer is
+  // used and the question is not asked a second time.
+  const registerSpecValues: SpecValues = registerForm.type === "delivery" && registerLines.some((line) => line.quantity.trim())
+    ? { ...registerSpec, delivered_quantity: String(deliveredQuantity) }
+    : registerForm.type === "lessons_learned"
+      ? { ...registerSpec, project_phase: lessonForm.projectPhase, action_owner: lessonForm.responsiblePerson }
+      : registerForm.type === "change_order"
+        ? { ...registerSpec, originator: changeOrder.requestedBy, cost_impact: changeOrder.costImpact, time_impact: changeOrder.extensionDays, time_impact_unit: "Calendar Days" }
+        : registerSpec;
+  const registerSpecSkip: string[] = registerForm.type === "lessons_learned"
+    ? ["project_phase", "action_owner"]
+    : registerForm.type === "change_order" ? ["originator", "cost_impact", "time_impact", "time_impact_unit"] : [];
+  const registerSpecProblems = registerSpecForm ? specMissing(registerSpecForm, registerSpecValues, language, registerSpecSkip) : [];
   // Section 3 is marked "photo required" on the client's own form, and section 5 asks for
   // one the moment the completion box is started.
   const delayReportFormReady = !delayReportRegister || (
@@ -2434,7 +2542,7 @@ function ProjectOperations({
     // first sentence of the description. The NCR form keeps its own subject.
     const findingTitle = findingScope === "ncr"
       ? findingForm.title
-      : recordLogLine(findingForm.description, `${issueTileLabel(issueTile)}${issueCategoryOption ? ` · ${text(issueCategoryOption.en, issueCategoryOption.nl)}` : ""}`);
+      : recordLogLine(findingForm.description, `${issueTileLabel(issueTile)}${issueCategoryOption ? ` · ${text(issueCategoryOption.en, issueCategoryOption.nl)}` : findingForm.issueCategory ? ` · ${findingForm.issueCategory}` : ""}`);
     if (findingTitle.trim().length < 3) return;
     // The primary building remains on the finding; the association list makes this one
     // numbered record visible under every selected building without cloning it.
@@ -2467,7 +2575,7 @@ function ProjectOperations({
       assignedUserId: findingForm.responsibleUserId,
       responsiblePerson: findingForm.responsiblePerson,
       issueType: findingForm.issueType,
-      issueCategory: issueCategoryOption ? text(issueCategoryOption.en, issueCategoryOption.nl) : "",
+      issueCategory: issueCategoryOption ? text(issueCategoryOption.en, issueCategoryOption.nl) : findingForm.issueCategory,
       immediateActions: findingForm.immediateActions,
       immediateActionOther: findingForm.immediateActionOther,
       rootCause: findingForm.rootCause,
@@ -2497,6 +2605,7 @@ function ProjectOperations({
       signatureImage: findingForm.signatureImage || null,
       locationNodeId: findingLocationNodeId,
       extraIssueManagement: {
+        spec: cleanSpecValues(findingSpecForm, findingSpecValues),
         responsible_role: findingForm.responsibleRole || null,
         ...contractorSignatureDetails(findingForm.contractorSignature),
       },
@@ -2686,6 +2795,7 @@ function ProjectOperations({
     const hseLongitude = hseForm.longitude.trim() === "" ? null : Number(hseForm.longitude);
     const hseDueAt = new Date(hseDueValue);
     const hseExtra = {
+      spec: cleanSpecValues(hseSpecForm, hseSpecValues),
       responsible_role: hseForm.responsibleRole || null,
       ...contractorSignatureDetails(hseForm.contractorSignature),
     };
@@ -2943,6 +3053,7 @@ function ProjectOperations({
           dueAt: registerForm.dueDate || null,
           details: detailsForEdit(editingRegister?.details, {
             ...baseDetails,
+            ...(registerSpecForm ? { spec: cleanSpecValues(registerSpecForm, registerSpecValues) } : {}),
             ...(controlledRegister && editingRegister ? { issue_date: String(editingRegister.details?.issue_date || documentIssueDate) } : {}),
             attachment_files: uploadedFiles.length ? uploadedFiles : editingRegister?.details?.attachment_files ?? [],
             drawing_file_id: selectedDrawing?.id ?? editingRegister?.details?.drawing_file_id ?? null,
@@ -3083,6 +3194,7 @@ function ProjectOperations({
       registerAutosave.clear();
       setRegisterForm({ ...emptyControlledDocumentDraft, type: registerForm.type });
       setEditingRegisterId("");
+      setRegisterSpec({});
       setAgreementForm({ ...emptyAgreementSignature });
       setAgreementRecord({ ...emptyAgreementRecord });
       setChangeOrder({ ...emptyChangeOrder });
@@ -3278,6 +3390,34 @@ function ProjectOperations({
             <small>{viewedRecord.meta}</small>
           </div>
           <span className="task-status">{viewedRecord.status}</span>
+          {(() => {
+            // The specification's own fields of this record, and its sign-off history.
+            const signoff = viewedRecordSignoff(viewedRecord);
+            if (!signoff) return null;
+            const facts = specFacts(signoff.form, signoff.values, language);
+            return (
+              <>
+                {facts.length ? (
+                  <dl className="record-spec-facts">
+                    {facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
+                  </dl>
+                ) : null}
+                {signoff.profile ? (
+                  <SignoffPanel
+                    client={client}
+                    projectId={projectId}
+                    recordKind={signoff.kind}
+                    recordId={viewedRecord.id}
+                    profile={signoff.profile}
+                    text={text}
+                    language={language}
+                    canReview={permissions.can("findings.verify") || permissions.can("reports.review") || (signoff.kind === "hse_event" && permissions.can("hse.manage")) || (signoff.kind === "inspection" && permissions.can("inspections.manage"))}
+                    partyNames={parties.map((party) => party.name)}
+                  />
+                ) : null}
+              </>
+            );
+          })()}
           <div className="record-readonly-actions">
             {viewedRecord.status !== "cancelled" && permissions.can("records.edit") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => {
               if (viewedRecord.kind === "inspection") {
@@ -3511,8 +3651,10 @@ function ProjectOperations({
                     <h3><span className="record-section-number">2</span> {text("Category", "Categorie")} <em className="record-section-required">*</em></h3>
                     <label className="form-field"><select aria-label={text("Category", "Categorie")} value={findingForm.issueCategory} onChange={(event) => setFindingForm({ ...findingForm, issueCategory: event.target.value })}>
                       <option value="">{text("Choose a category", "Kies een categorie")}</option>
-                      {issueCategories.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}
+                      {issueCategoryChoices.map((option) => <option value={option.value} key={option.value}>{option.value}</option>)}
+                      {findingForm.issueCategory && !issueCategoryChoices.some((option) => option.value === findingForm.issueCategory) ? <option value={findingForm.issueCategory}>{issueCategoryOption ? text(issueCategoryOption.en, issueCategoryOption.nl) : findingForm.issueCategory}</option> : null}
                     </select></label>
+                    {issueCategoryChoices.find((option) => option.value === findingForm.issueCategory)?.description ? <p className="form-helper">{issueCategoryChoices.find((option) => option.value === findingForm.issueCategory)?.description}</p> : null}
                   </section>
 
                   <section className="record-section record-order-3" aria-label={text("Severity", "Ernst")}>
@@ -3664,6 +3806,7 @@ function ProjectOperations({
                   <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required (Y/N)", "Escalatie vereist (J/N)")}</label>
                 </div>
               </details>
+              <SpecFields form="issue" skip={findingSpecSkip} values={findingSpecValues} onChange={setFindingSpec} text={text} language={language} heading={text("Follow-up and classification", "Opvolging en classificatie")} />
               {/* The client wrote "signature" beside the issue form too, and "contractor ook
                   tekenen": both signatures close the form, supervisor first. */}
               <RecordSignatures>
@@ -3705,8 +3848,9 @@ function ProjectOperations({
                   !findingForm.issueCategory ? text("category", "categorie") : "",
                   findingForm.responsiblePerson.trim().length < 2 ? text("responsible person", "verantwoordelijke") : "",
                   findingForm.description.trim().length < 3 ? text("description", "omschrijving") : "",
+                  ...findingSpecProblems,
                 ]} />
-                <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || !findingForm.issueCategory || findingForm.responsiblePerson.trim().length < 2 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><Send size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Issue indienen")}</button>
+                <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || !findingForm.issueCategory || findingForm.responsiblePerson.trim().length < 2 || findingForm.description.trim().length < 3 || findingSpecProblems.length > 0} onClick={() => void addFinding()}><Send size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Issue indienen")}</button>
               </div>
             </div>
           ) : null}
@@ -3760,10 +3904,7 @@ function ProjectOperations({
               <label className="form-field"><span>{text("Subject", "Onderwerp")}</span><input value={findingForm.title} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} placeholder={text("What the non-conformance is about", "Waar de afwijking over gaat")} /></label>
               <label className="form-field"><span>{text("Description of non-conformance", "Omschrijving van de afwijking")}</span><textarea rows={5} value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} /></label>
               {/* Short choices stand in pairs, long text stands full width - on every form. */}
-              <div className="form-grid-2">
-                <label className="form-field"><span>{text("Category", "Categorie")}</span><select value={findingForm.ncrCategory} onChange={(event) => setFindingForm({ ...findingForm, ncrCategory: event.target.value })}><option value="">{text("Choose a category", "Kies een categorie")}</option>{ncrCategories.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
-                <label className="form-field"><span>{text("Type", "Type")}</span><select value={findingForm.ncrWorkType} onChange={(event) => setFindingForm({ ...findingForm, ncrWorkType: event.target.value })}><option value="">{text("Choose a type of work", "Kies een soort werk")}</option>{ncrWorkTypes.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}</select></label>
-              </div>
+              <SpecFields form="ncr" only={["ncr_type", "ncr_category", "discipline"]} values={findingSpecValues} onChange={setFindingSpec} text={text} language={language} />
               <div className="form-grid-2">
                 <label className="form-field"><span>{text("Priority", "Prioriteit")}</span><select value={findingForm.severity} onChange={(event) => setFindingForm({ ...findingForm, severity: event.target.value })}><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="low">{text("Low · 14 days", "Laag · 14 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label>
                 <label className="form-field"><span>{text("Disposition", "Beoordeling")}</span><select value={findingForm.disposition} onChange={(event) => setFindingForm({ ...findingForm, disposition: event.target.value as typeof findingForm.disposition })}><option value="validated">{text("Validated", "Gevalideerd")}</option><option value="to_be_corrected">{text("To be corrected", "Te corrigeren")}</option><option value="alternative_solution">{text("Alternative solution required", "Alternatieve oplossing nodig")}</option></select></label>
@@ -3802,6 +3943,7 @@ function ProjectOperations({
               {/* "Gaat dit in de app gebeuren?" - yes: the contractor answers in the app through
                   the link, without an account, and CODECO verifies and closes it here. */}
               <div className="operation-alert warning"><RotateCcw size={17} /><div><strong>{text("The contractor answers in the app", "De aannemer antwoordt in de app")}</strong><span>{text("After submitting, send the NCR link to the contractor (no account needed). The contractor writes the corrective action in the app; CODECO verifies and closes it here.", "Stuur na het indienen de NCR-link naar de aannemer (geen account nodig). De aannemer schrijft de corrigerende maatregel in de app; CODECO verifieert en sluit hier af.")}</span></div></div>
+              <SpecFields form="ncr" skip={findingSpecSkip} values={findingSpecValues} onChange={setFindingSpec} text={text} language={language} heading={text("Containment, disposition and verification", "Beheersing, dispositie en verificatie")} />
               {/* "Overal aan het eind plaatsen": the engineer and the contractor sign last. */}
               <RecordSignatures>
                 <div className="record-signature-with-position">
@@ -3838,8 +3980,9 @@ function ProjectOperations({
                 !online && !findingPhotos.length ? text("a photo (you are offline)", "een foto (je bent offline)") : "",
                 findingForm.title.trim().length < 3 ? text("title", "titel") : "",
                 findingForm.description.trim().length < 3 ? text("description", "omschrijving") : "",
+                ...findingSpecProblems,
               ]} />
-              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit NCR", "NCR indienen")}</button>
+              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3 || findingSpecProblems.length > 0} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit NCR", "NCR indienen")}</button>
             </div>
           ) : null}
           {/* Submitting is not the end of an NCR: the contractor has to receive it and
@@ -3976,10 +4119,15 @@ function ProjectOperations({
 
                   <section className="record-section record-order-2" aria-label={text("Category", "Categorie")}>
                     <h3><span className="record-section-number">2</span> {text("Category", "Categorie")} <em className="record-section-required">*</em></h3>
+                    {hseSpecForm === "hse_incident" && hseForm.issueType !== "near_miss" ? (
+                      <SpecFields form="hse_incident" only={["incident_type"]} values={hseSpecValues} onChange={(next) => { setHseSpec(next); if (next.incident_type !== hseSpecValues.incident_type) setHseForm((current) => ({ ...current, issueCategory: "" })); }} text={text} language={language} />
+                    ) : null}
                     <label className="form-field"><select aria-label={text("Category", "Categorie")} value={hseForm.issueCategory} onChange={(event) => setHseForm({ ...hseForm, issueCategory: event.target.value })}>
                       <option value="">{text("Choose a category", "Kies een categorie")}</option>
-                      {hseIssueCategories.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}
+                      {hseCategoryChoices.map((option) => <option value={option.value} key={option.value}>{option.value}</option>)}
+                      {hseForm.issueCategory && !hseCategoryChoices.some((option) => option.value === hseForm.issueCategory) ? <option value={hseForm.issueCategory}>{hseCategoryOption ? text(hseCategoryOption.en, hseCategoryOption.nl) : hseForm.issueCategory}</option> : null}
                     </select></label>
+                    {hseCategoryChoices.find((option) => option.value === hseForm.issueCategory)?.description ? <p className="form-helper">{hseCategoryChoices.find((option) => option.value === hseForm.issueCategory)?.description}</p> : null}
                   </section>
 
                   <section className="record-section record-order-3" aria-label={text("Severity", "Ernst")}>
@@ -4113,6 +4261,7 @@ function ProjectOperations({
                 </div>
               </div>
 
+              <SpecFields form={hseSpecForm} skip={hseSpecSkip} values={hseSpecValues} onChange={setHseSpec} text={text} language={language} heading={hseSpecForm === "hse" ? text("Risk and follow-up", "Risico en opvolging") : text("Incident registration", "Incidentregistratie")} />
               <label className="check-field"><input type="checkbox" checked={hseForm.confidential} onChange={(event) => setHseForm({ ...hseForm, confidential: event.target.checked })} /> {text("Restrict this sensitive incident to authorized HSE roles", "Beperk dit gevoelige incident tot bevoegde HSE-rollen")}</label>
               <RecordSignatures>
               <RecordSignatureField
@@ -4146,8 +4295,9 @@ function ProjectOperations({
                   !hseForm.issueCategory ? text("category", "categorie") : "",
                   hseForm.responsiblePerson.trim().length < 2 ? text("responsible person", "verantwoordelijke") : "",
                   hseForm.description.trim().length < 3 ? text("description", "omschrijving") : "",
+                  ...hseSpecProblems,
                 ]} />
-                <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !hseLocationNodeId) || !hseForm.issueCategory || hseForm.responsiblePerson.trim().length < 2 || hseForm.description.trim().length < 3} onClick={() => void addHse()}><Send size={15} /> {text("Submit issue", "Issue indienen")}</button>
+                <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !hseLocationNodeId) || !hseForm.issueCategory || hseForm.responsiblePerson.trim().length < 2 || hseForm.description.trim().length < 3 || hseSpecProblems.length > 0} onClick={() => void addHse()}><Send size={15} /> {text("Submit issue", "Issue indienen")}</button>
               </div>
             </RecordFormShell>
           ) : null}
@@ -4575,7 +4725,7 @@ function ProjectOperations({
                 <>
                   {/* Capture, learn and improve: the client's own form, as one project
                       phase and four short questions instead of a free-text register line. */}
-                  <label className="form-field"><span>{text("Project phase", "Projectfase")}</span><select value={lessonForm.projectPhase} onChange={(event) => setLessonForm({ ...lessonForm, projectPhase: event.target.value })}><option value="">{text("Choose a phase", "Kies een fase")}</option>{lessonProjectPhases.map((phase) => <option value={phase.id} key={phase.id}>{text(phase.en, phase.nl)}</option>)}</select></label>
+                  <label className="form-field"><span>{text("Project phase", "Projectfase")}</span><select value={lessonForm.projectPhase} onChange={(event) => setLessonForm({ ...lessonForm, projectPhase: event.target.value })}><option value="">{text("Choose a phase", "Kies een fase")}</option>{specLessonPhases.map((phase) => <option value={phase} key={phase}>{phase}</option>)}{lessonForm.projectPhase && !specLessonPhases.includes(lessonForm.projectPhase) ? <option value={lessonForm.projectPhase}>{(() => { const legacy = lessonProjectPhases.find((phase) => phase.id === lessonForm.projectPhase); return legacy ? text(legacy.en, legacy.nl) : lessonForm.projectPhase; })()}</option> : null}</select></label>
                   {/* "Nummeren & onder elkaar": the four questions are numbered and stacked. */}
                   <div className="numbered-question-list">
                     <label className="form-field"><span><b className="numbered-question-number" aria-hidden="true">1</b>{text("Issue", "Probleem")}</span><textarea rows={3} value={lessonForm.issue} onChange={(event) => setLessonForm({ ...lessonForm, issue: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, issue: appendDictation(current.issue, transcript) }))} /></label>
@@ -4763,6 +4913,7 @@ function ProjectOperations({
                 {registerPhotoError ? <p className="field-error" role="alert">{registerPhotoError}</p> : null}
                 </>
               ) : null}
+              {registerSpecForm ? <SpecFields form={registerSpecForm} skip={registerSpecSkip} values={registerSpecValues} onChange={setRegisterSpec} text={text} language={language} heading={text("Specification details", "Specificatiegegevens")} /> : null}
               {/* "Overal aan het eind": the signatures close every register form — supervision
                   first, the contractor next to it. */}
               {changeOrderRegister ? (
@@ -4903,10 +5054,11 @@ function ProjectOperations({
       !registerNamedPhotos.delay_status ? text("photo on the original finish date", "foto op de oorspronkelijke einddatum") : "",
       delayCompletionStarted(delayForm) && !registerNamedPhotos.delay_completion ? text("completion photo", "foto van de afronding") : "",
     ] : []),
+                  ...registerSpecProblems,
                 ].filter(Boolean);
                 return registerMissing.length ? <small className="confirm-needs">{text("Still needed", "Nog nodig")}: {registerMissing.join(" · ")}</small> : null;
               })()}
-              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerTitle.length < 3 || !controlledFormReady || !lessonFormReady || !delayReportFormReady} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : lessonsLearnedRegister ? text("Save lesson learned", "Geleerde les opslaan") : delayReportRegister ? text("Save delay report", "Vertragingsrapport opslaan") : text("Save register item", "Registeritem opslaan")}</button>
+              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerTitle.length < 3 || !controlledFormReady || !lessonFormReady || !delayReportFormReady || registerSpecProblems.length > 0} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : lessonsLearnedRegister ? text("Save lesson learned", "Geleerde les opslaan") : delayReportRegister ? text("Save delay report", "Vertragingsrapport opslaan") : text("Save register item", "Registeritem opslaan")}</button>
             </RecordFormShell>
           ) : null}
           {/* The bill of quantities has nothing to do with a delivery or any other
@@ -5002,6 +5154,16 @@ function ProjectOperations({
           recorded days as its list — the same page every other record module is. */}
       {tab === "daily" ? (
         <section className="operation-panel">
+          {/* The client's quick box stays the way to write the day; the developer specification
+              also asks for one record per activity (discipline, activity, quantity, status),
+              which is a numbered WO / WC record of its own and joins the same day report. */}
+          {dailyWorkView !== "delays" ? (
+            <div className="works-activity-record">
+              <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => openTask("registers", true, { registerType: dailyWorkView === "works_completed" ? "works_completed" : "works_ongoing" })}>
+                <ClipboardCheck size={15} /> {dailyWorkView === "works_completed" ? text("Add a completed-activity record (WC)", "Afgeronde activiteit vastleggen (WC)") : text("Add an activity record (WO)", "Activiteit vastleggen (WO)")}
+              </button>
+            </div>
+          ) : null}
           {showForm ? <RenderSlot render={dailyForms.renderDayLog} input={{
             focus: dayLogFocus,
             today: dayLogToday,
@@ -6029,6 +6191,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
         <DayOverviewReport
           data={data}
           client={client}
+          projectId={projectId}
           projectName={projectName}
           projectCode={projectCode}
           currentUserName={currentUserName}

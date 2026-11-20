@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { fillSpecFields } from "./spec-fill";
 
 const email = process.env.CODECO_E2E_EMAIL;
 const password = process.env.CODECO_E2E_PASSWORD;
@@ -134,6 +135,7 @@ test("Two agreement signatures survive resize, save, refresh and correction", as
   }
   await expect(page.locator(".agreement-signatures img")).toHaveCount(2);
   const before = await page.locator(".agreement-signatures img").evaluateAll((images) => images.map((image) => image.getAttribute("src")));
+  await fillSpecFields(page.locator(".record-form-shell").first());
   await page.getByRole("button", { name: "Save agreement", exact: true }).click();
   const saved = page.locator(".saved-notes-card article").filter({ hasText: title });
   await expect(saved).toBeVisible();
