@@ -28,6 +28,19 @@ export async function fillSpecFields(scope: Locator) {
         }
         continue;
       }
+      // A short list shown as pictured tiles: pick the first allowed tile.
+      const radios = field.locator(".choice-tiles input[type='radio']");
+      if (await radios.count()) {
+        if (!(await field.locator(".choice-tiles input[type='radio']:checked").count())) {
+          const labels = await field.locator(".choice-tile").evaluateAll((tiles) => tiles.map((tile) => ({ text: tile.textContent?.trim() ?? "", disabled: Boolean(tile.querySelector("input:disabled")) })));
+          const index = labels.findIndex((tile) => !tile.disabled && !/^other\b/i.test(tile.text) && !/^not applicable/i.test(tile.text));
+          const pick = index >= 0 ? index : labels.findIndex((tile) => !tile.disabled);
+          if (pick >= 0) {
+            await field.locator(".choice-tile").nth(pick).click();
+            changed = true;
+          }
+        }
+      } else {
       const checkboxes = field.locator("input[type='checkbox']");
       if (await checkboxes.count()) {
         if (!(await field.locator("input[type='checkbox']:checked").count())) {
@@ -54,6 +67,7 @@ export async function fillSpecFields(scope: Locator) {
             changed = true;
           }
         }
+      }
       }
       for (const other of await field.locator(".spec-other input, .spec-other-name").all()) {
         if (!(await other.inputValue())) {

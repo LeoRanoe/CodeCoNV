@@ -729,8 +729,8 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 .signoff-meta { color: var(--muted); font-size: var(--text-sm); }
 .signoff-signature { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); display: block; margin-top: var(--space-2); max-height: 72px; max-width: 220px; }
 .signoff-action { border-top: 1px solid var(--border); display: grid; gap: var(--space-4); margin-top: var(--space-4); padding-top: var(--space-4); }
-.workforce-row-spec { display: flex; flex-wrap: wrap; gap: var(--space-2); grid-column: 1 / -1; order: 10; }
-.workforce-row-spec select { min-height: 44px; min-width: 0; }
+.workforce-row-spec { display: flex; flex-direction: column; gap: var(--space-2); grid-column: 1 / -1; order: 10; }
+.workforce-row-spec select { min-height: 44px; min-width: 0; width: 100%; }
 .record-spec-facts { display: grid; gap: var(--space-2) var(--space-4); grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); margin: var(--space-3) 0; }
 .record-spec-facts dt { color: var(--muted); font-size: var(--text-sm); }
 .record-spec-facts dd { margin: 0; overflow-wrap: anywhere; }
@@ -786,4 +786,70 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 .field-warning { background: var(--yellow-soft); border-radius: var(--radius-sm); color: var(--yellow); margin: var(--space-2) 0; padding: var(--space-2) var(--space-3); }
 @media (max-width: 640px) {
   .spec-people-add, .spec-record-search, .spec-row-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---- One field per row (client, 20-11-2026) ---------------------------------------------
+   "The forms are inconsistent: fields beside each other must be under each other." Every
+   form reads as one column at every width: fields, specification details, the numbered
+   sections of the Issue, HSE and NCR forms, and the signature blocks. Choice tiles and tick
+   boxes keep their grid, and the two named photo boxes stay a pair. */
+.form-grid-2:not(.named-photo-pair):not(.delay-choice-columns),
+.form-grid.two-columns,
+.form-grid.three-columns,
+.spec-row-grid,
+.spec-stage-grid,
+.spec-people-add,
+.spec-record-search,
+.record-signatures-grid,
+.agreement-signatures,
+.record-form-sections,
+.delay-report-sections,
+.workforce-add,
+.register-line { grid-template-columns: minmax(0, 1fr); }
+.register-line > label:nth-child(3) { grid-column: auto; }
+.register-line .register-line-remove,
+.workforce-add .workforce-add-button { grid-column: auto; justify-self: start; }
+.sectioned-record-columns { align-items: stretch; display: flex; flex-direction: column; }
+.sectioned-record-columns .sectioned-record-column { display: contents; }
+.sectioned-record-columns .record-order-1 { order: 1; }
+.sectioned-record-columns .record-order-2 { order: 2; }
+.sectioned-record-columns .record-order-3 { order: 3; }
+.sectioned-record-columns .record-order-4 { order: 4; }
+.sectioned-record-columns .record-order-5 { order: 5; }
+.sectioned-record-columns .record-order-6 { order: 6; }
+.sectioned-record-columns .record-order-7 { order: 7; }
+.sectioned-record-columns .record-order-8 { order: 8; }
+.sectioned-record-columns .record-order-9 { order: 9; }
+.sectioned-record-columns .record-order-10 { order: 10; }
+.sectioned-record-columns .record-order-11 { order: 11; }
+.sectioned-record-columns .record-order-12 { order: 12; }
+
+/* The microphone a free-text field gets while it has the focus (dictation-layer.tsx). */
+.dictation-layer { position: fixed; z-index: 40; }
+.dictation-layer .dictate-button { bottom: auto; position: relative; right: auto; }
+.dictation-layer .dictate-error { bottom: 48px; right: 0; }
+
+/* Short lists and tick-box lists as pictured tiles (client, 20-11-2026), drawn like the forms' own
+   quick-choice tiles (.record-tile): picture above the words, orange marks what is chosen. The
+   real radio or tick box covers the whole tile, so a tap anywhere chooses. */
+.spec-tiles { border: 0; margin: 0; min-width: 0; padding: 0; }
+.spec-tiles legend { margin-bottom: var(--space-2); padding: 0; }
+.choice-tiles { display: grid; gap: var(--space-2); grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.choice-tile {
+  align-items: center; background: var(--paper); border: 1px solid var(--ink-200); border-radius: var(--radius-md);
+  color: var(--ink-700); cursor: pointer; display: grid; gap: 6px; justify-items: center; min-height: 74px; min-width: 0;
+  padding: 11px 7px; position: relative; text-align: center;
+}
+.choice-tile input { appearance: none; border: 0; cursor: inherit; height: 100%; inset: 0; margin: 0; opacity: 0; position: absolute; width: 100%; }
+.choice-tile span { font-size: var(--text-xs); font-weight: var(--weight-bold); line-height: 1.25; min-width: 0; overflow-wrap: anywhere; }
+.choice-tile .choice-icon { color: var(--ink-700); flex: none; }
+.choice-tile:hover { border-color: var(--ink-500); }
+.choice-tile:has(input:focus-visible) { outline: 2px solid var(--signal); outline-offset: 2px; }
+.choice-tile.is-chosen { background: var(--signal-soft); border-color: var(--signal); color: var(--signal-dark); }
+.choice-tile.is-chosen .choice-icon { color: var(--signal-dark); }
+.choice-tile-tick { color: var(--signal-dark); position: absolute; right: 8px; top: 8px; }
+.choice-tile:has(input:disabled) { cursor: not-allowed; opacity: 0.55; }
+@media (max-width: 640px) {
+  .choice-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .choice-tiles > *:last-child:nth-child(odd) { grid-column: 1 / -1; }
 }

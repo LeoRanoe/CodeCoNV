@@ -1,32 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff } from "lucide-react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Loader2, Mic, MicOff } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
+import { dictationSupported, startDictation, type DictationError, type DictationSession } from "@/lib/speech/dictation";
 
-type SpeechRecognitionResultLike = { isFinal: boolean; 0: { transcript: string } };
-type SpeechRecognitionEventLike = { resultIndex: number; results: ArrayLike<SpeechRecognitionResultLike> };
-type SpeechRecognitionLike = {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start: () => void;
-  stop: () => void;
-  abort?: () => void;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: ((event?: { error?: string }) => void) | null;
-  onend: (() => void) | null;
-};
-type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
-
-function speechConstructor() {
-  if (typeof window === "undefined") return null;
-  const browser = window as typeof window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor };
-  return browser.SpeechRecognition ?? browser.webkitSpeechRecognition ?? null;
-}
+const noSubscription = () => () => {};
 
 export function speechToTextAvailable() {
-  return Boolean(speechConstructor());
+  return dictationSupported();
 }
 
 // Appends the dictated transcript to whatever the field already holds.
@@ -39,6 +21,11 @@ export function appendDictation(current: string, transcript: string) {
 export const micInputStyle = { bottom: 3 } as const;
 export const inputWithMicStyle = { paddingRight: 52 } as const;
 
+/**
+ * The microphone of a free-text field. Where the server transcribes, Dutch and English are
+ * understood together, also mixed in one sentence (client, 20-11-2026); otherwise the
+ * browser listens in the app language.
+ */
 export function DictateButton({
   onText,
   className = "dictate-button",
@@ -53,20 +40,18 @@ export function DictateButton({
 }) {
   const { language, text } = useLanguage();
   const [listening, setListening] = useState(false);
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const [busy, setBusy] = useState(false);
+  const sessionRef = useRef<DictationSession | null>(null);
   const onTextRef = useRef(onText);
   // Why dictation stopped, shown beside the button: a tooltip never appears on a tablet.
-  const [error, setError] = useState<"" | "blocked" | "failed">("");
+  const [error, setError] = useState<"" | DictationError>("");
+  // False on the server, the device's answer in the browser.
+  const supported = useSyncExternalStore(noSubscription, dictationSupported, () => false);
   useEffect(() => { onTextRef.current = onText; }, [onText]);
   useEffect(() => {
     const stop = () => {
-      const recognition = recognitionRef.current;
-      recognitionRef.current = null;
-      if (!recognition) return;
-      recognition.onresult = null;
-      recognition.onend = null;
-      recognition.onerror = null;
-      try { if (recognition.abort) recognition.abort(); else recognition.stop(); } catch { /* Already ended. */ }
+      sessionRef.current?.abort();
+      sessionRef.current = null;
       setListening(false);
     };
     const onVisibility = () => { if (document.hidden) stop(); };
@@ -74,57 +59,31 @@ export function DictateButton({
     return () => { document.removeEventListener("visibilitychange", onVisibility); stop(); };
   }, [language]);
 
-  if (!speechToTextAvailable()) return null;
+  if (!supported) return null;
 
-  const toggle = () => {
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch { recognitionRef.current = null; }
+  const toggle = async () => {
+    if (busy) return;
+    if (sessionRef.current) {
+      sessionRef.current.stop();
+      sessionRef.current = null;
       setListening(false);
       return;
     }
-    const Constructor = speechConstructor();
-    if (!Constructor) return;
-    const recognition = new Constructor();
     setError("");
-    // Android Chrome repeats earlier words in continuous mode; one phrase per tap there.
-    recognition.continuous = !/Android/i.test(navigator.userAgent);
-    recognition.interimResults = false;
-    recognition.lang = language === "nl" ? "nl-NL" : "en-US";
-    recognition.onresult = (event) => {
-      let transcript = "";
-      for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        if (event.results[index].isFinal) transcript += `${event.results[index][0].transcript} `;
-      }
-      if (recognitionRef.current === recognition && transcript.trim()) onTextRef.current(transcript.trim());
-    };
-    recognition.onerror = (event) => {
-      if (recognitionRef.current !== recognition) return;
-      if (event?.error === "no-speech" || event?.error === "aborted") { recognitionRef.current = null; setListening(false); return; }
-      recognitionRef.current = null;
-      recognition.onresult = null; recognition.onend = null; recognition.onerror = null;
-      try { recognition.abort?.(); } catch { /* Already stopped. */ }
-      setError(event?.error === "not-allowed" || event?.error === "service-not-allowed" ? "blocked" : "failed");
-      setListening(false);
-    };
-    recognition.onend = () => {
-      if (recognitionRef.current === recognition) {
-        setListening(false);
-        recognitionRef.current = null;
-      }
-    };
-    recognitionRef.current = recognition;
     setListening(true);
-    try { recognition.start(); }
-    catch {
-      recognitionRef.current = null;
-      setListening(false);
-      setError("failed");
-    }
+    const session = await startDictation({
+      language,
+      onText: (transcript) => onTextRef.current(transcript),
+      onError: (kind) => setError(kind),
+      onBusy: setBusy,
+      onEnd: () => { sessionRef.current = null; setListening(false); },
+    });
+    sessionRef.current = session;
+    if (!session) setListening(false);
   };
 
   const stopLabel = text("Stop dictation", "Stop dicteren");
-  const startLabel = label ?? text("Dictate", "Dicteren");
-
+  const startLabel = label ?? text("Dictate (Dutch or English)", "Dicteren (Nederlands of Engels)");
   const errorText = error === "blocked"
     ? text("Microphone blocked. Allow it for this site in the browser settings.", "Microfoon geblokkeerd. Sta hem toe voor deze site in de browserinstellingen.")
     : text("Dictation unavailable. Your typed text is kept; try again.", "Dicteren niet beschikbaar. Je tekst blijft bewaard; probeer opnieuw.");
@@ -135,12 +94,15 @@ export function DictateButton({
         className={`${className} ${listening ? "recording" : ""}`}
         style={style}
         type="button"
-        onClick={toggle}
-        aria-label={listening ? stopLabel : startLabel}
+        // Keeps the focus in the field, so the words land where the person was typing.
+        onPointerDown={(event) => event.preventDefault()}
+        onClick={() => void toggle()}
+        aria-label={busy ? text("Writing out the dictation…", "Dictaat wordt uitgeschreven…") : listening ? stopLabel : startLabel}
         title={error ? errorText : listening ? stopLabel : startLabel}
         aria-pressed={listening}
+        aria-busy={busy}
       >
-        {listening ? <MicOff size={18} /> : <Mic size={18} />}
+        {busy ? <Loader2 className="spin" size={18} /> : listening ? <MicOff size={18} /> : <Mic size={18} />}
       </button>
       {error ? <span className="dictate-error" role="status" style={style?.bottom !== undefined ? { bottom: Number(style.bottom) + 44 } : undefined}>{errorText}</span> : null}
     </>
