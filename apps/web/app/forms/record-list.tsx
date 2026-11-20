@@ -9,6 +9,8 @@ import { recordAnchorId, useRecordFocus } from "@/lib/navigation/record-focus";
 import { isPendingRecordId } from "@/lib/offline/record-queue";
 import { pendingStatus } from "@/lib/offline/pending-records";
 import { useLanguage } from "@/lib/i18n";
+import { SpecFacetFilterBar } from "@/app/forms/spec-facet-filter";
+import { matchesSpecFacets, type SpecFacetFilter, type SpecFacets } from "@/lib/forms/spec-facets";
 
 export type RecordListRow = {
   id: string;
@@ -24,6 +26,8 @@ export type RecordListRow = {
   onWithdraw?: () => void;
   /** Kept for older call sites while all record tabs move to the common actions. */
   open?: { label: string; onOpen: () => void };
+  /** Discipline, type, status and priority of the record's specification fields (list filters). */
+  facets?: SpecFacets;
 };
 
 export function RecordList({
@@ -36,13 +40,16 @@ export function RecordList({
   focusRecordId?: string;
 }) {
   const { text } = useLanguage();
+  const [facetFilter, setFacetFilter] = useState<SpecFacetFilter>({});
   useRecordFocus(focusRecordId, rows.some((row) => row.id === focusRecordId));
+  const facets = rows.flatMap((row) => (row.facets ? [row.facets] : []));
+  const shownRows = rows.filter((row) => !row.facets || matchesSpecFacets(row.facets, facetFilter) || row.id === focusRecordId);
 
   if (!rows.length) {
     return <div className="empty-list-state record-list-empty"><strong>{text("No records", "Geen registraties")}</strong><span>{empty}</span></div>;
   }
 
-  return <div className="record-stack">{rows.map((row) => {
+  return <>{facets.length > 1 ? <SpecFacetFilterBar id="record-list-facets" facets={facets} value={facetFilter} onChange={setFacetFilter} /> : null}<div className="record-stack">{shownRows.map((row) => {
     const Icon = row.icon;
     const waiting = isPendingRecordId(row.id);
     const open = row.onOpen ?? row.open?.onOpen;
@@ -65,7 +72,7 @@ export function RecordList({
         <span className={`task-status ui-status-badge ${waiting ? "waiting" : row.tone} ${row.tone === "red" ? "ui-status-badge--red" : row.tone === "green" ? "ui-status-badge--green" : ""}`}>{row.status === pendingStatus ? text("waiting to be sent", "wacht op verzending") : row.status}</span>
       </article>
     );
-  })}</div>;
+  })}{!shownRows.length ? <div className="empty-list-state record-list-empty"><span>{text("No records match these filters.", "Geen registraties met deze filters.")}</span></div> : null}</div></>;
 }
 
 /**

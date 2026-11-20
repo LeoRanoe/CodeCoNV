@@ -64,10 +64,13 @@ import { RecordList, SavedRecordsFold } from "@/app/forms/record-list";
 import { ContractorSignatureField, RecordSignatures, contractorSignatureDetails, contractorSignatureFrom, emptyContractorSignature, type ContractorSignatureValue } from "@/app/forms/contractor-signature";
 import { SpecFields, SpecLinkChips } from "@/app/forms/spec-fields";
 import { WorkspaceSpecDirectory } from "@/app/forms/workspace-spec-directory";
+import { SpecConfigurationPanel } from "@/app/forms/spec-configuration-panel";
 import { SignoffPanel } from "@/app/forms/signoff-panel";
 import { loadSignoffHistory, signoffHistoryEntries } from "@/lib/forms/signoff";
 import { cleanSpecValues, sensitiveKeys, specFacts, specFollowUps, specForms, specLinks, specMissing, workflowProfiles, type SpecFormKey, type SpecRow, type SpecValues } from "@/lib/forms/spec-forms";
 import { specLabel } from "@/lib/forms/spec-labels-nl";
+import { facetFilterActive, filterPeriodSnapshot, matchesSpecFacets, recordSpec, specFacets, type SpecFacetFilter } from "@/lib/forms/spec-facets";
+import { SpecFacetFilterBar } from "@/app/forms/spec-facet-filter";
 import { lessonPhases as specLessonPhases, hseCategories as specHseCategories, incidentCategories as specIncidentCategories, issueCategories as specIssueCategories } from "@/lib/forms/spec-catalogue";
 import { formIcons, registerIcon } from "@/app/forms/form-icons";
 import { NamedPhotoSlot, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence, photoSpecFromDetails } from "@/app/photo-evidence";
@@ -3652,6 +3655,7 @@ function ProjectOperations({
               started checklist can actually be filled in and completed. */}
           <RecordList empty={text("No inspections match these filters.", "Geen inspecties gevonden met deze filters.")} rows={filteredInspections.map((inspection) => ({
             id: inspection.id,
+            facets: specFacets(recordSpec(inspection as unknown as Record<string, unknown>)),
             icon: ClipboardCheck,
             title: inspection.title,
             meta: `${inspection.inspection_number} · ${recordContextLabel(inspection.building_id, inspection.location_node_id, inspection.building_ids)} · ${formatDate(inspection.completed_at ?? inspection.started_at, locale)}${inspection.signed_by ? ` · ${text("signed by", "ondertekend door")} ${inspection.signed_by}` : ""}`,
@@ -4378,6 +4382,7 @@ function ProjectOperations({
           <SavedRecordsFold formOpen={showForm && !focusRecordId} count={data.hseEvents.length} storageKey={`hse:${projectId}`}>
           <RecordList empty={text("No formal HSE records yet.", "Nog geen formele HSE-registraties.")} rows={data.hseEvents.map((event) => ({
             id: event.id,
+            facets: specFacets(recordSpec(event as unknown as Record<string, unknown>)),
             icon: event.event_type === "incident" ? formIcons.hse_incident : formIcons.hse,
             title: event.confidential ? `${event.title} · ${text("confidential", "vertrouwelijk")}` : event.title,
             meta: [
@@ -5186,6 +5191,7 @@ function ProjectOperations({
               : entry.status;
             return {
               id: entry.id,
+              facets: specFacets(recordSpec(entry as unknown as Record<string, unknown>)),
               icon: registerIcon(entry.register_type),
               title: entry.title,
               meta: [
@@ -5760,6 +5766,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   withdrawRecord: (finding: Finding) => void;
 }) {
   const { language, locale, text } = useLanguage();
+  const [findingFilter, setFindingFilter] = useState<SpecFacetFilter>({});
   const permissions = useProjectPermissions();
   const statusLabels = language === "en" ? findingStatusLabelsEnglish : findingStatusLabels;
   const fileOriginResolver = useMemo(() => createFileOriginResolver(data), [data]);
@@ -5842,10 +5849,14 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
     shared.url,
     `Link geldig tot ${formatDate(shared.expiresAt, locale)}.`,
   ].join("\n");
+  const findingFacets = findings.map((finding) => specFacets(recordSpec(finding as unknown as Record<string, unknown>)));
+  const shownFindings = findings.filter((finding, index) => matchesSpecFacets(findingFacets[index], findingFilter) || finding.id === focusRecordId);
   return (
     <div className="record-stack">
+      {findings.length > 1 ? <SpecFacetFilterBar id="finding-facets" facets={findingFacets} value={findingFilter} onChange={setFindingFilter} /> : null}
       {findings.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No findings yet", "Nog geen bevindingen")}</strong></div> : null}
-      {findings.map((finding) => {
+      {findings.length > 0 && !shownFindings.length && facetFilterActive(findingFilter) ? <div className="empty-list-state"><span>{text("No records match these filters.", "Geen registraties met deze filters.")}</span></div> : null}
+      {shownFindings.map((finding) => {
         // The database rule, so the screen offers only the step this role can actually take: the
         // assignee or a finding manager moves a finding on; closing and reopening may also be done
         // by whoever holds the verify permission. Anything else would only end in a refusal after
@@ -6127,6 +6138,9 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
   const [historyType, setHistoryType] = useState<"all" | "daily" | "weekly" | "monthly">("all");
   const [openHistoryId, setOpenHistoryId] = useState("");
   const [periodPreset, setPeriodPreset] = useState<"day" | "week" | "month" | "custom">("month");
+  const [periodFilter, setPeriodFilter] = useState<SpecFacetFilter>({});
+  const periodFacets = useMemo(() => [...data.findings, ...data.hseEvents, ...data.registerEntries, ...data.inspections]
+    .map((record) => specFacets(recordSpec(record as unknown as Record<string, unknown>))), [data.findings, data.hseEvents, data.inspections, data.registerEntries]);
   const [periodLabel, setPeriodLabel] = useState(() => text("Monthly supervision report", "Maandelijks supervisierapport"));
   const selectedReport = reportChoices.find((choice) => choice.id === reportChoice) ?? reportChoices[0];
   const clientReportOptions: Array<{ id: string; label: string; sections: PeriodReportSection[] }> = [
@@ -6312,12 +6326,14 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
           </button>
           <label className="form-field"><span>{text("From", "Van")}</span><input type="date" value={period.start} max={period.end} onChange={(event) => { setPeriod({ ...period, start: event.target.value }); setPeriodLabel(text("Period supervision report", "Supervisierapport over periode")); setPeriodPreset("custom"); }} /></label>
           <label className="form-field"><span>{text("Through", "Tot en met")}</span><input type="date" value={period.end} min={period.start} max={today} onChange={(event) => { setPeriod({ ...period, end: event.target.value }); setPeriodLabel(text("Period supervision report", "Supervisierapport over periode")); setPeriodPreset("custom"); }} /></label>
+          {/* Reporting filters of the specification: discipline, type / category, status and priority. */}
+          <SpecFacetFilterBar id="period-report-facets" facets={periodFacets} value={periodFilter} onChange={setPeriodFilter} />
           <ReportDownloadButtons
             variant="prominent"
             className="report-create-button"
             disabled={busy || !activeSections.length || !period.start || !period.end || period.end < period.start}
-            onDownloadPdf={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, period.start, period.end); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded.`, `${periodLabel} voor ${projectName} gedownload.`))}
-            onDownloadWord={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, period.start, period.end); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded as Word.`, `${periodLabel} voor ${projectName} als Word gedownload.`))}
+            onDownloadPdf={() => run(async () => { const snapshot = filterPeriodSnapshot(await buildPeriodReportSnapshot(client, projectId, period.start, period.end), periodFilter); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded.`, `${periodLabel} voor ${projectName} gedownload.`))}
+            onDownloadWord={() => run(async () => { const snapshot = filterPeriodSnapshot(await buildPeriodReportSnapshot(client, projectId, period.start, period.end), periodFilter); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded as Word.`, `${periodLabel} voor ${projectName} als Word gedownload.`))}
           />
         </section>
       ) : null}
@@ -6374,7 +6390,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
   // A role that may not read a module sees a dash, not a zero that reads like a fact.
   const readsFindings = permissions.can("findings.read");
   const readsInspections = permissions.can("inspections.read");
-  const [section, setSection] = useState<"overview" | "settings" | "structure" | "templates" | "backup">("overview");
+  const [section, setSection] = useState<"overview" | "settings" | "specification" | "structure" | "templates" | "backup">("overview");
   const [structureBuildingId, setStructureBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [template, setTemplate] = useState({ module: "inspection", code: "", name: "", prompts: "" });
   const [settings, setSettings] = useState(() => ({
@@ -6426,7 +6442,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
       <header className="secondary-header ui-page-header"><div><h1>{section === "overview" ? text("Management overview", "Beheeroverzicht") : text("Administration and control", "Beheer en controle")}</h1><span className="ui-page-header__code">{projectName}</span></div><div className="management-header-actions">{canManageOrganization ? <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={openUserAdmin}><Users size={15} /> {text("Manage team", "Team beheren")}</button> : null}</div></header>
       <SectionNav
         label={text("Management sections", "Beheeronderdelen")}
-        items={([["overview", text("Overview", "Overzicht")], ["settings", text("Team & rules", "Team & regels")], ["structure", text("Project setup", "Projectinrichting")], ["templates", text("Quality standards", "Kwaliteitsstandaarden")], ["backup", text("Backup & continuity", "Back-up & continuïteit")]] as const).map(([id, label]) => ({ id, label, selected: section === id, onSelect: () => setSection(id) }))}
+        items={([["overview", text("Overview", "Overzicht")], ["settings", text("Team & rules", "Team & regels")], ...(permissions.can("project.configure") ? [["specification", text("Workflows & lists", "Workflows & lijsten")]] as const : []), ["structure", text("Project setup", "Projectinrichting")], ["templates", text("Quality standards", "Kwaliteitsstandaarden")], ["backup", text("Backup & continuity", "Back-up & continuïteit")]] as const).map(([id, label]) => ({ id, label, selected: section === id, onSelect: () => setSection(id) }))}
       />
       {section === "overview" ? <section className="management-overview">
         <div className="management-kpis">
@@ -6479,6 +6495,9 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
           <ControlledDocumentList projectId={projectId} entries={externalSubmissions} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={text("Company / owner reviewer", "Reviewer bedrijf / eigenaar")} client={client} run={run} />
         <div className="management-context"><div><span>{text("Current report", "Huidig rapport")}</span><strong>{statusText(reportStatus, text)}</strong></div><div><span>{text("Rooms and areas", "Ruimtes en zones")}</span><strong>{data.locationNodes.length}</strong></div><div><span>{text("Published checklists", "Gepubliceerde checklists")}</span><strong>{data.templates.filter((item) => item.status === "published").length}</strong></div><div><span>{text("Controlled files", "Beheerde bestanden")}</span><strong>{data.files.length}</strong></div></div>
       </section> : null}
+      {section === "specification" && permissions.can("project.configure") ? (
+        <SpecConfigurationPanel client={client} projectId={projectId} configuration={data.settings?.spec_configuration} busy={busy} run={run} />
+      ) : null}
       {section === "settings" ? (
         <section className="operation-panel">
           <div className="admin-card-grid">

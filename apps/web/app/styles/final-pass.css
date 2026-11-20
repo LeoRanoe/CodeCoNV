@@ -757,6 +757,13 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 .spec-link-chips { display: flex; flex-wrap: wrap; gap: var(--space-3); margin: var(--space-3) 0; }
 .spec-link-chip { display: grid; gap: var(--space-1); }
 .spec-link-chip small { color: var(--muted); font-size: var(--text-sm); }
+.spec-configuration { display: grid; gap: var(--space-5); }
+.spec-config-values { display: grid; gap: var(--space-2); list-style: none; margin: var(--space-3) 0; padding: 0; }
+.spec-config-values li { align-items: center; display: grid; gap: var(--space-2); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+.spec-matrix { display: grid; gap: var(--space-1); overflow-x: auto; }
+.spec-matrix-row { display: grid; gap: var(--space-1); grid-template-columns: minmax(110px, 1.2fr) repeat(5, minmax(96px, 1fr)); }
+.spec-matrix-row > span { color: var(--muted); font-size: var(--text-sm); }
+.spec-facet-filter { display: grid; gap: var(--space-2) var(--space-3); grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); margin-bottom: var(--space-3); }
 .field-warning { background: var(--yellow-soft); border-radius: var(--radius-sm); color: var(--yellow); margin: var(--space-2) 0; padding: var(--space-2) var(--space-3); }
 @media (max-width: 640px) {
   .spec-people-add, .spec-record-search { grid-template-columns: minmax(0, 1fr); }
