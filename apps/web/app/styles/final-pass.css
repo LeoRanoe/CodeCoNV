@@ -787,3 +787,39 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 @media (max-width: 640px) {
   .spec-people-add, .spec-record-search, .spec-row-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ---- One field per row (client, 20-11-2026) ---------------------------------------------
+   "The forms are inconsistent: fields beside each other must be under each other." Every
+   form reads as one column at every width: fields, specification details, the numbered
+   sections of the Issue, HSE and NCR forms, and the signature blocks. Choice tiles and tick
+   boxes keep their grid, and the two named photo boxes stay a pair. */
+.form-grid-2:not(.named-photo-pair):not(.delay-choice-columns),
+.form-grid.two-columns,
+.form-grid.three-columns,
+.spec-row-grid,
+.spec-stage-grid,
+.spec-people-add,
+.spec-record-search,
+.record-signatures-grid,
+.agreement-signatures,
+.record-form-sections,
+.delay-report-sections,
+.workforce-add,
+.register-line { grid-template-columns: minmax(0, 1fr); }
+.register-line > label:nth-child(3) { grid-column: auto; }
+.register-line .register-line-remove,
+.workforce-add .workforce-add-button { grid-column: auto; justify-self: start; }
+.sectioned-record-columns { align-items: stretch; display: flex; flex-direction: column; }
+.sectioned-record-columns .sectioned-record-column { display: contents; }
+.sectioned-record-columns .record-order-1 { order: 1; }
+.sectioned-record-columns .record-order-2 { order: 2; }
+.sectioned-record-columns .record-order-3 { order: 3; }
+.sectioned-record-columns .record-order-4 { order: 4; }
+.sectioned-record-columns .record-order-5 { order: 5; }
+.sectioned-record-columns .record-order-6 { order: 6; }
+.sectioned-record-columns .record-order-7 { order: 7; }
+.sectioned-record-columns .record-order-8 { order: 8; }
+.sectioned-record-columns .record-order-9 { order: 9; }
+.sectioned-record-columns .record-order-10 { order: 10; }
+.sectioned-record-columns .record-order-11 { order: 11; }
+.sectioned-record-columns .record-order-12 { order: 12; }

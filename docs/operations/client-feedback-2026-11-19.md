@@ -107,3 +107,9 @@ The client's choices of 20-11-2026 for the open points: workflow settings projec
 - pgTAP `030_spec_registers_and_signoff_truth.pgtap.sql` (29 tests): people directory, reviewer-only decisions with recorded approver, approval limit, typed status put back, sign-off moving the status, next actor must be on the project, signed document is a project file, notification, parallel approvals, edit-after-submission reopening, overdue reminder and escalation, restricted incident data, linked follow-up action, shared lessons.
 - Unit: `tests/spec-forms.test.mjs` (pickers, decisions, works fields, risk rating, lists, rows/actions, restricted data, filters, Dutch labels, history lines), `tests/day-overview-export.test.mjs` (history per record).
 - E2E helper `tests/e2e/spec-fill.ts` fills the new pickers and rows.
+
+## Feedback of 20-11-2026 — fields under each other
+
+| Note | Status | What changed |
+|------|--------|--------------|
+| "The forms are inconsistent: fields beside each other must be under each other" | done | Every form is one column at every width: one field per row, including the specification details, the numbered sections of the Issue / HSE / NCR forms (no second column on a wide screen any more; they read 1 to 12), the delivery and workforce lines, the Delay Report and Agreement sections, and the signature blocks (supervisor, then contractor representative, position and signature). Choice tiles, tick boxes and the two named photos of a lesson keep their grid. Guarded by `tests/e2e/form-field-stacking.spec.ts` on all 14 Workspace forms at tablet and desktop width. |
