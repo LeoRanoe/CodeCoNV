@@ -62,9 +62,11 @@ import { appendDictation, DictateButton, inputWithMicStyle, micInputStyle } from
 import { RecordBuildingsField, RecordFormSection, RecordFormShell, RecordSignatureField } from "@/app/forms/record-form-shell";
 import { RecordList, SavedRecordsFold } from "@/app/forms/record-list";
 import { ContractorSignatureField, RecordSignatures, contractorSignatureDetails, contractorSignatureFrom, emptyContractorSignature, type ContractorSignatureValue } from "@/app/forms/contractor-signature";
-import { SpecFields } from "@/app/forms/spec-fields";
+import { SpecFields, SpecLinkChips } from "@/app/forms/spec-fields";
+import { WorkspaceSpecDirectory } from "@/app/forms/workspace-spec-directory";
 import { SignoffPanel } from "@/app/forms/signoff-panel";
-import { cleanSpecValues, specFacts, specForms, specMissing, workflowProfiles, type SpecFormKey, type SpecValues } from "@/lib/forms/spec-forms";
+import { cleanSpecValues, sensitiveKeys, specFacts, specFollowUps, specForms, specLinks, specMissing, workflowProfiles, type SpecFormKey, type SpecRow, type SpecValues } from "@/lib/forms/spec-forms";
+import { specLabel } from "@/lib/forms/spec-labels-nl";
 import { lessonPhases as specLessonPhases, hseCategories as specHseCategories, incidentCategories as specIncidentCategories, issueCategories as specIssueCategories } from "@/lib/forms/spec-catalogue";
 import { formIcons, registerIcon } from "@/app/forms/form-icons";
 import { NamedPhotoSlot, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
@@ -152,6 +154,7 @@ import { countOpenFindings } from "@/lib/records/finding-counts.mjs";
 import { createFileOriginResolver, filesForRecord, type FileOriginKind, type FileOriginResolver } from "@/lib/supabase/file-origins";
 import { loadProjectThumbnailUrl } from "@/lib/images/thumbnail";
 import {
+  createRecordFollowUpAction,
   buildPeriodReportSnapshot,
   createChecklist,
   createFinding,
@@ -1045,7 +1048,17 @@ export function OperationalWorkspace({
   const snapshot = withPendingRecords(query.data, pendingRecords);
 
   return (
-    <>
+    <WorkspaceSpecDirectory
+      client={client}
+      projectId={projectId}
+      snapshot={snapshot}
+      buildings={buildings}
+      parties={parties}
+      companyEmployees={companyEmployees}
+      currentUserId={currentUserId}
+      currentUserName={currentUserName}
+      openRecord={(tab, recordId) => openProjectArea(tab as Parameters<typeof openProjectArea>[0], recordId)}
+    >
       {snapshot._offlineCached ? <div className="operation-alert warning"><HardDrive size={17} /><div><strong>{text("Offline project copy", "Offline projectkopie")}</strong><span>{text("Offline. Last synced data is available; formal changes wait for a connection.", "Offline. Laatst gesynchroniseerde gegevens zijn beschikbaar; formele wijzigingen wachten op verbinding.")} {snapshot._offlineSavedAt ? `${text("Saved", "Opgeslagen")} ${formatDate(snapshot._offlineSavedAt)}.` : ""}</span></div></div> : null}
       {error ? <div className="operation-alert error"><AlertTriangle size={17} /> {error}</div> : null}
       {notice && noticeMode === mode ? <div className="operation-alert success"><CheckCircle2 size={17} /> {notice}</div> : null}
@@ -1146,7 +1159,7 @@ export function OperationalWorkspace({
           run={run}
         />
       ) : null}
-    </>
+    </WorkspaceSpecDirectory>
   );
 }
 
@@ -1871,7 +1884,10 @@ function ProjectOperations({
       const form = entry.register_type as SpecFormKey;
       return { form, values: ((entry.details ?? {}).spec ?? {}) as SpecValues, profile: workflowProfiles[form], kind: "register_entry" };
     }
-    if (record.kind === "inspection") return { form: "photo", values: {}, profile: workflowProfiles.inspection, kind: "inspection" };
+    if (record.kind === "inspection") {
+      const inspection = data.inspections.find((item) => item.id === record.id);
+      return { form: "inspection", values: (inspection?.spec ?? {}) as SpecValues, profile: workflowProfiles.inspection, kind: "inspection" };
+    }
     return null;
   };
   const viewInspection = (inspection: Inspection) => setViewedRecord({
@@ -1921,7 +1937,7 @@ function ProjectOperations({
     setFindingBuildingIds(finding.building_ids?.length ? finding.building_ids : [finding.building_id]);
     setFindingLocationNodeId(finding.location_node_id ?? "");
     setFindingPhotos([]);
-    setFindingSpec(((issue as Record<string, unknown>).spec ?? {}) as SpecValues);
+    setFindingSpec({ ...(((issue as Record<string, unknown>).spec ?? {}) as SpecValues), __stored: "yes" });
     setEditingFindingId(finding.id);
     setViewedRecord(null);
     setShowForm(true);
@@ -1960,7 +1976,7 @@ function ProjectOperations({
     setHseLocationNodeId(event.location_node_id ?? "");
     setHseSignature(signatureFromDetails(event.signed_by, event.signed_at, event.signature_image));
     setHsePhotos([]);
-    setHseSpec((event.spec ?? {}) as SpecValues);
+    setHseSpec({ ...((event.spec ?? {}) as SpecValues), __stored: "yes" });
     setEditingHseId(event.id);
     setViewedRecord(null);
     setShowForm(true);
@@ -1973,7 +1989,7 @@ function ProjectOperations({
   });
   const editRegister = (entry: RegisterEntry) => {
     const details = entry.details ?? {};
-    setRegisterSpec((details.spec ?? {}) as SpecValues);
+    setRegisterSpec({ ...((details.spec ?? {}) as SpecValues), __stored: "yes" });
     setRegisterForm({
       ...emptyControlledDocumentDraft,
       type: entry.register_type,
@@ -2141,7 +2157,10 @@ function ProjectOperations({
   const hseSpecValues: SpecValues = hseSpecForm === "hse"
     ? { ...hseSpec, hse_type: hseSpecTypes[hseForm.issueType] ?? "", hse_category: hseForm.issueCategory, action_owner: hseForm.responsiblePerson }
     : { ...hseSpec, incident_type: hseForm.issueType === "near_miss" ? "Near Miss" : hseSpec.incident_type, incident_category: hseForm.issueCategory, corrective_actions: hseSpec.corrective_actions ?? hseForm.correctiveAction };
-  const hseSpecSkip = hseSpecForm === "hse" ? ["hse_type", "hse_category", "action_owner"] : ["incident_category", ...(hseForm.issueType === "near_miss" ? ["incident_type"] : [])];
+  // Someone without HSE management does not see the restricted incident fields of a stored
+  // record, so they are not asked for either.
+  const hseSensitiveSkip = editingHseId && !permissions.can("hse.manage") ? sensitiveKeys(hseSpecForm) : [];
+  const hseSpecSkip = hseSpecForm === "hse" ? ["hse_type", "hse_category", "action_owner", ...hseSensitiveSkip] : ["incident_category", ...(hseForm.issueType === "near_miss" ? ["incident_type"] : []), ...hseSensitiveSkip];
   const hseSpecProblems = specMissing(hseSpecForm, hseSpecValues, language, hseSpecSkip);
   const issueCategoryChoices = specIssueCategories[issueSpecTypes[findingForm.issueType] ?? ""] ?? [];
   const hseCategoryChoices = hseSpecForm === "hse"
@@ -2605,7 +2624,7 @@ function ProjectOperations({
       signatureImage: findingForm.signatureImage || null,
       locationNodeId: findingLocationNodeId,
       extraIssueManagement: {
-        spec: cleanSpecValues(findingSpecForm, findingSpecValues),
+        spec: cleanSpecValues(findingSpecForm, findingSpecValues, data.settings?.spec_configuration),
         responsible_role: findingForm.responsibleRole || null,
         ...contractorSignatureDetails(findingForm.contractorSignature),
       },
@@ -2786,6 +2805,35 @@ function ProjectOperations({
     }
   };
 
+  /**
+   * Every follow-up row of an incident or an agreement becomes its own action record, with its
+   * owner and due date, linked to the record (workbook: "create separate linked action records").
+   * The key is stable per row, so saving the record again never creates the action twice.
+   */
+  const createFollowUpActions = async (form: SpecFormKey, values: SpecValues, sourceType: "hse" | "meeting", sourceId: string, buildingIdForActions: string | null, sourceLabel: string) => {
+    if (!permissions.can("actions.create") || sourceId.startsWith("pending") || (typeof navigator !== "undefined" && !navigator.onLine)) return 0;
+    let created = 0;
+    for (const { field, row } of specFollowUps(form, values)) {
+      const reference = String(row.owner_ref ?? "");
+      const action = String(row.action ?? "").trim();
+      const key = `follow:${sourceId}:${field}:${action.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 80)}`;
+      await createRecordFollowUpAction(client, {
+        projectId,
+        sourceType,
+        sourceId,
+        buildingId: buildingIdForActions,
+        ownerUserId: reference.startsWith("user:") ? reference.slice(5) : null,
+        ownerPartyId: reference.startsWith("party:") ? reference.slice(6) : null,
+        title: action,
+        description: `${sourceLabel}${row.owner ? ` · ${text("owner", "eigenaar")}: ${row.owner}` : ""}`,
+        dueDate: String(row.due ?? ""),
+        idempotencyKey: key.length >= 8 ? key : `${key}-follow-up`,
+      });
+      created += 1;
+    }
+    return created;
+  };
+
   const addHse = async () => {
     if (hseForm.description.trim().length < 3) return;
     // The client's screen has no title box: the record takes its log line from the first
@@ -2794,8 +2842,13 @@ function ProjectOperations({
     const hseLatitude = hseForm.latitude.trim() === "" ? null : Number(hseForm.latitude);
     const hseLongitude = hseForm.longitude.trim() === "" ? null : Number(hseForm.longitude);
     const hseDueAt = new Date(hseDueValue);
+    // An incident's corrective actions are rows (action — owner — due); the record's own
+    // corrective-action box keeps them as one readable text for lists and older reports.
+    const hseCorrectiveSummary = hseSpecForm === "hse_incident"
+      ? ((hseSpecValues.corrective_actions as SpecRow[] | undefined) ?? []).filter((row) => typeof row === "object" && row.action?.trim()).map((row) => [row.action, row.owner, row.due].filter(Boolean).join(" — ")).join("\n") || hseForm.correctiveAction
+      : hseForm.correctiveAction;
     const hseExtra = {
-      spec: cleanSpecValues(hseSpecForm, hseSpecValues),
+      spec: cleanSpecValues(hseSpecForm, hseSpecValues, data.settings?.spec_configuration),
       responsible_role: hseForm.responsibleRole || null,
       ...contractorSignatureDetails(hseForm.contractorSignature),
     };
@@ -2831,7 +2884,7 @@ function ProjectOperations({
             responsibleUserId: hseForm.responsibleUserId,
             dueAt: Number.isNaN(hseDueAt.getTime()) ? null : hseDueAt.toISOString(),
             rootCause: hseForm.rootCause,
-            correctiveAction: hseForm.correctiveAction,
+            correctiveAction: hseCorrectiveSummary,
             notes: hseForm.notes,
             latitude: hseLatitude,
             longitude: hseLongitude,
@@ -2865,7 +2918,7 @@ function ProjectOperations({
             responsibleUserId: hseForm.responsibleUserId,
             dueAt: Number.isNaN(hseDueAt.getTime()) ? null : hseDueAt.toISOString(),
             rootCause: hseForm.rootCause,
-            correctiveAction: hseForm.correctiveAction,
+            correctiveAction: hseCorrectiveSummary,
             notes: hseForm.notes,
             latitude: hseLatitude,
             longitude: hseLongitude,
@@ -2922,6 +2975,7 @@ function ProjectOperations({
           }
           if (navigator.onLine) await syncQueuedEvidenceNow();
         }
+        if (eventId && hseSpecForm === "hse_incident") await createFollowUpActions(hseSpecForm, hseSpecValues, "hse", eventId, primaryHseBuildingId || null, hseTitle);
       },
       // Only a save that really waits on the device says so; online the server has it already.
       typeof navigator !== "undefined" && !navigator.onLine
@@ -3053,7 +3107,7 @@ function ProjectOperations({
           dueAt: registerForm.dueDate || null,
           details: detailsForEdit(editingRegister?.details, {
             ...baseDetails,
-            ...(registerSpecForm ? { spec: cleanSpecValues(registerSpecForm, registerSpecValues) } : {}),
+            ...(registerSpecForm ? { spec: cleanSpecValues(registerSpecForm, registerSpecValues, data.settings?.spec_configuration) } : {}),
             ...(controlledRegister && editingRegister ? { issue_date: String(editingRegister.details?.issue_date || documentIssueDate) } : {}),
             attachment_files: uploadedFiles.length ? uploadedFiles : editingRegister?.details?.attachment_files ?? [],
             drawing_file_id: selectedDrawing?.id ?? editingRegister?.details?.drawing_file_id ?? null,
@@ -3098,6 +3152,10 @@ function ProjectOperations({
           });
           // A queued item has no number yet; the database assigns it when the item is sent.
           entry = savedEntry.record ?? { id: savedEntry.id, entry_number: "" };
+        }
+        // The agreement's actions each become an action record of their own.
+        if (registerForm.type === "agreement" && entry.entry_number) {
+          await createFollowUpActions("agreement", registerSpecValues, "meeting", entry.id, registerRecordBuildingId || null, `${entry.entry_number} · ${registerTitle}`);
         }
         // Site photos belong to a register item as much as documents do. The photos the
         // form asked for by name are filed the same way and in the same folder, but keep
@@ -3394,9 +3452,10 @@ function ProjectOperations({
             // The specification's own fields of this record, and its sign-off history.
             const signoff = viewedRecordSignoff(viewedRecord);
             if (!signoff) return null;
-            const facts = specFacts(signoff.form, signoff.values, language);
+            const facts = specFacts(signoff.form, signoff.values, language, { includeSensitive: permissions.can("hse.manage"), translate: (value) => specLabel(value, language) });
             return (
               <>
+                <SpecLinkChips links={specLinks(signoff.form, signoff.values, language)} text={text} />
                 {facts.length ? (
                   <dl className="record-spec-facts">
                     {facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
