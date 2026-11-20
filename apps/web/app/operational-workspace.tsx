@@ -4323,10 +4323,15 @@ function ProjectOperations({
 
                   <section className="record-section record-order-10" aria-label={text("Corrective action required", "Vereiste correctieve actie")}>
                     <h3><span className="record-section-number">10</span> {text("Corrective action required", "Vereiste correctieve actie")}</h3>
+                    {hseSpecForm === "hse_incident" ? (
+                      // An incident has one row per corrective action, each with its owner and due date.
+                      <SpecFields form="hse_incident" only={["corrective_actions"]} values={hseSpecValues} onChange={setHseSpec} text={text} language={language} />
+                    ) : (
                     <label className="form-field">
                       <textarea rows={3} maxLength={1000} value={hseForm.correctiveAction} onChange={(event) => setHseForm({ ...hseForm, correctiveAction: event.target.value })} aria-label={text("What corrective action is required?", "Welke correctieve actie is nodig?")} placeholder={text("What corrective action is required?", "Welke correctieve actie is nodig?")} />
                       <DictateButton onText={(transcript) => setHseForm((current) => ({ ...current, correctiveAction: appendDictation(current.correctiveAction, transcript) }))} />
                     </label>
+                    )}
                   </section>
 
                   <section className="record-section record-order-11" aria-label={text("Notes", "Notities")}>
@@ -4339,7 +4344,7 @@ function ProjectOperations({
                 </div>
               </div>
 
-              <SpecFields form={hseSpecForm} skip={hseSpecSkip} values={hseSpecValues} onChange={setHseSpec} text={text} language={language} heading={hseSpecForm === "hse" ? text("Risk and follow-up", "Risico en opvolging") : text("Incident registration", "Incidentregistratie")} />
+              <SpecFields form={hseSpecForm} skip={[...hseSpecSkip, "corrective_actions"]} values={hseSpecValues} onChange={setHseSpec} text={text} language={language} heading={hseSpecForm === "hse" ? text("Risk and follow-up", "Risico en opvolging") : text("Incident registration", "Incidentregistratie")} />
               <label className="check-field"><input type="checkbox" checked={hseForm.confidential} onChange={(event) => setHseForm({ ...hseForm, confidential: event.target.checked })} /> {text("Restrict this sensitive incident to authorized HSE roles", "Beperk dit gevoelige incident tot bevoegde HSE-rollen")}</label>
               <RecordSignatures>
               <RecordSignatureField

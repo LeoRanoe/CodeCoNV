@@ -72,6 +72,7 @@ export function SpecConfigurationPanel({ client, projectId, configuration, busy,
             {listKeys.map((key) => <option key={key} value={key}>{specListLabels[key][language]}</option>)}
           </select>
         </label>
+        <div className="form-field">
         <ul className="spec-config-values">
           {values.length ? values.map((value) => {
             const retired = (list.retired ?? []).includes(value);
@@ -90,7 +91,8 @@ export function SpecConfigurationPanel({ client, projectId, configuration, busy,
             );
           }) : <li>{text("No values yet.", "Nog geen waarden.")}</li>}
         </ul>
-        <div className="spec-people-add">
+        </div>
+        <div className="form-field spec-people-add">
           <input value={newValue} maxLength={120} aria-label={text("New value", "Nieuwe waarde")} placeholder={text("New value", "Nieuwe waarde")} onChange={(event) => setNewValue(event.target.value)} />
           <span />
           <button type="button" className="ui-button ui-button--secondary ui-button--sm" disabled={!newValue.trim() || values.includes(newValue.trim())} onClick={() => { setList({ added: [...(list.added ?? []), newValue.trim()] }); setNewValue(""); }}><Plus size={14} aria-hidden="true" /> {text("Add", "Toevoegen")}</button>
@@ -108,6 +110,7 @@ export function SpecConfigurationPanel({ client, projectId, configuration, busy,
           <input type="checkbox" checked={Boolean(matrix.enabled)} onChange={(event) => setDraft((current) => ({ ...current, risk_matrix: { ...current.risk_matrix, enabled: event.target.checked } }))} />
           <span>{text("The matrix below is approved and calculates the rating", "De matrix hieronder is goedgekeurd en berekent de klasse")}</span>
         </label>
+        <div className="form-field">
         <div className="spec-matrix" role="table" aria-label={text("Likelihood × severity", "Waarschijnlijkheid × ernst")}>
           <div role="row" className="spec-matrix-row">
             <span role="columnheader" />
@@ -128,6 +131,7 @@ export function SpecConfigurationPanel({ client, projectId, configuration, busy,
             </div>
           ))}
         </div>
+        </div>
       </div>
 
       <div className="operation-form">
@@ -144,7 +148,7 @@ export function SpecConfigurationPanel({ client, projectId, configuration, busy,
           return (
             <fieldset className="spec-rows" key={stage.number}>
               <legend>{stage.number} · {stage.label[language]}</legend>
-              <div className="form-grid form-grid-2">
+              <div className="spec-stage-grid">
                 <label className="form-field"><span>{text("Role (English)", "Rol (Engels)")}</span><input value={own.role_en ?? ""} placeholder={stage.role.en} maxLength={120} onChange={(event) => setStage(stage.number, { role_en: event.target.value })} /></label>
                 <label className="form-field"><span>{text("Role (Dutch)", "Rol (Nederlands)")}</span><input value={own.role_nl ?? ""} placeholder={stage.role.nl} maxLength={120} onChange={(event) => setStage(stage.number, { role_nl: event.target.value })} /></label>
                 <label className="form-field"><span>{text("Approvals needed", "Benodigde goedkeuringen")}</span><input type="number" min={1} max={9} value={own.required_approvals ?? ""} placeholder="1" onChange={(event) => setStage(stage.number, { required_approvals: event.target.value ? Number(event.target.value) : undefined })} /></label>

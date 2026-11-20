@@ -471,7 +471,7 @@ function SpecRows({ id, field, values, set, text, language, disabled, directory 
         {shown.map((row, index) => (
           <li key={field.rowsFrom ? row.step : index} className="spec-row">
             {row.step ? <strong className="spec-row-step">{directory.translate(row.step)}</strong> : null}
-            <div className="form-grid form-grid-2">
+            <div className="spec-row-grid">
               {(field.columns ?? []).map((column) => {
                 const cellId = `${id}-${index}-${column.key}`;
                 const cellLabel = <span>{column.label[language]} {column.required ? <em className="record-section-required">*</em> : null}</span>;

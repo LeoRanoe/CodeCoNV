@@ -100,5 +100,8 @@ test("a contractor submits an RFI and sees it in the register", async ({ page },
   if (await projectCard.isVisible().catch(() => false)) await projectCard.click();
   await expect(page.locator(".sidebar, .mobile-bottom-nav").first()).toBeVisible();
   await openSubmissionForm(page);
+  // With the form open, the saved records fold shut under one bar (client, 19-11-2026).
+  const fold = page.locator("details.saved-records-fold").first();
+  if (await fold.count() && !(await fold.evaluate((element) => (element as HTMLDetailsElement).open))) await fold.locator("summary").click();
   await expect(page.locator("main").getByText(title).first()).toBeVisible({ timeout: 20_000 });
 });
