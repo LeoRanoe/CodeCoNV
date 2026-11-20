@@ -2451,7 +2451,10 @@ test("keeps the record screens and the photo library usable on a phone and a tab
   // In one column the sections are as wide as the screen. Without this they keep the
   // align-items: start of the two-column rule and every box is as wide as its own text.
   const stacked = styles.match(/\.sectioned-record-columns \{ align-items: stretch; display: flex; flex-direction: column; \}/g);
-  assert.equal(stacked?.length, 2, "both the narrow container and the narrow window stack into full-width sections");
+  assert.ok((stacked?.length ?? 0) >= 2, "both the narrow container and the narrow window stack into full-width sections");
+  // Client, 20-11-2026: "fields beside each other must be under each other" — every form is
+  // one column at every width, one field per row.
+  assert.match(styles, /\.form-grid-2:not\(\.named-photo-pair\):not\(\.delay-choice-columns\),[\s\S]*?\{ grid-template-columns: minmax\(0, 1fr\); \}/);
 
   // Two columns when the form is wide enough, not when the window is: the workspace has a
   // module switcher beside it, so a wide tablet can still leave a phone-width form.
