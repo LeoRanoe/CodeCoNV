@@ -70,7 +70,7 @@ import { cleanSpecValues, sensitiveKeys, specFacts, specFollowUps, specForms, sp
 import { specLabel } from "@/lib/forms/spec-labels-nl";
 import { lessonPhases as specLessonPhases, hseCategories as specHseCategories, incidentCategories as specIncidentCategories, issueCategories as specIssueCategories } from "@/lib/forms/spec-catalogue";
 import { formIcons, registerIcon } from "@/app/forms/form-icons";
-import { NamedPhotoSlot, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
+import { NamedPhotoSlot, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence, photoSpecFromDetails } from "@/app/photo-evidence";
 import { RecordLocationMap } from "@/app/record-location-map";
 import { StoredPhotoDetail } from "@/app/stored-photo-detail";
 import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
@@ -2496,6 +2496,7 @@ function ProjectOperations({
               description: photoUploadDescription(photo, "", language),
               locationLabel: buildings.find((building) => building.id === photoBuildingId)?.name ?? buildingName,
               locationNodeId: photo.details.locationNodeId || activeInspection.location_node_id,
+              spec: photoSpecFromDetails(photo.details),
               capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
               originalSize: photo.original.size,
               queuedSize: prepared.blob.size,
@@ -2745,6 +2746,7 @@ function ProjectOperations({
             description: photoUploadDescription(photo, findingForm.description, language),
             locationLabel: findingBuildingName,
             locationNodeId: photo.details.locationNodeId || findingLocationNodeId || null,
+            spec: photoSpecFromDetails(photo.details),
             capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
             originalSize: photo.original.size,
             queuedSize: prepared.blob.size,
@@ -2974,6 +2976,7 @@ function ProjectOperations({
               description: photoUploadDescription(photo, hseForm.description, language),
               locationLabel: hseBuildingName,
               locationNodeId: photo.details.locationNodeId || hseLocationNodeId || null,
+              spec: photoSpecFromDetails(photo.details),
               capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
               originalSize: photo.original.size,
               queuedSize: prepared.blob.size,
@@ -3196,6 +3199,7 @@ function ProjectOperations({
               description: photoUploadDescription(photo, "", language),
               locationLabel: registerBuildingName,
               locationNodeId: photo.details.locationNodeId || registerLocationNodeId || null,
+              spec: photoSpecFromDetails(photo.details),
               capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
               originalSize: photo.original.size,
               queuedSize: prepared.blob.size,

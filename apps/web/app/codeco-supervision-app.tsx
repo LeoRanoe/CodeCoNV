@@ -45,7 +45,7 @@ import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingO
 import { actionStatusLabels as canonicalActionStatusLabels, labelMap, priorityText } from "@/lib/status-labels";
 import { screenFromSearch, useScreenHistory, type AppScreen } from "@/lib/navigation/app-history";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
-import { photoTitle, photoUploadDescription, samePhotoFile, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
+import { photoTitle, photoUploadDescription, samePhotoFile, toPhotoEvidence, type PhotoEvidence, photoSpecFromDetails } from "@/app/photo-evidence";
 import { ClientDashboard } from "@/app/client-dashboard";
 import { DailyLogForm } from "@/app/daily-log-modal";
 import { LiveWeatherChip } from "@/app/live-weather-chip";
@@ -1507,6 +1507,7 @@ export function CodecoSupervisionApp() {
                   description: photoUploadDescription(photo, "", language),
                   locationLabel: logBuildingName,
                   locationNodeId: photo.details.locationNodeId || null,
+                  spec: photoSpecFromDetails(photo.details),
                   capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
                   originalSize: photo.original.size,
                   queuedSize: prepared.blob.size,

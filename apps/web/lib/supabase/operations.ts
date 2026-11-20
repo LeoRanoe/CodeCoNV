@@ -2012,6 +2012,8 @@ export async function createVisualCapture(client: SupabaseClient, input: {
   tourOrder?: number | null;
   stackId?: string | null;
   capturedAt?: string;
+  /** Specification fields asked at capture time (photo purpose …). */
+  spec?: Record<string, unknown> | null;
 }) {
   const result = await client.rpc("create_visual_capture", {
     p_project_id: input.projectId,
@@ -2034,6 +2036,11 @@ export async function createVisualCapture(client: SupabaseClient, input: {
     const stackResult = await client.rpc("set_visual_capture_stack", { p_capture_id: capture.id, p_stack_id: input.stackId });
     // A database without 202610310001 keeps the photo and loses only the grouping, as before.
     if (!schemaFeatureMissing(stackResult.error, ["set_visual_capture_stack"])) fail(stackResult.error);
+  }
+  if (input.spec && Object.keys(input.spec).length && capture?.id) {
+    // The purpose chosen when the photo was taken; the photo itself is kept when this fails.
+    const specResult = await client.rpc("set_visual_capture_spec", { p_capture_id: capture.id, p_spec: input.spec });
+    if (!specResult.error) return { ...capture, spec: input.spec, stack_id: input.stackId || capture.stack_id || null };
   }
   return { ...capture, stack_id: input.stackId || capture.stack_id || null };
 }

@@ -1,5 +1,8 @@
 "use client";
 
+import { photoSpecFromDetails } from "@/app/photo-evidence";
+import { photoPurposes, workDisciplines } from "@/lib/forms/spec-catalogue";
+import { specLabel } from "@/lib/forms/spec-labels-nl";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   AlertTriangle,
@@ -176,6 +179,10 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     directionAutomatic: true,
     tourName: "",
     tourOrder: "",
+    /** Workbook Photos sheet: purpose and, for work photos, the discipline — asked at upload. */
+    purpose: "",
+    purposeOther: "",
+    discipline: "",
   });
   const [drawingLocation, setDrawingLocation] = useState<DrawingLocation | null>(null);
   const [pickingDrawingLocation, setPickingDrawingLocation] = useState(false);
@@ -281,7 +288,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     };
   }, [filePreviewUrl]);
 
-  const emptyCaptureForm = { type: "photo" as VisualCapture["capture_type"], description: "", locationNodeId: "", direction: "", directionAutomatic: true, tourName: "", tourOrder: "" };
+  const emptyCaptureForm = { type: "photo" as VisualCapture["capture_type"], description: "", locationNodeId: "", direction: "", directionAutomatic: true, tourName: "", tourOrder: "", purpose: "", purposeOther: "", discipline: "" };
 
   const discardCapture = () => {
     // Thrown away on purpose, so the camera photo's safety copy goes with it.
@@ -453,6 +460,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           } : null,
           tourName: captureForm.tourName || null,
           tourOrder: captureForm.tourName ? Number(captureForm.tourOrder) : null,
+          spec: photoSpecFromDetails({ title: "", description: "", category: "", buildingId: "", locationNodeId: "", direction: "", purpose: captureForm.purpose, purposeOther: captureForm.purposeOther, discipline: captureForm.discipline }),
           capturedAt: new Date(file.lastModified || Date.now()).toISOString(),
           originalSize: file.size,
           queuedSize: prepared.blob.size,
@@ -656,6 +664,30 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
             />
             <DictateButton onText={(transcript) => setCaptureForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} />
           </label>
+          <div className="form-grid-2">
+            <label className="form-field">
+              <span>{text("Photo purpose", "Doel van de foto")}</span>
+              <select value={captureForm.purpose} onChange={(event) => setCaptureForm({ ...captureForm, purpose: event.target.value })}>
+                <option value="">{text("Choose…", "Kies…")}</option>
+                {photoPurposes.map((purpose) => <option key={purpose} value={purpose}>{specLabel(purpose, language)}</option>)}
+              </select>
+            </label>
+            {["Progress Documentation", "Technical / Quality Evidence"].includes(captureForm.purpose) ? (
+              <label className="form-field">
+                <span>{text("Photo category / work discipline", "Fotocategorie / werkdiscipline")}</span>
+                <select value={captureForm.discipline} onChange={(event) => setCaptureForm({ ...captureForm, discipline: event.target.value })}>
+                  <option value="">{text("Choose…", "Kies…")}</option>
+                  {workDisciplines.map((discipline) => <option key={discipline} value={discipline}>{specLabel(discipline, language)}</option>)}
+                </select>
+              </label>
+            ) : null}
+            {/^other\b/i.test(captureForm.purpose) ? (
+              <label className="form-field">
+                <span>{text("Photo purpose · explain Other", "Doel van de foto · licht Overig toe")}</span>
+                <input value={captureForm.purposeOther} maxLength={240} onChange={(event) => setCaptureForm({ ...captureForm, purposeOther: event.target.value })} />
+              </label>
+            ) : null}
+          </div>
 
           <BuildingChoiceField
             id="capture-building"
