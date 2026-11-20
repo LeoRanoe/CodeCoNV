@@ -69,8 +69,8 @@ Every dropdown value comes from the workbook itself: `apps/web/scripts/generate-
 | Photos: purpose, discipline, related record | done | Photo detail → "Photo classification". |
 | Workforce: shift, attendance status, competency status | done | Per line on the workforce register. |
 | Sign-off Workflow sheet: append-only event log, rounds, return with mandatory comment and next actor, frozen submitted version, role-restricted approval, no self-approval, notification of the next actor, external representative signature | done | `record_signoff_events` + `record_signoff_action()` (migration `202611200001`); "Sign-off and review" panel on every opened record, attendance verification on Reports · Day overview. |
-| Project-configurable workflow profiles, approval limits, parallel review rules | open | Profiles are fixed to the sheet's stages; limits and legal effect need the project owner's decision (the workbook says so itself). |
-| Dutch translations of the workbook's lists | open | The lists are shown in the workbook's English; field labels are bilingual. |
+| Project-configurable workflow profiles, approval limits, parallel review rules | done (third round) | Open in this round; built in the third round after the client's choice (item 12 below). |
+| Dutch translations of the workbook's lists | done (third round) | Open in this round; built in the third round (item 15 below). |
 
 ## Verification
 
