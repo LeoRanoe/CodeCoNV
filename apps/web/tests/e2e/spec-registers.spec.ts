@@ -65,9 +65,11 @@ test("the risk rating appears once likelihood and severity are chosen", async ({
   await openTile(page, "hse");
   const spec = page.locator("[data-spec-form='hse']").last();
   await expect(spec.locator("[data-spec-field='risk_rating']")).toHaveCount(0);
-  await spec.locator("[data-spec-field='risk_likelihood'] select").selectOption("Likely");
-  await spec.locator("[data-spec-field='risk_severity'] select").selectOption("Major");
-  await expect(spec.locator("[data-spec-field='risk_rating'] select option")).toContainText(["Choose…", "Low", "Medium", "High", "Critical"]);
+  // Short lists are pictured tiles (client, 20-11-2026): each a radio with its own picture.
+  await spec.locator("[data-spec-field='risk_likelihood']").getByRole("radio", { name: "Likely", exact: true }).check();
+  await spec.locator("[data-spec-field='risk_severity']").getByRole("radio", { name: "Major", exact: true }).check();
+  await expect(spec.locator("[data-spec-field='risk_rating'] .choice-tile")).toHaveText(["Low", "Medium", "High", "Critical"]);
+  await expect(spec.locator("[data-spec-field='risk_likelihood'] .choice-tile svg")).toHaveCount(5);
 });
 
 test("Management keeps the project's lists and workflow settings", async ({ page }, testInfo) => {

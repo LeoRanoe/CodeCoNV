@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { LanguageProvider } from "@/lib/i18n";
+import { DictationLayer } from "@/app/dictation-layer";
 import { ensureOfflineDatabase } from "@/lib/offline/idb";
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -97,5 +98,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
     return () => navigator.serviceWorker.removeEventListener("controllerchange", takeOver);
   }, []);
 
-  return <LanguageProvider><QueryClientProvider client={queryClient}>{children}</QueryClientProvider></LanguageProvider>;
+  return <LanguageProvider><QueryClientProvider client={queryClient}>{children}</QueryClientProvider><DictationLayer />
+</LanguageProvider>;
 }

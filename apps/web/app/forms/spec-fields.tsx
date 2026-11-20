@@ -25,9 +25,13 @@ import {
   type SpecValues,
   withInitial,
 } from "@/lib/forms/spec-forms";
+import { ChoiceIcon } from "@/lib/forms/choice-icons";
 import { recordMatchesKinds, useSpecDirectory, type SpecDirectoryValue } from "@/app/forms/spec-directory";
 
 type Text = (en: string, nl: string) => string;
+
+/** Lists up to this long are pictured tiles; longer lists stay a dropdown. */
+const maxTiles = 6;
 
 /**
  * The fields of the client's developer specification for one form, in the workbook's order.
@@ -152,6 +156,7 @@ function SpecInput({ id, form, field, values, set, setMany, text, language, disa
                 checked={many.includes(option.value)}
                 onChange={(event) => set(field.key, event.target.checked ? [...many, option.value] : many.filter((item) => item !== option.value))}
               />
+              <ChoiceIcon fieldKey={field.key} value={option.value} choices={options.map((item) => item.value)} />
               <span>{show(option.value)}</span>
             </label>
           ))}
@@ -199,6 +204,40 @@ function SpecInput({ id, form, field, values, set, setMany, text, language, disa
     return (
       <RecordPicker id={id} field={field} label={caption} hint={hint} number={single} reference={String(values[refKey(field)] ?? "")}
         onChange={(number, reference) => setMany({ [field.key]: number, [refKey(field)]: reference })} text={text} disabled={disabled} directory={directory} />
+    );
+  }
+
+  // A short list is shown as pictured tiles, so each choice is told apart at a glance (client, 20-11-2026).
+  const shortList = (field.kind === "select" || field.kind === "dependent" || field.kind === "rating") && options.length > 0 && options.length <= maxTiles
+    && (field.kind !== "rating" || !matrixRating(values, directory.config));
+  if (shortList) {
+    const choices = options.map((option) => option.value);
+    const decisionNote = field.decision && !canDecide
+      ? text("Only a reviewer can choose the decision values; the database records who and when.", "Alleen een beoordelaar kiest de besluitwaarden; de database legt vast wie en wanneer.")
+      : "";
+    return (
+      <fieldset className="form-field spec-field spec-tiles" disabled={disabled} data-spec-field={field.key} id={id}>
+        <legend>{caption}</legend>
+        {hint ? <p className="form-helper">{hint}</p> : null}
+        <div className="choice-tiles" role="radiogroup" aria-label={label} aria-required={required || undefined}>
+          {options.map((option) => {
+            const allowed = canChooseDecision(field, option.value, canDecide) || option.value === single;
+            return (
+              <label key={option.value} className={`choice-tile${option.value === single ? " is-chosen" : ""}`} title={allowed ? undefined : text("Reviewer only", "Alleen beoordelaar")}>
+                <input type="radio" name={id} value={option.value} checked={option.value === single} required={required} disabled={!allowed}
+                  onChange={() => set(field.key, option.value)}
+                  // A second tap on the chosen tile clears an optional choice.
+                  onClick={() => { if (!required && option.value === single) set(field.key, ""); }} />
+                <ChoiceIcon fieldKey={field.key} value={option.value} choices={choices} />
+                <span>{show(option.value)}</span>
+              </label>
+            );
+          })}
+        </div>
+        {chosen?.description ? <p className="form-helper">{chosen.description}</p> : null}
+        {decisionNote ? <p className="form-helper">{decisionNote}</p> : null}
+        {isOtherOption(single) ? other : null}
+      </fieldset>
     );
   }
 

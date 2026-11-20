@@ -331,7 +331,8 @@ test("implements the handwritten client PDF as required workflows without AI or 
     readFile(new URL("../app/visual-evidence-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/supabase/data.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/field-tools.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/dictate-button.tsx", import.meta.url), "utf8"),
+    // The microphone and its dictation engine (lib/speech, 20-11-2026) together.
+    Promise.all([readFile(new URL("../app/dictate-button.tsx", import.meta.url), "utf8"), readFile(new URL("../lib/speech/dictation.ts", import.meta.url), "utf8")]).then((parts) => parts.join("\n")),
     readFile(new URL("../app/drawing-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/reports/period-report-pdf.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/boq/csv.ts", import.meta.url), "utf8"),
@@ -370,6 +371,7 @@ test("implements the handwritten client PDF as required workflows without AI or 
   assert.match(dataLayer, /finding_type !== "ncr"/);
   assert.match(dataLayer, /"technical_instruction", "site_instruction", "change_order", "variation"/);
   assert.match(dictateButtonModule, /webkitSpeechRecognition/);
+  assert.match(dictateButtonModule, /\/api\/speech\/transcribe/);
   assert.match(fieldTools, /DictateButton/);
   assert.match(fieldTools, /Construction calculator/);
   assert.match(fieldTools, /createRegisterEntry/);

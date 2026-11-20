@@ -823,3 +823,26 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 .sectioned-record-columns .record-order-10 { order: 10; }
 .sectioned-record-columns .record-order-11 { order: 11; }
 .sectioned-record-columns .record-order-12 { order: 12; }
+
+/* The microphone a free-text field gets while it has the focus (dictation-layer.tsx). */
+.dictation-layer { position: fixed; z-index: 40; }
+.dictation-layer .dictate-button { bottom: auto; position: relative; right: auto; }
+.dictation-layer .dictate-error { bottom: 48px; right: 0; }
+
+/* Short lists as pictured tiles (client, 20-11-2026). The picture tells the choices apart; orange marks the chosen one. */
+.spec-tiles { border: 0; margin: 0; min-width: 0; padding: 0; }
+.spec-tiles legend { margin-bottom: var(--space-2); padding: 0; }
+.choice-tiles { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.choice-tile {
+  align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-control); position: relative;
+  color: var(--text); cursor: pointer; display: flex; gap: var(--space-2); min-height: 48px; min-width: 0; padding: var(--space-2) var(--space-3);
+}
+.choice-tile input { height: 1px; margin: 0; opacity: 0; position: absolute; width: 1px; }
+.choice-tile span { min-width: 0; overflow-wrap: anywhere; }
+.choice-tile .choice-icon, .spec-choice .choice-icon { color: var(--muted); flex: none; }
+.choice-tile:hover { border-color: var(--border); }
+.choice-tile:has(input:focus-visible) { outline: 2px solid var(--signal); outline-offset: 2px; }
+.choice-tile.is-chosen { background: var(--signal-soft); border-color: var(--signal); font-weight: var(--weight-bold); }
+.choice-tile.is-chosen .choice-icon { color: var(--signal-dark); }
+.choice-tile:has(input:disabled) { cursor: not-allowed; opacity: 0.55; }
+.spec-choice .choice-icon { margin-top: 2px; }
