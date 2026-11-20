@@ -152,6 +152,8 @@ export type SpecField = {
   rowsFrom?: string;
   /** Starts with the signed-in user ("Auto-filled user … allow supervisor confirmation"). */
   defaultsToCurrentUser?: boolean;
+  /** "Date default" / "Date/time default": starts with today or now, the user may correct it. */
+  defaultsToNow?: boolean;
 };
 
 const w = (en: string, nl: string): Words => ({ en, nl });
@@ -249,12 +251,15 @@ const concretePouring = (values: SpecValues) => one(values, "activity") === "Con
 
 export const specForms: Record<SpecFormKey, SpecField[]> = {
   issue: [
+    { key: "identified_at", label: w("Date/time identified", "Datum/tijd vastgesteld"), kind: "datetime", required: true, defaultsToNow: true, hint: w("When the issue was observed or raised", "Wanneer het issue is waargenomen of gemeld") },
     { key: "issue_type", label: w("Issue type", "Soort issue"), kind: "select", options: catalogue.issueTypes, required: true },
     { key: "issue_category", label: w("Category", "Categorie"), kind: "dependent", groups: catalogue.issueCategories, parent: "issue_type", required: true },
     discipline("discipline", false),
     { key: "priority", label: w("Priority", "Prioriteit"), kind: "select", options: catalogue.priorities, required: true, hint: w("Critical notifies the project team at once", "Kritiek meldt het projectteam direct") },
     { key: "impact_types", label: w("Impact type", "Soort impact"), kind: "multi", options: catalogue.impactTypes, otherExplanation: true },
-    { key: "responsible_party", label: w("Responsible party", "Verantwoordelijke partij"), kind: "select", options: catalogue.responsibleParties, required: true },
+    { key: "immediate_action", label: w("Immediate action taken", "Directe maatregel"), kind: "text" },
+    // Responsible party (row 13, "Contractor / user dropdown") is the screen's own picker of
+    // the project's people and companies; it is stored on the record, not here.
     { key: "corrective_action", label: w("Corrective action required", "Vereiste corrigerende maatregel"), kind: "textarea", required: true },
     { key: "target_date", label: w("Target completion date", "Streefdatum gereed"), kind: "date", required: true },
     relatedRecord(),
@@ -262,6 +267,7 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     closureNote(),
   ],
   ncr: [
+    { key: "raised_at", label: w("Date raised", "Datum gemeld"), kind: "datetime", required: true, defaultsToNow: true },
     { key: "ncr_type", label: w("NCR type", "NCR-soort"), kind: "select", options: catalogue.ncrTypes, required: true },
     { key: "ncr_category", label: w("Category", "Categorie"), kind: "dependent", groups: catalogue.ncrCategories, parent: "ncr_type", required: true },
     discipline("discipline", true),
@@ -300,6 +306,7 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "verified_on", label: w("Verified on", "Geverifieerd op"), kind: "date", auto: true, visible: (values) => has(values, "verified_on") },
   ],
   hse: [
+    { key: "observed_at", label: w("Date/time observed", "Datum/tijd waargenomen"), kind: "datetime", required: true, defaultsToNow: true },
     { key: "hse_type", label: w("Issue type", "Soort melding"), kind: "select", options: catalogue.hseTypes, required: true },
     { key: "hse_category", label: w("Category", "Categorie"), kind: "dependent", groups: catalogue.hseCategories, parent: "hse_type", required: true },
     person("person_involved", w("Person / contractor involved", "Betrokken persoon / aannemer"), { hint: w("No medical details here", "Geen medische gegevens hier") }),
@@ -307,7 +314,10 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "risk_likelihood", label: w("Risk likelihood", "Waarschijnlijkheid"), kind: "select", listKey: "risk_likelihoods", required: true },
     { key: "risk_severity", label: w("Potential severity", "Mogelijke ernst"), kind: "select", listKey: "risk_severities", required: true },
     { key: "risk_rating", label: w("Risk rating", "Risicoklasse"), kind: "rating", required: true, visible: (values) => has(values, "risk_likelihood") && has(values, "risk_severity") },
+    { key: "immediate_action", label: w("Immediate action taken", "Directe maatregel"), kind: "textarea" },
+    { key: "corrective_action", label: w("Corrective / preventive action", "Corrigerende / preventieve maatregel"), kind: "textarea", required: true },
     actionOwner,
+    { key: "due_date", label: w("Due date", "Uiterste datum"), kind: "date", required: true },
     relatedRecord(w("Related incident", "Gekoppeld incident"), ["hse"]),
     recordStatus,
     closureNote(w("Verification / closure note", "Verificatie / afsluitnotitie")),
@@ -323,6 +333,7 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "environmental_impact", label: w("Environmental impact", "Milieu-impact"), kind: "select", options: catalogue.environmentalImpacts, otherExplanation: true, required: (values) => one(values, "incident_type") === "Environmental Incident", visible: (values) => one(values, "incident_type") === "Environmental Incident" },
     { key: "property_damage", label: w("Property / equipment damage", "Schade eigendom / materieel"), kind: "select", options: catalogue.propertyDamage, required: (values) => one(values, "incident_type") === "Property / Equipment Damage", visible: (values) => ["Property / Equipment Damage", "Fire / Explosion", "Vehicle / Traffic Incident"].includes(one(values, "incident_type")) },
     { key: "property_damage_detail", label: w("Affected asset and estimated impact", "Getroffen object en geschatte impact"), kind: "text", visible: (values) => has(values, "property_damage") && one(values, "property_damage") !== "None" },
+    { key: "immediate_response", label: w("Immediate response", "Directe reactie"), kind: "textarea", required: true, hint: w("First aid, isolation, evacuation, spill control, area made safe", "Eerste hulp, afzetten, evacuatie, lekbestrijding, gebied veilig gemaakt") },
     { key: "authorities_notified", label: w("Authorities / client notified", "Autoriteiten / opdrachtgever gemeld"), kind: "select", options: catalogue.notificationStates },
     {
       key: "notification_log",
@@ -522,6 +533,118 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     person("contractor_witness", w("Contractor witness", "Getuige aannemer"), { people: { users: true, partyTypes: ["contractor", "subcontractor"] } }),
   ],
 };
+
+/**
+ * START HERE: "Use the relevant form sheet to build each screen in the stated field order."
+ * Each form is laid out row by row in the order of its sheet. A string is a field of
+ * `specForms`; a slot is a row whose control belongs to the screen itself because it is stored
+ * on the record (title, description, location, photos, people that own the record). System
+ * rows (record ID, project, reported by, the sign-off panel) stand in the form's head or on the
+ * saved record and are not repeated here.
+ */
+export type SheetSlot = { slot: string; label: Words; required?: boolean; hint?: Words };
+export type SheetItem = string | SheetSlot;
+const slot = (name: string, en: string, nl: string, required = false, hint?: Words): SheetSlot => ({ slot: name, label: w(en, nl), required, hint });
+
+export const sheetLayouts: Partial<Record<SpecFormKey, SheetItem[]>> = {
+  issue: [
+    "identified_at",
+    "issue_type",
+    "issue_category",
+    slot("title", "Title", "Titel", true),
+    slot("description", "Description", "Omschrijving", true),
+    slot("location", "Location", "Locatie", true),
+    "discipline",
+    "priority",
+    "impact_types",
+    "immediate_action",
+    slot("responsible", "Responsible party", "Verantwoordelijke partij", true),
+    "corrective_action",
+    "target_date",
+    "related_record",
+    slot("attachments", "Attachments", "Bijlagen"),
+    "workflow_status",
+    "closure_note",
+  ],
+  ncr: [
+    "raised_at",
+    "ncr_type",
+    "ncr_category",
+    slot("title", "Title", "Titel", true),
+    slot("description", "Non-conformance description", "Omschrijving van de afwijking", true),
+    "discipline",
+    slot("location", "Location / element", "Locatie / element", true),
+    "requirement_reference",
+    "detected_during",
+    "related_inspection",
+    "severity",
+    "containment",
+    "containment_justification",
+    "containment_details",
+    "disposition",
+    "root_cause_category",
+    "root_cause_analysis",
+    "corrective_action",
+    "action_owner",
+    "target_date",
+    "verification_result",
+    "verified_by",
+    "verified_on",
+    slot("attachments", "Attachments", "Bijlagen"),
+    "workflow_status",
+  ],
+  hse: [
+    "observed_at",
+    "hse_type",
+    "hse_category",
+    slot("title", "Title", "Titel", true),
+    slot("description", "Observation / hazard description", "Omschrijving observatie / gevaar", true),
+    slot("location", "Location", "Locatie", true),
+    "person_involved",
+    "potential_consequences",
+    "risk_likelihood",
+    "risk_severity",
+    "risk_rating",
+    "immediate_action",
+    "corrective_action",
+    "action_owner",
+    "due_date",
+    slot("photos", "Photo evidence", "Fotobewijs", false, w("Recommended", "Aanbevolen")),
+    "related_record",
+    "workflow_status",
+    "closure_note",
+  ],
+  hse_incident: [
+    "incident_at",
+    "incident_type",
+    "incident_category",
+    slot("title", "Incident title", "Titel incident", true),
+    slot("description", "Detailed event description", "Gedetailleerde omschrijving van de gebeurtenis", true),
+    slot("location", "Exact location", "Exacte locatie", true),
+    "people_involved",
+    "injury_classification",
+    "injury_nature",
+    "body_part",
+    "environmental_impact",
+    "property_damage",
+    "property_damage_detail",
+    "immediate_response",
+    "authorities_notified",
+    "notification_log",
+    "witnesses",
+    "incident_severity",
+    "investigation_required",
+    "investigation_findings",
+    "corrective_actions",
+    slot("photos", "Photo / document evidence", "Foto- / documentbewijs"),
+    "related_observation",
+    "workflow_status",
+    "closure_note",
+    "hse_reviewer",
+  ],
+};
+
+export const isSheetSlot = (item: SheetItem): item is SheetSlot => typeof item !== "string";
 
 function deliveryException(values: SpecValues) {
   const status = one(values, "delivery_status");
