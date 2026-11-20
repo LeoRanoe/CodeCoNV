@@ -108,8 +108,11 @@ test("historical feedback: technical instruction prioritizes content over repeat
   await page.locator('[data-workspace-destination="technical-instructions"]').click();
   const form = page.locator(".controlled-document-form");
   await expect(form).toBeVisible();
-  await expect(form.locator(".controlled-document-primary input")).toBeVisible();
-  await expect(form.locator(".controlled-document-primary textarea")).toBeVisible();
+  // The form is the Technical Instructions sheet, row by row (client, 20-11-2026).
+  const sheet = form.locator("[data-sheet-form='technical_instruction']");
+  await expect(sheet).toBeVisible();
+  await expect(sheet.locator("[data-spec-field='instruction_date'] input")).toBeVisible();
+  await expect(sheet.locator("[data-sheet-slot='description'] textarea")).toBeVisible();
   await expect(form.locator(".controlled-document-dates")).toHaveCount(0);
   await expect(form.locator(".register-type-switch")).toHaveCount(0);
   await expect(form.locator("label.form-field").filter({ hasText: "Revision" })).toHaveCount(0);
@@ -120,16 +123,9 @@ test("historical feedback: technical instruction prioritizes content over repeat
   await author.locator("summary").click();
   await expect(author.locator("input")).toBeVisible();
 
-  // Contractual impact remains available without occupying the default form.
-  const impact = form.locator(".controlled-document-optional-impact");
-  await expect(impact.locator("summary")).toBeVisible();
-  await impact.locator("summary").click();
-  await expect(impact.getByText("Schedule impact", { exact: true })).toBeVisible();
-  // The client crossed Cost impact out of the technical instruction; it stays on the change order.
-  await expect(impact.getByText("Cost impact", { exact: true })).toHaveCount(0);
-  await expect(form.locator(".controlled-document-upload")).toHaveText("Upload attachment");
-  // Discipline stands directly above the title.
-  const order = await form.locator(".controlled-document-primary > label").evaluateAll((labels) => labels.map((label) => label.querySelector("span")?.textContent ?? ""));
-  expect(order[0]).toBe("Discipline");
-  await expect(form.locator(".controlled-document-deadline input[type=date]")).toBeVisible();
+  // Nothing of the old screen stands beside the sheet.
+  await expect(form.locator(".controlled-document-primary")).toHaveCount(0);
+  await expect(form.locator(".controlled-document-optional-impact")).toHaveCount(0);
+  await expect(sheet.locator(".controlled-document-upload")).toHaveText("Upload attachment");
+  await expect(sheet.locator("[data-spec-field='response_required_by'] input[type=date]")).toBeVisible();
 });

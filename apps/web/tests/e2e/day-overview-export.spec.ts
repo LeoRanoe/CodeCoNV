@@ -52,9 +52,10 @@ test("the day overview exports every Workspace form of the day as PDF and Word",
   await page.locator(".sidebar").getByRole("button", { name: "Workspace", exact: true }).click();
   await page.locator("[data-workspace-destination='materials-delivery']").click();
   const form = page.locator(".record-form-shell").first();
-  await form.getByLabel("Title / reference").fill(title);
-  await form.locator("#register-unit-0").selectOption("m³");
-  await form.getByLabel("Quantity", { exact: true }).fill("12");
+  // The Materials Delivery sheet: the record is read back by its material description.
+  await form.locator("[data-spec-field='material_specification'] input").fill(title);
+  await form.locator("[data-spec-field='delivered_quantity'] input").fill("12");
+  await form.locator("[data-spec-field='unit'] select").selectOption("m³");
   await fillSpecFields(page.locator(".record-form-shell").first());
   await page.getByRole("button", { name: "Save register item" }).click();
   await expect(page.getByText(/saved/i).first()).toBeVisible();

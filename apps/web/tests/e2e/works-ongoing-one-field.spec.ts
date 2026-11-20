@@ -34,6 +34,8 @@ test("Works ongoing is one text box and the buildings it happens in", async ({ p
   await signIn(page);
   await page.locator(".sidebar").getByRole("button", { name: "Workspace", exact: true }).click();
   await page.locator("[data-workspace-destination='works-ongoing']").click();
+  // The tile opens the workbook activity record (20-11-2026); the day log is one tap away.
+  await page.getByRole("button", { name: "Day log for the whole day" }).click();
 
   const form = page.locator(".daily-log-form");
   await expect(form.getByLabel("What is in progress, and where?")).toBeVisible();

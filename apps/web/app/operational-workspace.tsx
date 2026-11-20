@@ -3820,13 +3820,13 @@ function ProjectOperations({
                 slots={{
                   title: <input aria-label={text("Title", "Titel")} value={findingForm.title} maxLength={160} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} />,
                   description: (
-                    <div className="record-description-field">
+                    <label className="form-field record-description-field">
                       <textarea aria-label={text("Description", "Omschrijving")} rows={5} maxLength={1000} value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} />
                       <div className="record-field-foot">
                         <DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} />
                         <span className="record-counter">{findingForm.description.length} / 1000</span>
                       </div>
-                    </div>
+                    </label>
                   ),
                   location: (
                     <div className="sheet-location">
@@ -3950,10 +3950,10 @@ function ProjectOperations({
                 slots={{
                   title: <input aria-label={text("Title", "Titel")} value={findingForm.title} maxLength={160} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} />,
                   description: (
-                    <div className="record-description-field">
+                    <label className="form-field record-description-field">
                       <textarea aria-label={text("Non-conformance description", "Omschrijving van de afwijking")} rows={5} value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} />
                       <DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} />
-                    </div>
+                    </label>
                   ),
                   location: (
                     <div className="sheet-location">
@@ -4148,13 +4148,13 @@ function ProjectOperations({
                 slots={{
                   title: <input aria-label={hseSpecForm === "hse" ? text("Title", "Titel") : text("Incident title", "Titel incident")} value={hseForm.title} maxLength={160} onChange={(event) => setHseForm({ ...hseForm, title: event.target.value })} />,
                   description: (
-                    <div className="record-description-field">
+                    <label className="form-field record-description-field">
                       <textarea aria-label={hseSpecForm === "hse" ? text("Observation / hazard description", "Omschrijving observatie / gevaar") : text("Detailed event description", "Gedetailleerde omschrijving van de gebeurtenis")} rows={5} maxLength={1000} value={hseForm.description} onChange={(event) => setHseForm({ ...hseForm, description: event.target.value })} />
                       <div className="record-field-foot">
                         <DictateButton onText={(transcript) => setHseForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} />
                         <span className="record-counter">{hseForm.description.length} / 1000</span>
                       </div>
-                    </div>
+                    </label>
                   ),
                   location: (
                     <div className="sheet-location">
@@ -4266,6 +4266,15 @@ function ProjectOperations({
 
       {tab === "registers" ? (
         <section className="operation-panel">
+          {/* The Works tiles open the workbook's activity record; the one-box day log the
+              client used before stays one tap away. */}
+          {(registerForm.type === "works_ongoing" || registerForm.type === "works_completed") && !editingRegisterId ? (
+            <div className="works-activity-record">
+              <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => { openDailyWork(registerForm.type === "works_completed" ? "works_completed" : "works_ongoing"); switchTab("daily"); setShowForm(true); }}>
+                <FileText size={15} /> {text("Day log for the whole day", "Daglog voor de hele dag")}
+              </button>
+            </div>
+          ) : null}
           {showForm ? (
             <RecordFormShell
               code={data.registerEntries.find((item) => item.id === editingRegisterId)?.entry_number}
@@ -4377,10 +4386,10 @@ function ProjectOperations({
                   slots={{
                     title: <input aria-label={text("Title", "Titel")} value={registerForm.title} maxLength={160} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} />,
                     description: (
-                      <div className="record-description-field">
+                      <label className="form-field record-description-field">
                         <textarea aria-label={text("Description", "Omschrijving")} value={registerForm.details} rows={5} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} />
                         <DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} />
-                      </div>
+                      </label>
                     ),
                     location: (
                       <div className="sheet-location">

@@ -48,7 +48,8 @@ test("a free-text field without its own microphone can be dictated", async ({ pa
   await signIn(page);
   await page.locator(".sidebar").getByRole("button", { name: "Workspace", exact: true }).click();
   await page.locator("[data-workspace-destination='hse']").click();
-  const field = page.getByRole("textbox", { name: "Name of the responsible person" });
+  // The HSE sheet's Title row has no microphone of its own.
+  const field = page.locator("[data-sheet-form='hse'] [data-sheet-slot='title'] input");
   await field.scrollIntoViewIfNeeded();
   await field.click();
   const microphone = page.locator(".dictation-layer").getByRole("button", { name: "Dictate (Dutch or English)" });

@@ -41,12 +41,10 @@ test("two taps on 'Create controlled document' create one document", async ({ pa
   await page.locator(".sidebar").getByRole("button", { name: "Workspace", exact: true }).click();
   await page.locator("main").getByRole("button", { name: /Technical instructions$/ }).click();
 
+  // The TI sheet has no title row: the record is read back by its subject and description.
   const title = `Double tap ${Date.now()}`;
-  const form = page.locator(".operation-form", { hasText: "Technical instruction" }).first();
-  await form.getByLabel("Instruction title / reference").fill(title);
-  await form.getByLabel("Instruction description").fill("One tap, one record.");
-  await form.getByLabel(/deadline/i).fill("2026-12-31");
-  await form.getByRole("combobox", { name: "To", exact: true }).selectOption({ index: 2 });
+  const form = page.locator("[data-sheet-form='technical_instruction']");
+  await form.locator("[data-sheet-slot='description'] textarea").fill(title);
 
   await fillSpecFields(page.locator(".record-form-shell").first());
   const create = page.getByRole("button", { name: "Create controlled document" });
@@ -57,5 +55,5 @@ test("two taps on 'Create controlled document' create one document", async ({ pa
   await page.reload();
   await openSavedRecords(page);
   await page.locator("main").getByText(title).first().waitFor({ timeout: 20_000 });
-  expect(await page.locator("main").getByText(title, { exact: false }).count(), "one document, not two").toBe(1);
+  expect(await page.locator("main .controlled-document-card").filter({ hasText: title }).count(), "one document, not two").toBe(1);
 });

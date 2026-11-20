@@ -74,9 +74,9 @@ for (const sheet of sheets) {
 
     const stamp = Date.now().toString(36);
     const title = form.locator("[data-sheet-slot='title'] input");
-    if (await title.count()) await title.fill(`Sheet ${sheet.form} ${stamp}`);
+    if (await title.count()) await title.fill(`Sheet ${sheet.form.replace(/_/g, " ")} ${stamp}`);
     const description = form.locator("[data-sheet-slot='description'] textarea");
-    if (await description.count()) await description.fill(`Sheet ${sheet.form} described on site ${stamp}.`);
+    if (await description.count()) await description.fill(`Sheet ${sheet.form.replace(/_/g, " ")} described on site ${stamp}.`);
     // Responsible party (Issue row 13): client / contractor / supervision and the name.
     const responsible = form.locator("[data-sheet-slot='responsible']");
     if (await responsible.count()) {
