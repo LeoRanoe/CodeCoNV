@@ -2385,3 +2385,9 @@ export async function saveSpecConfiguration(client: SupabaseClient, projectId: s
   if (result.error) throw new Error(result.error.message);
   if (!result.data) throw new Error("The project has no settings yet; open Project rules once and save them first.");
 }
+
+/** The specification fields of an inspection (discipline, inspected work, contractor witness). */
+export async function updateInspectionSpec(client: SupabaseClient, inspectionId: string, spec: Record<string, unknown>) {
+  const result = await client.from("inspections").update({ spec }).eq("id", inspectionId).select("id").single();
+  fail(result.error);
+}

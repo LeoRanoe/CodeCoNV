@@ -66,6 +66,7 @@ import { SpecFields, SpecLinkChips } from "@/app/forms/spec-fields";
 import { WorkspaceSpecDirectory } from "@/app/forms/workspace-spec-directory";
 import { SpecConfigurationPanel } from "@/app/forms/spec-configuration-panel";
 import { SharedLessons } from "@/app/forms/shared-lessons";
+import { InspectionSpecEditor } from "@/app/forms/inspection-spec-editor";
 import { SignoffPanel } from "@/app/forms/signoff-panel";
 import { loadSignoffHistory, signoffHistoryEntries } from "@/lib/forms/signoff";
 import { cleanSpecValues, sensitiveKeys, specFacts, specFollowUps, specForms, specLinks, specMissing, workflowProfiles, type SpecFormKey, type SpecRow, type SpecValues } from "@/lib/forms/spec-forms";
@@ -3472,6 +3473,7 @@ function ProjectOperations({
             return (
               <>
                 <SpecLinkChips links={specLinks(signoff.form, signoff.values, language)} text={text} />
+                {signoff.kind === "inspection" && permissions.can("inspections.manage") ? <InspectionSpecEditor key={viewedRecord.id} client={client} inspectionId={viewedRecord.id} values={signoff.values} busy={busy} run={run} /> : null}
                 {facts.length ? (
                   <dl className="record-spec-facts">
                     {facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}

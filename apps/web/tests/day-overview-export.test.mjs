@@ -72,3 +72,20 @@ test("stored codes read as words, written prose stays as written", () => {
   assert.equal(humanize(["ppe_provided", "area_barricaded"]), "Ppe provided, Area barricaded");
   assert.equal(humanize(null), "");
 });
+
+test("every record of the day carries its sign-off history; a confidential incident does not", async () => {
+  const { buildDayExport } = await import("../lib/reports/day-overview-export.ts");
+  const history = (id) => (id === "n1" || id === "h2" ? [{ line: "20 Nov 2026, 09:00 · Submit · Ada · Supervision · round 1 · — → Submitted", comments: "", signature: null }] : []);
+  const day = {
+    workforce: { headcount: 0, visitors: 0, entries: [] }, worksOngoing: [], worksCompleted: [], delays: [], issues: [], inspections: [], photos: [],
+    ncrs: [{ id: "n1", finding_number: "NCR-0001", title: "Honeycombing", status: "open", issue_management: {} }],
+    hse: [{ id: "h2", event_number: "HSE-0002", title: "Fall", status: "open", confidential: true, event_type: "incident" }],
+    registers: {},
+  };
+  const document = buildDayExport(day, { ...context, history });
+  const ncr = document.sections.find((section) => section.key === "ncr").items[0];
+  assert.equal(ncr.history.length, 1);
+  const hse = document.sections.find((section) => section.key === "hse").items[0];
+  assert.deepEqual(hse.history, []);
+  assert.equal(document.historyTitle, "Sign-off history");
+});
