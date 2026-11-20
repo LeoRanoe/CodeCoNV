@@ -5,8 +5,8 @@ import {
   HeartPulse, Hourglass, Layers, Leaf, Lock, LogOut, MessageSquareText, Microscope, Moon, Mountain, Network, PackageOpen,
   PencilRuler, PersonStanding, RectangleHorizontal, RectangleVertical, Replace, ScanSearch, Send, Share2, ShieldX, Square,
   Sun, Sunset, Target, Trash2, TreePalm, TrendingUp, TriangleAlert, Truck, UserCheck, UserMinus, Users, UserX, Wrench, X,
-  Award, Bandage, Building, Coins, Construction, Crop, Fence, Flame, Handshake, Megaphone, OctagonX, Package, PackageX,
-  Split, Thermometer, TreeDeciduous, Umbrella,
+  Award, Ambulance, Building, Coins, Construction, Crop, Fence, Flame, Handshake, Megaphone, OctagonX, Package, PackageX,
+  Split, Thermometer, Sprout, Umbrella,
   type LucideIcon,
 } from "lucide-react";
 
@@ -45,7 +45,7 @@ const pictures: Record<string, LucideIcon> = {
   "Verified": BadgeCheck, "Expired": CalendarX, "Not Compliant": ShieldX,
   // Impact, consequence and containment (tick-box lists)
   "Cost": Coins, "Schedule": CalendarClock, "Quality": Award, "Scope": Crop, "Resources": Package, "Client": Handshake,
-  "Injury": Bandage, "Illness": Thermometer, "Property Damage": Building, "Fire": Flame, "Environmental Harm": TreeDeciduous, "Public Impact": Megaphone,
+  "Injury": Ambulance, "Illness": Thermometer, "Property Damage": Building, "Fire": Flame, "Environmental Harm": Sprout, "Public Impact": Megaphone,
   "Stop affected work / suspend activity": OctagonX, "Isolate or quarantine nonconforming materials": Lock, "Segregate affected work or products": Split,
   "Prevent use or installation of affected materials": PackageX, "Remove defective work from service / restrict access": Fence,
   "Provide temporary protection or safety measures": Umbrella, "Implement temporary repair / make-safe measure": Construction,
@@ -65,16 +65,16 @@ export const isScaleField = (key: string) => scales.has(key);
 
 /** The step gauge of a scale: as many filled bars as the step, out of the length of the scale. */
 export function LevelGlyph({ step, of }: { step: number; of: number }) {
-  const width = 4;
   const gap = 2;
-  const total = of * width + (of - 1) * gap;
+  const width = (26 - (of - 1) * gap) / of;
   return (
-    <svg className="choice-icon choice-level" width={20} height={20} viewBox={`0 0 ${Math.max(total, 20)} 20`} aria-hidden="true" focusable="false">
+    <svg className="choice-icon choice-level" width={28} height={22} viewBox="0 0 28 22" aria-hidden="true" focusable="false">
       {Array.from({ length: of }, (_, index) => {
-        const height = 6 + Math.round((12 * (index + 1)) / of);
+        const height = 6 + (14 * (index + 1)) / of;
+        const reached = index < step;
         return (
-          <rect key={index} x={index * (width + gap)} y={19 - height} width={width} height={height} rx={1}
-            fill={index < step ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.2} />
+          <rect key={index} x={1 + index * (width + gap)} y={21 - height} width={width} height={height} rx={1.5}
+            fill={reached ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.25} strokeOpacity={reached ? 1 : 0.45} />
         );
       })}
     </svg>

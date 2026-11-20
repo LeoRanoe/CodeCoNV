@@ -256,6 +256,10 @@ test("every short list and tick-box choice has its own picture (client, 20-11-20
       if (short && options.length > 6) continue;
       if (scaleKeys.has(field.key)) continue;
       for (const option of options) if (!pictures.includes(`"${option.value}":`)) missing.push(`${form}.${field.key}: ${option.value}`);
+      // Two choices of one list never share a picture.
+      const shapes = options.map((option) => pictures.match(new RegExp(`"${option.value.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}": (\\w+)`))?.[1]);
+      const repeated = shapes.filter((shape, index) => shape && shapes.indexOf(shape) !== index);
+      if (repeated.length) missing.push(`${form}.${field.key} repeats ${repeated.join(", ")}`);
     }
   }
   assert.deepEqual(missing, []);

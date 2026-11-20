@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { Check, Plus, X } from "lucide-react";
 import {
   activityGuide,
   canChooseDecision,
@@ -148,18 +148,22 @@ function SpecInput({ id, form, field, values, set, setMany, text, language, disa
       <fieldset className="form-field spec-choices" disabled={disabled} data-spec-field={field.key}>
         <legend>{caption}</legend>
         {hint ? <p className="form-helper">{hint}</p> : null}
-        <div className="spec-choice-list">
-          {options.map((option) => (
-            <label key={option.value} className="spec-choice">
-              <input
-                type="checkbox"
-                checked={many.includes(option.value)}
-                onChange={(event) => set(field.key, event.target.checked ? [...many, option.value] : many.filter((item) => item !== option.value))}
-              />
-              <ChoiceIcon fieldKey={field.key} value={option.value} choices={options.map((item) => item.value)} />
-              <span>{show(option.value)}</span>
-            </label>
-          ))}
+        <div className="choice-tiles" role="group" aria-label={label}>
+          {options.map((option) => {
+            const checked = many.includes(option.value);
+            return (
+              <label key={option.value} className={`choice-tile choice-tile-multi${checked ? " is-chosen" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(event) => set(field.key, event.target.checked ? [...many, option.value] : many.filter((item) => item !== option.value))}
+                />
+                {checked ? <Check className="choice-tile-tick" size={14} aria-hidden="true" /> : null}
+                <ChoiceIcon fieldKey={field.key} value={option.value} choices={options.map((item) => item.value)} />
+                <span>{show(option.value)}</span>
+              </label>
+            );
+          })}
         </div>
         {other}
       </fieldset>
