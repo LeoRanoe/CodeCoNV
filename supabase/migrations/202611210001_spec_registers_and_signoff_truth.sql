@@ -392,6 +392,14 @@ declare
   v_fields text[];
   v_new jsonb;
   v_old jsonb;
+  v_workflow_keys text[] := array[
+    'workflow_status', 'corrective_action_reopened', 'closure_note', 'lists_version',
+    'approval_status', 'approved_by', 'approved_on', 'approved_by_user_id', 'approved_amount', 'approved_days',
+    'review_status', 'reviewed_by', 'reviewed_on', 'reviewed_by_user_id',
+    'verification_result', 'verified_by', 'verified_on', 'verified_by_user_id',
+    'inspection_status', 'inspected_by', 'inspected_on', 'inspected_by_user_id',
+    'inspection_result', 'accepted_by', 'accepted_on', 'accepted_by_user_id', 'closed_verified_by', 'closed_verified_by_ref'
+  ];
 begin
   if coalesce(current_setting('app.signoff_write', true), '') = 'on' or v_actor is null then
     return null;
@@ -404,8 +412,10 @@ begin
   end;
   select jsonb_object_agg(field, to_jsonb(new) -> field), jsonb_object_agg(field, to_jsonb(old) -> field)
     into v_new, v_old from unnest(v_fields) field;
-  v_new := v_new || jsonb_build_object('spec', coalesce(to_jsonb(new) #> v_path, '{}'::jsonb) - array['workflow_status', 'corrective_action_reopened']);
-  v_old := v_old || jsonb_build_object('spec', coalesce(to_jsonb(old) #> v_path, '{}'::jsonb) - array['workflow_status', 'corrective_action_reopened']);
+  -- The workflow's own outcomes (status, decisions and who took them, the closure note) are
+  -- not a new version of the record.
+  v_new := v_new || jsonb_build_object('spec', coalesce(to_jsonb(new) #> v_path, '{}'::jsonb) - v_workflow_keys);
+  v_old := v_old || jsonb_build_object('spec', coalesce(to_jsonb(old) #> v_path, '{}'::jsonb) - v_workflow_keys);
   if v_new = v_old then return null; end if;
 
   select event.* into v_last from public.record_signoff_events event
