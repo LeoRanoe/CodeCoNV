@@ -710,8 +710,9 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 
 /* ---- Developer specification (FINAL v2): workbook fields and the sign-off log --------- */
 
-.spec-section .form-grid-2 + .form-field,
-.spec-section .form-field + .form-field { margin-top: var(--space-4); }
+.spec-section > .form-grid-2 + .form-field,
+.spec-section > .form-field + .form-field,
+.spec-section > .form-field + .form-grid-2 { margin-top: var(--space-4); }
 .spec-choices { border: 0; margin: 0; min-width: 0; padding: 0; }
 .spec-choices legend { margin-bottom: var(--space-2); padding: 0; }
 .spec-choice-list { display: grid; gap: var(--space-2) var(--space-4); grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
@@ -736,3 +737,53 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 .media-detail-spec { display: grid; gap: var(--space-3); justify-items: start; }
 .media-detail-spec .spec-section { width: 100%; }
 .works-activity-record { display: flex; justify-content: flex-end; margin-bottom: var(--space-3); }
+
+/* Pickers fed by the project's registers, repeatable rows and read-only workflow values. */
+.spec-readonly { display: grid; gap: var(--space-1); }
+.spec-readonly > span { font-weight: var(--weight-semibold); }
+.spec-readonly > strong { font-weight: var(--weight-normal); min-height: var(--control-h-md); padding: var(--space-2) 0; }
+.spec-toggle { align-self: end; }
+.spec-person { display: grid; gap: var(--space-2); min-width: 0; }
+.spec-people, .spec-rows { border: 0; margin: 0; min-width: 0; padding: 0; }
+.spec-people legend, .spec-rows legend { font-weight: var(--weight-semibold); margin-bottom: var(--space-2); padding: 0; }
+.spec-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); list-style: none; margin: 0 0 var(--space-2); padding: 0; }
+.spec-chips li, .spec-record-chip { align-items: center; border: 1px solid var(--line); border-radius: var(--radius-pill); display: inline-flex; gap: var(--space-1); min-height: var(--control-h-md); padding: 0 var(--space-1) 0 var(--space-3); }
+.spec-record-chip { max-width: 100%; overflow-wrap: anywhere; }
+.spec-chip-remove { align-items: center; background: none; border: 0; border-radius: var(--radius-pill); color: var(--muted); cursor: pointer; display: inline-flex; height: 44px; justify-content: center; width: 44px; }
+.spec-people-add { display: grid; gap: var(--space-2); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+.spec-record-search { display: grid; gap: var(--space-2); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.spec-row-list { display: grid; gap: var(--space-3); list-style: none; margin: 0 0 var(--space-3); padding: 0; }
+.spec-row { border-top: 1px solid var(--line); display: grid; gap: var(--space-2); padding-top: var(--space-3); }
+.spec-row > .ui-button { justify-self: start; }
+.spec-row-grid { display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) minmax(0, 1.2fr); }
+.spec-row-grid > *, .spec-stage-grid > * { min-width: 0; }
+.spec-row-grid input, .spec-row-grid select { max-width: 100%; min-width: 0; }
+.spec-rows > .ui-button { justify-self: start; }
+.spec-stage-grid { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.spec-row-step { font-weight: var(--weight-semibold); }
+.spec-link-chips { display: flex; flex-wrap: wrap; gap: var(--space-3); margin: var(--space-3) 0; }
+.spec-link-chip { display: grid; gap: var(--space-1); }
+.spec-link-chip small { color: var(--muted); font-size: var(--text-sm); }
+.spec-configuration { display: grid; gap: var(--space-5); }
+.spec-configuration .spec-rows { border-top: 1px solid var(--line); padding-top: var(--space-3); }
+.spec-config-values { display: grid; gap: var(--space-2); list-style: none; margin: var(--space-3) 0; padding: 0; }
+.spec-config-values .spec-choice span { color: var(--text); font-size: var(--text-md); font-weight: var(--weight-normal); }
+.spec-config-values li { align-items: center; display: grid; gap: var(--space-2); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+.spec-matrix { display: grid; gap: var(--space-1); overflow-x: auto; }
+.spec-matrix-row { display: grid; gap: var(--space-1); grid-template-columns: minmax(110px, 1.2fr) repeat(5, minmax(96px, 1fr)); }
+.spec-matrix-row > span { color: var(--muted); font-size: var(--text-sm); }
+.spec-facet-filter { display: grid; gap: var(--space-2) var(--space-3); grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); margin-bottom: var(--space-3); }
+.shared-lessons { margin-top: var(--space-5); }
+.shared-lesson-list { display: grid; gap: var(--space-3); list-style: none; margin: 0; padding: 0; }
+.shared-lesson-list li { border-top: 1px solid var(--line); display: grid; gap: var(--space-1); padding-top: var(--space-3); }
+.shared-lesson-list p { margin: 0; }
+.shared-lesson-list small { color: var(--muted); font-size: var(--text-sm); }
+/* The record viewer: number, title and status on the first row; everything else full width. */
+.record-readonly-panel > .record-spec-facts,
+.record-readonly-panel > .signoff-panel,
+.record-readonly-panel > .spec-link-chips,
+.record-readonly-panel > .media-detail-spec { grid-column: 1 / -1; }
+.field-warning { background: var(--yellow-soft); border-radius: var(--radius-sm); color: var(--yellow); margin: var(--space-2) 0; padding: var(--space-2) var(--space-3); }
+@media (max-width: 640px) {
+  .spec-people-add, .spec-record-search, .spec-row-grid { grid-template-columns: minmax(0, 1fr); }
+}

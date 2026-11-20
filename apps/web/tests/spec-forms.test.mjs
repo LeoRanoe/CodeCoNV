@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as catalogue from "../lib/forms/spec-catalogue.ts";
-import { activitiesFor, cleanSpecValues, fieldOptions, setSpecValue, specFacts, specForms, specMissing, workflowProfiles } from "../lib/forms/spec-forms.ts";
-import { availableActions, signoffProfiles, signoffState } from "../lib/forms/signoff.ts";
+import { activitiesFor, canChooseDecision, cleanSpecValues, fieldOptions, matrixRating, projectList, sensitiveKeys, setSpecValue, specFacts, specFollowUps, specForms, specLinks, specMissing, upgradeSpecValues, workflowProfiles } from "../lib/forms/spec-forms.ts";
+import { availableActions, effectiveProfile, signoffHistoryEntries, signoffProfiles, signoffState } from "../lib/forms/signoff.ts";
+import { facetOptions, filterPeriodSnapshot, matchesSpecFacets, recordSpec, specFacets } from "../lib/forms/spec-facets.ts";
+import { specLabel } from "../lib/forms/spec-labels-nl.ts";
+import { specValueNl } from "../lib/forms/spec-catalogue-nl.ts";
+import { buildRecordDirectory, filterRecordDirectory } from "../lib/records/record-directory.mjs";
 
 /**
  * The client's developer specification (workbook FINAL v2), generated into
@@ -57,14 +61,17 @@ test("required fields follow the workbook, conditional ones only when their trig
   // Closed needs a closure note; an open record does not.
   assert.ok(!specMissing("issue", { workflow_status: "Open" }).includes("Resolution / closure note"));
   assert.ok(specMissing("issue", { workflow_status: "Closed" }).includes("Resolution / closure note"));
-  // An approved change order needs the approved amount, days, approver and date.
+  // An approved change order needs the approved amount and days; who approved and when is
+  // recorded by the database, never typed.
   const approved = specMissing("change_order", { approval_status: "Approved" });
-  for (const label of ["Approved amount", "Approved days", "Approved by", "Approval date"]) assert.ok(approved.includes(label), label);
+  for (const label of ["Approved amount", "Approved days"]) assert.ok(approved.includes(label), label);
+  for (const label of ["Approved by", "Approval date"]) assert.ok(!approved.includes(label), label);
   // A rejected completion needs a linked NCR or issue.
   assert.ok(specMissing("works_completed", { inspection_status: "Inspected - Rejected" }).includes("Linked NCR / issue"));
-  // An agreement with an action needs its owner and due date.
-  assert.ok(specMissing("agreement", { action_required: "Yes" }).includes("Due date"));
-  assert.ok(!specMissing("agreement", { action_required: "No" }).includes("Due date"));
+  // An agreement with an action needs at least one action row with its owner and due date.
+  assert.ok(specMissing("agreement", { action_required: "Yes" }).includes("Actions"));
+  assert.ok(specMissing("agreement", { action_required: "Yes", actions: [{ action: "Send the shop drawing" }] }).some((item) => item.startsWith("Actions 1 · Owner")));
+  assert.ok(!specMissing("agreement", { action_required: "No" }).includes("Actions"));
 });
 
 test("Other always asks for an explanation and Not applicable is never combined", () => {
@@ -111,4 +118,127 @@ test("the sign-off state comes from the events: rounds, returns and closure", ()
   assert.equal(state.closed, true);
   assert.equal(state.round, 2);
   assert.deepEqual(availableActions(profile, events).map((item) => item.action), ["reopen"]);
+});
+
+test("people, suppliers, crews and records are chosen from the registers and stored with their reference", () => {
+  for (const [form, key, kind] of [["ncr", "action_owner", "person"], ["technical_instruction", "issued_to", "person"], ["delivery", "supplier", "person"], ["agreement", "agreed_by", "people"], ["works_ongoing", "crew", "people"], ["change_order", "originator", "person"], ["hse_incident", "hse_reviewer", "person"], ["issue", "related_record", "record"], ["ncr", "related_inspection", "record"], ["works_completed", "ncr_reference", "record"], ["hse", "related_record", "record"], ["works_ongoing", "building_area", "location"]]) {
+    assert.equal(specForms[form].find((field) => field.key === key)?.kind, kind, `${form}.${key}`);
+  }
+  assert.deepEqual(specForms.delivery.find((field) => field.key === "supplier").people.partyTypes, ["supplier"]);
+  const cleaned = cleanSpecValues("ncr", { action_owner: "Jan Aannemer", action_owner_ref: "party:p1", related_inspection: "INS-0003", related_inspection_ref: "inspection:i1" });
+  assert.equal(cleaned.action_owner_ref, "party:p1");
+  assert.equal(cleaned.related_inspection_ref, "inspection:i1");
+  assert.deepEqual(specLinks("ncr", cleaned), [{ label: "Related inspection", number: "INS-0003", ref: "inspection:i1" }]);
+  // A name typed before the registers existed still reads back.
+  assert.deepEqual(specFacts("ncr", { action_owner: "Old typed name" }).find(([label]) => label === "Action owner"), ["Action owner", "Old typed name"]);
+});
+
+test("the workbook status is shown, never asked; decisions are a reviewer's and recorded by the database", () => {
+  const status = specForms.issue.find((field) => field.key === "workflow_status");
+  assert.equal(status.derived, true);
+  assert.ok(!specMissing("issue", {}).includes("Status"));
+  const approval = specForms.change_order.find((field) => field.key === "approval_status");
+  assert.equal(canChooseDecision(approval, "Approved", false), false);
+  assert.equal(canChooseDecision(approval, "Submitted", false), true);
+  assert.equal(canChooseDecision(approval, "Approved", true), true);
+  for (const [form, key] of [["lessons_learned", "review_status"], ["works_completed", "inspection_status"], ["delivery", "inspection_result"], ["ncr", "verification_result"]]) {
+    assert.ok(specForms[form].find((field) => field.key === key)?.decision, `${form}.${key}`);
+  }
+  for (const [form, key] of [["change_order", "approved_by"], ["change_order", "approved_on"], ["ncr", "verified_by"], ["lessons_learned", "reviewed_by"]]) {
+    assert.equal(specForms[form].find((field) => field.key === key)?.auto, true, `${form}.${key}`);
+  }
+});
+
+test("works: crossing midnight, quantity N/A, secondary discipline and the location register", () => {
+  const base = { start_time: "22:00", finish_time: "02:00" };
+  assert.ok(specMissing("works_ongoing", base).some((item) => item.startsWith("Finish time is earlier")));
+  assert.ok(!specMissing("works_ongoing", { ...base, crosses_midnight: "yes" }).some((item) => item.startsWith("Finish time is earlier")));
+  assert.equal(cleanSpecValues("works_ongoing", { ...base, crosses_midnight: "yes" }).crosses_midnight, "yes");
+  assert.ok(specMissing("works_completed", {}).includes("Quantity completed"));
+  assert.ok(!specMissing("works_completed", { quantity_na: "yes" }).includes("Quantity completed"));
+  assert.ok(specForms.works_ongoing.some((field) => field.key === "secondary_discipline"));
+  assert.ok(specMissing("works_ongoing", {}).includes("Building / area"));
+  assert.ok(specForms.works_completed.find((field) => field.key === "completed_items").hint.en.includes("Photo evidence is recommended"));
+});
+
+test("risk rating: the approved matrix calculates it, otherwise a controlled rating is chosen", () => {
+  const values = { risk_likelihood: "Likely", risk_severity: "Major" };
+  assert.ok(specMissing("hse", values).includes("Risk rating"));
+  assert.equal(matrixRating(values, null), "");
+  const config = { risk_matrix: { enabled: true, cells: { "Likely|Major": "High" } } };
+  assert.equal(matrixRating(values, config), "High");
+  assert.equal(cleanSpecValues("hse", values, config).risk_rating, "High");
+  assert.equal(cleanSpecValues("hse", values, config).risk_rating_basis, "matrix");
+  assert.deepEqual(fieldOptions(specForms.hse.find((field) => field.key === "risk_rating"), values, null).map((option) => option.value), ["Low", "Medium", "High", "Critical"]);
+});
+
+test("project lists add and retire values; a retired value stays on the records that carry it", () => {
+  const config = { lists: { shifts: { added: ["Weekend"], retired: ["Evening"] } } };
+  assert.deepEqual(projectList("shifts", config).map((option) => option.value), ["Day", "Night", "Weekend", "Other"]);
+  assert.ok(specFacts("works_ongoing", { shift: "Evening" }).some(([, value]) => value === "Evening"));
+  assert.equal(cleanSpecValues("photo", { photo_purpose: "Site Conditions" }, { lists_version: 4 }).lists_version, "4");
+});
+
+test("incident and agreement actions are rows that each become a linked action", () => {
+  const values = { corrective_actions: [{ action: "Replace ladder", owner: "Sam", owner_ref: "user:u1", due: "2026-12-01" }, { action: "", owner: "" }] };
+  assert.deepEqual(specFollowUps("hse_incident", values).map((item) => item.row.action), ["Replace ladder"]);
+  assert.equal(cleanSpecValues("hse_incident", values).corrective_actions.length, 1);
+  // The incident's older one-box text becomes rows.
+  assert.deepEqual(upgradeSpecValues("hse_incident", { corrective_actions: "Fix rail — Jan — 2026-12-02" }).corrective_actions, [{ action: "Fix rail", owner: "Jan", due: "2026-12-02" }]);
+  assert.deepEqual(upgradeSpecValues("agreement", { action_owner: "Jan", action_due: "2026-12-03" }).actions, [{ action: "", owner: "Jan", due: "2026-12-03" }]);
+  // NCR containment: one row per step, with person, time and evidence.
+  const ncr = { containment: ["Stop affected work / suspend activity"] };
+  assert.ok(specMissing("ncr", ncr).some((item) => item.includes("Stop affected work / suspend activity · Responsible person")));
+});
+
+test("restricted incident data stays out of exports unless asked for", () => {
+  const values = { incident_type: "Injury / Illness", people_involved: ["P. Jansen"], body_part: "Hand", witnesses: ["K. de Vries"] };
+  assert.ok(!specFacts("hse_incident", values).some(([label]) => /People involved|Body part|Witnesses/.test(label)));
+  assert.ok(specFacts("hse_incident", values, "en", { includeSensitive: true }).some(([label]) => label === "Body part affected"));
+  assert.ok(sensitiveKeys("hse_incident").includes("people_involved"));
+});
+
+test("reporting filters read the same four facets from every form", () => {
+  const ncr = { finding_type: "ncr", issue_management: { spec: { discipline: "Concrete & Reinforced Concrete", ncr_type: "Workmanship", workflow_status: "Open", severity: "Major" } } };
+  const register = { details: { spec: { change_type: "Scope Change", approval_status: "Draft" } } };
+  const facets = specFacets(recordSpec(ncr));
+  assert.deepEqual(facets, { discipline: "Concrete & Reinforced Concrete", type: "Workmanship", category: "", status: "Open", priority: "Major" });
+  assert.ok(matchesSpecFacets(facets, { discipline: "Concrete & Reinforced Concrete", status: "Open" }));
+  assert.ok(!matchesSpecFacets(specFacets(recordSpec(register)), { status: "Open" }));
+  assert.deepEqual(facetOptions([facets]).priority, ["Major"]);
+  const filtered = filterPeriodSnapshot({ findings: [ncr], register_entries: [register], day_reports: [1] }, { type: "Scope Change" });
+  assert.equal(filtered.findings.length, 0);
+  assert.equal(filtered.register_entries.length, 1);
+  assert.equal(filtered.day_reports.length, 1);
+  const directory = buildRecordDirectory({ findings: [{ ...ncr, id: "f1", finding_number: "NCR-0001", title: "Honeycombing", status: "open", created_at: "2026-11-20" }] });
+  assert.equal(filterRecordDirectory(directory, "", { discipline: "Concrete & Reinforced Concrete" }).length, 1);
+  assert.equal(filterRecordDirectory(directory, "", { discipline: "Masonry & Wall Construction" }).length, 0);
+});
+
+test("every workbook value has a Dutch label; the stored value stays English", () => {
+  const values = new Set();
+  for (const value of Object.values(catalogue)) {
+    if (Array.isArray(value)) value.forEach((item) => values.add(item));
+    else for (const [group, options] of Object.entries(value)) { values.add(group); for (const option of options) { values.add(option.value); for (const item of option.completionOptions ?? []) values.add(item); } }
+  }
+  const missing = [...values].filter((value) => !specValueNl[value]);
+  assert.deepEqual(missing, []);
+  assert.equal(specLabel("Near Miss", "nl"), "Bijna-ongeval");
+  assert.equal(specLabel("Near Miss", "en"), "Near Miss");
+  assert.deepEqual(specFacts("photo", { photo_purpose: "Site Conditions" }, "nl", { translate: (value) => specLabel(value, "nl") }), [["Doel van de foto", "Terreinomstandigheden"]]);
+});
+
+test("sign-off history prints one line per event; the project's role names replace the sheet's", () => {
+  const events = [
+    { action: "submit", new_status: "Submitted", previous_status: null, stage_number: 1, round_number: 1, actor_name: "Ada", actor_organization: "CODECO", actor_role: "Supervision", attestation_method: "account", comments: null, created_at: "2026-11-20T12:00:00Z", signature_image: null },
+    { action: "acknowledge", new_status: "Acknowledged", previous_status: "Submitted", stage_number: 2, round_number: 1, actor_name: "Jan", actor_organization: "Bouw NV", actor_role: "Contractor", attestation_method: "signed_document", comments: "Received", created_at: "2026-11-20T13:00:00Z", signature_image: null },
+  ];
+  const lines = signoffHistoryEntries(events, "en");
+  assert.equal(lines.length, 2);
+  assert.match(lines[0].line, /Submit · Ada \(CODECO\) · Supervision · round 1 · — → Submitted/);
+  assert.match(lines[1].line, /signed document/);
+  assert.equal(lines[1].comments, "Received");
+  const profile = effectiveProfile(signoffProfiles["CHANGE-APPROVAL"], { stages: { 3: { role_en: "Project director" } } });
+  assert.equal(profile.stages.find((stage) => stage.number === 3).role.en, "Project director");
+  assert.equal(signoffState(profile, [{ ...events[0], new_status: "Partially Approved (1/2)", action: "approve", stage_number: 3 }]).closed, false);
 });

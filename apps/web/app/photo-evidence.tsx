@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad, type MarkupOption, type PhotoMarkupContext } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
+import { photoPurposes, workDisciplines } from "@/lib/forms/spec-catalogue";
+import { specLabel } from "@/lib/forms/spec-labels-nl";
 import { compassPointFromDegrees, photoTitleFromDescription } from "@/lib/images/field-image.mjs";
 import { readPhotoDirection } from "@/lib/images/exif-direction.mjs";
 import { useBackToClose } from "@/lib/navigation/app-history";
@@ -34,7 +36,21 @@ export type PhotoEvidenceDetails = {
   direction: string;
   /** True while the direction is the one the camera or the compass measured. */
   directionAutomatic?: boolean;
+  /** Workbook Photos sheet: the photo purpose, asked when the photo is taken. */
+  purpose?: string;
+  purposeOther?: string;
+  /** Photo category: the work discipline, for progress and technical photos. */
+  discipline?: string;
 };
+
+/** The specification fields of a photo, as stored with its visual capture. */
+export function photoSpecFromDetails(details: PhotoEvidenceDetails): Record<string, string> {
+  const spec: Record<string, string> = {};
+  if (details.purpose) spec.photo_purpose = details.purpose;
+  if (details.purpose && /^other\b/i.test(details.purpose) && details.purposeOther?.trim()) spec.photo_purpose_other = details.purposeOther.trim();
+  if (details.discipline && ["Progress Documentation", "Technical / Quality Evidence"].includes(details.purpose ?? "")) spec.discipline = details.discipline;
+  return spec;
+}
 
 /**
  * The name this photo carries into the register. The supervisor no longer types a title, so
@@ -421,7 +437,7 @@ export function PhotoDetailSheet({
   onRemove?: () => void;
   allowMarkup?: boolean;
 }) {
-  const { text } = useLanguage();
+  const { language, text } = useLanguage();
   const [marking, setMarking] = useState(false);
   // On a phone this is a page of its own: the back gesture closes it instead of
   // leaving the record behind it. The entry stays while the marking pad is open on
@@ -494,6 +510,28 @@ export function PhotoDetailSheet({
             <DictateButton onText={(transcript) => patch({ description: appendDictation(photo.details.description, transcript) })} />
           </label>
           <div className="form-grid-2">
+            <label className="form-field">
+              <span>{text("Photo purpose", "Doel van de foto")}</span>
+              <select value={photo.details.purpose ?? ""} onChange={(event) => patch({ purpose: event.target.value })}>
+                <option value="">{text("Choose…", "Kies…")}</option>
+                {photoPurposes.map((purpose) => <option key={purpose} value={purpose}>{specLabel(purpose, language)}</option>)}
+              </select>
+            </label>
+            {["Progress Documentation", "Technical / Quality Evidence"].includes(photo.details.purpose ?? "") ? (
+              <label className="form-field">
+                <span>{text("Photo category / work discipline", "Fotocategorie / werkdiscipline")}</span>
+                <select value={photo.details.discipline ?? ""} onChange={(event) => patch({ discipline: event.target.value })}>
+                  <option value="">{text("Choose…", "Kies…")}</option>
+                  {workDisciplines.map((discipline) => <option key={discipline} value={discipline}>{specLabel(discipline, language)}</option>)}
+                </select>
+              </label>
+            ) : null}
+            {/^other\b/i.test(photo.details.purpose ?? "") ? (
+              <label className="form-field">
+                <span>{text("Photo purpose · explain Other", "Doel van de foto · licht Overig toe")}</span>
+                <input value={photo.details.purposeOther ?? ""} maxLength={240} onChange={(event) => patch({ purposeOther: event.target.value })} />
+              </label>
+            ) : null}
             {buildings.length > 1 ? (
               <label className="form-field">
                 <span>{text("Building", "Gebouw")}</span>

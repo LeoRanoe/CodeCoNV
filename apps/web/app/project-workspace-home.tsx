@@ -18,6 +18,8 @@ import { useMemo, useState } from "react";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
 import { filterRecordDirectory } from "@/lib/records/record-directory.mjs";
+import { SpecFacetFilterBar } from "@/app/forms/spec-facet-filter";
+import type { SpecFacets } from "@/lib/forms/spec-facets";
 import type { BuildingOption } from "@/app/building-picker";
 import { codeText } from "@/lib/status-labels";
 import { formIcons } from "@/app/forms/form-icons";
@@ -26,6 +28,8 @@ type WorkspaceDestination = "inspections" | "findings" | "ncr" | "hse" | "daily"
 
 /** One record in the project, as the code search knows it. */
 export type WorkspaceRecord = {
+  /** Discipline, type, status and priority of the record's specification fields. */
+  facets?: SpecFacets | null;
   id: string;
   kind: string;
   tab: string;
@@ -96,7 +100,7 @@ export function ProjectWorkspaceHome({
   const { locale, text } = useLanguage();
   const permissions = useProjectPermissions();
   const [query, setQuery] = useState("");
-  const [filters, setFilters] = useState({ kind: "", buildingId: "", status: "", dateFrom: "", dateTo: "", author: "" });
+  const [filters, setFilters] = useState({ kind: "", buildingId: "", status: "", dateFrom: "", dateTo: "", author: "", discipline: "", specType: "", specStatus: "", priority: "" });
   /* Folded behind a button beside the search: open, they pushed the modules half a screen down. */
   const [filtersOpen, setFiltersOpen] = useState(false);
   const moduleEnabled = (module?: string) => !module || modules[module] !== false;
@@ -249,7 +253,12 @@ export function ProjectWorkspaceHome({
     dateFrom: filters.dateFrom,
     dateTo: filters.dateTo,
     author: filters.author,
+    discipline: filters.discipline,
+    specType: filters.specType,
+    specStatus: filters.specStatus,
+    priority: filters.priority,
   }, { buildings }, 50) as WorkspaceRecord[], [buildings, filters, query, records]);
+  const recordFacets = useMemo(() => records.flatMap((record) => (record.facets ? [record.facets] : [])), [records]);
   const filtersActive = Object.values(filters).some(Boolean);
   const authors = useMemo(() => Array.from(new Set(records.map((record) => record.author).filter(Boolean))).sort(), [records]);
   const groupedMatches = useMemo(() => Array.from(matches.reduce((groups, record) => {
@@ -305,7 +314,8 @@ export function ProjectWorkspaceHome({
         <label><span>{text("From", "Vanaf")}</span><input type="date" value={filters.dateFrom} onChange={(event) => setFilters({ ...filters, dateFrom: event.target.value })} /></label>
         <label><span>{text("To", "Tot")}</span><input type="date" value={filters.dateTo} onChange={(event) => setFilters({ ...filters, dateTo: event.target.value })} /></label>
         {authors.length ? <label><span>{text("Author", "Auteur")}</span><select value={filters.author} onChange={(event) => setFilters({ ...filters, author: event.target.value })}><option value="">{text("All authors", "Alle auteurs")}</option>{authors.map((author) => <option value={author} key={author}>{author}</option>)}</select></label> : null}
-        {filtersActive ? <button className="ui-button ui-button--quiet ui-button--sm" type="button" onClick={() => setFilters({ kind: "", buildingId: "", status: "", dateFrom: "", dateTo: "", author: "" })}>{text("Clear filters", "Wis filters")}</button> : null}
+        <SpecFacetFilterBar id="workspace-spec-facets" facets={recordFacets} value={{ discipline: filters.discipline, type: filters.specType, status: filters.specStatus, priority: filters.priority }} onChange={(next) => setFilters({ ...filters, discipline: next.discipline ?? "", specType: next.type ?? "", specStatus: next.status ?? "", priority: next.priority ?? "" })} />
+        {filtersActive ? <button className="ui-button ui-button--quiet ui-button--sm" type="button" onClick={() => setFilters({ kind: "", buildingId: "", status: "", dateFrom: "", dateTo: "", author: "", discipline: "", specType: "", specStatus: "", priority: "" })}>{text("Clear filters", "Wis filters")}</button> : null}
       </div> : null}
 
       {query.trim().length >= 2 || filtersActive ? (

@@ -1,5 +1,6 @@
 "use client";
 
+import { loadSignoffHistory, signoffHistoryEntries, type SignoffEvent } from "@/lib/forms/signoff";
 import { SignoffPanel } from "@/app/forms/signoff-panel";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -332,6 +333,10 @@ export function DayOverviewReport({
         image,
       };
     }));
+    // Every record's sign-off history, loaded in one go for the records of the day.
+    const recordIds = [...overview.issues, ...overview.ncrs, ...overview.hse, ...overview.inspections, ...Object.values(overview.registers).flat()]
+      .map((record) => String((record as unknown as { id?: string }).id ?? "")).filter(Boolean);
+    const history = projectId ? await loadSignoffHistory(client, projectId, recordIds).catch(() => new Map<string, SignoffEvent[]>()) : new Map<string, SignoffEvent[]>();
     return buildDayExport({
       workforce: { headcount: overview.workforce.headcount, visitors: overview.workforce.visitors, entries: overview.workforce.entries as unknown as Record<string, unknown>[] },
       worksOngoing: overview.worksOngoing as unknown as Record<string, unknown>[],
@@ -359,6 +364,7 @@ export function DayOverviewReport({
       delayCause: (code) => delayCauseLabels[code ?? ""]?.[language] ?? (code ?? ""),
       timeOf,
       momentOf,
+      history: (recordId) => signoffHistoryEntries(history.get(recordId) ?? [], language),
     });
   };
 

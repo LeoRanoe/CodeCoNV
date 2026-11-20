@@ -6,6 +6,7 @@ import { normalizeExternalShareToken } from "@/lib/external-share/token.mjs";
 import { schemaFeatureMissing } from "@/lib/supabase/schema-compatibility.mjs";
 import { pageAll } from "@/lib/supabase/page-all.mjs";
 import { isPhotoFile } from "@/lib/media/photo-library.mjs";
+import type { SpecConfiguration } from "@/lib/forms/spec-forms";
 
 export type ChecklistItem = {
   id: string;
@@ -61,6 +62,8 @@ export type Inspection = {
   signed_by?: string | null;
   signed_at?: string | null;
   signature_image?: string | null;
+  /** Fields of the client's developer specification (lib/forms/spec-forms.ts). */
+  spec?: Record<string, unknown> | null;
 };
 
 export type Finding = {
@@ -395,6 +398,8 @@ export type ProjectSettings = {
   required_location_depth: "building" | "floor" | "room" | "element";
   report_header: string | null;
   report_footer: string | null;
+  /** Workflow settings, project lists and the HSE risk matrix of the client's specification. */
+  spec_configuration?: SpecConfiguration;
 };
 
 export type BoqProgressUpdate = {
@@ -672,7 +677,7 @@ export async function loadProjectOperations(
   const [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, registerResult, boqProgressResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult, dayReportResult, fileLinkResult, dailyWorkResult, recordBuildingResult, attendanceResult] = await Promise.all([
     client.from("checklist_templates").select("id,project_id,module,code,name,description,version_number,status").or(`project_id.is.null,project_id.eq.${projectId}`).order("name"),
     client.from("checklist_library_templates").select("code,module,category,name,description,prompts,sort_order").eq("active", true).order("sort_order"),
-    pageAll((from, to) => client.from("inspections").select("id,building_id,location_node_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at,signed_by,signed_at,signature_image").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 10000),
+    pageAll((from, to) => client.from("inspections").select("id,building_id,location_node_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at,signed_by,signed_at,signature_image,spec").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 10000),
     pageAll((from, to) => client.from("findings").select("id,building_id,location_node_id,finding_number,finding_type,title,description,severity,priority,status,responsible_party_id,assigned_user_id,due_at,cause,proposed_correction,final_measure,issue_management,verified_by,verified_at,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 20000),
     pageAll((from, to) => client.from("finding_progress_updates").select("id,finding_id,progress_percent,disposition,note,inspected_at,created_at").eq("project_id", projectId).order("inspected_at", { ascending: false }).order("id").range(from, to), 20000),
     pageAll((from, to) => client.from("hse_events").select(`${hseSignedColumns},${hseExtraColumns}`).eq("project_id", projectId).order("occurred_at", { ascending: false }).order("id").range(from, to), 10000),
@@ -695,6 +700,14 @@ export async function loadProjectOperations(
     pageAll((from, to) => client.from("record_buildings").select("record_type,record_id,building_id").eq("project_id", projectId).order("id").range(from, to), 50000),
     pageAll((from, to) => client.from("attendance_entries").select("id,building_id,day_report_id,party_id,discipline,headcount,entry_type,signed_by,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 20000),
   ]);
+  // The specification's project settings and the restricted incident data (readable with
+  // hse.manage only) are newer than the rest; a database or a role without them reads nothing.
+  const [specConfigurationResult, hseSensitiveResult] = await Promise.all([
+    client.from("project_settings").select("spec_configuration").eq("project_id", projectId).maybeSingle(),
+    pageAll((from, to) => client.from("hse_event_sensitive").select("event_id,data").eq("project_id", projectId).order("event_id").range(from, to), 10000),
+  ]);
+  const specConfiguration = (specConfigurationResult.error ? {} : (specConfigurationResult.data?.spec_configuration ?? {})) as SpecConfiguration;
+  const hseSensitive = new Map(((hseSensitiveResult.error ? [] : hseSensitiveResult.data ?? []) as Array<{ event_id: string; data: Record<string, unknown> }>).map((row) => [row.event_id, row.data]));
   // Visitors and the signature arrived with later migrations; a database behind them still
   // lists the counted crew, and one without access to the table simply shows no history.
   const attendanceCoreResult = attendanceResult.error && schemaFeatureMissing(attendanceResult.error, ["entry_type", "signed_by"])
@@ -715,7 +728,7 @@ export async function loadProjectOperations(
 
   // The signature on an inspection and the HSE heading are new columns; a database that
   // has not run that migration yet still has to load its records.
-  const compatibleInspectionResult = schemaFeatureMissing(inspectionResult.error, ["signed_by", "signed_at", "signature_image"])
+  const compatibleInspectionResult = schemaFeatureMissing(inspectionResult.error, ["signed_by", "signed_at", "signature_image", "spec"])
     ? await client.from("inspections").select("id,building_id,location_node_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100)
     : inspectionResult;
   // The twelve boxes of the client's HSE screen are newer still, so the load steps back
@@ -842,7 +855,11 @@ export async function loadProjectOperations(
     inspections: inspectionRows.map((record) => ({ ...record, building_ids: buildingsForRecord(recordBuildings, "inspection", record.id, record.building_id) })),
     findings: findingRows.map((record) => ({ ...record, building_ids: buildingsForRecord(recordBuildings, "finding", record.id, record.building_id) })),
     findingProgressUpdates: (findingProgressResult.data ?? []) as FindingProgressUpdate[],
-    hseEvents: hseRows.map((record) => ({ ...record, building_ids: buildingsForRecord(recordBuildings, "hse", record.id, record.building_id) })),
+    hseEvents: hseRows.map((record) => ({
+      ...record,
+      ...(hseSensitive.has(record.id) ? { spec: { ...(record.spec ?? {}), ...hseSensitive.get(record.id) } } : {}),
+      building_ids: buildingsForRecord(recordBuildings, "hse", record.id, record.building_id),
+    })),
     registerEntries: registerRows.map((entry) => ({
       ...entry,
       building_ids: buildingsForRecord(recordBuildings, "register_entry", entry.id, entry.building_id),
@@ -866,6 +883,7 @@ export async function loadProjectOperations(
       report_footer: null,
       ...compatibleSettingsResult.data,
       ...(legacySettingsSchema ? legacySettingsCompatibility(compatibleSettingsResult.data.branding) : {}),
+      spec_configuration: specConfiguration,
     } as ProjectSettings : null,
     backupRuns: (compatibleBackupResult.data ?? []) as BackupRun[],
     reportVersions: (reportFilters[0]?.data ?? []) as ReportVersion[],
@@ -1994,6 +2012,8 @@ export async function createVisualCapture(client: SupabaseClient, input: {
   tourOrder?: number | null;
   stackId?: string | null;
   capturedAt?: string;
+  /** Specification fields asked at capture time (photo purpose …). */
+  spec?: Record<string, unknown> | null;
 }) {
   const result = await client.rpc("create_visual_capture", {
     p_project_id: input.projectId,
@@ -2016,6 +2036,11 @@ export async function createVisualCapture(client: SupabaseClient, input: {
     const stackResult = await client.rpc("set_visual_capture_stack", { p_capture_id: capture.id, p_stack_id: input.stackId });
     // A database without 202610310001 keeps the photo and loses only the grouping, as before.
     if (!schemaFeatureMissing(stackResult.error, ["set_visual_capture_stack"])) fail(stackResult.error);
+  }
+  if (input.spec && Object.keys(input.spec).length && capture?.id) {
+    // The purpose chosen when the photo was taken; the photo itself is kept when this fails.
+    const specResult = await client.rpc("set_visual_capture_spec", { p_capture_id: capture.id, p_spec: input.spec });
+    if (!specResult.error) return { ...capture, spec: input.spec, stack_id: input.stackId || capture.stack_id || null };
   }
   return { ...capture, stack_id: input.stackId || capture.stack_id || null };
 }
@@ -2308,4 +2333,61 @@ export async function validateBackupDryRun(client: SupabaseClient, file: File) {
   const result = await client.rpc("dry_run_backup_restore", { p_manifest: manifest });
   fail(result.error);
   return result.data as BackupRun;
+}
+
+/** The project's people (members and company staff) by name, for the specification's pickers. */
+export async function loadProjectPeople(client: SupabaseClient, projectId: string) {
+  const result = await client.rpc("list_project_people", { p_project_id: projectId });
+  // A database without the function (or offline) offers no register; pickers then accept a typed name.
+  if (result.error) return [] as Array<{ id: string; name: string; role: string }>;
+  return ((result.data ?? []) as Array<{ user_id: string; display_name: string; role_name: string | null }>).map((row) => ({ id: row.user_id, name: row.display_name, role: row.role_name ?? "" }));
+}
+
+/** One linked action record per follow-up row (owner and due date each), linked to its source. */
+export async function createRecordFollowUpAction(client: SupabaseClient, input: {
+  projectId: string;
+  sourceType: "hse" | "meeting" | "registration" | "finding";
+  sourceId: string;
+  buildingId: string | null;
+  ownerUserId?: string | null;
+  ownerPartyId?: string | null;
+  title: string;
+  description: string;
+  dueDate: string;
+  idempotencyKey: string;
+}) {
+  const result = await client.rpc("create_record_follow_up_action", {
+    p_project_id: input.projectId,
+    p_source_type: input.sourceType,
+    p_source_id: input.sourceId,
+    p_building_id: input.buildingId,
+    p_owner_party_id: input.ownerPartyId || null,
+    p_owner_user_id: input.ownerUserId || null,
+    p_title: input.title.slice(0, 240),
+    p_description: input.description.slice(0, 4000),
+    p_due_at: input.dueDate ? new Date(`${input.dueDate}T17:00:00-03:00`).toISOString() : null,
+    p_idempotency_key: input.idempotencyKey,
+  });
+  if (result.error) throw new Error(result.error.message);
+  return result.data as { id: string; action_number: string };
+}
+
+/** Lessons approved for sharing in any project of the organisation (workbook: across projects). */
+export async function loadSharedLessons(client: SupabaseClient, organizationId: string) {
+  const result = await client.rpc("list_shared_lessons", { p_organization_id: organizationId });
+  if (result.error) return [];
+  return (result.data ?? []) as Array<{ entry_id: string; project_id: string; project_name: string; project_code: string; entry_number: string; title: string; occurred_at: string; details: Record<string, unknown> }>;
+}
+
+/** Saves the specification part of the project settings (workflow settings, lists, risk matrix). */
+export async function saveSpecConfiguration(client: SupabaseClient, projectId: string, configuration: SpecConfiguration) {
+  const result = await client.from("project_settings").update({ spec_configuration: { ...configuration, lists_version: (configuration.lists_version ?? 0) + 1 } }).eq("project_id", projectId).select("id").maybeSingle();
+  if (result.error) throw new Error(result.error.message);
+  if (!result.data) throw new Error("The project has no settings yet; open Project rules once and save them first.");
+}
+
+/** The specification fields of an inspection (discipline, inspected work, contractor witness). */
+export async function updateInspectionSpec(client: SupabaseClient, inspectionId: string, spec: Record<string, unknown>) {
+  const result = await client.from("inspections").update({ spec }).eq("id", inspectionId).select("id").single();
+  fail(result.error);
 }

@@ -12,6 +12,7 @@ import {
   signatureBlock,
   signatureImageBytes,
 } from "@/lib/reports/docx-shared";
+import { signoffHistoryDocx } from "@/lib/reports/signoff-history-docx";
 
 const line = (text: string, options: { bold?: boolean; muted?: boolean; size?: number; after?: number } = {}) => new Paragraph({
   children: [new TextRun({ text: text || " ", bold: options.bold, color: options.muted ? brandMuted : undefined, size: options.size ?? 18 })],
@@ -54,6 +55,7 @@ export function buildDayExportDocx(document: DayExportDocument, logoBytes: Array
           signature.image,
         ])));
       }
+      if (item.history?.length) body.push(...signoffHistoryDocx(item.history, document.historyTitle ?? "Sign-off history"));
       body.push(line("", { after: 120 }));
     }
     for (const photo of section.photos ?? []) {

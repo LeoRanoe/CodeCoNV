@@ -3,10 +3,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
+import { useSpecDirectory } from "@/app/forms/spec-directory";
+import { uploadProjectFile } from "@/lib/storage/gateway";
 import {
   authorityActions,
   availableActions,
   commentRequired,
+  effectiveProfile,
   loadSignoffEvents,
   recordSignoffAction,
   signoffActionLabels,
@@ -49,14 +52,19 @@ export function SignoffPanel({
   partyNames?: string[];
   onChanged?: (events: SignoffEvent[]) => void;
 }) {
-  const profile = signoffProfiles[profileCode];
+  const directory = useSpecDirectory();
+  const workflowConfig = directory.config?.workflows?.[profileCode] ?? null;
+  const baseProfile = signoffProfiles[profileCode];
+  const profile = useMemo(() => (baseProfile ? effectiveProfile(baseProfile, workflowConfig) : undefined), [baseProfile, workflowConfig]);
   const [events, setEvents] = useState<SignoffEvent[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [action, setAction] = useState<SignoffAction | "">("");
   const [role, setRole] = useState("");
-  const [attestation, setAttestation] = useState<"account" | "external_representative">("account");
+  const [attestation, setAttestation] = useState<"account" | "external_representative" | "signed_document">("account");
+  const [signedFile, setSignedFile] = useState<File | null>(null);
+  const [nextActorUserId, setNextActorUserId] = useState("");
   const [externalName, setExternalName] = useState("");
   const [externalOrganization, setExternalOrganization] = useState("");
   const [signature, setSignature] = useState<HandwrittenSignature | null>(null);
@@ -87,16 +95,21 @@ export function SignoffPanel({
 
   const state = useMemo(() => (profile ? signoffState(profile, events) : null), [profile, events]);
   const offered = useMemo(() => (profile ? availableActions(profile, events) : []).filter((item) => canReview || !authorityActions.includes(item.action)), [profile, events, canReview]);
+  const editedAfterSubmission = events.at(-1)?.action === "reopen" && events.at(-1)?.actor_role === "Editor";
   if (!profile || !state) return null;
 
   const chosen = offered.find((item) => item.action === action);
   const stageOf = (number: number) => profile.stages.find((stage) => stage.number === number);
   const needsComment = action ? commentRequired(action) : false;
-  const external = attestation === "external_representative";
+  const external = attestation !== "account";
+  const signedDocument = attestation === "signed_document";
   const ready = Boolean(chosen)
     && (!needsComment || comments.trim().length >= 3)
-    && (action !== "return" || nextActor.trim().length >= 2)
-    && (!external || (externalName.trim().length >= 2 && Boolean(signature?.image)));
+    && (action !== "return" || nextActor.trim().length >= 2 || Boolean(nextActorUserId))
+    && (!external || externalName.trim().length >= 2)
+    && (attestation !== "external_representative" || Boolean(signature?.image))
+    && (!signedDocument || Boolean(signedFile));
+  const stageConfig = chosen ? workflowConfig?.stages?.[String(chosen.stage)] : undefined;
   const word = (value: { en: string; nl: string }) => value[language];
   const when = (value: string) => new Intl.DateTimeFormat(language === "nl" ? "nl-NL" : "en-GB", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 
@@ -105,6 +118,10 @@ export function SignoffPanel({
     setBusy(true);
     setError("");
     try {
+      // A signed document or photo of a signed page is uploaded as project evidence first.
+      const evidence = signedDocument && signedFile
+        ? await uploadProjectFile(client, { projectId, buildingId: "", category: "evidence", file: signedFile })
+        : null;
       await recordSignoffAction(client, {
         projectId,
         recordKind,
@@ -113,18 +130,22 @@ export function SignoffPanel({
         stage: chosen.stage,
         action: chosen.action,
         actorRole: role.trim() || word(stageOf(chosen.stage)?.role ?? { en: "Participant", nl: "Deelnemer" }),
-        attestation: external ? "external_representative" : "account",
+        attestation,
+        evidenceFileId: evidence?.fileId ?? null,
         actorName: external ? externalName.trim() : undefined,
         actorOrganization: externalOrganization.trim() || undefined,
-        signatureImage: signature?.image ?? null,
+        signatureImage: attestation === "external_representative" ? signature?.image ?? null : null,
         comments: comments.trim() || undefined,
         returnReason: action === "return" ? comments.trim().slice(0, 400) : undefined,
         nextActor: nextActor.trim() || undefined,
+        nextActorUserId: nextActorUserId || null,
         dueAt: dueAt ? new Date(dueAt).toISOString() : null,
       });
       setAction("");
       setComments("");
       setNextActor("");
+      setNextActorUserId("");
+      setSignedFile(null);
       setDueAt("");
       setSignature(null);
       setExternalName("");
@@ -148,6 +169,7 @@ export function SignoffPanel({
         {state.dueAt ? <div><dt>{text("Due", "Uiterlijk")}</dt><dd>{when(state.dueAt)}</dd></div> : null}
       </dl>
       <p className="form-helper">{word(profile.rule)}</p>
+      {editedAfterSubmission ? <p className="field-warning" role="status">{text("This record was edited after it was submitted. Resubmit the new version; the approvals are required again.", "Deze registratie is na het indienen gewijzigd. Dien de nieuwe versie opnieuw in; de goedkeuringen zijn opnieuw nodig.")}</p> : null}
 
       {loaded && events.length ? (
         <ol className="signoff-history" aria-label={text("Sign-off history", "Ondertekeningsgeschiedenis")}>
@@ -156,7 +178,9 @@ export function SignoffPanel({
               <strong>{word(signoffActionLabels[event.action])}</strong>
               <span> · {event.actor_name}{event.actor_organization ? ` (${event.actor_organization})` : ""} · {event.actor_role}</span>
               <span className="signoff-meta"> · {text("round", "ronde")} {event.round_number} · {when(event.created_at)} · {event.previous_status ?? "—"} → {event.new_status}</span>
-              {event.attestation_method !== "account" ? <span className="signoff-meta"> · {text("recorded for an external representative", "vastgelegd voor een externe vertegenwoordiger")}</span> : null}
+              {event.attestation_method === "external_representative" ? <span className="signoff-meta"> · {text("signed on this device by an external representative", "op dit apparaat getekend door een externe vertegenwoordiger")}</span> : null}
+              {event.attestation_method === "signed_document" ? <span className="signoff-meta"> · {text("signed document uploaded", "ondertekend document geüpload")}</span> : null}
+              {event.action === "reopen" && event.actor_role === "Editor" ? <span className="signoff-meta"> · {text("new version: edited after submission", "nieuwe versie: gewijzigd na indienen")}</span> : null}
               {event.comments ? <p>{event.comments}</p> : null}
               {event.next_actor ? <p className="signoff-meta">{text("Next", "Volgende")}: {event.next_actor}{event.due_at ? ` · ${when(event.due_at)}` : ""}</p> : null}
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -182,23 +206,32 @@ export function SignoffPanel({
             </label>
             <label className="form-field">
               <span>{text("Signed by", "Getekend door")}</span>
-              <select value={attestation} onChange={(event) => setAttestation(event.target.value as "account" | "external_representative")}>
+              <select value={attestation} onChange={(event) => setAttestation(event.target.value as "account" | "external_representative" | "signed_document")}>
                 <option value="account">{text("Me, with my account", "Ik, met mijn account")}</option>
                 <option value="external_representative">{text("A representative without an account, on this device", "Een vertegenwoordiger zonder account, op dit apparaat")}</option>
+                <option value="signed_document">{text("A representative, with an uploaded signed document or photo", "Een vertegenwoordiger, met een geüpload ondertekend document of foto")}</option>
               </select>
             </label>
-            {action === "return" ? (
-              <label className="form-field">
-                <span>{text("Who acts next", "Wie is nu aan zet")} <em className="record-section-required">*</em></span>
-                <input value={nextActor} maxLength={160} list={partyNames.length ? "signoff-next-actors" : undefined} onChange={(event) => setNextActor(event.target.value)} />
-                {partyNames.length ? <datalist id="signoff-next-actors">{partyNames.map((name) => <option key={name} value={name} />)}</datalist> : null}
-              </label>
-            ) : (
-              <label className="form-field">
-                <span>{text("Next responsible (optional)", "Volgende verantwoordelijke (optioneel)")}</span>
-                <input value={nextActor} maxLength={160} onChange={(event) => setNextActor(event.target.value)} />
-              </label>
-            )}
+            <label className="form-field">
+              <span>{action === "return" ? <>{text("Who acts next", "Wie is nu aan zet")} <em className="record-section-required">*</em></> : text("Who acts next (optional)", "Wie is nu aan zet (optioneel)")}</span>
+              <select value={nextActorUserId || (nextActor ? "other" : "")} onChange={(event) => {
+                const person = directory.people.find((item) => item.id === event.target.value);
+                setNextActorUserId(person?.id ?? "");
+                setNextActor(person ? person.name : event.target.value === "other" ? " " : "");
+              }}>
+                <option value="">{text("Choose…", "Kies…")}</option>
+                {directory.people.length ? (
+                  <optgroup label={text("People on this project (notified)", "Mensen op dit project (krijgen een melding)")}>
+                    {directory.people.map((person) => <option key={person.id} value={person.id}>{person.name}{person.role ? ` · ${person.role}` : ""}</option>)}
+                  </optgroup>
+                ) : null}
+                <option value="other">{text("A party or person without an account", "Een partij of persoon zonder account")}</option>
+              </select>
+              {!nextActorUserId && nextActor ? (
+                <input aria-label={text("Name or party", "Naam of partij")} value={nextActor.trimStart()} maxLength={160} list={partyNames.length ? "signoff-next-actors" : undefined} onChange={(event) => setNextActor(event.target.value || " ")} />
+              ) : null}
+              {partyNames.length ? <datalist id="signoff-next-actors">{partyNames.map((name) => <option key={name} value={name} />)}</datalist> : null}
+            </label>
             <label className="form-field">
               <span>{text("Due date (optional)", "Uiterste datum (optioneel)")}</span>
               <input type="datetime-local" value={dueAt} onChange={(event) => setDueAt(event.target.value)} />
@@ -216,12 +249,21 @@ export function SignoffPanel({
                 </label>
               </>
             ) : null}
+            {signedDocument ? (
+              <label className="form-field">
+                <span>{text("Signed document or photo", "Ondertekend document of foto")} <em className="record-section-required">*</em></span>
+                <input type="file" accept="application/pdf,image/*" onChange={(event) => setSignedFile(event.target.files?.[0] ?? null)} />
+              </label>
+            ) : null}
           </div>
+          {stageConfig?.required_approvals && stageConfig.required_approvals > 1 ? (
+            <p className="form-helper">{text(`This step needs ${stageConfig.required_approvals} approvals before the record moves on.`, `Deze stap vraagt ${stageConfig.required_approvals} goedkeuringen voordat de registratie verder gaat.`)}</p>
+          ) : null}
           <label className="form-field">
             <span>{text("Comments", "Opmerkingen")} {needsComment ? <em className="record-section-required">*</em> : null}</span>
             <textarea rows={3} maxLength={4000} value={comments} onChange={(event) => setComments(event.target.value)} />
           </label>
-          {external ? (
+          {attestation === "external_representative" ? (
             <SignatureField
               label={text("Signature of the representative", "Handtekening vertegenwoordiger")}
               declaration={action === "acknowledge"

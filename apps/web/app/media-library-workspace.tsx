@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
-import { photoFiles, photoTitle, photoUploadDescription, PhotoEvidenceList, samePhotoFile, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
+import { photoFiles, photoTitle, photoUploadDescription, PhotoEvidenceList, samePhotoFile, toPhotoEvidence, type PhotoEvidence, photoSpecFromDetails } from "@/app/photo-evidence";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
 import { normalizeImageFile, photoRefusalMessage, prepareCameraPhotos } from "@/lib/images/normalize-image";
@@ -477,6 +477,7 @@ export function MediaLibraryWorkspace({
           title: sharedTitle || photoTitle(photo),
           description: asStack ? sharedDescription : photoUploadDescription(photo, photoDescription, language),
           locationNodeId: photo.details.locationNodeId || null,
+          spec: photoSpecFromDetails(photo.details),
         };
       },
       "photo",

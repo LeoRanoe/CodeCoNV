@@ -14,6 +14,20 @@ export async function fillSpecFields(scope: Locator) {
     for (let index = 0; index < count; index += 1) {
       const field = fields.nth(index);
       if (!(await field.isVisible().catch(() => false))) continue;
+      // A people picker: add one from the register, or a typed name when the register is empty.
+      if (await field.locator(".spec-people-add").count()) {
+        if (!(await field.locator(".spec-chips li").count())) {
+          const add = field.locator(".spec-people-add select");
+          const values = await add.locator("option").evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value).filter(Boolean));
+          if (values.length) await add.selectOption(values[0]);
+          else {
+            await field.locator(".spec-people-other").fill("E2E");
+            await field.locator(".spec-people-add button").click();
+          }
+          changed = true;
+        }
+        continue;
+      }
       const checkboxes = field.locator("input[type='checkbox']");
       if (await checkboxes.count()) {
         if (!(await field.locator("input[type='checkbox']:checked").count())) {
@@ -24,7 +38,7 @@ export async function fillSpecFields(scope: Locator) {
         const select = field.locator("select").first();
         if (await select.count()) {
           if (!(await select.inputValue())) {
-            const values = await select.locator("option").evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value).filter(Boolean));
+            const values = await select.locator("option").evaluateAll((options) => options.filter((option) => !(option as HTMLOptionElement).disabled).map((option) => (option as HTMLOptionElement).value).filter(Boolean));
             const choice = values.find((value) => !/^other\b/i.test(value) && !/^not applicable/i.test(value)) ?? values[0];
             if (choice) {
               await select.selectOption(choice);
@@ -41,7 +55,7 @@ export async function fillSpecFields(scope: Locator) {
           }
         }
       }
-      for (const other of await field.locator(".spec-other input").all()) {
+      for (const other of await field.locator(".spec-other input, .spec-other-name").all()) {
         if (!(await other.inputValue())) {
           await other.fill("E2E");
           changed = true;

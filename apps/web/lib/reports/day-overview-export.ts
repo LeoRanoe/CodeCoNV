@@ -1,4 +1,5 @@
 import { specFacts, specForms, type SpecFormKey, type SpecValues } from "../forms/spec-forms.ts";
+import { specLabel } from "../forms/spec-labels-nl.ts";
 /**
  * The day report the user exports from Reports · Day overview. It is built from exactly the
  * records the screen shows for that day, so the file and the screen can never disagree: every
@@ -13,12 +14,16 @@ type Translate = (en: string, nl: string) => string;
 type Row = Record<string, unknown>;
 
 export type DayExportSignature = { label: string; name: string; signedAt: string; image: string | null };
+/** One event of the record's sign-off history, oldest first. */
+export type DayExportHistory = { line: string; comments: string; signature: string | null };
 export type DayExportItem = {
   code: string;
   title: string;
   status: string;
   facts: Array<[string, string]>;
   signatures: DayExportSignature[];
+  /** The chronological sign-off history (Sign-off sheet: exported with the form record). */
+  history?: DayExportHistory[];
 };
 export type DayExportPhoto = { title: string; meta: string; image: string | null };
 export type DayExportSection = {
@@ -40,6 +45,8 @@ export type DayExportDocument = {
   emptyNote: string;
   footer: string;
   fileName: string;
+  /** Heading of each record's sign-off history. */
+  historyTitle?: string;
 };
 
 const clean = (value: unknown): string => {
@@ -142,6 +149,8 @@ export type DayExportContext = {
   timeOf: Moment;
   /** A full date and time in site time, for signatures. */
   momentOf: Moment;
+  /** The sign-off history of a record, loaded in bulk for the day. */
+  history?: (recordId: string) => DayExportHistory[];
 };
 
 const signature = (label: string, name: unknown, signedAt: unknown, image: unknown, momentOf: Moment): DayExportSignature | null => {
@@ -153,7 +162,8 @@ const signature = (label: string, name: unknown, signedAt: unknown, image: unkno
 
 /** The developer specification's own fields of a record, in the workbook's order. */
 const specFactsOf = (form: SpecFormKey, spec: unknown, language: "en" | "nl"): Array<[string, string]> =>
-  spec && typeof spec === "object" ? specFacts(form, spec as SpecValues, language) : [];
+  // Restricted incident data is never printed; workbook values read in the export's language.
+  spec && typeof spec === "object" ? specFacts(form, spec as SpecValues, language, { translate: (value) => specLabel(value, language) }) : [];
 
 const facts = (pairs: Array<[string, unknown]>): Array<[string, string]> =>
   pairs.map(([label, value]) => [label, humanize(value)] as [string, string]).filter(([, value]) => Boolean(value));
@@ -177,6 +187,7 @@ export function buildDayExport(day: DayExportInput, context: DayExportContext): 
   const language: "en" | "nl" = text("en", "nl") === "nl" ? "nl" : "en";
   const str = (value: unknown) => clean(value);
   const ids = (row: Row) => (Array.isArray(row.building_ids) ? row.building_ids as string[] : undefined);
+  const historyOf = (row: Row) => context.history?.(str(row.id)) ?? [];
 
   // ---- daily work -----------------------------------------------------------------------
   const workItem = (row: Row, kind: "ongoing" | "completed" | "delay"): DayExportItem => ({
@@ -230,6 +241,7 @@ export function buildDayExport(day: DayExportInput, context: DayExportContext): 
         signature(text("Contractor · correction", "Aannemer · correctie"), issue.correction_signed_by, issue.correction_signed_at, issue.correction_signature_image, momentOf),
         signature(text("Verification", "Verificatie"), issue.verification_signed_by, issue.verification_signed_at, issue.verification_signature_image, momentOf),
       ].filter(Boolean) as DayExportSignature[],
+      history: historyOf(row),
     };
   };
 
@@ -258,6 +270,7 @@ export function buildDayExport(day: DayExportInput, context: DayExportContext): 
         signature(text("Supervisor", "Supervisor"), row.signed_by, row.signed_at, row.signature_image, momentOf),
         signature(text("Contractor", "Aannemer"), row.contractor_signed_by, row.contractor_signed_at, row.contractor_signature_image, momentOf),
       ].filter(Boolean) as DayExportSignature[],
+      history: confidential ? [] : historyOf(row),
     };
   };
 
@@ -271,6 +284,7 @@ export function buildDayExport(day: DayExportInput, context: DayExportContext): 
       [text("Buildings", "Gebouwen"), buildingNames(str(row.building_id), ids(row))],
     ]),
     signatures: [signature(text("Inspector", "Inspecteur"), row.signed_by, row.signed_at, row.signature_image, momentOf)].filter(Boolean) as DayExportSignature[],
+    history: historyOf(row),
   });
 
   // ---- registers ---------------------------------------------------------------------------
@@ -297,6 +311,7 @@ export function buildDayExport(day: DayExportInput, context: DayExportContext): 
         signature(text("Party 1", "Partij 1"), details.signed_by_first, details.signed_at_first, details.signature_first_image, momentOf),
         signature(text("Party 2", "Partij 2"), details.signed_by_second, details.signed_at_second, details.signature_second_image, momentOf),
       ].filter(Boolean) as DayExportSignature[],
+      history: historyOf(row),
     };
   };
 
@@ -355,6 +370,7 @@ export function buildDayExport(day: DayExportInput, context: DayExportContext): 
     sections,
     emptyNote: empty.length ? `${text("Nothing recorded", "Niets geregistreerd")}: ${empty.map((section) => section.title).join(" · ")}` : "",
     footer: text("CODECO Supervision · day report from the records in Workspace", "CODECO Supervisie · dagrapport uit de registraties in Workspace"),
+    historyTitle: text("Sign-off history", "Ondertekeningsgeschiedenis"),
     fileName: `${text("Day-report", "Dagrapport")}-${(context.projectCode || context.projectName).replace(/[^\w-]+/g, "-")}-${context.day}`,
   };
 }

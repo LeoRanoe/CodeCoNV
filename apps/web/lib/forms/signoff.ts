@@ -25,6 +25,7 @@ export type SignoffEvent = {
   actor_role: string;
   attestation_method: "account" | "external_representative" | "signed_document";
   signature_image: string | null;
+  evidence_file_id?: string | null;
   comments: string | null;
   return_reason: string | null;
   next_actor: string | null;
@@ -255,10 +256,12 @@ export function availableActions(profile: SignoffProfile, events: SignoffEvent[]
   return [...offered].map(([action, stage]) => ({ action, stage }));
 }
 
+const signoffColumns = "id,record_kind,record_id,workflow_profile,round_number,stage_number,action,actor_user_id,actor_name,actor_organization,actor_role,attestation_method,signature_image,evidence_file_id,comments,return_reason,next_actor,due_at,previous_status,new_status,created_at";
+
 export async function loadSignoffEvents(client: SupabaseClient, recordKind: SignoffRecordKind, recordId: string) {
   const result = await client
     .from("record_signoff_events")
-    .select("id,record_kind,record_id,workflow_profile,round_number,stage_number,action,actor_user_id,actor_name,actor_organization,actor_role,attestation_method,signature_image,comments,return_reason,next_actor,due_at,previous_status,new_status,created_at")
+    .select(signoffColumns)
     .eq("record_kind", recordKind)
     .eq("record_id", recordId)
     .order("sequence_number", { ascending: true });
@@ -282,6 +285,7 @@ export async function recordSignoffAction(client: SupabaseClient, input: {
   actorName?: string;
   actorOrganization?: string;
   signatureImage?: string | null;
+  evidenceFileId?: string | null;
   comments?: string;
   returnReason?: string;
   nextActor?: string;
@@ -300,7 +304,7 @@ export async function recordSignoffAction(client: SupabaseClient, input: {
     p_actor_name: input.actorName || null,
     p_actor_organization: input.actorOrganization || null,
     p_signature_image: input.signatureImage || null,
-    p_evidence_file_id: null,
+    p_evidence_file_id: input.evidenceFileId || null,
     p_comments: input.comments || null,
     p_return_reason: input.returnReason || null,
     p_next_actor: input.nextActor || null,
@@ -309,4 +313,73 @@ export async function recordSignoffAction(client: SupabaseClient, input: {
   });
   if (result.error) throw new Error(result.error.message);
   return result.data as SignoffEvent;
+}
+
+/**
+ * Every sign-off event of a project (or of the given records), oldest first, grouped per record:
+ * the history printed with the NCR, the controlled documents and the day export
+ * ("Allow authorized users to export the history with the form record").
+ */
+export async function loadSignoffHistory(client: SupabaseClient, projectId: string, recordIds?: string[]) {
+  const history = new Map<string, SignoffEvent[]>();
+  const ids = recordIds ? [...new Set(recordIds.filter(Boolean))] : null;
+  if (ids && !ids.length) return history;
+  const chunks = ids ? Array.from({ length: Math.ceil(ids.length / 150) }, (_, index) => ids.slice(index * 150, index * 150 + 150)) : [null];
+  for (const chunk of chunks) {
+    let query = client.from("record_signoff_events").select(signoffColumns).eq("project_id", projectId);
+    if (chunk) query = query.in("record_id", chunk);
+    const result = await query.order("sequence_number", { ascending: true }).limit(5000);
+    if (result.error) {
+      if (/record_signoff_events|sequence_number/.test(result.error.message)) return history;
+      throw new Error(result.error.message);
+    }
+    for (const event of (result.data ?? []) as SignoffEvent[]) {
+      history.set(event.record_id, [...(history.get(event.record_id) ?? []), event]);
+    }
+  }
+  return history;
+}
+
+/** One line per event for printed reports: action, who (organisation, role), round, time, status change, comments. */
+export function signoffHistoryLines(events: SignoffEvent[], language: "en" | "nl" = "en") {
+  const when = (value: string) => new Intl.DateTimeFormat(language === "nl" ? "nl-NL" : "en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(value));
+  return events.map((event) => ({
+    action: signoffActionLabels[event.action]?.[language] ?? event.action,
+    actor: `${event.actor_name}${event.actor_organization ? ` (${event.actor_organization})` : ""}`,
+    role: event.actor_role,
+    round: event.round_number,
+    at: when(event.created_at),
+    status: `${event.previous_status ?? "—"} → ${event.new_status}`,
+    comments: event.comments ?? "",
+    attestation: event.attestation_method === "account"
+      ? ""
+      : event.attestation_method === "signed_document"
+        ? (language === "nl" ? "ondertekend document" : "signed document")
+        : (language === "nl" ? "getekend op dit apparaat" : "signed on this device"),
+    signature: event.signature_image,
+  }));
+}
+
+/** A profile with the project's own role names per stage (Management · Project rules). */
+export function effectiveProfile(profile: SignoffProfile, config?: { stages?: Record<string, { role_en?: string; role_nl?: string }> } | null): SignoffProfile {
+  if (!config?.stages) return profile;
+  return {
+    ...profile,
+    stages: profile.stages.map((stage) => {
+      const own = config.stages?.[String(stage.number)];
+      return own?.role_en || own?.role_nl ? { ...stage, role: { en: own.role_en || stage.role.en, nl: own.role_nl || own.role_en || stage.role.nl } } : stage;
+    }),
+  };
+}
+
+/** A sign-off event as one printed line, its comments and the ink of an on-device signature. */
+export type SignoffHistoryEntry = { line: string; comments: string; signature: string | null };
+
+export function signoffHistoryEntries(events: SignoffEvent[], language: "en" | "nl" = "en"): SignoffHistoryEntry[] {
+  const round = language === "nl" ? "ronde" : "round";
+  return signoffHistoryLines(events, language).map((item) => ({
+    line: [item.at, item.action, item.actor, item.role, `${round} ${item.round}`, item.status, item.attestation].filter(Boolean).join(" · "),
+    comments: item.comments,
+    signature: item.signature && item.signature.startsWith("data:image/") ? item.signature : null,
+  }));
 }

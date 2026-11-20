@@ -81,6 +81,8 @@ export type OfflineUpload = {
   compressed: boolean;
   /** Shared by every frame in one media-library photo stack. */
   evidenceGroupId?: string | null;
+  /** Specification fields chosen when the photo was taken (photo purpose, discipline). */
+  spec?: Record<string, unknown> | null;
   /**
    * The spot the supervisor pointed at on the building drawing. It becomes a pin on that
    * drawing as soon as the photo reaches the server, so the picture can be found back from
@@ -280,6 +282,7 @@ async function ensureVisualCapture(client: SupabaseClient, upload: OfflineUpload
     tourOrder: upload.tourOrder ?? null,
     stackId: upload.evidenceGroupId || null,
     capturedAt: upload.capturedAt,
+    spec: upload.spec ?? null,
   });
   if (!upload.drawingPin || !capture?.id) return;
   // The pin is a second recording of the same fact. The photo is already filed with its

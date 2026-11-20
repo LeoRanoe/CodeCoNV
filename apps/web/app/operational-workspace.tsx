@@ -62,12 +62,20 @@ import { appendDictation, DictateButton, inputWithMicStyle, micInputStyle } from
 import { RecordBuildingsField, RecordFormSection, RecordFormShell, RecordSignatureField } from "@/app/forms/record-form-shell";
 import { RecordList, SavedRecordsFold } from "@/app/forms/record-list";
 import { ContractorSignatureField, RecordSignatures, contractorSignatureDetails, contractorSignatureFrom, emptyContractorSignature, type ContractorSignatureValue } from "@/app/forms/contractor-signature";
-import { SpecFields } from "@/app/forms/spec-fields";
+import { SpecFields, SpecLinkChips } from "@/app/forms/spec-fields";
+import { WorkspaceSpecDirectory } from "@/app/forms/workspace-spec-directory";
+import { SpecConfigurationPanel } from "@/app/forms/spec-configuration-panel";
+import { SharedLessons } from "@/app/forms/shared-lessons";
+import { InspectionSpecEditor } from "@/app/forms/inspection-spec-editor";
 import { SignoffPanel } from "@/app/forms/signoff-panel";
-import { cleanSpecValues, specFacts, specForms, specMissing, workflowProfiles, type SpecFormKey, type SpecValues } from "@/lib/forms/spec-forms";
+import { loadSignoffHistory, signoffHistoryEntries } from "@/lib/forms/signoff";
+import { cleanSpecValues, sensitiveKeys, specFacts, specFollowUps, specForms, specLinks, specMissing, workflowProfiles, type SpecFormKey, type SpecRow, type SpecValues } from "@/lib/forms/spec-forms";
+import { specLabel } from "@/lib/forms/spec-labels-nl";
+import { facetFilterActive, filterPeriodSnapshot, matchesSpecFacets, recordSpec, specFacets, type SpecFacetFilter } from "@/lib/forms/spec-facets";
+import { SpecFacetFilterBar } from "@/app/forms/spec-facet-filter";
 import { lessonPhases as specLessonPhases, hseCategories as specHseCategories, incidentCategories as specIncidentCategories, issueCategories as specIssueCategories } from "@/lib/forms/spec-catalogue";
 import { formIcons, registerIcon } from "@/app/forms/form-icons";
-import { NamedPhotoSlot, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
+import { NamedPhotoSlot, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence, photoSpecFromDetails } from "@/app/photo-evidence";
 import { RecordLocationMap } from "@/app/record-location-map";
 import { StoredPhotoDetail } from "@/app/stored-photo-detail";
 import { LocationPicker, locationBreadcrumb } from "@/app/location-picker";
@@ -152,6 +160,7 @@ import { countOpenFindings } from "@/lib/records/finding-counts.mjs";
 import { createFileOriginResolver, filesForRecord, type FileOriginKind, type FileOriginResolver } from "@/lib/supabase/file-origins";
 import { loadProjectThumbnailUrl } from "@/lib/images/thumbnail";
 import {
+  createRecordFollowUpAction,
   buildPeriodReportSnapshot,
   createChecklist,
   createFinding,
@@ -729,6 +738,13 @@ const registerLabelsEnglish: Record<string, string> = {
 };
 
 /** A calendar day (YYYY-MM-DD) as a date on site; noon in Suriname so it never shifts a day. */
+/** The record's sign-off history as printed lines; a file still downloads when it cannot be read. */
+async function recordHistory(client: SupabaseClient, projectId: string, recordId: string, language: "en" | "nl") {
+  if (!projectId) return [];
+  const history = await loadSignoffHistory(client, projectId, [recordId]).catch(() => new Map());
+  return signoffHistoryEntries(history.get(recordId) ?? [], language);
+}
+
 function formatDay(day: string | null | undefined, locale = "en-GB") {
   if (!day) return "";
   const moment = new Date(`${day.slice(0, 10)}T12:00:00-03:00`);
@@ -1045,7 +1061,17 @@ export function OperationalWorkspace({
   const snapshot = withPendingRecords(query.data, pendingRecords);
 
   return (
-    <>
+    <WorkspaceSpecDirectory
+      client={client}
+      projectId={projectId}
+      snapshot={snapshot}
+      buildings={buildings}
+      parties={parties}
+      companyEmployees={companyEmployees}
+      currentUserId={currentUserId}
+      currentUserName={currentUserName}
+      openRecord={(tab, recordId) => openProjectArea(tab as Parameters<typeof openProjectArea>[0], recordId)}
+    >
       {snapshot._offlineCached ? <div className="operation-alert warning"><HardDrive size={17} /><div><strong>{text("Offline project copy", "Offline projectkopie")}</strong><span>{text("Offline. Last synced data is available; formal changes wait for a connection.", "Offline. Laatst gesynchroniseerde gegevens zijn beschikbaar; formele wijzigingen wachten op verbinding.")} {snapshot._offlineSavedAt ? `${text("Saved", "Opgeslagen")} ${formatDate(snapshot._offlineSavedAt)}.` : ""}</span></div></div> : null}
       {error ? <div className="operation-alert error"><AlertTriangle size={17} /> {error}</div> : null}
       {notice && noticeMode === mode ? <div className="operation-alert success"><CheckCircle2 size={17} /> {notice}</div> : null}
@@ -1146,7 +1172,7 @@ export function OperationalWorkspace({
           run={run}
         />
       ) : null}
-    </>
+    </WorkspaceSpecDirectory>
   );
 }
 
@@ -1871,7 +1897,10 @@ function ProjectOperations({
       const form = entry.register_type as SpecFormKey;
       return { form, values: ((entry.details ?? {}).spec ?? {}) as SpecValues, profile: workflowProfiles[form], kind: "register_entry" };
     }
-    if (record.kind === "inspection") return { form: "photo", values: {}, profile: workflowProfiles.inspection, kind: "inspection" };
+    if (record.kind === "inspection") {
+      const inspection = data.inspections.find((item) => item.id === record.id);
+      return { form: "inspection", values: (inspection?.spec ?? {}) as SpecValues, profile: workflowProfiles.inspection, kind: "inspection" };
+    }
     return null;
   };
   const viewInspection = (inspection: Inspection) => setViewedRecord({
@@ -1921,7 +1950,7 @@ function ProjectOperations({
     setFindingBuildingIds(finding.building_ids?.length ? finding.building_ids : [finding.building_id]);
     setFindingLocationNodeId(finding.location_node_id ?? "");
     setFindingPhotos([]);
-    setFindingSpec(((issue as Record<string, unknown>).spec ?? {}) as SpecValues);
+    setFindingSpec({ ...(((issue as Record<string, unknown>).spec ?? {}) as SpecValues), __stored: "yes" });
     setEditingFindingId(finding.id);
     setViewedRecord(null);
     setShowForm(true);
@@ -1960,7 +1989,7 @@ function ProjectOperations({
     setHseLocationNodeId(event.location_node_id ?? "");
     setHseSignature(signatureFromDetails(event.signed_by, event.signed_at, event.signature_image));
     setHsePhotos([]);
-    setHseSpec((event.spec ?? {}) as SpecValues);
+    setHseSpec({ ...((event.spec ?? {}) as SpecValues), __stored: "yes" });
     setEditingHseId(event.id);
     setViewedRecord(null);
     setShowForm(true);
@@ -1973,7 +2002,7 @@ function ProjectOperations({
   });
   const editRegister = (entry: RegisterEntry) => {
     const details = entry.details ?? {};
-    setRegisterSpec((details.spec ?? {}) as SpecValues);
+    setRegisterSpec({ ...((details.spec ?? {}) as SpecValues), __stored: "yes" });
     setRegisterForm({
       ...emptyControlledDocumentDraft,
       type: entry.register_type,
@@ -2141,7 +2170,10 @@ function ProjectOperations({
   const hseSpecValues: SpecValues = hseSpecForm === "hse"
     ? { ...hseSpec, hse_type: hseSpecTypes[hseForm.issueType] ?? "", hse_category: hseForm.issueCategory, action_owner: hseForm.responsiblePerson }
     : { ...hseSpec, incident_type: hseForm.issueType === "near_miss" ? "Near Miss" : hseSpec.incident_type, incident_category: hseForm.issueCategory, corrective_actions: hseSpec.corrective_actions ?? hseForm.correctiveAction };
-  const hseSpecSkip = hseSpecForm === "hse" ? ["hse_type", "hse_category", "action_owner"] : ["incident_category", ...(hseForm.issueType === "near_miss" ? ["incident_type"] : [])];
+  // Someone without HSE management does not see the restricted incident fields of a stored
+  // record, so they are not asked for either.
+  const hseSensitiveSkip = editingHseId && !permissions.can("hse.manage") ? sensitiveKeys(hseSpecForm) : [];
+  const hseSpecSkip = hseSpecForm === "hse" ? ["hse_type", "hse_category", "action_owner", ...hseSensitiveSkip] : ["incident_category", ...(hseForm.issueType === "near_miss" ? ["incident_type"] : []), ...hseSensitiveSkip];
   const hseSpecProblems = specMissing(hseSpecForm, hseSpecValues, language, hseSpecSkip);
   const issueCategoryChoices = specIssueCategories[issueSpecTypes[findingForm.issueType] ?? ""] ?? [];
   const hseCategoryChoices = hseSpecForm === "hse"
@@ -2469,6 +2501,7 @@ function ProjectOperations({
               description: photoUploadDescription(photo, "", language),
               locationLabel: buildings.find((building) => building.id === photoBuildingId)?.name ?? buildingName,
               locationNodeId: photo.details.locationNodeId || activeInspection.location_node_id,
+              spec: photoSpecFromDetails(photo.details),
               capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
               originalSize: photo.original.size,
               queuedSize: prepared.blob.size,
@@ -2605,7 +2638,7 @@ function ProjectOperations({
       signatureImage: findingForm.signatureImage || null,
       locationNodeId: findingLocationNodeId,
       extraIssueManagement: {
-        spec: cleanSpecValues(findingSpecForm, findingSpecValues),
+        spec: cleanSpecValues(findingSpecForm, findingSpecValues, data.settings?.spec_configuration),
         responsible_role: findingForm.responsibleRole || null,
         ...contractorSignatureDetails(findingForm.contractorSignature),
       },
@@ -2718,6 +2751,7 @@ function ProjectOperations({
             description: photoUploadDescription(photo, findingForm.description, language),
             locationLabel: findingBuildingName,
             locationNodeId: photo.details.locationNodeId || findingLocationNodeId || null,
+            spec: photoSpecFromDetails(photo.details),
             capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
             originalSize: photo.original.size,
             queuedSize: prepared.blob.size,
@@ -2786,6 +2820,35 @@ function ProjectOperations({
     }
   };
 
+  /**
+   * Every follow-up row of an incident or an agreement becomes its own action record, with its
+   * owner and due date, linked to the record (workbook: "create separate linked action records").
+   * The key is stable per row, so saving the record again never creates the action twice.
+   */
+  const createFollowUpActions = async (form: SpecFormKey, values: SpecValues, sourceType: "hse" | "meeting", sourceId: string, buildingIdForActions: string | null, sourceLabel: string) => {
+    if (!permissions.can("actions.create") || sourceId.startsWith("pending") || (typeof navigator !== "undefined" && !navigator.onLine)) return 0;
+    let created = 0;
+    for (const { field, row } of specFollowUps(form, values)) {
+      const reference = String(row.owner_ref ?? "");
+      const action = String(row.action ?? "").trim();
+      const key = `follow:${sourceId}:${field}:${action.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 80)}`;
+      await createRecordFollowUpAction(client, {
+        projectId,
+        sourceType,
+        sourceId,
+        buildingId: buildingIdForActions,
+        ownerUserId: reference.startsWith("user:") ? reference.slice(5) : null,
+        ownerPartyId: reference.startsWith("party:") ? reference.slice(6) : null,
+        title: action,
+        description: `${sourceLabel}${row.owner ? ` · ${text("owner", "eigenaar")}: ${row.owner}` : ""}`,
+        dueDate: String(row.due ?? ""),
+        idempotencyKey: key.length >= 8 ? key : `${key}-follow-up`,
+      });
+      created += 1;
+    }
+    return created;
+  };
+
   const addHse = async () => {
     if (hseForm.description.trim().length < 3) return;
     // The client's screen has no title box: the record takes its log line from the first
@@ -2794,8 +2857,13 @@ function ProjectOperations({
     const hseLatitude = hseForm.latitude.trim() === "" ? null : Number(hseForm.latitude);
     const hseLongitude = hseForm.longitude.trim() === "" ? null : Number(hseForm.longitude);
     const hseDueAt = new Date(hseDueValue);
+    // An incident's corrective actions are rows (action — owner — due); the record's own
+    // corrective-action box keeps them as one readable text for lists and older reports.
+    const hseCorrectiveSummary = hseSpecForm === "hse_incident"
+      ? ((hseSpecValues.corrective_actions as SpecRow[] | undefined) ?? []).filter((row) => typeof row === "object" && row.action?.trim()).map((row) => [row.action, row.owner, row.due].filter(Boolean).join(" — ")).join("\n") || hseForm.correctiveAction
+      : hseForm.correctiveAction;
     const hseExtra = {
-      spec: cleanSpecValues(hseSpecForm, hseSpecValues),
+      spec: cleanSpecValues(hseSpecForm, hseSpecValues, data.settings?.spec_configuration),
       responsible_role: hseForm.responsibleRole || null,
       ...contractorSignatureDetails(hseForm.contractorSignature),
     };
@@ -2831,7 +2899,7 @@ function ProjectOperations({
             responsibleUserId: hseForm.responsibleUserId,
             dueAt: Number.isNaN(hseDueAt.getTime()) ? null : hseDueAt.toISOString(),
             rootCause: hseForm.rootCause,
-            correctiveAction: hseForm.correctiveAction,
+            correctiveAction: hseCorrectiveSummary,
             notes: hseForm.notes,
             latitude: hseLatitude,
             longitude: hseLongitude,
@@ -2865,7 +2933,7 @@ function ProjectOperations({
             responsibleUserId: hseForm.responsibleUserId,
             dueAt: Number.isNaN(hseDueAt.getTime()) ? null : hseDueAt.toISOString(),
             rootCause: hseForm.rootCause,
-            correctiveAction: hseForm.correctiveAction,
+            correctiveAction: hseCorrectiveSummary,
             notes: hseForm.notes,
             latitude: hseLatitude,
             longitude: hseLongitude,
@@ -2913,6 +2981,7 @@ function ProjectOperations({
               description: photoUploadDescription(photo, hseForm.description, language),
               locationLabel: hseBuildingName,
               locationNodeId: photo.details.locationNodeId || hseLocationNodeId || null,
+              spec: photoSpecFromDetails(photo.details),
               capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
               originalSize: photo.original.size,
               queuedSize: prepared.blob.size,
@@ -2922,6 +2991,7 @@ function ProjectOperations({
           }
           if (navigator.onLine) await syncQueuedEvidenceNow();
         }
+        if (eventId && hseSpecForm === "hse_incident") await createFollowUpActions(hseSpecForm, hseSpecValues, "hse", eventId, primaryHseBuildingId || null, hseTitle);
       },
       // Only a save that really waits on the device says so; online the server has it already.
       typeof navigator !== "undefined" && !navigator.onLine
@@ -3053,7 +3123,7 @@ function ProjectOperations({
           dueAt: registerForm.dueDate || null,
           details: detailsForEdit(editingRegister?.details, {
             ...baseDetails,
-            ...(registerSpecForm ? { spec: cleanSpecValues(registerSpecForm, registerSpecValues) } : {}),
+            ...(registerSpecForm ? { spec: cleanSpecValues(registerSpecForm, registerSpecValues, data.settings?.spec_configuration) } : {}),
             ...(controlledRegister && editingRegister ? { issue_date: String(editingRegister.details?.issue_date || documentIssueDate) } : {}),
             attachment_files: uploadedFiles.length ? uploadedFiles : editingRegister?.details?.attachment_files ?? [],
             drawing_file_id: selectedDrawing?.id ?? editingRegister?.details?.drawing_file_id ?? null,
@@ -3099,6 +3169,10 @@ function ProjectOperations({
           // A queued item has no number yet; the database assigns it when the item is sent.
           entry = savedEntry.record ?? { id: savedEntry.id, entry_number: "" };
         }
+        // The agreement's actions each become an action record of their own.
+        if (registerForm.type === "agreement" && entry.entry_number) {
+          await createFollowUpActions("agreement", registerSpecValues, "meeting", entry.id, registerRecordBuildingId || null, `${entry.entry_number} · ${registerTitle}`);
+        }
         // Site photos belong to a register item as much as documents do. The photos the
         // form asked for by name are filed the same way and in the same folder, but keep
         // the name of the box they were taken in, so the report can tell them apart.
@@ -3130,6 +3204,7 @@ function ProjectOperations({
               description: photoUploadDescription(photo, "", language),
               locationLabel: registerBuildingName,
               locationNodeId: photo.details.locationNodeId || registerLocationNodeId || null,
+              spec: photoSpecFromDetails(photo.details),
               capturedAt: new Date(photo.file.lastModified || Date.now()).toISOString(),
               originalSize: photo.original.size,
               queuedSize: prepared.blob.size,
@@ -3394,9 +3469,11 @@ function ProjectOperations({
             // The specification's own fields of this record, and its sign-off history.
             const signoff = viewedRecordSignoff(viewedRecord);
             if (!signoff) return null;
-            const facts = specFacts(signoff.form, signoff.values, language);
+            const facts = specFacts(signoff.form, signoff.values, language, { includeSensitive: permissions.can("hse.manage"), translate: (value) => specLabel(value, language) });
             return (
               <>
+                <SpecLinkChips links={specLinks(signoff.form, signoff.values, language)} text={text} />
+                {signoff.kind === "inspection" && permissions.can("inspections.manage") ? <InspectionSpecEditor key={viewedRecord.id} client={client} inspectionId={viewedRecord.id} values={signoff.values} busy={busy} run={run} /> : null}
                 {facts.length ? (
                   <dl className="record-spec-facts">
                     {facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
@@ -3581,6 +3658,7 @@ function ProjectOperations({
               started checklist can actually be filled in and completed. */}
           <RecordList empty={text("No inspections match these filters.", "Geen inspecties gevonden met deze filters.")} rows={filteredInspections.map((inspection) => ({
             id: inspection.id,
+            facets: specFacets(recordSpec(inspection as unknown as Record<string, unknown>)),
             icon: ClipboardCheck,
             title: inspection.title,
             meta: `${inspection.inspection_number} · ${recordContextLabel(inspection.building_id, inspection.location_node_id, inspection.building_ids)} · ${formatDate(inspection.completed_at ?? inspection.started_at, locale)}${inspection.signed_by ? ` · ${text("signed by", "ondertekend door")} ${inspection.signed_by}` : ""}`,
@@ -3651,7 +3729,7 @@ function ProjectOperations({
                     <h3><span className="record-section-number">2</span> {text("Category", "Categorie")} <em className="record-section-required">*</em></h3>
                     <label className="form-field"><select aria-label={text("Category", "Categorie")} value={findingForm.issueCategory} onChange={(event) => setFindingForm({ ...findingForm, issueCategory: event.target.value })}>
                       <option value="">{text("Choose a category", "Kies een categorie")}</option>
-                      {issueCategoryChoices.map((option) => <option value={option.value} key={option.value}>{option.value}</option>)}
+                      {issueCategoryChoices.map((option) => <option value={option.value} key={option.value}>{specLabel(option.value, language)}</option>)}
                       {findingForm.issueCategory && !issueCategoryChoices.some((option) => option.value === findingForm.issueCategory) ? <option value={findingForm.issueCategory}>{issueCategoryOption ? text(issueCategoryOption.en, issueCategoryOption.nl) : findingForm.issueCategory}</option> : null}
                     </select></label>
                     {issueCategoryChoices.find((option) => option.value === findingForm.issueCategory)?.description ? <p className="form-helper">{issueCategoryChoices.find((option) => option.value === findingForm.issueCategory)?.description}</p> : null}
@@ -4124,7 +4202,7 @@ function ProjectOperations({
                     ) : null}
                     <label className="form-field"><select aria-label={text("Category", "Categorie")} value={hseForm.issueCategory} onChange={(event) => setHseForm({ ...hseForm, issueCategory: event.target.value })}>
                       <option value="">{text("Choose a category", "Kies een categorie")}</option>
-                      {hseCategoryChoices.map((option) => <option value={option.value} key={option.value}>{option.value}</option>)}
+                      {hseCategoryChoices.map((option) => <option value={option.value} key={option.value}>{specLabel(option.value, language)}</option>)}
                       {hseForm.issueCategory && !hseCategoryChoices.some((option) => option.value === hseForm.issueCategory) ? <option value={hseForm.issueCategory}>{hseCategoryOption ? text(hseCategoryOption.en, hseCategoryOption.nl) : hseForm.issueCategory}</option> : null}
                     </select></label>
                     {hseCategoryChoices.find((option) => option.value === hseForm.issueCategory)?.description ? <p className="form-helper">{hseCategoryChoices.find((option) => option.value === hseForm.issueCategory)?.description}</p> : null}
@@ -4245,10 +4323,15 @@ function ProjectOperations({
 
                   <section className="record-section record-order-10" aria-label={text("Corrective action required", "Vereiste correctieve actie")}>
                     <h3><span className="record-section-number">10</span> {text("Corrective action required", "Vereiste correctieve actie")}</h3>
+                    {hseSpecForm === "hse_incident" ? (
+                      // An incident has one row per corrective action, each with its owner and due date.
+                      <SpecFields form="hse_incident" only={["corrective_actions"]} values={hseSpecValues} onChange={setHseSpec} text={text} language={language} />
+                    ) : (
                     <label className="form-field">
                       <textarea rows={3} maxLength={1000} value={hseForm.correctiveAction} onChange={(event) => setHseForm({ ...hseForm, correctiveAction: event.target.value })} aria-label={text("What corrective action is required?", "Welke correctieve actie is nodig?")} placeholder={text("What corrective action is required?", "Welke correctieve actie is nodig?")} />
                       <DictateButton onText={(transcript) => setHseForm((current) => ({ ...current, correctiveAction: appendDictation(current.correctiveAction, transcript) }))} />
                     </label>
+                    )}
                   </section>
 
                   <section className="record-section record-order-11" aria-label={text("Notes", "Notities")}>
@@ -4261,7 +4344,7 @@ function ProjectOperations({
                 </div>
               </div>
 
-              <SpecFields form={hseSpecForm} skip={hseSpecSkip} values={hseSpecValues} onChange={setHseSpec} text={text} language={language} heading={hseSpecForm === "hse" ? text("Risk and follow-up", "Risico en opvolging") : text("Incident registration", "Incidentregistratie")} />
+              <SpecFields form={hseSpecForm} skip={[...hseSpecSkip, "corrective_actions"]} values={hseSpecValues} onChange={setHseSpec} text={text} language={language} heading={hseSpecForm === "hse" ? text("Risk and follow-up", "Risico en opvolging") : text("Incident registration", "Incidentregistratie")} />
               <label className="check-field"><input type="checkbox" checked={hseForm.confidential} onChange={(event) => setHseForm({ ...hseForm, confidential: event.target.checked })} /> {text("Restrict this sensitive incident to authorized HSE roles", "Beperk dit gevoelige incident tot bevoegde HSE-rollen")}</label>
               <RecordSignatures>
               <RecordSignatureField
@@ -4307,6 +4390,7 @@ function ProjectOperations({
           <SavedRecordsFold formOpen={showForm && !focusRecordId} count={data.hseEvents.length} storageKey={`hse:${projectId}`}>
           <RecordList empty={text("No formal HSE records yet.", "Nog geen formele HSE-registraties.")} rows={data.hseEvents.map((event) => ({
             id: event.id,
+            facets: specFacets(recordSpec(event as unknown as Record<string, unknown>)),
             icon: event.event_type === "incident" ? formIcons.hse_incident : formIcons.hse,
             title: event.confidential ? `${event.title} · ${text("confidential", "vertrouwelijk")}` : event.title,
             meta: [
@@ -4725,7 +4809,7 @@ function ProjectOperations({
                 <>
                   {/* Capture, learn and improve: the client's own form, as one project
                       phase and four short questions instead of a free-text register line. */}
-                  <label className="form-field"><span>{text("Project phase", "Projectfase")}</span><select value={lessonForm.projectPhase} onChange={(event) => setLessonForm({ ...lessonForm, projectPhase: event.target.value })}><option value="">{text("Choose a phase", "Kies een fase")}</option>{specLessonPhases.map((phase) => <option value={phase} key={phase}>{phase}</option>)}{lessonForm.projectPhase && !specLessonPhases.includes(lessonForm.projectPhase) ? <option value={lessonForm.projectPhase}>{(() => { const legacy = lessonProjectPhases.find((phase) => phase.id === lessonForm.projectPhase); return legacy ? text(legacy.en, legacy.nl) : lessonForm.projectPhase; })()}</option> : null}</select></label>
+                  <label className="form-field"><span>{text("Project phase", "Projectfase")}</span><select value={lessonForm.projectPhase} onChange={(event) => setLessonForm({ ...lessonForm, projectPhase: event.target.value })}><option value="">{text("Choose a phase", "Kies een fase")}</option>{specLessonPhases.map((phase) => <option value={phase} key={phase}>{specLabel(phase, language)}</option>)}{lessonForm.projectPhase && !specLessonPhases.includes(lessonForm.projectPhase) ? <option value={lessonForm.projectPhase}>{(() => { const legacy = lessonProjectPhases.find((phase) => phase.id === lessonForm.projectPhase); return legacy ? text(legacy.en, legacy.nl) : lessonForm.projectPhase; })()}</option> : null}</select></label>
                   {/* "Nummeren & onder elkaar": the four questions are numbered and stacked. */}
                   <div className="numbered-question-list">
                     <label className="form-field"><span><b className="numbered-question-number" aria-hidden="true">1</b>{text("Issue", "Probleem")}</span><textarea rows={3} value={lessonForm.issue} onChange={(event) => setLessonForm({ ...lessonForm, issue: event.target.value })} /><DictateButton onText={(transcript) => setLessonForm((current) => ({ ...current, issue: appendDictation(current.issue, transcript) }))} /></label>
@@ -5098,7 +5182,7 @@ function ProjectOperations({
             </div>
           ) : null}
           <SavedRecordsFold formOpen={showForm && !focusRecordId} count={data.registerEntries.filter((entry) => entry.register_type !== "boq" && (externalSubmissionIntent || !externalSubmissionRegisterTypes.includes(entry.register_type))).length} storageKey={`registers:${projectId}`}>
-          <ControlledDocumentList entries={data.registerEntries.filter((entry) => isControlledDocumentType(entry.register_type) && (externalSubmissionIntent || !externalSubmissionRegisterTypes.includes(entry.register_type)))} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={currentUserName} focusRecordId={focusRecordId} client={client} run={run} />
+          <ControlledDocumentList projectId={projectId} entries={data.registerEntries.filter((entry) => isControlledDocumentType(entry.register_type) && (externalSubmissionIntent || !externalSubmissionRegisterTypes.includes(entry.register_type)))} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={currentUserName} focusRecordId={focusRecordId} client={client} run={run} />
           <RecordList empty={text("No additional project registers yet.", "Nog geen aanvullende projectregisters.")} rows={data.registerEntries.filter((entry) => !isControlledDocumentType(entry.register_type) && entry.register_type !== "boq").map((entry) => {
             // The verdict and the quantity are the point of a delivery line, so the list
             // shows them instead of hiding them in the record.
@@ -5115,6 +5199,7 @@ function ProjectOperations({
               : entry.status;
             return {
               id: entry.id,
+              facets: specFacets(recordSpec(entry as unknown as Record<string, unknown>)),
               icon: registerIcon(entry.register_type),
               title: entry.title,
               meta: [
@@ -5147,6 +5232,7 @@ function ProjectOperations({
             };
           })} focusRecordId={focusRecordId} />
           </SavedRecordsFold>
+          {lessonsLearnedRegister ? <SharedLessons client={client} organizationId={organizationId} projectId={projectId} /> : null}
         </section>
       ) : null}
 
@@ -5360,8 +5446,10 @@ function StillNeeded({ items }: { items: string[] }) {
   return missing.length ? <small className="confirm-needs">{text("Still needed", "Nog nodig")}: {missing.join(" · ")}</small> : null;
 }
 
-function ControlledDocumentList({ entries, buildings, locationNodes, busy, currentUserName, focusRecordId = "", client, run }: {
+function ControlledDocumentList({ entries, buildings, locationNodes, busy, currentUserName, focusRecordId = "", client, run, projectId }: {
   entries: OperationSnapshot["registerEntries"];
+  /** For the sign-off history printed with each document. */
+  projectId: string;
   buildings: BuildingOption[];
   locationNodes: OperationSnapshot["locationNodes"];
   busy: boolean;
@@ -5371,7 +5459,7 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
   client: SupabaseClient;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
 }) {
-  const { locale, text } = useLanguage();
+  const { language, locale, text } = useLanguage();
   const [active, setActive] = useState<string | null>(null);
   const [historyActive, setHistoryActive] = useState<string | null>(null);
   const [response, setResponse] = useState({
@@ -5438,7 +5526,7 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
                 file stays the attachment; this is the message that announces it. */}
             <button className="whatsapp-button" type="button" onClick={() => openWhatsApp(contractorMessage(entry))}><MessageCircle size={16} /> {text("Send to contractor", "Naar aannemer sturen")}</button>
             <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => openSms(contractorMessage(entry))}><Smartphone size={15} /> {text("Send as SMS", "Als SMS sturen")}</button>
-            <ReportDownloadButtons disabled={busy} onDownloadPdf={() => import("@/lib/reports/controlled-document-pdf").then(({ downloadControlledDocumentPdf }) => downloadControlledDocumentPdf(entry))} onDownloadWord={() => import("@/lib/reports/controlled-document-docx").then(({ downloadControlledDocumentDocx }) => downloadControlledDocumentDocx(entry))} />{!["closed", "cancelled"].includes(entry.status) ? <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy} onClick={() => { setActive(active === entry.id ? null : entry.id); const recipientAnswers = entry.register_type === "technical_instruction" || entry.register_type === "change_order"; setResponse({ decision: recipientAnswers ? "acknowledged" : "approved", comments: "", respondentName: recipientAnswers ? "" : currentUserName, respondentPosition: "", respondentCompany: recipientAnswers ? String(details.requested_to ?? "") : "CODECO N.V." }); setResponseSignature(null); }}><FileCheck2 size={15} /> {text("Record formal response", "Leg formeel antwoord vast")}</button> : null}</div>
+            <ReportDownloadButtons disabled={busy} onDownloadPdf={async () => { const history = await recordHistory(client, projectId, entry.id, language); const { downloadControlledDocumentPdf } = await import("@/lib/reports/controlled-document-pdf"); await downloadControlledDocumentPdf(entry, history); }} onDownloadWord={async () => { const history = await recordHistory(client, projectId, entry.id, language); const { downloadControlledDocumentDocx } = await import("@/lib/reports/controlled-document-docx"); await downloadControlledDocumentDocx(entry, history); }} />{!["closed", "cancelled"].includes(entry.status) ? <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy} onClick={() => { setActive(active === entry.id ? null : entry.id); const recipientAnswers = entry.register_type === "technical_instruction" || entry.register_type === "change_order"; setResponse({ decision: recipientAnswers ? "acknowledged" : "approved", comments: "", respondentName: recipientAnswers ? "" : currentUserName, respondentPosition: "", respondentCompany: recipientAnswers ? String(details.requested_to ?? "") : "CODECO N.V." }); setResponseSignature(null); }}><FileCheck2 size={15} /> {text("Record formal response", "Leg formeel antwoord vast")}</button> : null}</div>
             {historyActive === entry.id ? <section className="controlled-document-history">
               <div><span>{text("Created / issued", "Aangemaakt / uitgegeven")}</span><strong>{formatDate(entry.occurred_at, locale)}</strong><small>{String(details.issuer_name ?? details.issued_by ?? currentUserName)} · {String(details.issuer_company ?? "CODECO N.V.")}</small></div>
               <div><span>{text("Current status", "Huidige status")}</span><strong>{statusText(entry.status, text)}</strong><small>{responseData.decision ? `${text("Decision", "Besluit")}: ${codeText(String(responseData.decision), text)}` : text("No formal decision recorded yet", "Nog geen formeel besluit vastgelegd")}</small></div>
@@ -5687,6 +5775,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   withdrawRecord: (finding: Finding) => void;
 }) {
   const { language, locale, text } = useLanguage();
+  const [findingFilter, setFindingFilter] = useState<SpecFacetFilter>({});
   const permissions = useProjectPermissions();
   const statusLabels = language === "en" ? findingStatusLabelsEnglish : findingStatusLabels;
   const fileOriginResolver = useMemo(() => createFileOriginResolver(data), [data]);
@@ -5769,10 +5858,14 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
     shared.url,
     `Link geldig tot ${formatDate(shared.expiresAt, locale)}.`,
   ].join("\n");
+  const findingFacets = findings.map((finding) => specFacets(recordSpec(finding as unknown as Record<string, unknown>)));
+  const shownFindings = findings.filter((finding, index) => matchesSpecFacets(findingFacets[index], findingFilter) || finding.id === focusRecordId);
   return (
     <div className="record-stack">
+      {findings.length > 1 ? <SpecFacetFilterBar id="finding-facets" facets={findingFacets} value={findingFilter} onChange={setFindingFilter} /> : null}
       {findings.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No findings yet", "Nog geen bevindingen")}</strong></div> : null}
-      {findings.map((finding) => {
+      {findings.length > 0 && !shownFindings.length && facetFilterActive(findingFilter) ? <div className="empty-list-state"><span>{text("No records match these filters.", "Geen registraties met deze filters.")}</span></div> : null}
+      {shownFindings.map((finding) => {
         // The database rule, so the screen offers only the step this role can actually take: the
         // assignee or a finding manager moves a finding on; closing and reopening may also be done
         // by whoever holds the verify permission. Anything else would only end in a refusal after
@@ -5815,7 +5908,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
                 {creatingShareFor === finding.id ? <Loader2 className="spin" size={17} /> : <MessageCircle size={17} />}
                 <span><strong>{text("Send to external party", "Stuur naar externe partij")}</strong><small>{text("WhatsApp link · no account needed", "WhatsApp-link · geen account nodig")}</small></span>
               </button> : null}
-              <ReportDownloadButtons disabled={busy} onDownloadPdf={() => import("@/lib/reports/ncr-pdf").then(({ downloadNcrPdf }) => downloadNcrPdf(finding, latestProgress, ncrContext(finding, recordBuildingName)))} onDownloadWord={() => import("@/lib/reports/ncr-docx").then(({ downloadNcrDocx }) => downloadNcrDocx(finding, latestProgress, ncrContext(finding, recordBuildingName)))} />
+              <ReportDownloadButtons disabled={busy} onDownloadPdf={async () => { const signoffHistory = await recordHistory(client, projectId, finding.id, language); const { downloadNcrPdf } = await import("@/lib/reports/ncr-pdf"); await downloadNcrPdf(finding, latestProgress, { ...ncrContext(finding, recordBuildingName), signoffHistory }); }} onDownloadWord={async () => { const signoffHistory = await recordHistory(client, projectId, finding.id, language); const { downloadNcrDocx } = await import("@/lib/reports/ncr-docx"); await downloadNcrDocx(finding, latestProgress, { ...ncrContext(finding, recordBuildingName), signoffHistory }); }} />
               {!["closed", "cancelled", "rejected"].includes(finding.status) && permissions.can("findings.manage") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setProgressActive(progressActive === finding.id ? null : finding.id); setProgressPercent(String(latestProgress?.progress_percent ?? 0)); setProgressDisposition(latestProgress?.disposition ?? issue.disposition ?? "to_be_corrected"); }}>{text("Record inspection progress", "Inspectievoortgang vastleggen")}</button> : null}
               {nextStatus ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setActive(active === finding.id ? null : finding.id); setCorrection(""); setVerificationSignature(null); }}>{nextStatus === "closed" ? finding.finding_type === "ncr" ? text("Quality control · resolve", "Kwaliteitscontrole · afsluiten") : text("Verify", "Verifiëren") : nextStatus === "ready_for_verification" ? text("Mark repair ready", "Herstel gereedmelden") : finding.finding_type === "ncr" ? text("Record contractor answer", "Antwoord aannemer vastleggen") : text("Update status", "Status bijwerken")}</button> : null}
               {finding.status === "ready_for_verification" && permissions.can("findings.verify") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setReturning(returning === finding.id ? null : finding.id); setReturnReason(""); }}>{text("Return for correction", "Terug voor correctie")}</button> : null}
@@ -6054,6 +6147,9 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
   const [historyType, setHistoryType] = useState<"all" | "daily" | "weekly" | "monthly">("all");
   const [openHistoryId, setOpenHistoryId] = useState("");
   const [periodPreset, setPeriodPreset] = useState<"day" | "week" | "month" | "custom">("month");
+  const [periodFilter, setPeriodFilter] = useState<SpecFacetFilter>({});
+  const periodFacets = useMemo(() => [...data.findings, ...data.hseEvents, ...data.registerEntries, ...data.inspections]
+    .map((record) => specFacets(recordSpec(record as unknown as Record<string, unknown>))), [data.findings, data.hseEvents, data.inspections, data.registerEntries]);
   const [periodLabel, setPeriodLabel] = useState(() => text("Monthly supervision report", "Maandelijks supervisierapport"));
   const selectedReport = reportChoices.find((choice) => choice.id === reportChoice) ?? reportChoices[0];
   const clientReportOptions: Array<{ id: string; label: string; sections: PeriodReportSection[] }> = [
@@ -6239,12 +6335,14 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
           </button>
           <label className="form-field"><span>{text("From", "Van")}</span><input type="date" value={period.start} max={period.end} onChange={(event) => { setPeriod({ ...period, start: event.target.value }); setPeriodLabel(text("Period supervision report", "Supervisierapport over periode")); setPeriodPreset("custom"); }} /></label>
           <label className="form-field"><span>{text("Through", "Tot en met")}</span><input type="date" value={period.end} min={period.start} max={today} onChange={(event) => { setPeriod({ ...period, end: event.target.value }); setPeriodLabel(text("Period supervision report", "Supervisierapport over periode")); setPeriodPreset("custom"); }} /></label>
+          {/* Reporting filters of the specification: discipline, type / category, status and priority. */}
+          <SpecFacetFilterBar id="period-report-facets" facets={periodFacets} value={periodFilter} onChange={setPeriodFilter} />
           <ReportDownloadButtons
             variant="prominent"
             className="report-create-button"
             disabled={busy || !activeSections.length || !period.start || !period.end || period.end < period.start}
-            onDownloadPdf={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, period.start, period.end); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded.`, `${periodLabel} voor ${projectName} gedownload.`))}
-            onDownloadWord={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, period.start, period.end); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded as Word.`, `${periodLabel} voor ${projectName} als Word gedownload.`))}
+            onDownloadPdf={() => run(async () => { const snapshot = filterPeriodSnapshot(await buildPeriodReportSnapshot(client, projectId, period.start, period.end), periodFilter); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded.`, `${periodLabel} voor ${projectName} gedownload.`))}
+            onDownloadWord={() => run(async () => { const snapshot = filterPeriodSnapshot(await buildPeriodReportSnapshot(client, projectId, period.start, period.end), periodFilter); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded as Word.`, `${periodLabel} voor ${projectName} als Word gedownload.`))}
           />
         </section>
       ) : null}
@@ -6301,7 +6399,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
   // A role that may not read a module sees a dash, not a zero that reads like a fact.
   const readsFindings = permissions.can("findings.read");
   const readsInspections = permissions.can("inspections.read");
-  const [section, setSection] = useState<"overview" | "settings" | "structure" | "templates" | "backup">("overview");
+  const [section, setSection] = useState<"overview" | "settings" | "specification" | "structure" | "templates" | "backup">("overview");
   const [structureBuildingId, setStructureBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [template, setTemplate] = useState({ module: "inspection", code: "", name: "", prompts: "" });
   const [settings, setSettings] = useState(() => ({
@@ -6353,7 +6451,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
       <header className="secondary-header ui-page-header"><div><h1>{section === "overview" ? text("Management overview", "Beheeroverzicht") : text("Administration and control", "Beheer en controle")}</h1><span className="ui-page-header__code">{projectName}</span></div><div className="management-header-actions">{canManageOrganization ? <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={openUserAdmin}><Users size={15} /> {text("Manage team", "Team beheren")}</button> : null}</div></header>
       <SectionNav
         label={text("Management sections", "Beheeronderdelen")}
-        items={([["overview", text("Overview", "Overzicht")], ["settings", text("Team & rules", "Team & regels")], ["structure", text("Project setup", "Projectinrichting")], ["templates", text("Quality standards", "Kwaliteitsstandaarden")], ["backup", text("Backup & continuity", "Back-up & continuïteit")]] as const).map(([id, label]) => ({ id, label, selected: section === id, onSelect: () => setSection(id) }))}
+        items={([["overview", text("Overview", "Overzicht")], ["settings", text("Team & rules", "Team & regels")], ...(permissions.can("project.configure") ? [["specification", text("Workflows & lists", "Workflows & lijsten")]] as const : []), ["structure", text("Project setup", "Projectinrichting")], ["templates", text("Quality standards", "Kwaliteitsstandaarden")], ["backup", text("Backup & continuity", "Back-up & continuïteit")]] as const).map(([id, label]) => ({ id, label, selected: section === id, onSelect: () => setSection(id) }))}
       />
       {section === "overview" ? <section className="management-overview">
         <div className="management-kpis">
@@ -6403,9 +6501,12 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
               </>
             ) : <div className="operation-alert warning"><Users size={18} /><div><strong>{text("No assignable company employees", "Geen toewijsbare eigen medewerkers")}</strong><span>{text("Add an active employee first.", "Voeg eerst een actieve medewerker toe.")}</span></div></div>}
           </section>
-          <ControlledDocumentList entries={externalSubmissions} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={text("Company / owner reviewer", "Reviewer bedrijf / eigenaar")} client={client} run={run} />
+          <ControlledDocumentList projectId={projectId} entries={externalSubmissions} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={text("Company / owner reviewer", "Reviewer bedrijf / eigenaar")} client={client} run={run} />
         <div className="management-context"><div><span>{text("Current report", "Huidig rapport")}</span><strong>{statusText(reportStatus, text)}</strong></div><div><span>{text("Rooms and areas", "Ruimtes en zones")}</span><strong>{data.locationNodes.length}</strong></div><div><span>{text("Published checklists", "Gepubliceerde checklists")}</span><strong>{data.templates.filter((item) => item.status === "published").length}</strong></div><div><span>{text("Controlled files", "Beheerde bestanden")}</span><strong>{data.files.length}</strong></div></div>
       </section> : null}
+      {section === "specification" && permissions.can("project.configure") ? (
+        <SpecConfigurationPanel client={client} projectId={projectId} configuration={data.settings?.spec_configuration} busy={busy} run={run} />
+      ) : null}
       {section === "settings" ? (
         <section className="operation-panel">
           <div className="admin-card-grid">

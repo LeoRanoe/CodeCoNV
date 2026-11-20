@@ -10,6 +10,8 @@
  * title, because half the time the code is exactly what somebody does not have at hand.
  */
 
+import { matchesSpecFacets, recordSpec, specFacets } from "../forms/spec-facets.ts";
+
 /** Bare characters of a code, so "q-2026-0004", "Q20260004" and "q 2026 0004" are one. */
 export function normalizeRecordCode(value) {
   return String(value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -51,6 +53,8 @@ function entry(kind, id, code, title, subtitle, metadata = {}) {
     author: String(metadata.author ?? ""),
     folderId: metadata.folderId ?? null,
     delayHours: Number(metadata.delayHours ?? 0),
+    // Discipline, type, status and priority of the specification fields (reporting filters).
+    facets: metadata.spec ? specFacets(metadata.spec) : null,
   };
 }
 
@@ -74,17 +78,17 @@ export function buildRecordDirectory(snapshot) {
       finding.finding_number,
       finding.title,
       finding.status,
-      { buildingIds: recordBuildings(finding), date: finding.created_at, status: finding.status, author: finding.issue_management?.issued_by },
+      { buildingIds: recordBuildings(finding), date: finding.created_at, status: finding.status, author: finding.issue_management?.issued_by, spec: recordSpec(finding) },
     ));
   }
   for (const inspection of data.inspections ?? []) {
-    found.push(entry("inspection", inspection.id, inspection.inspection_number, inspection.title, inspection.status, { buildingIds: recordBuildings(inspection), date: inspection.completed_at ?? inspection.started_at ?? inspection.planned_at, status: inspection.status, author: inspection.signed_by }));
+    found.push(entry("inspection", inspection.id, inspection.inspection_number, inspection.title, inspection.status, { buildingIds: recordBuildings(inspection), date: inspection.completed_at ?? inspection.started_at ?? inspection.planned_at, status: inspection.status, author: inspection.signed_by, spec: recordSpec(inspection) }));
   }
   for (const event of data.hseEvents ?? []) {
-    found.push(entry("hse", event.id, event.event_number, event.title, event.status, { buildingIds: recordBuildings(event), date: event.occurred_at ?? event.created_at, status: event.status, author: event.signed_by }));
+    found.push(entry("hse", event.id, event.event_number, event.title, event.status, { buildingIds: recordBuildings(event), date: event.occurred_at ?? event.created_at, status: event.status, author: event.signed_by, spec: recordSpec(event) }));
   }
   for (const register of data.registerEntries ?? []) {
-    found.push(entry("register", register.id, register.entry_number, register.title, register.register_type, { buildingIds: recordBuildings(register), date: register.occurred_at, status: register.status, author: register.signed_by ?? register.details?.issued_by }));
+    found.push(entry("register", register.id, register.entry_number, register.title, register.register_type, { buildingIds: recordBuildings(register), date: register.occurred_at, status: register.status, author: register.signed_by ?? register.details?.issued_by, spec: recordSpec(register) }));
   }
   for (const report of data.dayReports ?? []) {
     found.push(entry("report", report.id, report.report_number, report.report_date, report.status, { date: report.report_date, status: report.status }));
@@ -271,6 +275,8 @@ export function filterRecordDirectory(entries, query, filters = {}, context = {}
     && (!combined.dateTo || projectRecordDay(item.date) <= combined.dateTo)
     && (!combined.author || item.author.toLocaleLowerCase("nl").includes(combined.author.toLocaleLowerCase("nl")))
     && (combined.minDelayHours == null || item.delayHours > combined.minDelayHours)
+    && (!(filters.discipline || filters.specType || filters.specStatus || filters.priority)
+      || (item.facets && matchesSpecFacets(item.facets, { discipline: filters.discipline, type: filters.specType, status: filters.specStatus, priority: filters.priority })))
   ).sort((left, right) => left.rank - right.rank || String(right.item.date).localeCompare(String(left.item.date)) || left.item.code.localeCompare(right.item.code))
     .slice(0, Math.max(0, limit)).map(({ item }) => item);
 }
