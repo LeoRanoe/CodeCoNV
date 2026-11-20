@@ -242,3 +242,21 @@ test("sign-off history prints one line per event; the project's role names repla
   assert.equal(profile.stages.find((stage) => stage.number === 3).role.en, "Project director");
   assert.equal(signoffState(profile, [{ ...events[0], new_status: "Partially Approved (1/2)", action: "approve", stage_number: 3 }]).closed, false);
 });
+
+test("every short list and tick-box choice has its own picture (client, 20-11-2026)", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const pictures = await readFile(new URL("../lib/forms/choice-icons.tsx", import.meta.url), "utf8");
+  const scaleKeys = new Set(["priority", "severity", "risk_likelihood", "risk_severity", "risk_rating", "incident_severity", "property_damage", "injury_classification"]);
+  const missing = [];
+  for (const [form, fields] of Object.entries(specForms)) {
+    for (const field of fields) {
+      const short = ["select", "rating", "dependent"].includes(field.kind);
+      if (!short && !["multi", "completion"].includes(field.kind)) continue;
+      const options = fieldOptions(field, {}, undefined);
+      if (short && options.length > 6) continue;
+      if (scaleKeys.has(field.key)) continue;
+      for (const option of options) if (!pictures.includes(`"${option.value}":`)) missing.push(`${form}.${field.key}: ${option.value}`);
+    }
+  }
+  assert.deepEqual(missing, []);
+});

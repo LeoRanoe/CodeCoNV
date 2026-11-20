@@ -5,6 +5,8 @@ import {
   HeartPulse, Hourglass, Layers, Leaf, Lock, LogOut, MessageSquareText, Microscope, Moon, Mountain, Network, PackageOpen,
   PencilRuler, PersonStanding, RectangleHorizontal, RectangleVertical, Replace, ScanSearch, Send, Share2, ShieldX, Square,
   Sun, Sunset, Target, Trash2, TreePalm, TrendingUp, TriangleAlert, Truck, UserCheck, UserMinus, Users, UserX, Wrench, X,
+  Award, Bandage, Building, Coins, Construction, Crop, Fence, Flame, Handshake, Megaphone, OctagonX, Package, PackageX,
+  Split, Thermometer, TreeDeciduous, Umbrella,
   type LucideIcon,
 } from "lucide-react";
 
@@ -41,6 +43,14 @@ const pictures: Record<string, LucideIcon> = {
   "Completed - Awaiting Inspection": Hourglass, "Inspected - Accepted": CircleCheck, "Inspected - Rejected": CircleX, "Not Applicable": CircleMinus,
   "Present": UserCheck, "Absent": UserX, "Late": ClockAlert, "On Leave": TreePalm, "Off Shift": UserMinus, "Demobilized": LogOut,
   "Verified": BadgeCheck, "Expired": CalendarX, "Not Compliant": ShieldX,
+  // Impact, consequence and containment (tick-box lists)
+  "Cost": Coins, "Schedule": CalendarClock, "Quality": Award, "Scope": Crop, "Resources": Package, "Client": Handshake,
+  "Injury": Bandage, "Illness": Thermometer, "Property Damage": Building, "Fire": Flame, "Environmental Harm": TreeDeciduous, "Public Impact": Megaphone,
+  "Stop affected work / suspend activity": OctagonX, "Isolate or quarantine nonconforming materials": Lock, "Segregate affected work or products": Split,
+  "Prevent use or installation of affected materials": PackageX, "Remove defective work from service / restrict access": Fence,
+  "Provide temporary protection or safety measures": Umbrella, "Implement temporary repair / make-safe measure": Construction,
+  "Increase inspection, testing or monitoring": ScanSearch, "Notify responsible supervisor / contractor / consultant": BellRing,
+  "Not applicable (justification required)": CircleMinus,
   "None": CircleMinus, "No Injury": CircleCheck, "Under Assessment": ScanSearch,
   "Other": Ellipsis,
 };
