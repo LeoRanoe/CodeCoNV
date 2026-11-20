@@ -11,6 +11,8 @@ import {
   signatureBlock,
 } from "@/lib/reports/docx-shared";
 import type { Finding, FindingProgressUpdate } from "@/lib/supabase/operations";
+import type { SignoffHistoryEntry } from "@/lib/forms/signoff";
+import { signoffHistoryDocx } from "@/lib/reports/signoff-history-docx";
 
 export type NcrContext = {
   projectName: string;
@@ -23,6 +25,8 @@ export type NcrContext = {
   responsiblePartyName: string;
   /** Who actually verified the close-out. Never the person downloading the file. */
   verifierName?: string;
+  /** The record's chronological sign-off history, printed with it. */
+  signoffHistory?: SignoffHistoryEntry[];
 };
 
 function value(result: string | null | undefined, fallback = "—") {
@@ -92,6 +96,7 @@ export function buildNcrDocxDocument(finding: Finding, progress: FindingProgress
             ["Received / contractor", issue.correction_signed_position],
             ["QC verification", resolved ? issue.verification_signed_position : ""],
           ].flatMap(([label, position]) => position ? [labelValue(`${label} · position`, String(position))] : []),
+          ...signoffHistoryDocx(context.signoffHistory ?? [], "Sign-off history"),
           new Paragraph({
             children: [new TextRun({ text: "Linked evidence photos remain in the central project record; images are not duplicated into this generated document unless selected as report attachments. Closing remains a separate authorized human verification.", italics: true, color: "666666", size: 14 })],
             spacing: { before: 200 },

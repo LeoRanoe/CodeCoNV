@@ -12,6 +12,8 @@ import {
 } from "@/lib/reports/docx-shared";
 import type { ControlledDocumentType } from "@/lib/forms/controlled-project-documents";
 import { controlledDocumentSignatures, recipientCaptureNote } from "@/lib/reports/controlled-document-signatures.mjs";
+import type { SignoffHistoryEntry } from "@/lib/forms/signoff";
+import { signoffHistoryDocx } from "@/lib/reports/signoff-history-docx";
 import type { RegisterEntry } from "@/lib/supabase/operations";
 
 type Details = Record<string, unknown>;
@@ -113,7 +115,7 @@ function typeSpecificDetails(type: ControlledDocumentType, details: Details, ent
   return [];
 }
 
-export function buildControlledDocumentDocx(entry: RegisterEntry, logoBytes: ArrayBuffer): Document {
+export function buildControlledDocumentDocx(entry: RegisterEntry, logoBytes: ArrayBuffer, history: SignoffHistoryEntry[] = []): Document {
   const type = entry.register_type as ControlledDocumentType;
   const details = entry.details ?? {};
   const signatures = controlledDocumentSignatures(entry);
@@ -169,6 +171,7 @@ export function buildControlledDocumentDocx(entry: RegisterEntry, logoBytes: Arr
               [signatures.recipient.signed ? "Signed" : "Responded", [signatures.recipient.signedAt, recipientCaptureNote(signatures.recipient)].filter(Boolean).join(" · ")],
             ]),
           ]),
+          ...signoffHistoryDocx(history, "Sign-off history"),
           new Paragraph({
             children: [new TextRun({ text: "Generated from the controlled project register. Number, revision, signatures and the recorded response come from the audit trail; times are Suriname time.", italics: true, color: "666666", size: 14 })],
             spacing: { before: 200 },
@@ -179,9 +182,9 @@ export function buildControlledDocumentDocx(entry: RegisterEntry, logoBytes: Arr
   });
 }
 
-export async function downloadControlledDocumentDocx(entry: RegisterEntry): Promise<void> {
+export async function downloadControlledDocumentDocx(entry: RegisterEntry, history: SignoffHistoryEntry[] = []): Promise<void> {
   const logoBytes = await loadLogoImageBytes();
-  const doc = buildControlledDocumentDocx(entry, logoBytes);
+  const doc = buildControlledDocumentDocx(entry, logoBytes, history);
   const filename = `${entry.entry_number}-${entry.title}`.replace(/[^a-z0-9._-]+/gi, "-") + ".docx";
   await downloadDocxBlob(doc, filename);
 }

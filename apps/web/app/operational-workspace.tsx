@@ -65,6 +65,7 @@ import { ContractorSignatureField, RecordSignatures, contractorSignatureDetails,
 import { SpecFields, SpecLinkChips } from "@/app/forms/spec-fields";
 import { WorkspaceSpecDirectory } from "@/app/forms/workspace-spec-directory";
 import { SignoffPanel } from "@/app/forms/signoff-panel";
+import { loadSignoffHistory, signoffHistoryEntries } from "@/lib/forms/signoff";
 import { cleanSpecValues, sensitiveKeys, specFacts, specFollowUps, specForms, specLinks, specMissing, workflowProfiles, type SpecFormKey, type SpecRow, type SpecValues } from "@/lib/forms/spec-forms";
 import { specLabel } from "@/lib/forms/spec-labels-nl";
 import { lessonPhases as specLessonPhases, hseCategories as specHseCategories, incidentCategories as specIncidentCategories, issueCategories as specIssueCategories } from "@/lib/forms/spec-catalogue";
@@ -732,6 +733,13 @@ const registerLabelsEnglish: Record<string, string> = {
 };
 
 /** A calendar day (YYYY-MM-DD) as a date on site; noon in Suriname so it never shifts a day. */
+/** The record's sign-off history as printed lines; a file still downloads when it cannot be read. */
+async function recordHistory(client: SupabaseClient, projectId: string, recordId: string, language: "en" | "nl") {
+  if (!projectId) return [];
+  const history = await loadSignoffHistory(client, projectId, [recordId]).catch(() => new Map());
+  return signoffHistoryEntries(history.get(recordId) ?? [], language);
+}
+
 function formatDay(day: string | null | undefined, locale = "en-GB") {
   if (!day) return "";
   const moment = new Date(`${day.slice(0, 10)}T12:00:00-03:00`);
@@ -5157,7 +5165,7 @@ function ProjectOperations({
             </div>
           ) : null}
           <SavedRecordsFold formOpen={showForm && !focusRecordId} count={data.registerEntries.filter((entry) => entry.register_type !== "boq" && (externalSubmissionIntent || !externalSubmissionRegisterTypes.includes(entry.register_type))).length} storageKey={`registers:${projectId}`}>
-          <ControlledDocumentList entries={data.registerEntries.filter((entry) => isControlledDocumentType(entry.register_type) && (externalSubmissionIntent || !externalSubmissionRegisterTypes.includes(entry.register_type)))} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={currentUserName} focusRecordId={focusRecordId} client={client} run={run} />
+          <ControlledDocumentList projectId={projectId} entries={data.registerEntries.filter((entry) => isControlledDocumentType(entry.register_type) && (externalSubmissionIntent || !externalSubmissionRegisterTypes.includes(entry.register_type)))} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={currentUserName} focusRecordId={focusRecordId} client={client} run={run} />
           <RecordList empty={text("No additional project registers yet.", "Nog geen aanvullende projectregisters.")} rows={data.registerEntries.filter((entry) => !isControlledDocumentType(entry.register_type) && entry.register_type !== "boq").map((entry) => {
             // The verdict and the quantity are the point of a delivery line, so the list
             // shows them instead of hiding them in the record.
@@ -5419,8 +5427,10 @@ function StillNeeded({ items }: { items: string[] }) {
   return missing.length ? <small className="confirm-needs">{text("Still needed", "Nog nodig")}: {missing.join(" · ")}</small> : null;
 }
 
-function ControlledDocumentList({ entries, buildings, locationNodes, busy, currentUserName, focusRecordId = "", client, run }: {
+function ControlledDocumentList({ entries, buildings, locationNodes, busy, currentUserName, focusRecordId = "", client, run, projectId }: {
   entries: OperationSnapshot["registerEntries"];
+  /** For the sign-off history printed with each document. */
+  projectId: string;
   buildings: BuildingOption[];
   locationNodes: OperationSnapshot["locationNodes"];
   busy: boolean;
@@ -5430,7 +5440,7 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
   client: SupabaseClient;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
 }) {
-  const { locale, text } = useLanguage();
+  const { language, locale, text } = useLanguage();
   const [active, setActive] = useState<string | null>(null);
   const [historyActive, setHistoryActive] = useState<string | null>(null);
   const [response, setResponse] = useState({
@@ -5497,7 +5507,7 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
                 file stays the attachment; this is the message that announces it. */}
             <button className="whatsapp-button" type="button" onClick={() => openWhatsApp(contractorMessage(entry))}><MessageCircle size={16} /> {text("Send to contractor", "Naar aannemer sturen")}</button>
             <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => openSms(contractorMessage(entry))}><Smartphone size={15} /> {text("Send as SMS", "Als SMS sturen")}</button>
-            <ReportDownloadButtons disabled={busy} onDownloadPdf={() => import("@/lib/reports/controlled-document-pdf").then(({ downloadControlledDocumentPdf }) => downloadControlledDocumentPdf(entry))} onDownloadWord={() => import("@/lib/reports/controlled-document-docx").then(({ downloadControlledDocumentDocx }) => downloadControlledDocumentDocx(entry))} />{!["closed", "cancelled"].includes(entry.status) ? <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy} onClick={() => { setActive(active === entry.id ? null : entry.id); const recipientAnswers = entry.register_type === "technical_instruction" || entry.register_type === "change_order"; setResponse({ decision: recipientAnswers ? "acknowledged" : "approved", comments: "", respondentName: recipientAnswers ? "" : currentUserName, respondentPosition: "", respondentCompany: recipientAnswers ? String(details.requested_to ?? "") : "CODECO N.V." }); setResponseSignature(null); }}><FileCheck2 size={15} /> {text("Record formal response", "Leg formeel antwoord vast")}</button> : null}</div>
+            <ReportDownloadButtons disabled={busy} onDownloadPdf={async () => { const history = await recordHistory(client, projectId, entry.id, language); const { downloadControlledDocumentPdf } = await import("@/lib/reports/controlled-document-pdf"); await downloadControlledDocumentPdf(entry, history); }} onDownloadWord={async () => { const history = await recordHistory(client, projectId, entry.id, language); const { downloadControlledDocumentDocx } = await import("@/lib/reports/controlled-document-docx"); await downloadControlledDocumentDocx(entry, history); }} />{!["closed", "cancelled"].includes(entry.status) ? <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy} onClick={() => { setActive(active === entry.id ? null : entry.id); const recipientAnswers = entry.register_type === "technical_instruction" || entry.register_type === "change_order"; setResponse({ decision: recipientAnswers ? "acknowledged" : "approved", comments: "", respondentName: recipientAnswers ? "" : currentUserName, respondentPosition: "", respondentCompany: recipientAnswers ? String(details.requested_to ?? "") : "CODECO N.V." }); setResponseSignature(null); }}><FileCheck2 size={15} /> {text("Record formal response", "Leg formeel antwoord vast")}</button> : null}</div>
             {historyActive === entry.id ? <section className="controlled-document-history">
               <div><span>{text("Created / issued", "Aangemaakt / uitgegeven")}</span><strong>{formatDate(entry.occurred_at, locale)}</strong><small>{String(details.issuer_name ?? details.issued_by ?? currentUserName)} · {String(details.issuer_company ?? "CODECO N.V.")}</small></div>
               <div><span>{text("Current status", "Huidige status")}</span><strong>{statusText(entry.status, text)}</strong><small>{responseData.decision ? `${text("Decision", "Besluit")}: ${codeText(String(responseData.decision), text)}` : text("No formal decision recorded yet", "Nog geen formeel besluit vastgelegd")}</small></div>
@@ -5874,7 +5884,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
                 {creatingShareFor === finding.id ? <Loader2 className="spin" size={17} /> : <MessageCircle size={17} />}
                 <span><strong>{text("Send to external party", "Stuur naar externe partij")}</strong><small>{text("WhatsApp link · no account needed", "WhatsApp-link · geen account nodig")}</small></span>
               </button> : null}
-              <ReportDownloadButtons disabled={busy} onDownloadPdf={() => import("@/lib/reports/ncr-pdf").then(({ downloadNcrPdf }) => downloadNcrPdf(finding, latestProgress, ncrContext(finding, recordBuildingName)))} onDownloadWord={() => import("@/lib/reports/ncr-docx").then(({ downloadNcrDocx }) => downloadNcrDocx(finding, latestProgress, ncrContext(finding, recordBuildingName)))} />
+              <ReportDownloadButtons disabled={busy} onDownloadPdf={async () => { const signoffHistory = await recordHistory(client, projectId, finding.id, language); const { downloadNcrPdf } = await import("@/lib/reports/ncr-pdf"); await downloadNcrPdf(finding, latestProgress, { ...ncrContext(finding, recordBuildingName), signoffHistory }); }} onDownloadWord={async () => { const signoffHistory = await recordHistory(client, projectId, finding.id, language); const { downloadNcrDocx } = await import("@/lib/reports/ncr-docx"); await downloadNcrDocx(finding, latestProgress, { ...ncrContext(finding, recordBuildingName), signoffHistory }); }} />
               {!["closed", "cancelled", "rejected"].includes(finding.status) && permissions.can("findings.manage") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setProgressActive(progressActive === finding.id ? null : finding.id); setProgressPercent(String(latestProgress?.progress_percent ?? 0)); setProgressDisposition(latestProgress?.disposition ?? issue.disposition ?? "to_be_corrected"); }}>{text("Record inspection progress", "Inspectievoortgang vastleggen")}</button> : null}
               {nextStatus ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setActive(active === finding.id ? null : finding.id); setCorrection(""); setVerificationSignature(null); }}>{nextStatus === "closed" ? finding.finding_type === "ncr" ? text("Quality control · resolve", "Kwaliteitscontrole · afsluiten") : text("Verify", "Verifiëren") : nextStatus === "ready_for_verification" ? text("Mark repair ready", "Herstel gereedmelden") : finding.finding_type === "ncr" ? text("Record contractor answer", "Antwoord aannemer vastleggen") : text("Update status", "Status bijwerken")}</button> : null}
               {finding.status === "ready_for_verification" && permissions.can("findings.verify") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setReturning(returning === finding.id ? null : finding.id); setReturnReason(""); }}>{text("Return for correction", "Terug voor correctie")}</button> : null}
@@ -6462,7 +6472,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
               </>
             ) : <div className="operation-alert warning"><Users size={18} /><div><strong>{text("No assignable company employees", "Geen toewijsbare eigen medewerkers")}</strong><span>{text("Add an active employee first.", "Voeg eerst een actieve medewerker toe.")}</span></div></div>}
           </section>
-          <ControlledDocumentList entries={externalSubmissions} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={text("Company / owner reviewer", "Reviewer bedrijf / eigenaar")} client={client} run={run} />
+          <ControlledDocumentList projectId={projectId} entries={externalSubmissions} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={text("Company / owner reviewer", "Reviewer bedrijf / eigenaar")} client={client} run={run} />
         <div className="management-context"><div><span>{text("Current report", "Huidig rapport")}</span><strong>{statusText(reportStatus, text)}</strong></div><div><span>{text("Rooms and areas", "Ruimtes en zones")}</span><strong>{data.locationNodes.length}</strong></div><div><span>{text("Published checklists", "Gepubliceerde checklists")}</span><strong>{data.templates.filter((item) => item.status === "published").length}</strong></div><div><span>{text("Controlled files", "Beheerde bestanden")}</span><strong>{data.files.length}</strong></div></div>
       </section> : null}
       {section === "settings" ? (

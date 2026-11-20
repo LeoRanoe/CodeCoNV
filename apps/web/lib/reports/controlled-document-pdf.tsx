@@ -3,6 +3,8 @@ import { Document, Image, Page, StyleSheet, Text, View, pdf } from "@react-pdf/r
 import type { ControlledDocumentType } from "@/lib/forms/controlled-project-documents";
 import type { RegisterEntry } from "@/lib/supabase/operations";
 import { controlledDocumentSignatures, recipientCaptureNote } from "@/lib/reports/controlled-document-signatures.mjs";
+import type { SignoffHistoryEntry } from "@/lib/forms/signoff";
+import { SignoffHistoryPdf } from "@/lib/reports/signoff-history-pdf";
 
 type Details = Record<string, unknown>;
 
@@ -142,7 +144,7 @@ function typeSpecificDetails(type: ControlledDocumentType, details: Details, ent
   return null;
 }
 
-export function ControlledDocument({ entry, logoSource = "/codeco-logo-pdf.png" }: { entry: RegisterEntry; logoSource?: string }) {
+export function ControlledDocument({ entry, logoSource = "/codeco-logo-pdf.png", history = [] }: { entry: RegisterEntry; logoSource?: string; history?: SignoffHistoryEntry[] }) {
   const type = entry.register_type as ControlledDocumentType;
   const details = entry.details ?? {};
   const signatures = controlledDocumentSignatures(entry);
@@ -206,6 +208,7 @@ export function ControlledDocument({ entry, logoSource = "/codeco-logo-pdf.png" 
             </View>}
           </>;
         })()}
+        {history.length ? <View style={styles.section}><SignoffHistoryPdf history={history} title="SIGN-OFF HISTORY" /></View> : null}
         <Text style={styles.notice}>Generated from the controlled project register. Number, revision, signatures and the recorded response come from the audit trail; times are Suriname time.</Text>
         <Text style={styles.footer} fixed>CODECO N.V. · Controlled project document</Text>
       </Page>
@@ -213,8 +216,8 @@ export function ControlledDocument({ entry, logoSource = "/codeco-logo-pdf.png" 
   );
 }
 
-export async function downloadControlledDocumentPdf(entry: RegisterEntry) {
-  const blob = await pdf(<ControlledDocument entry={entry} />).toBlob();
+export async function downloadControlledDocumentPdf(entry: RegisterEntry, history: SignoffHistoryEntry[] = []) {
+  const blob = await pdf(<ControlledDocument entry={entry} history={history} />).toBlob();
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;

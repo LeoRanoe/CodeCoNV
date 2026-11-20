@@ -2,6 +2,7 @@
 import { Document, Font, Image, Page, StyleSheet, Text, View, pdf } from "@react-pdf/renderer";
 import { downloadBlob } from "@/lib/browser/download";
 import type { DayExportDocument, DayExportItem, DayExportSection } from "@/lib/reports/day-overview-export";
+import { SignoffHistoryPdf } from "@/lib/reports/signoff-history-pdf";
 
 Font.registerHyphenationCallback((word) => [word]);
 
@@ -55,7 +56,7 @@ const styles = StyleSheet.create({
   footer: { position: "absolute", top: 812, left: 32, right: 32, color: muted, fontSize: 7, textAlign: "center" },
 });
 
-function ItemView({ item }: { item: DayExportItem }) {
+function ItemView({ item, historyTitle }: { item: DayExportItem; historyTitle: string }) {
   return (
     <View style={styles.item} wrap={false}>
       {item.code ? <Text style={styles.itemCode}>{item.code}</Text> : null}
@@ -81,11 +82,12 @@ function ItemView({ item }: { item: DayExportItem }) {
           ))}
         </View>
       ) : null}
+      {item.history?.length ? <SignoffHistoryPdf history={item.history} title={historyTitle} /> : null}
     </View>
   );
 }
 
-function SectionView({ section, emptyLabel }: { section: DayExportSection; emptyLabel: string }) {
+function SectionView({ section, emptyLabel, historyTitle }: { section: DayExportSection; emptyLabel: string; historyTitle: string }) {
   const hasContent = Boolean(section.items.length || section.table || section.photos?.length || section.summary);
   return (
     <View style={styles.section}>
@@ -109,7 +111,7 @@ function SectionView({ section, emptyLabel }: { section: DayExportSection; empty
           ))}
         </View>
       ) : null}
-      {section.items.map((item, index) => <ItemView item={item} key={`${item.code}:${index}`} />)}
+      {section.items.map((item, index) => <ItemView item={item} historyTitle={historyTitle} key={`${item.code}:${index}`} />)}
       {section.photos?.length ? (
         <View style={styles.photos}>
           {section.photos.map((photo, index) => (
@@ -151,7 +153,7 @@ export function DayExportPdf({ document, emptyLabel, pageLabel }: { document: Da
             </View>
           ))}
         </View>
-        {document.sections.map((section) => <SectionView section={section} emptyLabel={emptyLabel} key={section.key} />)}
+        {document.sections.map((section) => <SectionView section={section} emptyLabel={emptyLabel} historyTitle={document.historyTitle ?? "Sign-off history"} key={section.key} />)}
         {document.emptyNote ? <Text style={styles.note}>{document.emptyNote}</Text> : null}
         <Text style={styles.footer} fixed render={({ pageNumber, totalPages }) => `${document.footer} · ${pageLabel(pageNumber, totalPages)}`} />
       </Page>

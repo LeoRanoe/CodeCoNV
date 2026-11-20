@@ -371,3 +371,15 @@ export function effectiveProfile(profile: SignoffProfile, config?: { stages?: Re
     }),
   };
 }
+
+/** A sign-off event as one printed line, its comments and the ink of an on-device signature. */
+export type SignoffHistoryEntry = { line: string; comments: string; signature: string | null };
+
+export function signoffHistoryEntries(events: SignoffEvent[], language: "en" | "nl" = "en"): SignoffHistoryEntry[] {
+  const round = language === "nl" ? "ronde" : "round";
+  return signoffHistoryLines(events, language).map((item) => ({
+    line: [item.at, item.action, item.actor, item.role, `${round} ${item.round}`, item.status, item.attestation].filter(Boolean).join(" · "),
+    comments: item.comments,
+    signature: item.signature && item.signature.startsWith("data:image/") ? item.signature : null,
+  }));
+}

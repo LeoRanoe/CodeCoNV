@@ -2,6 +2,8 @@ import { downloadBlob } from "@/lib/browser/download";
 /* eslint-disable jsx-a11y/alt-text -- @react-pdf/renderer Image has no HTML alt prop. */
 import { Document, Image, Page, StyleSheet, Text, View, pdf } from "@react-pdf/renderer";
 import type { Finding, FindingProgressUpdate } from "@/lib/supabase/operations";
+import type { SignoffHistoryEntry } from "@/lib/forms/signoff";
+import { SignoffHistoryPdf } from "@/lib/reports/signoff-history-pdf";
 
 export type NcrContext = {
   projectName: string;
@@ -14,6 +16,8 @@ export type NcrContext = {
   responsiblePartyName: string;
   /** Who actually verified the close-out. Never the person downloading the file. */
   verifierName?: string;
+  /** The record's chronological sign-off history, printed with it. */
+  signoffHistory?: SignoffHistoryEntry[];
 };
 
 const styles = StyleSheet.create({
@@ -95,6 +99,7 @@ export function NcrDocument({ finding, progress, context, logoSource = "/codeco-
         { label: "Received / contractor", name: issue.correction_signed_by || issue.completion_signed_by || issue.contractor_signed_by || "", position: issue.correction_signed_position || issue.contractor_signed_position || "", ink: issue.correction_signature_image || issue.completion_signature_image || issue.contractor_signature_image || null },
         { label: "QC verification", name: resolved ? issue.verification_signed_by || context.verifierName || "" : "", position: resolved ? issue.verification_signed_position || "" : "", ink: resolved ? issue.verification_signature_image || null : null },
       ].map((line, index) => <View style={[styles.signature, index < 2 ? styles.right : {}]} key={line.label}><Text style={styles.label}>{line.label}</Text>{line.ink ? <Image src={line.ink} style={styles.signatureInk} /> : <View style={styles.signatureLine} />}<Text>{line.name || " "}</Text><Text style={styles.label}>{line.position || " "}</Text></View>)}</View>
+      {context.signoffHistory?.length ? <View style={styles.section}><SignoffHistoryPdf history={context.signoffHistory} title="SIGN-OFF HISTORY" /></View> : null}
       <Text style={styles.note}>The photo boxes refer to evidence linked in the central project record; images are not duplicated into this generated form unless selected as report attachments. Closing remains a separate authorized human verification.</Text>
       <Text style={styles.footer} fixed>CODECO N.V. · Non-conformance report</Text>
     </Page>
