@@ -912,6 +912,83 @@ $$;
 revoke all on function public.list_shared_lessons(uuid) from public, anon;
 grant execute on function public.list_shared_lessons(uuid) to authenticated;
 
+-- 9. Follow-up actions of an incident or an agreement: one action record per action, each with
+-- its own owner and due date, linked to the record it came from.
+create or replace function public.create_record_follow_up_action(
+  p_project_id uuid,
+  p_source_type text,
+  p_source_id uuid,
+  p_building_id uuid,
+  p_owner_party_id uuid,
+  p_owner_user_id uuid,
+  p_title text,
+  p_description text,
+  p_due_at timestamptz,
+  p_idempotency_key text
+)
+returns public.actions
+language plpgsql
+security definer
+set search_path = pg_catalog, public, app_private
+as $$
+declare
+  v_action public.actions;
+begin
+  if (select auth.uid()) is null or not app_private.has_project_permission(p_project_id, 'actions.create') then
+    raise exception 'Missing actions.create permission' using errcode = '42501';
+  end if;
+  if p_source_type not in ('hse', 'meeting', 'registration', 'finding') then
+    raise exception 'Unknown source of the action' using errcode = '22023';
+  end if;
+  if not exists (select 1 from public.hse_events event where event.id = p_source_id and event.project_id = p_project_id)
+    and not exists (select 1 from public.project_register_entries entry where entry.id = p_source_id and entry.project_id = p_project_id)
+    and not exists (select 1 from public.findings finding where finding.id = p_source_id and finding.project_id = p_project_id) then
+    raise exception 'Source record not found in project' using errcode = 'P0002';
+  end if;
+  if p_owner_user_id is not null and not exists (
+    select 1 from public.list_project_people(p_project_id) person where person.user_id = p_owner_user_id) then
+    raise exception 'The action owner is not on this project' using errcode = '22023';
+  end if;
+  v_action := public.create_project_action(p_project_id, p_building_id, p_owner_party_id, p_title, p_description, p_due_at, 'normal', p_idempotency_key, null::uuid);
+  perform set_config('app.record_follow_up', 'on', true);
+  update public.actions
+  set source_type = p_source_type, source_id = p_source_id,
+      owner_user_id = coalesce(p_owner_user_id, owner_user_id)
+  where id = v_action.id
+  returning * into v_action;
+  perform set_config('app.record_follow_up', 'off', true);
+  return v_action;
+end;
+$$;
+
+-- The follow-up function sets the source and owner of the action it just created; the action
+-- guard lets that one write through.
+do $patch$
+declare
+  v_oid oid;
+  v_definition text;
+  v_patched text;
+begin
+  select procedure.oid into v_oid
+  from pg_proc procedure
+  join pg_namespace namespace on namespace.oid = procedure.pronamespace
+  where namespace.nspname = 'app_private' and procedure.proname = 'validate_action_transition';
+  v_definition := pg_get_functiondef(v_oid);
+  if v_definition ~ 'app.record_follow_up' then return; end if;
+  v_patched := replace(v_definition,
+    'if not app_private.has_project_permission(old.project_id, ''actions.manage'') then',
+    'if coalesce(current_setting(''app.record_follow_up'', true), '''') <> ''on''
+    and not app_private.has_project_permission(old.project_id, ''actions.manage'') then');
+  if v_patched = v_definition then
+    raise exception 'validate_action_transition no longer contains the expected permission check';
+  end if;
+  execute v_patched;
+end;
+$patch$;
+
+revoke all on function public.create_record_follow_up_action(uuid, text, uuid, uuid, uuid, uuid, text, text, timestamptz, text) from public, anon;
+grant execute on function public.create_record_follow_up_action(uuid, text, uuid, uuid, uuid, uuid, text, text, timestamptz, text) to authenticated;
+
 notify pgrst, 'reload schema';
 
 commit;

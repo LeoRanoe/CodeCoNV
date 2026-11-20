@@ -8,7 +8,7 @@ set local client_min_messages = notice;
 -- Third round of the client's developer specification: people from the live register, one
 -- status driven by the sign-off log, reviewer-only decisions, restricted incident data, a new
 -- round after an edit, the project's own workflow settings and lessons shared across projects.
-select plan(28);
+select plan(29);
 
 select has_function('public', 'list_project_people', 'the project''s people come from one function');
 select has_table('public', 'hse_event_sensitive', 'restricted incident data has its own table');
@@ -236,6 +236,14 @@ reset role;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000030b1","role":"authenticated"}';
 set local role authenticated;
 select is((select data ->> 'people_involved' from public.hse_event_sensitive), 'P. Jansen', 'an HSE manager does');
+select is(
+  (select source_type || ':' || (owner_user_id = '00000000-0000-0000-0000-0000000030b1')::text from public.create_record_follow_up_action(
+    (select project_id from ids), 'hse', (select id from public.hse_events where idempotency_key = 'sp30-hse'),
+    (select building_id from ids), null, '00000000-0000-0000-0000-0000000030b1', 'Replace the ladder', 'From HSE-30-0001',
+    now() + interval '2 days', 'sp30-follow-1')),
+  'hse:true',
+  'each corrective action becomes its own action, linked to the incident, with its owner'
+);
 reset role;
 
 -- 8. Lessons shared across projects
