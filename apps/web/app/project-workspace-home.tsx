@@ -92,7 +92,6 @@ export function ProjectWorkspaceHome({
   openTask,
   openWorkforce,
   openFinding,
-  openDailyWork,
   openActionCenter,
   openRapidVerify,
   projectName,
@@ -121,13 +120,14 @@ export function ProjectWorkspaceHome({
       id: "works-ongoing",
       label: text("Works ongoing", "Werkzaamheden gaande"),
       icon: formIcons.works_ongoing,
-      action: () => openDailyWork("works_ongoing"),
+      // The Works Ongoing sheet of the specification workbook: one record per activity.
+      action: () => openTask("registers", false, { registerType: "works_ongoing" }),
     },
     {
       id: "works-completed",
       label: text("Works completed", "Werkzaamheden afgerond"),
       icon: formIcons.works_completed,
-      action: () => openDailyWork("works_completed"),
+      action: () => openTask("registers", false, { registerType: "works_completed" }),
     },
     {
       id: "workforce",
@@ -222,7 +222,7 @@ export function ProjectWorkspaceHome({
       count: counts.agreements,
       action: () => openTask("registers", false, { registerType: "agreement" }),
     },
-  ], [counts, openDailyWork, openFinding, openPhotoLibrary, openTask, openWorkforce, text]);
+  ], [counts, openFinding, openPhotoLibrary, openTask, openWorkforce, text]);
 
   // A tile opens a module the user must be able to read; otherwise it is an empty page.
   const readPermission: Record<string, string> = {

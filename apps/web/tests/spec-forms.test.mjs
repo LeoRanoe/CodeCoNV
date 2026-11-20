@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as catalogue from "../lib/forms/spec-catalogue.ts";
-import { activitiesFor, canChooseDecision, cleanSpecValues, fieldOptions, matrixRating, projectList, sensitiveKeys, setSpecValue, specFacts, specFollowUps, specForms, specLinks, specMissing, upgradeSpecValues, workflowProfiles } from "../lib/forms/spec-forms.ts";
+import { activitiesFor, canChooseDecision, cleanSpecValues, fieldOptions, isSheetSlot, matrixRating, projectList, sensitiveKeys, setSpecValue, sheetLayouts, specFacts, specFollowUps, specForms, specLinks, specMissing, upgradeSpecValues, workflowProfiles } from "../lib/forms/spec-forms.ts";
 import { availableActions, effectiveProfile, signoffHistoryEntries, signoffProfiles, signoffState } from "../lib/forms/signoff.ts";
 import { facetOptions, filterPeriodSnapshot, matchesSpecFacets, recordSpec, specFacets } from "../lib/forms/spec-facets.ts";
 import { specLabel } from "../lib/forms/spec-labels-nl.ts";
@@ -56,8 +56,8 @@ test("required fields follow the workbook, conditional ones only when their trig
   const empty = specMissing("delay_report", {});
   assert.ok(empty.includes("Delay start date/time"));
   assert.ok(empty.includes("Delay cause type"));
-  // The client's own PDR form asks the critical-path question; it is not asked twice.
-  assert.ok(!empty.includes("Critical path impact"));
+  // The PDR is its sheet, row by row: the critical-path question is asked on it.
+  assert.ok(empty.includes("Critical path impact"));
   // Closed needs a closure note; an open record does not.
   assert.ok(!specMissing("issue", { workflow_status: "Open" }).includes("Resolution / closure note"));
   assert.ok(specMissing("issue", { workflow_status: "Closed" }).includes("Resolution / closure note"));
@@ -263,4 +263,32 @@ test("every short list and tick-box choice has its own picture (client, 20-11-20
     }
   }
   assert.deepEqual(missing, []);
+});
+
+/**
+ * START HERE: "Use the relevant form sheet to build each screen in the stated field order."
+ * Every Workspace form is laid out from its sheet: each row in the sheet's order, nothing
+ * appended underneath and no field of the form left out.
+ */
+test("every Workspace form is its workbook sheet, row by row", () => {
+  const sheetForms = ["issue", "ncr", "hse", "hse_incident", "delivery", "technical_instruction", "change_order", "delay_report", "lessons_learned", "agreement", "works_ongoing", "works_completed"];
+  for (const form of sheetForms) {
+    const layout = sheetLayouts[form];
+    assert.ok(layout, `${form} has a sheet layout`);
+    const keys = layout.filter((item) => !isSheetSlot(item));
+    assert.equal(new Set(keys).size, keys.length, `${form}: no row twice`);
+    for (const key of keys) assert.ok(specForms[form].some((field) => field.key === key), `${form}: ${key} is a field`);
+    // Works place "Building / area" with the screen's own building and location picker.
+    for (const field of specForms[form]) {
+      if (field.key === "building_area" && form.startsWith("works_")) continue;
+      assert.ok(keys.includes(field.key), `${form}: ${field.key} stands in the sheet order`);
+    }
+  }
+  // Sheet order, spot-checked against the workbook rows.
+  const order = (form) => sheetLayouts[form].map((item) => (isSheetSlot(item) ? `@${item.slot}` : item));
+  assert.deepEqual(order("issue").slice(0, 8), ["identified_at", "issue_type", "issue_category", "@title", "@description", "@location", "discipline", "priority"]);
+  assert.deepEqual(order("hse").slice(0, 6), ["observed_at", "hse_type", "hse_category", "@title", "@description", "@location"]);
+  assert.deepEqual(order("change_order").slice(0, 8), ["request_date", "change_type", "change_category", "@title", "@description", "change_reason", "originator", "@location"]);
+  assert.deepEqual(order("delivery").slice(0, 4), ["delivery_at", "supplier", "purchase_order", "delivery_note_number"]);
+  assert.deepEqual(order("lessons_learned").slice(0, 6), ["recorded_on", "project_phase", "lesson_category", "@title", "situation", "what_happened"]);
 });

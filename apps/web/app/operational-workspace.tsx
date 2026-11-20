@@ -9,11 +9,9 @@ import {
   ArrowLeft,
   ArrowRight,
   Camera,
-  CalendarClock,
   CalendarRange,
   CheckCircle2,
   ChevronRight,
-  Circle,
   ClipboardCheck,
   CloudSun,
   Construction,
@@ -24,7 +22,6 @@ import {
   FileText,
   FolderOpen,
   HardDrive,
-  Info,
   HeartPulse,
   KeyRound,
   Leaf,
@@ -69,11 +66,11 @@ import { SharedLessons } from "@/app/forms/shared-lessons";
 import { InspectionSpecEditor } from "@/app/forms/inspection-spec-editor";
 import { SignoffPanel } from "@/app/forms/signoff-panel";
 import { loadSignoffHistory, signoffHistoryEntries } from "@/lib/forms/signoff";
-import { cleanSpecValues, sensitiveKeys, specFacts, specFollowUps, specForms, specLinks, specMissing, workflowProfiles, type SpecFormKey, type SpecRow, type SpecValues } from "@/lib/forms/spec-forms";
+import { cleanSpecValues, isOtherOption, sensitiveKeys, sheetLayouts, specFacts, specFollowUps, specForms, specLinks, specMissing, workflowProfiles, type SpecFormKey, type SpecRow, type SpecValues } from "@/lib/forms/spec-forms";
 import { specLabel } from "@/lib/forms/spec-labels-nl";
 import { facetFilterActive, filterPeriodSnapshot, matchesSpecFacets, recordSpec, specFacets, type SpecFacetFilter } from "@/lib/forms/spec-facets";
 import { SpecFacetFilterBar } from "@/app/forms/spec-facet-filter";
-import { lessonPhases as specLessonPhases, hseCategories as specHseCategories, incidentCategories as specIncidentCategories, issueCategories as specIssueCategories } from "@/lib/forms/spec-catalogue";
+import { lessonPhases as specLessonPhases } from "@/lib/forms/spec-catalogue";
 import { formIcons, registerIcon } from "@/app/forms/form-icons";
 import { NamedPhotoSlot, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence, photoSpecFromDetails } from "@/app/photo-evidence";
 import { RecordLocationMap } from "@/app/record-location-map";
@@ -112,7 +109,6 @@ import {
   createControlledDocumentDetails,
   emptyControlledDocumentDraft,
   isControlledDocumentType,
-  issueCatalogPresets,
   type ControlledDocumentDraft,
 } from "@/lib/forms/controlled-project-documents";
 import {
@@ -470,17 +466,6 @@ const hseSpecTypes: Record<string, string> = {
   other: "HSE Observation",
 };
 
-/**
- * The client asked for exactly six kinds. Issues that were filed earlier under one of these
- * kinds keep it: it is shown as an extra, already-chosen tile when such an issue is edited,
- * and is not offered for a new issue.
- */
-const legacyIssueTypeTiles = [
-  { id: "safety", en: "Safety", nl: "Veiligheid", icon: ShieldCheck },
-  { id: "environmental", en: "Environmental", nl: "Milieu", icon: Leaf },
-  { id: "documentation", en: "Documentation", nl: "Documentatie", icon: FileText },
-  { id: "other", en: "Other", nl: "Overig", icon: MoreHorizontal },
-] as const;
 
 /**
  * The two lists at the head of the client's own NCR form, in the client's own order and
@@ -596,17 +581,6 @@ function nextRecordNumber(existing: string[], prefix: string, year: string) {
   return `${prefix}-${year}-${String(highest + 1).padStart(4, "0")}`;
 }
 
-/** "(Today)", "(tomorrow)", "(in 3 days)": what the deadline means without counting. */
-function deadlineDistanceLabel(value: string, todayLabel: string, tomorrowLabel: string, inDays: (days: number) => string, overdue: string) {
-  const due = new Date(value);
-  if (Number.isNaN(due.getTime())) return "";
-  const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-  const days = Math.round((startOfDay(due) - startOfDay(new Date())) / 86400000);
-  if (days < 0) return overdue;
-  if (days === 0) return todayLabel;
-  if (days === 1) return tomorrowLabel;
-  return inDays(days);
-}
 
 /**
  * Section 9 of both screens: the deadline the severity implies. The same ladder a finding
@@ -1653,23 +1627,6 @@ function ProjectOperations({
   const scopedFindings = data.findings.filter((finding) => findingScope === "ncr"
     ? finding.finding_type === "ncr"
     : finding.finding_type !== "ncr");
-  const findingPresets = [
-    { title: text("Crack or damage", "Scheur of beschadiging"), description: text("Visible crack or damage requires repair and verification.", "Zichtbare scheur of beschadiging moet worden hersteld en gecontroleerd.") },
-    { title: text("Work incomplete", "Werk niet volledig"), description: text("The planned work is not fully completed.", "Het geplande werk is niet volledig uitgevoerd.") },
-    { title: text("Incorrect dimensions", "Verkeerde maatvoering"), description: text("The executed dimensions do not match the approved drawing.", "De uitgevoerde maatvoering komt niet overeen met de goedgekeurde tekening.") },
-    { title: text("Safety risk", "Veiligheidsrisico"), description: text("An unsafe condition requires immediate attention.", "Een onveilige situatie vraagt directe opvolging.") },
-    { title: text("Finish or cleaning", "Afwerking of schoonmaak"), description: text("The finish or work area does not meet the required condition.", "De afwerking of werkzone voldoet niet aan de vereiste staat.") },
-  ];
-  const findingImpactPresets = [
-    text("No schedule impact identified.", "Geen planningimpact vastgesteld."),
-    text("Possible schedule impact; monitor in the next update.", "Mogelijke planningimpact; volgen in de volgende update."),
-    text("Scope or work area is affected.", "Scope of werkzone is beïnvloed."),
-  ];
-  const findingActionPresets = [
-    text("Correct the issue and submit photo evidence.", "Herstel het probleem en lever fotobewijs."),
-    text("Inspect the correction and verify compliance.", "Inspecteer het herstel en verifieer dat het voldoet."),
-    text("Stop the affected work pending an approved correction.", "Stop het betrokken werk tot een goedgekeurde correctie."),
-  ];
   /** The three headings of the client's HSE form, as they read in a list. */
   const hseCategoryLabels: Record<string, string> = {
     health: text("Health", "Health"),
@@ -1681,13 +1638,6 @@ function ProjectOperations({
    * the severity, what was observed and what was already done, and every box stays
    * editable afterwards.
    */
-  const hsePresets = [
-    { issueType: "safety", severity: "low", label: text("Safe work observed", "Veilig werk waargenomen"), description: text("The work was performed safely and according to the agreed control measures.", "Het werk is veilig en volgens de afgesproken beheersmaatregelen uitgevoerd."), actions: [] as string[] },
-    { issueType: "unsafe_condition", severity: "high", label: text("Unsafe work area", "Onveilige werkzone"), description: text("The work area was not sufficiently secured or marked.", "De werkzone was onvoldoende afgezet of gemarkeerd."), actions: ["work_stopped", "area_barricaded"] },
-    { issueType: "unsafe_act", severity: "high", label: text("PPE not used correctly", "PBM niet correct gebruikt"), description: text("Required personal protective equipment was not used correctly.", "Verplichte persoonlijke beschermingsmiddelen werden niet correct gebruikt."), actions: ["employee_warned", "ppe_provided"] },
-    { issueType: "near_miss", severity: "high", label: "Near miss", description: text("An event occurred without injury but with a realistic risk of harm.", "Er vond een gebeurtenis plaats zonder letsel, maar met reëel risico op schade."), actions: ["work_stopped", "area_barricaded", "supervisor_informed"] },
-    { issueType: "incident", severity: "critical", label: text("Work stopped", "Werk stilgelegd"), description: text("Work was stopped because the risk was not adequately controlled.", "Werk is stilgelegd omdat het risico onvoldoende werd beheerst."), actions: ["work_stopped", "supervisor_informed"] },
-  ];
   const hseTileLabel = (tile: (typeof hseIssueTypes)[number]) => text(tile.en, tile.nl);
   /** The tile that is selected, with the heading and the event kind it stands for. */
   const hseIssueTile = hseIssueTypes.find((tile) => tile.id === hseForm.issueType) ?? hseIssueTypes[0];
@@ -1695,10 +1645,6 @@ function ProjectOperations({
   /** Section 9 shows the deadline the severity implies until somebody sets another one. */
   const hseDueValue = hseForm.dueAt || recordDueDateTimeDefault(hseForm.severity);
   const hsePriority = hseForm.severity === "critical" ? "critical" : hseForm.severity === "high" ? "high" : hseForm.severity === "medium" ? "normal" : "low";
-  const recordPriorityLabels: Record<string, string> = {
-    critical: text("Critical", "Kritiek"), high: text("High", "Hoog"),
-    normal: text("Normal", "Normaal"), low: text("Low", "Laag"),
-  };
   // High and critical events are opened as action required by the database itself, so the
   // screen says the status the record will actually get.
   const hseStatusLabel = hseForm.severity === "high" || hseForm.severity === "critical"
@@ -1723,10 +1669,6 @@ function ProjectOperations({
     } as Record<string, string>)[liveWeather.condition] ?? liveWeather.condition}`
     : text("Not available", "Niet beschikbaar");
   /** Section 1: the tile decides the heading of the form and the kind of event it is. */
-  const chooseHseIssueType = (id: string) => {
-    const tile = hseIssueTypes.find((option) => option.id === id) ?? hseIssueTypes[0];
-    setHseForm((current) => ({ ...current, issueType: tile.id, category: tile.category, type: tile.eventType, issueCategory: current.issueType === tile.id ? current.issueCategory : "" }));
-  };
   /** The HSE incident tile opens the HSE form with the Incident tile already chosen. */
   const applyHsePreset = (eventType: string) => {
     const tile = hseIssueTypes.find((option) => option.eventType === eventType && option.id === eventType)
@@ -1734,12 +1676,6 @@ function ProjectOperations({
       ?? hseIssueTypes[0];
     setHseForm((current) => ({ ...current, type: tile.eventType, issueType: tile.id, category: tile.category }));
   };
-  const toggleHseAction = (id: string) => setHseForm((current) => ({
-    ...current,
-    immediateActions: current.immediateActions.includes(id)
-      ? current.immediateActions.filter((action) => action !== id)
-      : [...current.immediateActions, id],
-  }));
   /** Section 7 as one sentence, so every report that already reads the measure keeps working. */
   const hseImmediateMeasure = (form: HseIssueForm) => {
     const taken = immediateActionsTaken.filter((action) => form.immediateActions.includes(action.id)).map((action) => text(action.en, action.nl));
@@ -1776,13 +1712,6 @@ function ProjectOperations({
   const recordYear = issueDate.slice(0, 4);
   const nextIssueNumber = nextRecordNumber(data.findings.map((finding) => finding.finding_number), "Q", recordYear);
   const nextHseNumber = nextRecordNumber(data.hseEvents.map((event) => event.event_number), "HSE", recordYear);
-  const deadlineDistance = (value: string) => deadlineDistanceLabel(
-    value,
-    text("today", "vandaag"),
-    text("tomorrow", "morgen"),
-    (days) => text(`in ${days} days`, `over ${days} dagen`),
-    text("overdue", "verlopen"),
-  );
   /**
    * The chip in the head of the record screens is not only a light: it is the way to push
    * what is still on the device. "Data will sync" has to be something you can also ask for.
@@ -1801,8 +1730,6 @@ function ProjectOperations({
   const syncChip = online ? { label: text("Online", "Online"), detail: "" } : { label: text("Offline", "Offline"), detail: "" };
   const issueTile = issueTypeTiles.find((tile) => tile.id === findingForm.issueType) ?? issueTypeTiles[0];
   const issueTileLabel = (tile: { en: string; nl: string }) => text(tile.en, tile.nl);
-  const legacyIssueTile = legacyIssueTypeTiles.find((tile) => tile.id === findingForm.issueType);
-  const shownIssueTiles: ReadonlyArray<(typeof issueTypeTiles)[number] | (typeof legacyIssueTypeTiles)[number]> = legacyIssueTile ? [...issueTypeTiles, legacyIssueTile] : issueTypeTiles;
   const issueCategoryOption = issueCategories.find((option) => option.id === findingForm.issueCategory);
   const ncrCategoryOption = ncrCategories.find((option) => option.id === findingForm.ncrCategory);
   const ncrWorkTypeOption = ncrWorkTypes.find((option) => option.id === findingForm.ncrWorkType);
@@ -1812,19 +1739,6 @@ function ProjectOperations({
     ? text("Assigned", "Toegewezen")
     : text("Open", "Open");
   /** Section 9 shows the deadline the severity implies until somebody sets another one. */
-  const issueDueValue = findingForm.expectedResolutionDate || recordDueDateDefault(findingForm.severity);
-  const chooseIssueType = (id: string) => setFindingForm((current) => ({
-    ...current,
-    issueType: id,
-    // A category of another type does not stay selected (specification, dependent dropdowns).
-    issueCategory: (specIssueCategories[issueSpecTypes[id] ?? ""] ?? []).some((option) => option.value === current.issueCategory) ? current.issueCategory : "",
-  }));
-  const toggleIssueAction = (id: string) => setFindingForm((current) => ({
-    ...current,
-    immediateActions: current.immediateActions.includes(id)
-      ? current.immediateActions.filter((action) => action !== id)
-      : [...current.immediateActions, id],
-  }));
   /** Section 5 of the issue screen: the spot itself, as the phone reads it. */
   const captureIssuePosition = () => {
     if (gpsRequests.current.issue) return;
@@ -2280,24 +2194,66 @@ function ProjectOperations({
   const hseSensitiveSkip = editingHseId && !permissions.can("hse.manage") ? sensitiveKeys(hseSpecForm) : [];
   const hseSpecSkip = hseSensitiveSkip;
   const hseSpecProblems = specMissing(hseSpecForm, hseSpecValues, language, hseSpecSkip);
-  const issueCategoryChoices = specIssueCategories[issueSpecTypes[findingForm.issueType] ?? ""] ?? [];
-  const hseCategoryChoices = hseSpecForm === "hse"
-    ? specHseCategories[hseSpecTypes[hseForm.issueType] ?? ""] ?? []
-    : specIncidentCategories[String(hseSpecValues.incident_type ?? "")] ?? [];
   const registerSpecForm: SpecFormKey | null = registerForm.type in specForms ? registerForm.type as SpecFormKey : null;
   // A delivery's received quantity is the quantity lines of the form; the specification
   // compares it with the ordered quantity to ask for a discrepancy note.
   const deliveredQuantity = registerLines.reduce((total, line) => total + (Number(line.quantity) || 0), 0);
   // Where the client's own form already asks a question of the specification, its answer is
   // used and the question is not asked a second time.
-  const registerSpecValues: SpecValues = registerForm.type === "delivery" && registerLines.some((line) => line.quantity.trim())
+  // Delivery, TI, CO, PDR, Lessons Learned and Agreements Made are their workbook sheets, row by row.
+  const sheetRegister = Boolean(registerSpecForm && sheetLayouts[registerSpecForm]);
+  const sheetRegisterValues: SpecValues = registerForm.type === "delivery"
+    ? { ...registerSpec, delivered_quantity: registerSpec.delivered_quantity ?? registerLines[0]?.quantity ?? "", unit: registerSpec.unit ?? registerLines[0]?.unit ?? "" }
+    : registerForm.type === "technical_instruction"
+      ? { ...registerSpec, response_required_by: registerForm.dueDate, issued_to: registerSpec.issued_to ?? registerForm.requestedTo }
+      : registerForm.type === "change_order"
+        ? { ...registerSpec, originator: registerSpec.originator ?? changeOrder.requestedBy }
+        : registerForm.type === "lessons_learned"
+          ? {
+            ...registerSpec,
+            project_phase: registerSpec.project_phase ?? lessonForm.projectPhase,
+            what_happened: registerSpec.what_happened ?? lessonForm.issue,
+            root_cause: registerSpec.root_cause ?? lessonForm.cause,
+            lesson_learned: registerSpec.lesson_learned ?? lessonForm.solution,
+            recommendation: registerSpec.recommendation ?? lessonForm.followUpAction,
+            action_owner: registerSpec.action_owner ?? lessonForm.responsiblePerson,
+          }
+          : registerSpec;
+  const changeRegisterSpec = (next: SpecValues) => {
+    const one = (key: string) => (typeof next[key] === "string" ? String(next[key]).trim() : "");
+    setRegisterSpec(next);
+    if (registerForm.type === "delivery") {
+      const unit = isOtherOption(one("unit")) ? one("unit_other") : one("unit");
+      setRegisterLines([{ quantity: one("delivered_quantity"), unit, description: one("material_specification") }]);
+      const result = one("inspection_result");
+      setRegisterOutcome(/^accepted$/i.test(result) ? "compliant" : /^rejected/i.test(result) ? "not_compliant" : result ? "partly" : "");
+    } else if (registerForm.type === "technical_instruction") {
+      const issued = one("issued_to_ref");
+      setRegisterForm((current) => ({ ...current, dueDate: one("response_required_by"), requestedTo: one("issued_to"), responsiblePartyId: issued.startsWith("party:") ? issued.slice(6) : current.responsiblePartyId }));
+    } else if (registerForm.type === "change_order") {
+      const days = /day/i.test(one("time_impact_unit")) ? one("time_impact") : "";
+      setChangeOrder((current) => ({ ...current, requestedBy: one("originator"), extensionDays: days || current.extensionDays, affectsSchedule: Number(one("time_impact")) > 0 }));
+      setRegisterForm((current) => ({ ...current, requestedTo: current.requestedTo || one("originator") }));
+    } else if (registerForm.type === "delay_report") {
+      const days = /day/i.test(one("duration_unit")) ? one("delay_duration") : one("duration_unit") === "Hours" && one("delay_duration") ? String(Math.ceil(Number(one("delay_duration")) / 24)) : "";
+      setDelayForm((current) => ({ ...current, description: one("detailed_cause").slice(0, 250), durationDays: days || current.durationDays, recoveryPlan: one("recovery_action") }));
+    } else if (registerForm.type === "lessons_learned") {
+      setLessonForm((current) => ({ ...current, projectPhase: one("project_phase"), issue: one("what_happened"), cause: one("root_cause"), solution: one("lesson_learned"), expectedResults: one("recommendation"), followUpAction: one("recommendation"), responsiblePerson: one("action_owner") }));
+    } else if (registerForm.type === "agreement") {
+      const first = Array.isArray(next.actions) ? next.actions.find((row): row is SpecRow => typeof row === "object" && row !== null) : undefined;
+      const owner = first?.owner_ref ?? "";
+      setRegisterForm((current) => ({ ...current, dueDate: first?.due ?? "", responsiblePartyId: owner.startsWith("party:") ? owner.slice(6) : current.responsiblePartyId }));
+    }
+  };
+  const registerSpecValues: SpecValues = sheetRegister ? sheetRegisterValues : registerForm.type === "delivery" && registerLines.some((line) => line.quantity.trim())
     ? { ...registerSpec, delivered_quantity: String(deliveredQuantity) }
     : registerForm.type === "lessons_learned"
       ? { ...registerSpec, project_phase: lessonForm.projectPhase, action_owner: lessonForm.responsiblePerson }
       : registerForm.type === "change_order"
         ? { ...registerSpec, originator: changeOrder.requestedBy, cost_impact: changeOrder.costImpact, time_impact: changeOrder.extensionDays, time_impact_unit: "Calendar Days" }
         : registerSpec;
-  const registerSpecSkip: string[] = registerForm.type === "lessons_learned"
+  // Works: the building / area row is the screen's own building and location picker.
+  const registerSpecSkip: string[] = sheetRegister ? (["works_ongoing", "works_completed"].includes(registerForm.type) ? ["building_area"] : []) : registerForm.type === "lessons_learned"
     ? ["project_phase", "action_owner"]
     : registerForm.type === "change_order" ? ["originator", "cost_impact", "time_impact", "time_impact_unit"] : [];
   const registerSpecProblems = registerSpecForm ? specMissing(registerSpecForm, registerSpecValues, language, registerSpecSkip) : [];
@@ -2328,7 +2284,11 @@ function ProjectOperations({
    * agreement already carry their own contractor box; a lesson learned is reviewed
    * internally; a contractor's own submission is already signed by the contractor.
    */
-  const registerContractorSignatureApplies = !changeOrderRegister && !delayReportRegister && !agreementRegister && !lessonsLearnedRegister && !submittedRegister;
+  const registerContractorSignatureApplies = sheetRegister
+    // Every sheet form ends with the contractor's signature beside the author's, except the
+    // lesson: "Contractor signature is not required by default" (LESSON-REVIEW).
+    ? !lessonsLearnedRegister && !agreementRegister
+    : !changeOrderRegister && !delayReportRegister && !agreementRegister && !lessonsLearnedRegister && !submittedRegister;
   // Who the parties of an agreement can be: the own company, the signed-in supervisor
   // and every party of this project.
   const agreementPartyOptions = Array.from(new Set([
@@ -2338,7 +2298,19 @@ function ProjectOperations({
   ].filter(Boolean)));
   // An agreement is written as a sentence, so its own text is also its register line; a
   // lesson learned reads the same way off its own issue text.
-  const registerTitle = agreementRegister
+  const sheetText = (key: string) => (typeof registerSpecValues[key] === "string" ? String(registerSpecValues[key]).trim() : "");
+  // Sheets without a title row (delivery, TI, PDR) read back by what they are about.
+  const registerTitle = sheetRegister && registerForm.type === "delivery"
+    ? sheetText("material_specification").slice(0, 120)
+    : sheetRegister && registerForm.type === "technical_instruction"
+    ? [sheetText("instruction_category") || sheetText("instruction_type"), registerForm.details.trim().split(/\r?\n/)[0]].filter(Boolean).join(" · ").slice(0, 120)
+    : sheetRegister && (registerForm.type === "works_ongoing" || registerForm.type === "works_completed")
+    ? [sheetText("activity"), registerForm.type === "works_ongoing" ? sheetText("work_item") : (Array.isArray(registerSpecValues.completed_items) ? registerSpecValues.completed_items.filter((item): item is string => typeof item === "string").join(", ") : ""), sheetText("exact_location")].filter(Boolean).join(" · ").slice(0, 120)
+    : sheetRegister && delayReportRegister
+    ? [sheetText("affected_activity") || sheetText("affected_activity_text"), sheetText("delay_cause_category") || sheetText("delay_cause_type")].filter(Boolean).join(" · ").slice(0, 120)
+    : sheetRegister
+    ? registerForm.title.trim()
+    : agreementRegister
     ? registerForm.title.trim() || registerForm.details.trim().split(/\r?\n/)[0].slice(0, 90)
     : lessonsLearnedRegister
     ? registerForm.title.trim() || lessonForm.issue.trim().split(/\r?\n/)[0].slice(0, 90)
@@ -2349,6 +2321,11 @@ function ProjectOperations({
       delayForm.description.trim().split(/\r?\n/)[0],
     ].filter(Boolean).join(" · ").slice(0, 90)
     : registerForm.title.trim();
+  // What a sheet form still needs: the rows of the screen's own boxes, then the sheet's rows.
+  const sheetRegisterMissing = sheetRegister ? [
+    registerTitle.length < 3 ? text("title", "titel") : "",
+    ["technical_instruction", "change_order", "agreement"].includes(registerForm.type) && registerForm.details.trim().length < 3 ? text("description", "omschrijving") : "",
+  ].filter(Boolean) : [];
 
   // A module opens at its top. Keeping the scroll position of the page it came from opened
   // Project Docs and Assets halfway down on a phone, past everything there was to see.
@@ -3133,7 +3110,8 @@ function ProjectOperations({
       .flatMap(([role, photo]) => photo ? [{ role, photo }] : []);
     const baseDetails = controlledRegister
       ? {
-        ...createControlledDocumentDetails(registerForm, {
+        // A sheet without a title row (TI) is filed under the line it is read back by.
+        ...createControlledDocumentDetails(sheetRegister ? { ...registerForm, title: registerTitle } : registerForm, {
           projectName,
           projectCode,
           buildingName: registerBuildingName,
@@ -3497,6 +3475,22 @@ function ProjectOperations({
   const activeSectionLabel = projectSections.find(([id]) => id === tab)?.[1];
   const activeSectionCount = projectSections.find(([id]) => id === tab)?.[2] ?? 0;
   const canCreateRecord = recordModuleTabs.includes(tab) && mayCreateHere;
+  // The photo row of a register sheet (Photos / documents, Evidence, Attachments).
+  const registerSheetPhotos = (
+    <>
+      <label className="finding-photo-capture register-photo-capture">
+        <Camera size={22} />
+        <span><strong>{registerPhotos.length ? text(`${registerPhotos.length} photos ready`, `${registerPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
+        <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setRegisterPhotos, setRegisterPhotoError); event.currentTarget.value = ""; }} />
+      </label>
+      <PhotoEvidenceList
+        photos={registerPhotos}
+        setPhotos={setRegisterPhotos}
+        markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
+      />
+      {registerPhotoError ? <p className="field-error" role="alert">{registerPhotoError}</p> : null}
+    </>
+  );
 
   return (
     <>
@@ -4331,7 +4325,7 @@ function ProjectOperations({
                 </>
               ) : null}
               <DraftNotice status={registerAutosave.status} savedAt={registerAutosave.savedAt} onDiscard={discardRegisterDraft} />
-              {controlledRegister ? (
+              {controlledRegister && !sheetRegister ? (
                 <div className="form-grid controlled-document-primary">
                   {/* The client's arrow runs from Discipline to the top of the form: it comes before the title. */}
                   {registerForm.type === "technical_instruction" ? <label className="form-field"><span>{text("Discipline", "Discipline")}</span><select value={registerForm.discipline} onChange={(event) => setRegisterForm({ ...registerForm, discipline: event.target.value })}><option value="architectural">{text("Architectural", "Architectonisch")}</option><option value="structural">{text("Structural", "Constructief")}</option><option value="electrical">{text("Electrical", "Elektrisch")}</option><option value="mechanical">{text("Mechanical", "Werktuigbouwkundig")}</option><option value="civil">{text("Civil", "Civiel")}</option><option value="hse">HSE</option></select></label> : null}
@@ -4339,7 +4333,10 @@ function ProjectOperations({
                   <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction description", "Omschrijving instructie") : text("Formal request / instruction / observation", "Formeel verzoek / instructie / observatie")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
                 </div>
               ) : null}
-              <div className="form-grid-2">
+              {sheetRegister ? (
+                /* A sheet without a location row: the buildings the numbered record is filed under. */
+                !["technical_instruction", "change_order", "delay_report", "works_ongoing", "works_completed"].includes(registerForm.type) ? <RecordBuildingsField id="register-buildings" buildings={buildings} value={registerBuildingIds} onChange={(next) => { setRegisterBuildingIds(next); setRegisterBuildingId(next[0] ?? registerBuildingId); setRegisterLocationNodeId(""); }} /> : null
+              ) : <div className="form-grid-2">
                 <RecordBuildingsField id="register-buildings" buildings={buildings} value={registerBuildingIds} onChange={(next) => { setRegisterBuildingIds(next); setRegisterBuildingId(next[0] ?? registerBuildingId); setRegisterLocationNodeId(""); }} />
                 <LocationPicker id="register-location" nodes={data.locationNodes} buildingId={registerBuildingId} value={registerLocationNodeId} onChange={setRegisterLocationNodeId} requiredDepth={requiredLocationDepth} />
                 {submittedRegister ? <details className="optional-text-entry register-type-switch" style={{ alignSelf: "start" }}>
@@ -4360,15 +4357,63 @@ function ProjectOperations({
                     <button className="field-inline-link" type="button" onClick={() => switchTab("drawings")}><MapPin size={12} /> {text("Open the drawing to place a pin", "Open de tekening om een pin te plaatsen")}</button>
                   </label>
                 ) : null}
-              </div>
-              {controlledRegister ? (
+              </div>}
+              {controlledRegister && !sheetRegister ? (
                 <label className="form-field controlled-document-deadline">
                   <span>{registerForm.type === "technical_instruction" ? text("Instruction deadline / required by", "Deadline instructie / uitvoeren uiterlijk") : text("Response / information required by", "Antwoord / informatie nodig uiterlijk")}</span>
                   <input type="date" min={editingRegisterId ? undefined : issueDate} value={registerForm.dueDate} onChange={(event) => setRegisterForm({ ...registerForm, dueDate: event.target.value })} />
                 </label>
               ) : null}
-              {activeRegisterPresets.length ? <div className="quick-issue-presets" aria-label={text("Choose a standard register item", "Kies een standaard registeritem")}>{activeRegisterPresets.map((preset) => <button className={registerForm.title === preset.title ? "active" : ""} type="button" onClick={() => setRegisterForm({ ...registerForm, ...preset })} key={preset.title}>{preset.title}</button>)}</div> : null}
-              {delayReportRegister ? (
+              {activeRegisterPresets.length && !sheetRegister ? <div className="quick-issue-presets" aria-label={text("Choose a standard register item", "Kies een standaard registeritem")}>{activeRegisterPresets.map((preset) => <button className={registerForm.title === preset.title ? "active" : ""} type="button" onClick={() => setRegisterForm({ ...registerForm, ...preset })} key={preset.title}>{preset.title}</button>)}</div> : null}
+              {sheetRegister && registerSpecForm ? (
+                /* The workbook sheet of this form, row by row in its order. */
+                <SpecFields
+                  form={registerSpecForm}
+                  skip={registerSpecSkip}
+                  values={registerSpecValues}
+                  onChange={changeRegisterSpec}
+                  text={text}
+                  language={language}
+                  slots={{
+                    title: <input aria-label={text("Title", "Titel")} value={registerForm.title} maxLength={160} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} />,
+                    description: (
+                      <div className="record-description-field">
+                        <textarea aria-label={text("Description", "Omschrijving")} value={registerForm.details} rows={5} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} />
+                        <DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} />
+                      </div>
+                    ),
+                    location: (
+                      <div className="sheet-location">
+                        <RecordBuildingsField id="register-buildings" buildings={buildings} value={registerBuildingIds} onChange={(next) => { setRegisterBuildingIds(next); setRegisterBuildingId(next[0] ?? registerBuildingId); setRegisterLocationNodeId(""); }} />
+                        <LocationPicker id="register-location" nodes={data.locationNodes} buildingId={registerBuildingId} value={registerLocationNodeId} onChange={setRegisterLocationNodeId} requiredDepth={requiredLocationDepth} />
+                      </div>
+                    ),
+                    photos: registerSheetPhotos,
+                    attachments: (
+                      <>
+                        {registerSheetPhotos}
+                        <label className="ui-button ui-button--secondary ui-button--md file-button controlled-document-upload">
+                          <Upload size={15} /> {registerFiles.length
+                            ? text(`${registerFiles.length} document(s) selected`, `${registerFiles.length} document(en) geselecteerd`)
+                            : text("Upload attachment", "Bijlage uploaden")}
+                          <input
+                            type="file"
+                            multiple
+                            accept=".pdf,.dwg,.doc,.docx,.xls,.xlsx,.csv,.txt,image/jpeg,image/png,image/webp"
+                            hidden
+                            onChange={(event) => {
+                              const files = Array.from(event.currentTarget.files ?? []);
+                              setRegisterFiles(files);
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                        </label>
+                        {registerFiles.length ? <div className="boq-preview">{registerFiles.map((file) => <div key={`${file.name}:${file.lastModified}`}><FileText size={15} /><span>{file.name}</span><small>{Math.max(1, Math.round(file.size / 1024))} KB</small></div>)}</div> : null}
+                      </>
+                    ),
+                  }}
+                />
+              ) : delayReportRegister ? (
                 /* The client's own Project Delay Report. The header above this — project,
                    location, reporter, date and time — is filled by the app, "zelfde als
                    HSE"; what follows is the delay itself, in the client's own sections. */
@@ -4759,7 +4804,7 @@ function ProjectOperations({
                 </div>
                 </>
               )}
-              {controlledRegister ? <>
+              {controlledRegister && !sheetRegister ? <>
                 {editingRegisterId ? <label className="form-field"><span>{text("Revision", "Revisie")}</span><input value={registerForm.revision} onChange={(event) => setRegisterForm({ ...registerForm, revision: event.target.value })} /></label> : null}
                 {/* Who draws the document up is a choice, not always the person logged in. */}
                 {submittedRegister ? (
@@ -4838,7 +4883,7 @@ function ProjectOperations({
               </> : null}
               {/* Site photos come before the signatures. A lesson learned has its own two named
                   pictures; a third, general photo box on it was "dubbel". */}
-              {!lessonsLearnedRegister ? (
+              {!lessonsLearnedRegister && !sheetRegister ? (
                 <>
                 <label className="finding-photo-capture register-photo-capture">
                   <Camera size={22} />
@@ -4853,10 +4898,19 @@ function ProjectOperations({
                 {registerPhotoError ? <p className="field-error" role="alert">{registerPhotoError}</p> : null}
                 </>
               ) : null}
-              {registerSpecForm ? <SpecFields form={registerSpecForm} skip={registerSpecSkip} values={registerSpecValues} onChange={setRegisterSpec} text={text} language={language} heading={text("Specification details", "Specificatiegegevens")} /> : null}
+              {registerSpecForm && !sheetRegister ? <SpecFields form={registerSpecForm} skip={registerSpecSkip} values={registerSpecValues} onChange={setRegisterSpec} text={text} language={language} heading={text("Specification details", "Specificatiegegevens")} /> : null}
               {/* "Overal aan het eind": the signatures close every register form — supervision
                   first, the contractor next to it. */}
-              {changeOrderRegister ? (
+              {sheetRegister && agreementRegister ? (
+                <RecordSignatures>
+                  <AgreementSignatureFields
+                    options={agreementPartyOptions}
+                    value={agreementForm}
+                    onChange={setAgreementForm}
+                    roleLabels={[text("Contractor representative", "Vertegenwoordiger aannemer"), text("Supervision (consultant)", "Supervisie (consultant)")]}
+                  />
+                </RecordSignatures>
+              ) : changeOrderRegister && !sheetRegister ? (
                 <div className="record-form-sections change-order-sections">
                     <RecordFormSection
                       number={5}
@@ -4978,7 +5032,11 @@ function ProjectOperations({
               {(() => {
                 // What is still missing before the save button works, in words. A disabled button
                 // that does not say why is how a form gets abandoned; this mirrors the rules above.
-                const registerMissing = [
+                const registerMissing = sheetRegister ? [
+                  exactLocationRequired && !registerLocationNodeId ? text("exact location", "exacte locatie") : "",
+                  ...sheetRegisterMissing,
+                  ...registerSpecProblems,
+                ].filter(Boolean) : [
     exactLocationRequired && !registerLocationNodeId ? text("exact location", "exacte locatie") : "",
     registerTitle.length < 3 ? text("title", "titel") : "",
     controlledRegister && registerForm.details.trim().length < 3 ? text("description", "omschrijving") : "",
@@ -4998,7 +5056,7 @@ function ProjectOperations({
                 ].filter(Boolean);
                 return registerMissing.length ? <small className="confirm-needs">{text("Still needed", "Nog nodig")}: {registerMissing.join(" · ")}</small> : null;
               })()}
-              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerTitle.length < 3 || !controlledFormReady || !lessonFormReady || !delayReportFormReady || registerSpecProblems.length > 0} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : lessonsLearnedRegister ? text("Save lesson learned", "Geleerde les opslaan") : delayReportRegister ? text("Save delay report", "Vertragingsrapport opslaan") : text("Save register item", "Registeritem opslaan")}</button>
+              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerTitle.length < 3 || (sheetRegister ? sheetRegisterMissing.length > 0 : !controlledFormReady || !lessonFormReady || !delayReportFormReady) || registerSpecProblems.length > 0} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : lessonsLearnedRegister ? text("Save lesson learned", "Geleerde les opslaan") : delayReportRegister ? text("Save delay report", "Vertragingsrapport opslaan") : text("Save register item", "Registeritem opslaan")}</button>
             </RecordFormShell>
           ) : null}
           {/* The bill of quantities has nothing to do with a delivery or any other

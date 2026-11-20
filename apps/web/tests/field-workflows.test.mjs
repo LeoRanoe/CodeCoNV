@@ -336,7 +336,7 @@ test("gives every attached photo one written field and location without a direct
     assert.match(source, /<PhotoEvidenceList/, `${name} must use the shared photo block`);
     assert.match(source, /toPhotoEvidence\(/, `${name} must wrap a taken photo so it carries its own words`);
   }
-  assert.equal(operations.match(/<PhotoEvidenceList/g)?.length, 5);
+  assert.equal(operations.match(/<PhotoEvidenceList/g)?.length, 6);
   // The old one-off stacks are gone rather than left behind next to the shared block.
   assert.doesNotMatch(operations, /FindingPhotoStack/);
   // The loose field-record form (and its photo strip) is gone: works, delays and photos each

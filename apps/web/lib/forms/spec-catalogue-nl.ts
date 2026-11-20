@@ -2,6 +2,17 @@
 // English value, show the Dutch label). Written by hand; review with the client's terms.
 
 export const specValueNl: Record<string, string> = {
+  // Change Order row 8, Reason for change.
+  "Client Request": "Verzoek opdrachtgever",
+  "Consultant Instruction": "Instructie adviseur",
+  "Design Development": "Ontwerpontwikkeling",
+  "Unforeseen Site Condition": "Onvoorziene situatie op de bouwplaats",
+  "Material Unavailability": "Materiaal niet beschikbaar",
+  "Quality Improvement": "Kwaliteitsverbetering",
+  "Value Engineering": "Value engineering",
+  "HSE Requirement": "HSE-eis",
+  "Contractor Proposal": "Voorstel aannemer",
+  "Coordination Requirement": "Coördinatie-eis",
   "Action / Task Commitment": "Actie- / taaktoezegging",
   "Submission / Information Required": "Indiening / informatie vereist",
   "Investigation / Assessment": "Onderzoek / beoordeling",
