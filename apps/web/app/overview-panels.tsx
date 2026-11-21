@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, type ReactNode } from "react";
 import { useLanguage } from "@/lib/i18n";
+import { pageAll } from "@/lib/supabase/page-all.mjs";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { getCachedProjectSnapshot, cacheProjectSnapshot } from "@/lib/offline/project-cache";
 import { loadProjectOperations } from "@/lib/supabase/operations";
@@ -63,8 +64,9 @@ export function OverviewPanels({
     enabled: permissions.can("documents.read"),
     queryFn: async () => {
       const [documents, revisions] = await Promise.all([
-        client.from("project_documents").select("id,document_number,title,current_revision_id").eq("project_id", projectId).limit(5000),
-        client.from("project_document_revisions").select("id,document_id,revision,review_status,uploaded_at,superseded_at").eq("project_id", projectId).order("uploaded_at", { ascending: false }).limit(2000),
+        // F11: every document and revision, paged past the API row cap, so the counts are complete.
+        pageAll((from: number, to: number) => client.from("project_documents").select("id,document_number,title,current_revision_id").eq("project_id", projectId).order("id").range(from, to), 50000),
+        pageAll((from: number, to: number) => client.from("project_document_revisions").select("id,document_id,revision,review_status,uploaded_at,superseded_at").eq("project_id", projectId).order("uploaded_at", { ascending: false }).order("id").range(from, to), 100000),
       ]);
       return { documents: documents.data ?? [], revisions: revisions.data ?? [] };
     },

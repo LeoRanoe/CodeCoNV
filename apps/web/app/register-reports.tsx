@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
+import { pageAll } from "@/lib/supabase/page-all.mjs";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { downloadBlob } from "@/lib/browser/download";
 import { loadPortalSnapshot } from "@/lib/portal/portal-data";
@@ -49,10 +50,12 @@ export function RegisterReports({ client, projectId, projectName, data, parties,
     enabled: kind === "documents" && permissions.can("documents.read"),
     queryFn: async () => {
       const [documents, revisions] = await Promise.all([
-        client.from("project_documents").select("id,document_number,title,folder_code,discipline,current_revision_id,originator_name,originator_party_id").eq("project_id", projectId).limit(5000),
-        client.from("project_document_revisions").select("id,document_id,revision,review_status,uploaded_at,reviewed_at").eq("project_id", projectId).limit(10000),
+        // F11: paged past the API row cap; the report counts every document and revision.
+        pageAll((from: number, to: number) => client.from("project_documents").select("id,document_number,title,folder_code,discipline,current_revision_id,originator_name,originator_party_id").eq("project_id", projectId).order("id").range(from, to), 50000),
+        pageAll((from: number, to: number) => client.from("project_document_revisions").select("id,document_id,revision,review_status,uploaded_at,reviewed_at").eq("project_id", projectId).order("id").range(from, to), 100000),
       ]);
       if (documents.error) throw documents.error;
+      if (revisions.error) throw revisions.error;
       return { documents: documents.data ?? [], revisions: revisions.data ?? [] };
     },
   });

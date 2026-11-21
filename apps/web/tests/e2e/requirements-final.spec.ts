@@ -125,13 +125,28 @@ test("a document is registered, revised and superseded without losing the earlie
   await expect(history.getByText("B · current")).toBeVisible({ timeout: 60_000 });
   await expect(history.getByRole("row").filter({ hasText: /^A/ }).getByText("Superseded")).toBeVisible();
 
-  // Route it to the client for approval.
+  // F15: a revision under review is never sent out. Routing now is refused with the reason.
   await detail.getByRole("button", { name: "Assign or share" }).click();
   const share = detail.locator(".portal-share-form");
   await share.getByLabel("Portal").selectOption("client");
   await share.getByLabel("Requested action").selectOption("approve");
   await share.getByRole("button", { name: "Route to client" }).click();
-  await expect(detail.locator(".portal-share-item").first()).toContainText("Awaiting response");
+  await expect(share.getByText("This document has no approved revision to release")).toBeVisible();
+  await share.getByRole("button", { name: "Cancel" }).click();
+
+  // The reviewer approves revision B; routing then releases exactly that revision.
+  await detail.getByRole("button", { name: "Review status" }).click();
+  await detail.getByLabel(/New status for revision/).selectOption("approved");
+  await detail.getByRole("button", { name: "Save status" }).click();
+  await expect(history.getByRole("row").filter({ hasText: /^B/ }).getByText("Approved")).toBeVisible({ timeout: 30_000 });
+  await detail.getByRole("button", { name: "Assign or share" }).click();
+  await share.getByLabel("Portal").selectOption("client");
+  await share.getByLabel("Requested action").selectOption("approve");
+  await share.getByRole("button", { name: "Route to client" }).click();
+  const routed = detail.locator(".portal-share-item").first();
+  await expect(routed).toContainText("Awaiting response");
+  await routed.locator(".portal-share-summary").click();
+  await expect(routed.getByText(/Revision B · Approved/)).toBeVisible();
 });
 
 test("a client approver approves the routed document in the client portal", async ({ page }, testInfo) => {
