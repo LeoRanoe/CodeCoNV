@@ -66,7 +66,7 @@ Status words: **Implemented and verified** means the change is on the branch and
 
 ## Fifth implementation pass · sources resolve seven decision rows
 
-**Branch** · `claude/portals-document-register`, uncommitted on top of `b486f3e`. Not merged, not deployed.
+**Branch** · merged to `main` as `8a9bfcc` (PR #25) and deployed to production on 21 November 2026 with the owner's authorisation; production database at `202611240012`.
 
 | Requirement (source) | Expected behaviour | Code / migration | Observed result | Status |
 |---|---|---|---|---|
@@ -78,6 +78,18 @@ Status words: **Implemented and verified** means the change is on the branch and
 | NCR requirement reference links an exact revision (workbook NCR row 10 "Short text / linked document"; Word §15, §4.3; decision #15 for NCR) | The NCR picks the revision from Project Documents (typed text only outside the register); the register lists the NCR against that revision; another project's revision is refused | `202611240010_ncr_requirement_revision_link.sql`, `lib/forms/spec-forms.ts` (field kind `document`), `tests/e2e/spec-fill.ts` | pgTAP 038: 9/9; sheet-forms NCR saves with the picker | Verified locally |
 | F10 production role inventory (Word §8, §19, §20 items 1 and 5) | Read-only list of external roles, unlinked portal users, revoked contacts with open items, live share links, legacy unreleased files, releases | `F10-role-inventory.sql` (run aggregated, read-only, 21 Nov 2026, with the owner's authorisation) | Production (`dljbeheogaeviokpcvca`): no external or legacy `client` role memberships, no portal user without an organisation, no open item addressed to a revoked contact, no live account-free share link, 0 legacy unreleased document files, 0 document releases. 2 projects, 2 system supervisor roles, 0 documents, 1 NCR, 1 HSE event. Nothing to revoke or migrate | Verified |
 | Image 15 (mind map, found at the 20 November upload) | Menu, portals, roles and five-step lifecycle | — | Re-inspected: step 2 "Toewijzen aan aannemer / publiceren naar klant (waar nodig)" matches assignment on submission; the Supervisor role panel includes assigning, which the local `supervisor` role lacks (`portal.share`) — recorded under decision #11 | Implemented (`202611240011`, role change authorised by the owner on 21 Nov 2026) |
+
+### Release · 21 November 2026 (authorised by the owner)
+
+| Step | Result |
+|---|---|
+| PR | [#25](https://github.com/LeoRanoe/CodeCoNV/pull/25), all 5 checks green (web lint/test/build, DB migrations + pgTAP, Playwright flows, Vercel preview). The first CI run failed two `role-views` cases because the job did not pass the local API to the browser step; fixed in `.github/workflows/quality.yml`. Squash-merged as `8a9bfcc`. |
+| Production database (`dljbeheogaeviokpcvca`) | Migrations `202611240005`–`202611240012` applied with the Supabase connector, one file at a time, before the deploy (the new app reads `latest_revision_id`). `0006` was applied as the same rules value built from production's previous value plus the new Materials Delivery entry; the md5 of `spec_form_rules()` equals the local value (`6c83314a…`). Recorded versions match the repository. Function definitions of every changed function match the local database byte for byte apart from line endings. |
+| Production checks after migration | 2 system supervisor roles hold `portal.share`; the 5 new triggers exist; `latest_revision_id` exists; newest migration `202611240012`. Security advisors: the four `search_path` warnings are gone; no new callable definer function; leaked-password protection still off (needs a paid Supabase plan). |
+| Production role inventory (F10) | Run read-only before the change: no external or legacy client memberships, no live share links, no document releases, 0 legacy unreleased files. Nothing to revoke. |
+| Deployment | Vercel production deployment of `8a9bfcc` (status success, 22:44 UTC); the live `/supervisie` bundle contains the new register text ("Newer revision, not yet current"). |
+| Rollback | App: redeploy the previous production deployment in Vercel. Database: the migrations only add columns, triggers, functions and one permission; the previous app runs against them (verified: it does not read the new column). No data was deleted; `0008` changed no rows in production (0 documents). |
+| Not verified in production | Signed-in journeys (no production test account is used), real devices and camera, notification e-mail (sender not configured), backup restore drill. |
 
 ### Verification run · fifth pass
 
