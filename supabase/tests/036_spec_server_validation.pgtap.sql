@@ -97,7 +97,7 @@ select throws_ok(
   $$insert into public.hse_events (organization_id, project_id, building_id, event_number, event_type, title, description, severity, occurred_at, idempotency_key, created_by, spec)
     select organization_id, project_id, building_id, 'HSE-36-1', 'unsafe_condition', 'Open edge', 'Open edge at level 2', 'medium', now(), 'hse36-event-0001', '00000000-0000-0000-0000-0000000036b1',
       jsonb_build_object('_rules', '1', 'observed_at', '2026-11-23T08:00', 'hse_type', 'Safety', 'hse_category', 'Working at Heights', 'potential_consequences', jsonb_build_array('Injury'),
-        'risk_likelihood', 'Possible', 'risk_severity', 'Major', 'corrective_action', 'Install barrier', 'due_date', '2026-11-24') from ids$$,
+        'risk_likelihood', 'Possible', 'risk_severity', 'Major', 'risk_rating', 'High', 'corrective_action', 'Install barrier', 'due_date', '2026-11-24') from ids$$,
   '22023', 'The form cannot be saved: Required: Action owner',
   'an HSE observation is refused without an Action owner');
 reset role;
