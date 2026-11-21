@@ -2,7 +2,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, type ReactNode } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import { SpecDirectoryProvider } from "@/app/forms/spec-directory";
 import type { BuildingOption } from "@/app/building-picker";
 import { useLanguage } from "@/lib/i18n";
@@ -52,6 +52,8 @@ export function WorkspaceSpecDirectory({ client, projectId, snapshot, buildings,
     },
     staleTime: 60_000,
   });
+  const refetchDocuments = documentsQuery.refetch;
+  const refreshDocuments = useCallback(() => { void refetchDocuments(); }, [refetchDocuments]);
   const people = useMemo(() => {
     const listed = peopleQuery.data ?? [];
     if (listed.length) return listed;
@@ -76,6 +78,7 @@ export function WorkspaceSpecDirectory({ client, projectId, snapshot, buildings,
     locations,
     documents: documentsQuery.data?.documents ?? [],
     revisions: documentsQuery.data?.revisions ?? [],
+    refreshDocuments,
     config: snapshot.settings?.spec_configuration ?? null,
     canDecide: (form: SpecFormKey) => canReview || ((form === "hse" || form === "hse_incident") && permissions.can("hse.manage")) || (form === "inspection" && permissions.can("inspections.manage")),
     canSeeSensitive: permissions.can("hse.manage"),
@@ -86,6 +89,6 @@ export function WorkspaceSpecDirectory({ client, projectId, snapshot, buildings,
       if (!id) return;
       openRecord((recordKindTabs as Record<string, string>)[kind] ?? "home", id);
     },
-  }), [documentsQuery.data, canReview, currentUserId, currentUserName, language, locations, openRecord, parties, people, permissions, records, snapshot.settings?.spec_configuration]);
+  }), [documentsQuery.data, refreshDocuments, canReview, currentUserId, currentUserName, language, locations, openRecord, parties, people, permissions, records, snapshot.settings?.spec_configuration]);
   return <SpecDirectoryProvider value={value}>{children}</SpecDirectoryProvider>;
 }

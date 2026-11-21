@@ -18,6 +18,16 @@ test("F11: a record pinned to A stays current while B is rejected and C is under
   assert.equal(revisionReferenceText(documents[0], revisions[0]), "DWG-101 rev A");
 });
 
+test("F11: uploading B marks A superseded, but A stays the one to use until B is approved", () => {
+  const uploaded = [
+    { id: "a", document_id: "d1", revision: "A", review_status: "superseded", superseded_at: "2026-11-05T10:00:00Z", uploaded_at: "2026-11-01T10:00:00Z" },
+    { id: "b", document_id: "d1", revision: "B", review_status: "submitted", uploaded_at: "2026-11-05T10:00:00Z" },
+  ];
+  assert.equal(revisionStanding("a", documents, uploaded).stale, false);
+  uploaded[1].review_status = "approved";
+  assert.equal(revisionStanding("a", documents, uploaded).stale, true);
+});
+
 test("F11: approving C makes the A reference stale and names C; a rejected pin is stale", () => {
   const approved = revisions.map((item) => (item.id === "c" ? { ...item, review_status: "for_construction" } : item));
   const standing = revisionStanding("a", documents, approved);

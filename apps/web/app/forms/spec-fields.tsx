@@ -589,6 +589,9 @@ function DocumentRevisionPicker({ id, field, label, hint, reference, revisionRef
 }) {
   const [query, setQuery] = useState("");
   const [typing, setTyping] = useState(false);
+  // The register may have changed since the form opened (a revision registered or approved meanwhile).
+  const refreshDocuments = directory.refreshDocuments;
+  useEffect(() => { refreshDocuments?.(); }, [refreshDocuments]);
   const documents = useMemo(() => new Map(directory.documents.map((document) => [document.id, document])), [directory.documents]);
   const candidates = useMemo(() => {
     const words = query.trim().toLowerCase();

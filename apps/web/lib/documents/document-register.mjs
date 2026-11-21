@@ -182,8 +182,12 @@ export function suggestNextRevision(current) {
 
 /** Statuses of a revision that may be built from or released (same rule as releasableRevisionStatuses). */
 const approvedStatuses = new Set(["approved", "approved_with_comments", "for_construction"]);
-/** Statuses that mean the pinned revision is no longer the one to work from. */
-const retiredStatuses = new Set(["superseded", "withdrawn", "rejected", "revise_resubmit"]);
+/**
+ * Statuses that mean the pinned revision is no longer the one to work from. "Superseded" is not
+ * one of them: an upload marks the previous revision superseded while the new one may still be
+ * under review, so a superseded pin is stale only once a later revision is approved.
+ */
+const retiredStatuses = new Set(["withdrawn", "rejected", "revise_resubmit"]);
 
 /** The revision id of a spec reference (`revision:<id>`), or "". */
 export function revisionRefId(ref) {
@@ -209,7 +213,7 @@ export function revisionStanding(revisionId, documents, revisions) {
   const newerApproved = siblings
     .filter((item) => item.id !== pinned.id && approvedStatuses.has(item.review_status) && !item.superseded_at && String(item.uploaded_at ?? "") > String(pinned.uploaded_at ?? ""))
     .sort((a, b) => String(b.uploaded_at ?? "").localeCompare(String(a.uploaded_at ?? "")))[0] ?? null;
-  const retired = retiredStatuses.has(pinned.review_status) || Boolean(pinned.superseded_at && !approvedStatuses.has(pinned.review_status));
+  const retired = retiredStatuses.has(pinned.review_status);
   const stale = Boolean(newerApproved) || retired;
   return {
     document,
