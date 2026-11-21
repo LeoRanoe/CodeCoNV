@@ -111,6 +111,8 @@ export type ProjectAction = {
   closure_reason: string | null;
   created_at: string;
   updated_at: string;
+  /** Corrective, preventive or follow-up (202611220002). */
+  action_category?: "corrective" | "preventive" | "follow_up" | null;
 };
 
 export type ActionUpdate = {
@@ -548,18 +550,18 @@ export async function loadProjectDay(
     client.from("parties").select("id,name,party_type").eq("project_id", projectId).eq("active", true).order("name"),
     client
       .from("actions")
-      .select("id,action_number,title,description,due_at,priority,status,building_id,location_node_id,owner_user_id,owner_party_id,closure_reason,created_at,updated_at")
+      .select("id,action_number,title,description,due_at,priority,status,building_id,location_node_id,owner_user_id,owner_party_id,closure_reason,created_at,updated_at,action_category,source_type")
       .eq("project_id", projectId)
       .order("due_at", { ascending: true, nullsFirst: false })
-      .limit(50),
+      .limit(1000),
   ]);
-  const compatibleActionResult = schemaColumnMissing(actionResult.error, "location_node_id")
+  const compatibleActionResult = schemaColumnMissing(actionResult.error, "location_node_id") || schemaColumnMissing(actionResult.error, "action_category")
     ? await client
         .from("actions")
         .select("id,action_number,title,description,due_at,priority,status,building_id,owner_user_id,owner_party_id,closure_reason,created_at,updated_at")
         .eq("project_id", projectId)
         .order("due_at", { ascending: true, nullsFirst: false })
-        .limit(50)
+        .limit(1000)
     : actionResult;
   fail(reportResult.error);
   fail(partyResult.error);

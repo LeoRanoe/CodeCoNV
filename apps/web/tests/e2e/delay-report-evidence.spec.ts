@@ -40,17 +40,21 @@ async function openDelayReport(page: Page) {
   await expect(page.getByRole("heading", { name: "Project Delay Report (PDR)" })).toBeVisible();
 }
 
+/** The PDR sheet's photo field (PR #21): one button that opens the camera or the library. */
+async function addPhoto(page: Page) {
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: /^Take or choose a photo/ }).first().click();
+  await (await chooser).setFiles(photo!);
+}
+
 async function fillDelayReport(page: Page, description: string) {
-  await page.getByRole("combobox", { name: /Activity \/ work affected/ }).selectOption({ index: 1 });
+  // The PDR sheet (PR #22): the fixture project has no work record yet, so the activity is
+  // typed; the cause carries the same words so the saved record can be found by them. The
+  // sheet's lists, dates and choices are filled by fillSpecFields.
+  await page.getByRole("textbox", { name: /Affected activity \(not in the list\)/ }).fill(description);
+  await page.getByRole("textbox", { name: /^Detailed cause/ }).fill(description);
   await page.getByRole("spinbutton", { name: /Delay duration/ }).fill("5");
-  await page.getByRole("textbox", { name: /Description of delay/ }).fill(description);
-  await page.getByLabel("Weather", { exact: true }).check();
-  await page.getByLabel("Excusable delay", { exact: true }).check();
-  await page.getByLabel("No impact on critical path", { exact: true }).check();
-  await page.getByLabel(/Original finish date/).fill("2026-11-02");
-  await page.getByRole("combobox", { name: /Actual status on this date/ }).selectOption({ index: 1 });
-  await page.getByRole("textbox", { name: /Proposed recovery plan/ }).fill("Two extra crews from Monday until the work is back on schedule.");
-  await page.getByLabel("Contractor representative").fill("Demo Hoofdaannemer");
+  await page.getByRole("textbox", { name: /^Mitigation \/ recovery action/ }).fill("Two extra crews from Monday until the work is back on schedule.");
 }
 
 /** The delay reports of this title that are still alive, read as the supervisor does. */
@@ -73,7 +77,7 @@ test("a delay report is saved with its required photo confirmed", async ({ page 
   await openDelayReport(page);
   const description = `Rain stopped the pour ${Date.now().toString(36)}`;
   await fillDelayReport(page, description);
-  await page.getByLabel(/Tap to capture photo/).first().setInputFiles(photo!);
+  await addPhoto(page);
   await fillSpecFields(page.locator(".record-form-shell").first());
   await page.getByRole("button", { name: "Save delay report" }).click();
   await expect(page.locator(".operation-alert.success")).toBeVisible({ timeout: 90_000 });
@@ -88,12 +92,12 @@ test("a delay report whose required photo is not confirmed is not left behind", 
   await openDelayReport(page);
   const description = `Rain stopped the pour ${Date.now().toString(36)}`;
   await fillDelayReport(page, description);
-  await page.getByLabel(/Tap to capture photo/).first().setInputFiles(photo!);
+  await addPhoto(page);
   await fillSpecFields(page.locator(".record-form-shell").first());
   await page.getByRole("button", { name: "Save delay report" }).click();
   await expect(page.getByText(/Not saved: the required photos were not confirmed/)).toBeVisible({ timeout: 90_000 });
   expect((await liveReports(page, description)).length, "no formal report without its photo").toBe(0);
   // What was typed is still there for the next try.
-  await expect(page.getByRole("textbox", { name: /Description of delay/ })).toHaveValue(description);
+  await expect(page.getByRole("textbox", { name: /^Detailed cause/ })).toHaveValue(description);
   expect(await page.locator(".offline-queue").count(), "the failed photo is not waiting in a queue for a report that does not exist").toBe(0);
 });

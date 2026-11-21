@@ -76,6 +76,8 @@ test("Management keeps the project's lists and workflow settings", async ({ page
   test.skip(testInfo.project.name !== "desktop-office", "desktop route");
   await signIn(page);
   await page.locator(".sidebar").getByRole("button", { name: "Management", exact: true }).click();
+  // With Portals and Document settings the bar may fold into its menu.
+  if (!(await page.getByRole("tab", { name: "Workflows & lists" }).isVisible().catch(() => false))) await page.locator("#main-content button[aria-haspopup='true']").first().click();
   await page.getByRole("tab", { name: "Workflows & lists" }).click();
   const panel = page.getByRole("region", { name: "Specification settings" });
   await expect(panel).toBeVisible();

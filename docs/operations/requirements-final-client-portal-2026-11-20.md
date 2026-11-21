@@ -44,6 +44,42 @@ Status per item: **existing** (the app already did this before this round), **bu
 | 21.6 | Client dashboard widgets | built / interpreted | Planned-vs-actual progress and milestones need schedule data the app does not hold. The client sees published progress and schedule updates and shared schedule documents (folder 03). The app does not compute or invent figures. |
 | 22 | Separate permission domains | built | Contractor and client rights are separate permissions. A share is visible only to its own audience. |
 
+
+## Second pass (21-11-2026): audit against the document and the client's menu mind map
+
+Every menu item of the mind map, with where it is:
+
+| Menu | Item | Status | Where |
+|---|---|---|---|
+| 1 Overview | Project summary, progress (planned vs actual), work status, quality, HSE, pending actions, contractor overview, document overview, recent activity, notifications | existing + built | `app/overview-panels.tsx` under the existing overview. "Planned" says there is no baseline schedule in the app; actual progress comes from BOQ progress. Notifications: the bell. |
+| 2 Workspace | 15 forms | existing | |
+| 3 Actions | Dashboard, all, my, contractor, corrective, preventive, overdue, pending verification, completed/closed | existing + built | Action centre: "Show actions" (contractor / corrective / preventive) and the "Completed / closed" tile. The action category is new (migration `202611220002`) and is set by an action manager in the action screen. Default: corrective for actions from an NCR, inspection or HSE record, follow-up otherwise. |
+| 4 Rapid Verify | Verification dashboard, work, NCR, action, inspection follow-up, evidence review, pending, history | built | `app/verification-queue.tsx`, `record_verification()`. Results are pass, partially complete, further action required and fail, recorded with comment, photos, GPS and location. A pass closes an NCR, verifies an action, verifies a contractor portal item or passes a re-inspection. Any other result reopens the item or returns it, and can create a linked corrective action. The result shows in the record's own screen. The earlier document check is now the "Check against specs" view. |
+| 5 Project Documents | Folders 00–13 | built (first pass) | Now a main menu item. |
+| 6 Records & Photos | Submitted forms, photo library, attachments, record history | built | `app/records-archive.tsx`, a main menu item. Record history combines sign-offs, portal rounds, document revisions and verifications. |
+| 7 Reports | Daily, weekly, monthly, progress, quality, inspection, HSE, delay | existing | Period report. |
+| 7 Reports | Contractor reports, action reports, document reports | built | `app/register-reports.tsx`. Each shows period, data cut-off, filters and generation time, and exports to Excel (CSV) and PDF. |
+| 7 Reports | Custom reports | existing | Period report with chosen sections and filters. |
+| 8/9 Portals | | built (first pass) | |
+| 10 Management | Project setup, buildings & locations, contractors & consultants, users & permissions, work packages, disciplines, dropdown lists, workflow, notifications, system settings, archive | existing | |
+| 10 Management | Document settings (numbering, folders, review period) | built | Management → Document settings. The numbering pattern is checked when a document is registered. |
+| Section 14 | Portal item due soon or overdue, escalation, answers waiting for CODECO, document review overdue | built | Added to `refresh_project_notifications()`. |
+
+
+### Bugs found and fixed while testing (21-11-2026)
+
+The full end-to-end run (all 378 specs, including those not in CI) found these, all fixed and covered by tests:
+
+- **Share-link responses on issues/NCRs were refused** ("Only a finding manager may change the original observation") since the workbook-status sync of 202611210001: a contractor without an account could not propose a correction or report work ready. Fixed in `202611220003`, pgTAP in `032`.
+- **A delay report was saved without its required photo** when the upload failed, because the check only counted the old named photo boxes. Fixed in `operational-workspace.tsx` (QA M20 behaviour restored).
+- **Dictation stayed on "Stop dictation" after an error** and a session that was still starting when the user left the screen kept listening. Fixed in `lib/speech/dictation.ts` and `app/dictate-button.tsx`.
+- **The overview jumped 25 px on a phone** when "Day not started" changed to "Day started". The day status now has its own line.
+- **"Open follow-up" on the overview briefly left out the actions** while they were still loading. It now appears only when both have loaded.
+- **After registering a document its detail closed again by itself** (browser history race). The new document now appears in the register.
+- Specs `media-and-sharing`, `delay-report-evidence`, `tap-targets`, `register-touch-targets`, `niche-hardening` and `rapid-verify-values` still described the forms from before PR #21/#22 and were updated. They are not in the CI subset, which is why this went unnoticed.
+
+Result: pgTAP 32 files / 760 checks, unit tests, lint and the full Playwright run (201 passed, 0 failed; 177 skipped by design because they run on another viewport) on 21-11-2026.
+
 ## What changed for existing accounts
 
 - **Legacy contractor role** (`contractor`): it now opens the contractor portal and has lost `files.read` and `files.manage`. Before, it could read and edit every file of the project. It reads only its own and its organisation's controlled submissions. It can still file RFI / RFA / WCR / inspection requests from Portal → Responses & submissions. **An existing contractor account sees nothing in the portal until it is linked to its organisation under Management → Portals.**

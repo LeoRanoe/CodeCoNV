@@ -60,10 +60,15 @@ async function createStackedFinding(page: Page, title: string) {
   // A tile opens its module with the form ready.
   await page.locator('[data-workspace-destination="issues"]').click();
   await expect(page.getByRole("heading", { name: "Create issue" })).toBeVisible();
-  await page.getByRole("button", { name: "Quality", exact: true }).click();
-  await page.getByRole("combobox", { name: "Category", exact: true }).selectOption({ index: 1 });
-  await page.getByRole("button", { name: "High", exact: true }).click();
+  // The Issue sheet (PR #22): issue type and category are lists, priority a choice of four.
+  await page.getByRole("combobox", { name: /Issue type/ }).selectOption({ label: "Quality" });
+  await page.getByRole("combobox", { name: /^Category/ }).first().selectOption({ index: 1 });
+  await page.getByRole("radio", { name: "High", exact: true }).click();
+  await page.getByRole("textbox", { name: "Title", exact: true }).fill(title);
   await page.locator("textarea").first().fill(`${title}. Three field photos document the same exact defect and its surrounding context.`);
+  // Required on the Issue sheet since PR #22.
+  await page.getByRole("combobox", { name: /^Responsible party/ }).selectOption({ index: 1 });
+  await page.getByRole("textbox", { name: /^Corrective action required/ }).fill("Remove and replace the affected section.");
   const photoInput = page.getByLabel("Add photo").first();
   await photoInput.setInputFiles(photoOne!);
   await photoInput.setInputFiles(photoTwo!);

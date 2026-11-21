@@ -217,6 +217,7 @@ function EntryIcon({ kind, alert }: { kind: string; alert?: boolean }) {
 export function ClientDashboard({
   entries,
   actions,
+  actionsLoaded = true,
   recentPhotos,
   client,
   projectName,
@@ -237,6 +238,8 @@ export function ClientDashboard({
 }: {
   entries: DashboardEntry[];
   actions: DashboardAction[];
+  /** False while the project's actions are still loading: the open count would leave them out. */
+  actionsLoaded?: boolean;
   /** The project's newest pictures, so the panel shows photos instead of empty slots. */
   recentPhotos: ProjectRecentPhoto[];
   client: SupabaseClient | null;
@@ -496,7 +499,7 @@ export function ClientDashboard({
         <>
 
         <div className="overview-metrics">
-          <MetricCard icon={<ListChecks size={22} />} label={text("Open follow-up", "Open opvolging")} value={projectCounts.data ? openWork.open : null} detail={`${openWork.urgent} ${text("high priority", "hoge prioriteit")}`} attention={Boolean(projectCounts.data && openWork.urgent)} onClick={openActions} />
+          <MetricCard icon={<ListChecks size={22} />} label={text("Open follow-up", "Open opvolging")} value={projectCounts.data && actionsLoaded ? openWork.open : null} detail={`${openWork.urgent} ${text("high priority", "hoge prioriteit")}`} attention={Boolean(projectCounts.data && actionsLoaded && openWork.urgent)} onClick={openActions} />
           <MetricCard icon={<ShieldAlert size={22} />} label={text("Quality issues", "Kwaliteitspunten")} value={projectCounts.data ? qualityOpen : null} detail={qualityNcr ? `${qualityNcr} NCR` : text("Open", "Open")} attention={Boolean(projectCounts.data && qualityNcr)} onClick={openActions} />
           <MetricCard icon={<ClipboardCheck size={22} />} label={text("Inspections", "Inspecties")} value={projectCounts.data ? inspectionTotal : null} detail={text("In project", "In project")} onClick={openWorkspace} />
           <MetricCard icon={<Camera size={22} />} label={text("Pictures", "Foto's")} value={projectCounts.data ? photoTotal : null} detail={text("In project", "In project")} onClick={() => openRecord("files", "")} />

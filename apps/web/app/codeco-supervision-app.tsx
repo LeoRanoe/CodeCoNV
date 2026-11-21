@@ -15,7 +15,9 @@ import {
   ClipboardCheck,
   CloudSun,
   FileText,
+  FolderOpen,
   HardDrive,
+  Images,
   Home,
   KeyRound,
   LayoutDashboard,
@@ -49,6 +51,8 @@ import { photoTitle, photoUploadDescription, samePhotoFile, toPhotoEvidence, typ
 import { ClientDashboard } from "@/app/client-dashboard";
 import { PortalApp } from "@/app/portal-app";
 import { PortalSharePanel } from "@/app/portal-share-panel";
+import { ActionCategoryField, RecordVerifications } from "@/app/verification-queue";
+import { OverviewPanels } from "@/app/overview-panels";
 import { portalModeFor } from "@/lib/portal/portal-model.mjs";
 import { DailyLogForm } from "@/app/daily-log-modal";
 import { LiveWeatherChip } from "@/app/live-weather-chip";
@@ -167,10 +171,10 @@ function CompanyLogo({ subtitle }: { subtitle?: string }) {
   );
 }
 
-type NavKey = "vandaag" | "project" | "acties" | "projectdocs" | "punchlist" | "verify" | "rapporten" | "meer";
+type NavKey = "vandaag" | "project" | "acties" | "projectdocs" | "records" | "punchlist" | "verify" | "rapporten" | "meer";
 
 type ProjectTabKey = "home" | "inspections" | "findings" | "ncr" | "hse" | "daily" | "workforce" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files" | "assets";
-const navKeys: NavKey[] = ["vandaag", "project", "acties", "projectdocs", "punchlist", "verify", "rapporten", "meer"];
+const navKeys: NavKey[] = ["vandaag", "project", "acties", "projectdocs", "records", "punchlist", "verify", "rapporten", "meer"];
 const projectTabKeys: ProjectTabKey[] = ["home", "inspections", "findings", "ncr", "hse", "daily", "workforce", "documents", "registers", "visual", "drawings", "tools", "files", "assets"];
 type ModalKey = "action_create" | "action_detail" | "report" | "project_start" | "user_admin" | "notifications" | "manage_buildings" | "switch_project" | "offline" | null;
 /** The dialogs a back press or an address may reopen: those that need no record in hand. */
@@ -229,10 +233,11 @@ const navigation: { id: NavKey; label: string; icon: LucideIcon; badge?: string 
   { id: "vandaag", label: "Overzicht", icon: Home },
   { id: "project", label: "Werkruimte", icon: LayoutDashboard },
   { id: "acties", label: "Acties", icon: ClipboardCheck },
-  /* Project Docs and Issues used to stand here as well. Both are workspace modules with their
-     own way in on the workspace itself, so the bar offered the same screen twice. Their keys
-     stay known, so an older address or back press still lands on the module. */
   { id: "verify", label: "Rapid Verify", icon: Search },
+  /* The client's menu (requirements FINAL, 20-11-2026) puts Project Documents and Records &
+     Photos in the main menu. Issues stays a workspace module. */
+  { id: "projectdocs", label: "Project Documents", icon: FolderOpen },
+  { id: "records", label: "Records & Photos", icon: Images },
   { id: "rapporten", label: "Rapporten", icon: FileText },
   { id: "meer", label: "Beheer", icon: Settings },
 ];
@@ -660,7 +665,9 @@ export function CodecoSupervisionApp() {
         : text("Live workspace · synchronized", "Live werkruimte · gesynchroniseerd");
   // A module whose records the user may not read would only ever be an empty page.
   const navAllowed = (id: NavKey) => id === "acties" ? permissions.canAny("actions.read", "actions.create")
-    : id === "projectdocs" || id === "verify" ? permissions.can("files.read")
+    : id === "projectdocs" ? permissions.canAny("documents.read", "files.read")
+    : id === "records" ? permissions.can("records.read")
+    : id === "verify" ? permissions.can("files.read")
       : id === "punchlist" ? permissions.can("findings.read")
         : id === "rapporten" ? permissions.canAny("reports.read", "reports.readapproved")
           : true;
@@ -670,7 +677,8 @@ export function CodecoSupervisionApp() {
       vandaag: text("Overview", "Overzicht"),
       project: text("Workspace", "Werkruimte"),
       acties: text("Actions", "Acties"),
-      projectdocs: "Project Docs",
+      projectdocs: text("Project Documents", "Projectdocumenten"),
+      records: text("Records & Photos", "Registraties & foto's"),
       punchlist: "Issues",
       verify: "Rapid Verify",
       rapporten: text("Reports", "Rapporten"),
@@ -1869,9 +1877,11 @@ export function CodecoSupervisionApp() {
             instead of carrying the previous project's selection, filters and drafts. */}
         <main id="main-content" tabIndex={-1} className={`main-content${unsavedPhotos ? " has-resume-bar" : ""}`} key={selectedProject?.id ?? "no-project"}>
           {activeNav === "vandaag" ? (
+            <>
             <ClientDashboard
               entries={entries}
               actions={dayActions}
+              actionsLoaded={dayQuery.isSuccess || Boolean(dayQuery.data)}
               recentPhotos={recentPhotosQuery.data ?? []}
               client={supabase as SupabaseClient | null}
               projectName={projectName}
@@ -1895,9 +1905,20 @@ export function CodecoSupervisionApp() {
                 setFocusRecordId(recordId);
               }}
             />
+            <OverviewPanels
+              client={supabase}
+              projectId={selectedProject!.id}
+              organizationId={activeOrganizationId!}
+              reportId={dayQuery.data?.report?.id ? String(dayQuery.data.report.id) : null}
+              parties={dayQuery.data?.parties ?? []}
+              actions={dayActions}
+              openModule={(tab) => openWorkspaceModule(tab)}
+              openNav={(nav) => navigate(nav)}
+            />
+            </>
           ) : (
             <OperationalWorkspace
-              mode={activeNav === "acties" ? "actions" : activeNav === "verify" ? "verify" : activeNav === "project" || activeNav === "projectdocs" || activeNav === "punchlist" ? "project" : activeNav === "rapporten" ? "reports" : "admin"}
+              mode={activeNav === "acties" ? "actions" : activeNav === "verify" ? "verify" : activeNav === "records" ? "records" : activeNav === "project" || activeNav === "projectdocs" || activeNav === "punchlist" ? "project" : activeNav === "rapporten" ? "reports" : "admin"}
               client={supabase}
               organizationId={activeOrganizationId!}
               projectId={selectedProject!.id}
@@ -1986,7 +2007,7 @@ export function CodecoSupervisionApp() {
           );
         })}
         <button
-          className={`mobile-nav-button ${["projectdocs", "punchlist", "verify", "rapporten", "meer"].includes(activeNav) ? "active" : ""}`}
+          className={`mobile-nav-button ${["projectdocs", "records", "punchlist", "verify", "rapporten", "meer"].includes(activeNav) ? "active" : ""}`}
           type="button"
           aria-expanded={mobileMenuOpen}
           aria-controls="mobile-module-menu"
@@ -2041,7 +2062,7 @@ export function CodecoSupervisionApp() {
                 </span>
                 <ChevronRight size={17} />
               </button>
-              {localizedNavigation.filter((item) => ["projectdocs", "punchlist", "verify", "rapporten", "meer"].includes(item.id)).map((item) => {
+              {localizedNavigation.filter((item) => ["projectdocs", "records", "punchlist", "verify", "rapporten", "meer"].includes(item.id)).map((item) => {
                 const Icon = item.icon;
                 return (
                   <button className={activeNav === item.id ? "active" : ""} type="button" onClick={() => navigate(item.id)} key={item.id}>
@@ -2147,7 +2168,11 @@ export function CodecoSupervisionApp() {
           locationNodes={projectLocationsQuery.data ?? []}
           updates={(dayQuery.data?.actionUpdates ?? []).filter((update) => update.action_id === selectedAction.id)}
           portalPanel={selectedProject ? (
-            <PortalSharePanel client={supabase} projectId={selectedProject.id} recordType="action" recordId={selectedAction.id} recordTitle={selectedAction.title} parties={dayQuery.data?.parties ?? []} />
+            <>
+              <ActionCategoryField client={supabase} actionId={selectedAction.id} value={selectedAction.action_category} changed={() => void queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] })} />
+              <RecordVerifications client={supabase} projectId={selectedProject.id} recordType="action" recordId={selectedAction.id} />
+              <PortalSharePanel client={supabase} projectId={selectedProject.id} recordType="action" recordId={selectedAction.id} recordTitle={selectedAction.title} parties={dayQuery.data?.parties ?? []} />
+            </>
           ) : null}
           close={() => {
             setSelectedAction(null);

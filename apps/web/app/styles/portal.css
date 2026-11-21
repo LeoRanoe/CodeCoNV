@@ -240,3 +240,30 @@
 .portal-publish { display: grid; gap: var(--space-2); }
 .portal-submission-toggle { display: flex; justify-content: flex-end; }
 .portal-submission { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-card); padding: var(--space-3); }
+.action-center-focus select { min-height: var(--control-h-md); max-width: 100%; }
+
+/* Overview panels (section 12) */
+.overview-panels { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); margin-block-start: var(--space-4); }
+.overview-extra-panel .ui-panel__heading { margin-block-end: var(--space-2); }
+.overview-facts { display: grid; gap: var(--space-2); margin: 0; }
+.overview-fact { align-items: baseline; border-block-end: 1px solid var(--line); display: flex; gap: var(--space-3); justify-content: space-between; padding-block: var(--space-1); }
+.overview-fact dt { color: var(--muted); font-size: var(--text-sm); }
+.overview-fact dd { font-variant-numeric: tabular-nums; font-weight: var(--weight-semibold); margin: 0; text-align: end; }
+.overview-fact--red dd { color: var(--red); }
+.overview-fact--amber dd { color: var(--yellow); }
+.overview-list { display: grid; gap: var(--space-1); list-style: none; margin: var(--space-2) 0 0; padding: 0; }
+.overview-list li { display: flex; font-size: var(--text-sm); gap: var(--space-2); justify-content: space-between; }
+.overview-list small { color: var(--muted); }
+.verification-history { display: grid; gap: var(--space-2); }
+.verification-history h3 { align-items: center; display: flex; font-size: var(--text-md); gap: var(--space-2); margin: 0; }
+.verification-workspace { display: grid; gap: var(--space-4); }
+.verification-row .portal-row-side { flex-wrap: wrap; }
+.register-reports { display: grid; gap: var(--space-3); }
+
+/* Overview on a phone: the day status always takes its own line. "Day not started" wrapped
+   where "Day started" fits, so the header lost a line when the day's data arrived and the
+   whole overview jumped up 25 px. */
+@media (max-width: 640px) {
+  main .project-overview .overview-hero-copy p { display: grid; grid-template-columns: auto minmax(0, 1fr); }
+  main .project-overview .overview-hero-copy p > .overview-day-state { grid-column: 1 / -1; justify-self: start; }
+}

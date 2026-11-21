@@ -24,7 +24,8 @@ import {
   suggestNextRevision,
   uploaderStatuses,
 } from "@/lib/documents/document-register.mjs";
-import type { OperationSnapshot } from "@/lib/supabase/operations";
+import { saveSpecConfiguration, type OperationSnapshot } from "@/lib/supabase/operations";
+import type { SpecConfiguration } from "@/lib/forms/spec-forms";
 
 type Party = { id: string; name: string; type: string };
 type Building = { id: string; name: string };
@@ -231,7 +232,8 @@ export function DocumentRegister({
       </div>
       {creating ? (
         <RegisterDocumentDialog client={client} projectId={projectId} folders={folders} parties={parties} buildings={buildings} defaultFolder={folder || "01"}
-          defaultBuildingId={defaultBuildingId} close={() => setCreating(false)} done={(id) => { setCreating(false); refresh(); setOpenId(id); }} />
+          defaultBuildingId={defaultBuildingId} numberPattern={(data.settings as { spec_configuration?: { document_number_pattern?: string } } | null)?.spec_configuration?.document_number_pattern}
+          close={() => setCreating(false)} done={() => { setCreating(false); refresh(); }} />
       ) : null}
       {openRow ? (
         <DocumentDetail client={client} projectId={projectId} row={openRow} names={query.data?.names ?? new Map()} fileNames={query.data?.fileNames ?? new Map()}
@@ -242,9 +244,9 @@ export function DocumentRegister({
   );
 }
 
-function RegisterDocumentDialog({ client, projectId, folders, parties, buildings, defaultFolder, defaultBuildingId, close, done }: {
+function RegisterDocumentDialog({ client, projectId, folders, parties, buildings, defaultFolder, defaultBuildingId, numberPattern, close, done }: {
   client: SupabaseClient; projectId: string; folders: Array<{ code: string; en: string; nl: string }>; parties: Party[]; buildings: Building[];
-  defaultFolder: string; defaultBuildingId: string; close: () => void; done: (id: string) => void;
+  defaultFolder: string; defaultBuildingId: string; numberPattern?: string; close: () => void; done: (id: string) => void;
 }) {
   const { language, text } = useLanguage();
   const permissions = useProjectPermissions();
@@ -261,6 +263,11 @@ function RegisterDocumentDialog({ client, projectId, folders, parties, buildings
   const submit = async () => {
     if (!file) { setError(text("Choose the document file.", "Kies het documentbestand.")); return; }
     if (form.title.trim().length < 2) { setError(text("Add a title.", "Voeg een titel toe.")); return; }
+    if (numberPattern && form.number.trim()) {
+      let matches = true;
+      try { matches = new RegExp(numberPattern).test(form.number.trim()); } catch { matches = true; }
+      if (!matches) { setError(text(`The number does not follow the project's convention (${numberPattern}).`, `Het nummer volgt de projectconventie niet (${numberPattern}).`)); return; }
+    }
     setBusy(true); setError("");
     try {
       const uploaded = await uploadProjectFile(client, { projectId, buildingId: selectedBuildings[0] ?? defaultBuildingId, category: form.type === "drawing" ? "drawing" : "document", file, onProgress: setProgress });
@@ -514,5 +521,86 @@ function DocumentDetail({ client, projectId, row, names, fileNames, folderName, 
         </section>
       </aside>
     </div>
+  );
+}
+
+/**
+ * Management → Document settings (requirements 4.1, 4.2 and 13): the project's folders, the
+ * numbering convention and the review period. Stored with the project's specification settings.
+ */
+export function DocumentSettings({ client, projectId, configuration }: {
+  client: SupabaseClient;
+  projectId: string;
+  configuration: Record<string, unknown> | null | undefined;
+}) {
+  const { language, text } = useLanguage();
+  const permissions = useProjectPermissions();
+  const queryClient = useQueryClient();
+  const initial = documentFoldersFor((configuration as { document_folders?: unknown } | null)?.document_folders) as Array<{ code: string; en: string; nl: string }>;
+  const [folders, setFolders] = useState(() => initial.map((folder) => ({ ...folder })));
+  const [pattern, setPattern] = useState(String((configuration as { document_number_pattern?: string } | null)?.document_number_pattern ?? ""));
+  const [days, setDays] = useState(String((configuration as { document_review_days?: number } | null)?.document_review_days ?? 7));
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const canEdit = permissions.can("project.configure");
+  const update = (index: number, key: "code" | "en" | "nl", value: string) => setFolders((current) => current.map((folder, position) => position === index ? { ...folder, [key]: value } : folder));
+  const save = async () => {
+    setError(""); setMessage("");
+    const codes = folders.map((folder) => folder.code.trim());
+    if (!codes.length || codes.some((code) => !/^[0-9A-Za-z][0-9A-Za-z_-]{0,15}$/.test(code))) { setError(text("Every folder needs a short code (letters, digits, - or _).", "Elke map heeft een korte code nodig (letters, cijfers, - of _).")); return; }
+    if (new Set(codes).size !== codes.length) { setError(text("Folder codes must be unique.", "Mapcodes moeten uniek zijn.")); return; }
+    if (pattern.trim()) { try { new RegExp(pattern.trim()); } catch { setError(text("The numbering pattern is not a valid expression.", "Het nummeringspatroon is geen geldige expressie.")); return; } }
+    const reviewDays = Number(days);
+    if (!Number.isInteger(reviewDays) || reviewDays < 1 || reviewDays > 120) { setError(text("Review period: 1 to 120 days.", "Beoordelingstermijn: 1 tot 120 dagen.")); return; }
+    setBusy(true);
+    try {
+      await saveSpecConfiguration(client, projectId, {
+        ...((configuration ?? {}) as SpecConfiguration),
+        document_folders: folders.map((folder) => ({ code: folder.code.trim(), en: folder.en.trim() || folder.code.trim(), nl: folder.nl.trim() || folder.en.trim() || folder.code.trim() })),
+        document_number_pattern: pattern.trim() || undefined,
+        document_review_days: reviewDays,
+      });
+      setMessage(text("Document settings saved.", "Documentinstellingen opgeslagen."));
+      void queryClient.invalidateQueries({ queryKey: ["project-operations", projectId] });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="ui-panel document-settings" aria-label={text("Document settings", "Documentinstellingen")}>
+      <div className="ui-panel__heading"><h2>{text("Document settings", "Documentinstellingen")}</h2></div>
+      <div className="portal-table-wrap">
+        <table className="portal-table">
+          <thead><tr><th>{text("Code", "Code")}</th><th>{text("Folder (English)", "Map (Engels)")}</th><th>{text("Folder (Dutch)", "Map (Nederlands)")}</th><th><span className="sr-only">{text("Remove", "Verwijderen")}</span></th></tr></thead>
+          <tbody>
+            {folders.map((folder, index) => (
+              <tr key={index}>
+                <td><input aria-label={`${text("Code of folder", "Code van map")} ${index + 1}`} value={folder.code} maxLength={16} disabled={!canEdit} onChange={(event) => update(index, "code", event.target.value)} /></td>
+                <td><input aria-label={`${text("English name of folder", "Engelse naam van map")} ${index + 1}`} value={folder.en} maxLength={80} disabled={!canEdit} onChange={(event) => update(index, "en", event.target.value)} /></td>
+                <td><input aria-label={`${text("Dutch name of folder", "Nederlandse naam van map")} ${index + 1}`} value={folder.nl} maxLength={80} disabled={!canEdit} onChange={(event) => update(index, "nl", event.target.value)} /></td>
+                <td>{canEdit ? <button className="ui-button ui-button--quiet ui-button--sm" type="button" aria-label={`${text("Remove folder", "Map verwijderen")} ${folder.code}`} onClick={() => setFolders((current) => current.filter((_, position) => position !== index))}><X size={14} /></button> : null}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {canEdit ? <div className="portal-steps"><button className="ui-button ui-button--secondary ui-button--sm" type="button" onClick={() => setFolders((current) => [...current, { code: String(current.length).padStart(2, "0"), en: "", nl: "" }])}><Plus size={14} /> {text("Add folder", "Map toevoegen")}</button></div> : null}
+      <p className="portal-note">{text("A document keeps the folder code it was registered with. Removing a folder here does not move its documents.", "Een document houdt de mapcode waarmee het is geregistreerd. Een map verwijderen verplaatst de documenten niet.")}</p>
+      <div className="form-grid form-grid-2">
+        <label className="form-field"><span>{text("Document numbering pattern (regular expression, optional)", "Nummeringspatroon documenten (reguliere expressie, optioneel)")}</span>
+          <input value={pattern} disabled={!canEdit} placeholder={"^[A-Z]{1,4}-[0-9]{3}$"} onChange={(event) => setPattern(event.target.value)} />
+        </label>
+        <label className="form-field"><span>{text("Review reminder after (days)", "Herinnering beoordeling na (dagen)")}</span>
+          <input type="number" min={1} max={120} value={days} disabled={!canEdit} onChange={(event) => setDays(event.target.value)} />
+        </label>
+      </div>
+      <p className="portal-note">{language === "nl" ? "Wie mag registreren en vrijgeven volgt de rechten documents.manage en documents.review onder Team & regels." : "Who may register and issue follows the documents.manage and documents.review rights under Team & rules."}</p>
+      {error ? <p className="field-warning" role="alert">{error}</p> : null}
+      {message ? <p className="portal-note" role="status">{message}</p> : null}
+      {canEdit ? <div className="portal-response-actions"><button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy} onClick={() => void save()}>{busy ? <Loader2 className="spin" size={15} /> : null} {text("Save document settings", "Documentinstellingen opslaan")}</button></div> : null}
+    </section>
   );
 }
