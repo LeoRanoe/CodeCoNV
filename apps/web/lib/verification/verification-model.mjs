@@ -20,7 +20,9 @@ export function buildVerificationQueue({ findings = [], inspections = [], regist
     .filter((entry) => ["works_completed", "wcr"].includes(entry.register_type))
     .filter((entry) => !["closed", "cancelled", "approved", "rejected"].includes(entry.status))
     .filter((entry) => !closedSpecStatuses.has(entry.details?.spec?.workflow_status))
-    .filter((entry) => !["Inspected - Accepted", "Inspected - Rejected"].includes(entry.details?.spec?.completion_status ?? ""))
+    // F02: the Works Completed form stores its decision as spec.inspection_status; completion_status
+    // is read only for older records that used that key.
+    .filter((entry) => !["Inspected - Accepted", "Inspected - Rejected"].includes(entry.details?.spec?.inspection_status ?? entry.details?.spec?.completion_status ?? ""))
     .map((entry) => ({
       key: `register_entry:${entry.id}`, kind: "work", recordType: "register_entry", recordId: entry.id, code: entry.entry_number,
       title: entry.title, status: entry.status, buildingId: entry.building_id ?? null, partyId: entry.responsible_party_id ?? null, since: entry.occurred_at ?? entry.created_at ?? null,

@@ -564,6 +564,11 @@ function RecordPicker({ id, field, label, hint, number, reference, onChange, tex
 }
 
 /** Repeatable rows: corrective actions with owner and due date, notifications, containment steps. */
+/** A follow-up row keeps one identity from first entry through offline replay (F08). */
+function newRowId() {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `row-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function SpecRows({ id, field, values, set, text, language, disabled, directory }: {
   id: string;
   field: SpecField;
@@ -617,7 +622,7 @@ function SpecRows({ id, field, values, set, text, language, disabled, directory 
         ))}
       </ol>
       {!field.rowsFrom ? (
-        <button type="button" className="ui-button ui-button--secondary ui-button--sm" onClick={() => write([...shown, {}])}><Plus size={14} aria-hidden="true" /> {text("Add a row", "Regel toevoegen")}</button>
+        <button type="button" className="ui-button ui-button--secondary ui-button--sm" onClick={() => write([...shown, field.followUp ? { row_id: newRowId() } : {}])}><Plus size={14} aria-hidden="true" /> {text("Add a row", "Regel toevoegen")}</button>
       ) : null}
     </fieldset>
   );

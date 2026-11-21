@@ -337,6 +337,8 @@ select public.share_to_portal((select project_id from ids), 'client', (select pa
   '00000000-0000-0000-0000-00000031f004', 'Weekly progress report', null, 'information', 'normal', null, null, null, 'weekly', '2026-11-16', '2026-11-22');
 select public.share_to_portal((select project_id from ids), 'client', (select party_client from ids), 'publication',
   '00000000-0000-0000-0000-00000031f005', 'Weekly progress report', 'Corrected manpower figures', 'information', 'normal', null, null, null, 'weekly', '2026-11-16', '2026-11-22');
+-- F15: only an approved revision is released; revision B is approved before the document is shared.
+select public.set_project_document_revision_status((select id from public.project_document_revisions where revision = 'B'), 'approved', null);
 select public.share_to_portal((select project_id from ids), 'client', (select party_client from ids), 'document',
   (select id from public.project_documents where document_number = 'A-101'), 'Ground floor plan', null, 'approve', 'normal', now() + interval '5 days', null, null);
 reset role;
@@ -350,7 +352,7 @@ select is(
 );
 select is((select count(*) from public.portal_shares where audience = 'contractor'), 0::bigint, 'the client does not see contractor items');
 select is((select count(*) from public.portal_events where actor_side = 'contractor'), 0::bigint, 'the client does not see contractor responses');
-select is((select count(*) from public.project_document_revisions), 2::bigint, 'the client sees revision and status information of the shared document');
+select is((select count(*) from public.portal_document_revisions((select project_id from ids))), 1::bigint, 'the client sees the released revision and its status, not earlier or unreleased revisions');
 select is((select count(*) from public.files where id = '00000000-0000-0000-0000-00000031f001'), 0::bigint, 'the client opens only the revision file that was shared');
 select throws_ok(
   $$select public.respond_in_portal((select id from public.portal_shares where record_type = 'document'), 'approve', null, null, null)$$,
