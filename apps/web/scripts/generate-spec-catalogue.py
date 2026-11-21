@@ -26,8 +26,14 @@ def cell(sheet, order, col=4, nth=0):
     return str(rows(sheet)[order][nth][col] or "")
 
 
+# Stored values keep the spelling records already carry. "Other – specify" was stored with the
+# workbook's en dash (17 Technical Instructions options); every other dash is stored as a hyphen.
+STABLE_VALUES = {"Other - specify": "Other – specify"}
+
+
 def clean(text):
-    return re.sub(r"\s+", " ", text.replace("–", "-")).strip()
+    value = re.sub(r"\s+", " ", text.replace("–", "-")).strip()
+    return STABLE_VALUES.get(value, value)
 
 
 def flat(text):

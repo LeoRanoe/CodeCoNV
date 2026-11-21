@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { pageAll } from "@/lib/supabase/page-all.mjs";
 
 /**
  * Reads and writes of the Contractor Portal, the Client Portal and CODECO's share panel.
@@ -120,8 +121,9 @@ export async function loadPortalSnapshot(client: SupabaseClient, projectId: stri
   if (!shareIds.length) return { shares, events: [], shareFiles: [], files: new Map(), documents: new Map(), revisions: [] };
 
   const [eventResult, fileLinkResult] = await Promise.all([
-    client.from("portal_events").select(eventColumns).in("share_id", shareIds).order("sequence", { ascending: true }).limit(5000),
-    client.from("portal_share_files").select("share_id,file_id,source,added_at").in("share_id", shareIds).limit(5000),
+    // F11: every round of every share, paged past the API row cap.
+    pageAll((from: number, to: number) => client.from("portal_events").select(eventColumns).in("share_id", shareIds).order("sequence", { ascending: true }).range(from, to), 100000),
+    pageAll((from: number, to: number) => client.from("portal_share_files").select("share_id,file_id,source,added_at").in("share_id", shareIds).order("share_id").order("file_id").range(from, to), 100000),
   ]);
   if (eventResult.error) fail(eventResult.error, "The portal history could not be loaded.");
   if (fileLinkResult.error) fail(fileLinkResult.error, "Portal files could not be loaded.");

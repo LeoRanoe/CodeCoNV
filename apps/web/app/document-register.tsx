@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
 import { PortalSharePanel } from "@/app/portal-share-panel";
 import { useLanguage } from "@/lib/i18n";
+import { pageAll } from "@/lib/supabase/page-all.mjs";
 import { useBackToClose } from "@/lib/navigation/app-history";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { downloadBlob } from "@/lib/browser/download";
@@ -62,10 +63,11 @@ function day(value: string | null | undefined, locale: string) {
 
 async function loadRegister(client: SupabaseClient, projectId: string) {
   const [documents, revisions, people, files] = await Promise.all([
-    client.from("project_documents").select("*").eq("project_id", projectId).order("folder_code").limit(5000),
-    client.from("project_document_revisions").select("*").eq("project_id", projectId).order("uploaded_at", { ascending: false }).limit(10000),
+    // F11: paged past the API's 1,000-row response cap, in a stable order.
+    pageAll((from: number, to: number) => client.from("project_documents").select("*").eq("project_id", projectId).order("folder_code").order("id").range(from, to), 50000),
+    pageAll((from: number, to: number) => client.from("project_document_revisions").select("*").eq("project_id", projectId).order("uploaded_at", { ascending: false }).order("id").range(from, to), 100000),
     client.rpc("list_project_people", { p_project_id: projectId }),
-    client.from("project_document_revisions").select("file_id,files(original_name)").eq("project_id", projectId).limit(10000),
+    pageAll((from: number, to: number) => client.from("project_document_revisions").select("file_id,files(original_name)").eq("project_id", projectId).order("id").range(from, to), 100000),
   ]);
   if (documents.error) throw documents.error;
   if (revisions.error) throw revisions.error;
