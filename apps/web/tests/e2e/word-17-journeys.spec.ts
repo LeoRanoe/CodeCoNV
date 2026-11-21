@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readFile, utimes } from "node:fs/promises";
+import { mkdir, readFile, utimes, writeFile } from "node:fs/promises";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { expect, type Browser, type Page, test } from "@playwright/test";
 import { fillSpecFields } from "./spec-fill";
@@ -280,7 +280,9 @@ test("F05 a mixed-date photo batch keeps each capture time and the original byte
   const files: string[] = [];
   for (const [index, source] of photos.slice(0, 2).entries()) {
     const target = `${dir}/w17-${suffix}-${index + 1}.jpg`;
-    await copyFile(source, target);
+    // Unique bytes per run (after the JPEG end marker), so the hash identifies this upload only.
+    await writeFile(target, Buffer.concat([await readFile(source), Buffer.from(`
+codeco-e2e-${suffix}-${index}`)]));
     await utimes(target, taken[index], taken[index]);
     files.push(target);
   }
