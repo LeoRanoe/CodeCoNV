@@ -91,6 +91,11 @@ jobs:
             echo "BACKUP_BLOB_READ_WRITE_TOKEN="
             echo "NEXT_PUBLIC_SITE_URL=http://127.0.0.1:3000"
           } > apps/web/.env.production.local
+          # The local API for specs that create their own fixture records (role-views).
+          {
+            echo "CODECO_E2E_SUPABASE_URL=$API_URL"
+            echo "CODECO_E2E_PUBLISHABLE_KEY=$PUBLISHABLE_KEY"
+          } >> "$GITHUB_ENV"
           cd apps/web
           CODECO_E2E_SUPABASE_URL=$API_URL CODECO_E2E_PUBLISHABLE_KEY=$PUBLISHABLE_KEY CODECO_E2E_SECRET_KEY=$SECRET_KEY \
             node tests/e2e/seed-local-fixtures.mjs | grep -E '^CODECO_E2E_' >> "$GITHUB_ENV"
