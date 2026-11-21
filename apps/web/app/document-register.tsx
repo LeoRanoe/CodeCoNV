@@ -363,6 +363,8 @@ function DocumentDetail({ client, projectId, row, names, fileNames, folderName, 
       if (events.error) throw events.error;
       return { events: events.data ?? [], links: links.data ?? [] };
     },
+    // Records link themselves to a revision when they are saved (F11): read the links afresh on open.
+    refetchOnMount: "always",
   });
   const refreshAll = () => { changed(); void eventsQuery.refetch(); };
   const run = async (operation: () => Promise<void>) => {

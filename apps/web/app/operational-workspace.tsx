@@ -3479,7 +3479,8 @@ function ProjectOperations({
     ["workforce", text("Workforce", "Workforce"), workforceDays.length],
     ["documents", "Project Docs", data.files.filter((file) => file.status === "available").length + data.registerEntries.filter((entry) => ["document", "drawing", "specification", "contract", "boq"].includes(entry.register_type)).length],
     // F17: a Workspace page opened on one of the client's forms carries that form's name (images 8 and 12).
-    ["registers", workspacePageTitles[registerForm.type] ?? text("Formal documents & registers", "Formele documenten & registers"), data.registerEntries.length],
+    // F17: a saved record opened from the archive or a link is headed by its own form's name.
+    ["registers", workspacePageTitles[(focusRecordId && data.registerEntries.find((entry) => entry.id === focusRecordId)?.register_type) || registerForm.type] ?? text("Formal documents & registers", "Formele documenten & registers"), data.registerEntries.length],
     ["visual", text("Visual evidence", "Visueel bewijs"), data.visualCaptures.length],
     ["drawings", text("Drawings", "Tekeningen"), data.files.filter((file) => file.category === "drawing" && file.status === "available").length],
     ["tools", text("Field tools", "Veldtools"), data.registerEntries.filter((entry) => ["notepad", "agreement", "technical_instruction"].includes(entry.register_type)).length],
@@ -5508,6 +5509,20 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
                 </div>;
               })()}
               <div className="controlled-history-description"><span>{text("Complete content", "Volledige inhoud")}</span><p>{String(details.description ?? details.request ?? details.instruction ?? text("No description supplied.", "Geen omschrijving ingevoerd."))}</p></div>
+              {(() => {
+                // The workbook fields of a TI / CO with its linked records, including the exact document
+                // revision it refers to and whether that revision is still the one to use (F11).
+                const form = entry.register_type in specForms ? entry.register_type as SpecFormKey : null;
+                const spec = (details.spec ?? null) as SpecValues | null;
+                if (!form || !spec) return null;
+                const facts = specFacts(form, spec, language, { translate: (value) => specLabel(value, language) });
+                return (
+                  <div className="controlled-history-spec">
+                    <SpecLinkChips links={specLinks(form, spec, language)} text={text} />
+                    {facts.length ? <dl className="record-spec-facts">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl> : null}
+                  </div>
+                );
+              })()}
               {entry.register_type === "change_order" ? <div className="controlled-history-description controlled-history-change-order"><span>{text("Change order", "Wijzigingsopdracht")}</span>{changeOrderSummary(details, text).map((row) => <p key={row.label}><strong>{row.label}:</strong> {row.value}</p>)}</div> : null}
               {attachmentFiles.length ? <div className="controlled-history-attachments"><span>{text("Uploaded attachments", "Geüploade bijlagen")}</span>{attachmentFiles.map((file, index) => {
                 const fileId = String(file.file_id ?? "");

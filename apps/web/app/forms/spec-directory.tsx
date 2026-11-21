@@ -32,6 +32,8 @@ export type SpecDirectoryValue = {
   currentUser: { id: string; name: string } | null;
   /** The label shown for a stored (English) workbook value. */
   translate: (value: string) => string;
+  /** Reloads the Project Documents register (a revision picker opening on a register that changed). */
+  refreshDocuments?: () => void;
   /** Opens a linked record (`<kind>:<id>`). */
   openRecord?: (ref: string) => void;
 };
