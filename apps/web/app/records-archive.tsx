@@ -2,16 +2,18 @@
 
 import { Search } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
 import { SectionNav } from "@/app/section-nav";
 import { useLanguage } from "@/lib/i18n";
-import { buildRecordDirectory, filterRecordDirectory } from "@/lib/records/record-directory.mjs";
+import { buildRecordDirectory, filterRecordDirectory, recordKindTabs } from "@/lib/records/record-directory.mjs";
 import { statusText, typeText } from "@/lib/status-labels";
 import type { OperationSnapshot } from "@/lib/supabase/operations";
 import { pageAll } from "@/lib/supabase/page-all.mjs";
 
 type DirectoryEntry = { id: string; kind: string; tab: string; code: string; title: string; subtitle: string; date?: string; status?: string; buildingIds?: string[]; subtype?: string; partyId?: string | null; responsible?: string; facets?: { discipline?: string } | null };
+/** One row of public.search_project_archive (F04/F11). */
+type ArchiveRow = { kind: string; form_type: string; record_id: string; code: string; title: string; status: string; at: string | null; building_ids: string[] | null; total_count: number };
 type HistoryRow = { id: string; at: string; source: string; code: string; action: string; actor: string; detail: string };
 
 const formKinds = ["ncr", "finding", "inspection", "hse", "register", "workforce", "report", "daily_work", "delay"];
@@ -25,12 +27,12 @@ function formTypeOf(entry: DirectoryEntry) {
 }
 
 /** Each source is read newest first, `depth` rows deep; "Load older" deepens all four (F04). */
-async function loadHistory(client: SupabaseClient, projectId: string, depth: number, codes: Map<string, string>): Promise<HistoryRow[]> {
+async function loadHistory(client: SupabaseClient, projectId: string, depth: number, codes: Map<string, string>): Promise<{ rows: HistoryRow[]; more: boolean }> {
   const [signoff, portal, documents, verifications, people] = await Promise.all([
-    client.from("record_signoff_events").select("id,record_kind,record_id,action,actor_name,actor_role,comments,previous_status,new_status,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(depth),
-    client.from("portal_events").select("id,share_id,action,actor_name,actor_side,comment,previous_status,resulting_status,created_at,portal_shares(record_code,title)").eq("project_id", projectId).neq("action", "view").order("created_at", { ascending: false }).limit(depth),
-    client.from("project_document_events").select("id,document_id,action,actor_user_id,from_status,to_status,comment,created_at,project_documents(document_number,title)").eq("project_id", projectId).order("created_at", { ascending: false }).limit(depth),
-    client.from("verifications").select("id,record_code,result,comment,verified_by,verified_at").eq("project_id", projectId).order("verified_at", { ascending: false }).limit(depth),
+    pageAll((from: number, to: number) => client.from("record_signoff_events").select("id,record_kind,record_id,action,actor_name,actor_role,comments,previous_status,new_status,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), depth),
+    pageAll((from: number, to: number) => client.from("portal_events").select("id,share_id,action,actor_name,actor_side,comment,previous_status,resulting_status,created_at,portal_shares(record_code,title)").eq("project_id", projectId).neq("action", "view").order("created_at", { ascending: false }).order("id").range(from, to), depth),
+    pageAll((from: number, to: number) => client.from("project_document_events").select("id,document_id,action,actor_user_id,from_status,to_status,comment,created_at,project_documents(document_number,title)").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), depth),
+    pageAll((from: number, to: number) => client.from("verifications").select("id,record_code,result,comment,verified_by,verified_at").eq("project_id", projectId).order("verified_at", { ascending: false }).order("id").range(from, to), depth),
     client.rpc("list_project_people", { p_project_id: projectId }),
   ]);
   const names = new Map(((people.data ?? []) as Array<{ user_id: string; display_name: string }>).map((person) => [person.user_id, person.display_name]));
@@ -60,7 +62,14 @@ async function loadHistory(client: SupabaseClient, projectId: string, depth: num
       actor: names.get(String(row.verified_by)) ?? "", detail: String(row.comment ?? ""),
     })),
   ];
-  return rows.sort((a, b) => b.at.localeCompare(a.at));
+  // Each source was read newest first, `depth` rows deep. A source that filled its depth may hold
+  // older rows that were not read, so the merged list is complete only down to the newest of those
+  // cut-off points; rows older than it wait for "Load older history" (no gaps between sources).
+  const cutoffs = [signoff, portal, documents, verifications]
+    .map((result, index) => (result.truncated ? rows.filter((row) => row.source === ["signoff", "portal", "document", "verification"][index]).reduce((oldest, row) => (row.at < oldest ? row.at : oldest), "9999") : ""))
+    .filter(Boolean);
+  const frontier = cutoffs.length ? cutoffs.reduce((newest, at) => (at > newest ? at : newest)) : "";
+  return { rows: rows.filter((row) => !frontier || row.at >= frontier).sort((a, b) => b.at.localeCompare(a.at)), more: Boolean(frontier) };
 }
 
 /**
@@ -122,12 +131,50 @@ export function RecordsArchive({ client, projectId, data, buildings, photoLibrar
     const filtered = filterRecordDirectory(scoped, query, { status: status || undefined, buildingIds: building ? [building] : [], dateFrom: from, dateTo: to, discipline: discipline || undefined }, {}, Number.MAX_SAFE_INTEGER) as DirectoryEntry[];
     return query.trim() ? filtered : filtered.slice().sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")));
   }, [building, directory, discipline, from, kind, linkedAction, linkedSources, party, query, responsible, status, to]);
+  // F04/F11: online, Submitted Forms is searched and paged by the database (search_project_archive),
+  // so every permitted record is reachable whatever the project's size; offline (or on a database
+  // without the function) it filters the cached snapshot above.
+  const serverFilters = {
+    p_project_id: projectId,
+    p_query: query.trim() || null,
+    p_kind: kind || null,
+    p_status: status || null,
+    p_building_id: building || null,
+    p_from: from || null,
+    p_to: to || null,
+    p_discipline: discipline || null,
+    p_party_id: party || null,
+    p_responsible: responsible.trim() || null,
+    p_linked_action: linkedAction ? linkedAction === "yes" : null,
+  };
+  const online = typeof navigator === "undefined" || navigator.onLine;
+  const archiveQuery = useInfiniteQuery({
+    queryKey: ["archive-search", serverFilters],
+    queryFn: async ({ pageParam }: { pageParam: { at: string | null; id: string } | null }) => {
+      const result = await client.rpc("search_project_archive", { ...serverFilters, p_before_at: pageParam?.at ?? null, p_before_id: pageParam?.id ?? null, p_limit: pageSize });
+      if (result.error) throw result.error;
+      return (result.data ?? []) as ArchiveRow[];
+    },
+    initialPageParam: null as { at: string | null; id: string } | null,
+    getNextPageParam: (last: ArchiveRow[]) => (last.length === pageSize && last[last.length - 1]?.at ? { at: last[last.length - 1].at, id: last[last.length - 1].record_id } : undefined),
+    enabled: section === "forms" && online,
+    retry: false,
+    staleTime: 30_000,
+  });
+  const fromServer = online && !archiveQuery.isError && Boolean(archiveQuery.data);
+  const serverRows: DirectoryEntry[] = useMemo(() => (archiveQuery.data?.pages ?? []).flat().map((row) => ({
+    id: row.record_id, kind: row.kind, tab: (recordKindTabs as Record<string, string>)[row.kind] ?? "home", code: row.code, title: row.title, subtitle: "",
+    date: row.at ?? undefined, status: row.status, buildingIds: row.building_ids ?? [], subtype: row.form_type.includes(":") ? row.form_type.split(":")[1] : undefined,
+  } as DirectoryEntry)), [archiveQuery.data]);
+  const serverTotal = Number(archiveQuery.data?.pages[0]?.[0]?.total_count ?? 0);
+  const listed = fromServer ? serverRows : results.slice(0, shown);
+  const total = fromServer ? serverTotal : results.length;
   const formTypes = useMemo(() => [...new Set(directory.map(formTypeOf))].sort(), [directory]);
   const disciplines = useMemo(() => [...new Set(directory.map((entry) => entry.facets?.discipline).filter(Boolean))].sort() as string[], [directory]);
   const codes = useMemo(() => new Map(directory.filter((entry) => entry.code).map((entry) => [entry.id, entry.code])), [directory]);
   const statuses = [...new Set(directory.map((entry) => entry.status).filter(Boolean))].sort() as string[];
   const historyQuery = useQuery({ queryKey: ["record-history", projectId, historyDepth], queryFn: () => loadHistory(client, projectId, historyDepth, codes), enabled: section === "history" });
-  const history = (historyQuery.data ?? []).filter((row) => (!historySource || row.source === historySource) && (!query.trim() || `${row.code} ${row.detail} ${row.actor}`.toLowerCase().includes(query.trim().toLowerCase())));
+  const history = (historyQuery.data?.rows ?? []).filter((row) => (!historySource || row.source === historySource) && (!query.trim() || `${row.code} ${row.detail} ${row.actor}`.toLowerCase().includes(query.trim().toLowerCase())));
   const kindLabel = (value: string): string => value.startsWith("register:") ? typeText(value.slice(9), text)
     : value === "hse:incident" ? text("HSE incident", "HSE-incident") : value === "hse:observation" ? text("HSE observation", "HSE-observatie") : ({ workforce: text("Workforce", "Workforce"), ncr: "NCR", finding: text("Issue", "Issue"), inspection: text("Inspection", "Inspectie"), hse: "HSE", register: text("Register form", "Registerformulier"), report: text("Day report", "Dagrapport"), daily_work: text("Works / day log", "Werk / daglog"), delay: text("Delay", "Vertraging") } as Record<string, string>)[value] ?? value;
   const sourceLabel = (value: string) => ({ signoff: text("Sign-off", "Ondertekening"), portal: text("Portal", "Portaal"), document: text("Document", "Document"), verification: text("Verification", "Verificatie") } as Record<string, string>)[value] ?? value;
@@ -156,7 +203,7 @@ export function RecordsArchive({ client, projectId, data, buildings, photoLibrar
             </table>
           </div>
         ) : <p className="record-list-empty">{text("No history yet.", "Nog geen historie.")}</p>}
-        {history.length && !historyQuery.isFetching ? (
+        {historyQuery.data?.more && !historyQuery.isFetching ? (
           <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setHistoryDepth((depth) => depth + 300)}>{text("Load older history", "Oudere historie laden")}</button>
         ) : null}
       </section>
@@ -187,10 +234,10 @@ export function RecordsArchive({ client, projectId, data, buildings, photoLibrar
           <label className="form-field"><span>{text("From", "Van")}</span><input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
           <label className="form-field"><span>{text("Through", "Tot en met")}</span><input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>
         </div>
-        <p className="portal-note">{results.length} {text("records", "registraties")}</p>
-        {results.length ? (
+        <p className="portal-note" data-archive-source={fromServer ? "server" : "device"}>{total} {text("records", "registraties")}{fromServer ? "" : online ? "" : text(" · saved on this device", " · op dit apparaat")}</p>
+        {listed.length ? (
           <div className="portal-list">
-            {results.slice(0, shown).map((entry) => (
+            {listed.map((entry) => (
               <button key={`${entry.kind}:${entry.id}`} type="button" className="ui-list-row portal-row" onClick={() => openRecord(entry.tab, entry.id)}>
                 <span className="portal-row-main">
                   <span className="ui-list-row__code">{entry.code || "—"} · {kindLabel(formTypeOf(entry))}</span>
@@ -202,7 +249,10 @@ export function RecordsArchive({ client, projectId, data, buildings, photoLibrar
             ))}
           </div>
         ) : <p className="record-list-empty">{text("No record matches this selection.", "Geen registratie voldoet aan deze selectie.")}</p>}
-        {results.length > shown ? (
+        {fromServer && archiveQuery.hasNextPage ? (
+          <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={archiveQuery.isFetchingNextPage} onClick={() => void archiveQuery.fetchNextPage()}>{text(`Show ${Math.min(pageSize, total - listed.length)} more`, `Toon ${Math.min(pageSize, total - listed.length)} meer`)}</button>
+        ) : null}
+        {!fromServer && results.length > shown ? (
           <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setShown((count) => count + pageSize)}>{text(`Show ${Math.min(pageSize, results.length - shown)} more`, `Toon ${Math.min(pageSize, results.length - shown)} meer`)}</button>
         ) : null}
       </section>
