@@ -6,7 +6,7 @@ set local search_path = extensions, pgtap, public;
 set local client_min_messages = warning;
 truncate public.organizations, auth.users cascade;
 set local client_min_messages = notice;
-select plan(28);
+select plan(29);
 
 -- Functional requirements FINAL: Project Documents register, Contractor Portal, Client Portal
 -- and the data separation of sections 8, 19 and 23.
@@ -130,10 +130,11 @@ select throws_ok(
   $$select public.review_portal_share((select id from public.portal_shares where record_type = 'document'), 'add_files', null,
     array['00000000-0000-0000-0000-00000033f002'::uuid])$$,
   '42501', null, 'the generic add-files step cannot attach an unreleased revision file to a document share');
-select throws_ok(
-  $$select public.share_to_portal((select project_id from ids), 'contractor', (select party_b from ids), 'document',
-    (select id from public.project_documents where document_number = 'A-201'), 'Roof plan', null, 'information', 'normal', null, null, null)$$,
-  '55000', null, 'with the only approved revision superseded by one under review, there is nothing to release to a new party');
+select is((select array[(select revision from public.project_document_revisions where id = current_revision_id), (select revision from public.project_document_revisions where id = latest_revision_id)]
+  from public.project_documents where document_number = 'A-201'), array['A','B'],
+  'Word 4.3: while B is under review the approved A stays current and B is the latest upload');
+select is((select review_status from public.project_document_revisions where revision = 'A'), 'approved',
+  'uploading B does not supersede the approved A');
 reset role;
 
 -- Contractor A while B is under review.
@@ -163,6 +164,8 @@ select public.add_project_document_revision((select id from public.project_docum
   '00000000-0000-0000-0000-00000033f003', 'submitted', current_date, 'TR-003', null);
 select public.set_project_document_revision_status((select id from public.project_document_revisions where revision = 'C'), 'for_construction', null);
 reset role;
+delete from public.role_permissions where permission_code = 'portal.share'
+  and role_id = (select id from public.roles where organization_id = (select organization_id from ids) and scope = 'project' and code = 'supervisor');
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000033b2","role":"authenticated"}';
 set local role authenticated;
 select throws_ok(

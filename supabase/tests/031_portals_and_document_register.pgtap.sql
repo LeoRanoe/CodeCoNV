@@ -7,7 +7,7 @@ set local client_min_messages = notice;
 
 -- Functional requirements FINAL: Project Documents register, Contractor Portal, Client Portal
 -- and the data separation of sections 8, 19 and 23.
-select plan(63);
+select plan(65);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at) values
   ('00000000-0000-0000-0000-0000000031a1', 'authenticated', 'authenticated', 'admin31@example.test', now(), now()),
@@ -172,20 +172,30 @@ select is(
   2::bigint,
   'uploading a revision does not delete or overwrite the earlier one'
 );
+-- Word 4.3: an upload is not approved; the issued revision A stays current until B is approved.
 select is(
   (select review_status from public.project_document_revisions where revision = 'A'),
-  'superseded',
-  'the earlier revision is marked superseded'
+  'for_construction',
+  'uploading B does not supersede the issued revision A'
 );
 select is(
-  (select superseded_by from public.project_document_revisions where revision = 'A'),
-  (select id from public.project_document_revisions where revision = 'B'),
-  'the superseded revision links to the revision that replaces it'
+  (select array[current_revision_id, latest_revision_id] from public.project_documents where document_number = 'A-101'),
+  array[(select id from public.project_document_revisions where revision = 'A'), (select id from public.project_document_revisions where revision = 'B')],
+  'A stays the current revision and B is the latest upload while B is under review'
+);
+select lives_ok(
+  $$select public.set_project_document_revision_status((select latest_revision_id from public.project_documents where document_number = 'A-101'), 'approved', null)$$,
+  'the lead supervisor approves revision B'
+);
+select is(
+  (select review_status || ':' || (superseded_by = (select id from public.project_document_revisions where revision = 'B'))::text from public.project_document_revisions where revision = 'A'),
+  'superseded:true',
+  'approving B marks A superseded and links it to B'
 );
 select is(
   (select current_revision_id from public.project_documents where document_number = 'A-101'),
   (select id from public.project_document_revisions where revision = 'B'),
-  'the new revision is the current one'
+  'the approved revision B is the current one'
 );
 select throws_ok(
   $$select public.add_project_document_revision((select id from public.project_documents where document_number = 'A-101'), 'b', '00000000-0000-0000-0000-00000031f002', 'submitted', null, null, null)$$,
@@ -194,7 +204,7 @@ select throws_ok(
 );
 select is(
   (select array_agg(action order by sequence) from public.project_document_events where document_id = (select id from public.project_documents where document_number = 'A-101')),
-  array['register','status','supersede','revision'],
+  array['register','status','revision','status','supersede'],
   'every register step is in the document history'
 );
 reset role;
@@ -205,6 +215,9 @@ select throws_ok(
 );
 
 -- 2. Contractor Portal -----------------------------------------------------------------
+-- A role without portal.share (supervisors hold it since 202611240011; the right is removed here).
+delete from public.role_permissions where permission_code = 'portal.share'
+  and role_id = (select id from public.roles where organization_id = (select organization_id from ids) and scope = 'project' and code = 'supervisor');
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000031b2","role":"authenticated"}';
 set local role authenticated;
 select throws_ok(
@@ -212,7 +225,7 @@ select throws_ok(
     (select id from public.findings where finding_number = 'NCR-31-001'), 'NCR honeycombing', 'Submit cause and corrective action',
     'propose', 'high', now() + interval '3 days', null, null)$$,
   '42501', null,
-  'a supervisor without portal rights cannot assign to a contractor'
+  'a role without portal rights cannot assign to a contractor'
 );
 reset role;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000031b1","role":"authenticated"}';

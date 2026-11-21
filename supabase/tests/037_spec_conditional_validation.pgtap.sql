@@ -6,7 +6,7 @@ truncate public.organizations, auth.users cascade;
 set local client_min_messages = notice;
 
 -- F03 second step: conditional requirements, required row columns, "Other" explanations and number bounds.
-select plan(10);
+select plan(15);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at) values
   ('00000000-0000-0000-0000-0000000037a1', 'authenticated', 'authenticated', 'admin37@example.test', now(), now()),
@@ -55,13 +55,22 @@ create temporary table specs on commit drop as select
     'action_required', 'Yes') as agreement,
   jsonb_build_object('_rules', '1', 'report_date', '2026-11-24', 'discipline', 'Surveying & Setting Out', 'activity', 'Building / Grid Setting Out',
     'exact_location', 'Grid A-3', 'work_item', 'Grid lines', 'progress_status', 'In Progress', 'crew', jsonb_build_array('Contractor A NV'),
-    'quantity_na', 'yes') as works;
+    'quantity_na', 'yes') as works,
+  '{"_rules":"1","incident_at":"2026-11-24T09:00","incident_type":"Injury / Illness","incident_category":"First Aid Case",
+    "immediate_response":"Provide first aid","incident_severity":"Minor","investigation_required":"No","hse_reviewer":"Lena Lead",
+    "corrective_actions":[{"action":"Remove obstruction","owner":"Lena Lead","due":"2026-11-30"}]}'::jsonb as incident;
 grant select on specs to authenticated;
 
 create or replace function pg_temp.save_entry(p_type text, p_number text, p_spec jsonb) returns void language sql as $f$
   insert into public.project_register_entries (organization_id, project_id, building_id, register_type, entry_number, title, status, details, created_by, idempotency_key)
   select organization_id, project_id, building_id, p_type, p_number, p_number, 'open', jsonb_build_object('spec', p_spec),
     '00000000-0000-0000-0000-0000000037b1', 'c37-' || lower(p_number) from ids;
+$f$;
+
+create or replace function pg_temp.save_incident(p_number text, p_spec jsonb) returns void language sql as $f$
+  insert into public.hse_events (organization_id, project_id, building_id, event_number, event_type, title, description, severity, occurred_at, idempotency_key, created_by, spec)
+  select organization_id, project_id, building_id, p_number, 'incident', p_number, 'Incident report', 'low', now(),
+    'c37-' || lower(p_number), '00000000-0000-0000-0000-0000000037b1', p_spec from ids;
 $f$;
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000037b1","role":"authenticated"}';
@@ -101,6 +110,19 @@ select throws_ok(
     'AGREEMENT-ACK', 1, 'submit', 'Originator')$$,
   '22023', 'Complete the form before submitting: Required: Action owner; Required: Due date',
   'its formal submission names the conditional fields still missing');
+
+select throws_ok($$select pg_temp.save_incident('HSE-37-1', (select incident from specs))$$,
+  '22023', 'Complete the restricted HSE fields: Injury classification', 'a current injury report needs its restricted details');
+select throws_ok($$select pg_temp.save_incident('HSE-37-2', (select incident from specs) || '{"injury_classification":"First Aid","injury_nature":"Other","body_part":"Hand"}')$$,
+  '22023', 'Complete the restricted HSE fields: Nature of injury / illness', 'Other requires an explanation without exposing it in the error');
+select lives_ok($$select pg_temp.save_incident('HSE-37-3', (select incident from specs) || '{"injury_classification":"First Aid","injury_nature":"Cut","body_part":"Hand"}')$$,
+  'a complete injury report is saved');
+select lives_ok($$select pg_temp.save_incident('HSE-37-4', (select incident from specs) - '_rules')$$,
+  'a legacy injury report can be recovered for completion');
+select throws_ok(
+  $$select public.record_signoff_action((select project_id from ids), 'hse_event', (select id from public.hse_events where event_number = 'HSE-37-4'),
+    'HSE-INCIDENT', 1, 'submit', 'Reporter')$$,
+  '22023', 'Complete the restricted HSE fields: Injury classification', 'legacy injury cannot be formally submitted without the restricted data');
 reset role;
 
 select * from finish();

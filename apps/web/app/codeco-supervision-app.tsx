@@ -69,7 +69,7 @@ import { photoRefusalMessage, prepareCameraPhotos } from "@/lib/images/normalize
 import { WorkforceForm } from "@/app/workforce-register";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import { currentPushState, enablePushNotifications, type PushState } from "@/lib/notifications/push-client";
-import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
+import { prepareEvidencePhoto, forceSyncOfflineUploads, queueOfflineUpload, syncOfflineUploads } from "@/lib/offline/upload-queue";
 import { clearFormDraft, FORM_DRAFTS_CHANGED, formDraftKey, loadFormDraft, saveFormDraft } from "@/lib/offline/form-drafts";
 import { useFormAutosave } from "@/lib/offline/use-form-autosave";
 import { DraftNotice } from "@/app/forms/draft-notice";
@@ -1502,7 +1502,7 @@ export function CodecoSupervisionApp() {
               for (const photo of photos) {
                 // A retry after a failed send must not file the same photo twice.
                 if (queuedDailyLogPhotos.current.has(photo.id)) continue;
-                const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
+                const prepared = prepareEvidencePhoto(photo.file);
                 await queueOfflineUpload({
                   projectId: selectedProject.id,
                   buildingId: primaryBuildingId,
@@ -1510,6 +1510,7 @@ export function CodecoSupervisionApp() {
                   folderId: null,
                   folderName: text("Daily progress", "Dagvoortgang"),
                   kind: "photo",
+                  sourcePhoto: photo.file !== photo.original ? photo.original : undefined,
                   file: prepared.blob,
                   fileName: prepared.fileName,
                   mimeType: prepared.mimeType,

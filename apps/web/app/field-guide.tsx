@@ -232,7 +232,7 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
         },
         {
           title: text("Data saver and storage", "Databesparing en opslag"),
-          copy: text("Data saver compresses normal field photos when useful and pauses automatic transfer on a metered connection. Originals that cannot be compressed are kept instead of being rejected.", "Databesparing comprimeert gewone veldfoto’s wanneer nuttig en pauzeert automatische overdracht op een databundel. Originelen die niet kunnen worden gecomprimeerd worden behouden in plaats van geweigerd."),
+          copy: text("Data saver pauses automatic transfers on a metered connection. The app uses smaller previews when displaying photos.", "Databesparing pauzeert automatische overdracht op een databundel. De app gebruikt kleinere voorbeeldweergaven voor foto’s."),
         },
         {
           title: text("360° images", "360°-beelden"),

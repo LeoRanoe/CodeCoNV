@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Download, Eye, FileSpreadsheet, FileUp, Link2, Loader2, Plus, Printer, Search, X } from "lucide-react";
+import { AlertTriangle, Download, Eye, FileUp, Link2, Loader2, Plus, Search, X } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
@@ -9,14 +9,14 @@ import { useLanguage } from "@/lib/i18n";
 import { pageAll } from "@/lib/supabase/page-all.mjs";
 import { useBackToClose } from "@/lib/navigation/app-history";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
-import { downloadBlob } from "@/lib/browser/download";
+import { RegisterExportButtons } from "@/app/register-export-buttons";
 import { downloadProjectFile, openProjectFile, uploadProjectFile } from "@/lib/storage/gateway";
 import {
   documentFoldersFor,
   documentStatuses,
   documentTypes,
   filterRegister,
-  registerCsv,
+  registerTable,
   registerRows,
   reviewerStatuses,
   revisionStanding,
@@ -34,14 +34,14 @@ type Building = { id: string; name: string };
 type DocumentRow = {
   id: string; project_id: string; document_number: string | null; title: string; folder_code: string; discipline: string | null;
   document_type: string | null; originator_party_id: string | null; originator_name: string | null; building_ids: string[];
-  work_package: string | null; current_revision_id: string | null; created_at: string; updated_at: string;
+  work_package: string | null; current_revision_id: string | null; latest_revision_id?: string | null; created_at: string; updated_at: string;
 };
 type RevisionRow = {
   id: string; document_id: string; revision: string; file_id: string; review_status: string; issue_date: string | null;
   transmittal_ref: string | null; notes: string | null; uploaded_by: string; uploaded_at: string; reviewed_by: string | null;
   reviewed_at: string | null; review_comment: string | null; superseded_by: string | null; superseded_at: string | null;
 };
-type RegisterRow = { document: DocumentRow; current: RevisionRow | null; history: RevisionRow[]; fileName?: string };
+type RegisterRow = { document: DocumentRow; current: RevisionRow | null; latest: RevisionRow | null; pending: RevisionRow | null; history: RevisionRow[]; fileName?: string };
 
 const toneClass: Record<string, string> = {
   red: "ui-status-badge ui-status-badge--red",
@@ -140,25 +140,25 @@ export function DocumentRegister({
   const originators = [...new Map(rows.map((row) => [row.document.originator_party_id ?? row.document.originator_name ?? "", row.document.originator_party_id ? partyName(row.document.originator_party_id) : row.document.originator_name ?? ""])).entries()].filter(([key]) => key);
   const openRow = rows.find((row) => row.document.id === openId) ?? null;
 
-  const exportCsv = () => {
-    const csv = registerCsv(filtered, { language, folders, buildingName, partyName });
-    downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8" }), `${projectName.replace(/[^a-z0-9]+/gi, "-")}-document-register.csv`);
-  };
-  const printRegister = () => {
-    const win = window.open("", "_blank");
-    if (!win) return;
-    const escape = (value: unknown) => String(value ?? "").replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char] ?? char);
-    const generated = new Date().toLocaleString(locale, { timeZone: "America/Paramaribo" });
-    const filters = [folder && folderName(folder), discipline, status && statusMeta(status)[language], from && `≥ ${from}`, to && `≤ ${to}`, search && `“${search}”`].filter(Boolean).join(" · ") || text("none", "geen");
-    win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escape(projectName)} – ${escape(text("Document register", "Documentregister"))}</title>
-      <style>body{font:12px system-ui,sans-serif;margin:24px;color:#161a20}h1{font-size:18px;margin:0 0 4px}p{margin:0 0 12px;color:#4a5a66}table{border-collapse:collapse;width:100%}th,td{border:1px solid #b3c1c9;padding:4px 6px;text-align:left;vertical-align:top}th{background:#f2f6f7}</style></head><body>
-      <h1>${escape(projectName)} · ${escape(text("Document register", "Documentregister"))}</h1>
-      <p>${escape(text("Generated", "Gegenereerd"))} ${escape(generated)} · ${escape(text("Filters", "Filters"))}: ${escape(filters)} · ${filtered.length} ${escape(text("documents", "documenten"))}</p>
-      <table><thead><tr><th>${escape(text("Number", "Nummer"))}</th><th>${escape(text("Title", "Titel"))}</th><th>${escape(text("Folder", "Map"))}</th><th>${escape(text("Discipline", "Discipline"))}</th><th>${escape(text("Rev.", "Rev."))}</th><th>${escape(text("Status", "Status"))}</th><th>${escape(text("Received", "Ontvangen"))}</th></tr></thead><tbody>
-      ${filtered.map((row) => `<tr><td>${escape(row.document.document_number)}</td><td>${escape(row.document.title)}</td><td>${escape(folderName(row.document.folder_code))}</td><td>${escape(row.document.discipline)}</td><td>${escape(row.current?.revision)}</td><td>${escape(statusMeta(row.current?.review_status ?? "")[language])}</td><td>${escape(day(row.current?.uploaded_at, locale))}</td></tr>`).join("")}
-      </tbody></table><script>window.onload=()=>window.print()</script></body></html>`);
-    win.document.close();
-  };
+  const exportFilters = [
+    folder && folderName(folder),
+    discipline,
+    status && statusMeta(status)[language],
+    originator && originators.find(([id]) => id === originator)?.[1],
+    building && buildingName(building),
+    from && `≥ ${from}`,
+    to && `≤ ${to}`,
+    search && `“${search}”`,
+  ].filter(Boolean).join(" · ") || text("none", "geen");
+  const exportReport = () => ({
+    title: `${projectName} · ${text("Document register", "Documentregister")}`,
+    metadata: [
+      `${text("Generated", "Gegenereerd")}: ${new Date().toLocaleString(locale, { timeZone: "America/Paramaribo" })}`,
+      `${text("Data cut-off", "Peildatum")}: ${new Date(query.dataUpdatedAt).toLocaleString(locale, { timeZone: "America/Paramaribo" })}`,
+      `${text("Filters", "Filters")}: ${exportFilters}`,
+    ],
+    ...registerTable(filtered, { language, folders, buildingName, partyName }),
+  });
 
   const counts = new Map<string, number>();
   for (const row of rows) counts.set(row.document.folder_code, (counts.get(row.document.folder_code) ?? 0) + 1);
@@ -182,8 +182,7 @@ export function DocumentRegister({
               <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text("Number, title, keyword or file name", "Nummer, titel, trefwoord of bestandsnaam")} />
             </label>
             <div className="document-register-actions">
-              <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={exportCsv} disabled={!filtered.length}><FileSpreadsheet size={15} /> Excel (CSV)</button>
-              <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={printRegister} disabled={!filtered.length}><Printer size={15} /> PDF</button>
+              <RegisterExportButtons getReport={exportReport} filename={`${projectName.replace(/[^a-z0-9]+/gi, "-")}-document-register`} disabled={query.isError || query.isLoading || !filtered.length} />
               {canManage ? <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={() => setCreating(true)}><Plus size={15} /> {text("Register document", "Document registreren")}</button> : null}
             </div>
           </div>
@@ -222,7 +221,7 @@ export function DocumentRegister({
                         <small className="portal-cell-meta">{row.document.originator_party_id ? partyName(row.document.originator_party_id) : row.document.originator_name ?? ""}{row.history.length > 1 ? ` · ${row.history.length} ${text("revisions", "revisies")}` : ""}</small></td>
                       <td>{folderName(row.document.folder_code)}</td>
                       <td>{row.document.discipline ?? ""}</td>
-                      <td>{row.current?.revision ?? ""}</td>
+                      <td>{row.current?.revision ?? ""}{row.pending ? <small className="portal-cell-meta">{text(`rev ${row.pending.revision} ${statusMeta(row.pending.review_status).en.toLowerCase()}`, `rev ${row.pending.revision} ${statusMeta(row.pending.review_status).nl.toLowerCase()}`)}</small> : null}</td>
                       <td>{row.current ? <StatusBadge status={row.current.review_status} language={language} /> : null}</td>
                       <td>{day(row.current?.uploaded_at, locale)}</td>
                     </tr>
@@ -341,7 +340,9 @@ function DocumentDetail({ client, projectId, row, names, fileNames, folderName, 
   const canManage = permissions.can("documents.manage");
   const canReview = permissions.can("documents.review");
   const [mode, setMode] = useState<"" | "revision" | "status" | "link">("");
-  const [revision, setRevision] = useState(suggestNextRevision(row.current?.revision));
+  const [revision, setRevision] = useState(suggestNextRevision((row.latest ?? row.current)?.revision));
+  // Review applies to the newer revision awaiting review; otherwise to the current one.
+  const reviewTarget = row.pending ?? row.current;
   const [revisionStatus, setRevisionStatus] = useState("submitted");
   const [issueDate, setIssueDate] = useState("");
   const [transmittal, setTransmittal] = useState("");
@@ -380,9 +381,9 @@ function DocumentDetail({ client, projectId, row, names, fileNames, folderName, 
     if (result.error) throw result.error;
   });
   const setStatus = () => run(async () => {
-    if (!row.current) return;
+    if (!reviewTarget) return;
     if (statusesNeedingReason.includes(newStatus) && comment.trim().length < 3) throw new Error(text("A reason is required.", "Een reden is verplicht."));
-    const result = await client.rpc("set_project_document_revision_status", { p_revision_id: row.current.id, p_status: newStatus, p_comment: comment });
+    const result = await client.rpc("set_project_document_revision_status", { p_revision_id: reviewTarget.id, p_status: newStatus, p_comment: comment });
     if (result.error) throw result.error;
   });
   const recordOptions = [
@@ -399,7 +400,7 @@ function DocumentDetail({ client, projectId, row, names, fileNames, folderName, 
   const reviewChoices = reviewerStatuses as string[];
   const eventLabel = (action: string) => ({
     register: text("Registered", "Geregistreerd"), revision: text("New revision", "Nieuwe revisie"), status: text("Status changed", "Status gewijzigd"),
-    supersede: text("Superseded", "Vervangen"), update: text("Details changed", "Gegevens gewijzigd"), link: text("Linked", "Gekoppeld"), unlink: text("Unlinked", "Ontkoppeld"), share: text("Shared", "Gedeeld"),
+    supersede: text("Superseded", "Vervangen"), reinstate: text("Reinstated", "Hersteld"), update: text("Details changed", "Gegevens gewijzigd"), link: text("Linked", "Gekoppeld"), unlink: text("Unlinked", "Ontkoppeld"), share: text("Shared", "Gedeeld"),
   } as Record<string, string>)[action] ?? action;
 
   return (
@@ -426,6 +427,19 @@ function DocumentDetail({ client, projectId, row, names, fileNames, folderName, 
         {row.current && !["for_construction", "approved", "approved_with_comments", "for_information"].includes(row.current.review_status) ? (
           <p className="portal-note"><AlertTriangle size={14} /> {text("This revision is not issued for construction.", "Deze revisie is niet vrijgegeven voor uitvoering.")}</p>
         ) : null}
+        {row.pending ? (
+          <div className="document-current document-pending" data-pending-revision={row.pending.revision}>
+            <div>
+              <small>{text("Newer revision, not yet current", "Nieuwere revisie, nog niet actueel")}</small>
+              <strong>{row.pending.revision}</strong>
+              <StatusBadge status={row.pending.review_status} language={language} />
+              <small>{fileNames.get(row.pending.file_id) ?? ""}{row.pending.issue_date ? ` · ${day(row.pending.issue_date, locale)}` : ""}{row.pending.transmittal_ref ? ` · ${row.pending.transmittal_ref}` : ""}</small>
+            </div>
+            <div className="document-current-actions">
+              <button className="ui-button ui-button--secondary ui-button--sm" type="button" onClick={() => void openProjectFile(client, row.pending!.file_id, fileNames.get(row.pending!.file_id) ?? "document").catch((caught) => setError(String(caught?.message ?? caught)))}><Eye size={14} /> {text("Open", "Openen")}</button>
+            </div>
+          </div>
+        ) : null}
         <dl className="portal-facts">
           <div><dt>{text("Discipline", "Discipline")}</dt><dd>{row.document.discipline ?? "–"}</dd></div>
           <div><dt>{text("Type", "Type")}</dt><dd>{documentTypes.find((item) => item.id === row.document.document_type)?.[language] ?? row.document.document_type ?? "–"}</dd></div>
@@ -436,7 +450,7 @@ function DocumentDetail({ client, projectId, row, names, fileNames, folderName, 
 
         <div className="portal-steps">
           {canManage ? <button className={`ui-button ui-button--sm ${mode === "revision" ? "ui-button--primary" : "ui-button--secondary"}`} type="button" onClick={() => setMode(mode === "revision" ? "" : "revision")}><FileUp size={14} /> {text("Upload new revision", "Nieuwe revisie uploaden")}</button> : null}
-          {canReview && row.current && !row.current.superseded_at ? <button className={`ui-button ui-button--sm ${mode === "status" ? "ui-button--primary" : "ui-button--secondary"}`} type="button" onClick={() => setMode(mode === "status" ? "" : "status")}>{text("Review status", "Beoordelingsstatus")}</button> : null}
+          {canReview && reviewTarget && !reviewTarget.superseded_at ? <button className={`ui-button ui-button--sm ${mode === "status" ? "ui-button--primary" : "ui-button--secondary"}`} type="button" onClick={() => setMode(mode === "status" ? "" : "status")}>{text("Review status", "Beoordelingsstatus")}</button> : null}
           {canManage || permissions.can("records.edit") ? <button className={`ui-button ui-button--sm ${mode === "link" ? "ui-button--primary" : "ui-button--secondary"}`} type="button" onClick={() => setMode(mode === "link" ? "" : "link")}><Link2 size={14} /> {text("Link a record", "Record koppelen")}</button> : null}
         </div>
         {mode === "revision" ? (
@@ -449,7 +463,7 @@ function DocumentDetail({ client, projectId, row, names, fileNames, folderName, 
             </div>
             <label className="form-field"><span>{text("What changed", "Wat is gewijzigd")}</span><textarea rows={2} maxLength={2000} value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
             <input ref={fileInput} className="visually-hidden" type="file" accept=".pdf,.dwg,.doc,.docx,.xls,.xlsx,.csv,.txt,image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadRevision(file); event.target.value = ""; }} />
-            <p className="portal-note">{text("The earlier revisions stay in the history, marked superseded.", "De eerdere revisies blijven in de historie, gemarkeerd als vervangen.")}</p>
+            <p className="portal-note">{text("The current revision stays in use until a reviewer approves the new one; it is then marked superseded and kept in the history.", "De actuele revisie blijft geldig tot een beoordelaar de nieuwe goedkeurt; daarna wordt die als vervangen gemarkeerd en blijft in de historie.")}</p>
             <div className="portal-response-actions">
               {progress !== null ? <span role="status">{text("Uploading", "Uploaden")} {progress}%</span> : null}
               <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy} onClick={() => fileInput.current?.click()}>{busy ? <Loader2 className="spin" size={15} /> : <FileUp size={15} />} {text("Choose file and upload", "Bestand kiezen en uploaden")}</button>
@@ -458,7 +472,7 @@ function DocumentDetail({ client, projectId, row, names, fileNames, folderName, 
         ) : null}
         {mode === "status" ? (
           <div className="portal-response-form">
-            <label className="form-field"><span>{text("New status for revision", "Nieuwe status voor revisie")} {row.current?.revision}</span>
+            <label className="form-field"><span>{text("New status for revision", "Nieuwe status voor revisie")} {reviewTarget?.revision}</span>
               <select value={newStatus} onChange={(event) => setNewStatus(event.target.value)}>{reviewChoices.map((id) => <option key={id} value={id}>{statusMeta(id)[language]}</option>)}</select>
             </label>
             <label className="form-field"><span>{statusesNeedingReason.includes(newStatus) ? text("Reason (required)", "Reden (verplicht)") : text("Review comment", "Opmerking beoordeling")}</span><textarea rows={2} value={comment} onChange={(event) => setComment(event.target.value)} /></label>

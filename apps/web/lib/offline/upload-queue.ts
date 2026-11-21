@@ -89,6 +89,8 @@ export type OfflineUpload = {
    * it is the original and an original supplied later can be matched to it.
    */
   original?: OriginalFingerprint | null;
+  /** Untouched source of a rendered markup copy. Its UUID survives retries. */
+  sourcePhoto?: { id: string; file: File };
   /**
    * The spot the supervisor pointed at on the building drawing. It becomes a pin on that
    * drawing as soon as the photo reaches the server, so the picture can be found back from
@@ -117,7 +119,7 @@ export type OfflineUpload = {
 type NetworkInformation = { saveData?: boolean; effectiveType?: string; type?: string };
 
 export { fingerprintOriginal, originalRecord, type OriginalFingerprint } from "./original-fingerprint";
-import { originalRecord, type OriginalFingerprint } from "./original-fingerprint";
+import { fingerprintOriginal, originalRecord, type OriginalFingerprint } from "./original-fingerprint";
 
 export function dataSaverEnabled() {
   if (typeof window === "undefined") return true;
@@ -142,39 +144,9 @@ function photoName(name: string, extension = "jpg") {
   return `${base}.${extension}`;
 }
 
-export async function compressFieldPhoto(file: File, enabled = dataSaverEnabled()) {
-  if (!enabled || !["image/jpeg", "image/png", "image/webp"].includes(file.type) || typeof createImageBitmap !== "function") {
-    return { blob: file as Blob, fileName: file.name, mimeType: file.type || "image/jpeg", compressed: false };
-  }
-  let bitmap: ImageBitmap | null = null;
-  try {
-    bitmap = await createImageBitmap(file);
-    const maxDimension = 1920;
-    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
-    const width = Math.max(1, Math.round(bitmap.width * scale));
-    const height = Math.max(1, Math.round(bitmap.height * scale));
-    if (scale === 1 && file.size <= 900_000) {
-      bitmap.close();
-      return { blob: file as Blob, fileName: file.name, mimeType: file.type, compressed: false };
-    }
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext("2d", { alpha: false });
-    if (!context) {
-      bitmap.close();
-      return { blob: file as Blob, fileName: file.name, mimeType: file.type, compressed: false };
-    }
-    context.drawImage(bitmap, 0, 0, width, height);
-    bitmap.close();
-    bitmap = null;
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.78));
-    if (!blob || blob.size >= file.size) return { blob: file as Blob, fileName: file.name, mimeType: file.type, compressed: false };
-    return { blob, fileName: photoName(file.name), mimeType: "image/jpeg", compressed: true };
-  } catch {
-    bitmap?.close();
-    return { blob: file as Blob, fileName: file.name, mimeType: file.type || "image/jpeg", compressed: false };
-  }
+/** Preserve evidence bytes. Display thumbnails are generated separately. */
+export function prepareEvidencePhoto(file: File) {
+  return { blob: file as Blob, fileName: file.name, mimeType: file.type || "image/jpeg", compressed: false };
 }
 
 /**
@@ -231,9 +203,12 @@ export async function preparePanoramaUpload(file: File, maxBytes: number) {
   }
 }
 
-export async function queueOfflineUpload(input: Omit<OfflineUpload, "id" | "createdAt" | "lastError">) {
+export async function queueOfflineUpload(input: Omit<OfflineUpload, "id" | "createdAt" | "lastError" | "sourcePhoto"> & { sourcePhoto?: File }) {
+  const { sourcePhoto, ...fields } = input;
   const queued: OfflineUpload = {
-    ...input,
+    ...fields,
+    original: fields.original ?? (sourcePhoto ? await fingerprintOriginal(sourcePhoto) : undefined),
+    sourcePhoto: sourcePhoto ? { id: crypto.randomUUID(), file: sourcePhoto } : undefined,
     id: crypto.randomUUID(),
     createdAt: new Date().toISOString(),
     lastError: null,
@@ -277,6 +252,7 @@ async function ensureVisualCapture(client: SupabaseClient, upload: OfflineUpload
     .maybeSingle();
   if (existingCapture.error) throw existingCapture.error;
   if (existingCapture.data) return;
+  const original = originalRecord(upload);
   const capture = await createVisualCapture(client, {
     projectId: upload.projectId,
     buildingId: upload.buildingId,
@@ -291,7 +267,7 @@ async function ensureVisualCapture(client: SupabaseClient, upload: OfflineUpload
     tourOrder: upload.tourOrder ?? null,
     stackId: upload.evidenceGroupId || null,
     capturedAt: upload.capturedAt,
-    spec: originalRecord(upload) ? { ...(upload.spec ?? {}), _original: originalRecord(upload) } : upload.spec ?? null,
+    spec: original ? { ...(upload.spec ?? {}), _original: original } : upload.spec ?? null,
   });
   if (!upload.drawingPin || !capture?.id) return;
   // The pin is a second recording of the same fact. The photo is already filed with its
@@ -354,14 +330,22 @@ async function syncOfflineUploadsUnlocked(
           resolvedFolderIds.set(folderKey, resolvedFolderId);
         }
       }
-      const stored = await uploadProjectFile(client, {
-        fileId: upload.id,
+      const uploadMediaFile = (fileId: string, file: File) => uploadProjectFile(client, {
+        fileId,
         projectId: upload.projectId,
         buildingId: upload.buildingId,
         folderId,
         category: upload.kind === "drawing" ? "drawing" : upload.kind === "document" ? "document" : "photo",
-        file: asFile(upload),
+        file,
       });
+      // Confirm the untouched source before attaching the markup. Both IDs stay stable if
+      // a transfer fails or the device goes offline partway through.
+      const source = upload.sourcePhoto ? await uploadMediaFile(upload.sourcePhoto.id, upload.sourcePhoto.file) : null;
+      const stored = await uploadMediaFile(upload.id, asFile(upload));
+      async function linkEvidence(input: Omit<Parameters<typeof linkFileToRecord>[1], "fileId">) {
+        await linkFileToRecord(client, { ...input, fileId: stored.fileId });
+        if (source) await linkFileToRecord(client, { ...input, fileId: source.fileId });
+      }
       if (upload.findingGroup) {
         let findingId = upload.findingGroup.findingId ?? findingIds.get(upload.findingGroup.id);
         // The record itself waited in the record queue and has been sent by now; this
@@ -414,10 +398,9 @@ async function syncOfflineUploadsUnlocked(
             })));
         }
         if (!findingId) throw new Error("De bijbehorende registratie is nog niet aangemaakt.");
-        await linkFileToRecord(client, {
+        await linkEvidence({
           organizationId: upload.findingGroup.organizationId,
           projectId: upload.projectId,
-          fileId: stored.fileId,
           recordType: "finding",
           recordId: findingId,
           relationship: "evidence",
@@ -444,10 +427,9 @@ async function syncOfflineUploadsUnlocked(
           locationNodeId: upload.findingDraft.locationNodeId || upload.locationNodeId || undefined,
           idempotencyKey: `offline-finding:${upload.id}`,
         });
-        await linkFileToRecord(client, {
+        await linkEvidence({
           organizationId: upload.findingDraft.organizationId,
           projectId: upload.projectId,
-          fileId: stored.fileId,
           recordType: "finding",
           recordId: finding.id,
           relationship: "before",
@@ -459,10 +441,9 @@ async function syncOfflineUploadsUnlocked(
           ? await resolvePendingRecordId(upload.recordLink.recordId)
           : upload.recordLink.recordId;
         if (!linkedRecordId) throw new Error("De bijbehorende registratie wacht nog op verzending.");
-        await linkFileToRecord(client, {
+        await linkEvidence({
           organizationId: upload.recordLink.organizationId,
           projectId: upload.projectId,
-          fileId: stored.fileId,
           recordType: upload.recordLink.recordType,
           recordId: linkedRecordId,
           relationship: upload.recordLink.relationship,

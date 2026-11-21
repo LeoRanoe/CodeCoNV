@@ -1,6 +1,7 @@
 /**
- * Workbook audit: compares every form sheet of the client's workbook (exported to JSON by
- * scripts/export-workbook-forms.py) with the Workspace form the app builds from it.
+ * Workbook audit: compares the client's standard form sheets (exported to JSON by
+ * scripts/export-workbook-forms.py) with their Workspace form definitions. Photos has a
+ * dedicated capture screen and is exercised in the camera and photo browser journeys.
  *
  *   python scripts/export-workbook-forms.py <workbook.xlsx> <out.json>
  *   node scripts/audit-workbook-forms.mjs <out.json>
@@ -40,6 +41,7 @@ const report = [];
 let passed = 0;
 let total = 0;
 for (const [form, rows] of Object.entries(source)) {
+  if (form === "photo") continue;
   const app = appRows(form);
   let cursor = -1;
   for (const row of rows) {
@@ -67,4 +69,6 @@ for (const [form, rows] of Object.entries(source)) {
 for (const item of report.filter((entry) => entry.result === "check")) {
   console.log(`${item.form} row ${item.excel_row} "${item.label}" (${item.required}) — ${item.note}${item.app ? ` · app: "${item.app.label}" ${item.app.required}` : ""}`);
 }
-console.log(`\n${passed}/${total} workbook rows pass (system rows counted as in the form head).`);
+console.log(`\n${passed}/${total} standard workbook rows pass (system rows counted as in the form head).`);
+if (source.photo) console.log(`${source.photo.length} Photos rows are outside this schema comparison. See the dedicated browser journeys and D05.`);
+if (passed !== total) process.exitCode = 1;
