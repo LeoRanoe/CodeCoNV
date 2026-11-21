@@ -8,6 +8,7 @@ Close a checkbox only when the change is merged and its acceptance evidence can 
 ## Contents
 
 - [Implementation status](#implementation-status)
+- [Second implementation pass and fresh audit](#second-implementation-pass-and-fresh-audit--21-november-2026)
 - [Implementation order](#implementation-order)
 - [Implementation checklist](#implementation-checklist)
 - [Client decisions and source conflicts](#client-decisions-and-source-conflicts)
@@ -30,18 +31,18 @@ Status words: **Implemented and verified** means the change is on the branch and
 | F02 | Implemented and verified | The work queue reads `spec.inspection_status` (`completion_status` still read for older records). `record_verification` moves Works Completed to *Inspected – Accepted* on Pass and *Inspected – Rejected* on Fail through the spec guard (reviewer authority, server-stamped inspector and date); Partially complete and Further action required keep it awaiting inspection; decided work keeps its decision. Every optional follow-up action is linked to its exact source (finding, inspection, HSE, register entry, action, or the record behind contractor evidence). | pgTAP `034` (Works Completed: no-authority refusal, Pass, Fail with linked corrective action, Partial, Further action, legacy decision). Node test on the queue. Browser `rapid-verify-values` passed. | Confirm the result mapping (Partial and Further action keep *Completed – Awaiting Inspection*). |
 | F08 | Implemented and verified | Incident corrective rows and agreement actions are created by the database in the same transaction as the record save, so an offline replay or retried save creates them once. Each row keeps a `row_id` from first entry; the action key is source + field + row id, and the action id is written back to the row. Rows saved before row ids reuse their existing action. The browser no longer creates follow-ups after saving. | pgTAP `034` (three rows incl. identical wording with different owners and dates → three actions; repeated save → none extra; added row → one; legacy row → linked, not duplicated; agreement → one action, stored id; user without `actions.create` → none). | A user without `actions.create` saves the record but its actions wait for a permitted save: confirm who may create follow-ups (Word section 20 item 1). |
 | F16 | Partial | Account sign-offs store the server's project role(s) and membership organisation; the role chosen on screen is kept as `stage_role`. External representatives keep their stated name/organisation as an attestation entered by the signed-in user. The workflow profile must be the record's own, and the stage must offer the action (table generated from the approved profiles; a node test keeps both identical). | pgTAP `035` (8 assertions); full pgTAP still green; node sync test. | Strict stage ordering, required approval chains beyond the project configuration, and the meaning of each signature — Word section 20 item 6. The profiles deliberately keep later stages reachable for parallel review, so ordering was not invented. |
-| F17 | Implemented; screenshot comparison open | The page heading is the client's Workspace name for Works ongoing, Works completed, PDR, Materials delivery, Technical instructions, Change order (CO), Lessons Learned (LL), Agreements Made and HSE incident registration. | `sheet-forms` e2e asserts the heading for all 12 ordered forms. | D08 (page titles) acceptance; screenshot comparison per device and the remaining layout points (metadata/signature order, markup canvas, eraser/Undo scope) — D05/D08. |
+| F17 | Implemented; device screenshot comparison open | The page heading is the client's Workspace name for Works ongoing, Works completed, PDR, Materials delivery, Technical instructions, Change order (CO), Lessons Learned (LL), Agreements Made and HSE incident registration. | `sheet-forms` e2e asserts the heading for all 12 ordered forms. | D08 (page titles) acceptance; screenshot comparison per device and the remaining layout points (metadata/signature order, markup canvas, eraser/Undo scope) — D05/D08. |
 | F04 | Partial | Submitted Forms indexes Workforce per day report and building, offers each register subtype and HSE observation/incident separately, adds discipline, contractor/party, responsible person and linked-action filters, and pages through every match (no 200/500 cap). Record History shows the record number for sign-offs and loads older history on request (no 500-row display cap). | Node test `records-archive.test.mjs`. Browser `records-no-flicker`. | The archive still reads the cached project snapshot, whose register query is capped at 5,000 rows; a server-side paginated archive query is part of F11. Realistic-volume browser check open. |
 | F05 | Partial | Each photo in a library batch keeps its own capture time (no longer the first file's), and its purpose, category and discipline travel through the offline queue to the stored capture. | Typecheck/lint; queue replay already persists `spec`. | Original-byte retention: data saver resizes photos over 900 KB before queueing, so the original is not kept. Keeping it needs a derivative-file storage model and more mobile data and storage — Word section 20 item 8. Required photo fields in the capture path — D05. Hash check of originals after a mixed online/offline batch open. |
 | F11 | Partial | Document register, overview, document report and portal history reads page through every row instead of requesting more than the API's 1,000-row cap. | Typecheck/lint; browser `overview-counts`. | Exact revision links for TI/CO (currently text references), stale-revision warnings across screens, XLSX/direct PDF exports and report period/cut-off rules — Word section 20 item 9 and F09. Server-side paginated archive. |
 | F07 | Partial | The catalogue generator keeps the stored *Other – specify* value (17 TI options) instead of emitting a hyphen. | Generator parses. | Regeneration check needs the workbook file (not in the repository). Per-activity prompt persistence (147 rows, columns F/G) not started. |
 | F10 | Blocked | Read-only inventory query for authorized staff: [F10-role-inventory.sql](F10-role-inventory.sql) (external roles per project, unlinked portal users, revoked contacts with open items, live account-free links, legacy unreleased document files, current releases). | Runs cleanly on the local database inside a read-only transaction. | Production run by authorized staff; approval of the legacy `client` role treatment and the role matrix — Word section 20 items 1 and 5. No role was changed. |
-| F01 | Blocked | — | — | D02 (issue responsibility routing), Word section 20 items 2 and 6 (who initiates WO/WC/Workforce; legal meaning of steps). Automatic contractor assignment on NCR/TI submission needs the approved assignee rule. |
-| F03 | Open | — | — | Server-side rule set per form; D01, D03, D04, D07 decide several required fields. |
-| F06 | Blocked | — | — | D01–D08. |
+| F01 | Blocked in part | The workbook's Issue responsibility list is the implementation rule. | See D02. | Contact selection and assignment routing are separate decisions. Word section 20 items 2 and 6 still govern initiator roles and the legal meaning of steps. Automatic contractor assignment on NCR/TI submission needs the approved assignee rule. |
+| F03 | Implemented and verified (unconditional rules) | `app_private.spec_form_rules()` generated from `lib/forms/spec-forms.ts`: always-required fields and fixed lists per workbook form, including the six workbook decisions. Checked on every signed-in save for changed fixed-list values, on saves from the current form (`_rules` marker) for required fields, and in full at formal submission/resubmission. Older offline payloads and unchanged legacy values stay saveable. | pgTAP 036 (11); 029/035 fixtures completed; node sync and decision tests; 36 browser tests save all 12 forms with the rules active. | Conditional rules stay client-side; Photos and Workforce have no server table; D04 and D05. |
+| F06 | Partial — six conflicts implemented and verified | D01–D03 and D06–D08 follow the workbook in the UI (sheet path), the server rules (F03) and saved records; the legacy PDR and Lessons Learned screens with the 19-11 photo rules are unreachable (sheet path), so alternate intake follows the same rules; compatible handwritten edits kept (see the second pass). | Workbook trace 269/277; pgTAP 036; browser saves of all 12 forms; PDR evidence spec. | D04 and D05; the separate questions in the decision table. |
 | F09 | Blocked | Release of a revision now requires approval (F15). | — | Which revision is operationally active while a newer one is under review, transmittal process and outstanding-submittal schedule — Word section 20 items 3 and 4. |
 | F12 | Blocked | — | — | Baseline/milestone model, timezones, quiet hours, escalation, retention — Word section 20 items 7, 8 and 9. |
-| F14 | Partial | `sheet-forms` now asserts each page heading. | See browser evidence. | Photos, Workforce and Inspections form cases; making the 15-form and Word section 17 journeys mandatory in CI. |
+| F14 | Partial | `sheet-forms` asserts each page heading; `sheet-forms`, `spec-registers`, `works-completed-focus` and `rapid-verify-values` join the CI browser set; the PDR evidence test finds the record by a stored form value. | Browser runs in the second pass. | Photos and Workforce form cases; one combined browser journey per Word section 17 scenario. |
 
 ### Verification run · 21 November 2026
 
@@ -58,6 +59,115 @@ Status words: **Implemented and verified** means the change is on the branch and
 | UI stability audit (CLAUDE.md) | 72 screens, 0 findings, worst layout shift 0.017. |
 | Not run in this pass | Phone/tablet variants of the changed screens beyond the stability audit, offline replay in the browser for F08 (covered at database level), the Word section 17 NCR and TI journeys end to end, production-sized registers, real camera/storage/notification delivery, backup restore. |
 
+## Second implementation pass and fresh audit · 21 November 2026
+
+**Instruction** · [IMPLEMENTATION-PROMPT.md](IMPLEMENTATION-PROMPT.md). The six recorded conflicts follow the client's 20 November instruction to build the forms exactly as the Excel workbook; compatible 19 November handwritten edits are kept. D04 (Materials Delivery taxonomy) and D05 (Photos classification) stay open. The six decisions do not change assignment routing, sign-off authority, production roles or any other open policy.
+
+**Branch** · `claude/portals-document-register`, commits after `3222403`. Not merged, not deployed; no production data or roles touched.
+
+### Source material used
+
+| Source | Location | Used for |
+|---|---|---|
+| Excel workbook `Construction_Project_App_Developer_Specification_FINAL_v2.xlsx` (17 sheets) | User desktop, not in the repository | Row-by-row comparison of all 13 form sheets (277 rows) with the app; the server rule table |
+| Word file `CODECO_Supervision_App_Developer_Requirements_Menu_and_Contractor_Portal.docx` (sections 1–20, appendices) | User desktop | Menu, portal, workflow, security and section 17/19 checks |
+| Images 1–14 (WhatsApp, 19-11-2026 14:03) | User desktop | Annotated change requests, each checked below |
+| **Image 15 (mind map: full menu, roles, lifecycle, Client Portal)** | **Not found in this session** | Traced only through its transcription in this checklist's menu table and `requirements-final-client-portal-2026-11-20.md`. The original image should be re-attached for sign-off. |
+
+### The six recorded conflicts (workbook decision)
+
+| ID | Workbook rule applied | UI (sheet path) | Server | Saved record / alternate intake / export |
+|---|---|---|---|---|
+| D01 Change Order | "Reason for change" required, row 8 | Present, required | Required on save from the form and on submission (pgTAP 036) | Stored in `details.spec`; the legacy controlled-document path is replaced by the sheet for CO; printed in the controlled-document PDF/Word through the spec facts |
+| D02 Issue | Ten responsible parties (Client … Undetermined) | The sheet list; name of person/company in the same row; duplicate owner control absent | A value outside the ten is refused when entered or changed (pgTAP 036); older stored values stay editable | Stored in `issue_management.spec` |
+| D03 HSE observation | Register-backed Action owner (row 16), no root cause, contractor signs | Present | Action owner required (pgTAP 036) | Incident keeps its own investigation/root cause (HSE Incident Registration) |
+| D06 Lessons Learned | Sheet order rows 3–18, one optional Attachments row | Present; drawing selector and duplicate photo control absent | Always-required rows enforced | The four-question legacy screen is unreachable for new and edited lessons (sheet path) |
+| D07 PDR | Evidence optional (row 20) | Optional; a chosen photo must upload before the report is kept (rollback) | Not required | The legacy PDR screen with the required original-finish photo is unreachable (sheet path) |
+| D08 NCR | NCR type and category before title and description | Present | — (order is a screen rule) | NCR PDF/Word unchanged |
+
+The remaining D08 points follow image 11/14 where compatible: photo-only marking, signatures at the end, Issue type and free-text Impact removed. Page titles follow the Workspace names (F17).
+
+### Workbook trace (all 13 form sheets, 277 rows)
+
+`python scripts/export-workbook-forms.py <workbook> <json>` then `node scripts/audit-workbook-forms.mjs <json>`: **269 of 277 rows pass** (label on screen, sheet order, required where the sheet says Yes; system rows in the form head). The 8 others are the open decisions: Photos rows 4, 6–11 (D05 — the library capture has no sheet layout and the workbook's rows 4–5 contradict each other) and Materials Delivery row 10 "Material category" (D04).
+
+### Workspace pages and menu areas
+
+**15 Workspace pages.** The 12 workbook-sheet pages (Works Ongoing, Works Completed, PDR, Issue, HSE, Materials Delivery, Technical Instructions, Change Order, NCR, Lessons Learned, Agreements Made, HSE Incident Registration) each opened from their tile, carried their own heading, were filled and saved with the server rules active (`sheet-forms`, 12/12). Inspections passed its workflow spec; Workforce passed its lifecycle and form-stacking checks; Photos passed camera capture, stacks and media sharing with the fake Blob store. Photos and Workforce have no row-by-row sheet spec (D05; F14).
+
+**10 menu areas.** Overview, Workspace, Actions, Rapid Verify, Project Documents, Records & Photos, Reports, Contractor Portal, Client Portal and Management opened in the menu-order, role-view and requirements specs; the stability audit covered 24 screens at three widths with no findings. Role views confirm the contractor and client see only their portal sections. Production data volumes, report layouts and real accounts were not part of this run.
+
+### Images 1–14
+
+| Image | Annotation | Result |
+|---:|---|---|
+| 1 | Workforce "Ik kan niet opslaan" with a deviation | Pass: deviation explanation optional; confirm keeps its time/data checks (earlier browser check). |
+| 2 | Drawing eraser and Undo | Pass for presence: eraser and last-markup Undo exist. Multi-step Undo is an open D08 point. |
+| 3 | PDR: register count tiles "kan weg" | Pass: no count tiles on the PDR page. |
+| 4 | Works Completed: "Plan for tomorrow" and the lower works list crossed out | Pass: the Works Completed tile opens the sheet; saved records fold into one closed "Saved records" bar while the form is open, and stay reachable there and in Records & Photos. |
+| 5 | HSE: typed name, root cause crossed, contractor signs | Root cause absent, contractor signature present. Owner picker kept by the workbook decision (D03). |
+| 6 | Materials: Unit dropdown, BOQ and totals crossed out | Pass: unit dropdown (workbook list); BOQ/count tiles absent on intake. mm/cm stay a D04 point. |
+| 7 | TI: same head as other forms, contractor signs | Pass: shared metadata head and contractor signature. |
+| 8 | CO: title on top, metadata on top, reason and duplicate scope crossed | Title (F17) and metadata on top pass; duplicate scope absent; reason kept by the workbook decision (D01). |
+| 9 | CO lower part: schedule/cost, two signatures, count tiles crossed | Pass: cost/time rows and both signatures; no count tiles. |
+| 10 | Issue: Client/Contractor/Supervision, duplicate owner crossed | Duplicate owner control absent; party list kept by the workbook decision (D02). |
+| 11 | NCR: contractor signs too, signatures at the end, correction in the app, photo only (no 360°), lower list/actions crossed | Pass: two-party sign-off at the end; contractor correction through the portal/share link; marking card and record action offer a photo only and open on a photo (this pass); saved list folds while the form is open. |
+| 12 | LL: title on top, no drawing selector, four numbered questions, duplicate photo crossed | Title, no drawing selector, no duplicate photo pass; numbered questions replaced by the sheet order (D06). |
+| 13 | Photo marking window larger | Desktop: up to 1,240 px wide, photo up to 72 % of the window. Phone: the window is the whole screen and the photo up to 64 % of its height (this pass). Measured result in the browser evidence below. |
+| 14 | NCR title/description higher, static Issue type and free-text Impact crossed | Issue type and Impact removed; title/description follow type and category (D08 workbook decision). |
+
+### Word document sections 1–20
+
+| Section | Result after this pass | Still open or not verified |
+|---|---|---|
+| 1–2.1 Navigation, canonical record | Ten menu areas present; page headings name the form (F17). | One canonical status across sign-off, portal and verification (F01). |
+| 3–3.1 Fifteen forms, validation, after submission | 13 workbook form sheets on screen (269/277 rows); server enforces always-required fields and fixed lists on save and on submission (F03); follow-ups created with the record (F08). | Conditional rules stay client-side; Photos and Workforce have no server rule table; automatic assignment on submission (F01, routing decision). |
+| 4.1–4.4 Project Documents | Release of approved revisions only (F15); register reads page past the API cap (F11). | Active revision during review, transmittal, outstanding submittals (Word §20 items 3–4); exact revision links in TI/CO; XLSX/direct PDF. |
+| 5.1–5.3 Records & Photos | Workforce indexed, form/subtype/facet filters, paging, record numbers in history (F04); per-photo capture time and classification through the queue (F05). | Original-byte retention (Word §20 item 8); Photos rows (D05). |
+| 6.1–6.4 Contractor Portal | Sections, responses and document release verified in the browser. | Contractor self-administration of users (not built); onboarding with real accounts. |
+| 7.1–7.3 Workflow, event log, signatures | Server-derived signer role/organisation; profile and stage/action checked (F16); submission completeness (F03). | Stage ordering and legal meaning of steps (Word §20 item 6). |
+| 8–8.1 Security | Local RLS and file-level tests (pgTAP 031, 033); read-only production inventory prepared (F10). | Production role assignments and legacy `client` treatment (authorization needed). |
+| 9–10 Actions, Rapid Verify | Works Completed decided by verification; corrective actions linked to their exact source (F02). | Partial/further-action mapping confirmation. |
+| 11–12 Reports, dashboard | Complete counts past the row cap (F11). | Report layouts, period/cut-off rules, XLSX/PDF (Word §20 item 9); baseline schedule (F12). |
+| 13–14 Management, notifications | Unchanged in this pass. | Timezone, quiet hours, escalation, retention (Word §20 items 7–8). |
+| 15–16 Data model, non-functional | Unique numbers, links; UI stability audit 0 findings. | Real devices, storage, notification delivery, backup restore. |
+| 17.1 NCR assign/correct/verify | Form, portal share, contractor response and Rapid Verify each verified separately. | Automatic assignment on submission (routing decision, F01); one combined browser journey. |
+| 17.2 Revised drawing | Browser: revision A → B under review refused for release → B approved → released to client → client approves. | Formal transmittal (Word §20 item 4). |
+| 17.3 TI response | Two-party TI signature browser test; portal response tests. | Combined issue → acknowledge → respond → verify journey in one browser run. |
+| 18 Phases | Hardening continues; see release gates. | — |
+| 19 Go-live checklist | See release gates; production checks not run. | Deployment acceptance needs authorization. |
+| 20 Decisions | Six form conflicts decided (workbook). | Items 1–10 otherwise open as listed above. |
+
+
+### Verification evidence · second pass
+
+| Check | Result |
+|---|---|
+| Supabase pgTAP, clean reset through `202611230004` | **829 passed across 36 files**. New suite 036 (F03 and the six workbook decisions); 029 and 035 fixtures now carry complete forms, because a formal submission must be complete. |
+| Schema lint | No schema errors. |
+| Node tests | **289/289**, including the server-rule sync test and the six-decision rule test. |
+| Workbook trace script | 269/277 rows pass; 8 open rows are D04/D05. |
+| Production build | Built by each Playwright run (`start:e2e`) on Next.js 16.4.6. |
+| Playwright, desktop, production build, server rules active | **36 passed**: all 12 workbook forms save from the UI (with their page headings), inspection workflow, offline create-and-sync, offline records, two-party signatures, contractor submission, spec registers, role views, controlled documents, autosave, return for correction, double submit, Works Completed and Works Ongoing. |
+| Playwright with the fake Blob store | **12 passed** (document release journey, client approval, contractor photo evidence closed in Rapid Verify, camera capture, media and sharing). PDR evidence: **2 passed** after the test was corrected (see below). |
+| Layout on phone, tablet and desktop | Form-field stacking, mobile forms and responsive workspace: 16 passed, 4 skipped (viewport-scoped). UI stability audit: 72 screens, **0 findings, worst layout shift 0.017**. One earlier run of the same build measured a single 0.128 shift of the workspace launcher on the phone HSE incident screen; it did not reproduce on rerun and is recorded as intermittent. |
+| Test corrections | `delay-report-evidence` now finds the saved PDR by its stored *Detailed cause* (the baseline audit's PDR-0005 finding: the title is generated) and names the page heading level; its tests and the app's messages speak of *attached* photos, since PDR evidence is optional. `requirements-final` follows the F15 release rule. |
+
+### Still open after this pass
+
+| Item | What remains | Needed from |
+|---|---|---|
+| D04 Materials Delivery | Material category taxonomy and mm/cm units | Client / materials reviewer |
+| D05 Photos | Purpose/category/discipline dependency, required capture fields, location semantics; original-byte retention | Client / site team; Word §20 item 8 |
+| F01 | Automatic contractor assignment on NCR/TI submission; one canonical status across sign-off, portal and verification | Assignment-routing decision (Word §20 items 2 and 6) |
+| F07 | Per-activity prompt answers (147 rows, columns F/G) | Implementation; no decision needed |
+| F09 | Active revision during review, transmittal, outstanding submittals | Word §20 items 3–4 |
+| F10 | Production role inventory and legacy `client` role | Authorized production access; role-matrix approval |
+| F11 | TI/CO exact revision links, stale warnings, XLSX/direct PDF, report period rules | Implementation and Word §20 item 9 |
+| F12 | Baseline schedule, timezone, quiet hours, escalation, retention | Word §20 items 7–8 |
+| F16 | Stage ordering and legal meaning of steps | Word §20 item 6 |
+| Not verified in this session | Image 15 original; real devices and camera; production storage, notifications, backups and restore; production role assignments; markup-window size measured on a real phone and tablet with a photo | Missing source / production authorization |
+
 ## Implementation order
 
 1. Address **F15, F10 and F13** first. Control external revision release, verify external role grants and patch the framework.
@@ -73,7 +183,7 @@ Status words: **Implemented and verified** means the change is on the branch and
 - [ ] Trigger the authorized contractor assignment, response request and recipient notification when submitting an assigned NCR or TI. For each applicable CO, agreement, PDR and inspection, verify that assignment and form-specific response controls lead back to the same record. Keep intake, assignment, acknowledgement, acceptance, publication, verification and closure distinct.
 - [ ] Exercise assign → acknowledge → respond with evidence → return → resubmit → verify → close. Check acceptance prerequisites, immutable versions, visible next action, report parity, and all actor/date entries. Verify approved WO/WC/Workforce originators and multiple agreement signatories.
 
-> **Status · blocked** on D02 and Word section 20 items 2 and 6 (assignee rule on submission, initiator roles, step meaning).
+> **Status · blocked in part.** D02 settles the Issue party list. Contact and assignment routing, initiator roles and workflow step meaning still need the decisions listed in D02 and Word section 20 items 2 and 6.
 
 ### F02 Rapid Verify and corrective action · High
 
@@ -87,7 +197,7 @@ Status words: **Implemented and verified** means the change is on the branch and
 - [ ] Define server-enforced rules by form, mutation and lifecycle state. Use the embedded workbook trace for required/conditional fields, valid controlled values, type/category dependencies, location and record references, and attachment requirements. Review future and legacy payload handling, online saves and offline replay.
 - [ ] Verify incomplete drafts are recoverable. Reject invalid final values, unauthorized references and missing required evidence with actionable messages. Test valid and invalid outcomes from every supported submission path, including form edits and retries.
 
-> **Status · open.** Several required-field rules depend on D01, D03, D04 and D07.
+> **Status · implemented and verified for unconditional rules.** `202611230004_spec_server_validation.sql`, `scripts/generate-spec-server-rules.mjs`, `tests/spec-server-rules.test.mjs`. Evidence: pgTAP 036, browser saves of all 12 forms. Open: conditional rules on the server, D04/D05.
 
 ### F04 Submitted Forms and Record History · High
 
@@ -105,10 +215,10 @@ Status words: **Implemented and verified** means the change is on the branch and
 
 ### F06 Conflicting form requirements · High
 
-- [ ] Resolve each of decisions **D01–D08**. Apply the result to field order and labels, visibility and requiredness, controlled values, server validation, stored/printed values and existing records. Check both worksheet and alternate intake paths.
+- [ ] Implement the recorded workbook decisions and resolve the remaining questions in **D01–D08**. Apply the result to field order and labels, visibility and requiredness, controlled values, server validation, stored/printed values and existing records. Check both worksheet and alternate intake paths.
 - [ ] Confirm each correction against its matching screenshot and the workbook row. Exercise PDR with no photo, with original-finish evidence, with actual completion evidence and with an upload failure under the approved rules.
 
-> **Status · blocked on D01–D08.**
+> **Status · partial.** The six recorded conflicts are implemented and verified (workbook rule); see the second pass. D04, D05 and the separate questions in the decision table remain open.
 
 ### F07 Activity Detail Guide · Medium
 
@@ -165,7 +275,7 @@ Status words: **Implemented and verified** means the change is on the branch and
 - [ ] Make all 15 forms and the Word section 17 journeys mandatory in CI. Assert the complete applicable form, including labels, order, dependencies, required and invalid states, stored fields, evidence, archive retrieval, reports and role-authorized transitions. Add explicit Photos, Workforce and Inspections cases.
 - [ ] Use isolated fixtures and record IDs for the positive PDR lookup. Cover both assignment branches, two-building day and attendance, clean and reused data, meaningful offline retry, production-like storage failure and older records. Exercise phone, tablet and desktop, along with keyboard and accessible labels. Capture browser and database evidence for failures.
 
-> **Status · partial.** Heading assertion added to `sheet-forms`. Open: Photos/Workforce/Inspections cases, mandatory CI selection.
+> **Status · partial.** Heading assertion in `sheet-forms`; four form/verification specs added to CI. Open: Photos and Workforce cases, combined section 17 journeys.
 
 ### F15 External release of document revisions · High
 
@@ -186,22 +296,22 @@ Status words: **Implemented and verified** means the change is on the branch and
 - [ ] Apply approved page-specific titles to Works Ongoing, Works Completed, PDR, Materials Delivery, TI, CO, Lessons Learned, Agreements Made and HSE Incident Registration. Check headings, browser/back navigation and saved-record views. Review the remaining six Workspace titles under the same acceptance rule.
 - [ ] Compare mobile, tablet and desktop to all marked screenshots. Confirm metadata placement and signature order, the approved saved-list placement, PDR and delivery grid removal, NCR photo-only marker entry, and the effective photo markup canvas. Verify the drawing eraser and the expected scope of Undo.
 
-> **Status · implemented; screenshot comparison open.** `app/operational-workspace.tsx`; `sheet-forms` asserts headings. Open: D05/D08 layout points and device screenshots.
+> **Status · implemented; device screenshot comparison open.** Headings per form (`sheet-forms`); full-screen photo marking on phones (`final-pass.css`); NCR photo-only marking. Open: markup size measured on real devices, multi-step Undo (D08).
 
 ## Client decisions and source conflicts
 
-The screenshot and workbook decisions extend the Word section 20 decisions listed later in this file. Obtain acceptance of the resulting behavior before closing implementation tasks.
+Apply the client's 20 November instruction to follow the Excel workbook for the six conflicts below. Apply the 19 November handwritten changes wherever they are compatible with the workbook. The precedence decision covers the fields listed here. The separate questions in the final column and the Word section 20 decisions remain open.
 
-| ID | Decide | Owner and affected work |
+| ID | Implementation rule | Remaining work or decision |
 |---|---|---|
-| D01 | CO reason crossed out in image 8 versus required workbook row 8. Confirm cost/time fields, baseline/revised dates, duplicate scope removal and signatures shown in images 8–9. | Client/contract administrator · F06/F17 |
-| D02 | Issue responsibility values Client/Contractor/Supervision in image 10 versus the workbook's controlled taxonomy. Confirm contact selection, assignment and the removed duplicate owner control. | Client/project team · F01/F06 |
-| D03 | HSE observation typed name versus register-backed action owner, removal of the root-cause control, and contractor signature. Reserve incident investigation for HSE Incident Registration. | Client/HSE lead · F06/F16 |
-| D04 | Material group/category taxonomy and dependent rules. Confirm mm/cm and delivery-specific unit meanings, legacy typed units and removal of the BOQ strip from intake. | Client/materials reviewer · F03/F06/F07 |
-| D05 | Photo purpose, category and discipline dependencies, effective required fields and location semantics. Reconcile workbook rows 4–5. Confirm the markup canvas target on smaller devices. | Client/site team · F05/F06/F17 |
-| D06 | Lessons Learned worksheet narrative order versus image 12's four numbered sections. Confirm separate issue/result evidence and omitted drawing/duplicate photo controls. | Client/site team · F06/F17 |
-| D07 | PDR workbook optional evidence versus image 3's original-finish and completion evidence requirements. Confirm conditions and alternate path parity. | Client/planning lead · F03/F06 |
-| D08 | NCR title/description position versus worksheet classification order, NCR photo-only marker, action or list removal across NCR/Works Completed, page titles, and whether drawing Undo goes beyond removing the latest markup. | Client/site team · F01/F06/F17 |
+| D01 | **Workbook.** Keep Change Order “Reason for change” required. | Verify cost/time fields, baseline and revised dates, duplicate scope removal and signatures shown in images 8–9 against both sources. F06/F17. Implemented: required in UI and server (pgTAP 036). |
+| D02 | **Workbook.** Use the full 10-option Issue Responsible Party list. | Keep the duplicate owner control removed. Confirm how contact selection maps to actual assignment and notifications. F01/F06. Implemented: ten values in UI and server; duplicate owner control absent. |
+| D03 | **Workbook.** Use a project-register Action owner on HSE observations. | Keep the crossed-out root-cause control off the observation form. Verify contractor sign-off and preserve incident investigation in HSE Incident Registration. F06/F16. Implemented: Action owner required in UI and server; root cause absent; contractor signature present. |
+| D04 | **Open.** Material group/category taxonomy and dependent rules. | Confirm mm/cm, delivery units and handling of legacy typed units. Keep the crossed-out BOQ strip out of intake. F03/F06/F07. |
+| D05 | **Open.** Reconcile Photos workbook rows 4–5 for purpose, category, discipline, requiredness and location. | Keep the larger markup canvas change and verify it on smaller devices. F05/F06/F17. |
+| D06 | **Workbook.** Use the Lessons Learned field order and workbook attachment requirements. | Verify the layout and preserve compatible removals, including the drawing control and duplicate photo picker. F06/F17. Implemented: sheet order; drawing selector and duplicate photo picker absent; attachments optional. |
+| D07 | **Workbook.** Project Delay Report evidence is optional. | Apply the same optionality to alternate intake. Verify that supplied evidence is linked and upload failures are handled. F03/F06. Implemented: optional on the sheet path; legacy required-photo path unreachable; attached photos must upload (browser 2/2). |
+| D08 | **Workbook for NCR field order.** Type and Category come before Title and Description. | Apply photo-only marking within NCR, page-specific headings and removal of explicitly crossed-out lists. Verify record retrieval and responsive layout. Confirm whether Drawing Undo needs broader history than the existing last-markup behavior. F01/F06/F17. Implemented: workbook order; NCR marked on a photo only (card and record action); headings per form; saved lists folded while a form is open. |
 
 ## Release gates
 
