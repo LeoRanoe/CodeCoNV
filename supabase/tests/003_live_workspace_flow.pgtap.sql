@@ -27,7 +27,7 @@ select lives_ok(
   'an authenticated user can bootstrap the first organization'
 );
 select is((select count(*) from public.organizations where slug = 'codeco-live-flow'), 1::bigint, 'organization is created once');
-select is((select count(*) from public.roles where organization_id = (select id from public.organizations where slug = 'codeco-live-flow')), 8::bigint, 'standard organization and project roles are seeded');
+select is((select count(*) from public.roles where organization_id = (select id from public.organizations where slug = 'codeco-live-flow')), 15::bigint, 'standard organization and project roles are seeded (with the seven portal roles)');
 
 select lives_ok(
   format(

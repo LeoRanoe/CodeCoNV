@@ -15,7 +15,9 @@ import {
   ClipboardCheck,
   CloudSun,
   FileText,
+  FolderOpen,
   HardDrive,
+  Images,
   Home,
   KeyRound,
   LayoutDashboard,
@@ -47,6 +49,11 @@ import { screenFromSearch, useScreenHistory, type AppScreen } from "@/lib/naviga
 import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { photoTitle, photoUploadDescription, samePhotoFile, toPhotoEvidence, type PhotoEvidence, photoSpecFromDetails } from "@/app/photo-evidence";
 import { ClientDashboard } from "@/app/client-dashboard";
+import { PortalApp } from "@/app/portal-app";
+import { PortalSharePanel } from "@/app/portal-share-panel";
+import { ActionCategoryField, RecordVerifications } from "@/app/verification-queue";
+import { OverviewPanels } from "@/app/overview-panels";
+import { portalModeFor } from "@/lib/portal/portal-model.mjs";
 import { DailyLogForm } from "@/app/daily-log-modal";
 import { LiveWeatherChip } from "@/app/live-weather-chip";
 import { LocationPicker, locationBreadcrumb, type ProjectLocationOption } from "@/app/location-picker";
@@ -164,10 +171,10 @@ function CompanyLogo({ subtitle }: { subtitle?: string }) {
   );
 }
 
-type NavKey = "vandaag" | "project" | "acties" | "projectdocs" | "punchlist" | "verify" | "rapporten" | "meer";
+type NavKey = "vandaag" | "project" | "acties" | "projectdocs" | "records" | "punchlist" | "verify" | "rapporten" | "meer";
 
 type ProjectTabKey = "home" | "inspections" | "findings" | "ncr" | "hse" | "daily" | "workforce" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files" | "assets";
-const navKeys: NavKey[] = ["vandaag", "project", "acties", "projectdocs", "punchlist", "verify", "rapporten", "meer"];
+const navKeys: NavKey[] = ["vandaag", "project", "acties", "projectdocs", "records", "punchlist", "verify", "rapporten", "meer"];
 const projectTabKeys: ProjectTabKey[] = ["home", "inspections", "findings", "ncr", "hse", "daily", "workforce", "documents", "registers", "visual", "drawings", "tools", "files", "assets"];
 type ModalKey = "action_create" | "action_detail" | "report" | "project_start" | "user_admin" | "notifications" | "manage_buildings" | "switch_project" | "offline" | null;
 /** The dialogs a back press or an address may reopen: those that need no record in hand. */
@@ -226,10 +233,11 @@ const navigation: { id: NavKey; label: string; icon: LucideIcon; badge?: string 
   { id: "vandaag", label: "Overzicht", icon: Home },
   { id: "project", label: "Werkruimte", icon: LayoutDashboard },
   { id: "acties", label: "Acties", icon: ClipboardCheck },
-  /* Project Docs and Issues used to stand here as well. Both are workspace modules with their
-     own way in on the workspace itself, so the bar offered the same screen twice. Their keys
-     stay known, so an older address or back press still lands on the module. */
   { id: "verify", label: "Rapid Verify", icon: Search },
+  /* The client's menu (requirements FINAL, 20-11-2026) puts Project Documents and Records &
+     Photos in the main menu. Issues stays a workspace module. */
+  { id: "projectdocs", label: "Project Documents", icon: FolderOpen },
+  { id: "records", label: "Records & Photos", icon: Images },
   { id: "rapporten", label: "Rapporten", icon: FileText },
   { id: "meer", label: "Beheer", icon: Settings },
 ];
@@ -657,7 +665,9 @@ export function CodecoSupervisionApp() {
         : text("Live workspace · synchronized", "Live werkruimte · gesynchroniseerd");
   // A module whose records the user may not read would only ever be an empty page.
   const navAllowed = (id: NavKey) => id === "acties" ? permissions.canAny("actions.read", "actions.create")
-    : id === "projectdocs" || id === "verify" ? permissions.can("files.read")
+    : id === "projectdocs" ? permissions.canAny("documents.read", "files.read")
+    : id === "records" ? permissions.can("records.read")
+    : id === "verify" ? permissions.can("files.read")
       : id === "punchlist" ? permissions.can("findings.read")
         : id === "rapporten" ? permissions.canAny("reports.read", "reports.readapproved")
           : true;
@@ -667,7 +677,8 @@ export function CodecoSupervisionApp() {
       vandaag: text("Overview", "Overzicht"),
       project: text("Workspace", "Werkruimte"),
       acties: text("Actions", "Acties"),
-      projectdocs: "Project Docs",
+      projectdocs: text("Project Documents", "Projectdocumenten"),
+      records: text("Records & Photos", "Registraties & foto's"),
       punchlist: "Issues",
       verify: "Rapid Verify",
       rapporten: text("Reports", "Rapporten"),
@@ -1648,6 +1659,101 @@ export function CodecoSupervisionApp() {
     },
   };
 
+  // A contractor or client account works in its own portal, never in the supervisor workspace
+  // (requirements 6 and 21). The database already limits every row to the user's organisation.
+  const portalMode = portalModeFor(permissions) as "contractor" | "client" | null;
+  if (portalMode && selectedProject) {
+    return (
+      <ProjectPermissionsProvider value={permissions}>
+        <PortalApp
+          client={supabase}
+          mode={portalMode}
+          projectId={selectedProject.id}
+          projectName={selectedProject.name}
+          projects={workspaceQuery.data.projects.map((project) => ({ id: project.id, name: project.name, code: project.code }))}
+          buildings={selectedProject.buildings.map((building) => ({ id: building.id, name: building.name }))}
+          userName={currentUserName}
+          brand={<CompanyLogo />}
+          onSwitchProject={(projectId) => {
+            const project = workspaceQuery.data?.projects.find((item) => item.id === projectId);
+            if (project) chooseProject(project);
+          }}
+          onSignOut={() => void requestSignOut()}
+          submissionWorkspace={permissions.can("records.create") && selectedBuilding ? (
+    <OperationalWorkspace
+      mode="project"
+      client={supabase}
+      organizationId={activeOrganizationId!}
+      projectId={selectedProject!.id}
+      projectName={projectName}
+      projectCode={selectedProject!.code}
+      projectLocation={selectedProject?.location ?? ""}
+      buildingId={selectedBuilding!.id}
+      buildingName={buildingName}
+      buildings={selectedProject?.buildings ?? []}
+      reportId={dayQuery.data?.report?.id ? String(dayQuery.data.report.id) : null}
+      reportNumber={reportNumber}
+      reportStatus={String(dayQuery.data?.report?.status ?? "draft")}
+      projectStartAnswers={projectStartAnswers}
+      currentUserName={currentUserName}
+      currentUserId={session.user.id}
+      companyEmployees={companyEmployees}
+      parties={dayQuery.data?.parties ?? []}
+      canManageOrganization={canManageMembers}
+      openUserAdmin={() => setModal("user_admin")}
+      initialProjectTab="registers"
+      initialRecordPreset={projectTabPreset}
+      onRecordPresetConsumed={() => setProjectTabPreset(undefined)}
+      onProjectTabChange={setInitialProjectTab}
+      externalSubmissionIntent
+      actionCenterView={actionCenterView}
+      focusRecordId={focusRecordId}
+      initialCameraFiles={pendingQuickPhotos}
+      onInitialCameraFilesConsumed={() => setPendingQuickPhotos([])}
+      dailyForms={dailyForms}
+      projectActions={dayActions}
+      openProjectAction={(actionId) => {
+        const action = dayActions.find((item) => item.id === actionId);
+        if (!action) return;
+        // An action that is still waiting on the device has no central record to
+        // update yet; opening its detail would offer buttons that cannot work.
+        if (isPendingRecordId(action.id)) {
+          setToast(text("Not sent yet. It opens after sending.", "Nog niet verzonden. Opent na verzending."));
+          return;
+        }
+        setSelectedAction(action);
+        setModal("action_detail");
+      }}
+      createProjectAction={() => setModal("action_create")}
+      openProjectArea={(tab, recordId) => {
+        // "submissions" is Management deliberately unlocking the contractor
+        // document types; every other destination is a normal workspace module.
+        openWorkspaceModule(tab === "submissions" ? "registers" : tab);
+        // Both of these are cleared by navigate, so they are set after it.
+        setExternalSubmissionIntent(tab === "submissions");
+        // The action centre points at a record, so the module opens on that record
+        // instead of on the list it stands in.
+        setFocusRecordId(recordId ?? "");
+      }}
+      openActionCenter={(view = "work") => { navigate("acties"); setActionCenterView(view); }}
+      openRapidVerify={() => navigate("verify")}
+      openManagement={() => navigate("meer")}
+      openReportCheck={() => setModal("report")}
+    />
+          ) : null}
+        />
+        {signOutPrompt ? (
+          <SignOutDialog
+            unsent={signOutPrompt.unsent}
+            busy={signingOut}
+            close={() => setSignOutPrompt(null)}
+            signOut={(discardUnsent) => void performSignOut({ discardUnsent })}
+          />
+        ) : null}
+      </ProjectPermissionsProvider>
+    );
+  }
+
   return (
     <ProjectPermissionsProvider value={permissions}>
     <div className="app-shell">
@@ -1771,9 +1877,11 @@ export function CodecoSupervisionApp() {
             instead of carrying the previous project's selection, filters and drafts. */}
         <main id="main-content" tabIndex={-1} className={`main-content${unsavedPhotos ? " has-resume-bar" : ""}`} key={selectedProject?.id ?? "no-project"}>
           {activeNav === "vandaag" ? (
+            <>
             <ClientDashboard
               entries={entries}
               actions={dayActions}
+              actionsLoaded={dayQuery.isSuccess || Boolean(dayQuery.data)}
               recentPhotos={recentPhotosQuery.data ?? []}
               client={supabase as SupabaseClient | null}
               projectName={projectName}
@@ -1797,9 +1905,20 @@ export function CodecoSupervisionApp() {
                 setFocusRecordId(recordId);
               }}
             />
+            <OverviewPanels
+              client={supabase}
+              projectId={selectedProject!.id}
+              organizationId={activeOrganizationId!}
+              reportId={dayQuery.data?.report?.id ? String(dayQuery.data.report.id) : null}
+              parties={dayQuery.data?.parties ?? []}
+              actions={dayActions}
+              openModule={(tab) => openWorkspaceModule(tab)}
+              openNav={(nav) => navigate(nav)}
+            />
+            </>
           ) : (
             <OperationalWorkspace
-              mode={activeNav === "acties" ? "actions" : activeNav === "verify" ? "verify" : activeNav === "project" || activeNav === "projectdocs" || activeNav === "punchlist" ? "project" : activeNav === "rapporten" ? "reports" : "admin"}
+              mode={activeNav === "acties" ? "actions" : activeNav === "verify" ? "verify" : activeNav === "records" ? "records" : activeNav === "project" || activeNav === "projectdocs" || activeNav === "punchlist" ? "project" : activeNav === "rapporten" ? "reports" : "admin"}
               client={supabase}
               organizationId={activeOrganizationId!}
               projectId={selectedProject!.id}
@@ -1888,7 +2007,7 @@ export function CodecoSupervisionApp() {
           );
         })}
         <button
-          className={`mobile-nav-button ${["projectdocs", "punchlist", "verify", "rapporten", "meer"].includes(activeNav) ? "active" : ""}`}
+          className={`mobile-nav-button ${["projectdocs", "records", "punchlist", "verify", "rapporten", "meer"].includes(activeNav) ? "active" : ""}`}
           type="button"
           aria-expanded={mobileMenuOpen}
           aria-controls="mobile-module-menu"
@@ -1943,7 +2062,7 @@ export function CodecoSupervisionApp() {
                 </span>
                 <ChevronRight size={17} />
               </button>
-              {localizedNavigation.filter((item) => ["projectdocs", "punchlist", "verify", "rapporten", "meer"].includes(item.id)).map((item) => {
+              {localizedNavigation.filter((item) => ["projectdocs", "records", "punchlist", "verify", "rapporten", "meer"].includes(item.id)).map((item) => {
                 const Icon = item.icon;
                 return (
                   <button className={activeNav === item.id ? "active" : ""} type="button" onClick={() => navigate(item.id)} key={item.id}>
@@ -2048,6 +2167,13 @@ export function CodecoSupervisionApp() {
           partyName={dayQuery.data?.parties.find((party) => party.id === selectedAction.owner_party_id)?.name ?? "Niet toegewezen"}
           locationNodes={projectLocationsQuery.data ?? []}
           updates={(dayQuery.data?.actionUpdates ?? []).filter((update) => update.action_id === selectedAction.id)}
+          portalPanel={selectedProject ? (
+            <>
+              <ActionCategoryField client={supabase} actionId={selectedAction.id} value={selectedAction.action_category} changed={() => void queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] })} />
+              <RecordVerifications client={supabase} projectId={selectedProject.id} recordType="action" recordId={selectedAction.id} />
+              <PortalSharePanel client={supabase} projectId={selectedProject.id} recordType="action" recordId={selectedAction.id} recordTitle={selectedAction.title} parties={dayQuery.data?.parties ?? []} />
+            </>
+          ) : null}
           close={() => {
             setSelectedAction(null);
             setModal(null);
@@ -3296,6 +3422,7 @@ function ActionDetailModal({
   partyName,
   locationNodes,
   updates,
+  portalPanel,
   close,
   transition,
 }: {
@@ -3303,6 +3430,7 @@ function ActionDetailModal({
   partyName: string;
   locationNodes: ProjectLocationOption[];
   updates: ActionUpdate[];
+  portalPanel?: React.ReactNode;
   close: () => void;
   transition: (nextStatus: ProjectAction["status"], note: string) => Promise<boolean>;
 }) {
@@ -3367,6 +3495,7 @@ function ActionDetailModal({
               <button className="ui-button ui-button--primary ui-button--md" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={14} /> : <ArrowRight size={14} />} {text("Move to", "Naar")} {statusLabels[nextStatus].toLowerCase()}</button>
             </form>
           ) : <p className="action-complete-note"><CheckCircle2 size={16} /> {action.status === "verified" ? text("This action has been formally verified and closed.", "Deze actie is formeel geverifieerd en gesloten.") : text("This action was cancelled and remains visible in the history.", "Deze actie is geannuleerd en blijft in de historie zichtbaar.")}</p>}
+          {portalPanel}
         </div>
       </section>
     </div>

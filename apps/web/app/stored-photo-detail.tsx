@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalSharePanel } from "@/app/portal-share-panel";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AlertTriangle, CircleDot, Download, ExternalLink, HardDrive, Loader2, RefreshCw, ScanLine, Image as ImageIcon, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -229,6 +230,8 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
               ? origins.map((origin) => <em className="media-origin-chip" title={origin.title} key={`${origin.kind}:${origin.recordId}`}>{origin.number || origin.kind}</em>)
               : <em className="media-origin-chip">{text("Not linked to a record yet", "Nog niet aan een record gekoppeld")}</em>}</span>
           </div>
+          {/* Release this photo to the client portal (21.1 Photos & Site Updates). */}
+          <PortalSharePanel client={client} projectId={projectId} recordType="file" recordId={file.id} recordTitle={file.original_name.replace(/\.[^.]+$/, "")} defaultAudience="client" />
         </div>
 
         <footer className="modal-actions media-detail-actions">

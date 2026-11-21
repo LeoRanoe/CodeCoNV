@@ -35,7 +35,8 @@ test("the Issue form's thumb targets are 44 px and its tick boxes are named", as
   await signIn(page);
   await page.locator(".mobile-bottom-nav").getByRole("button", { name: "Workspace" }).click();
   await page.locator("[data-workspace-destination='issues']").click();
-  await expect(page.locator(".record-action-check").first()).toBeVisible();
+  // The Issue sheet's tick boxes are choice tiles since PR #21/#22.
+  await expect(page.locator(".choice-tile-multi").first()).toBeVisible();
 
   const sizes = await page.evaluate(() => {
     const measure = (selector: string) => Array.from(document.querySelectorAll(selector)).map((element) => {
@@ -43,8 +44,7 @@ test("the Issue form's thumb targets are 44 px and its tick boxes are named", as
       return { selector, width: Math.round(box.width), height: Math.round(box.height) };
     });
     return [
-      ...measure(".record-action-check"),
-      ...measure(".record-action-other input[type='text']"),
+      ...measure(".choice-tile-multi"),
       ...measure(".dictate-button"),
     ];
   });
@@ -54,7 +54,7 @@ test("the Issue form's thumb targets are 44 px and its tick boxes are named", as
     expect(size.width, `${size.selector} width`).toBeGreaterThanOrEqual(44);
   }
 
-  const names = await page.locator(".record-action-check input[type='checkbox']").evaluateAll((inputs) => inputs.map((input) => input.getAttribute("aria-label") ?? ""));
+  const names = await page.locator(".choice-tile-multi input[type='checkbox']").evaluateAll((inputs) => inputs.map((input) => input.getAttribute("aria-label") || (input as HTMLInputElement).labels?.[0]?.textContent?.trim() || input.closest("label")?.textContent?.trim() || ""));
   expect(names.length).toBeGreaterThan(2);
   for (const name of names) expect(name.length, "every tick box is named").toBeGreaterThan(2);
   expect(names).not.toContain("on");

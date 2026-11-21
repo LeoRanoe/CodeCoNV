@@ -135,6 +135,10 @@ export async function startDictation(options: {
     if (event?.error === "no-speech" || event?.error === "aborted") return;
     live = false;
     options.onError(event?.error === "not-allowed" || event?.error === "service-not-allowed" ? "blocked" : "failed");
+    // An error ends the session: the button must not stay on "Stop dictation" when a browser
+    // does not follow the error with an end event. A later onend only repeats the same reset.
+    try { recognition.stop(); } catch { /* Already ended. */ }
+    options.onEnd();
   };
   recognition.onend = () => { live = false; options.onEnd(); };
   try {

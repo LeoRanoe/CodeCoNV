@@ -30,18 +30,16 @@ async function signIn(page: Page) {
   await form.locator("input[type='password']").fill(password!);
   await form.locator("button[type='submit']").click();
   await page.getByRole("button", { name: new RegExp(projectName) }).first().click();
-  await expect(page.getByRole("region", { name: "Project command center" })).toBeVisible();
+  // A contractor works in the contractor portal, not in the supervisor workspace.
+  await expect(page.locator(".portal-shell")).toBeVisible();
   await page.waitForLoadState("networkidle").catch(() => undefined);
 }
 
 async function openSubmissionForm(page: Page) {
-  const settings = page.locator(".sidebar").getByRole("button", { name: /^(Settings|Management)$/ });
-  if (await settings.isVisible().catch(() => false)) await settings.click();
-  else {
-    await page.locator(".mobile-bottom-nav").getByRole("button", { name: "More" }).click();
-    await page.locator(".mobile-module-sheet").getByRole("button", { name: /Settings|Management/ }).first().click();
-  }
-  await page.getByRole("button", { name: "Record external submission" }).first().click();
+  const tab = page.getByRole("tab", { name: /Responses & submissions/ }).first();
+  if (!(await tab.isVisible().catch(() => false))) await page.locator(".portal-main button[aria-haspopup='true']").first().click();
+  await page.getByRole("tab", { name: /Responses & submissions/ }).first().click();
+  await page.getByRole("button", { name: /New submission/ }).click();
   await expect(page.locator(".controlled-document-form")).toBeVisible();
 }
 
@@ -98,7 +96,7 @@ test("a contractor submits an RFI and sees it in the register", async ({ page },
   await page.reload();
   const projectCard = page.getByRole("button", { name: new RegExp(projectName) }).first();
   if (await projectCard.isVisible().catch(() => false)) await projectCard.click();
-  await expect(page.locator(".sidebar, .mobile-bottom-nav").first()).toBeVisible();
+  await expect(page.locator(".portal-shell")).toBeVisible();
   await openSubmissionForm(page);
   // With the form open, the saved records fold shut under one bar (client, 19-11-2026).
   const fold = page.locator("details.saved-records-fold").first();

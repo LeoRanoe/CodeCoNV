@@ -262,7 +262,14 @@ select lives_ok(
   'an optional 360 panorama is registered in an ordered tour'
 );
 select is((select count(*) from public.visual_captures), 2::bigint, 'standard and 360 visual records coexist');
-select ok(position('created_by' in (select qual from pg_policies where schemaname = 'public' and tablename = 'files' and policyname = 'files_select')) = 0, 'file reads never survive revoked project access through creator ownership');
+-- Creator ownership alone never grants a read: the only creator clause (a portal user's own
+-- upload) is tied to an active project permission, which a revocation removes.
+select ok(
+  (select position('created_by' in qual) = 0
+     or (position('portal.contractor.respond' in qual) > 0 and (length(qual) - length(replace(qual, 'created_by', ''))) = length('created_by'))
+   from pg_policies where schemaname = 'public' and tablename = 'files' and policyname = 'files_select'),
+  'file reads never survive revoked project access through creator ownership'
+);
 select ok(position('created_by' in (select qual from pg_policies where schemaname = 'public' and tablename = 'visual_captures' and policyname = 'visual_captures_select')) = 0, 'visual capture reads always follow current project permissions');
 select ok(position('created_by' in (select qual from pg_policies where schemaname = 'public' and tablename = 'visual_annotations' and policyname = 'visual_annotations_select')) = 0, 'visual annotation reads always follow current project permissions');
 select ok((select capture_type = 'panorama' and tour_name = 'Begane grond tour' and tour_order = 1 from public.visual_captures where title = 'Kamer 1 rondgang'), 'panorama tour identity and order are retained');

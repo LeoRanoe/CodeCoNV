@@ -374,7 +374,14 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
   );
 }
 
-export async function downloadPeriodReportPdf(snapshot: PeriodReportSnapshot, options: PeriodReportOptions = {}) {
+/** The report as a PDF file, for download or for publishing to the client portal. */
+export async function periodReportPdfFile(snapshot: PeriodReportSnapshot, options: PeriodReportOptions = {}) {
   const blob = await pdf(<PeriodReportDocument snapshot={snapshot} options={options} />).toBlob();
-  downloadBlob(blob, `CODECO-${(options.reportTitle ?? "perioderapport").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${snapshot.period.start_date}-${snapshot.period.end_date}.pdf`);
+  const name = `CODECO-${(options.reportTitle ?? "perioderapport").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${snapshot.period.start_date}-${snapshot.period.end_date}.pdf`;
+  return new File([blob], name, { type: "application/pdf" });
+}
+
+export async function downloadPeriodReportPdf(snapshot: PeriodReportSnapshot, options: PeriodReportOptions = {}) {
+  const file = await periodReportPdfFile(snapshot, options);
+  downloadBlob(file, file.name);
 }

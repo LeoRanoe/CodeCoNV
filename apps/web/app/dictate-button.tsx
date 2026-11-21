@@ -42,6 +42,8 @@ export function DictateButton({
   const [listening, setListening] = useState(false);
   const [busy, setBusy] = useState(false);
   const sessionRef = useRef<DictationSession | null>(null);
+  // Set when the field leaves the screen, so a session that was still starting is stopped too.
+  const goneRef = useRef(false);
   const onTextRef = useRef(onText);
   // Why dictation stopped, shown beside the button: a tooltip never appears on a tablet.
   const [error, setError] = useState<"" | DictationError>("");
@@ -55,8 +57,9 @@ export function DictateButton({
       setListening(false);
     };
     const onVisibility = () => { if (document.hidden) stop(); };
+    goneRef.current = false;
     document.addEventListener("visibilitychange", onVisibility);
-    return () => { document.removeEventListener("visibilitychange", onVisibility); stop(); };
+    return () => { goneRef.current = true; document.removeEventListener("visibilitychange", onVisibility); stop(); };
   }, [language]);
 
   if (!supported) return null;
@@ -78,6 +81,8 @@ export function DictateButton({
       onBusy: setBusy,
       onEnd: () => { sessionRef.current = null; setListening(false); },
     });
+    // Left the screen while the microphone was still starting: never keep listening.
+    if (goneRef.current) { session?.abort(); return; }
     sessionRef.current = session;
     if (!session) setListening(false);
   };

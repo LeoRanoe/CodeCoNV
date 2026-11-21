@@ -27,6 +27,7 @@ export const accounts = {
   supervisor: { email: "supervisor-a@codeco.test", password: "Local-E2E-Supervisor-A-2026!" },
   client: { email: "client-a@codeco.test", password: "Local-E2E-Client-A-2026!", name: "Client Owner Representative" },
   contractor: { email: "contractor-a@codeco.test", password: "Local-E2E-Contractor-A-2026!", name: "Contractor Site Manager" },
+  clientPortal: { email: "client-portal-a@codeco.test", password: "Local-E2E-Client-Portal-A-2026!", name: "Employer Approver" },
 };
 
 const options = { auth: { autoRefreshToken: false, persistSession: false } };
@@ -72,7 +73,7 @@ if (stress && !buildings.some((b) => b.code === "LANG")) {
 console.log(`project ${project.id}, buildings ${buildings.map((b) => b.code).join(",")}, parties ${parties.length}`);
 
 // Accounts for the other roles.
-for (const [role, account, code] of [["client", accounts.client, "client"], ["contractor", accounts.contractor, "contractor"]]) {
+for (const [role, account, code] of [["client", accounts.client, "client"], ["contractor", accounts.contractor, "contractor"], ["client portal", accounts.clientPortal, "client_approver"]]) {
   const id = await ensureUser(account);
   const result = await supervisor.rpc("provision_internal_user", {
     p_organization_id: org.id,
@@ -82,6 +83,15 @@ for (const [role, account, code] of [["client", accounts.client, "client"], ["co
     p_project_id: project.id,
   });
   warn(`provision ${role}`, result.error);
+  // The contractor works in its portal for its own organisation (migration 202611220001).
+  if (role === "contractor" && contractorParty) {
+    warn("link contractor organisation", (await supervisor.rpc("set_project_member_portal_party", { p_project_id: project.id, p_user_id: id, p_party_id: contractorParty.id })).error);
+  }
+  // A client portal user (21.4) acts for the client organisation of the project.
+  if (role === "client portal") {
+    const clientParty = parties.find((p) => p.party_type === "client");
+    if (clientParty) warn("link client organisation", (await supervisor.rpc("set_project_member_portal_party", { p_project_id: project.id, p_user_id: id, p_party_id: clientParty.id })).error);
+  }
 }
 
 const printAccounts = () => {
@@ -89,6 +99,8 @@ const printAccounts = () => {
   console.log(`CODECO_E2E_CLIENT_PASSWORD=${accounts.client.password}`);
   console.log(`CODECO_E2E_CONTRACTOR_EMAIL=${accounts.contractor.email}`);
   console.log(`CODECO_E2E_CONTRACTOR_PASSWORD=${accounts.contractor.password}`);
+  console.log(`CODECO_E2E_CLIENT_PORTAL_EMAIL=${accounts.clientPortal.email}`);
+  console.log(`CODECO_E2E_CLIENT_PORTAL_PASSWORD=${accounts.clientPortal.password}`);
 };
 // CODECO_E2E_DEMO_DATA=0: only the two role accounts, no records (what the release gate needs).
 if (process.env.CODECO_E2E_DEMO_DATA === "0") {

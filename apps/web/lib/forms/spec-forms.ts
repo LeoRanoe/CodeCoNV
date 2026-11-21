@@ -58,6 +58,12 @@ export type SpecConfiguration = {
   workflows?: Record<string, SpecWorkflowConfig>;
   /** Raised on every change of the lists, stored with each record (controlled classifications). */
   lists_version?: number;
+  /** Project Documents folders (requirements 4.1); empty means the default 00-13. */
+  document_folders?: Array<{ code: string; en: string; nl: string }>;
+  /** Project document numbering convention as a regular expression (4.2), checked on registration. */
+  document_number_pattern?: string;
+  /** Days a submitted revision may wait for review before reviewers are reminded (section 14). */
+  document_review_days?: number;
 };
 
 /** The Unit list of the form sheets (Works Ongoing row 11, Works Completed row 10, Materials Delivery row 12). */

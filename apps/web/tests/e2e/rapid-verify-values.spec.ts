@@ -30,6 +30,10 @@ test("a submitted 13 mm is flagged against a prescribed 12 mm", async ({ page },
   test.skip(testInfo.project.name !== "desktop-office", "desktop route");
   await signIn(page);
   await page.locator(".sidebar").getByRole("button", { name: "Rapid Verify", exact: true }).click();
+  // Rapid Verify opens on the verification queue; the source check is its own view.
+  const specs = page.getByRole("tab", { name: /Check against specs/ }).first();
+  if (!(await specs.isVisible().catch(() => false))) await page.locator(".verification-workspace button[aria-haspopup='true']").first().click();
+  await page.getByRole("tab", { name: /Check against specs/ }).first().click();
   await expect(page.getByRole("heading", { name: "Rapid Verify", exact: true })).toBeVisible();
 
   await page.locator("#main-content input[type='file']").setInputFiles({

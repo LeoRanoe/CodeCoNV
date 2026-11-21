@@ -90,6 +90,11 @@ import { PromptLibrary } from "@/app/prompt-library";
 import { MediaLibraryWorkspace } from "@/app/media-library-workspace";
 import { ProjectWorkspaceHome } from "@/app/project-workspace-home";
 import { ProjectDocumentsHome } from "@/app/project-documents-home";
+import { PortalMembers, PortalRegister, PortalSharePanel, PublishToClient } from "@/app/portal-share-panel";
+import { RecordVerifications, VerificationWorkspace } from "@/app/verification-queue";
+import { RegisterReports } from "@/app/register-reports";
+import { RecordsArchive } from "@/app/records-archive";
+import { DocumentSettings } from "@/app/document-register";
 import { ProjectActionCenter, type ActionCenterView } from "@/app/project-action-center";
 import { RapidVerifyWorkspace } from "@/app/rapid-verify-workspace";
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
@@ -201,7 +206,7 @@ import {
   type RegisterEntry,
 } from "@/lib/supabase/operations";
 
-type WorkspaceMode = "project" | "actions" | "verify" | "reports" | "admin";
+type WorkspaceMode = "project" | "actions" | "verify" | "reports" | "records" | "admin";
 /** What a workspace tile asks the module to open on: its own record, not the last one. */
 type WorkspaceTilePreset = { registerType?: string; hseEventType?: string; dailyWorkView?: DailyWorkView | "day" };
 
@@ -1108,7 +1113,21 @@ export function OperationalWorkspace({
           openProjectArea={(tab, recordId) => openProjectArea(tab, recordId)}
         />
       ) : null}
-      {mode === "verify" ? <RapidVerifyWorkspace key={projectId} projectName={projectName} projectFiles={snapshot.files} client={client} /> : null}
+      {mode === "verify" ? (
+        <VerificationWorkspace
+          client={client}
+          projectId={projectId}
+          data={snapshot}
+          actions={projectActions}
+          buildings={buildings}
+          parties={parties}
+          specSearch={<RapidVerifyWorkspace key={projectId} projectName={projectName} projectFiles={snapshot.files} client={client} />}
+          openRecord={(recordType, recordId) => {
+            if (recordType === "action") { openProjectAction?.(recordId); return; }
+            openProjectArea(recordType === "inspection" ? "inspections" : recordType === "register_entry" ? "registers" : "findings", recordId);
+          }}
+        />
+      ) : null}
       {mode === "reports" ? (
         <ReportOperations
           data={snapshot}
@@ -1128,6 +1147,18 @@ export function OperationalWorkspace({
           parties={parties}
           projectCode={projectCode}
           openRecord={(recordTab, recordId) => openProjectArea(recordTab, recordId)}
+          projectActions={projectActions}
+        />
+      ) : null}
+      {mode === "records" ? (
+        <RecordsArchive
+          client={client}
+          projectId={projectId}
+          data={snapshot}
+          buildings={buildings}
+          openRecord={(tab, recordId) => openProjectArea(tab as Parameters<typeof openProjectArea>[0], recordId)}
+          photoLibrary={<MediaLibraryWorkspace mode="photos" data={snapshot} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} open360Upload={() => openProjectArea("visual")} markPhotoIssue={() => openProjectArea("visual")} />}
+          attachments={<MediaLibraryWorkspace mode="assets" organizationId={organizationId} data={snapshot} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} open360Upload={() => openProjectArea("visual")} markPhotoIssue={() => openProjectArea("visual")} openRecord={(recordTab, recordId) => openProjectArea(recordTab as Parameters<typeof openProjectArea>[0], recordId)} />}
         />
       ) : null}
       {mode === "admin" ? (
@@ -3187,7 +3218,9 @@ function ProjectOperations({
         // A delay report and a lesson learned carry pictures the client's form marks as required.
         // A formal record that exists without them is what the QA sweep found (M20), so these two
         // are only saved with a connection, and only stay saved once the pictures are confirmed.
-        const photosAreMandatory = !editingRegisterId && (delayReportRegister || lessonsLearnedRegister) && namedRegisterPhotos.length > 0;
+        // Since the PDR sheet (PR #22) its evidence is taken in the general photo field, not a
+        // named box: either kind makes the photos part of the formal report (QA M20).
+        const photosAreMandatory = !editingRegisterId && (delayReportRegister || lessonsLearnedRegister) && (namedRegisterPhotos.length + registerPhotos.length) > 0;
         if (photosAreMandatory && !registerOnline) {
           throw new Error(text("This form needs a connection: the required photos must be confirmed before it is saved. Your entries stay on this screen.", "Dit formulier heeft verbinding nodig: de verplichte foto's moeten bevestigd zijn voordat het wordt opgeslagen. Je invoer blijft op dit scherm staan."));
         }
@@ -3612,6 +3645,18 @@ function ProjectOperations({
               </>
             );
           })()}
+          {/* Assign to a contractor or route to the client; the record itself stays here. */}
+          {viewedRecord.kind !== "daily_work" ? (
+            <PortalSharePanel
+              client={client}
+              projectId={projectId}
+              recordType={viewedRecord.kind}
+              recordId={viewedRecord.id}
+              recordTitle={viewedRecord.title}
+              parties={parties}
+            />
+          ) : null}
+          {viewedRecord.kind !== "daily_work" ? <RecordVerifications client={client} projectId={projectId} recordType={viewedRecord.kind} recordId={viewedRecord.id} /> : null}
           <div className="record-readonly-actions">
             {viewedRecord.status !== "cancelled" && permissions.can("records.edit") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => {
               if (viewedRecord.kind === "inspection") {
@@ -5245,7 +5290,7 @@ function ProjectOperations({
 
       {tab === "visual" ? <VisualEvidenceWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} parties={parties} client={client} busy={busy} run={run} initialFindingId={visualFindingId} initialFileId={visualFileId} onInitialFileConsumed={() => setVisualFileId("")} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} start360Upload={visual360Intent} onStart360UploadConsumed={() => setVisual360Intent(false)} /> : null}
 
-      {tab === "documents" ? <ProjectDocumentsHome data={data} client={client} organizationId={organizationId} projectId={projectId} reportId={reportId} buildingId={buildingId} buildings={buildings} busy={busy} run={run} openDrawings={() => switchTab("drawings")} openFiles={() => switchTab("assets")} openRegisters={() => switchTab("registers")} createDocument={() => openTask("registers", true)} /> : null}
+      {tab === "documents" ? <ProjectDocumentsHome data={data} client={client} organizationId={organizationId} projectId={projectId} projectName={projectName} parties={parties} reportId={reportId} buildingId={buildingId} buildings={buildings} busy={busy} run={run} openDrawings={() => switchTab("drawings")} openFiles={() => switchTab("assets")} openRegisters={() => switchTab("registers")} createDocument={() => openTask("registers", true)} /> : null}
 
       {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} client={client} busy={busy} run={run} initialFindingId={drawingFindingId} initialInspectionId={drawingInspectionId} pendingRecord={pendingRecordPin} onPlaceRecordPin={onPlaceRecordPin} onOpenLinkedRecord={(recordType, recordId) => {
         // The pin points at one record, so the module opens on that record, not on its list.
@@ -6044,7 +6089,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   );
 }
 
-function ReportOperations({ data, reportId, reportNumber, reportStatus, currentUserName, projectId, projectName, busy, run, client, openModule, openDeadlines, openReportCheck, buildings, parties, projectCode, openRecord }: { data: OperationSnapshot; reportId: string | null; reportNumber: string; reportStatus: string; currentUserName: string; projectId: string; projectName: string; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>; client: SupabaseClient; openModule: (tab: "documents" | "drawings" | "findings" | "ncr" | "hse" | "inspections" | "registers" | "files" | "assets" | "daily") => void; openDeadlines: () => void; openReportCheck?: () => void; buildings: BuildingOption[]; parties: ProjectParty[]; projectCode: string; openRecord: (tab: "findings" | "ncr" | "hse" | "inspections" | "registers" | "daily" | "files", recordId?: string) => void }) {
+function ReportOperations({ data, reportId, reportNumber, reportStatus, currentUserName, projectId, projectName, busy, run, client, openModule, openDeadlines, openReportCheck, buildings, parties, projectCode, openRecord, projectActions = [] }: { projectActions?: Array<{ id: string; action_number: string; title: string; status: string; priority: string; due_at: string | null; owner_party_id?: string | null; action_category?: string | null }>; data: OperationSnapshot; reportId: string | null; reportNumber: string; reportStatus: string; currentUserName: string; projectId: string; projectName: string; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>; client: SupabaseClient; openModule: (tab: "documents" | "drawings" | "findings" | "ncr" | "hse" | "inspections" | "registers" | "files" | "assets" | "daily") => void; openDeadlines: () => void; openReportCheck?: () => void; buildings: BuildingOption[]; parties: ProjectParty[]; projectCode: string; openRecord: (tab: "findings" | "ncr" | "hse" | "inspections" | "registers" | "daily" | "files", recordId?: string) => void }) {
   const { language, locale, text } = useLanguage();
   const statusLabels = language === "en" ? reportStatusLabelsEnglish : reportStatusLabels;
   const [reviewComment, setReviewComment] = useState("");
@@ -6286,8 +6331,20 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
             onDownloadPdf={() => run(async () => { const snapshot = filterPeriodSnapshot(await buildPeriodReportSnapshot(client, projectId, period.start, period.end), periodFilter); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded.`, `${periodLabel} voor ${projectName} gedownload.`))}
             onDownloadWord={() => run(async () => { const snapshot = filterPeriodSnapshot(await buildPeriodReportSnapshot(client, projectId, period.start, period.end), periodFilter); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded as Word.`, `${periodLabel} voor ${projectName} als Word gedownload.`))}
           />
+          <PublishToClient
+            client={client}
+            projectId={projectId}
+            buildingId={buildings[0]?.id ?? ""}
+            title={`${periodLabel} · ${selectedReport.title}`}
+            periodStart={period.start}
+            periodEnd={period.end}
+            defaultType={reportChoice === "quality" ? "quality" : reportChoice === "visual" ? "progress" : period.start === period.end ? "daily" : "weekly"}
+            disabled={busy || !activeSections.length || !period.start || !period.end || period.end < period.start}
+            buildPdf={async () => { const snapshot = filterPeriodSnapshot(await buildPeriodReportSnapshot(client, projectId, period.start, period.end), periodFilter); const { periodReportPdfFile } = await import("@/lib/reports/period-report-pdf"); return periodReportPdfFile(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }}
+          />
         </section>
       ) : null}
+      {reportView === "create" ? <RegisterReports client={client} projectId={projectId} projectName={projectName} data={data} parties={parties} actions={projectActions} /> : null}
       {reportView === "workflow" ? (
         <>
           <div className={`operation-alert report-next-step ${workflowStep ? "success" : "warning"}`} role="status">
@@ -6341,7 +6398,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
   // A role that may not read a module sees a dash, not a zero that reads like a fact.
   const readsFindings = permissions.can("findings.read");
   const readsInspections = permissions.can("inspections.read");
-  const [section, setSection] = useState<"overview" | "settings" | "specification" | "structure" | "templates" | "backup">("overview");
+  const [section, setSection] = useState<"overview" | "settings" | "specification" | "portals" | "documents" | "structure" | "templates" | "backup">("overview");
   const [structureBuildingId, setStructureBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [template, setTemplate] = useState({ module: "inspection", code: "", name: "", prompts: "" });
   const [settings, setSettings] = useState(() => ({
@@ -6393,8 +6450,15 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
       <header className="secondary-header ui-page-header"><div><h1>{section === "overview" ? text("Management overview", "Beheeroverzicht") : text("Administration and control", "Beheer en controle")}</h1><span className="ui-page-header__code">{projectName}</span></div><div className="management-header-actions">{canManageOrganization ? <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={openUserAdmin}><Users size={15} /> {text("Manage team", "Team beheren")}</button> : null}</div></header>
       <SectionNav
         label={text("Management sections", "Beheeronderdelen")}
-        items={([["overview", text("Overview", "Overzicht")], ["settings", text("Team & rules", "Team & regels")], ...(permissions.can("project.configure") ? [["specification", text("Workflows & lists", "Workflows & lijsten")]] as const : []), ["structure", text("Project setup", "Projectinrichting")], ["templates", text("Quality standards", "Kwaliteitsstandaarden")], ["backup", text("Backup & continuity", "Back-up & continuïteit")]] as const).map(([id, label]) => ({ id, label, selected: section === id, onSelect: () => setSection(id) }))}
+        items={([["overview", text("Overview", "Overzicht")], ["settings", text("Team & rules", "Team & regels")], ...(permissions.can("project.configure") ? [["specification", text("Workflows & lists", "Workflows & lijsten")]] as const : []), ...(permissions.can("portal.share") || canManageOrganization ? [["portals", text("Portals", "Portalen")]] as const : []), ...(permissions.can("project.configure") ? [["documents", text("Document settings", "Documentinstellingen")]] as const : []), ["structure", text("Project setup", "Projectinrichting")], ["templates", text("Quality standards", "Kwaliteitsstandaarden")], ["backup", text("Backup & continuity", "Back-up & continuïteit")]] as const).map(([id, label]) => ({ id, label, selected: section === id, onSelect: () => setSection(id) }))}
       />
+      {section === "documents" ? <DocumentSettings client={client} projectId={projectId} configuration={data.settings?.spec_configuration as Record<string, unknown> | undefined} /> : null}
+      {section === "portals" ? (
+        <div className="portal-section">
+          {permissions.can("portal.share") ? <PortalRegister client={client} projectId={projectId} parties={parties} /> : null}
+          {canManageOrganization ? <PortalMembers client={client} projectId={projectId} parties={parties} /> : null}
+        </div>
+      ) : null}
       {section === "overview" ? <section className="management-overview">
         <div className="management-kpis">
           <button className={data.settings ? "healthy" : "attention"} type="button" onClick={() => setSection("settings")}><span>{text("Project configuration", "Projectconfiguratie")}</span><strong>{data.settings ? text("Active", "Actief") : text("Missing", "Ontbreekt")}</strong>{data.settings ? null : <small>{text("Project rules require configuration", "Projectregels moeten worden ingesteld")}</small>}</button>

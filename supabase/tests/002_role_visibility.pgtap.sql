@@ -175,7 +175,7 @@ $fn$;
 -- The canonical owner permission set. Any write right appearing here is a regression.
 select is(
   array(select permission_code::text from public.role_permissions where role_id = '11000000-0000-0000-0000-000000000004' order by 1),
-  array['actions.read','attendance.read','audit.read','files.read','findings.read','hse.read','inspections.read','records.read','reports.read','reports.readapproved','reports.sign','submissions.read','submissions.review']::text[],
+  array['actions.read','attendance.read','audit.read','documents.read','files.read','findings.read','hse.read','inspections.read','records.read','reports.read','reports.readapproved','reports.sign','submissions.read','submissions.review']::text[],
   'the owner role is read-only apart from signing and reviewing submissions'
 );
 

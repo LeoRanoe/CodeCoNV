@@ -5,6 +5,13 @@ const email = process.env.CODECO_E2E_EMAIL;
 const password = process.env.CODECO_E2E_PASSWORD;
 test.skip(!email || !password, "Local fixture credentials required.");
 
+/** Rapid Verify opens on the verification queue; the source check is its own view. */
+async function openSpecCheck(page: Page) {
+  const tab = page.getByRole("tab", { name: /Check against specs/ }).first();
+  if (!(await tab.isVisible().catch(() => false))) await page.locator(".verification-workspace button[aria-haspopup='true']").first().click();
+  await page.getByRole("tab", { name: /Check against specs/ }).first().click();
+}
+
 async function open(page: Page, nav: string, tab?: string) {
   await page.addInitScript(() => {
     localStorage.setItem("codeco-language-choice", "en");
@@ -36,6 +43,7 @@ function pdf(text: string) {
 test("Rapid Verify keeps successful sources, extracts real PDF pages and invalidates stale evidence", async ({ page }, info) => {
   if (info.project.name === "desktop-office") await page.setViewportSize({ width: 1440, height: 900 });
   await open(page, "verify");
+  await openSpecCheck(page);
   await expect(page.getByRole("heading", { name: "Rapid Verify", exact: true })).toBeVisible();
   const input = page.locator("input[type=file][multiple]");
   await input.setInputFiles([
@@ -82,9 +90,10 @@ test("Dictation appends final results, preserves typed text on failure and abort
     Object.assign(window, { SpeechRecognition: Recognition, testSpeech: state });
   });
   await open(page, "verify");
+  await openSpecCheck(page);
   const query = page.locator(".rapid-query-field textarea");
   await query.fill("Typed field");
-  await page.getByRole("button", { name: "Dictate", exact: true }).click();
+  await page.locator(".rapid-query-field").getByRole("button", { name: /^Dictate/ }).click();
   await expect(page.getByRole("button", { name: "Stop dictation" })).toHaveAttribute("aria-pressed", "true");
   await page.evaluate(() => {
     const state = (window as unknown as { testSpeech: { instance: { onresult: (event: unknown) => void } } }).testSpeech;
@@ -93,9 +102,13 @@ test("Dictation appends final results, preserves typed text on failure and abort
   await expect(query).toHaveValue("Typed field final words");
   await page.evaluate(() => (window as unknown as { testSpeech: { instance: { onerror: () => void } } }).testSpeech.instance.onerror());
   await expect(query).toHaveValue("Typed field final words");
-  await expect(page.getByRole("button", { name: "Dictate", exact: true })).toHaveAttribute("title", /unavailable/);
-  await page.getByRole("button", { name: "Dictate", exact: true }).click();
-  await page.getByRole("tab", { name: "Compare specification" }).click();
+  await expect(page.locator(".rapid-query-field").getByRole("button", { name: /^Dictate/ })).toHaveAttribute("title", /unavailable/);
+  await page.locator(".rapid-query-field").getByRole("button", { name: /^Dictate/ }).click();
+  // Leaving the screen ends the dictation. The question field is shared by both modes of the
+  // source check, so the way out is another Rapid Verify view.
+  const dashboard = page.getByRole("tab", { name: /Verification dashboard/ }).first();
+  if (!(await dashboard.isVisible().catch(() => false))) await page.locator(".verification-workspace button[aria-haspopup='true']").first().click();
+  await page.getByRole("tab", { name: /Verification dashboard/ }).first().click();
   await expect.poll(() => page.evaluate(() => (window as unknown as { testSpeech: { aborts: number } }).testSpeech.aborts)).toBeGreaterThan(0);
 });
 

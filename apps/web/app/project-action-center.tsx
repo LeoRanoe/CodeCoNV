@@ -42,6 +42,7 @@ type ProjectActionItem = {
   due_at: string | null;
   owner_user_id?: string | null;
   owner_party_id?: string | null;
+  action_category?: string | null;
 };
 
 type ActionType = "all" | "action" | "wcr" | "rfi" | "rfa" | "wir" | "issue" | "punchlist" | "document";
@@ -53,7 +54,9 @@ type ActionType = "all" | "action" | "wcr" | "rfi" | "rfa" | "wir" | "issue" | "
  * on its deadline view.
  */
 export type ActionCenterView = "mine" | "work" | "deadlines";
-type WorkFilter = "open" | "escalated" | "verification" | "all";
+type WorkFilter = "open" | "escalated" | "verification" | "closed" | "all";
+/** The menu's action views: contractor, corrective and preventive actions. */
+type FocusFilter = "all" | "contractor" | "corrective" | "preventive";
 type DeadlineFilter = "overdue" | "week" | "later" | "none" | "all";
 /** Which record a row opens, so tapping it never lands on a list the record is not in. */
 export type ActionCenterTarget = "findings" | "ncr" | "registers" | "drawings";
@@ -77,6 +80,10 @@ type UnifiedItem = {
   escalationRequired: boolean;
   /** For a finding: the finding type, so an NCR opens in the NCR module. */
   recordKind?: string;
+  /** The responsible organisation, when the record names one. */
+  partyId?: string | null;
+  /** Corrective, preventive or follow-up (actions only). */
+  category?: string | null;
   action?: ProjectActionItem;
 };
 
@@ -123,6 +130,7 @@ export function ProjectActionCenter({
   const [typeFilter, setTypeFilter] = useState<ActionType>("all");
   const [workFilter, setWorkFilter] = useState<WorkFilter>("open");
   const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>("overdue");
+  const [focusFilter, setFocusFilter] = useState<FocusFilter>("all");
   const [search, setSearch] = useState("");
 
   const partyName = (partyId: string | null | undefined) => parties.find((party) => party.id === partyId)?.name ?? "";
@@ -141,6 +149,8 @@ export function ProjectActionCenter({
       ownerUserId: action.owner_user_id ?? null,
       ownerLabel: resolveUserName(action.owner_user_id ?? null) || partyName(action.owner_party_id),
       escalationRequired: false,
+      partyId: action.owner_party_id ?? null,
+      category: action.action_category ?? null,
       action,
     }));
     const findings: UnifiedItem[] = data.findings.map((finding) => ({
@@ -159,6 +169,7 @@ export function ProjectActionCenter({
       ownerLabel: resolveUserName(finding.assigned_user_id) || partyName(finding.responsible_party_id),
       escalationRequired: Boolean(finding.issue_management?.escalation_required),
       recordKind: finding.finding_type,
+      partyId: finding.responsible_party_id ?? null,
     }));
     // Everything with a deadline belongs on a deadline page: contractor submissions as
     // well as the controlled documents CODECO issues itself.
@@ -184,6 +195,7 @@ export function ProjectActionCenter({
         ownerUserId: null,
         ownerLabel: String(entry.details.requested_to ?? entry.details.contractor ?? ""),
         escalationRequired: false,
+        partyId: (entry as { responsible_party_id?: string | null }).responsible_party_id ?? null,
       }));
     return [...projectActions, ...findings, ...registers].sort((left, right) => compareActionItems(left, right));
     // partyName and resolveUserName are derived from parties, which is in the list.
@@ -208,13 +220,18 @@ export function ProjectActionCenter({
   const matchesWorkFilter = (item: UnifiedItem) => workFilter === "all"
     || workFilter === "open" && isOpen(item)
     || workFilter === "escalated" && isEscalated(item)
-    || workFilter === "verification" && item.status === "ready_for_verification";
+    || workFilter === "verification" && item.status === "ready_for_verification"
+    || workFilter === "closed" && isSettledStatus(item.status);
+  const contractorPartyIds = new Set(parties.filter((party) => ["contractor", "subcontractor"].includes(party.type)).map((party) => party.id));
+  const matchesFocus = (item: UnifiedItem) => focusFilter === "all"
+    || focusFilter === "contractor" && Boolean(item.partyId && contractorPartyIds.has(item.partyId))
+    || focusFilter === item.category;
   const matchesDeadlineFilter = (item: UnifiedItem) => deadlineFilter === "all"
     || deadlineFilter === "overdue" && overdue(item)
     || deadlineFilter === "week" && withinWeek(item)
     || deadlineFilter === "later" && later(item)
     || deadlineFilter === "none" && withoutDeadline(item);
-  const scopedItems = view === "mine" ? mine : items;
+  const scopedItems = (view === "mine" ? mine : items).filter(matchesFocus);
   // A number on a tile or a tab is what the list shows after pressing it: tiles count within
   // the chosen type, tabs within the chosen state.
   const typeScopedItems = scopedItems.filter((item) => typeFilter === "all" || item.type === typeFilter);
@@ -315,6 +332,7 @@ export function ProjectActionCenter({
             ["open", text("Still open", "Nog open"), typeScopedItems.filter(isOpen).length],
             ["escalated", text("Escalations · late or urgent", "Escalaties · te laat of urgent"), typeScopedItems.filter(isEscalated).length],
             ["verification", text("Waiting for verification", "Wacht op verificatie"), typeScopedItems.filter((item) => item.status === "ready_for_verification").length],
+            ["closed", text("Completed / closed", "Afgerond / gesloten"), typeScopedItems.filter((item) => isSettledStatus(item.status)).length],
             ["all", text("All records", "Alle registraties"), typeScopedItems.length],
           ] as Array<[WorkFilter, string, number]>).map(([id, label, count]) => <button className={`${workFilter === id ? "active" : ""}${id === "escalated" && count ? " overdue" : ""}`} type="button" onClick={() => setWorkFilter(id)} key={id}><strong>{count}</strong><span>{label}</span></button>)}
         </div>
@@ -337,6 +355,14 @@ export function ProjectActionCenter({
                 );
               })}
             </div>
+            <label className="action-center-focus"><span className="sr-only">{text("Show actions", "Acties tonen")}</span>
+              <select aria-label={text("Show actions", "Acties tonen")} value={focusFilter} onChange={(event) => setFocusFilter(event.target.value as FocusFilter)}>
+                <option value="all">{text("All responsible parties and kinds", "Alle partijen en soorten")}</option>
+                <option value="contractor">{text("Contractor actions", "Acties aannemer")}</option>
+                <option value="corrective">{text("Corrective actions", "Corrigerende acties")}</option>
+                <option value="preventive">{text("Preventive actions", "Preventieve acties")}</option>
+              </select>
+            </label>
             <label className="action-center-search"><Search size={15} /><span className="sr-only">{text("Search action center", "Doorzoek actiecentrum")}</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text("Search reference, title or person", "Zoek referentie, titel of persoon")} /></label>
           </div>
 

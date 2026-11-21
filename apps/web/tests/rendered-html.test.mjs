@@ -1309,7 +1309,7 @@ test("keeps the action centre and makes its deadlines and choices true on site",
   assert.match(actionCenter, /export type ActionCenterView = "mine" \| "work" \| "deadlines"/);
   assert.match(actionCenter, /action-center-views/);
   assert.match(styles, /\.action-center-views/);
-  assert.match(actionCenter, /type WorkFilter = "open" \| "escalated" \| "verification" \| "all"/);
+  assert.match(actionCenter, /type WorkFilter = "open" \| "escalated" \| "verification" \| "closed" \| "all"/);
   assert.match(actionCenter, /Waiting for verification|Wacht op verificatie/);
   assert.match(actionCenter, /Escalations · late or urgent|Escalaties · te laat of urgent/);
   // Deadlines are counted in the day on site, and an NCR opens in the NCR module — on the
