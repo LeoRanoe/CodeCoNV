@@ -36,6 +36,7 @@ import {
   polylinePoints,
   textBoxSize,
   toPagePoint,
+  undoableMarkups,
 } from "@/lib/drawings/markup-geometry.mjs";
 import {
   drawingPointFromClient,
@@ -201,10 +202,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
   const selectedPin = selectedPinSource && pinOverrides[selectedPinSource.id]
     ? { ...selectedPinSource, x_ratio: pinOverrides[selectedPinSource.id].xRatio, y_ratio: pinOverrides[selectedPinSource.id].yRatio }
     : selectedPinSource;
-  const activeMarkups = activeDrawing
-    ? data.drawingMarkups
-      .filter((markup) => markup.drawing_file_id === activeDrawing.id && markup.page_number === pageNumber && markup.status === "active" && !hiddenMarkupIds.includes(markup.id))
-      .sort((left, right) => String(left.created_at).localeCompare(String(right.created_at)))
+  const activeMarkups: DrawingMarkup[] = activeDrawing
+    ? undoableMarkups(data.drawingMarkups, activeDrawing.id, pageNumber, hiddenMarkupIds)
     : [];
 
   const incomingFinding = initialFindingId ? data.findings.find((finding) => finding.id === initialFindingId) ?? null : null;

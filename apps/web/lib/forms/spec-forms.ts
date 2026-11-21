@@ -107,6 +107,7 @@ export type SpecColumn = {
 };
 
 export type SpecField = {
+  dropdown?: boolean;
   key: string;
   label: Words;
   kind:
@@ -307,6 +308,7 @@ const deliveryException = when({ any: [
   is("inspection_result", "Rejected", "Quarantined"),
   { differ: ["ordered_quantity", "delivered_quantity"] },
 ] });
+const deliveryAccepted = when(is("inspection_result", "Accepted", "Accepted with Comments"));
 
 /** F07: one answer per Activity Detail Guide prompt, stored with the prompt it answers. */
 const activityAnswers: SpecField = {
@@ -351,7 +353,7 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "ncr_type", label: w("NCR type", "NCR-soort"), kind: "select", options: catalogue.ncrTypes, required: true },
     { key: "ncr_category", label: w("Category", "Categorie"), kind: "dependent", groups: catalogue.ncrCategories, parent: "ncr_type", required: true },
     discipline("discipline", true, w("Discipline / work package", "Discipline / werkpakket")),
-    { key: "requirement_reference", label: w("Requirement reference", "Referentie eis"), kind: "text", required: true, hint: w("Document number, revision and clause", "Documentnummer, revisie en artikel") },
+    { key: "requirement_reference", label: w("Requirement reference", "Referentie eis"), kind: "document", required: true, hint: w("The exact revision from Project Documents; type number, revision and clause only when the document is not in the register. Name the clause in the description.", "De exacte revisie uit Projectdocumenten; typ nummer, revisie en artikel alleen als het document niet in het register staat. Noem het artikel in de omschrijving.") },
     { key: "detected_during", label: w("Detected during", "Vastgesteld tijdens"), kind: "select", options: catalogue.ncrDetectedDuring, required: true, otherExplanation: true },
     { key: "related_inspection", label: w("Related inspection", "Gekoppelde inspectie"), kind: "record", recordKinds: ["inspection"] },
     { key: "severity", label: w("Severity / classification", "Ernst / classificatie"), kind: "select", options: catalogue.ncrSeverities, required: true },
@@ -447,20 +449,23 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
   ],
   delivery: [
     { key: "delivery_at", label: w("Delivery date/time", "Datum/tijd levering"), kind: "datetime", required: true, defaultsToNow: true, hint: w("Actual arrival time", "Werkelijke aankomsttijd") },
+    { key: "planned_delivery_at", label: w("Planned delivery date/time", "Geplande datum/tijd levering"), kind: "datetime", visible: when({ any: [is("delivery_status", "Scheduled"), filled("planned_delivery_at")] }), required: when(is("delivery_status", "Scheduled")) },
     person("supplier", w("Supplier", "Leverancier"), { required: true, people: { users: false, partyTypes: ["supplier"] }, hint: w("From the project's supplier register (Management · Structure and parties)", "Uit het leveranciersregister van het project (Beheer · Structuur en partijen)") }),
     { key: "purchase_order", label: w("Purchase order / requisition", "Inkooporder / aanvraag"), kind: "text", required: true },
     { key: "delivery_note_number", label: w("Delivery note number", "Pakbonnummer"), kind: "text" },
-    { key: "material_group", label: w("Material group", "Materiaalgroep"), kind: "dependent", groups: { all: catalogue.materialCategories["Material Group"] ?? [] }, parent: "__all", required: true, otherExplanation: true },
+    { key: "material_group", label: w("Material group", "Materiaalgroep"), kind: "select", options: catalogue.materialGroups, required: true, dropdown: true },
+    { key: "material_category", label: w("Material category", "Materiaalcategorie"), kind: "dependent", groups: catalogue.materialCategories, parent: "material_group", required: true, otherExplanation: true },
     { key: "material_specification", label: w("Material description / specification", "Materiaalomschrijving / specificatie"), kind: "text", required: true },
     { key: "ordered_quantity", label: w("Ordered quantity", "Bestelde hoeveelheid"), kind: "number", required: true, min: 0 },
     { key: "delivered_quantity", label: w("Delivered quantity", "Geleverde hoeveelheid"), kind: "number", required: true, min: 0, hint: w("Zero when nothing was delivered", "Nul als niets is geleverd") },
-    { key: "unit", label: w("Unit", "Eenheid"), kind: "select", listKey: "units", required: true, otherExplanation: true },
+    { key: "unit", label: w("Unit", "Eenheid"), kind: "select", options: catalogue.deliveryUnits, required: true, otherExplanation: true },
     { key: "delivery_status", label: w("Delivery status", "Leveringsstatus"), kind: "dependent", groups: { all: catalogue.deliveryStatuses.map((value) => ({ value, description: catalogue.materialCategories["Delivery Status"]?.find((option) => option.value === value)?.description ?? "" })) }, parent: "__all", required: true },
     { key: "revised_delivery_date", label: w("Revised delivery date", "Nieuwe leverdatum"), kind: "date", visible: when(is("delivery_status", "Delayed", "Partial Delivery")), required: when(is("delivery_status", "Delayed", "Partial Delivery")) },
     { key: "arrival_condition", label: w("Condition on arrival", "Staat bij aankomst"), kind: "select", options: catalogue.arrivalConditions, required: true, otherExplanation: true },
     { key: "inspection_result", label: w("Inspection result", "Resultaat keuring"), kind: "select", options: catalogue.deliveryInspectionResults, required: true, decision: ["Accepted", "Accepted with Comments", "Rejected"], hint: w("Accepted only after the required checks; QA / supervision decides.", "Pas geaccepteerd na de vereiste controles; QA / supervisie beslist.") },
     { key: "accepted_by", label: w("Inspection decided by", "Keuring besloten door"), kind: "text", auto: true, visible: when(filled("accepted_by")) },
-    { key: "storage_location", label: w("Storage location", "Opslaglocatie"), kind: "select", listKey: "storage_locations", otherExplanation: true, visible: when(is("inspection_result", "Accepted", "Accepted with Comments")) },
+    { key: "storage_location", label: w("Storage location", "Opslaglocatie"), kind: "select", listKey: "storage_locations", otherExplanation: true, visible: deliveryAccepted, required: when(is("stored_on_site", "yes")) },
+    { key: "stored_on_site", label: w("Stored on site", "Op locatie opgeslagen"), kind: "toggle", visible: deliveryAccepted },
     { key: "discrepancy_type", label: w("Discrepancy", "Afwijking"), kind: "dependent", groups: { all: catalogue.materialCategories["Delivery Discrepancy"] ?? [] }, parent: "__all", visible: deliveryException, otherExplanation: true },
     { key: "discrepancy_remarks", label: w("Discrepancy / remarks", "Afwijking / opmerkingen"), kind: "text", required: deliveryException, visible: deliveryException },
     person("received_by", w("Received by", "Ontvangen door"), { required: true, defaultsToCurrentUser: true, people: { users: true, partyTypes: [] }, hint: w("Filled with your name; a supervisor confirms receipt in the sign-off.", "Ingevuld met uw naam; een supervisor bevestigt de ontvangst in de ondertekening.") }),
@@ -781,11 +786,12 @@ export const sheetLayouts: Partial<Record<SpecFormKey, SheetItem[]>> = {
     "workflow_status",
   ],
   delivery: [
-    "delivery_at",
+    row("delivery_at", ["delivery_at", "planned_delivery_at"]),
     "supplier",
     "purchase_order",
     "delivery_note_number",
     "material_group",
+    "material_category",
     "material_specification",
     "ordered_quantity",
     "delivered_quantity",
@@ -793,7 +799,7 @@ export const sheetLayouts: Partial<Record<SpecFormKey, SheetItem[]>> = {
     row("delivery_status", ["delivery_status", "revised_delivery_date"]),
     "arrival_condition",
     row("inspection", ["inspection_result", "accepted_by"]),
-    "storage_location",
+    row("storage_location", ["storage_location", "stored_on_site"]),
     row("discrepancy", ["discrepancy_remarks", "discrepancy_type"]),
     slot("photos", "Photos / documents", "Foto's / documenten"),
     "received_by",
@@ -980,6 +986,15 @@ export function rowsFor(field: SpecField, values: SpecValues): SpecRow[] {
  */
 export function upgradeSpecValues(form: SpecFormKey, values: SpecValues): SpecValues {
   const next: SpecValues = { ...values };
+  if (form === "delivery" && !one(next, "material_category")) {
+    const legacyCategory = one(next, "material_group");
+    if (catalogue.materialCategories["Material Group"].some((option) => option.value === legacyCategory)) {
+      next.material_group = "Material Group";
+      next.material_category = legacyCategory;
+      if (next.material_group_other) next.material_category_other = next.material_group_other;
+      delete next.material_group_other;
+    }
+  }
   if (form === "agreement") {
     const first = specRows(next, "actions")[0];
     if (first && !one(next, "action_owner")) {

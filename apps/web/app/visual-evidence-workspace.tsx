@@ -40,7 +40,7 @@ import { normalizeImageFile } from "@/lib/images/normalize-image";
 import { currentCompassPoint } from "@/lib/images/compass";
 import { readPhotoDirection } from "@/lib/images/exif-direction.mjs";
 import { compassPointFromDegrees, describePanoramaImage, fieldPhotoMimeTypes, looksLikeDualFisheye, normalizedImagePoint, panoramaFileExtensions, panoramaUploadSource, photoMarkupToneColors, photoTitleFromDescription } from "@/lib/images/field-image.mjs";
-import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, listOfflineUploads, preparePanoramaUpload, queueOfflineUpload } from "@/lib/offline/upload-queue";
+import { prepareEvidencePhoto, forceSyncOfflineUploads, listOfflineUploads, preparePanoramaUpload, queueOfflineUpload } from "@/lib/offline/upload-queue";
 import { clearFormDraft, formDraftKey, saveFormDraft } from "@/lib/offline/form-drafts";
 import { downloadProjectFile, isStorageGatewayConfigured, loadProjectFileObjectUrl, openProjectFile } from "@/lib/storage/gateway";
 import {
@@ -412,7 +412,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     }
     const folderName = captureForm.type === "panorama" ? text("360° tours", "360°-rondgangen") : text("Daily progress", "Dagvoortgang");
     const prepared = captureForm.type === "photo"
-      ? { ...await compressFieldPhoto(source, dataSaverEnabled()), fits: true }
+      ? { ...prepareEvidencePhoto(source), fits: true }
       : await preparePanoramaUpload(source, maxFileSizeBytes);
     if (generation !== stagedImageRef.current) return;
     if (!prepared.fits) {

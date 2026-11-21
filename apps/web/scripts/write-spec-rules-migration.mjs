@@ -1,5 +1,5 @@
 /**
- * Writes the rule table into supabase/migrations/202611240001_spec_conditional_validation.sql.
+ * Writes the rule table into the current forward migration.
  *
  *   node scripts/write-spec-rules-migration.mjs
  *
@@ -8,7 +8,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { specServerRules } from "./generate-spec-server-rules.mjs";
 
-const file = new URL("../../../supabase/migrations/202611240001_spec_conditional_validation.sql", import.meta.url);
+const file = new URL("../../../supabase/migrations/202611240006_align_materials_delivery_workbook.sql", import.meta.url);
 const sql = await readFile(file, "utf8");
 const json = JSON.stringify(specServerRules()).replace(/'/g, "''");
 const next = sql.replace(/select '(\{.*?\})'::jsonb;\n\$rules\$/s, () => `select '${json}'::jsonb;\n$rules$`);

@@ -159,3 +159,16 @@ export function markupAtPoint(markups, point, size, tolerance = 24) {
   }
   return best;
 }
+
+/**
+ * The markups an Undo press steps back through on one drawing page, oldest first. Undo takes the
+ * last of them; once it is voided (or hidden while the void is saved) the next press takes the one
+ * before, so Undo walks back through every markup on the page one step at a time (image 2).
+ */
+export function undoableMarkups(markups, drawingFileId, pageNumber, hiddenIds = []) {
+  const hidden = new Set(hiddenIds);
+  return (markups ?? [])
+    .filter((markup) => markup.drawing_file_id === drawingFileId && markup.page_number === pageNumber
+      && markup.status === "active" && !hidden.has(markup.id))
+    .sort((left, right) => String(left.created_at).localeCompare(String(right.created_at)));
+}

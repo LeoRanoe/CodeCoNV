@@ -105,6 +105,7 @@ async function testDirectPointAndShoot(page: Page) {
   await chooser.setFiles(photoOne!);
   await expect(page.getByRole("heading", { name: "Project photos" })).toBeVisible();
   // A photo taken or chosen waits on the form until it is saved with its date.
+  await page.locator(".media-capture-review").getByLabel(/Photo purpose/).selectOption("Progress Documentation");
   await page.getByRole("button", { name: "Save with date" }).click();
   await expect(page.locator(".media-capture-review")).toHaveCount(0, { timeout: 60_000 });
   await expect(page.locator(".offline-queue")).toHaveCount(0);
@@ -406,6 +407,7 @@ test("saving photos twice in one day files them in one folder", async ({ page, r
     await page.locator(".quick-add-side").click();
     (await chooserPromise).setFiles(file);
     await expect(page.getByRole("heading", { name: "Project photos" })).toBeVisible();
+    await page.locator(".media-capture-review").getByLabel(/Photo purpose/).selectOption("Progress Documentation");
     await page.getByRole("button", { name: "Save with date" }).click();
     await expect(page.locator(".media-capture-review")).toHaveCount(0, { timeout: 60_000 });
   };

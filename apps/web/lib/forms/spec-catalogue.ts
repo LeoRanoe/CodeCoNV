@@ -4110,6 +4110,20 @@ export const materialCategories: Record<string, SpecOption[]> = {
   ]
 };
 
+export const deliveryUnits: string[] = [
+  "m",
+  "m²",
+  "m³",
+  "kg",
+  "tonne",
+  "pcs",
+  "number",
+  "lot",
+  "hours",
+  "set",
+  "other"
+];
+
 export const deliveryStatuses: string[] = [
   "Scheduled",
   "Arrived On Time",

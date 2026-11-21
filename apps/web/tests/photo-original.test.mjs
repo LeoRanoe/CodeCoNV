@@ -13,6 +13,11 @@ test("F05: the original's fingerprint is the SHA-256 of the bytes as received", 
   assert.equal(print.lastModified, "2026-11-20T08:15:00.000Z");
   assert.equal(originalRecord({ original: print, compressed: true }).stored, "reduced_copy");
   assert.equal(originalRecord({ original: print, compressed: false }).stored, "original");
+  assert.deepEqual(originalRecord({ original: print, compressed: false, sourcePhoto: { id: "source-file" } }), {
+    ...print,
+    stored: "original_and_markup",
+    file_id: "source-file",
+  });
   assert.equal(originalRecord({ original: null, compressed: true }), null);
 });
 

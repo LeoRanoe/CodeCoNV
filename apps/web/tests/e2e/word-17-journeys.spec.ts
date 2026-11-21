@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, utimes, writeFile } from "node:fs/promises";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { expect, type Browser, type Page, test } from "@playwright/test";
+import JSZip from "jszip";
 import { fillSpecFields } from "./spec-fill";
 
 /**
@@ -14,7 +15,7 @@ import { fillSpecFields } from "./spec-fill";
  *   17.3 the Technical Instruction issued to the contractor, acknowledged and answered in the
  *        portal, accepted by CODECO, with the rounds in Record History.
  * F05: a mixed-date photo batch, one saved online and one offline then replayed, keeps each
- * photo's own capture time and the original bytes (data saver off), checked by SHA-256.
+ * photo's own capture time and the original bytes with data saver on, checked by SHA-256.
  *
  * Needs the role accounts (seed-ui-demo-data.mjs) and, for uploads, the fake Blob stack.
  */
@@ -97,7 +98,11 @@ test("17.1 an NCR is assigned, corrected in the contractor portal, verified and 
   });
   expect(created.error).toBeNull();
   const ncr = created.data as { id: string; finding_number: string };
-  const shared = await lead.rpc("share_to_portal", {
+  // Word 3.1/17.1: submitting the NCR with a responsible contractor assigns it to that portal (migration 202611240009).
+  const auto = await lead.from("portal_shares").select("id,status,requested_action").eq("record_id", ncr.id).eq("party_id", partyId);
+  expect(auto.data?.length).toBe(1);
+  expect(auto.data?.[0].status).toBe("assigned");
+  const shared = auto.data?.length ? { error: null } : await lead.rpc("share_to_portal", {
     p_project_id: projectId, p_audience: "contractor", p_party_id: partyId, p_record_type: "finding", p_record_id: ncr.id,
     p_title: ncrTitle, p_summary: "Break out, recast and submit evidence.", p_requested_action: "submit_evidence",
     p_priority: "high", p_due_at: new Date(Date.now() + 3 * 86_400_000).toISOString(), p_file_ids: [], p_contact_user_id: null,
@@ -214,18 +219,38 @@ test("17.2 and 17.3 a revised drawing and a Technical Instruction issued against
   await expect(detail.locator("[data-link-revision='A']")).toBeVisible({ timeout: 30_000 });
   await detail.getByRole("button", { name: "Upload new revision" }).click();
   await detail.locator("input[type='file']").setInputFiles({ name: `${documentNumber}-B.pdf`, mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n2 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n") });
-  await expect(revisions.getByText("B · current")).toBeVisible({ timeout: 60_000 });
+  // Word 4.3: an upload is not approved. A stays current and B is shown as the newer revision under review.
+  await expect(detail.locator("[data-pending-revision='B']")).toBeVisible({ timeout: 60_000 });
+  await expect(revisions.getByText("A · current")).toBeVisible();
   // While B is only submitted, the instruction's revision A is still the one to use.
   await expect(detail.locator(".document-link-stale")).toHaveCount(0);
   await detail.getByRole("button", { name: "Review status" }).click();
   await detail.getByLabel(/New status for revision/).selectOption("approved");
   await detail.getByRole("button", { name: "Save status" }).click();
   await expect(revisions.getByRole("row").filter({ hasText: /^B/ }).getByText("Approved")).toBeVisible({ timeout: 30_000 });
+  await expect(revisions.getByText("B · current")).toBeVisible();
+  await expect(detail.locator("[data-pending-revision]")).toHaveCount(0);
   await page.reload();
   await nav(page, "Project Documents");
   await register.getByRole("button", { name: `Foundation plan ${suffix}` }).click();
   await expect(detail.locator(".document-link-stale")).toContainText("rev B approved since", { timeout: 30_000 });
   await detail.getByRole("button", { name: "Close" }).click();
+  await register.getByRole("textbox", { name: "Search the register" }).fill(documentNumber);
+  const [workbook] = await Promise.all([
+    page.waitForEvent("download"),
+    register.getByRole("button", { name: "Excel (XLSX)" }).click(),
+  ]);
+  expect(workbook.suggestedFilename()).toMatch(/\.xlsx$/);
+  const zip = await JSZip.loadAsync(await readFile((await workbook.path())!));
+  const sheet = await zip.file("xl/worksheets/sheet1.xml")!.async("string");
+  expect(sheet).toContain(documentNumber);
+  expect(sheet).toContain("Approved");
+  const [pdf] = await Promise.all([
+    page.waitForEvent("download"),
+    register.getByRole("button", { name: "PDF", exact: true }).click(),
+  ]);
+  expect(pdf.suggestedFilename()).toMatch(/\.pdf$/);
+  expect((await readFile((await pdf.path())!)).subarray(0, 5).toString()).toBe("%PDF-");
   // The instruction keeps its stored reference to A.
   expect((await lead.from("project_register_entries").select("details").eq("id", instruction.id).single()).data!.details.spec.drawing_reference).toBe(`${documentNumber} rev A`);
 
@@ -240,7 +265,9 @@ test("17.2 and 17.3 a revised drawing and a Technical Instruction issued against
   await expect(page.locator(".spec-link-chip [data-revision-stale='true']")).toContainText("Rev B is approved", { timeout: 60_000 });
 
   // 17.3: issued to the contractor, acknowledged and answered in the portal, accepted by CODECO.
-  const shared = await lead.rpc("share_to_portal", {
+  // A TI issued to this contractor is already assigned on submission; otherwise assign it here.
+  const autoTi = await lead.from("portal_shares").select("id").eq("record_id", instruction.id).eq("party_id", partyId).neq("status", "closed");
+  const shared = autoTi.data?.length ? { error: null } : await lead.rpc("share_to_portal", {
     p_project_id: projectId, p_audience: "contractor", p_party_id: partyId, p_record_type: "register_entry", p_record_id: instruction.id,
     p_title: instructionTitle, p_summary: "Add stirrups per the instruction; confirm the method.", p_requested_action: "propose",
     p_priority: "normal", p_due_at: new Date(Date.now() + 2 * 86_400_000).toISOString(), p_file_ids: [], p_contact_user_id: null,
@@ -270,7 +297,7 @@ test("17.2 and 17.3 a revised drawing and a Technical Instruction issued against
   await page.context().close();
 });
 
-test("F05 a mixed-date photo batch keeps each capture time and the original bytes, online and offline", async ({ page, context }, testInfo) => {
+test("F05 photos keep each capture time and original bytes online, offline and after markup", async ({ page, context }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-office" || !uploads || photos.length < 2, "Needs the fake Blob stack and two fixture photos.");
   test.setTimeout(240_000);
   // Two photos taken on different days (file times as the camera wrote them).
@@ -280,15 +307,15 @@ test("F05 a mixed-date photo batch keeps each capture time and the original byte
   const files: string[] = [];
   for (const [index, source] of photos.slice(0, 2).entries()) {
     const target = `${dir}/w17-${suffix}-${index + 1}.jpg`;
-    // Unique bytes per run (after the JPEG end marker), so the hash identifies this upload only.
+    // Unique bytes past the previous compression threshold, so this detects byte replacement.
     await writeFile(target, Buffer.concat([await readFile(source), Buffer.from(`
-codeco-e2e-${suffix}-${index}`)]));
+codeco-e2e-${suffix}-${index}`), Buffer.alloc(950_000)]));
     await utimes(target, taken[index], taken[index]);
     files.push(target);
   }
   const hashes = await Promise.all(files.map(async (file) => createHash("sha256").update(await readFile(file)).digest("hex")));
 
-  await page.addInitScript(() => localStorage.setItem("codeco-data-saver", "false"));
+  await page.addInitScript(() => localStorage.setItem("codeco-data-saver", "true"));
   await signIn(page, supervisor);
   const project = new URL(page.url()).searchParams.get("project");
   await page.goto(`/supervisie?project=${project}&nav=project&tab=files`);
@@ -297,11 +324,15 @@ codeco-e2e-${suffix}-${index}`)]));
     const chooser = page.waitForEvent("filechooser");
     await page.getByRole("button", { name: /^Upload photos/ }).click();
     await (await chooser).setFiles(file);
+    if (file !== files[0]) await page.locator(".media-capture-review").getByLabel(/Photo purpose/).selectOption("Progress Documentation");
   };
   const save = page.locator(".media-capture-review .ui-button--primary").first();
 
   // The first photo is saved online.
   await choose(files[0]);
+  await save.click();
+  await expect(page.getByRole("alert").filter({ hasText: "a purpose for every photo" })).toBeVisible();
+  await page.locator(".media-capture-review").getByLabel(/Photo purpose/).selectOption("Site Conditions");
   await save.click();
   const lead = await api(supervisor);
   await expect.poll(async () => (await lead.from("files").select("id").eq("project_id", project).eq("sha256", hashes[0])).data?.length ?? 0, { timeout: 90_000 }).toBe(1);
@@ -326,5 +357,49 @@ codeco-e2e-${suffix}-${index}`)]));
     expect(new Date(capture.captured_at).toISOString()).toBe(taken[index].toISOString());
     expect(capture.spec?._original?.sha256).toBe(hash);
     expect(capture.spec?._original?.stored).toBe("original");
+    expect(capture.spec?.photo_purpose).toBe(index === 0 ? "Site Conditions" : "Progress Documentation");
   }
+  await page.reload();
+
+  const markedPath = `${dir}/w17-${suffix}-marked-source.jpg`;
+  const markedSource = Buffer.concat([await readFile(photos[0]), Buffer.from(`codeco-marked-${suffix}`)]);
+  await writeFile(markedPath, markedSource);
+  const markedHash = createHash("sha256").update(markedSource).digest("hex");
+  await choose(markedPath);
+  await page.getByRole("button", { name: "Open the details of photo 1" }).click();
+  const photoDetail = page.getByRole("dialog", { name: "Photo details" });
+  await expect(photoDetail.getByLabel("Work location")).toBeVisible();
+  await photoDetail.getByLabel("Location detail").fill("Bay A, beside the gate");
+  await photoDetail.getByLabel("Photo date/time").fill("2026-11-18T09:45");
+  await photoDetail.getByLabel("Caption / observation").fill("Check the dimension at the marker.");
+  await page.getByRole("button", { name: "Mark on photo" }).click();
+  const markup = page.locator(".photo-markup-modal");
+  await markup.getByRole("button", { name: "Photo. Tap to place a marker." }).press("Enter");
+  await markup.getByRole("button", { name: "Save markings on the photo" }).click();
+  await expect(markup).toHaveCount(0);
+  await expect(page.locator(".media-capture-review")).toContainText("1 marked");
+  await save.click();
+  await expect.poll(async () => (await lead.from("visual_captures").select("id").eq("project_id", project).eq("spec->_original->>sha256", markedHash)).data?.length ?? 0, { timeout: 90_000 }).toBe(1);
+  const marked = (await lead.from("visual_captures").select("file_id,spec,captured_at,description").eq("project_id", project).eq("spec->_original->>sha256", markedHash).single()).data!;
+  expect(marked.spec.location_detail).toBe("Bay A, beside the gate");
+  expect(new Date(marked.captured_at).toISOString()).toBe("2026-11-18T12:45:00.000Z");
+  expect(marked.description).toContain("Check the dimension at the marker.");
+  expect(marked.spec._original.stored).toBe("original_and_markup");
+  expect(marked.spec._original.file_id).not.toBe(marked.file_id);
+  const source = (await lead.from("files").select("sha256,size_bytes").eq("id", marked.spec._original.file_id).single()).data!;
+  expect(source.sha256).toBe(markedHash);
+  expect(source.size_bytes).toBe(markedSource.byteLength);
+
+  const stored = (await lead.from("files").select("original_name").eq("id", marked.file_id).single()).data!;
+  await expect(page.locator(".offline-queue")).toHaveCount(0, { timeout: 60_000 });
+  await page.reload();
+  await page.getByRole("checkbox", { name: `Select ${stored.original_name}`, exact: true }).check();
+  const picker = page.locator(".photo-stack-actions select");
+  await expect(page.locator(".photo-stack-actions")).toContainText("Related record");
+  const value = await picker.locator("option").nth(1).getAttribute("value", { timeout: 10_000 });
+  expect(value).toBeTruthy();
+  const [recordType, recordId] = value!.split(":");
+  await picker.selectOption(value!);
+  await page.getByRole("button", { name: "Link", exact: true }).click({ timeout: 10_000 });
+  await expect.poll(async () => (await lead.from("file_links").select("id").eq("file_id", marked.file_id).eq("record_type", recordType).eq("record_id", recordId)).data?.length ?? 0).toBe(1);
 });

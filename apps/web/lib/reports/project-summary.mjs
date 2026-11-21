@@ -56,7 +56,8 @@ export function summarizeProject(input, now = new Date()) {
 
   const currentRevisions = new Map(revisions.map((revision) => [revision.id, revision]));
   const documentLabel = new Map(documents.map((document) => [document.id, document.document_number || document.title]));
-  const awaitingReview = documents.filter((document) => ["submitted", "under_review"].includes(currentRevisions.get(document.current_revision_id)?.review_status)).length;
+  // The latest upload is what waits for review; the current pointer stays on the approved revision (Word 4.3).
+  const awaitingReview = documents.filter((document) => ["submitted", "under_review"].includes(currentRevisions.get(document.latest_revision_id ?? document.current_revision_id)?.review_status)).length;
   const recentRevisions = revisions
     .filter((revision) => now.getTime() - new Date(revision.uploaded_at).getTime() <= 7 * DAY)
     .map((revision) => ({ id: revision.id, label: `${documentLabel.get(revision.document_id) ?? ""} · rev. ${revision.revision}`, uploaded_at: revision.uploaded_at }));

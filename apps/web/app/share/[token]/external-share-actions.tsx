@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
 import { LanguageProvider } from "@/lib/i18n";
-import { compressFieldPhoto } from "@/lib/offline/upload-queue";
+import { prepareEvidencePhoto } from "@/lib/offline/upload-queue";
 
 type ResponseType = "ready_for_verification" | "issue" | "proposed_correction";
 
@@ -31,7 +31,7 @@ async function sha256Hex(file: File) {
 }
 
 async function uploadEvidence(token: string, selected: File) {
-  const prepared = await compressFieldPhoto(selected, true);
+  const prepared = prepareEvidencePhoto(selected);
   const file = new File([prepared.blob], prepared.fileName, { type: prepared.mimeType, lastModified: selected.lastModified });
   const fileId = crypto.randomUUID();
   const sha256 = await sha256Hex(file);

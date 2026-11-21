@@ -70,7 +70,11 @@ export function statusMeta(id) {
   return documentStatuses.find((status) => status.id === id) ?? { id, en: id, nl: id, tone: "neutral" };
 }
 
-/** A register row joins the document with its current revision. */
+/**
+ * A register row joins the document with its current revision (Word 4.3: the newest approved one, or
+ * the newest live one while none is approved), its latest upload, and the newer revision that is
+ * still pending review, if any. Review actions apply to the pending revision.
+ */
 export function registerRows(documents, revisions) {
   const byId = new Map(revisions.map((revision) => [revision.id, revision]));
   const byDocument = new Map();
@@ -82,7 +86,9 @@ export function registerRows(documents, revisions) {
   return documents.map((document) => {
     const history = (byDocument.get(document.id) ?? []).slice().sort((a, b) => String(b.uploaded_at).localeCompare(String(a.uploaded_at)));
     const current = byId.get(document.current_revision_id) ?? history[0] ?? null;
-    return { document, current, history };
+    const latest = byId.get(document.latest_revision_id) ?? history[0] ?? null;
+    const pending = latest && current && latest.id !== current.id && !latest.superseded_at && latest.review_status !== "withdrawn" ? latest : null;
+    return { document, current, latest, pending, history };
   });
 }
 
@@ -134,21 +140,19 @@ function csvCell(value) {
   return /[",\n;]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe;
 }
 
-/** The register as CSV for Excel: one row per document, current revision. */
 /**
  * @param {any[]} rows
  * @param {{ language?: string, folders?: ReadonlyArray<{ code: string, en: string, nl: string }>, buildingName?: (id: string) => string, partyName?: (id: string) => string }} [options]
  */
-export function registerCsv(rows, options = {}) {
+export function registerTable(rows, options = {}) {
   const { language = "en", folders = defaultDocumentFolders, buildingName = () => "", partyName = () => "" } = options;
   const header = language === "nl"
     ? ["Documentnummer", "Titel", "Map", "Discipline", "Type", "Gebouw", "Opsteller", "Revisie", "Status", "Datum document", "Ontvangen", "Transmittal", "Revisies"]
     : ["Document number", "Title", "Folder", "Discipline", "Type", "Building", "Originator", "Revision", "Status", "Issue date", "Received", "Transmittal", "Revisions"];
-  const lines = [header.map(csvCell).join(",")];
-  for (const row of rows) {
+  const records = rows.map((row) => {
     const folder = folders.find((item) => item.code === row.document.folder_code);
     const status = statusMeta(row.current?.review_status ?? "");
-    lines.push([
+    return [
       row.document.document_number ?? "",
       row.document.title,
       folder ? `${folder.code} ${language === "nl" ? folder.nl : folder.en}` : row.document.folder_code,
@@ -162,8 +166,15 @@ export function registerCsv(rows, options = {}) {
       String(row.current?.uploaded_at ?? "").slice(0, 10),
       row.current?.transmittal_ref ?? "",
       row.history.length,
-    ].map(csvCell).join(","));
-  }
+    ];
+  });
+  return { headers: header, rows: records };
+}
+
+/** @param {any[]} rows @param {Parameters<typeof registerTable>[1]} options */
+export function registerCsv(rows, options = {}) {
+  const table = registerTable(rows, options);
+  const lines = [table.headers, ...table.rows].map((row) => row.map(csvCell).join(","));
   return `﻿${lines.join("\r\n")}\r\n`;
 }
 
@@ -184,8 +195,8 @@ export function suggestNextRevision(current) {
 const approvedStatuses = new Set(["approved", "approved_with_comments", "for_construction"]);
 /**
  * Statuses that mean the pinned revision is no longer the one to work from. "Superseded" is not
- * one of them: an upload marks the previous revision superseded while the new one may still be
- * under review, so a superseded pin is stale only once a later revision is approved.
+ * needed here: since migration 202611240008 a revision is superseded only when a later one is
+ * approved (Word 4.3), which the newer-approved check below already reports.
  */
 const retiredStatuses = new Set(["withdrawn", "rejected", "revise_resubmit"]);
 
@@ -198,8 +209,8 @@ export function revisionRefId(ref) {
  * F11: where a record's exact revision reference stands. The record keeps the revision it was
  * written against; it is stale when that revision was retired (superseded, withdrawn, rejected,
  * revise and resubmit) or a later revision of the same document has been approved. A later
- * revision that is still under review does not make it stale (which revision is active during
- * review is the open Word §20 item 3 decision).
+ * revision that is still under review does not make it stale: the approved revision stays current
+ * until a reviewer approves its successor (Word 4.3).
  *
  * @param {string} revisionId
  * @param {Array<{ id: string, document_number?: string | null, title?: string, current_revision_id?: string | null }>} documents

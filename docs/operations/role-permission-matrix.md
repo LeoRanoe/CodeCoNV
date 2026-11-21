@@ -79,7 +79,7 @@ record, a limited set of responses, no access to anything else. See "External sh
 | `documents.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | |
 | `documents.manage` | ✓ | ✓ | ✓ | ✓ | ✓ | | |
 | `documents.review` | ✓ | ✓ | ✓ | | ✓ | | |
-| `portal.share` | ✓ | ✓ | ✓ | | ✓ | | |
+| `portal.share` | ✓ | ✓ | ✓ | ✓ | ✓ | | |
 | `portal.contractor` / `portal.contractor.respond` | ✓ | | | | | | ✓ |
 
 Portal roles hold only portal rights: contractor admin/representative `portal.contractor` +

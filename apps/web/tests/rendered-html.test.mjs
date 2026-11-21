@@ -649,7 +649,8 @@ test("implements the customer video workflows without external accounts", async 
   assert.match(offlineQueue, /createFinding/);
   assert.match(offlineQueue, /relationship: "before"/);
   assert.match(offlineQueue, /projectSyncLocks/);
-  assert.match(offlineQueue, /fileId: upload\.id/);
+  assert.match(offlineQueue, /uploadMediaFile\(upload\.id, asFile\(upload\)\)/);
+  assert.match(offlineQueue, /uploadMediaFile\(upload\.sourcePhoto\.id, upload\.sourcePhoto\.file\)/);
   assert.match(offlineQueue, /offline-finding:/);
   assert.match(offlineQueue, /existingCapture/);
   assert.match(storageGateway, /fileId\?: string/);
@@ -2634,7 +2635,7 @@ test("a search result opens, the assets tab survives, and a shared day stays on 
 
   // A photo or document found in the workspace search opens itself, instead of dropping the
   // supervisor on the tab to look for it a second time.
-  assert.match(workspace, /<MediaLibraryWorkspace mode="photos" focusRecordId=\{focusRecordId\}/);
+  assert.match(workspace, /<MediaLibraryWorkspace mode="photos"[^>\n]*? focusRecordId=\{focusRecordId\}/);
   assert.match(workspace, /<MediaLibraryWorkspace mode="assets" focusRecordId=\{focusRecordId\}/);
   assert.match(mediaLibrary, /focusRecordId\.startsWith\("file:"\)/);
   assert.match(mediaLibrary, /setOpenFileId\(file\.id\)/);

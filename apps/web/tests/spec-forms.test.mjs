@@ -89,6 +89,18 @@ test("a delivery that differs from its order asks for a discrepancy note", () =>
   assert.ok(specMissing("delivery", { ...base, delivered_quantity: "8" }).includes("Discrepancy / remarks"));
 });
 
+test("Materials Delivery uses its own groups, dependent categories, and units", () => {
+  const category = specForms.delivery.find((field) => field.key === "material_category");
+  const unit = specForms.delivery.find((field) => field.key === "unit");
+  const legacy = upgradeSpecValues("delivery", { material_group: "Other Material", material_group_other: "Geotextile" });
+  assert.deepEqual(legacy, { material_group: "Material Group", material_category: "Other Material", material_category_other: "Geotextile" });
+  assert.deepEqual(fieldOptions(category, { material_group: "Delivery Status" }).map(({ value }) => value), catalogue.materialCategories["Delivery Status"].map(({ value }) => value));
+  assert.deepEqual(setSpecValue("delivery", legacy, "material_group", "Delivery Discrepancy"), { material_group: "Delivery Discrepancy", material_category: "" });
+  assert.deepEqual(fieldOptions(unit, {}).map(({ value }) => value), ["m", "m²", "m³", "kg", "tonne", "pcs", "number", "lot", "hours", "set", "other"]);
+  assert.ok(specMissing("delivery", { delivery_status: "Scheduled" }).includes("Planned delivery date/time"));
+  assert.ok(specMissing("delivery", { inspection_result: "Accepted", stored_on_site: "yes" }).includes("Storage location"));
+});
+
 test("stored values keep only the form's own fields and read back as labelled facts", () => {
   const cleaned = cleanSpecValues("photo", { photo_purpose: "Site Conditions", stray: "x", discipline: "" });
   assert.deepEqual(cleaned, { photo_purpose: "Site Conditions" });
@@ -256,7 +268,7 @@ test("every short list and tick-box choice has its own picture (client, 20-11-20
       const short = ["select", "rating", "dependent"].includes(field.kind);
       if (!short && !["multi", "completion"].includes(field.kind)) continue;
       const options = fieldOptions(field, {}, undefined);
-      if (short && options.length > 6) continue;
+      if (short && (field.dropdown || options.length > 6)) continue;
       if (scaleKeys.has(field.key)) continue;
       for (const option of options) if (!pictures.includes(`"${option.value}":`)) missing.push(`${form}.${field.key}: ${option.value}`);
       // Two choices of one list never share a picture.
@@ -292,7 +304,7 @@ test("every Workspace form is its workbook sheet, row by row", () => {
   assert.deepEqual(order("issue").slice(0, 8), ["identified_at", "issue_type", "issue_category", "@title", "@description", "@location", "discipline", "priority"]);
   assert.deepEqual(order("hse").slice(0, 6), ["observed_at", "hse_type", "hse_category", "@title", "@description", "@location"]);
   assert.deepEqual(order("change_order").slice(0, 8), ["request_date", "change_type", "change_category", "@title", "@description", "change_reason", "originator", "@location"]);
-  assert.deepEqual(order("delivery").slice(0, 4), ["delivery_at", "supplier", "purchase_order", "delivery_note_number"]);
+  assert.deepEqual(order("delivery").slice(0, 4), ["#delivery_at", "supplier", "purchase_order", "delivery_note_number"]);
   assert.deepEqual(order("lessons_learned").slice(0, 6), ["recorded_on", "project_phase", "lesson_category", "@title", "situation", "what_happened"]);
   // Literal labels and lists of the sheets (checked 20-11-2026).
   const field = (form, key) => specForms[form].find((item) => item.key === key);
