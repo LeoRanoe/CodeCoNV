@@ -32,14 +32,17 @@ import { normalizeRecordCode } from "@/lib/records/record-directory.mjs";
 import { downloadProjectFile, loadProjectFileBlob } from "@/lib/storage/gateway";
 import { createMediaFolder, linkFileToRecord, updateProjectFile, type OperationSnapshot } from "@/lib/supabase/operations";
 import { statusText, typeText } from "@/lib/status-labels";
+import { DocumentRegister } from "@/app/document-register";
 
-type DocumentView = "all" | "drawings" | "renders" | "boq" | "specifications" | "contracts";
+type DocumentView = "register" | "all" | "drawings" | "renders" | "boq" | "specifications" | "contracts";
 
 export function ProjectDocumentsHome({
   data,
   client,
   organizationId,
   projectId,
+  projectName = "",
+  parties = [],
   reportId,
   buildingId,
   buildings,
@@ -54,6 +57,8 @@ export function ProjectDocumentsHome({
   client: SupabaseClient;
   organizationId: string;
   projectId: string;
+  projectName?: string;
+  parties?: Array<{ id: string; name: string; type: string }>;
   reportId: string | null;
   buildingId: string;
   buildings: BuildingOption[];
@@ -68,7 +73,9 @@ export function ProjectDocumentsHome({
   const permissions = useProjectPermissions();
   const canManageFiles = permissions.can("files.manage");
   const canCreateRecords = permissions.can("records.create");
-  const [view, setView] = useState<DocumentView>("all");
+  // The controlled register (requirements 4) is the first view for whoever may read it.
+  const canReadRegister = permissions.can("documents.read");
+  const [view, setView] = useState<DocumentView>(() => (canReadRegister ? "register" : "all"));
   const [query, setQuery] = useState("");
   const [folderFilter, setFolderFilter] = useState("all");
   const [buildingFilter, setBuildingFilter] = useState("all");
@@ -128,7 +135,8 @@ export function ProjectDocumentsHome({
       });
   })();
 
-  const tabs: Array<{ id: DocumentView; label: string; count: number; icon: React.ReactNode }> = [
+  const tabs: Array<{ id: DocumentView; label: string; count?: number; icon: React.ReactNode }> = [
+    ...(canReadRegister ? [{ id: "register" as const, label: text("Document register", "Documentregister"), icon: <ShieldCheck size={17} /> }] : []),
     { id: "all", label: text("All documents", "Alle documenten"), count: availableFiles.length + controlled.length, icon: <Archive size={17} /> },
     { id: "drawings", label: text("Drawings", "Tekeningen"), count: drawings.length, icon: <MapPin size={17} /> },
     { id: "renders", label: "Renders", count: renders.length, icon: <ImageIcon size={17} /> },
@@ -274,6 +282,9 @@ export function ProjectDocumentsHome({
         items={tabs.map((tab) => ({ id: tab.id, label: tab.label, count: tab.count, icon: tab.icon, selected: view === tab.id, onSelect: () => setView(tab.id) }))}
       />
 
+      {view === "register" ? (
+        <DocumentRegister client={client} projectId={projectId} projectName={projectName} buildings={buildings} parties={parties} data={data} defaultBuildingId={buildingId} />
+      ) : (
       <div className="project-document-browser">
         {openError ? <div className="operation-alert error" role="alert">{openError}</div> : null}
         <header>
@@ -305,6 +316,7 @@ export function ProjectDocumentsHome({
         </div>
         {items.length ? <button className="project-document-footer" type="button" onClick={openCurrent}>{text("Open the complete controlled workflow", "Open de volledige gecontroleerde workflow")} <ArrowRight size={14} /></button> : null}
       </div>
+      )}
       {preview ? <div className="document-preview-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setPreview(null)}>
         <section className="document-preview-modal" role="dialog" aria-modal="true" aria-labelledby="document-preview-title">
           <header><div><span>{text("Secure project document", "Beveiligd projectdocument")}</span><h3 id="document-preview-title">{preview.title}</h3></div><div><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => void downloadProjectFile(client, preview.fileId, preview.title)}><Download size={15} /> {text("Download", "Downloaden")}</button><button className="modal-close" type="button" onClick={() => setPreview(null)} aria-label={text("Close document", "Sluit document")}><X size={18} /></button></div></header>

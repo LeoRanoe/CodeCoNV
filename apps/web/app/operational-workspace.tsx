@@ -90,6 +90,7 @@ import { PromptLibrary } from "@/app/prompt-library";
 import { MediaLibraryWorkspace } from "@/app/media-library-workspace";
 import { ProjectWorkspaceHome } from "@/app/project-workspace-home";
 import { ProjectDocumentsHome } from "@/app/project-documents-home";
+import { PortalMembers, PortalRegister, PortalSharePanel, PublishToClient } from "@/app/portal-share-panel";
 import { ProjectActionCenter, type ActionCenterView } from "@/app/project-action-center";
 import { RapidVerifyWorkspace } from "@/app/rapid-verify-workspace";
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
@@ -3612,6 +3613,17 @@ function ProjectOperations({
               </>
             );
           })()}
+          {/* Assign to a contractor or route to the client; the record itself stays here. */}
+          {viewedRecord.kind !== "daily_work" ? (
+            <PortalSharePanel
+              client={client}
+              projectId={projectId}
+              recordType={viewedRecord.kind}
+              recordId={viewedRecord.id}
+              recordTitle={viewedRecord.title}
+              parties={parties}
+            />
+          ) : null}
           <div className="record-readonly-actions">
             {viewedRecord.status !== "cancelled" && permissions.can("records.edit") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => {
               if (viewedRecord.kind === "inspection") {
@@ -5245,7 +5257,7 @@ function ProjectOperations({
 
       {tab === "visual" ? <VisualEvidenceWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} parties={parties} client={client} busy={busy} run={run} initialFindingId={visualFindingId} initialFileId={visualFileId} onInitialFileConsumed={() => setVisualFileId("")} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} start360Upload={visual360Intent} onStart360UploadConsumed={() => setVisual360Intent(false)} /> : null}
 
-      {tab === "documents" ? <ProjectDocumentsHome data={data} client={client} organizationId={organizationId} projectId={projectId} reportId={reportId} buildingId={buildingId} buildings={buildings} busy={busy} run={run} openDrawings={() => switchTab("drawings")} openFiles={() => switchTab("assets")} openRegisters={() => switchTab("registers")} createDocument={() => openTask("registers", true)} /> : null}
+      {tab === "documents" ? <ProjectDocumentsHome data={data} client={client} organizationId={organizationId} projectId={projectId} projectName={projectName} parties={parties} reportId={reportId} buildingId={buildingId} buildings={buildings} busy={busy} run={run} openDrawings={() => switchTab("drawings")} openFiles={() => switchTab("assets")} openRegisters={() => switchTab("registers")} createDocument={() => openTask("registers", true)} /> : null}
 
       {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} client={client} busy={busy} run={run} initialFindingId={drawingFindingId} initialInspectionId={drawingInspectionId} pendingRecord={pendingRecordPin} onPlaceRecordPin={onPlaceRecordPin} onOpenLinkedRecord={(recordType, recordId) => {
         // The pin points at one record, so the module opens on that record, not on its list.
@@ -6286,6 +6298,17 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
             onDownloadPdf={() => run(async () => { const snapshot = filterPeriodSnapshot(await buildPeriodReportSnapshot(client, projectId, period.start, period.end), periodFilter); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded.`, `${periodLabel} voor ${projectName} gedownload.`))}
             onDownloadWord={() => run(async () => { const snapshot = filterPeriodSnapshot(await buildPeriodReportSnapshot(client, projectId, period.start, period.end), periodFilter); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded as Word.`, `${periodLabel} voor ${projectName} als Word gedownload.`))}
           />
+          <PublishToClient
+            client={client}
+            projectId={projectId}
+            buildingId={buildings[0]?.id ?? ""}
+            title={`${periodLabel} · ${selectedReport.title}`}
+            periodStart={period.start}
+            periodEnd={period.end}
+            defaultType={reportChoice === "quality" ? "quality" : reportChoice === "visual" ? "progress" : period.start === period.end ? "daily" : "weekly"}
+            disabled={busy || !activeSections.length || !period.start || !period.end || period.end < period.start}
+            buildPdf={async () => { const snapshot = filterPeriodSnapshot(await buildPeriodReportSnapshot(client, projectId, period.start, period.end), periodFilter); const { periodReportPdfFile } = await import("@/lib/reports/period-report-pdf"); return periodReportPdfFile(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }}
+          />
         </section>
       ) : null}
       {reportView === "workflow" ? (
@@ -6341,7 +6364,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
   // A role that may not read a module sees a dash, not a zero that reads like a fact.
   const readsFindings = permissions.can("findings.read");
   const readsInspections = permissions.can("inspections.read");
-  const [section, setSection] = useState<"overview" | "settings" | "specification" | "structure" | "templates" | "backup">("overview");
+  const [section, setSection] = useState<"overview" | "settings" | "specification" | "portals" | "structure" | "templates" | "backup">("overview");
   const [structureBuildingId, setStructureBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [template, setTemplate] = useState({ module: "inspection", code: "", name: "", prompts: "" });
   const [settings, setSettings] = useState(() => ({
@@ -6393,8 +6416,14 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
       <header className="secondary-header ui-page-header"><div><h1>{section === "overview" ? text("Management overview", "Beheeroverzicht") : text("Administration and control", "Beheer en controle")}</h1><span className="ui-page-header__code">{projectName}</span></div><div className="management-header-actions">{canManageOrganization ? <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={openUserAdmin}><Users size={15} /> {text("Manage team", "Team beheren")}</button> : null}</div></header>
       <SectionNav
         label={text("Management sections", "Beheeronderdelen")}
-        items={([["overview", text("Overview", "Overzicht")], ["settings", text("Team & rules", "Team & regels")], ...(permissions.can("project.configure") ? [["specification", text("Workflows & lists", "Workflows & lijsten")]] as const : []), ["structure", text("Project setup", "Projectinrichting")], ["templates", text("Quality standards", "Kwaliteitsstandaarden")], ["backup", text("Backup & continuity", "Back-up & continuïteit")]] as const).map(([id, label]) => ({ id, label, selected: section === id, onSelect: () => setSection(id) }))}
+        items={([["overview", text("Overview", "Overzicht")], ["settings", text("Team & rules", "Team & regels")], ...(permissions.can("project.configure") ? [["specification", text("Workflows & lists", "Workflows & lijsten")]] as const : []), ...(permissions.can("portal.share") || canManageOrganization ? [["portals", text("Portals", "Portalen")]] as const : []), ["structure", text("Project setup", "Projectinrichting")], ["templates", text("Quality standards", "Kwaliteitsstandaarden")], ["backup", text("Backup & continuity", "Back-up & continuïteit")]] as const).map(([id, label]) => ({ id, label, selected: section === id, onSelect: () => setSection(id) }))}
       />
+      {section === "portals" ? (
+        <div className="portal-section">
+          {permissions.can("portal.share") ? <PortalRegister client={client} projectId={projectId} parties={parties} /> : null}
+          {canManageOrganization ? <PortalMembers client={client} projectId={projectId} parties={parties} /> : null}
+        </div>
+      ) : null}
       {section === "overview" ? <section className="management-overview">
         <div className="management-kpis">
           <button className={data.settings ? "healthy" : "attention"} type="button" onClick={() => setSection("settings")}><span>{text("Project configuration", "Projectconfiguratie")}</span><strong>{data.settings ? text("Active", "Actief") : text("Missing", "Ontbreekt")}</strong>{data.settings ? null : <small>{text("Project rules require configuration", "Projectregels moeten worden ingesteld")}</small>}</button>

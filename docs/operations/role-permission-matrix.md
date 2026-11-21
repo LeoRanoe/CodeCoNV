@@ -21,6 +21,15 @@ This document describes the defaults, not what a specific customer configured.
 | `client` | project | Client or owner representative (read and sign) |
 | `contractor` | project | Contractor with an account |
 | `external_guest` | project | No default rights; only what is shared explicitly |
+| `contractor_admin`, `contractor_representative` | project | Contractor portal user who responds (202611220001) |
+| `contractor_readonly` | project | Contractor portal user who only reads |
+| `client_viewer`, `client_reviewer`, `client_approver`, `client_admin` | project | Client portal users (21.4) |
+
+A portal user is linked to one party of the project (`project_memberships.portal_party_id`,
+Management → Portals). Every portal read is limited to that party by row-level security. The
+legacy `contractor` role has the contractor portal rights and since 202611220001 no longer has
+`files.read` / `files.manage`. The legacy `client` role is unchanged. See
+`docs/operations/requirements-final-client-portal-2026-11-20.md`.
 
 A contractor **without** an account works through a share link (`/share/<token>`): one
 record, a limited set of responses, no access to anything else. See "External share links".
@@ -48,8 +57,8 @@ record, a limited set of responses, no access to anything else. See "External sh
 | `findings.verify` | ✓ | ✓ | ✓ | | ✓ | | |
 | `hse.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | |
 | `hse.manage` | ✓ | ✓ | ✓ | ✓ | ✓ | | |
-| `files.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `files.manage` | ✓ | ✓ | ✓ | ✓ | ✓ | | ✓ |
+| `files.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| `files.manage` | ✓ | ✓ | ✓ | ✓ | ✓ | | |
 | `reports.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | |
 | `reports.readapproved` | ✓ | | | | | ✓ | |
 | `reports.create` / `reports.edit` | ✓ | ✓ | ✓ | ✓ | | | |
@@ -67,6 +76,16 @@ record, a limited set of responses, no access to anything else. See "External sh
 | `members.manage` | ✓ | | | | | | |
 | `organization.manage` | ✓ | | | | | | |
 | `backup.manage` | ✓ | | | | | | |
+| `documents.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| `documents.manage` | ✓ | ✓ | ✓ | ✓ | ✓ | | |
+| `documents.review` | ✓ | ✓ | ✓ | | ✓ | | |
+| `portal.share` | ✓ | ✓ | ✓ | | ✓ | | |
+| `portal.contractor` / `portal.contractor.respond` | ✓ | | | | | | ✓ |
+
+Portal roles hold only portal rights: contractor admin/representative `portal.contractor` +
+`portal.contractor.respond`; contractor read-only `portal.contractor`; client viewer
+`portal.client`; client reviewer and client admin + `portal.client.review`; client approver +
+`portal.client.approve`. `portal.members` is never a default.
 
 Notes that follow from the rules behind the table, not from the table itself:
 

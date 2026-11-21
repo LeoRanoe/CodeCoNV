@@ -82,6 +82,10 @@ for (const [role, account, code] of [["client", accounts.client, "client"], ["co
     p_project_id: project.id,
   });
   warn(`provision ${role}`, result.error);
+  // The contractor works in its portal for its own organisation (migration 202611220001).
+  if (role === "contractor" && contractorParty) {
+    warn("link contractor organisation", (await supervisor.rpc("set_project_member_portal_party", { p_project_id: project.id, p_user_id: id, p_party_id: contractorParty.id })).error);
+  }
 }
 
 const printAccounts = () => {

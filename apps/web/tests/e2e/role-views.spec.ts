@@ -35,7 +35,8 @@ async function signInAs(page: Page, email: string, password: string) {
   await form.locator("button[type='submit']").click();
   const project = page.getByRole("button", { name: new RegExp(projectName) }).first();
   await project.click();
-  await expect(page.getByRole("region", { name: "Project command center" })).toBeVisible();
+  // CODECO staff land in the workspace; a contractor portal account in its own portal.
+  await expect(page.getByRole("region", { name: "Project command center" }).or(page.locator(".portal-shell")).first()).toBeVisible();
   // The permissions arrive with their own request; wait until the screen has applied them.
   await page.waitForLoadState("networkidle").catch(() => undefined);
   await page.waitForTimeout(800);
@@ -87,17 +88,14 @@ test("a client reads and signs; nothing offers to write", async ({ page }, testI
   }
 });
 
-test("a contractor only gets the modules it can read", async ({ page }) => {
+test("a contractor works in the contractor portal, never in the supervisor workspace", async ({ page }) => {
   await signInAs(page, contractorEmail!, contractorPassword!);
-  const labels = await modules(page).allInnerTexts();
-  const joined = labels.join(" | ");
-  expect(joined).not.toMatch(/Issues/);
-  expect(joined).not.toMatch(/Reports/);
-  await goTo(page, "Workspace");
-  // Tiles for modules it cannot read are not offered.
-  await expect(page.locator("[data-workspace-destination='issues']")).toHaveCount(0);
-  await expect(page.locator("[data-workspace-destination='ncr']")).toHaveCount(0);
-  await expect(page.locator("[data-workspace-destination='hse']")).toHaveCount(0);
+  await expect(page.locator(".portal-shell")).toBeVisible();
+  await expect(page.getByText("Contractor portal").first()).toBeVisible();
+  // No supervisor navigation, modules or settings (requirements 6).
+  await expect(page.locator(".sidebar, .mobile-bottom-nav")).toHaveCount(0);
+  await expect(modules(page)).toHaveCount(0);
+  await expect(page.locator("[data-workspace-destination]")).toHaveCount(0);
 });
 
 test("a supervisor keeps every control a supervisor needs", async ({ page }) => {
@@ -121,7 +119,7 @@ test("a contractor who types the Reports address lands back on the overview, wit
   test.skip(testInfo.project.name !== "desktop-office", "The address check does not depend on the viewport.");
   await signInAs(page, contractorEmail!, contractorPassword!);
   await page.goto(addressOf(page, "rapporten"));
-  await expect(page.getByText("Your role has no access to that screen.")).toBeVisible();
+  await expect(page.locator(".portal-shell")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Client reports" })).toHaveCount(0);
   await expect(page.locator(".period-report-card")).toHaveCount(0);
 });
@@ -132,12 +130,15 @@ test("Management offers a contractor and a client only what their role may do", 
 
   await signInAs(page, contractorEmail!, contractorPassword!);
   await page.goto(addressOf(page, "meer"));
-  await expect(page.getByRole("heading", { name: "Management overview" })).toBeVisible();
+  // The address of Management opens the contractor portal: no management screen at all.
+  await expect(page.locator(".portal-shell")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Management overview" })).toHaveCount(0);
   for (const name of admin) await expect(page.getByRole("button", { name: new RegExp(name) }), `contractor: ${name}`).toHaveCount(0);
-  // The contractor's own way to submit a document stays.
-  await expect(page.getByRole("button", { name: "Record external submission" })).toBeVisible();
-  // Counters of modules the role may not read are a dash, never a zero that reads like a fact.
-  await expect(page.locator(".management-kpis button", { hasText: "High-risk findings" }).locator("strong")).toHaveText("–");
+  // The contractor's own way to submit a document stays, inside its portal.
+  const responses = page.getByRole("tab", { name: /Responses & submissions/ }).first();
+  if (!(await responses.isVisible().catch(() => false))) await page.locator(".portal-main button[aria-haspopup='true']").first().click();
+  await page.getByRole("tab", { name: /Responses & submissions/ }).first().click();
+  await expect(page.getByRole("button", { name: /New submission/ })).toBeVisible();
 
   await page.context().clearCookies();
   await page.evaluate(() => localStorage.clear());

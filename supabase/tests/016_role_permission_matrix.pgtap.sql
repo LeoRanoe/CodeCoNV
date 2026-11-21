@@ -10,7 +10,7 @@ set local client_min_messages = warning;
 truncate public.organizations, auth.users cascade;
 set local client_min_messages = notice;
 
-select plan(9);
+select plan(10);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at)
 values ('00000000-0000-0000-0000-0000000016a1', 'authenticated', 'authenticated', 'matrix@example.test', now(), now());
@@ -36,38 +36,48 @@ select is(
 );
 select is(
   (select permissions from matrix where code = 'supervisor'),
-  array['actions.create','actions.read','attendance.manage','attendance.read','files.manage','files.read','findings.create','findings.read','hse.manage','hse.read','inspections.manage','inspections.read','records.create','records.edit','records.read','reports.create','reports.edit','reports.read','reports.sign'],
+  array['actions.create','actions.read','attendance.manage','attendance.read','documents.manage','documents.read','files.manage','files.read','findings.create','findings.read','hse.manage','hse.read','inspections.manage','inspections.read','records.create','records.edit','records.read','reports.create','reports.edit','reports.read','reports.sign'],
   'supervisor records the day but cannot manage, verify, freeze or administer'
 );
 select is(
   (select permissions from matrix where code = 'lead_supervisor'),
-  array['actions.create','actions.manage','actions.read','attendance.manage','attendance.read','audit.read','files.manage','files.read','findings.create','findings.manage','findings.read','findings.verify','hse.manage','hse.read','inspections.manage','inspections.read','inspections.review','records.create','records.edit','records.read','reports.create','reports.distribute','reports.edit','reports.freeze','reports.read','reports.review','reports.sign','submissions.read','submissions.review','templates.manage'],
+  array['actions.create','actions.manage','actions.read','attendance.manage','attendance.read','audit.read','documents.manage','documents.read','documents.review','files.manage','files.read','findings.create','findings.manage','findings.read','findings.verify','hse.manage','hse.read','inspections.manage','inspections.read','inspections.review','portal.share','records.create','records.edit','records.read','reports.create','reports.distribute','reports.edit','reports.freeze','reports.read','reports.review','reports.sign','submissions.read','submissions.review','templates.manage'],
   'lead supervisor manages and verifies findings and freezes reports'
 );
 select is(
   (select permissions from matrix where code = 'project_manager'),
-  array['actions.create','actions.manage','actions.read','attendance.manage','attendance.read','audit.read','files.manage','files.read','findings.create','findings.manage','findings.read','findings.verify','hse.manage','hse.read','inspections.manage','inspections.read','inspections.review','notifications.manage','project.configure','records.create','records.edit','records.read','reports.create','reports.distribute','reports.edit','reports.freeze','reports.read','reports.review','reports.sign','submissions.read','submissions.review','templates.manage'],
+  array['actions.create','actions.manage','actions.read','attendance.manage','attendance.read','audit.read','documents.manage','documents.read','documents.review','files.manage','files.read','findings.create','findings.manage','findings.read','findings.verify','hse.manage','hse.read','inspections.manage','inspections.read','inspections.review','notifications.manage','portal.share','project.configure','records.create','records.edit','records.read','reports.create','reports.distribute','reports.edit','reports.freeze','reports.read','reports.review','reports.sign','submissions.read','submissions.review','templates.manage'],
   'project manager additionally configures the project and its notifications'
 );
 select is(
   (select permissions from matrix where code = 'quality_hse_manager'),
-  array['actions.create','actions.manage','actions.read','attendance.read','audit.read','files.manage','files.read','findings.create','findings.manage','findings.read','findings.verify','hse.manage','hse.read','inspections.manage','inspections.read','inspections.review','records.create','records.edit','records.read','reports.read','reports.review','reports.sign','submissions.read','submissions.review','templates.manage'],
+  array['actions.create','actions.manage','actions.read','attendance.read','audit.read','documents.manage','documents.read','documents.review','files.manage','files.read','findings.create','findings.manage','findings.read','findings.verify','hse.manage','hse.read','inspections.manage','inspections.read','inspections.review','portal.share','records.create','records.edit','records.read','reports.read','reports.review','reports.sign','submissions.read','submissions.review','templates.manage'],
   'quality/HSE manager verifies findings but does not author or freeze day reports'
 );
 select is(
   (select permissions from matrix where code = 'contractor'),
-  array['actions.create','files.manage','files.read','records.create','reports.sign','submissions.read'],
-  'contractor submits and signs, but reads no internal records and verifies nothing'
+  array['actions.create','portal.contractor','portal.contractor.respond','records.create','reports.sign','submissions.read'],
+  'contractor submits and signs in its portal, reads no internal records or project files and verifies nothing'
 );
 select is(
   (select permissions from matrix where code = 'client'),
-  array['actions.read','attendance.read','audit.read','files.read','findings.read','hse.read','inspections.read','records.read','reports.read','reports.readapproved','reports.sign','submissions.read','submissions.review'],
+  array['actions.read','attendance.read','audit.read','documents.read','files.read','findings.read','hse.read','inspections.read','records.read','reports.read','reports.readapproved','reports.sign','submissions.read','submissions.review'],
   'owner / opdrachtgever reads everything, signs reports and reviews submissions, writes nothing else'
 );
 select is(
   (select permissions from matrix where code = 'external_guest'),
   array[null]::text[],
   'an external guest holds no permission and sees only what is explicitly shared'
+);
+
+select is(
+  (select array_agg(code || '=' || array_to_string(permissions, '+') order by code) from matrix
+   where code in ('client_admin','client_approver','client_reviewer','client_viewer','contractor_admin','contractor_readonly','contractor_representative')),
+  array['client_admin=portal.client+portal.client.review','client_approver=portal.client+portal.client.approve+portal.client.review',
+    'client_reviewer=portal.client+portal.client.review','client_viewer=portal.client',
+    'contractor_admin=portal.contractor+portal.contractor.respond','contractor_readonly=portal.contractor',
+    'contractor_representative=portal.contractor+portal.contractor.respond'],
+  'portal roles hold portal rights only; managing own-organisation users is never a default'
 );
 
 select * from finish();

@@ -74,7 +74,7 @@ select is((select count(*) from public.organization_memberships where user_id = 
 select is((select count(*) from public.project_memberships where user_id = '00000000-0000-0000-0000-0000000000c2'), 1::bigint, 'provisioning creates the project membership');
 select is((select count(*) from public.project_member_roles where membership_id = (select id from public.project_memberships where user_id = '00000000-0000-0000-0000-0000000000c2')), 1::bigint, 'provisioning assigns the selected project role');
 select is(jsonb_array_length(public.list_internal_access((select id from public.organizations where slug = 'codeco-internal')) -> 'members'), 2, 'the administrator can list internal accounts');
-select is(jsonb_array_length(public.list_internal_access((select id from public.organizations where slug = 'codeco-internal')) -> 'roles'), 8, 'the account list includes data-driven roles');
+select is(jsonb_array_length(public.list_internal_access((select id from public.organizations where slug = 'codeco-internal')) -> 'roles'), 15, 'the account list includes data-driven roles, portal roles included');
 select lives_ok(
   format($query$select public.set_internal_user_access_status(%L::uuid, '00000000-0000-0000-0000-0000000000c2'::uuid, 'suspended', 'Tijdelijk geen projecttoegang tijdens verlof.')$query$, (select id from public.organizations where slug = 'codeco-internal')),
   'an administrator can suspend another internal account with a reason'

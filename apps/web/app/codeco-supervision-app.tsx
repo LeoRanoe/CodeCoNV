@@ -47,6 +47,9 @@ import { screenFromSearch, useScreenHistory, type AppScreen } from "@/lib/naviga
 import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { photoTitle, photoUploadDescription, samePhotoFile, toPhotoEvidence, type PhotoEvidence, photoSpecFromDetails } from "@/app/photo-evidence";
 import { ClientDashboard } from "@/app/client-dashboard";
+import { PortalApp } from "@/app/portal-app";
+import { PortalSharePanel } from "@/app/portal-share-panel";
+import { portalModeFor } from "@/lib/portal/portal-model.mjs";
 import { DailyLogForm } from "@/app/daily-log-modal";
 import { LiveWeatherChip } from "@/app/live-weather-chip";
 import { LocationPicker, locationBreadcrumb, type ProjectLocationOption } from "@/app/location-picker";
@@ -1648,6 +1651,101 @@ export function CodecoSupervisionApp() {
     },
   };
 
+  // A contractor or client account works in its own portal, never in the supervisor workspace
+  // (requirements 6 and 21). The database already limits every row to the user's organisation.
+  const portalMode = portalModeFor(permissions) as "contractor" | "client" | null;
+  if (portalMode && selectedProject) {
+    return (
+      <ProjectPermissionsProvider value={permissions}>
+        <PortalApp
+          client={supabase}
+          mode={portalMode}
+          projectId={selectedProject.id}
+          projectName={selectedProject.name}
+          projects={workspaceQuery.data.projects.map((project) => ({ id: project.id, name: project.name, code: project.code }))}
+          buildings={selectedProject.buildings.map((building) => ({ id: building.id, name: building.name }))}
+          userName={currentUserName}
+          brand={<CompanyLogo />}
+          onSwitchProject={(projectId) => {
+            const project = workspaceQuery.data?.projects.find((item) => item.id === projectId);
+            if (project) chooseProject(project);
+          }}
+          onSignOut={() => void requestSignOut()}
+          submissionWorkspace={permissions.can("records.create") && selectedBuilding ? (
+    <OperationalWorkspace
+      mode="project"
+      client={supabase}
+      organizationId={activeOrganizationId!}
+      projectId={selectedProject!.id}
+      projectName={projectName}
+      projectCode={selectedProject!.code}
+      projectLocation={selectedProject?.location ?? ""}
+      buildingId={selectedBuilding!.id}
+      buildingName={buildingName}
+      buildings={selectedProject?.buildings ?? []}
+      reportId={dayQuery.data?.report?.id ? String(dayQuery.data.report.id) : null}
+      reportNumber={reportNumber}
+      reportStatus={String(dayQuery.data?.report?.status ?? "draft")}
+      projectStartAnswers={projectStartAnswers}
+      currentUserName={currentUserName}
+      currentUserId={session.user.id}
+      companyEmployees={companyEmployees}
+      parties={dayQuery.data?.parties ?? []}
+      canManageOrganization={canManageMembers}
+      openUserAdmin={() => setModal("user_admin")}
+      initialProjectTab="registers"
+      initialRecordPreset={projectTabPreset}
+      onRecordPresetConsumed={() => setProjectTabPreset(undefined)}
+      onProjectTabChange={setInitialProjectTab}
+      externalSubmissionIntent
+      actionCenterView={actionCenterView}
+      focusRecordId={focusRecordId}
+      initialCameraFiles={pendingQuickPhotos}
+      onInitialCameraFilesConsumed={() => setPendingQuickPhotos([])}
+      dailyForms={dailyForms}
+      projectActions={dayActions}
+      openProjectAction={(actionId) => {
+        const action = dayActions.find((item) => item.id === actionId);
+        if (!action) return;
+        // An action that is still waiting on the device has no central record to
+        // update yet; opening its detail would offer buttons that cannot work.
+        if (isPendingRecordId(action.id)) {
+          setToast(text("Not sent yet. It opens after sending.", "Nog niet verzonden. Opent na verzending."));
+          return;
+        }
+        setSelectedAction(action);
+        setModal("action_detail");
+      }}
+      createProjectAction={() => setModal("action_create")}
+      openProjectArea={(tab, recordId) => {
+        // "submissions" is Management deliberately unlocking the contractor
+        // document types; every other destination is a normal workspace module.
+        openWorkspaceModule(tab === "submissions" ? "registers" : tab);
+        // Both of these are cleared by navigate, so they are set after it.
+        setExternalSubmissionIntent(tab === "submissions");
+        // The action centre points at a record, so the module opens on that record
+        // instead of on the list it stands in.
+        setFocusRecordId(recordId ?? "");
+      }}
+      openActionCenter={(view = "work") => { navigate("acties"); setActionCenterView(view); }}
+      openRapidVerify={() => navigate("verify")}
+      openManagement={() => navigate("meer")}
+      openReportCheck={() => setModal("report")}
+    />
+          ) : null}
+        />
+        {signOutPrompt ? (
+          <SignOutDialog
+            unsent={signOutPrompt.unsent}
+            busy={signingOut}
+            close={() => setSignOutPrompt(null)}
+            signOut={(discardUnsent) => void performSignOut({ discardUnsent })}
+          />
+        ) : null}
+      </ProjectPermissionsProvider>
+    );
+  }
+
   return (
     <ProjectPermissionsProvider value={permissions}>
     <div className="app-shell">
@@ -2048,6 +2146,9 @@ export function CodecoSupervisionApp() {
           partyName={dayQuery.data?.parties.find((party) => party.id === selectedAction.owner_party_id)?.name ?? "Niet toegewezen"}
           locationNodes={projectLocationsQuery.data ?? []}
           updates={(dayQuery.data?.actionUpdates ?? []).filter((update) => update.action_id === selectedAction.id)}
+          portalPanel={selectedProject ? (
+            <PortalSharePanel client={supabase} projectId={selectedProject.id} recordType="action" recordId={selectedAction.id} recordTitle={selectedAction.title} parties={dayQuery.data?.parties ?? []} />
+          ) : null}
           close={() => {
             setSelectedAction(null);
             setModal(null);
@@ -3296,6 +3397,7 @@ function ActionDetailModal({
   partyName,
   locationNodes,
   updates,
+  portalPanel,
   close,
   transition,
 }: {
@@ -3303,6 +3405,7 @@ function ActionDetailModal({
   partyName: string;
   locationNodes: ProjectLocationOption[];
   updates: ActionUpdate[];
+  portalPanel?: React.ReactNode;
   close: () => void;
   transition: (nextStatus: ProjectAction["status"], note: string) => Promise<boolean>;
 }) {
@@ -3367,6 +3470,7 @@ function ActionDetailModal({
               <button className="ui-button ui-button--primary ui-button--md" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" size={14} /> : <ArrowRight size={14} />} {text("Move to", "Naar")} {statusLabels[nextStatus].toLowerCase()}</button>
             </form>
           ) : <p className="action-complete-note"><CheckCircle2 size={16} /> {action.status === "verified" ? text("This action has been formally verified and closed.", "Deze actie is formeel geverifieerd en gesloten.") : text("This action was cancelled and remains visible in the history.", "Deze actie is geannuleerd en blijft in de historie zichtbaar.")}</p>}
+          {portalPanel}
         </div>
       </section>
     </div>
