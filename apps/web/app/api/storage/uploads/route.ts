@@ -21,7 +21,10 @@ const allowedMimeTypes = new Set([
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "image/avif",
   "image/gif",
+  "image/heic",
+  "image/heif",
   "image/jpeg",
   "image/png",
   "image/vnd.dwg",
@@ -113,7 +116,7 @@ export async function POST(request: Request) {
       .eq("project_id", input.data.projectId)
       .maybeSingle();
     if (settingsResult.error) throw new Error("De projectlimiet voor uploads kon niet worden gecontroleerd.");
-    const maximumSizeInBytes = Math.min(Number(settingsResult.data?.max_file_size_mb ?? 25), 100) * 1024 * 1024;
+    const maximumSizeInBytes = Math.min(Number(settingsResult.data?.max_file_size_mb ?? 100), 100) * 1024 * 1024;
     if (input.data.sizeBytes > maximumSizeInBytes) {
       return storageJson({ error: `Het bestand is groter dan de projectlimiet van ${Math.floor(maximumSizeInBytes / 1024 / 1024)} MB.` }, 413);
     }

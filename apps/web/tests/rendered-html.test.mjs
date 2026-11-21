@@ -488,7 +488,8 @@ test("keeps scheduled backups, retention and daily notification automation enfor
   assert.match(migration, /retention_tier/);
   assert.match(migration, /service_role/);
   assert.match(migration, /Automatische back-up mislukt/);
-  assert.match(vercel, /"schedule": "0 7 \* \* \*"/);
+  // 07:15 Paramaribo (UTC-3): after the push quiet hours of decision #12.
+  assert.match(vercel, /"schedule": "15 10 \* \* \*"/);
   assert.match(envExample, /^CRON_SECRET=/m);
   assert.match(envExample, /^BACKUP_BLOB_READ_WRITE_TOKEN=/m);
   assert.match(envExample, /^RESEND_API_KEY=/m);

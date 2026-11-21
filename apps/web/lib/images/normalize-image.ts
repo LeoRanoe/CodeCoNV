@@ -13,8 +13,28 @@ export async function normalizeImageFile(file: File): Promise<File | null> {
     if (detected === file.type) return file;
     return new File([file], file.name, { type: detected, lastModified: file.lastModified });
   }
-  if (isHeifImage(head)) return convertToJpeg(file);
+  if (isHeifImage(head)) {
+    const converted = await convertToJpeg(file);
+    if (converted) untouchedSources.set(converted, heifTyped(file));
+    return converted;
+  }
   return null;
+}
+
+/**
+ * Decision #3 (Word 5.2 "Preserve original evidence files", Photos workbook row 8 "retain original
+ * file"): a HEIC/HEIF/AVIF photo is shown and marked up as a JPEG, and its untouched bytes are stored
+ * next to it as the original. Keyed by the JPEG this module made, so nothing else can claim it.
+ */
+const untouchedSources = new WeakMap<File, File>();
+export function untouchedSourceOf(file: File): File | undefined {
+  return untouchedSources.get(file);
+}
+
+function heifTyped(file: File) {
+  if (["image/heic", "image/heif", "image/avif"].includes(file.type)) return file;
+  const type = /\.avif$/i.test(file.name) ? "image/avif" : /\.heif$/i.test(file.name) ? "image/heif" : "image/heic";
+  return new File([file], file.name, { type, lastModified: file.lastModified });
 }
 
 export type PhotoRefusal = { name: string; reason: "heic" | "unsupported" | "too-large" };

@@ -127,7 +127,7 @@ function imageDimensions(file: File) {
 
 export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingName, buildings, reportId, parties, client, busy, run, initialFindingId, initialFileId = "", onInitialFileConsumed, initialFiles = [], onInitialFilesConsumed, start360Upload = false, onStart360UploadConsumed }: VisualEvidenceWorkspaceProps) {
   const { language, text } = useLanguage();
-  const maxFileSizeBytes = (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024;
+  const maxFileSizeBytes = (data.settings?.max_file_size_mb ?? 100) * 1024 * 1024;
   const captures = data.visualCaptures.filter((capture) => capture.status === "active");
   const initialFinding = data.findings.find((finding) => finding.id === initialFindingId) ?? null;
   const initialAnnotation = initialFinding ? data.visualAnnotations.find((annotation) => annotation.finding_id === initialFinding.id && annotation.status === "active") ?? null : null;
@@ -347,8 +347,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     const pixels = `${panoramaImage.width} × ${panoramaImage.height}`;
     const scaling = file && file.size > maxFileSizeBytes
       ? text(
-        ` This export is ${humanFileSize(file.size)}, so it is scaled to fit the ${data.settings?.max_file_size_mb ?? 25} MB project limit before uploading.`,
-        ` Deze export is ${humanFileSize(file.size)} en wordt vóór het uploaden geschaald naar de projectlimiet van ${data.settings?.max_file_size_mb ?? 25} MB.`,
+        ` This export is ${humanFileSize(file.size)}, so it is scaled to fit the ${data.settings?.max_file_size_mb ?? 100} MB project limit before uploading.`,
+        ` Deze export is ${humanFileSize(file.size)} en wordt vóór het uploaden geschaald naar de projectlimiet van ${data.settings?.max_file_size_mb ?? 100} MB.`,
       )
       : "";
     if (panoramaImage.projection === "partial-vertical") {
@@ -417,8 +417,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     if (generation !== stagedImageRef.current) return;
     if (!prepared.fits) {
       setFileError(text(
-        `This 360° image is ${humanFileSize(file.size)} and could not be reduced to the project limit of ${data.settings?.max_file_size_mb ?? 25} MB on this device. Export it at a smaller resolution, or raise the limit in project settings.`,
-        `Dit 360°-beeld is ${humanFileSize(file.size)} en kon op dit apparaat niet worden teruggebracht tot de projectlimiet van ${data.settings?.max_file_size_mb ?? 25} MB. Exporteer het op een lagere resolutie of verhoog de limiet in de projectinstellingen.`,
+        `This 360° image is ${humanFileSize(file.size)} and could not be reduced to the project limit of ${data.settings?.max_file_size_mb ?? 100} MB on this device. Export it at a smaller resolution, or raise the limit in project settings.`,
+        `Dit 360°-beeld is ${humanFileSize(file.size)} en kon op dit apparaat niet worden teruggebracht tot de projectlimiet van ${data.settings?.max_file_size_mb ?? 100} MB. Exporteer het op een lagere resolutie of verhoog de limiet in de projectinstellingen.`,
       ));
       return;
     }
@@ -673,7 +673,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
                 {photoPurposes.map((purpose) => <option key={purpose} value={purpose}>{specLabel(purpose, language)}</option>)}
               </select>
             </label>
-            {["Progress Documentation", "Technical / Quality Evidence"].includes(captureForm.purpose) ? (
+            {captureForm.purpose ? (
               <label className="form-field">
                 <span>{text("Photo category / work discipline", "Fotocategorie / werkdiscipline")}</span>
                 <select value={captureForm.discipline} onChange={(event) => setCaptureForm({ ...captureForm, discipline: event.target.value })}>

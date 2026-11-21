@@ -127,7 +127,7 @@ const linkTypeLabels: Record<DrawingPin["linked_record_type"], { en: string; nl:
 
 export function DrawingWorkspace({ data, projectId, buildingId, buildings, client, busy, run, initialFindingId = "", initialInspectionId = "", pendingRecord = null, onPlaceRecordPin, onOpenLinkedRecord }: DrawingWorkspaceProps) {
   const { language, locale, text } = useLanguage();
-  const maxFileSizeBytes = (data.settings?.max_file_size_mb ?? 25) * 1024 * 1024;
+  const maxFileSizeBytes = (data.settings?.max_file_size_mb ?? 100) * 1024 * 1024;
   const drawings = data.files.filter((file) => file.category === "drawing" && file.status === "available" && supportedDrawingMimeTypes.includes(file.mime_type));
   const dwgSources = data.files.filter((file) => file.category === "drawing" && file.status === "available" && isDwgFile(file));
   const [activeDrawingId, setActiveDrawingId] = useState(drawings[0]?.id ?? "");
@@ -299,8 +299,8 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
     if (!file) return "";
     if (file.size > maxFileSizeBytes) {
       return text(
-        `This drawing is ${humanFileSize(file.size)}; the project limit is ${data.settings?.max_file_size_mb ?? 25} MB.`,
-        `Deze tekening is ${humanFileSize(file.size)}; de projectlimiet is ${data.settings?.max_file_size_mb ?? 25} MB.`,
+        `This drawing is ${humanFileSize(file.size)}; the project limit is ${data.settings?.max_file_size_mb ?? 100} MB.`,
+        `Deze tekening is ${humanFileSize(file.size)}; de projectlimiet is ${data.settings?.max_file_size_mb ?? 100} MB.`,
       );
     }
     if (!supportedDrawingMimeTypes.includes(file.type) && !isDwgFile(file)) {
@@ -640,7 +640,7 @@ export function DrawingWorkspace({ data, projectId, buildingId, buildings, clien
             <strong>{uploadFile ? uploadFile.name : text("Choose a drawing", "Kies een tekening")}</strong>
             <small>{uploadFile
               ? humanFileSize(uploadFile.size)
-              : text(`DWG source, PDF, JPEG, PNG or WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`, `DWG-bron, PDF, JPEG, PNG of WebP · max. ${data.settings?.max_file_size_mb ?? 25} MB`)}</small>
+              : text(`DWG source, PDF, JPEG, PNG or WebP · max. ${data.settings?.max_file_size_mb ?? 100} MB`, `DWG-bron, PDF, JPEG, PNG of WebP · max. ${data.settings?.max_file_size_mb ?? 100} MB`)}</small>
           </span>
           <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp,.dwg,.pdf,.jpg,.jpeg,.png,.webp" onChange={(event) => { setUploadFile(event.target.files?.[0] ?? null); setUploadError(uploadRefusal(event.target.files?.[0] ?? null)); }} />
         </label>
