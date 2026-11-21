@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { pageAll } from "@/lib/supabase/page-all.mjs";
 
 /**
  * Reads and writes of the Contractor Portal, the Client Portal and CODECO's share panel.
@@ -90,7 +91,8 @@ export type PortalSnapshot = {
   shareFiles: PortalShareFile[];
   files: Map<string, PortalFile>;
   documents: Map<string, PortalDocument>;
-  revisions: Array<{ id: string; document_id: string; revision: string; review_status: string; issue_date: string | null; uploaded_at: string; file_id: string; superseded_at: string | null }>;
+  /** Released revisions only (F15), from portal_document_revisions(): no notes, review comments or reviewer. */
+  revisions: Array<{ id: string; document_id: string; revision: string; review_status: string; issue_date: string | null; uploaded_at: string; file_id: string; superseded_at: string | null; share_id: string; released_at: string; release_id: string }>;
 };
 
 const shareColumns = "id,project_id,organization_id,audience,party_id,record_type,record_id,record_code,building_id,title,visible_summary,requested_action,priority,due_at,contact_user_id,publication_type,period_start,period_end,publication_version,status,round,assigned_by,assigned_at,closed_at,updated_at";
@@ -119,8 +121,9 @@ export async function loadPortalSnapshot(client: SupabaseClient, projectId: stri
   if (!shareIds.length) return { shares, events: [], shareFiles: [], files: new Map(), documents: new Map(), revisions: [] };
 
   const [eventResult, fileLinkResult] = await Promise.all([
-    client.from("portal_events").select(eventColumns).in("share_id", shareIds).order("sequence", { ascending: true }).limit(5000),
-    client.from("portal_share_files").select("share_id,file_id,source,added_at").in("share_id", shareIds).limit(5000),
+    // F11: every round of every share, paged past the API row cap.
+    pageAll((from: number, to: number) => client.from("portal_events").select(eventColumns).in("share_id", shareIds).order("sequence", { ascending: true }).range(from, to), 100000),
+    pageAll((from: number, to: number) => client.from("portal_share_files").select("share_id,file_id,source,added_at").in("share_id", shareIds).order("share_id").order("file_id").range(from, to), 100000),
   ]);
   if (eventResult.error) fail(eventResult.error, "The portal history could not be loaded.");
   if (fileLinkResult.error) fail(fileLinkResult.error, "Portal files could not be loaded.");
@@ -136,7 +139,7 @@ export async function loadPortalSnapshot(client: SupabaseClient, projectId: stri
       ? client.from("project_documents").select("id,document_number,title,folder_code,current_revision_id").in("id", documentIds)
       : Promise.resolve({ data: [], error: null }),
     documentIds.length
-      ? client.from("project_document_revisions").select("id,document_id,revision,review_status,issue_date,uploaded_at,file_id,superseded_at").in("document_id", documentIds)
+      ? client.rpc("portal_document_revisions", { p_project_id: projectId })
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (fileResult.error) fail(fileResult.error, "Portal files could not be loaded.");
@@ -149,8 +152,25 @@ export async function loadPortalSnapshot(client: SupabaseClient, projectId: stri
     shareFiles,
     files: new Map(((fileResult.data ?? []) as PortalFile[]).map((file) => [file.id, file])),
     documents: new Map(((documentResult.data ?? []) as PortalDocument[]).map((document) => [document.id, document])),
-    revisions: (revisionResult.data ?? []) as PortalSnapshot["revisions"],
+    revisions: ((revisionResult.data ?? []) as PortalSnapshot["revisions"]).filter((revision) => shareIds.includes(revision.share_id)),
   };
+}
+
+/** Deliberately releases one approved revision to one document share (F15). */
+export async function releaseDocumentRevision(client: SupabaseClient, input: { shareId: string; revisionId: string; comment?: string }) {
+  const result = await client.rpc("release_document_revision", {
+    p_share_id: input.shareId,
+    p_revision_id: input.revisionId,
+    p_comment: input.comment?.trim() || null,
+  });
+  if (result.error) fail(result.error, "The revision was not released.");
+  return result.data as string;
+}
+
+/** Stops the party reading a released revision; the release and its history are kept. */
+export async function withdrawDocumentRelease(client: SupabaseClient, input: { releaseId: string; reason: string }) {
+  const result = await client.rpc("withdraw_document_release", { p_release_id: input.releaseId, p_reason: input.reason.trim() });
+  if (result.error) fail(result.error, "The release was not withdrawn.");
 }
 
 export async function respondInPortal(client: SupabaseClient, input: { shareId: string; action: string; comment?: string; payload?: Record<string, unknown>; fileIds?: string[] }) {

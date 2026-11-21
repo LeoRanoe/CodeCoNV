@@ -179,3 +179,52 @@ export function suggestNextRevision(current) {
   if (/^[A-Y]$/i.test(value)) return String.fromCharCode(value.charCodeAt(0) + 1);
   return "";
 }
+
+/** Statuses of a revision that may be built from or released (same rule as releasableRevisionStatuses). */
+const approvedStatuses = new Set(["approved", "approved_with_comments", "for_construction"]);
+/**
+ * Statuses that mean the pinned revision is no longer the one to work from. "Superseded" is not
+ * one of them: an upload marks the previous revision superseded while the new one may still be
+ * under review, so a superseded pin is stale only once a later revision is approved.
+ */
+const retiredStatuses = new Set(["withdrawn", "rejected", "revise_resubmit"]);
+
+/** The revision id of a spec reference (`revision:<id>`), or "". */
+export function revisionRefId(ref) {
+  return typeof ref === "string" && ref.startsWith("revision:") ? ref.slice(9) : "";
+}
+
+/**
+ * F11: where a record's exact revision reference stands. The record keeps the revision it was
+ * written against; it is stale when that revision was retired (superseded, withdrawn, rejected,
+ * revise and resubmit) or a later revision of the same document has been approved. A later
+ * revision that is still under review does not make it stale (which revision is active during
+ * review is the open Word §20 item 3 decision).
+ *
+ * @param {string} revisionId
+ * @param {Array<{ id: string, document_number?: string | null, title?: string, current_revision_id?: string | null }>} documents
+ * @param {Array<{ id: string, document_id: string, revision: string, review_status: string, uploaded_at?: string, superseded_at?: string | null }>} revisions
+ */
+export function revisionStanding(revisionId, documents, revisions) {
+  const pinned = revisions.find((item) => item.id === revisionId);
+  if (!pinned) return null;
+  const document = documents.find((item) => item.id === pinned.document_id) ?? null;
+  const siblings = revisions.filter((item) => item.document_id === pinned.document_id);
+  const newerApproved = siblings
+    .filter((item) => item.id !== pinned.id && approvedStatuses.has(item.review_status) && !item.superseded_at && String(item.uploaded_at ?? "") > String(pinned.uploaded_at ?? ""))
+    .sort((a, b) => String(b.uploaded_at ?? "").localeCompare(String(a.uploaded_at ?? "")))[0] ?? null;
+  const retired = retiredStatuses.has(pinned.review_status);
+  const stale = Boolean(newerApproved) || retired;
+  return {
+    document,
+    pinned,
+    newerApproved,
+    stale,
+    label: `${document?.document_number || document?.title || ""} rev ${pinned.revision}`.trim(),
+  };
+}
+
+/** The text a record stores for a revision reference: "<number or title> rev <mark>". */
+export function revisionReferenceText(document, revision) {
+  return `${document?.document_number || document?.title || ""} rev ${revision.revision}`.trim();
+}

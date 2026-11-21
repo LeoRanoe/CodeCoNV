@@ -203,6 +203,16 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
             {showFolder ? <div><dt>{text("Folder", "Map")}</dt><dd>{folderName}</dd></div> : null}
             <div><dt>{text("File", "Bestand")}</dt><dd title={file.original_name}>{file.original_name}</dd></div>
             <div><dt>{text("Size", "Grootte")}</dt><dd>{humanSize(file.size_bytes)}</dd></div>
+            {(() => {
+              // F05: whether the stored file is the original, and the original's fingerprint.
+              const original = (capture?.spec as { _original?: { sha256?: string; size?: number; stored?: string } } | null | undefined)?._original;
+              if (!original?.sha256) return null;
+              return (
+                <div data-photo-original={original.stored}><dt>{text("Original", "Origineel")}</dt>
+                  <dd>{original.stored === "reduced_copy" ? text(`Reduced copy stored; original ${humanSize(Number(original.size ?? 0))}`, `Verkleinde kopie bewaard; origineel ${humanSize(Number(original.size ?? 0))}`) : text("Stored unchanged", "Ongewijzigd bewaard")}
+                    <small className="media-detail-hash" title={original.sha256}> · SHA-256 {original.sha256.slice(0, 12)}…</small></dd></div>
+              );
+            })()}
             {file.document_code ? <div><dt>{text("Document code", "Documentcode")}</dt><dd>{file.document_code}</dd></div> : null}
             <div><dt>{text("Marked problems", "Gemarkeerde problemen")}</dt><dd>{markers.length}</dd></div>
           </dl>

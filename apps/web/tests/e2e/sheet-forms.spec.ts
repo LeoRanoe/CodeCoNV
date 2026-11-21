@@ -38,19 +38,19 @@ async function openTile(page: Page, id: string) {
 }
 
 /** The first rows of each sheet, in the workbook's order (labels as the screen shows them). */
-const sheets: Array<{ tile: string; form: string; save: RegExp; first: string[] }> = [
-  { tile: "issues", form: "issue", save: /^Submit issue$/, first: ["Date/time identified", "Issue type", "Category", "Title", "Description", "Location", "Discipline / work package", "Priority"] },
-  { tile: "ncr", form: "ncr", save: /^Submit NCR$/, first: ["Date raised", "NCR type", "Category", "Title", "Non-conformance description", "Discipline / work package", "Location / element"] },
-  { tile: "hse", form: "hse", save: /^Submit issue$/, first: ["Date/time observed", "Issue type", "Category", "Title", "Observation / hazard description", "Location"] },
-  { tile: "hse-incident", form: "hse_incident", save: /^Submit issue$/, first: ["Incident date/time", "Incident type", "Incident category", "Incident title", "Detailed event description", "Exact location"] },
-  { tile: "materials-delivery", form: "delivery", save: /^Save register item$/, first: ["Delivery date/time", "Supplier", "Purchase order / requisition", "Delivery note number", "Material group"] },
-  { tile: "technical-instructions", form: "technical_instruction", save: /^Create controlled document$/, first: ["Instruction date", "Instruction type", "Discipline"] },
-  { tile: "change-order", form: "change_order", save: /^Create controlled document$/, first: ["Request date", "Change type", "Change category", "Change title", "Change description", "Reason for change", "Originator / requester"] },
-  { tile: "delay-report", form: "delay_report", save: /^Save delay report$/, first: ["Delay start date/time", "Affected activity"] },
-  { tile: "lessons-learned", form: "lessons_learned", save: /^Save lesson learned$/, first: ["Date recorded", "Project phase", "Lesson category", "Title", "Situation / context", "What happened?"] },
-  { tile: "agreements-made", form: "agreement", save: /^Save agreement$/, first: ["Meeting / agreement date", "Meeting / source", "Agreement type", "Agreement category", "Agreement / decision title", "Agreement details"] },
-  { tile: "works-ongoing", form: "works_ongoing", save: /^Save register item$/, first: ["Report date", "Shift", "Work discipline", "Activity", "Building / area", "Exact location / grid / level", "What exactly is being worked on?"] },
-  { tile: "works-completed", form: "works_completed", save: /^Save register item$/, first: ["Completion date", "Work discipline", "Activity", "Building / area", "Exact location / grid / level", "What was completed?"] },
+const sheets: Array<{ tile: string; form: string; heading: string; save: RegExp; first: string[] }> = [
+  { tile: "issues", form: "issue", heading: "Issues", save: /^Submit issue$/, first: ["Date/time identified", "Issue type", "Category", "Title", "Description", "Location", "Discipline / work package", "Priority"] },
+  { tile: "ncr", form: "ncr", heading: "NCR", save: /^Submit NCR$/, first: ["Date raised", "NCR type", "Category", "Title", "Non-conformance description", "Discipline / work package", "Location / element"] },
+  { tile: "hse", form: "hse", heading: "HSE", save: /^Submit issue$/, first: ["Date/time observed", "Issue type", "Category", "Title", "Observation / hazard description", "Location"] },
+  { tile: "hse-incident", form: "hse_incident", heading: "HSE incident registration", save: /^Submit issue$/, first: ["Incident date/time", "Incident type", "Incident category", "Incident title", "Detailed event description", "Exact location"] },
+  { tile: "materials-delivery", form: "delivery", heading: "Materials delivery", save: /^Save register item$/, first: ["Delivery date/time", "Supplier", "Purchase order / requisition", "Delivery note number", "Material group"] },
+  { tile: "technical-instructions", form: "technical_instruction", heading: "Technical instructions", save: /^Create controlled document$/, first: ["Instruction date", "Instruction type", "Discipline"] },
+  { tile: "change-order", form: "change_order", heading: "Change order (CO)", save: /^Create controlled document$/, first: ["Request date", "Change type", "Change category", "Change title", "Change description", "Reason for change", "Originator / requester"] },
+  { tile: "delay-report", form: "delay_report", heading: "Project Delay Report (PDR)", save: /^Save delay report$/, first: ["Delay start date/time", "Affected activity"] },
+  { tile: "lessons-learned", form: "lessons_learned", heading: "Lessons Learned (LL)", save: /^Save lesson learned$/, first: ["Date recorded", "Project phase", "Lesson category", "Title", "Situation / context", "What happened?"] },
+  { tile: "agreements-made", form: "agreement", heading: "Agreements Made", save: /^Save agreement$/, first: ["Meeting / agreement date", "Meeting / source", "Agreement type", "Agreement category", "Agreement / decision title", "Agreement details"] },
+  { tile: "works-ongoing", form: "works_ongoing", heading: "Works ongoing", save: /^Save register item$/, first: ["Report date", "Shift", "Work discipline", "Activity", "Building / area", "Exact location / grid / level", "What exactly is being worked on?"] },
+  { tile: "works-completed", form: "works_completed", heading: "Works completed", save: /^Save register item$/, first: ["Completion date", "Work discipline", "Activity", "Building / area", "Exact location / grid / level", "What was completed?"] },
 ];
 
 /** The label of each row of the sheet form, top to bottom. */
@@ -70,6 +70,8 @@ for (const sheet of sheets) {
     await openTile(page, sheet.tile);
     const form = page.locator(`[data-sheet-form='${sheet.form}']`);
     await expect(form).toBeVisible();
+    // F17: the page is headed by the form's own Workspace name, not the generic register.
+    await expect(page.locator(".workspace-current-module h1")).toHaveText(sheet.heading);
     // Nothing is added underneath the sheet any more: one section is the whole form.
     await expect(page.locator("main [data-spec-form]")).toHaveCount(1);
 

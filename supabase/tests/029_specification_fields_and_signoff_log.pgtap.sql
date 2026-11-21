@@ -33,7 +33,7 @@ select is(
     (select id from public.projects where code = 'SO-29'),
     (select building.id from public.buildings building join public.projects project on project.id = building.project_id where project.code = 'SO-29' limit 1),
     null, 'works_ongoing', 'Slab S1 pour', now(), null, null,
-    '{"spec":{"discipline":"Concrete & Reinforced Concrete","activity":"Concrete Pouring"}}'::jsonb, 'so-29-wo'
+    '{"spec":{"discipline":"Concrete & Reinforced Concrete","activity":"Concrete Pouring","report_date":"2026-11-20","exact_location":"Level 1, grids A-D","work_item":"Slab S1","progress_status":"In Progress","crew":"Concrete crew A","quantity":"42","quantity_unit":"m³","element_type":"Slab","element_id":"S1","concrete_grade":"C30/37","concrete_volume":"42"}}'::jsonb, 'so-29-wo'
   )),
   'WO-0001',
   'a works ongoing record is numbered WO'

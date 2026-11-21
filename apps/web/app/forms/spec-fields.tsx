@@ -30,6 +30,7 @@ import {
 } from "@/lib/forms/spec-forms";
 import { ChoiceIcon } from "@/lib/forms/choice-icons";
 import { recordMatchesKinds, useSpecDirectory, type SpecDirectoryValue } from "@/app/forms/spec-directory";
+import { revisionRefId, revisionReferenceText, revisionStanding, statusMeta } from "@/lib/documents/document-register.mjs";
 
 type Text = (en: string, nl: string) => string;
 
@@ -274,6 +275,13 @@ function SpecInput({ id, form, field, values, set, setMany, text, language, disa
           onChange={(name, reference) => setMany({ [field.key]: name, [refKey(field)]: reference })} text={text} directory={directory} />
         {hint ? <p className="form-helper">{hint}</p> : null}
       </div>
+    );
+  }
+
+  if (field.kind === "document") {
+    return (
+      <DocumentRevisionPicker id={id} field={field} label={caption} hint={hint} reference={single} revisionRef={String(values[refKey(field)] ?? "")}
+        onChange={(reference, revisionRef) => setMany({ [field.key]: reference, [refKey(field)]: revisionRef })} text={text} disabled={disabled} directory={directory} />
     );
   }
 
@@ -563,7 +571,88 @@ function RecordPicker({ id, field, label, hint, number, reference, onChange, tex
   );
 }
 
+/**
+ * F11: an exact revision of the Project Documents register. The record stores "<number> rev <mark>"
+ * and `revision:<id>`; a reference typed by hand (document not in the register) is kept as text.
+ */
+function DocumentRevisionPicker({ id, field, label, hint, reference, revisionRef, onChange, text, disabled, directory }: {
+  id: string;
+  field: SpecField;
+  label: React.ReactNode;
+  hint?: string;
+  reference: string;
+  revisionRef: string;
+  onChange: (reference: string, revisionRef: string) => void;
+  text: Text;
+  disabled?: boolean;
+  directory: SpecDirectoryValue;
+}) {
+  const [query, setQuery] = useState("");
+  const [typing, setTyping] = useState(false);
+  // The register may have changed since the form opened (a revision registered or approved meanwhile).
+  const refreshDocuments = directory.refreshDocuments;
+  useEffect(() => { refreshDocuments?.(); }, [refreshDocuments]);
+  const documents = useMemo(() => new Map(directory.documents.map((document) => [document.id, document])), [directory.documents]);
+  const candidates = useMemo(() => {
+    const words = query.trim().toLowerCase();
+    return directory.revisions
+      .filter((revision) => !["withdrawn", "superseded"].includes(revision.review_status))
+      .map((revision) => ({ revision, document: documents.get(revision.document_id) }))
+      .filter(({ document }) => document)
+      .filter(({ revision, document }) => !words || `${document!.document_number ?? ""} ${document!.title} rev ${revision.revision}`.toLowerCase().includes(words))
+      .sort((a, b) => `${a.document!.document_number ?? a.document!.title}`.localeCompare(`${b.document!.document_number ?? b.document!.title}`) || b.revision.uploaded_at.localeCompare(a.revision.uploaded_at))
+      .slice(0, 80);
+  }, [directory.revisions, documents, query]);
+  const standing = revisionRefId(revisionRef) ? revisionStanding(revisionRefId(revisionRef), directory.documents, directory.revisions) : null;
+  return (
+    <div className="form-field spec-field spec-record" data-spec-field={field.key}>
+      <label htmlFor={id}>{label}</label>
+      {reference && !typing ? (
+        <div className="spec-chips">
+          <span className="spec-record-chip">
+            <strong>{reference}</strong>{standing?.document?.title ? <span> · {standing.document.title}</span> : null}
+            <button type="button" className="spec-chip-remove" disabled={disabled} aria-label={text(`Remove the reference ${reference}`, `Referentie ${reference} verwijderen`)} onClick={() => onChange("", "")}><X size={14} aria-hidden="true" /></button>
+          </span>
+          <RevisionStanding standing={standing} text={text} />
+        </div>
+      ) : typing ? (
+        <input id={id} value={reference} maxLength={240} disabled={disabled} aria-label={text("Reference not in the register", "Referentie buiten het register")}
+          onChange={(event) => onChange(event.target.value, "")} onBlur={() => setTyping(false)} />
+      ) : (
+        <div className="spec-record-search">
+          <input type="search" value={query} disabled={disabled} aria-label={text("Search documents by number or title", "Zoek documenten op nummer of titel")} placeholder={text("Search by number or title", "Zoek op nummer of titel")} onChange={(event) => setQuery(event.target.value)} />
+          <select id={id} value="" disabled={disabled} onChange={(event) => {
+            const chosen = candidates.find(({ revision }) => revision.id === event.target.value);
+            if (chosen) { onChange(revisionReferenceText(chosen.document, chosen.revision), `revision:${chosen.revision.id}`); setQuery(""); }
+          }}>
+            <option value="">{candidates.length ? text(`Choose a revision (${candidates.length})…`, `Kies een revisie (${candidates.length})…`) : text("No matching documents", "Geen passende documenten")}</option>
+            {candidates.map(({ revision, document }) => (
+              <option key={revision.id} value={revision.id}>{revisionReferenceText(document, revision)} · {document!.title} · {text(statusMeta(revision.review_status).en, statusMeta(revision.review_status).nl)}</option>
+            ))}
+          </select>
+          <button type="button" className="ui-button ui-button--quiet ui-button--sm" disabled={disabled} onClick={() => setTyping(true)}>{text("Not in the register", "Niet in het register")}</button>
+        </div>
+      )}
+      {hint ? <p className="form-helper">{hint}</p> : null}
+    </div>
+  );
+}
+
+/** A stale revision reference: the stored reference stays, the newer approved revision is named. */
+export function RevisionStanding({ standing, text }: { standing: ReturnType<typeof revisionStanding>; text: Text }) {
+  if (!standing?.stale) return null;
+  const message = standing.newerApproved
+    ? text(`Rev ${standing.newerApproved.revision} is approved; this record refers to rev ${standing.pinned.revision}.`, `Rev ${standing.newerApproved.revision} is goedgekeurd; deze registratie verwijst naar rev ${standing.pinned.revision}.`)
+    : text(`Rev ${standing.pinned.revision} is no longer valid (${standing.pinned.review_status.replace(/_/g, " ")}).`, `Rev ${standing.pinned.revision} is niet meer geldig (${standing.pinned.review_status.replace(/_/g, " ")}).`);
+  return <p className="form-helper spec-revision-stale" role="status" data-revision-stale="true">{message}</p>;
+}
+
 /** Repeatable rows: corrective actions with owner and due date, notifications, containment steps. */
+/** A follow-up row keeps one identity from first entry through offline replay (F08). */
+function newRowId() {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `row-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function SpecRows({ id, field, values, set, text, language, disabled, directory }: {
   id: string;
   field: SpecField;
@@ -617,7 +706,7 @@ function SpecRows({ id, field, values, set, text, language, disabled, directory 
         ))}
       </ol>
       {!field.rowsFrom ? (
-        <button type="button" className="ui-button ui-button--secondary ui-button--sm" onClick={() => write([...shown, {}])}><Plus size={14} aria-hidden="true" /> {text("Add a row", "Regel toevoegen")}</button>
+        <button type="button" className="ui-button ui-button--secondary ui-button--sm" onClick={() => write([...shown, field.followUp ? { row_id: newRowId() } : {}])}><Plus size={14} aria-hidden="true" /> {text("Add a row", "Regel toevoegen")}</button>
       ) : null}
     </fieldset>
   );
@@ -627,14 +716,16 @@ function SpecRows({ id, field, values, set, text, language, disabled, directory 
 export function SpecLinkChips({ links, text }: { links: Array<{ label: string; number: string; ref: string }>; text: Text }) {
   const directory = useSpecDirectory();
   if (!links.length) return null;
+  const standingOf = (ref: string) => (revisionRefId(ref) ? revisionStanding(revisionRefId(ref), directory.documents, directory.revisions) : null);
   return (
     <div className="spec-link-chips" aria-label={text("Linked records", "Gekoppelde registraties")}>
       {links.map((link) => (
         <span key={`${link.label}-${link.number}`} className="spec-link-chip">
           <small>{link.label}</small>
-          {link.ref && directory.openRecord ? (
+          {link.ref && directory.openRecord && !revisionRefId(link.ref) ? (
             <button type="button" className="ui-button ui-button--secondary ui-button--sm" onClick={() => directory.openRecord?.(link.ref)}>{link.number}</button>
           ) : <strong>{link.number}</strong>}
+          <RevisionStanding standing={standingOf(link.ref)} text={text} />
         </span>
       ))}
     </div>

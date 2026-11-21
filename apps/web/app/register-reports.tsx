@@ -5,11 +5,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
+import { pageAll } from "@/lib/supabase/page-all.mjs";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { downloadBlob } from "@/lib/browser/download";
 import { loadPortalSnapshot } from "@/lib/portal/portal-data";
 import { contractorPerformance } from "@/lib/reports/project-summary.mjs";
 import { statusMeta } from "@/lib/documents/document-register.mjs";
+import { actionReferenceDate, defaultPeriod, documentReferenceDate, inPeriod } from "@/lib/reports/report-period.mjs";
 import { statusText, priorityText } from "@/lib/status-labels";
 import type { OperationSnapshot } from "@/lib/supabase/operations";
 
@@ -34,13 +36,14 @@ export function RegisterReports({ client, projectId, projectName, data, parties,
   projectName: string;
   data: OperationSnapshot;
   parties: Party[];
-  actions: Array<{ id: string; action_number: string; title: string; status: string; priority: string; due_at: string | null; owner_party_id?: string | null; action_category?: string | null; closure_reason?: string | null }>;
+  actions: Array<{ id: string; action_number: string; title: string; status: string; priority: string; due_at: string | null; created_at?: string | null; owner_party_id?: string | null; action_category?: string | null; closure_reason?: string | null }>;
 }) {
   const { language, locale, text } = useLanguage();
   const permissions = useProjectPermissions();
   const [kind, setKind] = useState<Kind>("contractor");
-  const [from, setFrom] = useState(() => new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10));
-  const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
+  // F11: the period is in project-local days and applies to one reference date per report (report-period.mjs).
+  const [from, setFrom] = useState(() => defaultPeriod().from);
+  const [to, setTo] = useState(() => defaultPeriod().to);
   const [party, setParty] = useState("");
   const [state, setState] = useState("all");
   const portalQuery = useQuery({ queryKey: ["portal-register", projectId], queryFn: () => loadPortalSnapshot(client, projectId), enabled: permissions.canAny("portal.share", "records.edit") });
@@ -49,10 +52,12 @@ export function RegisterReports({ client, projectId, projectName, data, parties,
     enabled: kind === "documents" && permissions.can("documents.read"),
     queryFn: async () => {
       const [documents, revisions] = await Promise.all([
-        client.from("project_documents").select("id,document_number,title,folder_code,discipline,current_revision_id,originator_name,originator_party_id").eq("project_id", projectId).limit(5000),
-        client.from("project_document_revisions").select("id,document_id,revision,review_status,uploaded_at,reviewed_at").eq("project_id", projectId).limit(10000),
+        // F11: paged past the API row cap; the report counts every document and revision.
+        pageAll((from: number, to: number) => client.from("project_documents").select("id,document_number,title,folder_code,discipline,current_revision_id,originator_name,originator_party_id").eq("project_id", projectId).order("id").range(from, to), 50000),
+        pageAll((from: number, to: number) => client.from("project_document_revisions").select("id,document_id,revision,review_status,uploaded_at,reviewed_at").eq("project_id", projectId).order("id").range(from, to), 100000),
       ]);
       if (documents.error) throw documents.error;
+      if (revisions.error) throw revisions.error;
       return { documents: documents.data ?? [], revisions: revisions.data ?? [] };
     },
   });
@@ -75,7 +80,7 @@ export function RegisterReports({ client, projectId, projectName, data, parties,
       const rows = actions
         .filter((action) => !party || action.owner_party_id === party)
         .filter((action) => state === "all" || (state === "open" && !closed(action.status)) || (state === "overdue" && !closed(action.status) && Boolean(action.due_at) && new Date(action.due_at!) < now) || (state === "closed" && closed(action.status)))
-        .filter((action) => !action.due_at || state !== "all" || ((!from || action.due_at.slice(0, 10) >= from) && (!to || action.due_at.slice(0, 10) <= to)) || !closed(action.status));
+        .filter((action) => inPeriod(actionReferenceDate(action), from, to));
       return {
         head: [text("Action", "Actie"), text("Title", "Titel"), text("Kind", "Soort"), text("Responsible", "Verantwoordelijke"), text("Priority", "Prioriteit"), text("Due", "Uiterlijk"), text("Status", "Status"), text("Overdue", "Te laat")],
         rows: rows.map((action) => [action.action_number, action.title,
@@ -89,7 +94,7 @@ export function RegisterReports({ client, projectId, projectName, data, parties,
       .map((document) => ({ document, current: revisions.get(document.current_revision_id) }))
       .filter((row) => !party || row.document.originator_party_id === party)
       .filter((row) => state === "all" || (state === "open" && ["submitted", "under_review", "revise_resubmit"].includes(row.current?.review_status ?? "")))
-      .filter((row) => !row.current || ((!from || row.current.uploaded_at.slice(0, 10) >= from) && (!to || row.current.uploaded_at.slice(0, 10) <= to)) || state === "open");
+      .filter((row) => inPeriod(documentReferenceDate(row.current), from, to));
     return {
       head: [text("Number", "Nummer"), text("Title", "Titel"), text("Folder", "Map"), text("Discipline", "Discipline"), text("Originator", "Opsteller"), text("Revision", "Revisie"), text("Status", "Status"), text("Received", "Ontvangen"), text("Days waiting", "Dagen wachtend")],
       rows: rows.map(({ document, current }) => [document.document_number ?? "", document.title, document.folder_code, document.discipline ?? "",
@@ -102,8 +107,12 @@ export function RegisterReports({ client, projectId, projectName, data, parties,
 
   const title = ({ contractor: text("Contractor performance summary", "Prestatieoverzicht aannemers"), actions: text("Action register", "Actieregister"), documents: text("Document register / outstanding submittals", "Documentregister / openstaande indieningen") } as Record<Kind, string>)[kind];
   const filters = [party ? partyName(party) : text("all organisations", "alle organisaties"), kind !== "contractor" && state !== "all" ? state : ""].filter(Boolean).join(" · ");
+  // What the period is applied to, stated in the export and on screen.
+  const periodBasis = kind === "actions" ? text("due date (raised date if none)", "uiterste datum (anders datum aangemaakt)")
+    : kind === "documents" ? text("date the current revision was received", "ontvangstdatum huidige revisie")
+    : text("date assigned or raised", "datum toegewezen of gemeld");
   const exportCsv = () => {
-    const lines = [[title], [`${text("Project", "Project")}: ${projectName}`], [`${text("Period", "Periode")}: ${from} – ${to}`], [`${text("Data cut-off", "Peildatum")}: ${generated}`], [`${text("Filters", "Filters")}: ${filters}`], [], table.head, ...table.rows];
+    const lines = [[title], [`${text("Project", "Project")}: ${projectName}`], [`${text("Period", "Periode")}: ${from} – ${to} (${periodBasis})`], [`${text("Data cut-off", "Peildatum")}: ${generated}`], [`${text("Filters", "Filters")}: ${filters}`], [], table.head, ...table.rows];
     downloadBlob(new Blob([`﻿${lines.map((line) => line.map(csvCell).join(",")).join("\r\n")}\r\n`], { type: "text/csv;charset=utf-8" }), `${projectName.replace(/[^a-z0-9]+/gi, "-")}-${kind}-${to}.csv`);
   };
   const print = () => {
@@ -111,7 +120,7 @@ export function RegisterReports({ client, projectId, projectName, data, parties,
     if (!win) return;
     const escape = (value: unknown) => String(value ?? "").replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char] ?? char);
     win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escape(title)}</title><style>body{font:12px system-ui,sans-serif;margin:24px;color:#161a20}h1{font-size:18px;margin:0 0 4px}p{margin:0 0 4px;color:#4a5a66}table{border-collapse:collapse;width:100%;margin-top:12px}th,td{border:1px solid #b3c1c9;padding:4px 6px;text-align:left}th{background:#f2f6f7}</style></head><body>
-      <h1>${escape(projectName)} · ${escape(title)}</h1><p>${escape(text("Period", "Periode"))}: ${escape(from)} – ${escape(to)}</p><p>${escape(text("Data cut-off and generated", "Peildatum en gegenereerd"))}: ${escape(generated)}</p><p>${escape(text("Filters", "Filters"))}: ${escape(filters)}</p>
+      <h1>${escape(projectName)} · ${escape(title)}</h1><p>${escape(text("Period", "Periode"))}: ${escape(from)} – ${escape(to)} (${escape(periodBasis)})</p><p>${escape(text("Data cut-off and generated", "Peildatum en gegenereerd"))}: ${escape(generated)}</p><p>${escape(text("Filters", "Filters"))}: ${escape(filters)}</p>
       <table><thead><tr>${table.head.map((cell) => `<th>${escape(cell)}</th>`).join("")}</tr></thead><tbody>${table.rows.map((row) => `<tr>${row.map((cell) => `<td>${escape(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table><script>window.onload=()=>window.print()</script></body></html>`);
     win.document.close();
   };
@@ -144,7 +153,7 @@ export function RegisterReports({ client, projectId, projectName, data, parties,
           </label>
         ) : null}
       </div>
-      <p className="portal-note">{text("Period", "Periode")} {from} – {to} · {text("data cut-off", "peildatum")} {generated} · {filters}</p>
+      <p className="portal-note" data-report-period-basis={kind}>{text("Period", "Periode")} {from} – {to} ({periodBasis}) · {text("data cut-off", "peildatum")} {generated} · {filters}</p>
       {loading ? <p className="portal-loading"><Loader2 className="spin" size={14} /> {text("Loading…", "Laden…")}</p> : table.rows.length ? (
         <div className="portal-table-wrap">
           <table className="portal-table">

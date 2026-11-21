@@ -7,7 +7,7 @@ set local client_min_messages = notice;
 
 -- Functional requirements FINAL: Project Documents register, Contractor Portal, Client Portal
 -- and the data separation of sections 8, 19 and 23.
-select plan(55);
+select plan(63);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at) values
   ('00000000-0000-0000-0000-0000000031a1', 'authenticated', 'authenticated', 'admin31@example.test', now(), now()),
@@ -327,6 +327,55 @@ select is(
   array['assign','acknowledge','respond','return','resubmit','accept','verify','close'],
   'every workflow round stays in the log with its actor'
 );
+
+-- F01: a portal round moves the NCR it is about (same rule as the account-free share link).
+select is((select status from public.findings where finding_number = 'NCR-31-001'), 'in_progress',
+  'the contractor''s portal response moved the NCR to in progress');
+select is((select count(*) from public.file_links where record_type = 'finding' and file_id = '00000000-0000-0000-0000-00000031f0a1'
+  and record_id = (select id from public.findings where finding_number = 'NCR-31-001') and relationship = 'evidence'), 1::bigint,
+  'the contractor''s photo is evidence on the NCR itself');
+reset role;
+set local request.jwt.claims = '{}';
+insert into public.findings (organization_id, project_id, building_id, finding_number, finding_type, title, description, severity, priority, status, created_by, idempotency_key)
+select organization_id, project_id, building_id, 'NCR-31-002', 'ncr', 'Cover to rebar short', 'Cover 20 mm where 35 mm is required', 'high', 'high', 'open', '00000000-0000-0000-0000-0000000031b1', 'po31-ncr-2'
+from ids;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000031b1","role":"authenticated"}';
+set local role authenticated;
+select public.share_to_portal((select project_id from ids), 'contractor', (select party_a from ids), 'finding',
+  (select id from public.findings where finding_number = 'NCR-31-002'), 'NCR cover to rebar', 'Repair and submit evidence.',
+  'submit_evidence', 'high', now() + interval '3 days', null, null);
+reset role;
+create temporary table share_b on commit drop as select id from public.portal_shares
+  where record_id = (select id from public.findings where finding_number = 'NCR-31-002');
+grant select on share_b to authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000031c1","role":"authenticated"}';
+set local role authenticated;
+select public.respond_in_portal((select id from share_b), 'mark_complete', 'Cover repaired with mortar.', null, null);
+reset role;
+select is((select status from public.findings where finding_number = 'NCR-31-002'), 'ready_for_verification',
+  'work marked complete in the portal waits for CODECO''s verification on the NCR');
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000031b1","role":"authenticated"}';
+set local role authenticated;
+select public.review_portal_share((select id from share_b), 'return', 'Cover still short at C7.', null);
+reset role;
+select is((select status from public.findings where finding_number = 'NCR-31-002'), 'reopened',
+  'a CODECO return in the portal reopens the NCR');
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000031c1","role":"authenticated"}';
+set local role authenticated;
+select public.respond_in_portal((select id from share_b), 'mark_complete', 'C7 repaired too.', null, null);
+reset role;
+select is((select status from public.findings where finding_number = 'NCR-31-002'), 'ready_for_verification', 'the resubmission is ready for verification again');
+select is((select count(*) from public.finding_updates where finding_id = (select id from public.findings where finding_number = 'NCR-31-002') and message like 'Portal %'), 3::bigint,
+  'each portal step that moved the NCR is in its history');
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000031b1","role":"authenticated"}';
+set local role authenticated;
+update public.findings set status = 'closed' where finding_number = 'NCR-31-002';
+reset role;
+select is((select status from public.portal_shares where id = (select id from share_b)), 'closed', 'closing the NCR closes its open portal item');
+select is((select array[action, previous_status, resulting_status] from public.portal_events where share_id = (select id from share_b) order by sequence desc limit 1),
+  array['close', 'submitted_for_verification', 'closed'], 'and the contractor''s history shows the closing step');
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000031b1","role":"authenticated"}';
+set local role authenticated;
 reset role;
 select throws_ok($$delete from public.portal_events$$, '55000', null, 'portal events are append-only');
 
@@ -337,6 +386,8 @@ select public.share_to_portal((select project_id from ids), 'client', (select pa
   '00000000-0000-0000-0000-00000031f004', 'Weekly progress report', null, 'information', 'normal', null, null, null, 'weekly', '2026-11-16', '2026-11-22');
 select public.share_to_portal((select project_id from ids), 'client', (select party_client from ids), 'publication',
   '00000000-0000-0000-0000-00000031f005', 'Weekly progress report', 'Corrected manpower figures', 'information', 'normal', null, null, null, 'weekly', '2026-11-16', '2026-11-22');
+-- F15: only an approved revision is released; revision B is approved before the document is shared.
+select public.set_project_document_revision_status((select id from public.project_document_revisions where revision = 'B'), 'approved', null);
 select public.share_to_portal((select project_id from ids), 'client', (select party_client from ids), 'document',
   (select id from public.project_documents where document_number = 'A-101'), 'Ground floor plan', null, 'approve', 'normal', now() + interval '5 days', null, null);
 reset role;
@@ -350,7 +401,7 @@ select is(
 );
 select is((select count(*) from public.portal_shares where audience = 'contractor'), 0::bigint, 'the client does not see contractor items');
 select is((select count(*) from public.portal_events where actor_side = 'contractor'), 0::bigint, 'the client does not see contractor responses');
-select is((select count(*) from public.project_document_revisions), 2::bigint, 'the client sees revision and status information of the shared document');
+select is((select count(*) from public.portal_document_revisions((select project_id from ids))), 1::bigint, 'the client sees the released revision and its status, not earlier or unreleased revisions');
 select is((select count(*) from public.files where id = '00000000-0000-0000-0000-00000031f001'), 0::bigint, 'the client opens only the revision file that was shared');
 select throws_ok(
   $$select public.respond_in_portal((select id from public.portal_shares where record_type = 'document'), 'approve', null, null, null)$$,
@@ -370,7 +421,7 @@ set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000031c1","r
 set local role authenticated;
 select is((select count(*) from public.portal_shares), 0::bigint, 'a revoked contractor user sees nothing');
 reset role;
-select is((select count(*) from public.portal_events where actor_user_id = '00000000-0000-0000-0000-0000000031c1'), 3::bigint,
+select is((select count(*) from public.portal_events where actor_user_id = '00000000-0000-0000-0000-0000000031c1'), 5::bigint,
   'the revoked user''s responses remain in the audit trail');
 
 select * from finish();

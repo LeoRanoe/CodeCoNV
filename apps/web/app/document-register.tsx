@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
 import { PortalSharePanel } from "@/app/portal-share-panel";
 import { useLanguage } from "@/lib/i18n";
+import { pageAll } from "@/lib/supabase/page-all.mjs";
 import { useBackToClose } from "@/lib/navigation/app-history";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { downloadBlob } from "@/lib/browser/download";
@@ -18,6 +19,7 @@ import {
   registerCsv,
   registerRows,
   reviewerStatuses,
+  revisionStanding,
   sortRegister,
   statusesNeedingReason,
   statusMeta,
@@ -62,10 +64,11 @@ function day(value: string | null | undefined, locale: string) {
 
 async function loadRegister(client: SupabaseClient, projectId: string) {
   const [documents, revisions, people, files] = await Promise.all([
-    client.from("project_documents").select("*").eq("project_id", projectId).order("folder_code").limit(5000),
-    client.from("project_document_revisions").select("*").eq("project_id", projectId).order("uploaded_at", { ascending: false }).limit(10000),
+    // F11: paged past the API's 1,000-row response cap, in a stable order.
+    pageAll((from: number, to: number) => client.from("project_documents").select("*").eq("project_id", projectId).order("folder_code").order("id").range(from, to), 50000),
+    pageAll((from: number, to: number) => client.from("project_document_revisions").select("*").eq("project_id", projectId).order("uploaded_at", { ascending: false }).order("id").range(from, to), 100000),
     client.rpc("list_project_people", { p_project_id: projectId }),
-    client.from("project_document_revisions").select("file_id,files(original_name)").eq("project_id", projectId).limit(10000),
+    pageAll((from: number, to: number) => client.from("project_document_revisions").select("file_id,files(original_name)").eq("project_id", projectId).order("id").range(from, to), 100000),
   ]);
   if (documents.error) throw documents.error;
   if (revisions.error) throw revisions.error;
@@ -360,6 +363,8 @@ function DocumentDetail({ client, projectId, row, names, fileNames, folderName, 
       if (events.error) throw events.error;
       return { events: events.data ?? [], links: links.data ?? [] };
     },
+    // Records link themselves to a revision when they are saved (F11): read the links afresh on open.
+    refetchOnMount: "always",
   });
   const refreshAll = () => { changed(); void eventsQuery.refetch(); };
   const run = async (operation: () => Promise<void>) => {
@@ -496,6 +501,15 @@ function DocumentDetail({ client, projectId, row, names, fileNames, folderName, 
             <ul className="portal-files">
               {eventsQuery.data.links.map((item) => (
                 <li key={String(item.id)}><span>{String(item.record_code ?? item.record_type)}</span>
+                  {(() => {
+                    // F11: the exact revision the record was written against, and whether it is still the one to use.
+                    const pinned = item.revision_id ? row.history.find((revision) => revision.id === item.revision_id) : null;
+                    if (!pinned) return null;
+                    const standing = revisionStanding(pinned.id, [row.document], row.history);
+                    return <small className={`portal-cell-meta${standing?.stale ? " document-link-stale" : ""}`} data-link-revision={pinned.revision}>
+                      {text(`rev ${pinned.revision}`, `rev ${pinned.revision}`)}{standing?.stale ? text(standing.newerApproved ? ` · rev ${standing.newerApproved.revision} approved since` : " · no longer valid", standing.newerApproved ? ` · sindsdien rev ${standing.newerApproved.revision} goedgekeurd` : " · niet meer geldig") : ""}
+                    </small>;
+                  })()}
                   {canManage ? <button className="ui-button ui-button--quiet ui-button--sm" type="button" onClick={() => void link(true, item as { record_type: string; record_id: string; record_code: string | null })}>{text("Unlink", "Ontkoppelen")}</button> : null}
                 </li>
               ))}

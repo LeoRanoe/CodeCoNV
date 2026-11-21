@@ -66,7 +66,7 @@ import { SharedLessons } from "@/app/forms/shared-lessons";
 import { InspectionSpecEditor } from "@/app/forms/inspection-spec-editor";
 import { SignoffPanel } from "@/app/forms/signoff-panel";
 import { loadSignoffHistory, signoffHistoryEntries } from "@/lib/forms/signoff";
-import { cleanSpecValues, isOtherOption, sensitiveKeys, sheetLayouts, specFacts, specFollowUps, specForms, specLinks, specMissing, workflowProfiles, type SpecFormKey, type SpecRow, type SpecValues } from "@/lib/forms/spec-forms";
+import { cleanSpecValues, isOtherOption, sensitiveKeys, sheetLayouts, specFacts, specForms, specLinks, specMissing, workflowProfiles, type SpecFormKey, type SpecRow, type SpecValues } from "@/lib/forms/spec-forms";
 import { specLabel } from "@/lib/forms/spec-labels-nl";
 import { facetFilterActive, filterPeriodSnapshot, matchesSpecFacets, recordSpec, specFacets, type SpecFacetFilter } from "@/lib/forms/spec-facets";
 import { SpecFacetFilterBar } from "@/app/forms/spec-facet-filter";
@@ -161,7 +161,6 @@ import { countOpenFindings } from "@/lib/records/finding-counts.mjs";
 import { createFileOriginResolver, filesForRecord, type FileOriginKind, type FileOriginResolver } from "@/lib/supabase/file-origins";
 import { loadProjectThumbnailUrl } from "@/lib/images/thumbnail";
 import {
-  createRecordFollowUpAction,
   buildPeriodReportSnapshot,
   createChecklist,
   createFinding,
@@ -2947,34 +2946,9 @@ function ProjectOperations({
     }
   };
 
-  /**
-   * Every follow-up row of an incident or an agreement becomes its own action record, with its
-   * owner and due date, linked to the record (workbook: "create separate linked action records").
-   * The key is stable per row, so saving the record again never creates the action twice.
-   */
-  const createFollowUpActions = async (form: SpecFormKey, values: SpecValues, sourceType: "hse" | "meeting", sourceId: string, buildingIdForActions: string | null, sourceLabel: string, rows?: Array<{ field: string; row: SpecRow }>) => {
-    if (!permissions.can("actions.create") || sourceId.startsWith("pending") || (typeof navigator !== "undefined" && !navigator.onLine)) return 0;
-    let created = 0;
-    for (const { field, row } of rows ?? specFollowUps(form, values)) {
-      const reference = String(row.owner_ref ?? "");
-      const action = String(row.action ?? "").trim();
-      const key = `follow:${sourceId}:${field}:${action.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 80)}`;
-      await createRecordFollowUpAction(client, {
-        projectId,
-        sourceType,
-        sourceId,
-        buildingId: buildingIdForActions,
-        ownerUserId: reference.startsWith("user:") ? reference.slice(5) : null,
-        ownerPartyId: reference.startsWith("party:") ? reference.slice(6) : null,
-        title: action,
-        description: `${sourceLabel}${row.owner ? ` · ${text("owner", "eigenaar")}: ${row.owner}` : ""}`,
-        dueDate: String(row.due ?? ""),
-        idempotencyKey: key.length >= 8 ? key : `${key}-follow-up`,
-      });
-      created += 1;
-    }
-    return created;
-  };
+  // Every follow-up row of an incident or an agreement becomes its own action record, with its
+  // owner and due date, linked to the record. The database creates them in the same transaction as
+  // the save (also on offline replay) and writes the action id into the row (F08).
 
   const addHse = async () => {
     if (hseForm.description.trim().length < 3) return;
@@ -3118,7 +3092,6 @@ function ProjectOperations({
           }
           if (navigator.onLine) await syncQueuedEvidenceNow();
         }
-        if (eventId && hseSpecForm === "hse_incident") await createFollowUpActions(hseSpecForm, hseSpecValues, "hse", eventId, primaryHseBuildingId || null, hseTitle);
       },
       // Only a save that really waits on the device says so; online the server has it already.
       typeof navigator !== "undefined" && !navigator.onLine
@@ -3215,14 +3188,15 @@ function ProjectOperations({
         if (!registerOnline && registerFiles.length) {
           throw new Error(text("Attachments need a connection. Remove them to save on this device, or go online.", "Bijlagen hebben verbinding nodig. Verwijder ze om op dit apparaat op te slaan, of ga online."));
         }
-        // A delay report and a lesson learned carry pictures the client's form marks as required.
+        // Photos attached to a delay report or a lesson learned (optional in the workbook, rows 20 / 18)
+        // must reach the server with it.
         // A formal record that exists without them is what the QA sweep found (M20), so these two
         // are only saved with a connection, and only stay saved once the pictures are confirmed.
         // Since the PDR sheet (PR #22) its evidence is taken in the general photo field, not a
         // named box: either kind makes the photos part of the formal report (QA M20).
         const photosAreMandatory = !editingRegisterId && (delayReportRegister || lessonsLearnedRegister) && (namedRegisterPhotos.length + registerPhotos.length) > 0;
         if (photosAreMandatory && !registerOnline) {
-          throw new Error(text("This form needs a connection: the required photos must be confirmed before it is saved. Your entries stay on this screen.", "Dit formulier heeft verbinding nodig: de verplichte foto's moeten bevestigd zijn voordat het wordt opgeslagen. Je invoer blijft op dit scherm staan."));
+          throw new Error(text("This form needs a connection: the attached photos must be confirmed before it is saved. Your entries stay on this screen.", "Dit formulier heeft verbinding nodig: de toegevoegde foto's moeten bevestigd zijn voordat het wordt opgeslagen. Je invoer blijft op dit scherm staan."));
         }
         const effectiveReportId = registerOnline ? await ensureProjectDayReport(client, projectId, reportId) : reportId;
         const uploadedFiles = [];
@@ -3299,14 +3273,7 @@ function ProjectOperations({
           // A queued item has no number yet; the database assigns it when the item is sent.
           entry = savedEntry.record ?? { id: savedEntry.id, entry_number: "" };
         }
-        // The agreement's action (rows 11 and 12) becomes an action record of its own.
-        const agreementOwner = typeof registerSpecValues.action_owner === "string" ? registerSpecValues.action_owner.trim() : "";
-        if (registerForm.type === "agreement" && entry.entry_number && registerSpecValues.action_required === "Yes" && agreementOwner) {
-          await createFollowUpActions("agreement", registerSpecValues, "meeting", entry.id, registerRecordBuildingId || null, `${entry.entry_number} · ${registerTitle}`, [{
-            field: "action_owner",
-            row: { action: registerTitle, owner: agreementOwner, owner_ref: String(registerSpecValues.action_owner_ref ?? ""), due: String(registerSpecValues.due_date ?? "") },
-          }]);
-        }
+        // The agreement's action (rows 11 and 12) becomes an action record of its own in the database (F08).
         // Site photos belong to a register item as much as documents do. The photos the
         // form asked for by name are filed the same way and in the same folder, but keep
         // the name of the box they were taken in, so the report can tell them apart.
@@ -3357,7 +3324,7 @@ function ProjectOperations({
               // formal is left behind without its evidence.
               await withdrawWorkspaceRecord(client, "register_entry", entry.id, "Verplichte foto's niet bevestigd; niet opgeslagen.");
               await Promise.all(queuedPhotoIds.map((id) => removeOfflineUpload(id)));
-              throw new Error(text("Not saved: the required photos were not confirmed. Check the connection and save again; your entries are still here.", "Niet opgeslagen: de verplichte foto's zijn niet bevestigd. Controleer de verbinding en sla opnieuw op; je invoer staat er nog."));
+              throw new Error(text("Not saved: the attached photos were not confirmed. Check the connection and save again; your entries are still here.", "Niet opgeslagen: de toegevoegde foto's zijn niet bevestigd. Controleer de verbinding en sla opnieuw op; je invoer staat er nog."));
             }
           }
         }
@@ -3491,16 +3458,29 @@ function ProjectOperations({
     })
     .sort((left, right) => right.reportDate.localeCompare(left.reportDate));
 
+  // The client's Workspace page names (Word file, image 15) for the forms that share the register screen.
+  const workspacePageTitles: Record<string, string> = {
+    works_ongoing: text("Works ongoing", "Werkzaamheden gaande"),
+    works_completed: text("Works completed", "Werkzaamheden afgerond"),
+    delay_report: text("Project Delay Report (PDR)", "Vertragingsrapport (PDR)"),
+    delivery: text("Materials delivery", "Materiaallevering"),
+    technical_instruction: text("Technical instructions", "Technische instructies"),
+    change_order: text("Change order (CO)", "Change order (CO)"),
+    lessons_learned: text("Lessons Learned (LL)", "Geleerde lessen (LL)"),
+    agreement: text("Agreements Made", "Gemaakte afspraken"),
+  };
   const projectSections: Array<[Exclude<ProjectTab, "home">, string, number]> = ([
     ["inspections", text("Inspections", "Inspecties"), data.inspections.length],
     ["findings", text("Issues", "Issues"), countOpenFindings(data.findings, "issue")],
     ["ncr", "NCR", countOpenFindings(data.findings, "ncr")],
-    ["hse", "HSE", data.hseEvents.length],
+    ["hse", hseSpecForm === "hse_incident" ? text("HSE incident registration", "HSE-incidentregistratie") : "HSE", data.hseEvents.length],
     // The page is named after what was asked for: one block of the day, or the whole day log.
     ["daily", !dayLogFocus ? text("Day log", "Daglog") : dailyWorkView === "works_completed" ? text("Works completed", "Werkzaamheden afgerond") : dailyWorkView === "delays" ? text("Delays", "Vertragingen") : text("Works ongoing", "Werkzaamheden gaande"), (data.dailyWork ?? []).length],
     ["workforce", text("Workforce", "Workforce"), workforceDays.length],
     ["documents", "Project Docs", data.files.filter((file) => file.status === "available").length + data.registerEntries.filter((entry) => ["document", "drawing", "specification", "contract", "boq"].includes(entry.register_type)).length],
-    ["registers", text("Formal documents & registers", "Formele documenten & registers"), data.registerEntries.length],
+    // F17: a Workspace page opened on one of the client's forms carries that form's name (images 8 and 12).
+    // F17: a saved record opened from the archive or a link is headed by its own form's name.
+    ["registers", workspacePageTitles[(focusRecordId && data.registerEntries.find((entry) => entry.id === focusRecordId)?.register_type) || registerForm.type] ?? text("Formal documents & registers", "Formele documenten & registers"), data.registerEntries.length],
     ["visual", text("Visual evidence", "Visueel bewijs"), data.visualCaptures.length],
     ["drawings", text("Drawings", "Tekeningen"), data.files.filter((file) => file.category === "drawing" && file.status === "available").length],
     ["tools", text("Field tools", "Veldtools"), data.registerEntries.filter((entry) => ["notepad", "agreement", "technical_instruction"].includes(entry.register_type)).length],
@@ -5529,6 +5509,20 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
                 </div>;
               })()}
               <div className="controlled-history-description"><span>{text("Complete content", "Volledige inhoud")}</span><p>{String(details.description ?? details.request ?? details.instruction ?? text("No description supplied.", "Geen omschrijving ingevoerd."))}</p></div>
+              {(() => {
+                // The workbook fields of a TI / CO with its linked records, including the exact document
+                // revision it refers to and whether that revision is still the one to use (F11).
+                const form = entry.register_type in specForms ? entry.register_type as SpecFormKey : null;
+                const spec = (details.spec ?? null) as SpecValues | null;
+                if (!form || !spec) return null;
+                const facts = specFacts(form, spec, language, { translate: (value) => specLabel(value, language) });
+                return (
+                  <div className="controlled-history-spec">
+                    <SpecLinkChips links={specLinks(form, spec, language)} text={text} />
+                    {facts.length ? <dl className="record-spec-facts">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl> : null}
+                  </div>
+                );
+              })()}
               {entry.register_type === "change_order" ? <div className="controlled-history-description controlled-history-change-order"><span>{text("Change order", "Wijzigingsopdracht")}</span>{changeOrderSummary(details, text).map((row) => <p key={row.label}><strong>{row.label}:</strong> {row.value}</p>)}</div> : null}
               {attachmentFiles.length ? <div className="controlled-history-attachments"><span>{text("Uploaded attachments", "Geüploade bijlagen")}</span>{attachmentFiles.map((file, index) => {
                 const fileId = String(file.file_id ?? "");
@@ -5889,7 +5883,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
               <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => viewRecord(finding)}><FileText size={16} /> {text("View record", "Registratie bekijken")}</button>
               {finding.status !== "cancelled" && permissions.can("records.edit") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => editRecord(finding)}><Wrench size={16} /> {text("Edit", "Bewerken")}</button> : null}
               {finding.status !== "cancelled" && permissions.can("records.edit") ? <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => withdrawRecord(finding)}>{text("Withdraw", "Intrekken")}</button> : null}
-              {visualAnnotation || permissions.can("files.manage") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => linkVisual(finding)}><Camera size={16} /> {visualAnnotation ? text("View photo marker", "Bekijk fotomarker") : text("Mark on photo / 360°", "Markeer op foto / 360°")}</button> : null}
+              {visualAnnotation || permissions.can("files.manage") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => linkVisual(finding)}><Camera size={16} /> {visualAnnotation ? text("View photo marker", "Bekijk fotomarker") : finding.finding_type === "ncr" ? text("Mark on photo", "Markeer op foto") : text("Mark on photo / 360°", "Markeer op foto / 360°")}</button> : null}
               {drawingPin || permissions.can("files.manage") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => linkDrawing(finding)}><MapPin size={16} /> {drawingPin ? text("View on drawing", "Bekijk op tekening") : text("Place on drawing", "Plaats op tekening")}</button> : null}
               {permissions.can("findings.create") ? <button className="external-party-button" type="button" disabled={busy || creatingShareFor === finding.id} onClick={() => void createShare(finding)}>
                 {creatingShareFor === finding.id ? <Loader2 className="spin" size={17} /> : <MessageCircle size={17} />}

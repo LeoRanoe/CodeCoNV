@@ -13,12 +13,17 @@ export type SpecPerson = { id: string; name: string; role?: string };
 export type SpecParty = { id: string; name: string; type: string };
 export type SpecRecordOption = { id: string; kind: string; registerType?: string; code: string; title: string };
 export type SpecLocation = { id: string; label: string };
+/** The Project Documents register, for exact revision references (F11). */
+export type SpecDocument = { id: string; document_number: string | null; title: string; current_revision_id: string | null };
+export type SpecRevision = { id: string; document_id: string; revision: string; review_status: string; uploaded_at: string; superseded_at: string | null };
 
 export type SpecDirectoryValue = {
   people: SpecPerson[];
   parties: SpecParty[];
   records: SpecRecordOption[];
   locations: SpecLocation[];
+  documents: SpecDocument[];
+  revisions: SpecRevision[];
   config: SpecConfiguration | null;
   /** Whether this user may choose the reviewer-only values of this form. */
   canDecide: (form: SpecFormKey) => boolean;
@@ -27,6 +32,8 @@ export type SpecDirectoryValue = {
   currentUser: { id: string; name: string } | null;
   /** The label shown for a stored (English) workbook value. */
   translate: (value: string) => string;
+  /** Reloads the Project Documents register (a revision picker opening on a register that changed). */
+  refreshDocuments?: () => void;
   /** Opens a linked record (`<kind>:<id>`). */
   openRecord?: (ref: string) => void;
 };
@@ -36,6 +43,8 @@ const emptyDirectory: SpecDirectoryValue = {
   parties: [],
   records: [],
   locations: [],
+  documents: [],
+  revisions: [],
   config: null,
   // Outside a project the database still decides; the screen does not pretend otherwise.
   canDecide: () => true,

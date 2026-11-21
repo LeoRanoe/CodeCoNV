@@ -411,11 +411,12 @@ function SharedDocuments({ snapshot, shares, open }: { snapshot: PortalSnapshot;
     <PortalPanel title={text("Shared documents", "Gedeelde documenten")}>
       <div className="portal-table-wrap">
         <table className="portal-table">
-          <thead><tr><th>{text("Number", "Nummer")}</th><th>{text("Title", "Titel")}</th><th>{text("Current revision", "Actuele revisie")}</th><th>{text("Status", "Status")}</th><th>{text("Shared", "Gedeeld")}</th></tr></thead>
+          <thead><tr><th>{text("Number", "Nummer")}</th><th>{text("Title", "Titel")}</th><th>{text("Released revision", "Vrijgegeven revisie")}</th><th>{text("Status", "Status")}</th><th>{text("Shared", "Gedeeld")}</th></tr></thead>
           <tbody>
             {shares.map((share) => {
               const document = snapshot.documents.get(share.record_id);
-              const current = snapshot.revisions.find((revision) => revision.id === document?.current_revision_id);
+              // The newest revision released to this share (F15); the register's internal current pointer is not shown.
+              const current = snapshot.revisions.filter((revision) => revision.share_id === share.id).sort((a, b) => String(b.uploaded_at).localeCompare(String(a.uploaded_at)))[0];
               const status = statusMeta(current?.review_status ?? "");
               return (
                 <tr key={share.id}>
@@ -649,7 +650,8 @@ function ShareDetail({ client, share, snapshot, rights, buildingName, defaultBui
   const rounds = eventsByRound(snapshot.events.filter((event) => event.share_id === share.id)) as Array<{ round: number; events: PortalEvent[] }>;
   const fields = step === "respond" ? responseFields(share, text) : [];
   const document = share.record_type === "document" ? snapshot.documents.get(share.record_id) : undefined;
-  const revisions = document ? snapshot.revisions.filter((revision) => revision.document_id === document.id).sort((a, b) => String(b.uploaded_at).localeCompare(String(a.uploaded_at))) : [];
+  const revisions = document ? snapshot.revisions.filter((revision) => revision.share_id === share.id).sort((a, b) => String(b.uploaded_at).localeCompare(String(a.uploaded_at))) : [];
+  const latestReleased = revisions[0]?.id;
   const needsComment = step ? stepNeedsComment(step, share.audience) : false;
   const canUpload = share.audience === "contractor" && rights.respond && ["respond", "submit_evidence", "mark_complete", "comment"].includes(step);
 
@@ -752,8 +754,8 @@ function ShareDetail({ client, share, snapshot, rights, buildingName, defaultBui
                     const status = statusMeta(revision.review_status);
                     const available = files.some((item) => item.file_id === revision.file_id);
                     return (
-                      <tr key={revision.id} className={revision.id === document?.current_revision_id ? "portal-current" : ""}>
-                        <td>{revision.revision}{revision.id === document?.current_revision_id ? ` · ${text("current", "actueel")}` : ""}</td>
+                      <tr key={revision.id} className={revision.id === latestReleased ? "portal-current" : ""}>
+                        <td>{revision.revision}{revision.id === latestReleased ? ` · ${text("latest released", "laatst vrijgegeven")}` : ""}</td>
                         <td><span className={toneClass[status.tone] ?? toneClass.neutral}>{language === "nl" ? status.nl : status.en}</span></td>
                         <td>{formatDate(revision.issue_date, locale)}</td>
                         <td>{available ? <button className="ui-button ui-button--secondary ui-button--sm" type="button" onClick={() => void download(revision.file_id)}><Download size={14} /> {text("Download", "Downloaden")}</button> : <small>{text("Not shared", "Niet gedeeld")}</small>}</td>

@@ -1,3 +1,5 @@
+import { inPeriod as inReportPeriod } from "./report-period.mjs";
+
 /**
  * Project figures for the Overview and for the register reports, computed from stored records
  * only (requirements sections 11 and 12). Pure, so screen, export and tests agree.
@@ -102,10 +104,8 @@ export function summarizeProject(input, now = new Date()) {
  */
 export function contractorPerformance(input, period = {}, now = new Date()) {
   const { shares = [], events = [], findings = [], actions = [], parties = [] } = input;
-  const inPeriod = (value) => {
-    const day = String(value ?? "").slice(0, 10);
-    return (!period.from || day >= period.from) && (!period.to || day <= period.to);
-  };
+  // F11: project-local days, the same rule as every other register report.
+  const inPeriod = (value) => inReportPeriod(value, period.from, period.to);
   return parties
     .filter((party) => ["contractor", "subcontractor"].includes(party.type ?? party.party_type))
     .map((party) => {

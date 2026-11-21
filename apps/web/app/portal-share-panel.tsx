@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { ShareStatusBadge } from "@/app/portal-app";
 import { useLanguage } from "@/lib/i18n";
+import { statusMeta as documentStatusMeta } from "@/lib/documents/document-register.mjs";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { downloadProjectFile, uploadProjectFile } from "@/lib/storage/gateway";
 import {
@@ -17,15 +18,18 @@ import {
   publicationTypes,
   recordTypeLabels,
   requestedActionLabels,
+  revisionReleasable,
   reviewStepsFor,
   shareStatusLabels,
 } from "@/lib/portal/portal-model.mjs";
 import {
   loadPortalSnapshot,
   loadRecordFiles,
+  releaseDocumentRevision,
   reviewPortalShare,
   setMemberPortalParty,
   shareToPortal,
+  withdrawDocumentRelease,
   type PortalAudience,
   type PortalEvent,
   type PortalShare,
@@ -237,6 +241,93 @@ function ShareForm({ client, projectId, recordType, recordId, recordTitle, parti
   );
 }
 
+function documentStatusLabel(status: string, language: string) {
+  const meta = documentStatusMeta(status);
+  return language === "nl" ? meta.nl : meta.en;
+}
+
+type InternalRevision = { id: string; revision: string; review_status: string; superseded_at: string | null; uploaded_at: string };
+
+/**
+ * F15: which revisions of a shared document this organisation can read. Uploading a revision never
+ * shares it; an authorised user releases an approved revision here and can withdraw it with a reason.
+ */
+function DocumentReleases({ client, share, snapshot, canRelease, changed }: {
+  client: SupabaseClient; share: PortalShare; snapshot: PortalSnapshot; canRelease: boolean; changed: () => void;
+}) {
+  const { language, locale, text } = useLanguage();
+  const [choice, setChoice] = useState("");
+  const [withdrawing, setWithdrawing] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const released = snapshot.revisions.filter((revision) => revision.share_id === share.id);
+  const revisionsQuery = useQuery({
+    queryKey: ["document-revisions-internal", share.record_id],
+    queryFn: async () => {
+      const result = await client.from("project_document_revisions").select("id,revision,review_status,superseded_at,uploaded_at").eq("document_id", share.record_id).order("uploaded_at", { ascending: false });
+      if (result.error) throw result.error;
+      return (result.data ?? []) as InternalRevision[];
+    },
+    enabled: canRelease,
+  });
+  const candidates = (revisionsQuery.data ?? []).filter((revision) => revisionReleasable(revision) && !released.some((item) => item.id === revision.id));
+  const selected = candidates.find((item) => item.id === choice)?.id ?? candidates[0]?.id ?? "";
+  const run = async (work: () => Promise<unknown>) => {
+    setBusy(true);
+    setError("");
+    try {
+      await work();
+      setWithdrawing(""); setReason(""); setChoice("");
+      void revisionsQuery.refetch();
+      changed();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : text("Not saved.", "Niet opgeslagen."));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="portal-detail-section" aria-label={text("Released revisions", "Vrijgegeven revisies")}>
+      <h4>{text("Released revisions", "Vrijgegeven revisies")}</h4>
+      {released.length ? (
+        <ul className="portal-files">
+          {released.map((revision) => (
+            <li key={revision.release_id}>
+              <span>{text("Revision", "Revisie")} {revision.revision} · {documentStatusLabel(revision.review_status, language)} · {formatDate(revision.released_at, locale)}</span>
+              {canRelease && withdrawing !== revision.release_id ? <button className="ui-button ui-button--secondary ui-button--sm" type="button" onClick={() => { setWithdrawing(revision.release_id); setReason(""); }}>{text("Withdraw", "Intrekken")}</button> : null}
+            </li>
+          ))}
+        </ul>
+      ) : <p className="record-list-empty">{text("No revision is released to this organisation.", "Er is geen revisie vrijgegeven aan deze organisatie.")}</p>}
+      {withdrawing ? (
+        <div className="portal-response-form">
+          <label className="form-field"><span>{text("Reason for withdrawal", "Reden van intrekken")}</span><textarea value={reason} rows={2} onChange={(event) => setReason(event.target.value)} /></label>
+          <div className="portal-response-actions">
+            <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={busy} onClick={() => setWithdrawing("")}>{text("Cancel", "Annuleren")}</button>
+            <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || reason.trim().length < 3} onClick={() => void run(() => withdrawDocumentRelease(client, { releaseId: withdrawing, reason }))}>{busy ? <Loader2 className="spin" size={15} /> : null} {text("Withdraw release", "Vrijgave intrekken")}</button>
+          </div>
+        </div>
+      ) : null}
+      {canRelease && !withdrawing ? (
+        candidates.length ? (
+          <div className="portal-response-form">
+            <label className="form-field"><span>{text("Approved revision to release", "Goedgekeurde revisie om vrij te geven")}</span>
+              <select value={selected} onChange={(event) => setChoice(event.target.value)}>
+                {candidates.map((revision) => <option key={revision.id} value={revision.id}>{revision.revision} · {documentStatusLabel(revision.review_status, language)}</option>)}
+              </select>
+            </label>
+            <div className="portal-response-actions">
+              <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={busy || !selected} onClick={() => void run(() => releaseDocumentRevision(client, { shareId: share.id, revisionId: selected }))}>{busy ? <Loader2 className="spin" size={15} /> : <Send size={15} />} {text("Release revision", "Revisie vrijgeven")}</button>
+            </div>
+          </div>
+        ) : revisionsQuery.isSuccess ? <p className="portal-note">{text("Only an approved, current revision can be released. Revisions in review stay internal.", "Alleen een goedgekeurde, actuele revisie kan worden vrijgegeven. Revisies in beoordeling blijven intern.")}</p> : null
+      ) : null}
+      {error ? <p className="field-warning" role="alert">{error}</p> : null}
+    </section>
+  );
+}
+
 function ShareReview({ client, share, snapshot, partyName, canReview, changed }: {
   client: SupabaseClient; share: PortalShare; snapshot: PortalSnapshot; partyName: string; canReview: boolean; changed: () => void;
 }) {
@@ -290,6 +381,7 @@ function ShareReview({ client, share, snapshot, partyName, canReview, changed }:
       {open ? (
         <div className="portal-share-body">
           {share.visible_summary ? <p className="portal-summary">{share.visible_summary}</p> : null}
+          {share.record_type === "document" ? <DocumentReleases client={client} share={share} snapshot={snapshot} canRelease={canReview} changed={changed} /> : null}
           {files.length ? (
             <ul className="portal-files">
               {files.map((item) => {

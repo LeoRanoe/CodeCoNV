@@ -2,7 +2,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, type ReactNode } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import { SpecDirectoryProvider } from "@/app/forms/spec-directory";
 import type { BuildingOption } from "@/app/building-picker";
 import { useLanguage } from "@/lib/i18n";
@@ -11,6 +11,8 @@ import type { SpecFormKey } from "@/lib/forms/spec-forms";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { buildRecordDirectory, recordKindTabs } from "@/lib/records/record-directory.mjs";
 import { loadProjectPeople, type OperationSnapshot } from "@/lib/supabase/operations";
+import { pageAll } from "@/lib/supabase/page-all.mjs";
+import type { SpecDocument, SpecRevision } from "@/app/forms/spec-directory";
 import type { InternalMember, ProjectParty } from "@/lib/supabase/data";
 
 /**
@@ -37,6 +39,21 @@ export function WorkspaceSpecDirectory({ client, projectId, snapshot, buildings,
     staleTime: 5 * 60_000,
     networkMode: "always",
   });
+  // F11: the Project Documents register, for exact revision references (paged past the API cap).
+  const documentsQuery = useQuery({
+    queryKey: ["spec-document-revisions", projectId],
+    queryFn: async () => {
+      const [documents, revisions] = await Promise.all([
+        pageAll((from: number, to: number) => client.from("project_documents").select("id,document_number,title,current_revision_id").eq("project_id", projectId).order("id").range(from, to), 50000),
+        pageAll((from: number, to: number) => client.from("project_document_revisions").select("id,document_id,revision,review_status,uploaded_at,superseded_at").eq("project_id", projectId).order("id").range(from, to), 100000),
+      ]);
+      // A database without the register (or a user without access) offers no documents.
+      return { documents: (documents.data ?? []) as SpecDocument[], revisions: (revisions.data ?? []) as SpecRevision[] };
+    },
+    staleTime: 60_000,
+  });
+  const refetchDocuments = documentsQuery.refetch;
+  const refreshDocuments = useCallback(() => { void refetchDocuments(); }, [refetchDocuments]);
   const people = useMemo(() => {
     const listed = peopleQuery.data ?? [];
     if (listed.length) return listed;
@@ -59,6 +76,9 @@ export function WorkspaceSpecDirectory({ client, projectId, snapshot, buildings,
     parties: parties.map((party) => ({ id: party.id, name: party.name, type: party.type })),
     records,
     locations,
+    documents: documentsQuery.data?.documents ?? [],
+    revisions: documentsQuery.data?.revisions ?? [],
+    refreshDocuments,
     config: snapshot.settings?.spec_configuration ?? null,
     canDecide: (form: SpecFormKey) => canReview || ((form === "hse" || form === "hse_incident") && permissions.can("hse.manage")) || (form === "inspection" && permissions.can("inspections.manage")),
     canSeeSensitive: permissions.can("hse.manage"),
@@ -69,6 +89,6 @@ export function WorkspaceSpecDirectory({ client, projectId, snapshot, buildings,
       if (!id) return;
       openRecord((recordKindTabs as Record<string, string>)[kind] ?? "home", id);
     },
-  }), [canReview, currentUserId, currentUserName, language, locations, openRecord, parties, people, permissions, records, snapshot.settings?.spec_configuration]);
+  }), [documentsQuery.data, refreshDocuments, canReview, currentUserId, currentUserName, language, locations, openRecord, parties, people, permissions, records, snapshot.settings?.spec_configuration]);
   return <SpecDirectoryProvider value={value}>{children}</SpecDirectoryProvider>;
 }

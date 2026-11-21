@@ -142,3 +142,13 @@ test("the history is grouped by workflow round and leaves views out", () => {
   ]);
   assert.deepEqual(rounds.map((round) => [round.round, round.events.map((event) => event.action)]), [[1, ["assign", "return"]], [2, ["resubmit"]]]);
 });
+
+test("F15: only a current, reviewer-approved revision is offered for portal release", async () => {
+  const { revisionReleasable, releasableRevisionStatuses } = await import("../lib/portal/portal-model.mjs");
+  assert.deepEqual([...releasableRevisionStatuses], ["approved", "approved_with_comments", "for_construction"]);
+  for (const status of ["draft", "submitted", "under_review", "rejected", "revise_resubmit", "for_information", "withdrawn", "superseded"]) {
+    assert.equal(revisionReleasable({ review_status: status, superseded_at: null }), false, status);
+  }
+  assert.equal(revisionReleasable({ review_status: "approved", superseded_at: null }), true);
+  assert.equal(revisionReleasable({ review_status: "approved", superseded_at: "2026-11-21T10:00:00Z" }), false);
+});
