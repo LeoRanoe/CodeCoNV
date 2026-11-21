@@ -6,7 +6,7 @@ truncate public.organizations, auth.users cascade;
 set local client_min_messages = notice;
 
 -- F02 (Rapid Verify decides Works Completed) and F08 (follow-up actions created with the record, once per row).
-select plan(22);
+select plan(24);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at) values
   ('00000000-0000-0000-0000-0000000034a1', 'authenticated', 'authenticated', 'admin34@example.test', now(), now()),
@@ -160,10 +160,26 @@ select is((select details #>> '{spec,follow_up_action_id}' from public.project_r
   (select id::text from public.actions where source_id = (select id from public.project_register_entries where entry_number = 'AGR-34-1')),
   'the agreement stores the id of its action');
 
--- A user without actions.create still saves the record; the action waits for a permitted save.
+-- Word §3.1: the system generates the follow-up when the record is saved. A user who may save the
+-- source record (hse.manage) but lacks actions.create still gets the action, created by the system.
+delete from public.role_permissions
+where permission_code = 'actions.create'
+  and role_id = (select id from public.roles where organization_id = (select organization_id from ids) and scope = 'project' and code = 'supervisor');
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000034b2","role":"authenticated"}';
+set local role authenticated;
+select ok(not app_private.has_project_permission((select project_id from ids), 'actions.create'), 'the supervisor role no longer holds actions.create');
+insert into public.hse_events (organization_id, project_id, building_id, event_number, event_type, title, description, severity, occurred_at, idempotency_key, created_by, spec)
+select organization_id, project_id, building_id, 'HSE-34-9', 'incident', 'Open trench', 'Trench left open overnight', 'low', now(), 'hse34-event-0009', '00000000-0000-0000-0000-0000000034b2',
+  jsonb_build_object('corrective_actions', jsonb_build_array(jsonb_build_object('action', 'Fence the trench', 'owner', 'Site team', 'due', '2026-12-03'))) from ids;
+update public.hse_events set spec = spec where event_number = 'HSE-34-9';
+reset role;
+select is((select count(*) from public.actions where source_type = 'hse' and source_id = (select id from public.hse_events where event_number = 'HSE-34-9')), 1::bigint,
+  'a user who may save the record but lacks actions.create gets one system-created follow-up action');
+
+-- A user who may not save the source record gets none.
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000034c1","role":"authenticated"}';
 select is((select app_private.ensure_follow_up_action((select project_id from ids), null, 'hse', gen_random_uuid(), 'corrective_actions', 'x', null, 'Not allowed', '', null, null, '{}')), null::uuid,
-  'no action is created for a user without actions.create');
+  'no action is created for a user who may not save the source record');
 
 select * from finish();
 rollback;

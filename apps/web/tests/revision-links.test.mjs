@@ -36,3 +36,20 @@ test("F11: approving C makes the A reference stale and names C; a rejected pin i
   assert.equal(revisionStanding("b", documents, revisions).stale, true);
   assert.equal(revisionStanding("missing", documents, revisions), null);
 });
+
+test("Word 4.3: the approved revision stays current while a newer upload awaits review", async () => {
+  const { registerRows } = await import("../lib/documents/document-register.mjs");
+  const documents = [{ id: "d", current_revision_id: "a", latest_revision_id: "b" }];
+  const revisions = [
+    { id: "a", document_id: "d", revision: "A", review_status: "approved", uploaded_at: "2026-11-01T00:00:00Z" },
+    { id: "b", document_id: "d", revision: "B", review_status: "submitted", uploaded_at: "2026-11-02T00:00:00Z" },
+  ];
+  const [row] = registerRows(documents, revisions);
+  assert.equal(row.current.revision, "A");
+  assert.equal(row.latest.revision, "B");
+  assert.equal(row.pending.revision, "B");
+  const [approved] = registerRows([{ id: "d", current_revision_id: "b", latest_revision_id: "b" }],
+    [{ ...revisions[0], review_status: "superseded", superseded_at: "x" }, { ...revisions[1], review_status: "approved" }]);
+  assert.equal(approved.current.revision, "B");
+  assert.equal(approved.pending, null);
+});

@@ -9,6 +9,8 @@ import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { photoFiles, photoTitle, photoUploadDescription, PhotoEvidenceList, samePhotoFile, toPhotoEvidence, type PhotoEvidence, photoSpecFromDetails } from "@/app/photo-evidence";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
+import { photoPurposes } from "@/lib/forms/spec-catalogue";
+import { specLabel } from "@/lib/forms/spec-labels-nl";
 import { normalizeImageFile, photoRefusalMessage, prepareCameraPhotos } from "@/lib/images/normalize-image";
 import { clearFormDraft, formDraftKey, loadFormDraft, saveFormDraft } from "@/lib/offline/form-drafts";
 import { normalizeRecordCode } from "@/lib/records/record-directory.mjs";
@@ -26,7 +28,7 @@ import {
   visibleLibraryFiles,
 } from "@/lib/media/photo-library.mjs";
 import {
-  compressFieldPhoto,
+  prepareEvidencePhoto,
   connectionIsMetered,
   dataSaverEnabled,
   fingerprintOriginal,
@@ -116,7 +118,7 @@ export function MediaLibraryWorkspace({
   open360Upload,
   markPhotoIssue,
   mode = "photos",
-  organizationId = "",
+  organizationId,
   openRecord,
   focusRecordId = "",
 }: {
@@ -135,7 +137,7 @@ export function MediaLibraryWorkspace({
   /** Opens the picture where problems are marked on it, on the photo that was tapped. */
   markPhotoIssue?: (fileId: string) => void;
   mode?: "photos" | "assets";
-  organizationId?: string;
+  organizationId: string;
   openRecord?: (tab: string, recordId: string, kind: string) => void;
   /**
    * The photo, document or folder the workspace search asked for. Tapping a result used to
@@ -331,7 +333,7 @@ export function MediaLibraryWorkspace({
     preferredFolderName?: string,
     descriptionOverride?: string,
     /** The words a photo carries of its own, when it was described before being filed. */
-    detailsFor?: (file: File) => { title?: string; description?: string; locationNodeId?: string | null; spec?: Record<string, unknown> | null } | undefined,
+    detailsFor?: (file: File) => { title?: string; description?: string; capturedAt?: string; locationNodeId?: string | null; spec?: Record<string, unknown> | null; sourcePhoto?: File } | undefined,
     /** What is being uploaded. A choice says it itself instead of relying on the toggle. */
     uploadKind: "photo" | "drawing" | "document" = kind,
     evidenceGroupId?: string | null,
@@ -386,12 +388,12 @@ export function MediaLibraryWorkspace({
       const savedAt = Date.now();
       for (const file of valid) {
         // F05: each photo keeps its own capture moment; a mixed-date batch is not stamped with the first one.
-        const capturedAt = new Date(file.lastModified || savedAt).toISOString();
         const details = detailsFor?.(file);
+        const capturedAt = details?.capturedAt ?? new Date(details?.sourcePhoto?.lastModified || file.lastModified || savedAt).toISOString();
         const source = relabelled.get(file) ?? file;
-        const prepared = uploadKind === "photo" ? await compressFieldPhoto(source, savingData) : { blob: file as Blob, fileName: file.name, mimeType: file.type || "application/octet-stream", compressed: false };
+        const prepared = uploadKind === "photo" ? prepareEvidencePhoto(source) : { blob: file as Blob, fileName: file.name, mimeType: file.type || "application/octet-stream", compressed: false };
         // F05: the fingerprint of the file exactly as received, before any reduction.
-        const original = uploadKind === "photo" ? await fingerprintOriginal(file) : null;
+        const original = uploadKind === "photo" ? await fingerprintOriginal(details?.sourcePhoto ?? file) : null;
         await queueOfflineUpload({
           projectId,
           buildingId: libraryBuildingId,
@@ -414,6 +416,7 @@ export function MediaLibraryWorkspace({
           // F05: purpose, category and discipline travel with the photo through the device queue.
           spec: uploadKind === "photo" ? details?.spec ?? null : null,
           original,
+          sourcePhoto: details?.sourcePhoto,
         });
       }
       await reloadQueue();
@@ -447,7 +450,7 @@ export function MediaLibraryWorkspace({
       await reloadQueue().catch(() => undefined);
       return false;
     }
-  }, [libraryBuildingId, libraryBuildingName, client, folderId, folders, kind, photoDescription, projectId, reloadQueue, reportId, run, savingData, synchronize, text]);
+  }, [libraryBuildingId, libraryBuildingName, client, folderId, folders, kind, photoDescription, projectId, reloadQueue, reportId, run, synchronize, text]);
 
   useEffect(() => {
     if (!initialFiles.length) return;
@@ -480,6 +483,15 @@ export function MediaLibraryWorkspace({
 
   const savePendingCapture = useCallback(async () => {
     if (!pendingCapture.length) return;
+    if (!assetsMode && (!libraryBuildingId || pendingCapture.some(({ details }) =>
+      !photoPurposes.includes(details.purpose ?? "") || (details.purpose === "Other" && !details.purposeOther?.trim())
+    ))) {
+      setFieldError(text(
+        "Select a work location and a purpose for every photo. If you choose Other, explain it in the photo details.",
+        "Selecteer een werklocatie en een doel voor elke foto. Licht Overig toe in de fotodetails.",
+      ));
+      return;
+    }
     const dayKey = new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/Paramaribo",
       year: "numeric",
@@ -500,8 +512,10 @@ export function MediaLibraryWorkspace({
         return {
           title: sharedTitle || photoTitle(photo),
           description: asStack ? sharedDescription : photoUploadDescription(photo, photoDescription, language),
-          locationNodeId: photo.details.locationNodeId || null,
-          spec: photoSpecFromDetails(photo.details),
+          locationNodeId: data.locationNodes.some((node) => node.id === photo.details.locationNodeId && (!node.building_id || node.building_id === libraryBuildingId)) ? photo.details.locationNodeId : null,
+          capturedAt: photo.details.capturedAt,
+          spec: { ...photoSpecFromDetails(photo.details), ...(photo.details.capturedAt && photo.original.lastModified ? { original_capture_at: new Date(photo.original.lastModified).toISOString() } : {}) },
+          sourcePhoto: photo.file !== photo.original ? photo.original : undefined,
         };
       },
       "photo",
@@ -516,7 +530,7 @@ export function MediaLibraryWorkspace({
     setStackTitle("");
     setKeepAsStack(false);
     void writeDraft(() => clearFormDraft(formDraftKey("library-photos", projectId)));
-  }, [addFiles, keepAsStack, language, pendingCapture, photoDescription, projectId, stackTitle, text, writeDraft]);
+  }, [addFiles, assetsMode, data.locationNodes, keepAsStack, language, libraryBuildingId, pendingCapture, photoDescription, projectId, stackTitle, text, writeDraft]);
 
   // The photos taken here are kept on the device until they are saved or thrown away, so a
   // back press, a reload or a phone that drops the tab behind the camera does not lose them.
@@ -674,8 +688,11 @@ export function MediaLibraryWorkspace({
       recordType: target.type,
       recordId: target.id,
       relationship: "attachment",
-    }))), text("Assets linked to the selected record.", "Middelen aan de gekozen registratie gekoppeld."));
-    if (okay) setSelectedIds([]);
+    }))), text("Files linked to the selected record.", "Bestanden aan de gekozen registratie gekoppeld."));
+    if (okay) {
+      setSelectedIds([]);
+      setRecordTarget("");
+    }
   };
 
   const renameFolder = async (folder: MediaFolder) => {
@@ -711,7 +728,7 @@ export function MediaLibraryWorkspace({
           <span className={`connectivity-pill ${online ? "online" : "offline"}`}>{online ? text("Online", "Online") : text("Offline · stored on device", "Offline · opgeslagen op apparaat")}</span>
           <h2>{assetsMode ? text("Project assets", "Projectmiddelen") : text("Project photos", "Projectfoto's")}</h2>
         </div>
-        <label className="data-saver-toggle"><input type="checkbox" checked={savingData} onChange={(event) => { setSavingData(event.target.checked); setDataSaverEnabled(event.target.checked); }} /><span><strong>{text("Save mobile data", "Mobiele data besparen")}</strong><small>{text("Compress regular photos; never alter 360° images or drawings.", "Comprimeert gewone foto’s; wijzigt nooit 360°-beelden of tekeningen.")}</small></span></label>
+        <label className="data-saver-toggle"><input type="checkbox" checked={savingData} onChange={(event) => { setSavingData(event.target.checked); setDataSaverEnabled(event.target.checked); }} /><span><strong>{text("Save mobile data", "Mobiele data besparen")}</strong><small>{text("Pause automatic uploads on a metered connection. Photo files keep their original size.", "Pauzeert automatische uploads op een databundel. Fotobestanden behouden hun oorspronkelijke grootte.")}</small></span></label>
       </div>
 
       {/* Tapping Photos in the workspace lands here, on the photos themselves, and the
@@ -832,9 +849,25 @@ export function MediaLibraryWorkspace({
                 stored centrally already says what it is and where it belongs. Marking a
                 problem on the picture belongs here as much as anywhere else: the client
                 asked for it back on every screen a photo appears on. */}
+            {!assetsMode ? (
+              <label className="form-field">
+                <span>{text("Photo purpose", "Doel van de foto")} *</span>
+                <select value={pendingCapture.every(({ details }) => details.purpose === pendingCapture[0]!.details.purpose) ? pendingCapture[0]!.details.purpose ?? "" : ""}
+                  onChange={(event) => {
+                    const purpose = event.target.value;
+                    setPendingCapture((photos) => photos.map((photo) => photo.details.purpose === purpose ? photo : {
+                      ...photo, details: { ...photo.details, purpose, discipline: undefined, purposeOther: undefined },
+                    }));
+                  }}>
+                  <option value="">{text("Choose for all photos…", "Kies voor alle foto's…")}</option>
+                  {photoPurposes.map((purpose) => <option key={purpose} value={purpose}>{specLabel(purpose, language)}</option>)}
+                </select>
+              </label>
+            ) : null}
             <PhotoEvidenceList
               photos={pendingCapture}
               setPhotos={setPendingCapture}
+              workbookPhoto={!assetsMode}
               markupContext={{
                 // The stack shares the library building, but a marker on the picture may
                 // name its own: one image can cover more than one building, and the
@@ -880,7 +913,7 @@ export function MediaLibraryWorkspace({
           <span className="asset-view-toggle"><button className={viewMode === "grid" ? "active" : ""} type="button" onClick={() => setViewMode("grid")} aria-label={text("Grid view", "Rasterweergave")}><Grid3X3 size={16} /></button><button className={viewMode === "list" ? "active" : ""} type="button" onClick={() => setViewMode("list")} aria-label={text("List view", "Lijstweergave")}><List size={16} /></button></span>
         </div>
         </details>
-        {selectedFiles.length ? <div className="asset-bulk-actions">
+    {selectedFiles.length ? <div className="asset-bulk-actions">
           <strong>{selectedFiles.length} {text("selected", "geselecteerd")}</strong>
           <label><span>{text("Move to folder", "Verplaats naar map")}</span><select value={bulkFolderId} onChange={(event) => setBulkFolderId(event.target.value)}><option value="">{text("Unfiled", "Zonder map")}</option>{folderTree.map((folder) => <option value={folder.id} key={folder.id}>{folder.path}</option>)}</select></label>
           <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => void moveSelected()}><Folder size={15} /> {text("Move", "Verplaatsen")}</button>
@@ -890,7 +923,26 @@ export function MediaLibraryWorkspace({
           <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => void softDeleteFiles(selectedFiles)}><Trash2 size={15} /> {text("Withdraw", "Intrekken")}</button>
         </div> : null}
       </div> : null}
-      {!assetsMode && selectedFiles.length ? <div className="photo-stack-actions"><strong>{selectedFiles.length} {text("photos selected", "foto's geselecteerd")}</strong><button className="ui-button ui-button--primary ui-button--md" type="button" disabled={selectedFiles.length < 2} onClick={() => void stackSelectedPhotos()}><ImageIcon size={15} /> {text("Make one stack", "Maak één stapel")}</button><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => void softDeleteFiles(selectedFiles)}><Trash2 size={15} /> {text("Delete", "Verwijderen")}</button><button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setSelectedIds([])}>{text("Cancel selection", "Selectie stoppen")}</button></div> : null}
+      {!assetsMode && selectedFiles.length ? (
+        <div className="photo-stack-actions">
+          <strong>{selectedFiles.length} {text("photos selected", "foto's geselecteerd")}</strong>
+          {canAddMedia && recordTargets.length ? (
+            <>
+              <label className="form-field">
+                <span>{text("Related record", "Gekoppelde registratie")}</span>
+                <select value={recordTarget} onChange={(event) => setRecordTarget(event.target.value)}>
+                  <option value="">{text("Choose a record…", "Kies een registratie…")}</option>
+                  {recordTargets.map((target) => <option value={target.value} key={target.value}>{target.label}</option>)}
+                </select>
+              </label>
+              <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={busy || !recordTarget || !organizationId} onClick={() => void linkSelected()}><Link2 size={15} /> {text("Link", "Koppelen")}</button>
+            </>
+          ) : null}
+          <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={selectedFiles.length < 2} onClick={() => void stackSelectedPhotos()}><ImageIcon size={15} /> {text("Make one stack", "Maak één stapel")}</button>
+          <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => void softDeleteFiles(selectedFiles)}><Trash2 size={15} /> {text("Delete", "Verwijderen")}</button>
+          <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => { setSelectedIds([]); setRecordTarget(""); }}>{text("Cancel selection", "Selectie stoppen")}</button>
+        </div>
+      ) : null}
       {fieldNotice && queue.length ? <div className="operation-alert warning" role="status"><HardDrive size={17} /> {fieldNotice}</div> : null}
       {fieldError ? <div className="operation-alert error" role="alert"><HardDrive size={17} /> {fieldError}</div> : null}
 

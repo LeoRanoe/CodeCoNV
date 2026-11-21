@@ -86,6 +86,20 @@ for (const sheet of sheets) {
     await fillSpecFields(page.locator("main"));
     await fillSpecFields(page.locator("main"));
 
+    if (sheet.form === "delivery") {
+      const group = form.locator('[data-spec-field="material_group"] select');
+      const category = form.locator('[data-spec-field="material_category"] select');
+      await group.selectOption("Material Group");
+      await category.selectOption("Cement & Binders");
+      await group.selectOption("Delivery Discrepancy");
+      await expect(category).toHaveValue("");
+      await expect(category.locator('option[value="Cement & Binders"]')).toHaveCount(0);
+      await category.selectOption("Quantity Shortage");
+      await expect(form.locator('[data-spec-field="planned_delivery_at"] input')).not.toHaveValue("");
+      const stored = form.locator('[data-spec-field="stored_on_site"] input');
+      if (await stored.isVisible()) await stored.uncheck();
+    }
+
     const labels = await rowLabels(page, sheet.form);
     expect(labels.slice(0, sheet.first.length)).toEqual(sheet.first);
     await page.screenshot({ path: testInfo.outputPath(`${sheet.form}.png`), fullPage: true });

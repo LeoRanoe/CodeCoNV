@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { createClient } from "@supabase/supabase-js";
 
 /**
  * A role sees what it can use. The database refuses every write the role may not do; the
@@ -6,7 +7,7 @@ import { expect, type Page, test } from "@playwright/test";
  * that always answers 403 is a broken screen, not a protected one).
  *
  * Runs against the local fixture stack with the accounts from seed-ui-demo-data.mjs
- * (CODECO_E2E_DEMO_DATA=0 is enough: no records are needed to see what is offered).
+ * (CODECO_E2E_DEMO_DATA=0). The assignment wording checks arrange their own record.
  */
 const clientEmail = process.env.CODECO_E2E_CLIENT_EMAIL;
 const clientPassword = process.env.CODECO_E2E_CLIENT_PASSWORD;
@@ -15,6 +16,7 @@ const contractorPassword = process.env.CODECO_E2E_CONTRACTOR_PASSWORD;
 const supervisorEmail = process.env.CODECO_E2E_EMAIL;
 const supervisorPassword = process.env.CODECO_E2E_PASSWORD;
 const projectName = process.env.CODECO_E2E_PROJECT ?? "Paramaribo Field Readiness Demo";
+const unassignedFindingTitle = "Role views fixture · owner pending";
 
 if (process.env.CODECO_E2E_REQUIRED === "1" && !(clientEmail && contractorEmail && supervisorEmail)) {
   throw new Error("The client, contractor and supervisor accounts are required for the release gate.");
@@ -52,6 +54,39 @@ async function goTo(page: Page, module: string) {
 }
 
 const modules = (page: Page) => page.locator(".sidebar .nav-button, .mobile-module-grid button");
+
+async function ensureUnassignedFinding(page: Page) {
+  const url = process.env.CODECO_E2E_SUPABASE_URL;
+  const key = process.env.CODECO_E2E_PUBLISHABLE_KEY;
+  const projectId = new URL(page.url()).searchParams.get("project");
+  if (!url || !key || !projectId || !["127.0.0.1", "localhost"].includes(new URL(url).hostname)) {
+    throw new Error("The assignment wording checks require a local project and fixture API.");
+  }
+  const client = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { error: signInError } = await client.auth.signInWithPassword({ email: supervisorEmail!, password: supervisorPassword! });
+  if (signInError) throw signInError;
+  const building = await client.from("buildings").select("id").eq("project_id", projectId).order("id").limit(1).single();
+  if (building.error) throw building.error;
+  const date = new Date().toLocaleDateString("en-CA", { timeZone: "America/Paramaribo" });
+  const report = await client.rpc("ensure_day_report_for_record", { p_project_id: projectId, p_report_date: date, p_idempotency_key: `role-views-day:${date}` });
+  if (report.error) throw report.error;
+  const { error } = await client.rpc("create_project_finding", {
+    p_project_id: projectId,
+    p_building_id: building.data.id,
+    p_day_report_id: report.data,
+    p_inspection_id: null,
+    p_inspection_response_id: null,
+    p_finding_type: "deficiency",
+    p_title: unassignedFindingTitle,
+    p_description: "Open finding with no responsible party or assigned user.",
+    p_severity: "medium",
+    p_responsible_party_id: null,
+    p_assigned_user_id: null,
+    p_idempotency_key: "role-views-unassigned-finding",
+    p_issue_management: { issue_type: "quality", disposition: "to_be_corrected" },
+  });
+  if (error) throw error;
+}
 
 /** Project Docs and Issues are reached from the workspace, like every other module. */
 async function openWorkspaceModule(page: Page, module: "Project Docs" | "Issues") {
@@ -158,20 +193,26 @@ test("a link to a project the account cannot open says so", async ({ page }, tes
 test("a client is not told to assign a record nobody owns", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-office", "The wording does not depend on the viewport.");
   await signInAs(page, clientEmail!, clientPassword!);
+  await ensureUnassignedFinding(page);
+  await page.reload();
+  await expect(page.locator(".sidebar").getByRole("button", { name: "Actions", exact: true })).toBeVisible();
   await goTo(page, "Actions");
   await page.getByRole("tab", { name: /All project work/ }).click();
   await page.locator(".action-center-summary button", { hasText: "All records" }).click();
-  await expect(page.locator(".unified-action-list > button").first()).toBeVisible();
+  const row = page.locator(".unified-action-list > button").filter({ hasText: unassignedFindingTitle });
   // A client cannot assign; the list says what the record waits for instead of giving an order.
   await expect(page.getByText("Assign who has to do this")).toHaveCount(0);
-  await expect(page.getByText("Waiting for someone to be assigned").first()).toBeVisible();
+  await expect(row.getByText("Waiting for someone to be assigned")).toBeVisible();
 });
 
 test("a supervisor is still told to assign a record nobody owns", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-office", "The wording does not depend on the viewport.");
   await signInAs(page, supervisorEmail!, supervisorPassword!);
+  await ensureUnassignedFinding(page);
+  await page.reload();
+  await expect(page.locator(".sidebar").getByRole("button", { name: "Actions", exact: true })).toBeVisible();
   await goTo(page, "Actions");
   await page.getByRole("tab", { name: /All project work/ }).click();
   await page.locator(".action-center-summary button", { hasText: "All records" }).click();
-  await expect(page.getByText("Assign who has to do this").first()).toBeVisible();
+  await expect(page.locator(".unified-action-list > button").filter({ hasText: unassignedFindingTitle }).getByText("Assign who has to do this")).toBeVisible();
 });

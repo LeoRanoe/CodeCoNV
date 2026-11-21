@@ -122,8 +122,9 @@ test("a document is registered, revised and superseded without losing the earlie
   await expect(detail.getByLabel("Revision mark")).toHaveValue("B");
   await detail.locator("input[type='file']").setInputFiles({ name: `${documentNumber}-B.pdf`, mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n2 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n") });
   const history = detail.locator("table").first();
+  // Nothing is approved yet, so the newest live revision is shown as current; A keeps its status (Word 4.3).
   await expect(history.getByText("B · current")).toBeVisible({ timeout: 60_000 });
-  await expect(history.getByRole("row").filter({ hasText: /^A/ }).getByText("Superseded")).toBeVisible();
+  await expect(history.getByRole("row").filter({ hasText: /^A/ }).getByText("Superseded")).toHaveCount(0);
 
   // F15: a revision under review is never sent out. Routing now is refused with the reason.
   await detail.getByRole("button", { name: "Assign or share" }).click();
@@ -139,6 +140,8 @@ test("a document is registered, revised and superseded without losing the earlie
   await detail.getByLabel(/New status for revision/).selectOption("approved");
   await detail.getByRole("button", { name: "Save status" }).click();
   await expect(history.getByRole("row").filter({ hasText: /^B/ }).getByText("Approved")).toBeVisible({ timeout: 30_000 });
+  // Approving B supersedes A, which stays in the history.
+  await expect(history.getByRole("row").filter({ hasText: /^A/ }).getByText("Superseded")).toBeVisible();
   await detail.getByRole("button", { name: "Assign or share" }).click();
   await share.getByLabel("Portal").selectOption("client");
   await share.getByLabel("Requested action").selectOption("approve");

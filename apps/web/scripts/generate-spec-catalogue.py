@@ -108,6 +108,7 @@ catalogue["riskSeverities"] = flat(cell("HSE", 12))
 
 catalogue["materialGroups"] = flat(cell("Materials Delivery", 7))
 catalogue["materialCategories"] = grouped(cell("Materials Delivery", 8))
+catalogue["deliveryUnits"] = flat(cell("Materials Delivery", 12))
 catalogue["deliveryStatuses"] = flat(cell("Materials Delivery", 13))
 catalogue["arrivalConditions"] = flat(cell("Materials Delivery", 14))
 catalogue["deliveryInspectionResults"] = flat(cell("Materials Delivery", 15))

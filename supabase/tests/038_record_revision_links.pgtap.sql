@@ -6,7 +6,7 @@ truncate public.organizations, auth.users cascade;
 set local client_min_messages = notice;
 
 -- F11: Technical Instructions and Change Orders link to an exact document revision.
-select plan(7);
+select plan(9);
 
 insert into auth.users (id, aud, role, email, created_at, updated_at) values
   ('00000000-0000-0000-0000-0000000038a1', 'authenticated', 'authenticated', 'admin38@example.test', now(), now()),
@@ -132,6 +132,22 @@ select lives_ok(
 select is((select count(*) from public.project_document_links where record_code = 'CO-38-2'), 0::bigint, 'and has no register link');
 select is((select count(*) from public.project_document_revisions where document_id = (select id from public.project_documents where document_number = 'S-101')), 2::bigint,
   'both revisions stay in the register');
+
+-- Workbook NCR row 10 / Word 15: an NCR's requirement reference links to the exact revision.
+insert into public.findings (organization_id, project_id, building_id, finding_number, finding_type, title, description, severity, priority, status, created_by, idempotency_key, issue_management)
+select organization_id, project_id, building_id, 'NCR-38-1', 'ncr', 'Cover too small', 'Cover 20 mm where S-101 requires 35 mm', 'high', 'high', 'open',
+  '00000000-0000-0000-0000-0000000038b1', 'ncr38-0001',
+  jsonb_build_object('spec', jsonb_build_object('requirement_reference', 'S-101 rev A', 'requirement_reference_ref', 'revision:' || (select s101_a from revs)))
+from ids;
+select is((select array[record_type, record_code, source_field, revision_id::text] from public.project_document_links where record_id = (select id from public.findings where finding_number = 'NCR-38-1')),
+  array['finding', 'NCR-38-1', 'requirement_reference', (select s101_a::text from revs)],
+  'an NCR requirement reference is linked to the exact revision');
+select throws_ok(
+  $$insert into public.findings (organization_id, project_id, building_id, finding_number, finding_type, title, description, severity, priority, status, created_by, idempotency_key, issue_management)
+    select organization_id, project_id, building_id, 'NCR-38-2', 'ncr', 'Wrong project', 'Cover measured against another project', 'low', 'low', 'open', '00000000-0000-0000-0000-0000000038b1', 'ncr38-0002',
+      jsonb_build_object('spec', jsonb_build_object('requirement_reference_ref', 'revision:' || (select id from foreign_rev))) from ids$$,
+  '22023', 'The document revision referenced in requirement_reference is not in this project',
+  'an NCR cannot reference a revision of another project');
 reset role;
 
 select * from finish();

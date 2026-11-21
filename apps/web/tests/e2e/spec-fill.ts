@@ -28,6 +28,22 @@ export async function fillSpecFields(scope: Locator) {
         }
         continue;
       }
+      // A document revision picker: choose the first revision, or type a reference when the register is empty.
+      const typed = field.getByRole("button", { name: "Not in the register" });
+      if (await typed.count()) {
+        const pick = field.locator(".spec-record-search select");
+        const values = await pick.locator("option").evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value).filter(Boolean));
+        if (values.length) {
+          await pick.selectOption(values[0]);
+          changed = true;
+        } else {
+          await typed.click();
+          await field.getByRole("textbox", { name: "Reference not in the register" }).fill("E2E-REF rev A");
+          await field.getByRole("textbox", { name: "Reference not in the register" }).blur();
+          changed = true;
+        }
+        continue;
+      }
       // A short list shown as pictured tiles: pick the first allowed tile.
       const radios = field.locator(".choice-tiles input[type='radio']");
       if (await radios.count()) {

@@ -36,8 +36,8 @@ select is(
 );
 select is(
   (select permissions from matrix where code = 'supervisor'),
-  array['actions.create','actions.read','attendance.manage','attendance.read','documents.manage','documents.read','files.manage','files.read','findings.create','findings.read','hse.manage','hse.read','inspections.manage','inspections.read','records.create','records.edit','records.read','reports.create','reports.edit','reports.read','reports.sign'],
-  'supervisor records the day but cannot manage, verify, freeze or administer'
+  array['actions.create','actions.read','attendance.manage','attendance.read','documents.manage','documents.read','files.manage','files.read','findings.create','findings.read','hse.manage','hse.read','inspections.manage','inspections.read','portal.share','records.create','records.edit','records.read','reports.create','reports.edit','reports.read','reports.sign'],
+  'supervisor records the day and assigns to a portal (image 15) but cannot manage, verify, freeze or administer'
 );
 select is(
   (select permissions from matrix where code = 'lead_supervisor'),

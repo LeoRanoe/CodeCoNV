@@ -11,6 +11,7 @@ import { compassPointFromDegrees, photoTitleFromDescription } from "@/lib/images
 import { readPhotoDirection } from "@/lib/images/exif-direction.mjs";
 import { useBackToClose } from "@/lib/navigation/app-history";
 import { thumbnailUrlFromBlob } from "@/lib/images/thumbnail";
+import { surinameLocalDateTimeToIso } from "@/lib/supabase/data";
 
 /**
  * What the client's own product plan asks of every photo (§4.16): a location, the direction it
@@ -32,6 +33,8 @@ export type PhotoEvidenceDetails = {
   /** Empty means "the same building as the record this photo hangs under". */
   buildingId: string;
   locationNodeId: string;
+  locationDetail?: string;
+  capturedAt?: string;
   /** The direction the camera was pointing, so a photo can be found back on site. */
   direction: string;
   /** True while the direction is the one the camera or the compass measured. */
@@ -49,6 +52,7 @@ export function photoSpecFromDetails(details: PhotoEvidenceDetails): Record<stri
   if (details.purpose) spec.photo_purpose = details.purpose;
   if (details.purpose && /^other\b/i.test(details.purpose) && details.purposeOther?.trim()) spec.photo_purpose_other = details.purposeOther.trim();
   if (details.discipline && ["Progress Documentation", "Technical / Quality Evidence"].includes(details.purpose ?? "")) spec.discipline = details.discipline;
+  if (details.locationDetail?.trim()) spec.location_detail = details.locationDetail.trim();
   return spec;
 }
 
@@ -196,6 +200,7 @@ export function PhotoEvidenceList({
   markupContext,
   layout = "list",
   allowMarkup = true,
+  workbookPhoto = false,
 }: {
   photos: PhotoEvidence[];
   setPhotos: (photos: PhotoEvidence[]) => void;
@@ -208,6 +213,7 @@ export function PhotoEvidenceList({
   layout?: "list" | "gallery";
   /** Photos/Assets are filing surfaces; marking stays in record evidence and Visual Evidence. */
   allowMarkup?: boolean;
+  workbookPhoto?: boolean;
 }) {
   const { language, text } = useLanguage();
   const [openId, setOpenId] = useState("");
@@ -296,6 +302,7 @@ export function PhotoEvidenceList({
           step={(offset) => { const at = photos.findIndex((photo) => photo.id === openPhoto.id); const next = photos[at + offset]; if (next) setOpenId(next.id); }}
           markupContext={markupContext}
           allowMarkup={allowMarkup}
+          workbookPhoto={workbookPhoto}
           close={() => setOpenId("")}
           onChange={(next) => setPhotos(photos.map((photo) => photo.id === next.id ? next : photo))}
           onRemove={() => { remove(openPhoto.id); setOpenId(""); }}
@@ -423,6 +430,7 @@ export function PhotoDetailSheet({
   onChange,
   onRemove,
   allowMarkup = true,
+  workbookPhoto = false,
   total = 1,
   step,
 }: {
@@ -436,6 +444,7 @@ export function PhotoDetailSheet({
   onChange: (photo: PhotoEvidence) => void;
   onRemove?: () => void;
   allowMarkup?: boolean;
+  workbookPhoto?: boolean;
 }) {
   const { language, text } = useLanguage();
   const [marking, setMarking] = useState(false);
@@ -499,7 +508,7 @@ export function PhotoDetailSheet({
           {/* One text box. The client struck through the separate title and the category:
               "voor nr is 1 invoer voldoende". The report title is taken from the first
               sentence of what is written here. */}
-          <label className="form-field">
+          {!workbookPhoto ? <label className="form-field">
             <span>{text("Description", "Omschrijving")}</span>
             <textarea
               rows={4}
@@ -508,11 +517,11 @@ export function PhotoDetailSheet({
               autoFocus
             />
             <DictateButton onText={(transcript) => patch({ description: appendDictation(photo.details.description, transcript) })} />
-          </label>
-          <div className="form-grid-2">
+          </label> : null}
+          <div className={workbookPhoto ? "" : "form-grid-2"}>
             <label className="form-field">
               <span>{text("Photo purpose", "Doel van de foto")}</span>
-              <select value={photo.details.purpose ?? ""} onChange={(event) => patch({ purpose: event.target.value })}>
+              <select required={workbookPhoto} value={photo.details.purpose ?? ""} onChange={(event) => patch({ purpose: event.target.value, discipline: undefined, purposeOther: undefined })}>
                 <option value="">{text("Choose…", "Kies…")}</option>
                 {photoPurposes.map((purpose) => <option key={purpose} value={purpose}>{specLabel(purpose, language)}</option>)}
               </select>
@@ -532,7 +541,7 @@ export function PhotoDetailSheet({
                 <input value={photo.details.purposeOther ?? ""} maxLength={240} onChange={(event) => patch({ purposeOther: event.target.value })} />
               </label>
             ) : null}
-            {buildings.length > 1 ? (
+            {!workbookPhoto && buildings.length > 1 ? (
               <label className="form-field">
                 <span>{text("Building", "Gebouw")}</span>
                 <select value={photo.details.buildingId} onChange={(event) => patch({ buildingId: event.target.value, locationNodeId: "" })}>
@@ -541,14 +550,31 @@ export function PhotoDetailSheet({
                 </select>
               </label>
             ) : null}
-            {locations.length ? (
+            {locations.length || workbookPhoto ? (
               <label className="form-field">
-                <span>{text("Exact location", "Exacte locatie")}</span>
+                <span>{workbookPhoto ? text("Work location", "Werklocatie") : text("Exact location", "Exacte locatie")}</span>
                 <select value={photo.details.locationNodeId} onChange={(event) => patch({ locationNodeId: event.target.value })}>
-                  <option value="">{text("Same as the record", "Zelfde als de registratie")}</option>
+                  <option value="">{workbookPhoto ? buildings.find((building) => building.id === chosenBuildingId)?.label ?? text("Select a work location", "Kies een werklocatie") : text("Same as the record", "Zelfde als de registratie")}</option>
                   {locations.map((location) => <option value={location.id} key={location.id}>{location.label}</option>)}
                 </select>
               </label>
+            ) : null}
+            {workbookPhoto ? (
+              <>
+                <label className="form-field">
+                  <span>{text("Location detail", "Locatiedetail")}</span>
+                  <input maxLength={160} value={photo.details.locationDetail ?? ""} onChange={(event) => patch({ locationDetail: event.target.value })} />
+                </label>
+                <label className="form-field">
+                  <span>{text("Photo date/time", "Fotodatum en -tijd")}</span>
+                  <input type="datetime-local" required value={new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Paramaribo", dateStyle: "short", timeStyle: "short" }).format(new Date(photo.details.capturedAt ?? photo.original.lastModified)).replace(" ", "T")}
+                    onChange={(event) => { if (event.target.validity.valid && event.target.value) patch({ capturedAt: surinameLocalDateTimeToIso(event.target.value) }); }} />
+                </label>
+                <label className="form-field">
+                  <span>{text("Caption / observation", "Bijschrift / observatie")}</span>
+                  <input maxLength={240} value={photo.details.description} onChange={(event) => patch({ description: event.target.value })} />
+                </label>
+              </>
             ) : null}
           </div>
         </div>

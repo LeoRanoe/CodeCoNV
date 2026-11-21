@@ -98,6 +98,7 @@ test("a photo stack is saved centrally and leaves nothing waiting on the device"
     { name: "stack-b.jpg", mimeType: "image/jpeg", buffer: bytes },
   ]);
   await page.getByLabel(/Keep together as one photo stack/).check();
+  await page.locator(".media-capture-review").getByLabel(/Photo purpose/).selectOption("Progress Documentation");
   await page.getByRole("button", { name: "Save photo stack" }).click();
   await expect(page.locator(".media-capture-review")).toHaveCount(0, { timeout: 60_000 });
   await expect.poll(() => deviceQueue(page), { timeout: 30_000 }).toEqual([]);
@@ -120,11 +121,12 @@ test("photos taken one after another are reviewed together and saved as separate
   // Each photo is described in one pass, stepping from one to the next.
   await page.getByRole("button", { name: "Open the details of photo 1" }).click();
   await expect(page.getByText("Photo 1 of 2")).toBeVisible();
-  await page.getByRole("dialog").getByLabel("Description").fill("Scheur in de kolom bij as B-3");
+  await page.getByRole("dialog").getByLabel("Caption / observation").fill("Scheur in de kolom bij as B-3");
   await page.getByRole("button", { name: "Next photo" }).click();
   await expect(page.getByText("Photo 2 of 2")).toBeVisible();
-  await page.getByRole("dialog").getByLabel("Description").fill("Wapening zichtbaar aan de onderzijde");
+  await page.getByRole("dialog").getByLabel("Caption / observation").fill("Wapening zichtbaar aan de onderzijde");
   await page.getByRole("button", { name: "Close" }).click();
+  await page.locator(".media-capture-review").getByLabel(/Photo purpose/).selectOption("Technical / Quality Evidence");
   await page.getByRole("button", { name: "Save 2 photos" }).click();
   await expect(page.locator(".media-capture-review")).toHaveCount(0, { timeout: 60_000 });
   await expect.poll(() => deviceQueue(page), { timeout: 30_000 }).toEqual([]);

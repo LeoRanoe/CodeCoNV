@@ -293,7 +293,7 @@ function SpecInput({ id, form, field, values, set, setMany, text, language, disa
   }
 
   // A short list is shown as pictured tiles, so each choice is told apart at a glance (client, 20-11-2026).
-  const shortList = (field.kind === "select" || field.kind === "dependent" || field.kind === "rating") && options.length > 0 && options.length <= maxTiles
+  const shortList = !field.dropdown && (field.kind === "select" || field.kind === "dependent" || field.kind === "rating") && options.length > 0 && options.length <= maxTiles
     && (field.kind !== "rating" || !matrixRating(values, directory.config));
   if (shortList) {
     const choices = options.map((option) => option.value);

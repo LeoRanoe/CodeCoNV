@@ -1,13 +1,13 @@
 "use client";
 
-import { FileSpreadsheet, Loader2, Printer } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 import { pageAll } from "@/lib/supabase/page-all.mjs";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
-import { downloadBlob } from "@/lib/browser/download";
+import { RegisterExportButtons } from "@/app/register-export-buttons";
 import { loadPortalSnapshot } from "@/lib/portal/portal-data";
 import { contractorPerformance } from "@/lib/reports/project-summary.mjs";
 import { statusMeta } from "@/lib/documents/document-register.mjs";
@@ -18,17 +18,11 @@ import type { OperationSnapshot } from "@/lib/supabase/operations";
 type Kind = "contractor" | "actions" | "documents";
 type Party = { id: string; name: string; type: string };
 
-function csvCell(value: unknown) {
-  const text = value === null || value === undefined ? "" : String(value);
-  const safe = /^[=+\-@]/.test(text) ? `'${text}` : text;
-  return /[",\n;]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe;
-}
-
 /**
  * The register reports of section 11 that the period report does not cover: contractor
  * performance, the action register (open, overdue, closed) and the document register with
  * outstanding reviews. Each states its period, cut-off, filters and generation time, and
- * exports to Excel (CSV) and PDF (print).
+ * exports to Excel and PDF.
  */
 export function RegisterReports({ client, projectId, projectName, data, parties, actions }: {
   client: SupabaseClient;
@@ -53,7 +47,7 @@ export function RegisterReports({ client, projectId, projectName, data, parties,
     queryFn: async () => {
       const [documents, revisions] = await Promise.all([
         // F11: paged past the API row cap; the report counts every document and revision.
-        pageAll((from: number, to: number) => client.from("project_documents").select("id,document_number,title,folder_code,discipline,current_revision_id,originator_name,originator_party_id").eq("project_id", projectId).order("id").range(from, to), 50000),
+        pageAll((from: number, to: number) => client.from("project_documents").select("id,document_number,title,folder_code,discipline,current_revision_id,latest_revision_id,originator_name,originator_party_id").eq("project_id", projectId).order("id").range(from, to), 50000),
         pageAll((from: number, to: number) => client.from("project_document_revisions").select("id,document_id,revision,review_status,uploaded_at,reviewed_at").eq("project_id", projectId).order("id").range(from, to), 100000),
       ]);
       if (documents.error) throw documents.error;
@@ -91,7 +85,8 @@ export function RegisterReports({ client, projectId, projectName, data, parties,
     }
     const revisions = new Map((documentsQuery.data?.revisions ?? []).map((revision) => [revision.id, revision]));
     const rows = (documentsQuery.data?.documents ?? [])
-      .map((document) => ({ document, current: revisions.get(document.current_revision_id) }))
+      // Outstanding submittals: the latest upload waits for review while the approved revision stays current (Word 4.3).
+      .map((document) => ({ document, current: revisions.get(state === "open" ? (document.latest_revision_id ?? document.current_revision_id) : document.current_revision_id) }))
       .filter((row) => !party || row.document.originator_party_id === party)
       .filter((row) => state === "all" || (state === "open" && ["submitted", "under_review", "revise_resubmit"].includes(row.current?.review_status ?? "")))
       .filter((row) => inPeriod(documentReferenceDate(row.current), from, to));
@@ -111,19 +106,17 @@ export function RegisterReports({ client, projectId, projectName, data, parties,
   const periodBasis = kind === "actions" ? text("due date (raised date if none)", "uiterste datum (anders datum aangemaakt)")
     : kind === "documents" ? text("date the current revision was received", "ontvangstdatum huidige revisie")
     : text("date assigned or raised", "datum toegewezen of gemeld");
-  const exportCsv = () => {
-    const lines = [[title], [`${text("Project", "Project")}: ${projectName}`], [`${text("Period", "Periode")}: ${from} – ${to} (${periodBasis})`], [`${text("Data cut-off", "Peildatum")}: ${generated}`], [`${text("Filters", "Filters")}: ${filters}`], [], table.head, ...table.rows];
-    downloadBlob(new Blob([`﻿${lines.map((line) => line.map(csvCell).join(",")).join("\r\n")}\r\n`], { type: "text/csv;charset=utf-8" }), `${projectName.replace(/[^a-z0-9]+/gi, "-")}-${kind}-${to}.csv`);
-  };
-  const print = () => {
-    const win = window.open("", "_blank");
-    if (!win) return;
-    const escape = (value: unknown) => String(value ?? "").replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char] ?? char);
-    win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escape(title)}</title><style>body{font:12px system-ui,sans-serif;margin:24px;color:#161a20}h1{font-size:18px;margin:0 0 4px}p{margin:0 0 4px;color:#4a5a66}table{border-collapse:collapse;width:100%;margin-top:12px}th,td{border:1px solid #b3c1c9;padding:4px 6px;text-align:left}th{background:#f2f6f7}</style></head><body>
-      <h1>${escape(projectName)} · ${escape(title)}</h1><p>${escape(text("Period", "Periode"))}: ${escape(from)} – ${escape(to)} (${escape(periodBasis)})</p><p>${escape(text("Data cut-off and generated", "Peildatum en gegenereerd"))}: ${escape(generated)}</p><p>${escape(text("Filters", "Filters"))}: ${escape(filters)}</p>
-      <table><thead><tr>${table.head.map((cell) => `<th>${escape(cell)}</th>`).join("")}</tr></thead><tbody>${table.rows.map((row) => `<tr>${row.map((cell) => `<td>${escape(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table><script>window.onload=()=>window.print()</script></body></html>`);
-    win.document.close();
-  };
+  const exportReport = () => ({
+    title: `${projectName} · ${title}`,
+    metadata: [
+      `${text("Period", "Periode")}: ${from} – ${to} (${periodBasis})`,
+      `${text("Data cut-off", "Peildatum")}: ${generated}`,
+      `${text("Generated", "Gegenereerd")}: ${new Date().toLocaleString(locale, { timeZone: "America/Paramaribo" })}`,
+      `${text("Filters", "Filters")}: ${filters}`,
+    ],
+    headers: table.head,
+    rows: table.rows,
+  });
   const loading = (kind === "contractor" && portalQuery.isLoading) || (kind === "documents" && documentsQuery.isLoading);
 
   return (
@@ -163,8 +156,7 @@ export function RegisterReports({ client, projectId, projectName, data, parties,
         </div>
       ) : <p className="record-list-empty">{text("Nothing to report for this selection.", "Niets te rapporteren voor deze selectie.")}</p>}
       <div className="portal-response-actions">
-        <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={!table.rows.length} onClick={exportCsv}><FileSpreadsheet size={15} /> Excel (CSV)</button>
-        <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={!table.rows.length} onClick={print}><Printer size={15} /> PDF</button>
+        <RegisterExportButtons getReport={exportReport} filename={`${projectName.replace(/[^a-z0-9]+/gi, "-")}-${kind}-${to}`} disabled={loading || !table.rows.length || (kind === "documents" ? documentsQuery.isError : kind === "contractor" && portalQuery.isError)} />
       </div>
     </section>
   );

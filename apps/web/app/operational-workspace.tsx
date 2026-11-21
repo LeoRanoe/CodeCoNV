@@ -149,7 +149,7 @@ import { TimeField } from "@/app/time-field";
 import { useLanguage } from "@/lib/i18n";
 import { cacheProjectSnapshot, getCachedProjectSnapshot } from "@/lib/offline/project-cache";
 import { useLiveProjectWeather } from "@/lib/weather-client";
-import { compressFieldPhoto, dataSaverEnabled, forceSyncOfflineUploads, queueOfflineUpload, removeOfflineUpload } from "@/lib/offline/upload-queue";
+import { prepareEvidencePhoto, forceSyncOfflineUploads, queueOfflineUpload, removeOfflineUpload } from "@/lib/offline/upload-queue";
 import { photoRefusalMessage, prepareCameraPhotos } from "@/lib/images/normalize-image";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import type { FormalReportSnapshot } from "@/lib/reports/daily-report-pdf";
@@ -1156,7 +1156,7 @@ export function OperationalWorkspace({
           data={snapshot}
           buildings={buildings}
           openRecord={(tab, recordId) => openProjectArea(tab as Parameters<typeof openProjectArea>[0], recordId)}
-          photoLibrary={<MediaLibraryWorkspace mode="photos" data={snapshot} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} open360Upload={() => openProjectArea("visual")} markPhotoIssue={() => openProjectArea("visual")} />}
+          photoLibrary={<MediaLibraryWorkspace mode="photos" organizationId={organizationId} data={snapshot} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} open360Upload={() => openProjectArea("visual")} markPhotoIssue={() => openProjectArea("visual")} />}
           attachments={<MediaLibraryWorkspace mode="assets" organizationId={organizationId} data={snapshot} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} open360Upload={() => openProjectArea("visual")} markPhotoIssue={() => openProjectArea("visual")} openRecord={(recordTab, recordId) => openProjectArea(recordTab as Parameters<typeof openProjectArea>[0], recordId)} />}
         />
       ) : null}
@@ -2608,7 +2608,7 @@ function ProjectOperations({
           const photoBuildingId = activeInspection.building_id;
           const folderId = existingMediaFolderId(folderName, photoBuildingId);
           for (const photo of inspectionPhotos) {
-            const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
+            const prepared = prepareEvidencePhoto(photo.file);
             const caption = photoTitle(photo);
             await queueOfflineUpload({
               projectId,
@@ -2617,6 +2617,7 @@ function ProjectOperations({
               folderId,
               folderName,
               kind: "photo",
+              sourcePhoto: photo.file !== photo.original ? photo.original : undefined,
               file: prepared.blob,
               fileName: prepared.fileName,
               mimeType: prepared.mimeType,
@@ -2860,7 +2861,7 @@ function ProjectOperations({
         const findingFolderId = existingMediaFolderId(folderName, findingPhotoBuildingId);
         const groupId = crypto.randomUUID();
         for (const photo of findingPhotos) {
-          const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
+          const prepared = prepareEvidencePhoto(photo.file);
           // The photo's own words win over the record's; without them the register shows a
           // dozen identical titles for one issue.
           await queueOfflineUpload({
@@ -2870,6 +2871,7 @@ function ProjectOperations({
             folderId: findingFolderId,
             folderName,
             kind: "photo",
+            sourcePhoto: photo.file !== photo.original ? photo.original : undefined,
             file: prepared.blob,
             fileName: prepared.fileName,
             mimeType: prepared.mimeType,
@@ -3065,7 +3067,7 @@ function ProjectOperations({
           const folderName = "HSE";
           const folderId = existingMediaFolderId(folderName, hsePhotoBuildingId);
           for (const photo of hsePhotos) {
-            const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
+            const prepared = prepareEvidencePhoto(photo.file);
             const caption = photoTitle(photo);
             await queueOfflineUpload({
               projectId,
@@ -3074,6 +3076,7 @@ function ProjectOperations({
               folderId,
               folderName,
               kind: "photo",
+              sourcePhoto: photo.file !== photo.original ? photo.original : undefined,
               file: prepared.blob,
               fileName: prepared.fileName,
               mimeType: prepared.mimeType,
@@ -3286,7 +3289,7 @@ function ProjectOperations({
           ];
           const queuedPhotoIds: string[] = [];
           for (const { photo, role } of filedPhotos) {
-            const prepared = await compressFieldPhoto(photo.file, dataSaverEnabled());
+            const prepared = prepareEvidencePhoto(photo.file);
             const written = photoTitle(photo);
             const caption = role
               ? [namedPhotoLabel(role, language), written].filter(Boolean).join(" · ")
@@ -3298,6 +3301,7 @@ function ProjectOperations({
               folderId,
               folderName,
               kind: "photo",
+              sourcePhoto: photo.file !== photo.original ? photo.original : undefined,
               file: prepared.blob,
               fileName: prepared.fileName,
               mimeType: prepared.mimeType,
@@ -5280,7 +5284,7 @@ function ProjectOperations({
 
       {tab === "tools" ? <FieldTools data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} parties={parties} reportId={reportId} currentUserName={currentUserName} client={client} busy={busy} run={run} /> : null}
 
-      {tab === "files" ? <MediaLibraryWorkspace mode="photos" focusRecordId={focusRecordId} markPhotoIssue={(fileId) => { setVisualFileId(fileId); switchTab("visual"); }} data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} open360Upload={() => { setVisual360Intent(true); setTab("visual"); }} /> : null}
+      {tab === "files" ? <MediaLibraryWorkspace mode="photos" organizationId={organizationId} focusRecordId={focusRecordId} markPhotoIssue={(fileId) => { setVisualFileId(fileId); switchTab("visual"); }} data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} open360Upload={() => { setVisual360Intent(true); setTab("visual"); }} /> : null}
 
       {tab === "assets" ? <MediaLibraryWorkspace mode="assets" focusRecordId={focusRecordId} organizationId={organizationId} data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} client={client} busy={busy} run={run} open360Upload={() => { setVisual360Intent(true); setTab("visual"); }} markPhotoIssue={(fileId) => { setVisualFileId(fileId); switchTab("visual"); }} openRecord={(recordTab, recordId) => openProjectArea(recordTab as Parameters<typeof openProjectArea>[0], recordId)} /> : null}
     </>

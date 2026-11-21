@@ -129,6 +129,16 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
   const [photoSpec, setPhotoSpec] = useState<SpecValues>(() => (capture?.spec ?? {}) as SpecValues);
   const photoSpecMissing = specMissing("photo", photoSpec, language);
   const photoSpecChanged = JSON.stringify(cleanSpecValues("photo", photoSpec)) !== JSON.stringify(cleanSpecValues("photo", (capture?.spec ?? {}) as SpecValues));
+  const savePhotoClassification = () => {
+    if (!capture) return;
+    const saved = capture.spec;
+    const values = {
+      ...cleanSpecValues("photo", photoSpec),
+      ...(saved?._original ? { _original: saved._original } : {}),
+      ...(saved?.original_capture_at ? { original_capture_at: saved.original_capture_at } : {}),
+    };
+    void run(() => updateVisualCaptureSpec(client, capture.id, values), text("Photo classification saved.", "Fotoclassificatie opgeslagen."));
+  };
   const markers = capture
     ? data.visualAnnotations.filter((annotation) => annotation.capture_id === capture.id && annotation.status === "active")
     : [];
@@ -205,11 +215,13 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
             <div><dt>{text("Size", "Grootte")}</dt><dd>{humanSize(file.size_bytes)}</dd></div>
             {(() => {
               // F05: whether the stored file is the original, and the original's fingerprint.
-              const original = (capture?.spec as { _original?: { sha256?: string; size?: number; stored?: string } } | null | undefined)?._original;
+              const original = (capture?.spec as { _original?: { sha256?: string; size?: number; stored?: string; file_id?: string; name?: string } } | null | undefined)?._original;
               if (!original?.sha256) return null;
               return (
                 <div data-photo-original={original.stored}><dt>{text("Original", "Origineel")}</dt>
-                  <dd>{original.stored === "reduced_copy" ? text(`Reduced copy stored; original ${humanSize(Number(original.size ?? 0))}`, `Verkleinde kopie bewaard; origineel ${humanSize(Number(original.size ?? 0))}`) : text("Stored unchanged", "Ongewijzigd bewaard")}
+                  <dd>{original.file_id
+                    ? <button type="button" className="ui-button ui-button--quiet ui-button--md" onClick={() => void run(() => downloadProjectFile(client, original.file_id!, original.name ?? file.original_name), text("Original downloaded.", "Origineel gedownload."))}><Download size={15} /> {text("Download original", "Origineel downloaden")}</button>
+                    : original.stored === "reduced_copy" ? text(`Reduced copy stored; original ${humanSize(Number(original.size ?? 0))}`, `Verkleinde kopie bewaard; origineel ${humanSize(Number(original.size ?? 0))}`) : text("Stored unchanged", "Ongewijzigd bewaard")}
                     <small className="media-detail-hash" title={original.sha256}> · SHA-256 {original.sha256.slice(0, 12)}…</small></dd></div>
               );
             })()}
@@ -229,7 +241,7 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
           {capture ? (
             <div className="media-detail-spec">
               <SpecFields form="photo" values={photoSpec} onChange={setPhotoSpec} text={text} language={language} heading={text("Photo classification", "Fotoclassificatie")} />
-              <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={busy || !photoSpecChanged || photoSpecMissing.length > 0} onClick={() => void run(() => updateVisualCaptureSpec(client, capture.id, cleanSpecValues("photo", photoSpec)), text("Photo classification saved.", "Fotoclassificatie opgeslagen."))}>
+              <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={busy || !photoSpecChanged || photoSpecMissing.length > 0} onClick={savePhotoClassification}>
                 {text("Save classification", "Classificatie opslaan")}
               </button>
             </div>
