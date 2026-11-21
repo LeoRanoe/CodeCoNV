@@ -4,7 +4,7 @@
  * this build was written for. `expectedSchemaVersion` must equal the newest migration in
  * supabase/migrations (a test fails when it does not).
  */
-export const expectedSchemaVersion = "202611240003";
+export const expectedSchemaVersion = "202611240004";
 
 export function releaseInfo(env: Record<string, string | undefined> = process.env) {
   const commit = (env.VERCEL_GIT_COMMIT_SHA ?? "").trim();
