@@ -587,6 +587,9 @@ export type SheetItem = string | SheetSlot | SheetRow;
 const slot = (name: string, en: string, nl: string, required = false, hint?: Words): SheetSlot => ({ slot: name, label: w(en, nl), required, hint });
 const row = (name: string, items: Array<string | SheetSlot>, label?: Words, required = false): SheetRow => ({ row: name, items, label, required });
 
+/** The version of the server rule table (app_private.spec_form_rules) this form is written for. */
+export const specRulesVersion = "1";
+
 export const sheetLayouts: Partial<Record<SpecFormKey, SheetItem[]>> = {
   issue: [
     "identified_at",
@@ -1100,6 +1103,9 @@ export function cleanSpecValues(form: SpecFormKey, rawValues: SpecValues, config
     if (one(values, key) && !(key in out)) out[key] = one(values, key);
   }
   if (config?.lists_version) out.lists_version = String(config.lists_version);
+  // F03: written by the current form, so the server also checks the always-required fields on save
+  // (older offline payloads without it are checked at their formal submission instead).
+  if (sheetLayouts[form]) out._rules = specRulesVersion;
   return out;
 }
 
