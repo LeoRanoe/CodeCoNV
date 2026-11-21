@@ -157,7 +157,7 @@ export type SpecField = {
   columns?: SpecColumn[];
   /** Rows of this field become linked action records (owner + due date each). */
   followUp?: boolean;
-  /** One row per chosen value of this multi field (containment steps). */
+  /** One row per chosen value of this multi field (containment steps), or per Activity Detail Guide prompt (`activityPrompts`). */
   rowsFrom?: string;
   /** Starts with the signed-in user ("Auto-filled user … allow supervisor confirmation"). */
   defaultsToCurrentUser?: boolean;
@@ -305,6 +305,16 @@ const deliveryException = when({ any: [
   is("inspection_result", "Rejected", "Quarantined"),
   { differ: ["ordered_quantity", "delivered_quantity"] },
 ] });
+
+/** F07: one answer per Activity Detail Guide prompt, stored with the prompt it answers. */
+const activityAnswers: SpecField = {
+  key: "activity_answers",
+  label: w("Activity details", "Activiteitgegevens"),
+  kind: "rows",
+  rowsFrom: "__activity_prompts",
+  columns: [{ key: "answer", label: w("Answer", "Antwoord"), kind: "text" }],
+  hint: w("The Activity Detail Guide's points for this activity; answer those that apply.", "De punten uit de activiteitengids voor deze activiteit; vul in wat van toepassing is."),
+};
 
 const concretePouring = when(is("activity", "Concrete Pouring"));
 
@@ -577,7 +587,9 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "concrete_volume", label: w("Volume (m³)", "Volume (m³)"), kind: "number", visible: concretePouring, required: concretePouring, min: 0 },
     { key: "delivery_tickets", label: w("Delivery ticket / batch references", "Leverbon- / batchreferenties"), kind: "text", visible: concretePouring },
     { key: "slump_cube_refs", label: w("Slump and cube sample references", "Referenties zetmaat en kubussen"), kind: "text", visible: concretePouring },
-    { key: "activity_details", label: w("Details for this activity", "Gegevens voor deze activiteit"), kind: "textarea", visible: when(all(filled("activity"), not(concretePouring.rule!))) },
+    { ...activityAnswers, visible: when(all(filled("activity"), not(concretePouring.rule!))) },
+    // Free-text details of records saved before the activity prompts; shown while they hold text.
+    { key: "activity_details", label: w("Details for this activity", "Gegevens voor deze activiteit"), kind: "textarea", visible: when(filled("activity_details")) },
     { key: "inspection_reference", label: w("Inspection / test reference", "Inspectie- / testreferentie"), kind: "record", recordKinds: ["inspection", "register:test", "register:inspection_request"] },
     { key: "blocker", label: w("Blocker / issue", "Belemmering"), kind: "select", options: catalogue.workBlockers, otherExplanation: true, visible: when({ any: [is("progress_status", "On Hold"), filled("blocker")] }) },
     { key: "blocker_record", label: w("Linked issue or delay report", "Gekoppeld issue of vertragingsrapport"), kind: "record", recordKinds: ["finding", "ncr", "register:delay_report"], visible: when(all(filled("blocker"), not(is("blocker", "None")))) },
@@ -591,6 +603,7 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "activity", label: w("Activity", "Activiteit"), kind: "activity", parent: "discipline", required: true },
     ...locationFields(w("The exact completed section, e.g. Level 1, grids A-D/1-4", "Het exacte gereedgekomen deel, bv. Niveau 1, stramien A-D/1-4")),
     { key: "completed_items", label: w("What was completed?", "Wat is gereed?"), kind: "completion", parent: "activity", required: true, otherExplanation: true, hint: w("Photo evidence is recommended: add before/after or completion photos to this record.", "Fotobewijs wordt aanbevolen: voeg voor/na- of opleverfoto's toe aan deze registratie.") },
+    { ...activityAnswers, visible: when(filled("activity")) },
     ...quantityFields(w("Quantity completed", "Hoeveelheid gereed")),
     { key: "inspection_status", label: w("Completion / inspection status", "Status gereed / keuring"), kind: "select", options: catalogue.completionInspectionStatuses, required: true, decision: ["Inspected - Accepted", "Inspected - Rejected"], hint: w("Completed is not the same as accepted; a reviewer records the inspection.", "Gereed is niet hetzelfde als geaccepteerd; een beoordelaar legt de keuring vast.") },
     { key: "inspected_by", label: w("Inspected by", "Gekeurd door"), kind: "text", auto: true, visible: when(filled("inspected_by")) },
@@ -741,7 +754,7 @@ export const sheetLayouts: Partial<Record<SpecFormKey, SheetItem[]>> = {
     "progress_percent",
     "crew",
     row("times", ["start_time", "finish_time", "crosses_midnight"], w("Start / finish time", "Begin- / eindtijd")),
-    row("details", ["element_type", "element_id", "concrete_grade", "concrete_volume", "delivery_tickets", "slump_cube_refs", "activity_details"], w("Activity-specific technical details", "Activiteitspecifieke technische gegevens")),
+    row("details", ["element_type", "element_id", "concrete_grade", "concrete_volume", "delivery_tickets", "slump_cube_refs", "activity_answers", "activity_details"], w("Activity-specific technical details", "Activiteitspecifieke technische gegevens")),
     "inspection_reference",
     slot("photos", "Photos", "Foto's"),
     row("blocker", ["blocker", "blocker_record"]),
@@ -754,7 +767,7 @@ export const sheetLayouts: Partial<Record<SpecFormKey, SheetItem[]>> = {
     "activity",
     slot("location", "Building / area", "Gebouw / gebied", true),
     "exact_location",
-    "completed_items",
+    row("completed", ["completed_items", "activity_answers"]),
     row("quantity", ["quantity", "quantity_na"]),
     "quantity_unit",
     row("inspection", ["inspection_status", "inspected_by"]),
@@ -883,6 +896,18 @@ export const isSheetSlot = (item: SheetItem | string): item is SheetSlot => type
 export const sheetKeys = (form: SpecFormKey): string[] => (sheetLayouts[form] ?? []).flatMap((item) => (isSheetRow(item) ? item.items : [item])).filter((item): item is string => typeof item === "string");
 
 
+/** Rows of a `rows` field that come from the Activity Detail Guide (F07). */
+export const promptSource = "__activity_prompts";
+
+/**
+ * The Activity Detail Guide's prompts (column E) for the chosen activity, without the quantity
+ * prompt, which the form asks as Quantity completed and Unit.
+ */
+export function activityPrompts(values: SpecValues): string[] {
+  return (activityGuide(one(values, "discipline"), one(values, "activity"))?.prompts ?? [])
+    .filter((prompt) => !/quantity and unit/i.test(prompt));
+}
+
 /** The activities of one discipline, each with its Activity Detail Guide row. */
 export function activitiesFor(disciplineName: string): SpecActivity[] {
   return catalogue.activities[disciplineName] ?? [];
@@ -933,6 +958,14 @@ export function needsOtherExplanation(field: SpecField, values: SpecValues) {
 export function rowsFor(field: SpecField, values: SpecValues): SpecRow[] {
   const stored = specRows(values, field.key);
   if (!field.rowsFrom) return stored;
+  if (field.rowsFrom === promptSource) {
+    // The current activity's prompts first; an answer to a prompt the guide no longer lists is kept.
+    const prompts = activityPrompts(values);
+    return [
+      ...prompts.map((prompt) => ({ ...(stored.find((row) => row.step === prompt) ?? {}), step: prompt })),
+      ...stored.filter((row) => row.step && !prompts.includes(row.step) && rowFilled(row)),
+    ];
+  }
   return val(values, field.rowsFrom)
     .filter((item) => !/^not applicable/i.test(item))
     .map((item) => ({ ...(stored.find((row) => row.step === item) ?? {}), step: item }));
@@ -993,6 +1026,8 @@ export function setSpecValue(form: SpecFormKey, rawValues: SpecValues, key: stri
   if (key === "activity" || key === "discipline") {
     for (const field of fields) {
       if (field.visible && !field.visible(next) && field.key !== key) delete next[field.key];
+      // Answers belong to the prompts of the activity they were given for (F07).
+      if (field.rowsFrom === promptSource) delete next[field.key];
     }
   }
   // "Not applicable" is never combined with another selection.
@@ -1111,7 +1146,7 @@ export function cleanSpecValues(form: SpecFormKey, rawValues: SpecValues, config
   for (const field of specForms[form]) {
     if (!isVisible(field, values)) continue;
     if (field.kind === "rows") {
-      const rows = rowsFor(field, values).filter((row) => field.rowsFrom || rowFilled(row))
+      const rows = rowsFor(field, values).filter((row) => (field.rowsFrom && field.rowsFrom !== promptSource) || rowFilled(row))
         .map((row) => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, String(value ?? "").trim()]).filter(([, value]) => value !== "")));
       if (rows.length) out[field.key] = rows;
       continue;

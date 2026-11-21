@@ -306,3 +306,27 @@ test("every Workspace form is its workbook sheet, row by row", () => {
   assert.equal(field("works_completed", "activity_details"), undefined);
   assert.equal(field("delay_report", "related_record"), undefined);
 });
+
+test("F07: each activity's guide prompts are answered, stored with the prompt, reopened and cleared on a new activity", async () => {
+  const { activityPrompts, cleanSpecValues, rowsFor, setSpecValue, specFacts, specForms, activitiesFor } = await import("../lib/forms/spec-forms.ts");
+  const { workDisciplines } = await import("../lib/forms/spec-catalogue.ts");
+  const activities = workDisciplines.flatMap((name) => activitiesFor(name).map((activity) => ({ name, activity })));
+  assert.equal(activities.length, 147, "all 147 guide rows");
+  for (const { name, activity } of activities) {
+    const prompts = activityPrompts({ discipline: name, activity: activity.value });
+    assert.ok(prompts.length >= 4, `${activity.value} has its prompts`);
+    assert.ok(prompts.every((prompt) => !/quantity and unit/i.test(prompt)), "the quantity prompt is the Quantity field");
+  }
+  for (const form of ["works_ongoing", "works_completed"]) {
+    const field = specForms[form].find((item) => item.key === "activity_answers");
+    let values = { discipline: "Surveying & Setting Out", activity: "Building / Grid Setting Out" };
+    const [first] = rowsFor(field, values);
+    assert.equal(first.step, activityPrompts(values)[0]);
+    values = { ...values, activity_answers: [{ step: first.step, answer: "Grid lines A-D" }] };
+    const stored = cleanSpecValues(form, values);
+    assert.deepEqual(stored.activity_answers, [{ step: first.step, answer: "Grid lines A-D" }], `${form} stores only answered prompts`);
+    assert.ok(specFacts(form, stored).some(([label, text]) => label === "Activity details" && text.includes("Grid lines A-D")), "reopened and printed");
+    const changed = setSpecValue(form, stored, "activity", "Topographic Survey");
+    assert.equal(changed.activity_answers, undefined, `${form}: a new activity clears the answers`);
+  }
+});

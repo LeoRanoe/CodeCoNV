@@ -53,7 +53,7 @@ create temporary table specs on commit drop as select
   jsonb_build_object('_rules', '1', 'agreement_at', '2026-11-24T09:00', 'agreement_type', 'Action / Task Commitment',
     'agreement_category', 'Submission / Information Required', 'agreed_by', jsonb_build_array('Lena Lead', 'Contractor A NV'),
     'action_required', 'Yes') as agreement,
-  jsonb_build_object('_rules', '1', 'report_date', '2026-11-24', 'discipline', 'Surveying & Setting Out', 'activity', 'Setting Out',
+  jsonb_build_object('_rules', '1', 'report_date', '2026-11-24', 'discipline', 'Surveying & Setting Out', 'activity', 'Building / Grid Setting Out',
     'exact_location', 'Grid A-3', 'work_item', 'Grid lines', 'progress_status', 'In Progress', 'crew', jsonb_build_array('Contractor A NV'),
     'quantity_na', 'yes') as works;
 grant select on specs to authenticated;
