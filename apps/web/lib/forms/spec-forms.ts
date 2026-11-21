@@ -1176,6 +1176,9 @@ export function cleanSpecValues(form: SpecFormKey, rawValues: SpecValues, config
   for (const key of ["approved_by_user_id", "reviewed_by_user_id", "verified_by_user_id", "inspected_by_user_id", "accepted_by_user_id", "corrective_action_reopened", "reviewed_on", "inspected_on", "accepted_on"]) {
     if (one(values, key) && !(key in out)) out[key] = one(values, key);
   }
+  // F05: a photo's record of its original file is written once at upload and kept on every edit.
+  const original = values._original;
+  if (original && typeof original === "object" && !Array.isArray(original)) out._original = original as unknown as SpecValue;
   if (config?.lists_version) out.lists_version = String(config.lists_version);
   // F03: written by the current form, so the server also checks the always-required fields on save
   // (older offline payloads without it are checked at their formal submission instead).
