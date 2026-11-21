@@ -36,6 +36,8 @@ export const recordKindTabs = {
   building: "home",
   daily_work: "daily",
   delay: "daily",
+  // F04: a building's workforce of one day is a submitted form of its own.
+  workforce: "workforce",
 };
 
 function entry(kind, id, code, title, subtitle, metadata = {}) {
@@ -55,7 +57,21 @@ function entry(kind, id, code, title, subtitle, metadata = {}) {
     delayHours: Number(metadata.delayHours ?? 0),
     // Discipline, type, status and priority of the specification fields (reporting filters).
     facets: metadata.spec ? specFacets(metadata.spec) : null,
+    // F04 archive facets: the form's own type (register type, HSE observation or incident),
+    // the responsible organisation and the named responsible person.
+    subtype: String(metadata.subtype ?? ""),
+    partyId: metadata.partyId ?? null,
+    responsible: String(metadata.responsible ?? ""),
   };
+}
+
+const responsibleKeys = ["responsible_person", "responsible_name", "action_owner", "owner", "responsible_party"];
+function responsibleOf(spec) {
+  for (const key of responsibleKeys) {
+    const value = spec?.[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
 }
 
 function recordBuildings(record) {
@@ -78,17 +94,38 @@ export function buildRecordDirectory(snapshot) {
       finding.finding_number,
       finding.title,
       finding.status,
-      { buildingIds: recordBuildings(finding), date: finding.created_at, status: finding.status, author: finding.issue_management?.issued_by, spec: recordSpec(finding) },
+      { buildingIds: recordBuildings(finding), date: finding.created_at, status: finding.status, author: finding.issue_management?.issued_by, spec: recordSpec(finding), partyId: finding.responsible_party_id, responsible: responsibleOf(recordSpec(finding)) },
     ));
   }
   for (const inspection of data.inspections ?? []) {
     found.push(entry("inspection", inspection.id, inspection.inspection_number, inspection.title, inspection.status, { buildingIds: recordBuildings(inspection), date: inspection.completed_at ?? inspection.started_at ?? inspection.planned_at, status: inspection.status, author: inspection.signed_by, spec: recordSpec(inspection) }));
   }
   for (const event of data.hseEvents ?? []) {
-    found.push(entry("hse", event.id, event.event_number, event.title, event.status, { buildingIds: recordBuildings(event), date: event.occurred_at ?? event.created_at, status: event.status, author: event.signed_by, spec: recordSpec(event) }));
+    found.push(entry("hse", event.id, event.event_number, event.title, event.status, { buildingIds: recordBuildings(event), date: event.occurred_at ?? event.created_at, status: event.status, author: event.signed_by, spec: recordSpec(event), subtype: ["incident", "near_miss"].includes(event.event_type) ? "incident" : "observation", partyId: event.responsible_party_id, responsible: responsibleOf(recordSpec(event)) }));
   }
   for (const register of data.registerEntries ?? []) {
-    found.push(entry("register", register.id, register.entry_number, register.title, register.register_type, { buildingIds: recordBuildings(register), date: register.occurred_at, status: register.status, author: register.signed_by ?? register.details?.issued_by, spec: recordSpec(register) }));
+    found.push(entry("register", register.id, register.entry_number, register.title, register.register_type, { buildingIds: recordBuildings(register), date: register.occurred_at, status: register.status, author: register.signed_by ?? register.details?.issued_by, spec: recordSpec(register), subtype: register.register_type, partyId: register.responsible_party_id, responsible: responsibleOf(recordSpec(register)) }));
+  }
+  // F04: Workforce is filed per day report and building (Workspace page 03).
+  const reportsById = new Map((data.dayReports ?? []).map((report) => [report.id, report]));
+  const workforceDays = new Map();
+  for (const row of data.attendance ?? []) {
+    if (row.entry_type === "visitor") continue;
+    const key = `${row.day_report_id ?? ""}:${row.building_id ?? ""}`;
+    const day = workforceDays.get(key) ?? { id: key, reportId: row.day_report_id, buildingId: row.building_id, headcount: 0, crews: 0, signedBy: "", date: row.created_at, parties: new Set() };
+    day.headcount += Number(row.headcount ?? 0);
+    day.crews += 1;
+    if (row.signed_by) day.signedBy = row.signed_by;
+    if (row.party_id) day.parties.add(row.party_id);
+    if (String(row.created_at ?? "") > String(day.date ?? "")) day.date = row.created_at;
+    workforceDays.set(key, day);
+  }
+  for (const day of workforceDays.values()) {
+    const report = reportsById.get(day.reportId);
+    found.push(entry("workforce", day.id, report?.report_number ?? "", `Workforce ${report?.report_date ?? ""}`.trim(), `${day.headcount} · ${day.crews}`, {
+      buildingIds: day.buildingId ? [day.buildingId] : [], date: report?.report_date ?? day.date, status: day.signedBy ? "signed" : "recorded", author: day.signedBy,
+      partyId: day.parties.size === 1 ? [...day.parties][0] : null,
+    }));
   }
   for (const report of data.dayReports ?? []) {
     found.push(entry("report", report.id, report.report_number, report.report_date, report.status, { date: report.report_date, status: report.status }));

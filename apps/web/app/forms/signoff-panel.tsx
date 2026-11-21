@@ -176,7 +176,7 @@ export function SignoffPanel({
           {events.map((event) => (
             <li key={event.id}>
               <strong>{word(signoffActionLabels[event.action])}</strong>
-              <span> · {event.actor_name}{event.actor_organization ? ` (${event.actor_organization})` : ""} · {event.actor_role}</span>
+              <span> · {event.actor_name}{event.actor_organization ? ` (${event.actor_organization})` : ""} · {event.actor_role}{event.stage_role && event.stage_role !== event.actor_role && event.attestation_method === "account" ? ` · ${text("as", "als")} ${event.stage_role}` : ""}</span>
               <span className="signoff-meta"> · {text("round", "ronde")} {event.round_number} · {when(event.created_at)} · {event.previous_status ?? "—"} → {event.new_status}</span>
               {event.attestation_method === "external_representative" ? <span className="signoff-meta"> · {text("signed on this device by an external representative", "op dit apparaat getekend door een externe vertegenwoordiger")}</span> : null}
               {event.attestation_method === "signed_document" ? <span className="signoff-meta"> · {text("signed document uploaded", "ondertekend document geüpload")}</span> : null}
