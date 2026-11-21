@@ -84,6 +84,12 @@ export type OfflineUpload = {
   /** Specification fields chosen when the photo was taken (photo purpose, discipline). */
   spec?: Record<string, unknown> | null;
   /**
+   * F05: the file as the camera or chooser handed it over, before any data-saver reduction:
+   * its SHA-256, size, name and type. Stored with the photo, so the stored copy states whether
+   * it is the original and an original supplied later can be matched to it.
+   */
+  original?: OriginalFingerprint | null;
+  /**
    * The spot the supervisor pointed at on the building drawing. It becomes a pin on that
    * drawing as soon as the photo reaches the server, so the picture can be found back from
    * the plan and not only from a list of file names.
@@ -109,6 +115,9 @@ export type OfflineUpload = {
 };
 
 type NetworkInformation = { saveData?: boolean; effectiveType?: string; type?: string };
+
+export { fingerprintOriginal, originalRecord, type OriginalFingerprint } from "./original-fingerprint";
+import { originalRecord, type OriginalFingerprint } from "./original-fingerprint";
 
 export function dataSaverEnabled() {
   if (typeof window === "undefined") return true;
@@ -282,7 +291,7 @@ async function ensureVisualCapture(client: SupabaseClient, upload: OfflineUpload
     tourOrder: upload.tourOrder ?? null,
     stackId: upload.evidenceGroupId || null,
     capturedAt: upload.capturedAt,
-    spec: upload.spec ?? null,
+    spec: originalRecord(upload) ? { ...(upload.spec ?? {}), _original: originalRecord(upload) } : upload.spec ?? null,
   });
   if (!upload.drawingPin || !capture?.id) return;
   // The pin is a second recording of the same fact. The photo is already filed with its

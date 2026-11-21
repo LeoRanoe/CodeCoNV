@@ -29,6 +29,7 @@ import {
   compressFieldPhoto,
   connectionIsMetered,
   dataSaverEnabled,
+  fingerprintOriginal,
   forceSyncOfflineUploads,
   listOfflineUploads,
   queueOfflineUpload,
@@ -387,6 +388,8 @@ export function MediaLibraryWorkspace({
         const details = detailsFor?.(file);
         const source = relabelled.get(file) ?? file;
         const prepared = uploadKind === "photo" ? await compressFieldPhoto(source, savingData) : { blob: file as Blob, fileName: file.name, mimeType: file.type || "application/octet-stream", compressed: false };
+        // F05: the fingerprint of the file exactly as received, before any reduction.
+        const original = uploadKind === "photo" ? await fingerprintOriginal(file) : null;
         await queueOfflineUpload({
           projectId,
           buildingId: libraryBuildingId,
@@ -408,6 +411,7 @@ export function MediaLibraryWorkspace({
           evidenceGroupId: uploadKind === "photo" ? evidenceGroupId || null : null,
           // F05: purpose, category and discipline travel with the photo through the device queue.
           spec: uploadKind === "photo" ? details?.spec ?? null : null,
+          original,
         });
       }
       await reloadQueue();
