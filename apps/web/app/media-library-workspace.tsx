@@ -330,7 +330,7 @@ export function MediaLibraryWorkspace({
     preferredFolderName?: string,
     descriptionOverride?: string,
     /** The words a photo carries of its own, when it was described before being filed. */
-    detailsFor?: (file: File) => { title?: string; description?: string; locationNodeId?: string | null } | undefined,
+    detailsFor?: (file: File) => { title?: string; description?: string; locationNodeId?: string | null; spec?: Record<string, unknown> | null } | undefined,
     /** What is being uploaded. A choice says it itself instead of relying on the toggle. */
     uploadKind: "photo" | "drawing" | "document" = kind,
     evidenceGroupId?: string | null,
@@ -380,8 +380,11 @@ export function MediaLibraryWorkspace({
       if (valid.length !== candidates.length) {
         setFieldError(text("Unsupported files were skipped.", "Niet-ondersteunde bestanden zijn overgeslagen."));
       }
-      const capturedAt = new Date(valid[0]?.lastModified || Date.now()).toISOString();
+      const savedAt = Date.now();
       for (const file of valid) {
+        // F05: each photo keeps its own capture moment; a mixed-date batch is not stamped with the first one.
+        const capturedAt = new Date(file.lastModified || savedAt).toISOString();
+        const details = detailsFor?.(file);
         const source = relabelled.get(file) ?? file;
         const prepared = uploadKind === "photo" ? await compressFieldPhoto(source, savingData) : { blob: file as Blob, fileName: file.name, mimeType: file.type || "application/octet-stream", compressed: false };
         await queueOfflineUpload({
@@ -403,6 +406,8 @@ export function MediaLibraryWorkspace({
           queuedSize: prepared.blob.size,
           compressed: prepared.compressed,
           evidenceGroupId: uploadKind === "photo" ? evidenceGroupId || null : null,
+          // F05: purpose, category and discipline travel with the photo through the device queue.
+          spec: uploadKind === "photo" ? details?.spec ?? null : null,
         });
       }
       await reloadQueue();

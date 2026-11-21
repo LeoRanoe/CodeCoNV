@@ -23,6 +23,8 @@ export type SignoffEvent = {
   actor_name: string;
   actor_organization: string | null;
   actor_role: string;
+  /** The step role chosen in the screen (F16); actor_role is the server-derived project role. */
+  stage_role?: string | null;
   attestation_method: "account" | "external_representative" | "signed_document";
   signature_image: string | null;
   evidence_file_id?: string | null;
@@ -256,7 +258,7 @@ export function availableActions(profile: SignoffProfile, events: SignoffEvent[]
   return [...offered].map(([action, stage]) => ({ action, stage }));
 }
 
-const signoffColumns = "id,record_kind,record_id,workflow_profile,round_number,stage_number,action,actor_user_id,actor_name,actor_organization,actor_role,attestation_method,signature_image,evidence_file_id,comments,return_reason,next_actor,due_at,previous_status,new_status,created_at";
+const signoffColumns = "id,record_kind,record_id,workflow_profile,round_number,stage_number,action,actor_user_id,actor_name,actor_organization,actor_role,stage_role,attestation_method,signature_image,evidence_file_id,comments,return_reason,next_actor,due_at,previous_status,new_status,created_at";
 
 export async function loadSignoffEvents(client: SupabaseClient, recordKind: SignoffRecordKind, recordId: string) {
   const result = await client

@@ -3457,16 +3457,28 @@ function ProjectOperations({
     })
     .sort((left, right) => right.reportDate.localeCompare(left.reportDate));
 
+  // The client's Workspace page names (Word file, image 15) for the forms that share the register screen.
+  const workspacePageTitles: Record<string, string> = {
+    works_ongoing: text("Works ongoing", "Werkzaamheden gaande"),
+    works_completed: text("Works completed", "Werkzaamheden afgerond"),
+    delay_report: text("Project Delay Report (PDR)", "Vertragingsrapport (PDR)"),
+    delivery: text("Materials delivery", "Materiaallevering"),
+    technical_instruction: text("Technical instructions", "Technische instructies"),
+    change_order: text("Change order (CO)", "Change order (CO)"),
+    lessons_learned: text("Lessons Learned (LL)", "Geleerde lessen (LL)"),
+    agreement: text("Agreements Made", "Gemaakte afspraken"),
+  };
   const projectSections: Array<[Exclude<ProjectTab, "home">, string, number]> = ([
     ["inspections", text("Inspections", "Inspecties"), data.inspections.length],
     ["findings", text("Issues", "Issues"), countOpenFindings(data.findings, "issue")],
     ["ncr", "NCR", countOpenFindings(data.findings, "ncr")],
-    ["hse", "HSE", data.hseEvents.length],
+    ["hse", hseSpecForm === "hse_incident" ? text("HSE incident registration", "HSE-incidentregistratie") : "HSE", data.hseEvents.length],
     // The page is named after what was asked for: one block of the day, or the whole day log.
     ["daily", !dayLogFocus ? text("Day log", "Daglog") : dailyWorkView === "works_completed" ? text("Works completed", "Werkzaamheden afgerond") : dailyWorkView === "delays" ? text("Delays", "Vertragingen") : text("Works ongoing", "Werkzaamheden gaande"), (data.dailyWork ?? []).length],
     ["workforce", text("Workforce", "Workforce"), workforceDays.length],
     ["documents", "Project Docs", data.files.filter((file) => file.status === "available").length + data.registerEntries.filter((entry) => ["document", "drawing", "specification", "contract", "boq"].includes(entry.register_type)).length],
-    ["registers", text("Formal documents & registers", "Formele documenten & registers"), data.registerEntries.length],
+    // F17: a Workspace page opened on one of the client's forms carries that form's name (images 8 and 12).
+    ["registers", workspacePageTitles[registerForm.type] ?? text("Formal documents & registers", "Formele documenten & registers"), data.registerEntries.length],
     ["visual", text("Visual evidence", "Visueel bewijs"), data.visualCaptures.length],
     ["drawings", text("Drawings", "Tekeningen"), data.files.filter((file) => file.category === "drawing" && file.status === "available").length],
     ["tools", text("Field tools", "Veldtools"), data.registerEntries.filter((entry) => ["notepad", "agreement", "technical_instruction"].includes(entry.register_type)).length],
