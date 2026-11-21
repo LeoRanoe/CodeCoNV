@@ -51,7 +51,7 @@ where membership.project_id = (select project_id from ids);
 
 
 insert into public.project_register_entries (organization_id, project_id, building_id, register_type, entry_number, title, status, details, created_by, idempotency_key)
-select organization_id, project_id, building_id, 'technical_instruction', 'TI-35-1', 'Sleeve size at grid 4', 'open', '{"spec":{}}'::jsonb,
+select organization_id, project_id, building_id, 'technical_instruction', 'TI-35-1', 'Sleeve size at grid 4', 'open', '{"spec":{"instruction_date":"2026-11-23","instruction_type":"Site Instruction","discipline":"Preliminaries & Site Establishment","instruction_category":"Site access, hoarding & fencing","issued_to":"Contractor A NV","action_owner":"Contractor A NV"}}'::jsonb,
   '00000000-0000-0000-0000-0000000035b2', 'ti35-entry-0001' from ids;
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000035b2","role":"authenticated"}';

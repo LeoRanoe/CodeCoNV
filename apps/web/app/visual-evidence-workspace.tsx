@@ -134,7 +134,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   const initialCapture = initialAnnotation
     ? captures.find((capture) => capture.id === initialAnnotation.capture_id)
     : initialFinding
-      ? captures.find((capture) => capture.building_id === initialFinding.building_id)
+      // "Alleen maar foto's kunnen plaatsen, geen 360°" (image 11): an NCR is marked on a photo.
+      ? captures.find((capture) => capture.building_id === initialFinding.building_id && (initialFinding.finding_type !== "ncr" || capture.capture_type !== "panorama"))
       : null;
   const cameraInputRef = useRef<HTMLInputElement>(null);
   // A photo tapped in the library opens here, on itself, instead of on whatever picture

@@ -506,8 +506,10 @@
 .modal-backdrop:has(> .photo-markup-modal) { padding: 12px; }
 .photo-markup-stage img { max-height: min(72dvh, 900px); }
 @media (max-width: 640px) {
-  .modal.photo-markup-modal { width: 100%; }
-  .photo-markup-stage img { max-height: 52dvh; }
+  /* On a phone the marking window is the whole screen; the photo keeps the room the tools leave. */
+  .modal-backdrop:has(> .photo-markup-modal) { padding: 0; }
+  .modal.photo-markup-modal { width: 100%; max-height: 100dvh; border-radius: 0; }
+  .photo-markup-stage img { max-height: 64dvh; }
 }
 
 /* ---- Client feedback 19-11-2026: one layout rule for every form ------------------------ */
