@@ -864,3 +864,7 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
   .choice-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .choice-tiles > *:last-child:nth-child(odd) { grid-column: 1 / -1; }
 }
+
+/* F11: a record that refers to a revision that is no longer the one to use (record state, not decoration). */
+.spec-revision-stale, .document-link-stale { color: var(--red); font-weight: var(--weight-semibold); }
+.spec-link-chip .spec-revision-stale { flex-basis: 100%; margin: 0; }

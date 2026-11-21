@@ -19,6 +19,7 @@ import {
   registerCsv,
   registerRows,
   reviewerStatuses,
+  revisionStanding,
   sortRegister,
   statusesNeedingReason,
   statusMeta,
@@ -498,6 +499,15 @@ function DocumentDetail({ client, projectId, row, names, fileNames, folderName, 
             <ul className="portal-files">
               {eventsQuery.data.links.map((item) => (
                 <li key={String(item.id)}><span>{String(item.record_code ?? item.record_type)}</span>
+                  {(() => {
+                    // F11: the exact revision the record was written against, and whether it is still the one to use.
+                    const pinned = item.revision_id ? row.history.find((revision) => revision.id === item.revision_id) : null;
+                    if (!pinned) return null;
+                    const standing = revisionStanding(pinned.id, [row.document], row.history);
+                    return <small className={`portal-cell-meta${standing?.stale ? " document-link-stale" : ""}`} data-link-revision={pinned.revision}>
+                      {text(`rev ${pinned.revision}`, `rev ${pinned.revision}`)}{standing?.stale ? text(standing.newerApproved ? ` · rev ${standing.newerApproved.revision} approved since` : " · no longer valid", standing.newerApproved ? ` · sindsdien rev ${standing.newerApproved.revision} goedgekeurd` : " · niet meer geldig") : ""}
+                    </small>;
+                  })()}
                   {canManage ? <button className="ui-button ui-button--quiet ui-button--sm" type="button" onClick={() => void link(true, item as { record_type: string; record_id: string; record_code: string | null })}>{text("Unlink", "Ontkoppelen")}</button> : null}
                 </li>
               ))}
