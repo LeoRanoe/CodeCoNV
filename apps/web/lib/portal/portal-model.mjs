@@ -54,6 +54,8 @@ export const eventLabels = Object.freeze({
   reopen: { en: "Reopened", nl: "Heropend" },
   supersede: { en: "Superseded", nl: "Vervangen" },
   add_files: { en: "Files added", nl: "Bestanden toegevoegd" },
+  release: { en: "Revision released", nl: "Revisie vrijgegeven" },
+  withdraw_release: { en: "Revision release withdrawn", nl: "Vrijgave revisie ingetrokken" },
   view: { en: "Viewed", nl: "Bekeken" },
   download: { en: "Downloaded", nl: "Gedownload" },
 });
@@ -87,6 +89,17 @@ const closedStatuses = new Set(["closed", "withdrawn", "superseded"]);
 const decidedStatuses = new Set(["approved", "rejected"]);
 /** States in which the portal party is the one who has to act. */
 const waitingOnParty = new Set(["assigned", "returned", "clarification_requested", "published"]);
+
+/**
+ * Review statuses an authorised reviewer sets that may be released to a portal (F15). For information
+ * is excluded: an uploader without review rights can set it. Mirrors
+ * app_private.document_revision_releasable in the database, which is what enforces it.
+ */
+export const releasableRevisionStatuses = Object.freeze(["approved", "approved_with_comments", "for_construction"]);
+
+export function revisionReleasable(revision) {
+  return Boolean(revision) && !revision.superseded_at && releasableRevisionStatuses.includes(revision.review_status);
+}
 
 export function label(table, key, language) {
   const entry = table[key];

@@ -972,7 +972,8 @@ export function withInitial(form: SpecFormKey, values: SpecValues): SpecValues {
   return next;
 }
 
-const rowFilled = (row: SpecRow) => Object.entries(row).some(([key, value]) => key !== "step" && key !== "action_id" && !key.endsWith("_ref") && String(value ?? "").trim() !== "");
+// row_id and action_id are identities (F08), not answers: a row holding only those is empty.
+const rowFilled = (row: SpecRow) => Object.entries(row).some(([key, value]) => key !== "step" && key !== "action_id" && key !== "row_id" && !key.endsWith("_ref") && String(value ?? "").trim() !== "");
 
 /** The labels of every visible required field that is still empty, in form order. */
 export function specMissing(form: SpecFormKey, rawValues: SpecValues, language: "en" | "nl" = "en", skip: readonly string[] = []): string[] {

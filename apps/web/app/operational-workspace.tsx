@@ -66,7 +66,7 @@ import { SharedLessons } from "@/app/forms/shared-lessons";
 import { InspectionSpecEditor } from "@/app/forms/inspection-spec-editor";
 import { SignoffPanel } from "@/app/forms/signoff-panel";
 import { loadSignoffHistory, signoffHistoryEntries } from "@/lib/forms/signoff";
-import { cleanSpecValues, isOtherOption, sensitiveKeys, sheetLayouts, specFacts, specFollowUps, specForms, specLinks, specMissing, workflowProfiles, type SpecFormKey, type SpecRow, type SpecValues } from "@/lib/forms/spec-forms";
+import { cleanSpecValues, isOtherOption, sensitiveKeys, sheetLayouts, specFacts, specForms, specLinks, specMissing, workflowProfiles, type SpecFormKey, type SpecRow, type SpecValues } from "@/lib/forms/spec-forms";
 import { specLabel } from "@/lib/forms/spec-labels-nl";
 import { facetFilterActive, filterPeriodSnapshot, matchesSpecFacets, recordSpec, specFacets, type SpecFacetFilter } from "@/lib/forms/spec-facets";
 import { SpecFacetFilterBar } from "@/app/forms/spec-facet-filter";
@@ -161,7 +161,6 @@ import { countOpenFindings } from "@/lib/records/finding-counts.mjs";
 import { createFileOriginResolver, filesForRecord, type FileOriginKind, type FileOriginResolver } from "@/lib/supabase/file-origins";
 import { loadProjectThumbnailUrl } from "@/lib/images/thumbnail";
 import {
-  createRecordFollowUpAction,
   buildPeriodReportSnapshot,
   createChecklist,
   createFinding,
@@ -2947,34 +2946,9 @@ function ProjectOperations({
     }
   };
 
-  /**
-   * Every follow-up row of an incident or an agreement becomes its own action record, with its
-   * owner and due date, linked to the record (workbook: "create separate linked action records").
-   * The key is stable per row, so saving the record again never creates the action twice.
-   */
-  const createFollowUpActions = async (form: SpecFormKey, values: SpecValues, sourceType: "hse" | "meeting", sourceId: string, buildingIdForActions: string | null, sourceLabel: string, rows?: Array<{ field: string; row: SpecRow }>) => {
-    if (!permissions.can("actions.create") || sourceId.startsWith("pending") || (typeof navigator !== "undefined" && !navigator.onLine)) return 0;
-    let created = 0;
-    for (const { field, row } of rows ?? specFollowUps(form, values)) {
-      const reference = String(row.owner_ref ?? "");
-      const action = String(row.action ?? "").trim();
-      const key = `follow:${sourceId}:${field}:${action.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 80)}`;
-      await createRecordFollowUpAction(client, {
-        projectId,
-        sourceType,
-        sourceId,
-        buildingId: buildingIdForActions,
-        ownerUserId: reference.startsWith("user:") ? reference.slice(5) : null,
-        ownerPartyId: reference.startsWith("party:") ? reference.slice(6) : null,
-        title: action,
-        description: `${sourceLabel}${row.owner ? ` · ${text("owner", "eigenaar")}: ${row.owner}` : ""}`,
-        dueDate: String(row.due ?? ""),
-        idempotencyKey: key.length >= 8 ? key : `${key}-follow-up`,
-      });
-      created += 1;
-    }
-    return created;
-  };
+  // Every follow-up row of an incident or an agreement becomes its own action record, with its
+  // owner and due date, linked to the record. The database creates them in the same transaction as
+  // the save (also on offline replay) and writes the action id into the row (F08).
 
   const addHse = async () => {
     if (hseForm.description.trim().length < 3) return;
@@ -3118,7 +3092,6 @@ function ProjectOperations({
           }
           if (navigator.onLine) await syncQueuedEvidenceNow();
         }
-        if (eventId && hseSpecForm === "hse_incident") await createFollowUpActions(hseSpecForm, hseSpecValues, "hse", eventId, primaryHseBuildingId || null, hseTitle);
       },
       // Only a save that really waits on the device says so; online the server has it already.
       typeof navigator !== "undefined" && !navigator.onLine
@@ -3299,14 +3272,7 @@ function ProjectOperations({
           // A queued item has no number yet; the database assigns it when the item is sent.
           entry = savedEntry.record ?? { id: savedEntry.id, entry_number: "" };
         }
-        // The agreement's action (rows 11 and 12) becomes an action record of its own.
-        const agreementOwner = typeof registerSpecValues.action_owner === "string" ? registerSpecValues.action_owner.trim() : "";
-        if (registerForm.type === "agreement" && entry.entry_number && registerSpecValues.action_required === "Yes" && agreementOwner) {
-          await createFollowUpActions("agreement", registerSpecValues, "meeting", entry.id, registerRecordBuildingId || null, `${entry.entry_number} · ${registerTitle}`, [{
-            field: "action_owner",
-            row: { action: registerTitle, owner: agreementOwner, owner_ref: String(registerSpecValues.action_owner_ref ?? ""), due: String(registerSpecValues.due_date ?? "") },
-          }]);
-        }
+        // The agreement's action (rows 11 and 12) becomes an action record of its own in the database (F08).
         // Site photos belong to a register item as much as documents do. The photos the
         // form asked for by name are filed the same way and in the same folder, but keep
         // the name of the box they were taken in, so the report can tell them apart.

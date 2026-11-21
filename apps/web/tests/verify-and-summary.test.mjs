@@ -105,3 +105,17 @@ test("contractor performance measures answers, timeliness and returns in the per
     [2, 1, 1, 2, 1, 1, 1, 1],
   );
 });
+
+test("F02: Works Completed leaves the verification queue once spec.inspection_status is decided", async () => {
+  const { buildVerificationQueue } = await import("../lib/verification/verification-model.mjs");
+  const entry = (id, spec) => ({ id, register_type: "works_completed", status: "open", entry_number: id, title: id, details: { spec } });
+  const queue = buildVerificationQueue({
+    registerEntries: [
+      entry("WC-1", { inspection_status: "Completed - Awaiting Inspection" }),
+      entry("WC-2", { inspection_status: "Inspected - Accepted" }),
+      entry("WC-3", { inspection_status: "Inspected - Rejected" }),
+      entry("WC-4", { completion_status: "Inspected - Accepted" }),
+    ],
+  });
+  assert.deepEqual(queue.work.map((item) => item.code), ["WC-1"]);
+});
