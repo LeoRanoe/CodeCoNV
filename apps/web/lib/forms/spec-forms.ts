@@ -117,6 +117,8 @@ export type SpecField = {
     | "people"
     /** A record of this project: stores its number in the field and `<kind>:<id>` in `<key>_ref`. */
     | "record"
+    /** An exact revision of the Project Documents register: "<number> rev <mark>" and `revision:<id>` in `<key>_ref` (F11). */
+    | "document"
     /** A building or a node of the Project Location Register. */
     | "location"
     /** Risk rating: from the project's approved matrix, else a controlled rating list. */
@@ -468,7 +470,7 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "instruction_type", label: w("Instruction type", "Soort instructie"), kind: "select", options: catalogue.instructionTypes, required: true, otherExplanation: true },
     discipline("discipline", true, w("Discipline", "Discipline")),
     { key: "instruction_category", label: w("Category / subject", "Categorie / onderwerp"), kind: "dependent", groups: catalogue.instructionCategories, parent: "discipline", required: true, otherExplanation: true },
-    { key: "drawing_reference", label: w("Drawing / document reference", "Tekening- / documentreferentie"), kind: "text", hint: w("With its revision", "Met de revisie") },
+    { key: "drawing_reference", label: w("Drawing / document reference", "Tekening- / documentreferentie"), kind: "document", hint: w("The exact revision from Project Documents; type it only when the document is not in the register.", "De exacte revisie uit Projectdocumenten; typ alleen als het document niet in het register staat.") },
     { key: "reason", label: w("Reason / background", "Reden / achtergrond"), kind: "select", options: catalogue.instructionReasons, otherExplanation: true },
     { key: "reason_detail", label: w("Supporting explanation", "Toelichting"), kind: "text", visible: when(filled("reason")) },
     person("issued_to", w("Issued to", "Uitgegeven aan"), { required: true }),
@@ -486,7 +488,7 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     // Workbook row 8. The client struck it on 19-11-2026; on 20-11-2026 they asked for every row of the sheet.
     { key: "change_reason", label: w("Reason for change", "Reden voor wijziging"), kind: "select", options: changeReasons, required: true, otherExplanation: true },
     person("originator", w("Originator / requester", "Aanvrager"), { required: true }),
-    { key: "drawing_reference", label: w("Drawing / specification reference", "Tekening- / bestekreferentie"), kind: "text", hint: w("With its revision", "Met de revisie") },
+    { key: "drawing_reference", label: w("Drawing / specification reference", "Tekening- / bestekreferentie"), kind: "document", hint: w("The exact revision from Project Documents; type it only when the document is not in the register.", "De exacte revisie uit Projectdocumenten; typ alleen als het document niet in het register staat.") },
     { key: "added_quantity", label: w("Added quantity", "Toegevoegde hoeveelheid"), kind: "number", min: 0 },
     { key: "omitted_quantity", label: w("Omitted quantity", "Vervallen hoeveelheid"), kind: "number", min: 0 },
     { key: "quantity_unit", label: w("Unit", "Eenheid"), kind: "select", listKey: "units", required: when({ any: [filled("added_quantity"), filled("omitted_quantity")] }), otherExplanation: true },
@@ -1127,7 +1129,7 @@ export function specFacts(
 export function specLinks(form: SpecFormKey, values: SpecValues | null | undefined, language: "en" | "nl" = "en") {
   if (!values) return [] as Array<{ label: string; number: string; ref: string }>;
   return specForms[form]
-    .filter((field) => field.kind === "record" && one(values, field.key))
+    .filter((field) => (field.kind === "record" || (field.kind === "document" && one(values, refKey(field)))) && one(values, field.key))
     .map((field) => ({ label: field.label[language], number: one(values, field.key), ref: one(values, refKey(field)) }));
 }
 
