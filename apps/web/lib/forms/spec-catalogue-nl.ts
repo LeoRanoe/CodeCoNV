@@ -394,7 +394,7 @@ export const specValueNl: Record<string, string> = {
   "Site logistics, storage & laydown": "Logistiek, opslag & opslagterrein bouwplaats",
   "Temporary works & protection": "Tijdelijke werken & bescherming",
   "Mobilization / demobilization": "Mobilisatie / demobilisatie",
-  "Other - specify": "Overig - specificeer",
+  "Other – specify": "Overig – specificeer",
   "Surveying & Setting Out": "Landmeten & uitzetten",
   "Control points & benchmarks": "Meetpunten & peilmerken",
   "Setting out / gridlines / coordinates": "Uitzetten / stramienen / coördinaten",

@@ -370,6 +370,13 @@ const hseIssueTypes = [
 
 /** The three parties the client wrote beside "Responsible person" on the issue screen. */
 type ResponsibleRole = "" | "client" | "contractor" | "supervision";
+/** The record's own responsible role, from the Issue sheet's Responsible party (row 13). */
+const responsibleRoleFor = (party: string): ResponsibleRole =>
+  party === "Client" ? "client"
+    : party === "Consultant" ? "supervision"
+      : ["Main Contractor", "Subcontractor", "Supplier"].includes(party) ? "contractor"
+        : "";
+
 const responsibleRoles = [
   { id: "client", en: "Client", nl: "Opdrachtgever" },
   { id: "contractor", en: "Contractor", nl: "Aannemer" },
@@ -2084,6 +2091,8 @@ function ProjectOperations({
       corrective_action: findingForm.actionSteps,
       target_date: findingForm.expectedResolutionDate || recordDueDateDefault(findingForm.severity),
       immediate_action: findingSpec.immediate_action ?? findingForm.immediateActionOther,
+      // Row 13 is the sheet's list; an older record only knew client / contractor / supervision.
+      responsible_party: findingSpec.responsible_party ?? ({ client: "Client", contractor: "Main Contractor", supervision: "Consultant" } as Record<string, string>)[findingForm.responsibleRole] ?? "",
     }
     : {
       ...findingSpec,
@@ -2091,6 +2100,8 @@ function ProjectOperations({
       target_date: findingForm.expectedResolutionDate || recordDueDateDefault(findingForm.severity),
     };
   const findingSpecSkip: string[] = [];
+  // Weather, a shared cause or an undetermined party has no one to name (Issue row 13).
+  const issueNeedsResponsibleName = !["Weather", "Shared", "Undetermined"].includes(String(findingSpecValues.responsible_party ?? ""));
   const changeFindingSpec = (next: SpecValues) => {
     const one = (key: string) => (typeof next[key] === "string" ? String(next[key]) : "");
     setFindingSpec(next);
@@ -2109,6 +2120,7 @@ function ProjectOperations({
         // A critical issue is escalated (Shared Dropdown Lists: Priority "escalation rules").
         escalationRequired: one("priority") === "Critical",
         dateIdentified: one("identified_at").slice(0, 10) || current.dateIdentified,
+        responsibleRole: responsibleRoleFor(one("responsible_party")),
       }));
       return;
     }
@@ -2240,9 +2252,9 @@ function ProjectOperations({
     } else if (registerForm.type === "lessons_learned") {
       setLessonForm((current) => ({ ...current, projectPhase: one("project_phase"), issue: one("what_happened"), cause: one("root_cause"), solution: one("lesson_learned"), expectedResults: one("recommendation"), followUpAction: one("recommendation"), responsiblePerson: one("action_owner") }));
     } else if (registerForm.type === "agreement") {
-      const first = Array.isArray(next.actions) ? next.actions.find((row): row is SpecRow => typeof row === "object" && row !== null) : undefined;
-      const owner = first?.owner_ref ?? "";
-      setRegisterForm((current) => ({ ...current, dueDate: first?.due ?? "", responsiblePartyId: owner.startsWith("party:") ? owner.slice(6) : current.responsiblePartyId }));
+      // Rows 11 and 12: one action owner and due date when an action is required.
+      const owner = one("action_owner_ref");
+      setRegisterForm((current) => ({ ...current, dueDate: one("action_required") === "Yes" ? one("due_date") : "", responsiblePartyId: owner.startsWith("party:") ? owner.slice(6) : current.responsiblePartyId }));
     }
   };
   const registerSpecValues: SpecValues = sheetRegister ? sheetRegisterValues : registerForm.type === "delivery" && registerLines.some((line) => line.quantity.trim())
@@ -2909,10 +2921,10 @@ function ProjectOperations({
    * owner and due date, linked to the record (workbook: "create separate linked action records").
    * The key is stable per row, so saving the record again never creates the action twice.
    */
-  const createFollowUpActions = async (form: SpecFormKey, values: SpecValues, sourceType: "hse" | "meeting", sourceId: string, buildingIdForActions: string | null, sourceLabel: string) => {
+  const createFollowUpActions = async (form: SpecFormKey, values: SpecValues, sourceType: "hse" | "meeting", sourceId: string, buildingIdForActions: string | null, sourceLabel: string, rows?: Array<{ field: string; row: SpecRow }>) => {
     if (!permissions.can("actions.create") || sourceId.startsWith("pending") || (typeof navigator !== "undefined" && !navigator.onLine)) return 0;
     let created = 0;
-    for (const { field, row } of specFollowUps(form, values)) {
+    for (const { field, row } of rows ?? specFollowUps(form, values)) {
       const reference = String(row.owner_ref ?? "");
       const action = String(row.action ?? "").trim();
       const key = `follow:${sourceId}:${field}:${action.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 80)}`;
@@ -3254,9 +3266,13 @@ function ProjectOperations({
           // A queued item has no number yet; the database assigns it when the item is sent.
           entry = savedEntry.record ?? { id: savedEntry.id, entry_number: "" };
         }
-        // The agreement's actions each become an action record of their own.
-        if (registerForm.type === "agreement" && entry.entry_number) {
-          await createFollowUpActions("agreement", registerSpecValues, "meeting", entry.id, registerRecordBuildingId || null, `${entry.entry_number} · ${registerTitle}`);
+        // The agreement's action (rows 11 and 12) becomes an action record of its own.
+        const agreementOwner = typeof registerSpecValues.action_owner === "string" ? registerSpecValues.action_owner.trim() : "";
+        if (registerForm.type === "agreement" && entry.entry_number && registerSpecValues.action_required === "Yes" && agreementOwner) {
+          await createFollowUpActions("agreement", registerSpecValues, "meeting", entry.id, registerRecordBuildingId || null, `${entry.entry_number} · ${registerTitle}`, [{
+            field: "action_owner",
+            row: { action: registerTitle, owner: agreementOwner, owner_ref: String(registerSpecValues.action_owner_ref ?? ""), due: String(registerSpecValues.due_date ?? "") },
+          }]);
         }
         // Site photos belong to a register item as much as documents do. The photos the
         // form asked for by name are filed the same way and in the same folder, but keep
@@ -3848,6 +3864,7 @@ function ProjectOperations({
                   ),
                   responsible: (
                     <ResponsiblePartyFields
+                      showRole={false}
                       idPrefix="issue"
                       role={findingForm.responsibleRole}
                       name={findingForm.responsiblePerson}
@@ -3917,11 +3934,11 @@ function ProjectOperations({
                   !online && !findingPhotos.length ? text("a photo (you are offline)", "een foto (je bent offline)") : "",
                   !findingForm.issueCategory ? text("category", "categorie") : "",
                   findingForm.title.trim().length < 3 ? text("title", "titel") : "",
-                  findingForm.responsiblePerson.trim().length < 2 ? text("responsible person", "verantwoordelijke") : "",
+                  issueNeedsResponsibleName && findingForm.responsiblePerson.trim().length < 2 ? text("responsible person", "verantwoordelijke") : "",
                   findingForm.description.trim().length < 3 ? text("description", "omschrijving") : "",
                   ...findingSpecProblems,
                 ]} />
-                <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || !findingForm.issueCategory || findingForm.title.trim().length < 3 || findingForm.responsiblePerson.trim().length < 2 || findingForm.description.trim().length < 3 || findingSpecProblems.length > 0} onClick={() => void addFinding()}><Send size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Issue indienen")}</button>
+                <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || !findingForm.issueCategory || findingForm.title.trim().length < 3 || (issueNeedsResponsibleName && findingForm.responsiblePerson.trim().length < 2) || findingForm.description.trim().length < 3 || findingSpecProblems.length > 0} onClick={() => void addFinding()}><Send size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Issue indienen")}</button>
               </div>
             </div>
           ) : null}
@@ -5331,8 +5348,10 @@ function BoqProgressRegister({
  * act; the name is written once beneath it. A name that matches a colleague in the app still
  * assigns the record to that colleague, so their notification keeps working.
  */
-function ResponsiblePartyFields({ idPrefix, role, name, people, partyNames, onChange }: {
+function ResponsiblePartyFields({ idPrefix, role, name, people, partyNames, onChange, showRole = true }: {
   idPrefix: string;
+  /** The Issue sheet asks the party in its own row; then only the name is asked here. */
+  showRole?: boolean;
   role: ResponsibleRole;
   name: string;
   people: Array<{ id: string; name: string; role: string }>;
@@ -5347,13 +5366,13 @@ function ResponsiblePartyFields({ idPrefix, role, name, people, partyNames, onCh
   ].filter(Boolean)));
   return (
     <div className="record-responsible-fields">
-      <label className="form-field record-responsible-field">
+      {showRole ? <label className="form-field record-responsible-field">
         <UserCheck size={15} />
         <select aria-label={text("Responsible party", "Verantwoordelijke partij")} value={role} onChange={(event) => onChange({ role: event.target.value as ResponsibleRole, name, userId: userIdFor(name) })}>
           <option value="">{text("Client, contractor or supervision", "Opdrachtgever, aannemer of supervisie")}</option>
           {responsibleRoles.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}
         </select>
-      </label>
+      </label> : null}
       <label className="form-field">
         <span>{text("Name of the responsible person", "Naam van de verantwoordelijke")}</span>
         <input list={suggestions.length ? `${idPrefix}-responsible-names` : undefined} value={name} onChange={(event) => onChange({ role, name: event.target.value, userId: userIdFor(event.target.value) })} placeholder={text("First and last name", "Voor- en achternaam")} />

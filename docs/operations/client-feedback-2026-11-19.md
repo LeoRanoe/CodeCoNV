@@ -141,4 +141,31 @@ The client could not find the workbook in the forms: every form was the old scre
 | Photos | interpreted | The photo classification already asks purpose, category, location and related record; date/time and taken by are recorded automatically, the caption is the photo's description. Rows 4 and 5 of the sheet carry each other's values; the purpose-then-discipline reading is kept. |
 | Materials Delivery row 8 "Material category" | interpreted | Unchanged: the sheet lists the three families (Delivery Status, Material Group, Delivery Discrepancy) as the material groups; each family is its own field. |
 
+### Literal check against the workbook (20-11-2026, two passes)
+
+Every row of the 12 form sheets was compared with the screen by script: the row label (exactly), the control, required, the condition, and every list value (dependent lists with their descriptions, the 147 activities included). Then the screen itself was read in the browser, row by row, against the sheet.
+
+**One sheet row is one row on screen, with the sheet's label.** Where a sheet row has several controls ("Start / finish time", "Number + unit", "Dropdown + short text", "Approved amount / days", "Verified by / date" …) they stand together under that label (`SheetRow` in `sheetLayouts`). The controls the sheet's own developer instructions ask for stay inside their row: secondary discipline (Works row 5), N/A (quantity), "work crosses midnight" (WO row 15), the concrete-pour details (WO row 16), the blocker link (WO row 19), the linked NCR / issue (WC row 12), Actual / Estimated (PDR row 11), the closure note and reviewer (Status rows), revised delivery date (Delivery row 13), discrepancy type (row 17), added / omitted quantity (CO row 12), currency (row 13), containment justification and details (NCR row 14), meeting reference (Agreements row 4).
+
+| Sheet | Row | Was | Now |
+|---|---|---|---|
+| Issue | 13 Responsible party | Client / contractor / supervision | The sheet's list (Client … Undetermined, required), then the person or company (not asked for Weather, Shared, Undetermined) |
+| Issue, NCR | 9 / 8 | "Work discipline" | "Discipline / work package" |
+| Technical Instructions, Lessons Learned | 5 / 14 | "Work discipline" | "Discipline" |
+| Technical Instructions | 6 | "Other - specify" | "Other – specify" (the sheet's dash) |
+| Technical Instructions, Change Order | 8 / 11 | "… reference (with revision)" | "Drawing / document reference", "Drawing / specification reference" |
+| Change Order | 13, 14, 17, 19, 21 | Cost impact (estimated), Time impact (estimated), separate approved rows, Related record, Approved by only after approval | "Cost impact", "Time impact", "Approved amount / days", "Related records", "Prepared / reviewed / approved by" always shown |
+| Works Ongoing | 10, 16, 19 | "Quantity completed (this period)", blocker required on hold | "Quantity completed"; Blocker / issue not required (sheet: No) |
+| Works Ongoing / Completed | 23 / 19 | "Status" | "Workflow status" (read-only) |
+| Works / Delivery / CO | Unit | m … with mm and cm | The form sheets' list: m, m², m³, kg, tonne, pcs, number, lot, hours, set, other |
+| Works Completed | — | Activity-specific technical details | Removed: not a row of this sheet |
+| Project Delay Report | — | Related record | Removed: not a row of this sheet |
+| Lessons Learned | 18 | Reviewed by only after review | "Recorded by / reviewed by" always shown |
+| Agreements Made | 3, 11, 12, 13, 17 | "… date and time", an action list, "Related discipline", closure note required | "Meeting / agreement date"; "Action owner" and "Due date" (required when Action required = Yes; the action becomes an action record); "Related discipline / location"; closure note not required (sheet: No) |
+| HSE Incident Registration | 21 | Findings optional | Required when Investigation required = Yes |
+
+System rows (record ID / number, project, reported by and reported date/time, the sign-off panel and workflow status) stand in the form's head and on the saved record.
+
+Left as interpreted, because the workbook itself is inconsistent: Materials Delivery rows 7–8 (the "Material group" list holds the three family names Delivery Status, Material Group, Delivery Discrepancy; the app asks the material group from the Material Group family), and the Photos sheet (rows 4 and 5 carry each other's values).
+
 Verification: `tests/spec-forms.test.mjs` checks that every field of every form stands in its sheet order; `tests/e2e/sheet-forms.spec.ts` opens every Workspace tile, checks the first rows against the sheet, fills the form and saves it.

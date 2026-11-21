@@ -39,24 +39,25 @@ async function openTile(page: Page, id: string) {
 
 /** The first rows of each sheet, in the workbook's order (labels as the screen shows them). */
 const sheets: Array<{ tile: string; form: string; save: RegExp; first: string[] }> = [
-  { tile: "issues", form: "issue", save: /^Submit issue$/, first: ["Date/time identified", "Issue type", "Category", "Title", "Description", "Location", "Work discipline", "Priority"] },
-  { tile: "ncr", form: "ncr", save: /^Submit NCR$/, first: ["Date raised", "NCR type", "Category", "Title", "Non-conformance description", "Work discipline", "Location / element"] },
+  { tile: "issues", form: "issue", save: /^Submit issue$/, first: ["Date/time identified", "Issue type", "Category", "Title", "Description", "Location", "Discipline / work package", "Priority"] },
+  { tile: "ncr", form: "ncr", save: /^Submit NCR$/, first: ["Date raised", "NCR type", "Category", "Title", "Non-conformance description", "Discipline / work package", "Location / element"] },
   { tile: "hse", form: "hse", save: /^Submit issue$/, first: ["Date/time observed", "Issue type", "Category", "Title", "Observation / hazard description", "Location"] },
   { tile: "hse-incident", form: "hse_incident", save: /^Submit issue$/, first: ["Incident date/time", "Incident type", "Incident category", "Incident title", "Detailed event description", "Exact location"] },
   { tile: "materials-delivery", form: "delivery", save: /^Save register item$/, first: ["Delivery date/time", "Supplier", "Purchase order / requisition", "Delivery note number", "Material group"] },
-  { tile: "technical-instructions", form: "technical_instruction", save: /^Create controlled document$/, first: ["Instruction date", "Instruction type", "Work discipline"] },
+  { tile: "technical-instructions", form: "technical_instruction", save: /^Create controlled document$/, first: ["Instruction date", "Instruction type", "Discipline"] },
   { tile: "change-order", form: "change_order", save: /^Create controlled document$/, first: ["Request date", "Change type", "Change category", "Change title", "Change description", "Reason for change", "Originator / requester"] },
   { tile: "delay-report", form: "delay_report", save: /^Save delay report$/, first: ["Delay start date/time", "Affected activity"] },
   { tile: "lessons-learned", form: "lessons_learned", save: /^Save lesson learned$/, first: ["Date recorded", "Project phase", "Lesson category", "Title", "Situation / context", "What happened?"] },
-  { tile: "agreements-made", form: "agreement", save: /^Save agreement$/, first: ["Meeting / agreement date and time", "Meeting / source", "Meeting number / reference", "Agreement type", "Agreement category", "Agreement / decision title", "Agreement details"] },
-  { tile: "works-ongoing", form: "works_ongoing", save: /^Save register item$/, first: ["Report date", "Shift", "Work discipline", "Secondary discipline", "Activity", "Building / area", "Exact location / grid / level"] },
-  { tile: "works-completed", form: "works_completed", save: /^Save register item$/, first: ["Completion date", "Work discipline", "Secondary discipline", "Activity", "Building / area", "Exact location / grid / level", "What was completed?"] },
+  { tile: "agreements-made", form: "agreement", save: /^Save agreement$/, first: ["Meeting / agreement date", "Meeting / source", "Agreement type", "Agreement category", "Agreement / decision title", "Agreement details"] },
+  { tile: "works-ongoing", form: "works_ongoing", save: /^Save register item$/, first: ["Report date", "Shift", "Work discipline", "Activity", "Building / area", "Exact location / grid / level", "What exactly is being worked on?"] },
+  { tile: "works-completed", form: "works_completed", save: /^Save register item$/, first: ["Completion date", "Work discipline", "Activity", "Building / area", "Exact location / grid / level", "What was completed?"] },
 ];
 
 /** The label of each row of the sheet form, top to bottom. */
 async function rowLabels(page: Page, form: string) {
   return page.locator(`[data-sheet-form='${form}'] > *`).evaluateAll((rows) => rows.map((row) => {
-    const label = row.querySelector(".sheet-slot-label, legend, label, span");
+    // A sheet row with several controls is headed by its sheet label or its first control's.
+    const label = row.querySelector(".sheet-slot-label") ?? row.querySelector("legend") ?? row.querySelector("span");
     return (label?.textContent ?? "").replace(/\s*\*\s*$/, "").trim();
   }).filter(Boolean));
 }
@@ -77,12 +78,9 @@ for (const sheet of sheets) {
     if (await title.count()) await title.fill(`Sheet ${sheet.form.replace(/_/g, " ")} ${stamp}`);
     const description = form.locator("[data-sheet-slot='description'] textarea");
     if (await description.count()) await description.fill(`Sheet ${sheet.form.replace(/_/g, " ")} described on site ${stamp}.`);
-    // Responsible party (Issue row 13): client / contractor / supervision and the name.
+    // Responsible party (Issue row 13): the sheet's list (filled below) and the name.
     const responsible = form.locator("[data-sheet-slot='responsible']");
-    if (await responsible.count()) {
-      await responsible.locator("select").selectOption("contractor");
-      await responsible.locator("input").last().fill("E2E Contractor");
-    }
+    if (await responsible.count()) await responsible.locator("input").last().fill("E2E Contractor");
     await fillSpecFields(page.locator("main"));
     await fillSpecFields(page.locator("main"));
 

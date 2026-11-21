@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as catalogue from "../lib/forms/spec-catalogue.ts";
-import { activitiesFor, canChooseDecision, cleanSpecValues, fieldOptions, isSheetSlot, matrixRating, projectList, sensitiveKeys, setSpecValue, sheetLayouts, specFacts, specFollowUps, specForms, specLinks, specMissing, upgradeSpecValues, workflowProfiles } from "../lib/forms/spec-forms.ts";
+import { activitiesFor, canChooseDecision, cleanSpecValues, fieldOptions, isSheetRow, isSheetSlot, matrixRating, projectList, sensitiveKeys, setSpecValue, sheetKeys, sheetLayouts, specFacts, specFollowUps, specForms, specLinks, specMissing, upgradeSpecValues, workflowProfiles } from "../lib/forms/spec-forms.ts";
 import { availableActions, effectiveProfile, signoffHistoryEntries, signoffProfiles, signoffState } from "../lib/forms/signoff.ts";
 import { facetOptions, filterPeriodSnapshot, matchesSpecFacets, recordSpec, specFacets } from "../lib/forms/spec-facets.ts";
 import { specLabel } from "../lib/forms/spec-labels-nl.ts";
@@ -68,10 +68,11 @@ test("required fields follow the workbook, conditional ones only when their trig
   for (const label of ["Approved by", "Approval date"]) assert.ok(!approved.includes(label), label);
   // A rejected completion needs a linked NCR or issue.
   assert.ok(specMissing("works_completed", { inspection_status: "Inspected - Rejected" }).includes("Linked NCR / issue"));
-  // An agreement with an action needs at least one action row with its owner and due date.
-  assert.ok(specMissing("agreement", { action_required: "Yes" }).includes("Actions"));
-  assert.ok(specMissing("agreement", { action_required: "Yes", actions: [{ action: "Send the shop drawing" }] }).some((item) => item.startsWith("Actions 1 · Owner")));
-  assert.ok(!specMissing("agreement", { action_required: "No" }).includes("Actions"));
+  // Agreements Made rows 11 and 12: an action needs its owner and due date.
+  for (const label of ["Action owner", "Due date"]) {
+    assert.ok(specMissing("agreement", { action_required: "Yes" }).includes(label), label);
+    assert.ok(!specMissing("agreement", { action_required: "No" }).includes(label), label);
+  }
 });
 
 test("Other always asks for an explanation and Not applicable is never combined", () => {
@@ -185,7 +186,9 @@ test("incident and agreement actions are rows that each become a linked action",
   assert.equal(cleanSpecValues("hse_incident", values).corrective_actions.length, 1);
   // The incident's older one-box text becomes rows.
   assert.deepEqual(upgradeSpecValues("hse_incident", { corrective_actions: "Fix rail — Jan — 2026-12-02" }).corrective_actions, [{ action: "Fix rail", owner: "Jan", due: "2026-12-02" }]);
-  assert.deepEqual(upgradeSpecValues("agreement", { action_owner: "Jan", action_due: "2026-12-03" }).actions, [{ action: "", owner: "Jan", due: "2026-12-03" }]);
+  // Agreements Made rows 11 and 12: one Action owner and one Due date.
+  assert.deepEqual(upgradeSpecValues("agreement", { action_owner: "Jan", action_due: "2026-12-03" }), { action_owner: "Jan", due_date: "2026-12-03" });
+  assert.deepEqual(upgradeSpecValues("agreement", { actions: [{ action: "Send", owner: "Piet", owner_ref: "party:p1", due: "2026-12-04" }] }), { action_owner: "Piet", action_owner_ref: "party:p1", due_date: "2026-12-04" });
   // NCR containment: one row per step, with person, time and evidence.
   const ncr = { containment: ["Stop affected work / suspend activity"] };
   assert.ok(specMissing("ncr", ncr).some((item) => item.includes("Stop affected work / suspend activity · Responsible person")));
@@ -275,7 +278,7 @@ test("every Workspace form is its workbook sheet, row by row", () => {
   for (const form of sheetForms) {
     const layout = sheetLayouts[form];
     assert.ok(layout, `${form} has a sheet layout`);
-    const keys = layout.filter((item) => !isSheetSlot(item));
+    const keys = sheetKeys(form);
     assert.equal(new Set(keys).size, keys.length, `${form}: no row twice`);
     for (const key of keys) assert.ok(specForms[form].some((field) => field.key === key), `${form}: ${key} is a field`);
     // Works place "Building / area" with the screen's own building and location picker.
@@ -285,10 +288,21 @@ test("every Workspace form is its workbook sheet, row by row", () => {
     }
   }
   // Sheet order, spot-checked against the workbook rows.
-  const order = (form) => sheetLayouts[form].map((item) => (isSheetSlot(item) ? `@${item.slot}` : item));
+  const order = (form) => sheetLayouts[form].map((item) => (isSheetRow(item) ? `#${item.row}` : isSheetSlot(item) ? `@${item.slot}` : item));
   assert.deepEqual(order("issue").slice(0, 8), ["identified_at", "issue_type", "issue_category", "@title", "@description", "@location", "discipline", "priority"]);
   assert.deepEqual(order("hse").slice(0, 6), ["observed_at", "hse_type", "hse_category", "@title", "@description", "@location"]);
   assert.deepEqual(order("change_order").slice(0, 8), ["request_date", "change_type", "change_category", "@title", "@description", "change_reason", "originator", "@location"]);
   assert.deepEqual(order("delivery").slice(0, 4), ["delivery_at", "supplier", "purchase_order", "delivery_note_number"]);
   assert.deepEqual(order("lessons_learned").slice(0, 6), ["recorded_on", "project_phase", "lesson_category", "@title", "situation", "what_happened"]);
+  // Literal labels and lists of the sheets (checked 20-11-2026).
+  const field = (form, key) => specForms[form].find((item) => item.key === key);
+  assert.deepEqual(field("issue", "responsible_party").options, ["Client", "Consultant", "Main Contractor", "Subcontractor", "Supplier", "Utility Provider", "Authority", "Weather", "Shared", "Undetermined"]);
+  assert.equal(field("issue", "responsible_party").required, true);
+  assert.equal(field("issue", "discipline").label.en, "Discipline / work package");
+  assert.equal(field("ncr", "discipline").label.en, "Discipline / work package");
+  assert.equal(field("technical_instruction", "discipline").label.en, "Discipline");
+  assert.equal(field("lessons_learned", "discipline").label.en, "Discipline");
+  // Not rows of these sheets.
+  assert.equal(field("works_completed", "activity_details"), undefined);
+  assert.equal(field("delay_report", "related_record"), undefined);
 });

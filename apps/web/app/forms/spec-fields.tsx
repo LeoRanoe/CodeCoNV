@@ -11,6 +11,7 @@ import {
   isVisible,
   matrixRating,
   needsOtherExplanation,
+  isSheetRow,
   isSheetSlot,
   otherKey,
   sheetLayouts,
@@ -118,6 +119,30 @@ export function SpecFields({
       <section className="record-section spec-section sheet-form" aria-label={heading ?? text("Form", "Formulier")} data-spec-form={form} data-sheet-form={form}>
         {heading ? <h3>{heading}</h3> : null}
         {layout.map((item) => {
+          if (isSheetRow(item)) {
+            // One sheet row, several controls: they stand together under the sheet's label. A
+            // row without its own label is headed by its first control's label (the sheet's);
+            // that control then does not repeat it (it keeps it as its accessible name).
+            const first = typeof item.items[0] === "string" ? specForms[form].find((candidate) => candidate.key === item.items[0]) : undefined;
+            const rowLabel = item.label ?? first?.label;
+            const parts = item.items.map((part) => {
+              if (typeof part === "string") {
+                const field = fields.find((candidate) => candidate.key === part);
+                if (!field) return null;
+                return !item.label && field === first ? <div className="sheet-row-main" key={`main-${field.key}`}>{render(field)}</div> : render(field);
+              }
+              const node = slots[part.slot];
+              if (node === undefined || node === null || node === false) return null;
+              return <div className="sheet-row-part" data-sheet-slot={part.slot} key={`slot-${part.slot}`}>{node}</div>;
+            }).filter(Boolean);
+            if (!parts.length) return null;
+            return (
+              <div className="form-field sheet-row" data-sheet-row={item.row} key={`row-${item.row}`}>
+                {rowLabel ? <span className="sheet-slot-label">{rowLabel[language]} {item.required || (first && fields.includes(first) && isRequired(first, values)) ? <em className="record-section-required">*</em> : null}</span> : null}
+                {parts}
+              </div>
+            );
+          }
           if (isSheetSlot(item)) {
             const node = slots[item.slot];
             if (node === undefined || node === null || node === false) return null;
