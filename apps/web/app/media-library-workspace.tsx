@@ -335,6 +335,8 @@ export function MediaLibraryWorkspace({
     /** What is being uploaded. A choice says it itself instead of relying on the toggle. */
     uploadKind: "photo" | "drawing" | "document" = kind,
     evidenceGroupId?: string | null,
+    /** Runs once the files are in the device queue, before the upload (and its screen refresh) starts. */
+    onQueued?: () => Promise<unknown>,
   ): Promise<boolean> => {
     if (!selected?.length) return false;
     setFieldError("");
@@ -415,6 +417,10 @@ export function MediaLibraryWorkspace({
         });
       }
       await reloadQueue();
+      // F05: the staged photos are now safe in the device queue. Their draft goes before the upload
+      // starts, because the refresh after the upload remounts this screen and a draft read then
+      // offered the stored photo a second time.
+      await onQueued?.().catch(() => undefined);
       // Tapping save is the deliberate act that sends the photo, also on mobile data; the data
       // saver only holds back the automatic background sync. Waiting for Wi-Fi here meant a
       // supervisor on a SIM tablet saved photos that never left the device.
@@ -463,6 +469,15 @@ export function MediaLibraryWorkspace({
     if (photos.length) setPendingCapture((current) => [...current, ...photos.map((file) => toPhotoEvidence(file))]);
   }, [text]);
 
+  // F05: draft writes run one after another. A save of the staged photos that started before the
+  // photos were stored must not land after the "clear" that follows a successful save; otherwise
+  // the stored photo came back from the device draft and was offered (and uploaded) a second time.
+  const draftWrites = useRef<Promise<unknown>>(Promise.resolve());
+  const writeDraft = useCallback((write: () => Promise<unknown>) => {
+    draftWrites.current = draftWrites.current.then(write, write).catch(() => undefined);
+    return draftWrites.current;
+  }, []);
+
   const savePendingCapture = useCallback(async () => {
     if (!pendingCapture.length) return;
     const dayKey = new Intl.DateTimeFormat("en-CA", {
@@ -491,6 +506,7 @@ export function MediaLibraryWorkspace({
       },
       "photo",
       evidenceGroupId,
+      () => writeDraft(() => clearFormDraft(formDraftKey("library-photos", projectId))),
     );
     // A photo that could not be stored stays on the form, with the reason above it. Clearing
     // it anyway is how a photo taken on site used to disappear.
@@ -499,8 +515,8 @@ export function MediaLibraryWorkspace({
     setPhotoDescription("");
     setStackTitle("");
     setKeepAsStack(false);
-    void clearFormDraft(formDraftKey("library-photos", projectId));
-  }, [addFiles, keepAsStack, language, pendingCapture, photoDescription, projectId, stackTitle, text]);
+    void writeDraft(() => clearFormDraft(formDraftKey("library-photos", projectId)));
+  }, [addFiles, keepAsStack, language, pendingCapture, photoDescription, projectId, stackTitle, text, writeDraft]);
 
   // The photos taken here are kept on the device until they are saved or thrown away, so a
   // back press, a reload or a phone that drops the tab behind the camera does not lose them.
@@ -523,9 +539,9 @@ export function MediaLibraryWorkspace({
   useEffect(() => {
     if (!libraryDraftReady) return;
     // Removing the last photo one by one ends the draft as well.
-    if (pendingCapture.length) void saveFormDraft(libraryDraftKey, pendingCapture);
-    else void clearFormDraft(libraryDraftKey);
-  }, [libraryDraftKey, libraryDraftReady, pendingCapture]);
+    if (pendingCapture.length) void writeDraft(() => saveFormDraft(libraryDraftKey, pendingCapture));
+    else void writeDraft(() => clearFormDraft(libraryDraftKey));
+  }, [libraryDraftKey, libraryDraftReady, pendingCapture, writeDraft]);
 
   const addFolder = async (name: string) => {
     let createdFolderId = "";
@@ -841,7 +857,7 @@ export function MediaLibraryWorkspace({
               <DictateButton onText={(transcript) => setPhotoDescription((current) => appendDictation(current, transcript))} />
             </label>
             <div className="media-capture-review-actions">
-              <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setPendingCapture([]); setPhotoDescription(""); setStackTitle(""); void clearFormDraft(libraryDraftKey); }}>{text("Discard", "Verwijderen")}</button>
+              <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setPendingCapture([]); setPhotoDescription(""); setStackTitle(""); void writeDraft(() => clearFormDraft(libraryDraftKey)); }}>{text("Discard", "Verwijderen")}</button>
               <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy} onClick={() => void savePendingCapture()}><Upload size={15} /> {pendingCapture.length > 1 ? keepAsStack ? text("Save photo stack", "Fotostapel opslaan") : text(`Save ${pendingCapture.length} photos`, `${pendingCapture.length} foto's opslaan`) : text("Save with date", "Opslaan met datum")}</button>
             </div>
           </div>
