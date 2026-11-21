@@ -12,7 +12,7 @@
 --   Older offline payloads without the marker are not stopped in the queue; their formal submission is.
 -- * A formal submission or resubmission (record_signoff_action): every rule, on the stored record.
 -- Drafts are kept on the device by the form; nothing here deletes or rewrites stored data.
--- The six workbook decisions of 23-11-2026 (Change Order reason required, the ten Issue responsible
+-- The six recorded conflicts, decided by the client's 20-11-2026 instruction to follow the workbook (Change Order reason required, the ten Issue responsible
 -- parties, a register Action owner on HSE observations, the Lessons Learned order, optional PDR
 -- evidence, NCR type and category first) are the rules of this table.
 

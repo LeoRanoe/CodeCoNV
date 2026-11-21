@@ -3188,14 +3188,15 @@ function ProjectOperations({
         if (!registerOnline && registerFiles.length) {
           throw new Error(text("Attachments need a connection. Remove them to save on this device, or go online.", "Bijlagen hebben verbinding nodig. Verwijder ze om op dit apparaat op te slaan, of ga online."));
         }
-        // A delay report and a lesson learned carry pictures the client's form marks as required.
+        // Photos attached to a delay report or a lesson learned (optional in the workbook, rows 20 / 18)
+        // must reach the server with it.
         // A formal record that exists without them is what the QA sweep found (M20), so these two
         // are only saved with a connection, and only stay saved once the pictures are confirmed.
         // Since the PDR sheet (PR #22) its evidence is taken in the general photo field, not a
         // named box: either kind makes the photos part of the formal report (QA M20).
         const photosAreMandatory = !editingRegisterId && (delayReportRegister || lessonsLearnedRegister) && (namedRegisterPhotos.length + registerPhotos.length) > 0;
         if (photosAreMandatory && !registerOnline) {
-          throw new Error(text("This form needs a connection: the required photos must be confirmed before it is saved. Your entries stay on this screen.", "Dit formulier heeft verbinding nodig: de verplichte foto's moeten bevestigd zijn voordat het wordt opgeslagen. Je invoer blijft op dit scherm staan."));
+          throw new Error(text("This form needs a connection: the attached photos must be confirmed before it is saved. Your entries stay on this screen.", "Dit formulier heeft verbinding nodig: de toegevoegde foto's moeten bevestigd zijn voordat het wordt opgeslagen. Je invoer blijft op dit scherm staan."));
         }
         const effectiveReportId = registerOnline ? await ensureProjectDayReport(client, projectId, reportId) : reportId;
         const uploadedFiles = [];
@@ -3323,7 +3324,7 @@ function ProjectOperations({
               // formal is left behind without its evidence.
               await withdrawWorkspaceRecord(client, "register_entry", entry.id, "Verplichte foto's niet bevestigd; niet opgeslagen.");
               await Promise.all(queuedPhotoIds.map((id) => removeOfflineUpload(id)));
-              throw new Error(text("Not saved: the required photos were not confirmed. Check the connection and save again; your entries are still here.", "Niet opgeslagen: de verplichte foto's zijn niet bevestigd. Controleer de verbinding en sla opnieuw op; je invoer staat er nog."));
+              throw new Error(text("Not saved: the attached photos were not confirmed. Check the connection and save again; your entries are still here.", "Niet opgeslagen: de toegevoegde foto's zijn niet bevestigd. Controleer de verbinding en sla opnieuw op; je invoer staat er nog."));
             }
           }
         }

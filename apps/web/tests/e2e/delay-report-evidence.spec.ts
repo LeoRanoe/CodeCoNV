@@ -37,7 +37,8 @@ async function openDelayReport(page: Page) {
   await expect(page.getByRole("region", { name: "Project command center" })).toBeVisible();
   await page.locator(".sidebar").getByRole("button", { name: "Workspace", exact: true }).click();
   await page.locator("[data-workspace-destination='delay-report']").click();
-  await expect(page.getByRole("heading", { name: "Project Delay Report (PDR)" })).toBeVisible();
+  // F17: the page heading is the form's own name (the form repeats it in its own head).
+  await expect(page.getByRole("heading", { level: 1, name: "Project Delay Report (PDR)" })).toBeVisible();
 }
 
 /** The PDR sheet's photo field (PR #21): one button that opens the camera or the library. */
@@ -57,22 +58,25 @@ async function fillDelayReport(page: Page, description: string) {
   await page.getByRole("textbox", { name: /^Mitigation \/ recovery action/ }).fill("Two extra crews from Monday until the work is back on schedule.");
 }
 
-/** The delay reports of this title that are still alive, read as the supervisor does. */
-async function liveReports(page: Page, title: string) {
+/**
+ * The delay reports with this detailed cause that are still alive, read as the supervisor does. The
+ * record is found by a stored form value (F14): its title is generated from the activity and cause.
+ */
+async function liveReports(page: Page, cause: string) {
   const login = await page.request.post(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
     headers: { apikey: publishableKey! },
     data: { email, password },
   });
   const { access_token: accessToken } = await login.json() as { access_token: string };
   const response = await page.request.get(
-    `${supabaseUrl}/rest/v1/project_register_entries?select=id,title,status&register_type=eq.delay_report&status=neq.cancelled&title=ilike.*${encodeURIComponent(title)}*`,
+    `${supabaseUrl}/rest/v1/project_register_entries?select=id,title,status&register_type=eq.delay_report&status=neq.cancelled&details->spec->>detailed_cause=eq.${encodeURIComponent(cause)}`,
     { headers: { apikey: publishableKey!, authorization: `Bearer ${accessToken}` } },
   );
   expect(response.ok()).toBe(true);
   return await response.json() as Array<{ id: string }>;
 }
 
-test("a delay report is saved with its required photo confirmed", async ({ page }, testInfo) => {
+test("a delay report is saved with its attached photo confirmed", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-office", "One width is enough; the rule is the same everywhere.");
   await openDelayReport(page);
   const description = `Rain stopped the pour ${Date.now().toString(36)}`;
@@ -85,7 +89,7 @@ test("a delay report is saved with its required photo confirmed", async ({ page 
   expect(await page.locator(".offline-queue").count(), "the photo is confirmed, nothing waits on the device").toBe(0);
 });
 
-test("a delay report whose required photo is not confirmed is not left behind", async ({ page }, testInfo) => {
+test("a delay report whose attached photo is not confirmed is not left behind", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-office", "One width is enough; the rule is the same everywhere.");
   // The photo cannot reach the store: every write to it is refused.
   await page.route(/\/\?pathname=.*vercel-blob-signature/, (route) => route.fulfill({ status: 500, body: "refused" }));
@@ -95,7 +99,7 @@ test("a delay report whose required photo is not confirmed is not left behind", 
   await addPhoto(page);
   await fillSpecFields(page.locator(".record-form-shell").first());
   await page.getByRole("button", { name: "Save delay report" }).click();
-  await expect(page.getByText(/Not saved: the required photos were not confirmed/)).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByText(/Not saved: the attached photos were not confirmed/)).toBeVisible({ timeout: 90_000 });
   expect((await liveReports(page, description)).length, "no formal report without its photo").toBe(0);
   // What was typed is still there for the next try.
   await expect(page.getByRole("textbox", { name: /^Detailed cause/ })).toHaveValue(description);
